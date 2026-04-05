@@ -1,125 +1,99 @@
 # emb-agent
 
-把 `emb-agent` 做成和 `get-shit-done` 同类的安装系统，而不是一个单独 skill。
+`emb-agent` 是一套面向嵌入式项目的轻量 agent 安装系统。
 
-## 这版定位
+它采用安装优先的轻量运行方式，重点放在：
 
-- 源仓库是 installer-first
-- 包名和入口不再绑定 `codex`
-- 对 Codex 的安装目标仍然是 `~/.codex/` 或 `./.codex/`
-- runtime 直接安装在 `.codex/emb-agent/`
-- 不再依赖项目内 `./.emb-agent/` 私有 runtime
+- 已有嵌入式工程接入
+- 硬件真值层沉淀
+- 轻量 `scan / plan / do / debug / review`
+- clear context 前后的 `pause / resume`
+- 外部 adapter 驱动的芯片工具与资料扩展
 
-实现路线见 [ROADMAP.md](./ROADMAP.md)。
-当前已支持轻量 `micro-plan`，不是 GSD 式厚 `planning`。
-发布流程见 [RELEASE.md](./RELEASE.md)。
+它不是只面向某一类项目。8 位裸机、RTOS、IoT、brownfield 厂商 IDE 工程都可以接。
 
-## 仓库结构
+更多信息：
 
-- `bin/install.js`: 安装器入口
-- `commands/emb/`: 源命令定义
-- `agents/`: 源 agent 定义
-- `runtime/`: 安装到 runtime 目录的核心内容
-- `runtime/bin/emb-agent.cjs`: 主 CLI
-- `runtime/config.json`: runtime 默认配置
-- `runtime/lib/`: 统一校验与状态工具
-- `runtime/templates/`: 类似 GSD 的扁平模板库
-- `runtime/profiles/`: 内置项目画像
-- `runtime/packs/`: 内置场景 pack
-- `runtime/tools/`: 抽象 calculator spec 与空 registry
-- `runtime/chips/`: 抽象 chip registry 与空 profile 入口
+- 发布流程见 [RELEASE.md](./RELEASE.md)
+- 演进路线见 [ROADMAP.md](./ROADMAP.md)
+- runtime 目录说明见 [runtime/README.md](./runtime/README.md)
 
-注意：
+## 定位
 
-- `emb-agent` 是通用嵌入式 agent 框架，不绑定任何厂商工具、MCU 家族或固定手册
-- core 只内置抽象工具规格，不内置 `family / device / chip` profile，也不内置任何 calculator 实现
-- 如果项目需要厂商或芯片绑定，应通过外部 adapter/profile 扩展，而不是写进 emb core
+- `installer-first`：先安装到 AI runtime，再进入项目使用
+- `runtime-in-codex-home`：核心 runtime 安装到 `.codex/emb-agent/`
+- `micro-plan`：保留轻量规划，不引入厚状态目录
+- `abstract-only core`：core 不内置任何厂商绑定、family/device/chip 公式实现
+- `adapter-first`：芯片差异、公式、寄存器边界、文档索引通过外部 adapter 提供
+
+一句话说清楚：
+
+`emb-agent` 负责通用流程和状态管理，具体 MCU 能力由外部 adapter 填进去。
+
+## 适合什么项目
+
+- 8 位 / 32 位 MCU 固件
+- 裸机主循环 + ISR 项目
+- 带 RTOS 的任务型工程
+- IoT / connected appliance
+- 已经由厂商 IDE、CubeMX、SDK 或历史仓库初始化过的 brownfield 工程
 
 ## 安装
 
-这套仓库现在是 installer-first，使用方式参考 GSD。对于 Codex，安装目标就是 `.codex`。
+要求：
 
-### 全局安装
+- Node.js `>= 18`
+
+全局安装到 `~/.codex/`：
 
 ```bash
 npx emb-agent --global
 ```
 
-默认目标目录：
-
-```text
-~/.codex/
-```
-
-### 本地安装
+本地安装到当前目录 `./.codex/`：
 
 ```bash
 npx emb-agent --local
 ```
 
-默认目标目录：
-
-```text
-./.codex/
-```
-
-### 自定义目录
+自定义 Codex 目录：
 
 ```bash
 npx emb-agent --global --config-dir /path/to/codex-home
 ```
 
-### 从 git 仓库直接安装
-
-如果把这个目录单独放到 git 仓库里，安装形态就是：
+从 Git 仓库直接安装：
 
 ```bash
 npx github:<you>/emb-agent --global
 ```
 
-或者：
+卸载：
 
 ```bash
-npx git+https://github.com/<you>/emb-agent.git --global
+npx emb-agent --global --uninstall
 ```
 
-如果只是当前工作区本地验证，可以直接：
+## 安装后会得到什么
 
-```bash
-npx ./emb-agent --global
-```
+安装后会在 Codex 目录下生成三层内容：
 
-## 安装结果
+- `skills/emb-*`
+  轻量入口壳，给上层 AI runtime 调用
+- `agents/emb-*.toml`
+  子 agent 定义
+- `emb-agent/`
+  真正工作的 runtime
 
-安装后会生成这些内容：
+运行时主体大致如下：
 
 ```text
-<codex-dir>/
+<codex-home>/
 ├── skills/
-│   ├── emb-help/
-│   ├── emb-init-project/
-│   ├── emb-next/
-│   ├── emb-pause/
-│   ├── emb-resume/
-│   ├── emb-scan/
-│   ├── emb-plan/
-│   ├── emb-arch-review/
-│   ├── emb-do/
-│   ├── emb-debug/
-│   ├── emb-review/
-│   ├── emb-note/
-│   ├── emb-prefs/
-│   └── emb-template/
 ├── agents/
-│   ├── emb-hw-scout.toml
-│   ├── emb-fw-doer.toml
-│   ├── emb-bug-hunter.toml
-│   ├── emb-arch-reviewer.toml
-│   ├── emb-sys-reviewer.toml
-│   └── emb-release-checker.toml
 ├── emb-agent/
 │   ├── bin/
-│   ├── scripts/
+│   ├── lib/
 │   ├── templates/
 │   ├── profiles/
 │   ├── packs/
@@ -127,100 +101,200 @@ npx ./emb-agent --global
 │   ├── chips/
 │   ├── adapters/
 │   ├── extensions/
-│   ├── state/
-│   ├── commands/
-│   └── agents/
+│   └── state/
 └── config.toml
 ```
 
-安装时还会补一个 `.env.example`：
+安装时还会生成 `.env.example`：
 
-- 全局安装落在 `~/.codex/.env.example`
-- 本地安装落在当前项目根目录 `./.env.example`
+- 全局安装时落在 `~/.codex/.env.example`
+- 本地安装时落在当前项目根目录 `.env.example`
 
-这层结构更接近 GSD：
+## 最短使用流程
 
-- 模板文件直接平铺在 `emb-agent/templates/`
-- profile 和 pack 直接在 `emb-agent/profiles/`、`emb-agent/packs/`
-- 不再有 `template/.emb-agent/` 这种嵌套 runtime 模型
-- `templates/` 下不再按 `docs/`、`profiles/`、`packs/` 再分桶
-
-## 典型使用
-
-最短流程：
+第一次进入项目：
 
 ```bash
-# 第一次进入项目
 node ~/.codex/emb-agent/bin/emb-agent.cjs init
 node ~/.codex/emb-agent/bin/emb-agent.cjs next
+```
 
-# 后续继续当前项目
-node ~/.codex/emb-agent/bin/emb-agent.cjs next
+如果需要把手册解析进项目缓存：
 
-# 需要导入手册/PDF
+```bash
 node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
 ```
 
-安装后，默认只需要记这组命令：
+后续继续当前项目：
 
-## Basic
+```bash
+node ~/.codex/emb-agent/bin/emb-agent.cjs next
+```
 
-- `$emb-help`
-- `$emb-init-project`
-- `$emb-next`
-- `$emb-ingest`
-- `$emb-scan`
-- `$emb-plan`
-- `$emb-do`
-- `$emb-debug`
-- `$emb-review`
-- `$emb-dispatch`
-- `$emb-arch-review`
-- `$emb-pause`
-- `$emb-resume`
+清上下文前做 handoff：
 
-这一层的用法：
+```bash
+node ~/.codex/emb-agent/bin/emb-agent.cjs pause
+node ~/.codex/emb-agent/bin/emb-agent.cjs resume
+```
 
-- `$emb-init-project` 是唯一官方初始化入口，会生成项目级默认配置、真值层、固定文档骨架，并自动探测已有厂商 IDE / SDK / brownfield 工程里的首批资料来源，但不创建 `./.emb-agent/` 这类私有 runtime
-- `$emb-next` 是默认入口。大多数时候不用先想命令，直接从它开始
-- `$emb-ingest` 用于把后续读到并确认的硬件/需求事实继续沉到 `hw.yaml / req.yaml`，或先把文档解析进项目缓存
-- `$emb-scan`、`$emb-plan`、`$emb-do`、`$emb-debug`、`$emb-review` 覆盖了日常嵌入式工作主流程
-- `$emb-dispatch` 用于把“当前动作”或“下一步”直接转成轻量子 agent 分发合同，适合 Codex 这类上层 agent 自动消费
-- `$emb-arch-review` 是显式触发的重型架构审查入口，适用于芯片选型、PoC 转量产前预审、RTOS / IoT 压力测试和失败预演；它默认复用 `review context` 与项目真值层，但不会把日常 `next / plan / review` 流程重新做重
-- `$emb-pause` / `$emb-resume` 用于 clear context 前后的轻量衔接
-- 对 `scan / plan / do / debug / review / note`，runtime 会输出 `agent_execution + dispatch_contract`，上层 agent 遇到 `recommended = true` 时应直接调用安装后的 `emb-*` 子 agent，而不是只打印建议
-- 如果当前运行时不能直接按名字调用已安装的 `emb-*` agent，就改走 `dispatch_contract` 里的 `spawn_fallback`，用通用 `spawn_agent` 加载对应 agent 指令
+这里的原则是：
 
-## Advanced
+- `init` 是唯一官方初始化入口
+- `next` 是默认入口，优先给出下一步
+- 真值先沉到项目里，再做后续 scan/plan/review
 
-- `$emb-note`
-- `$emb-prefs`
-- `$emb-template`
-- `$emb-adapter`
-- `$emb-tool`
+## 日常命令
 
-这一层不是每天都要用：
+最常用的一组：
 
-- `$emb-note` 用于把长期有效的技术结论落到固定文档
-- `$emb-prefs` 用于切换轻量偏好，例如真值优先级、`plan/review` 路由和验证强度
-- `$emb-template` 用于生成固定文档骨架，或补 profile / pack 模板
-- `$emb-adapter` 用于管理 path/git adapter source，并把外部厂商扩展同步到项目或 runtime
-- `$emb-tool` 用于查看抽象工具规格，以及项目/运行时外部 adapter、family、device、chip 扩展入口
+- `init`
+- `next`
+- `ingest hardware`
+- `ingest requirements`
+- `ingest doc`
+- `scan`
+- `plan`
+- `do`
+- `debug`
+- `review`
+- `arch-review`
+- `pause`
+- `resume`
 
-## Compatibility
+如果你只记一条主线，就记这个：
 
-- `$emb-attach`
+1. `init`
+2. `ingest`
+3. `next`
+4. 需要时进入 `scan / plan / do / debug / review`
+5. 上下文变重时 `pause -> clear -> resume`
 
-这是兼容旧用法的别名，保留实现，但不再作为官方流程入口。
+## 命令分层
 
-补充：
+日常主流程：
 
-- 真正工作的 CLI 是 `~/.codex/emb-agent/bin/emb-agent.cjs` 或 `./.codex/emb-agent/bin/emb-agent.cjs`
-- skill 只是轻量入口壳，真正的调度和输出结构由 runtime 生成
-- `config show` 可查看当前 runtime 配置
-- `template fill architecture-review --force` 可生成 `docs/ARCH-REVIEW.md` 审查骨架
+- `status`
+- `next`
+- `scan`
+- `plan`
+- `do`
+- `debug`
+- `review`
+- `arch-review`
+- `resolve`
 
-## 外部扩展布局
+真值与文档：
+
+- `ingest hardware`
+- `ingest requirements`
+- `ingest doc`
+- `ingest apply doc`
+- `doc list`
+- `doc show`
+- `doc diff`
+- `note`
+
+项目配置：
+
+- `project show`
+- `project set`
+- `profile list/show/set`
+- `pack list/show/add/remove/clear`
+- `prefs show/set/reset`
+
+扩展与工具：
+
+- `adapter status`
+- `adapter source add/remove/list/show`
+- `adapter sync`
+- `tool list/show/run`
+- `tool family list/show`
+- `tool device list/show`
+- `chip list/show`
+- `template list/show/fill`
+
+自省与调度输出：
+
+- `dispatch show`
+- `dispatch next`
+- `schedule show`
+- `session show`
+- `agents list/show`
+- `commands list/show`
+
+完整帮助：
+
+```bash
+node ~/.codex/emb-agent/bin/emb-agent.cjs help
+```
+
+## Profile 和 Pack 是什么
+
+`profile` 描述项目的基础运行画像，例如：
+
+- 运行模型
+- 并发模型
+- 资源优先级
+- 搜索优先级
+- review 轴
+- 默认 agent
+
+例如内置的 `baremetal-8bit` 会强调：
+
+- `rom`
+- `ram`
+- `stack`
+- `isr_time`
+
+`pack` 是场景叠加层，不改变 core，只补充：
+
+- 当前场景的关注点
+- 附加 review 轴
+- 推荐记录的 notes 目标
+- 默认 agent 增量
+
+例如 `sensor-node` 会增加：
+
+- `sampling`
+- `timing`
+- `calibration`
+- `low_power`
+
+## Adapter 模型
+
+这是 `emb-agent` 最重要的边界。
+
+core 只提供：
+
+- 抽象命令流
+- 调度与状态
+- 工具 spec
+- 空 registry
+
+core 不提供：
+
+- 某厂商 timer 计算器实现
+- 某 family 的寄存器边界
+- 某 chip 的 pin map / peripheral profile
+
+这些都应通过 adapter 注入。
+
+adapter 可以来自：
+
+- 项目本地路径
+- 外部 Git 仓库
+
+典型操作：
+
+```bash
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
+node ~/.codex/emb-agent/bin/emb-agent.cjs tool list
+node ~/.codex/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
+```
+
+`tool run` 只有在检测到对应 adapter 后才会真正执行，否则稳定返回 `adapter-required`。
 
 运行时扩展目录：
 
@@ -229,14 +303,7 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.p
 ├── adapters/
 └── extensions/
     ├── tools/
-    │   ├── registry.json
-    │   ├── timer-calc.cjs
-    │   ├── specs/
-    │   ├── families/
-    │   └── devices/
     └── chips/
-        ├── registry.json
-        └── devices/
 ```
 
 项目级扩展目录：
@@ -246,277 +313,129 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.p
 ├── adapters/
 └── extensions/
     ├── tools/
-    │   ├── registry.json
-    │   ├── timer-calc.cjs
-    │   ├── specs/
-    │   ├── families/
-    │   └── devices/
     └── chips/
-        ├── registry.json
-        └── devices/
 ```
 
-生成这些骨架可以直接用模板：
+## 项目侧会生成什么
 
-```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-extension-registry --field FAMILY_NAME=vendor-family --field DEVICE_NAME=vendor-device --force
-node ~/.codex/emb-agent/bin/emb-agent.cjs template fill chip-extension-registry --field CHIP_NAME=vendor-chip --force
-node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-adapter --field TOOL_NAME=timer-calc --field ADAPTER_NAME=vendor-timer-adapter --force
-node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-family --field SLUG=vendor-family --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force
-node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-device --field SLUG=vendor-device --field DEVICE_NAME=vendor-device --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force
-node ~/.codex/emb-agent/bin/emb-agent.cjs template fill chip-profile --field SLUG=vendor-chip --field CHIP_NAME=vendor-chip --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force
-```
-
-## Runtime
-
-也可以直接调用 runtime。下面这层主要服务高级用户、脚本和其他 agent 复用，不要求普通用户记住全部：
-
-```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs init
-node ~/.codex/emb-agent/bin/emb-agent.cjs init --mcu MCU_NAME --goal "stabilize wakeup path"
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest hardware --truth "PROGRAM_PIN reserved for flashing" --source docs/MCU-datasheet.md
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest requirements --constraint "boot within 100 ms" --source README.md
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
-node ~/.codex/emb-agent/bin/emb-agent.cjs doc list
-node ~/.codex/emb-agent/bin/emb-agent.cjs doc show <doc-id>
-node ~/.codex/emb-agent/bin/emb-agent.cjs doc show <doc-id> --preset hw-safe
-node ~/.codex/emb-agent/bin/emb-agent.cjs doc show <doc-id> --preset hw-safe --apply-ready
-node ~/.codex/emb-agent/bin/emb-agent.cjs doc diff <doc-id> --to hardware --only constraints,sources
-node ~/.codex/emb-agent/bin/emb-agent.cjs doc diff <doc-id> --to hardware --only constraints,sources --save-as hw-safe
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest apply doc <doc-id> --from-last-diff
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest apply doc <doc-id> --preset hw-safe
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest apply doc <doc-id> --to hardware
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest apply doc <doc-id> --to hardware --only constraints,sources
-node ~/.codex/emb-agent/bin/emb-agent.cjs next
-node ~/.codex/emb-agent/bin/emb-agent.cjs pause
-node ~/.codex/emb-agent/bin/emb-agent.cjs pause show
-node ~/.codex/emb-agent/bin/emb-agent.cjs scan
-node ~/.codex/emb-agent/bin/emb-agent.cjs scan save hardware "Captured current entry and truth source order" --fact "main.c remains latest touched file"
-node ~/.codex/emb-agent/bin/emb-agent.cjs plan
-node ~/.codex/emb-agent/bin/emb-agent.cjs arch-review
-node ~/.codex/emb-agent/bin/emb-agent.cjs plan save "Prepare minimal wakeup-timer fix plan" --risk "Wakeup path may re-trigger timer flag" --verify "Verify wakeup path on bench"
-node ~/.codex/emb-agent/bin/emb-agent.cjs do
-node ~/.codex/emb-agent/bin/emb-agent.cjs debug
-node ~/.codex/emb-agent/bin/emb-agent.cjs review
-node ~/.codex/emb-agent/bin/emb-agent.cjs review save "Reconnect path needs offline gate" --finding "Offline fallback is underspecified" --check "Verify reconnect after timeout"
-node ~/.codex/emb-agent/bin/emb-agent.cjs note
-node ~/.codex/emb-agent/bin/emb-agent.cjs note add hardware "PROGRAM_PIN is flashing path" --kind hardware_truth --evidence docs/MCU-datasheet.md
-node ~/.codex/emb-agent/bin/emb-agent.cjs dispatch next
-node ~/.codex/emb-agent/bin/emb-agent.cjs dispatch show plan
-node ~/.codex/emb-agent/bin/emb-agent.cjs prefs show
-node ~/.codex/emb-agent/bin/emb-agent.cjs prefs set truth_source_mode code_first
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter status
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type path --location /abs/path/to/vendor-pack
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync --all
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source remove vendor-pack
-node ~/.codex/emb-agent/bin/emb-agent.cjs tool list
-node ~/.codex/emb-agent/bin/emb-agent.cjs tool show timer-calc
-node ~/.codex/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
-node ~/.codex/emb-agent/bin/emb-agent.cjs tool family show FAMILY_NAME
-node ~/.codex/emb-agent/bin/emb-agent.cjs tool device show DEVICE_NAME
-node ~/.codex/emb-agent/bin/emb-agent.cjs chip list
-node ~/.codex/emb-agent/bin/emb-agent.cjs chip show CHIP_NAME
-node ~/.codex/emb-agent/bin/emb-agent.cjs project show
-node ~/.codex/emb-agent/bin/emb-agent.cjs project show --effective
-node ~/.codex/emb-agent/bin/emb-agent.cjs project show --effective --field effective.arch_review_triggers
-node ~/.codex/emb-agent/bin/emb-agent.cjs project set --field arch_review.trigger_patterns --value '["chip selection","方案预审"]'
-node ~/.codex/emb-agent/bin/emb-agent.cjs schedule show review
-```
-
-若要让 MinerU 自动判断走 `agent` 还是 `api`，推荐在项目的 `emb-agent/project.json` 里保留 `mode: "auto"`，只改实际入口 URL：
-
-```json
-{
-  "adapter_sources": [
-    {
-      "name": "vendor-pack",
-      "type": "git",
-      "location": "https://example.com/vendor-pack.git",
-      "branch": "main",
-      "subdir": "emb-agent",
-      "enabled": true
-    }
-  ],
-  "integrations": {
-    "mineru": {
-      "mode": "auto",
-      "base_url": "",
-      "api_key": "",
-      "api_key_env": "MINERU_API_KEY",
-      "model_version": "vlm",
-      "language": "ch",
-      "enable_table": true,
-      "is_ocr": false,
-      "enable_formula": true,
-      "poll_interval_ms": 3000,
-      "timeout_ms": 300000,
-      "auto_api_page_threshold": 12,
-      "auto_api_file_size_kb": 4096
-    }
-  }
-}
-```
-
-`mode=auto` 时，provider 的判定顺序是：
-
-1. 若 `base_url` 显式指向 `.../api/v*/agent` 或 `.../api/v*`，优先按它走
-2. 否则按阈值判断：
-   当前选择页数 `>= auto_api_page_threshold`，或文件大小 `>= auto_api_file_size_kb`
-3. 命中大文档阈值且拿得到 `MINERU_API_KEY` 时走 api；否则回退 agent
-
-建议保持 `base_url` 为空，让 emb-agent 自动用内建的：
-
-- agent: `https://mineru.net/api/v1/agent`
-- api: `https://mineru.net/api/v4`
-
-建议把 token 放环境变量，而不是写死在项目配置里：
-
-```bash
-export MINERU_API_KEY=<your-token>
-```
-
-也可以直接在项目根目录或 Codex 根目录放 `.env`，`emb-agent` 会轻量读取其中的 `MINERU_API_KEY`。
-
-如果你希望 `$emb-next` 在特定语义下自动切到 `$emb-arch-review`，可以在项目的 `emb-agent/project.json` 里加：
-
-```json
-{
-  "arch_review": {
-    "trigger_patterns": [
-      "chip selection",
-      "方案预审",
-      "驱动策略评审",
-      "PoC转量产"
-    ]
-  }
-}
-```
-
-规则优先级：
-
-1. `emb-agent/project.json` 的 `arch_review.trigger_patterns`
-2. 当前 `profile` 的 `arch_review_triggers`
-3. runtime 内置默认触发词
-
-用 `node ~/.codex/emb-agent/bin/emb-agent.cjs status` 可以直接看到当前生效的 `arch_review_triggers`。
-如果想把项目默认配置和当前生效结果一次展开，用 `node ~/.codex/emb-agent/bin/emb-agent.cjs project show --effective`。
-如果只想给脚本或别的 agent 取单个字段，用 `node ~/.codex/emb-agent/bin/emb-agent.cjs project show --effective --field effective.arch_review_triggers`。
-如果想直接写项目配置而不是手改 JSON，用 `node ~/.codex/emb-agent/bin/emb-agent.cjs project set --field arch_review.trigger_patterns --value '["chip selection","方案预审"]'`。
-
-## 当前能力
-
-- runtime config 已独立到 `emb-agent/config.json`
-- `profile`、`pack`、`template config`、`session` 已接统一校验
-- session 已带 `session_version`
-- stale lock 会自动清理
-- 已支持轻量 `pause/resume` handoff，不引入 `.planning/`
-- 已支持轻量 `next` 自动路由，用于嵌入式任务的下一步判断
-- 新增轻量 scheduler，统一驱动 `scan/plan/do/debug/review/note`
-- 新增最小嵌入式偏好层，可控制真值优先级、`plan/review` 路由和验证强度
-- 新增项目级默认配置 `emb-agent/project.json`，可稳定指定默认 `profile/pack/preferences`
-- `arch-review` 触发词现在支持 profile 默认值和项目级覆盖，不必继续硬编码在 CLI
-- 新增项目内轻量真值层 `emb-agent/hw.yaml` 与 `emb-agent/req.yaml`，用于沉淀硬件与需求事实
-- `init` 现在已收敛成唯一官方初始化入口，可直接把已有工程接入 emb-agent，并自动探测 datasheet / schematic / code / project files
-- 新增 `ingest hardware / ingest requirements`，用于持续更新项目内真值层
-- 新增 `ingest doc`，可通过 `mineru` provider 把本地手册解析到项目缓存
-- `init-project` 现在会按项目画像落固定文档骨架，例如 `docs/HARDWARE-LOGIC.md`、`docs/DEBUG-NOTES.md`
-- `init-project` 现在会预建 `emb-agent/cache/docs/`，供文档解析结果缓存
-- `scan/plan` 现在会优先读取项目内 `hw.yaml / req.yaml`，减少反复重读整本手册
-- `scan save` 现在可把扫描结果直接追加到目标文档的 `Emb-Agent Scans` 区块
-- `plan save` 现在可把 `micro-plan` 直接追加到目标文档的 `Emb-Agent Plans` 区块
-- `note add` 现在可把长期有效结论直接追加到目标文档的 `Emb-Agent Notes` 区块
-- `review save` 现在可把结构性 review 结果直接追加到 `docs/REVIEW-REPORT.md`
-- `scan save hardware` 与 `note add hardware --kind hardware_truth` 会自动同步到 `emb-agent/hw.yaml`
-- `plan save` 会自动把目标和验证条件同步到 `emb-agent/req.yaml`
-- `ingest doc` 会把解析结果缓存到 `emb-agent/cache/docs/<doc-id>/`，并维护 `index.json`
-- `doc list` 可列出当前项目缓存过的文档及其 `doc-id`，并带上极简 `last_diff_hit/last_diff_to` 与 `preset_count/preset_names/preset_names_more` 摘要；列表里的 preset 名会做轻量截断，完整列表看 `doc show`
-- `doc show <doc-id>` 可查看单个缓存文档的来源、解析信息、产物状态、最近一次 `doc diff` 摘要，以及当前可用 preset 列表
-- `doc show <doc-id> --preset <name>` 可直接预览该 preset 应用于当前文档时会改哪些字段
-- `doc show <doc-id> --preset <name> --apply-ready` 会额外给出可直接执行的 apply 命令提示
-- `doc diff <doc-id> --to ...` 可按真实 apply 语义预览哪些字段会 `set/append/skip`
-- `doc diff` 会把最近一次预览选择轻量记到 `emb-agent/cache/docs/index.json.session.last_diff`
-- `doc diff ... --save-as <name>` 可把当前字段选择存成命名 preset，仍然落在同一个 `index.json`
-- `ingest doc --to hardware|requirements` 会额外生成基于规则的 `facts.*.yaml` 草稿，先给出最小可复用事实
-- `ingest apply doc <doc-id> --to hardware|requirements` 可把文档草稿里的稳定字段写回 `hw.yaml / req.yaml`
-- `ingest apply doc ... --only ...` 可只应用部分稳定字段，例如只吸收 `constraints,sources`
-- `ingest apply doc <doc-id> --from-last-diff` 可直接回放最近一次 `doc diff` 的 `to/only/force` 选择，少输一遍参数
-- `ingest apply doc <doc-id> --preset <name>` 可回放命名 preset，适合反复使用同一组应用字段
-- `ingest apply doc` 默认是幂等的：同一 `doc-id + to + source_hash` 重复应用会直接返回 `already_applied`
-- `scan save / plan save / review save / note add` 在同一区块遇到相同 `Summary` 时会更新旧条目，避免文档重复膨胀
-- 当前 `mineru` 集成同时支持轻量 `agent` 链路和精准 `api` 链路：默认配置是 `mode=auto + 空 base_url`，所以小文档默认仍走 agent；当页数或文件大小超过阈值且存在 `api_key` 或 `MINERU_API_KEY` 时，会自动切到官方 batch API + zip 结果提取；若显式设置 `base_url`，则该路由优先
-- `doc show <doc-id> --preset <name> --apply-ready` 现在除命令字符串外，还会返回结构化 `argv`，便于其他 agent/runtime 直接转发执行
-- 安装后的 CLI 现在按执行时 `cwd` 解析项目级 `emb-agent/profiles/` 和 `emb-agent/packs/`，不会把首次加载目录错误固化
-- core 已收敛成 abstract-only：内置 `tools/specs/` 和空 registry，但不内置任何厂商 family/device/chip profile，也不内置 calculator 实现
-- 运行时与项目侧都预建 `adapters/`、`extensions/tools/*`、`extensions/chips/*`，用于挂接外部公式、寄存器边界和芯片资料索引
-- adapter source 已正式进入 `project.json`，支持 `path/git` 两种来源，并带同步清单
-- `tool run` 只有在检测到外部 adapter 时才执行；否则稳定返回 `adapter-required`
-- 原生命令会直接输出结构化 JSON，便于 skill、CLI 或其他 AI runtime 复用
-- 仓库内已有最小测试：runtime 校验 + init-project + scheduler 路由 + scan/plan/note/review 持久化 + 安装集成链路
-
-## 项目侧约定
-
-默认不在项目里铺整套 runtime。
-
-如果需要项目自定义，只使用轻量目录：
+`emb-agent` 不会把整套 runtime 塞进项目，只会放轻量项目产物：
 
 ```text
 <repo>/
 ├── docs/
-│   ├── HARDWARE-LOGIC.md
-│   ├── DEBUG-NOTES.md
-│   ├── REVIEW-REPORT.md
-│   ├── CONNECTIVITY.md
-│   └── RELEASE-NOTES.md
 └── emb-agent/
     ├── project.json
     ├── hw.yaml
     ├── req.yaml
     ├── cache/
-    │   ├── docs/
-    │   └── adapter-sources/
     ├── adapters/
     ├── extensions/
-    │   ├── tools/
-    │   │   ├── specs/
-    │   │   ├── families/
-    │   │   └── devices/
-    │   └── chips/
-    │       └── devices/
     ├── profiles/
     └── packs/
 ```
 
-说明：
+各自职责：
 
-- `emb-agent/project.json` 是项目级默认配置，定义默认 `profile`、`pack`、`preferences` 和轻量 integration 配置
-- `emb-agent/project.json` 也可定义 `adapter_sources`，声明外部 adapter 仓库或本地目录
-- `emb-agent/project.json` 也可定义 `arch_review.trigger_patterns`，用于覆盖当前项目哪些语义会让 `next` 建议 `$emb-arch-review`
-- `emb-agent/hw.yaml` 是项目级硬件真值层，记录 MCU、引脚、外设、约束和 unknowns
-- `emb-agent/req.yaml` 是项目级需求真值层，记录目标、约束、验收和 unknowns
-- `emb-agent/cache/docs/` 是项目级文档解析缓存，保存 Markdown、结构化结果和基于规则的事实草稿
-- `emb-agent/cache/adapter-sources/` 是 git adapter source 的本地缓存目录
-- `docs/` 是 `init-project` 按项目画像生成的模板结果
-- `emb-agent/adapters/` 与 `emb-agent/extensions/` 是项目级外部工具/芯片扩展入口
-- `emb-agent/profiles/` 和 `emb-agent/packs/` 是项目自定义扩展
-- clear context 后的恢复状态保存在安装目录 `emb-agent/state/projects/`，按项目路径索引
+- `emb-agent/project.json`
+  项目默认配置，包含 profile、pack、adapter source、integration 偏好
+- `emb-agent/hw.yaml`
+  硬件真值层，记录 MCU、引脚、外设、约束、unknowns
+- `emb-agent/req.yaml`
+  需求真值层，记录目标、约束、验收和 failure mode
+- `emb-agent/cache/docs/`
+  手册解析缓存
+- `emb-agent/cache/adapter-sources/`
+  Git adapter source 本地缓存
 
-## 卸载
+## State 是干什么的
+
+`state` 是 runtime 的轻量持久化层，用来让当前项目在 clear context 后还能接上。
+
+它不属于项目交付物，而是安装态本地状态。
+
+关键文件：
+
+- `runtime/state/default-session.json`
+  默认 session 模板，会随仓库发布
+- `runtime/state/projects/<project-key>.json`
+  当前项目的 session 持久化
+- `runtime/state/projects/<project-key>.handoff.json`
+  `pause / resume` 的 handoff 文件
+
+`project-key` 是按项目路径算出来的，所以同一个安装 runtime 可以同时记住多个仓库。
+
+这层状态用于保存：
+
+- 当前 profile
+- 当前 packs
+- focus
+- last files
+- open questions
+- known risks
+- clear context 前的 handoff 信息
+
+当前仓库已经把 `runtime/state/projects/*` 视为运行时缓存，不再应该提交进 Git。
+
+## 文档解析与 MinerU
+
+当前 `ingest doc` 支持 `mineru` provider。
+
+推荐做法：
+
+- API key 放 `.env` 或环境变量
+- 不要硬编码进项目配置
+- 小文档优先走 agent
+- 大文档按页数和文件大小阈值自动切 API
+
+示例：
 
 ```bash
-npx emb-agent --global --uninstall
+export MINERU_API_KEY=<your-token>
+node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
 ```
 
-或：
+## 对上层 AI runtime 的关系
+
+`emb-agent` 不是单独 skill。
+
+更准确地说：
+
+- 安装包负责把技能入口、子 agent、runtime 一起装好
+- skill 只是入口壳
+- 真正的状态、调度、输出结构都在 `emb-agent/bin/emb-agent.cjs`
+
+因此它既能给 Codex 用，也能被其他 AI runtime 复用。
+
+## 开发与发布
+
+仓库内最常用的开发命令：
 
 ```bash
-npx emb-agent --local --uninstall
+npm test
+npm run release:check
+npm pack --dry-run
 ```
 
-卸载会移除：
+如果你要发布或检查发布内容：
 
-- `skills/emb-*`
-- `agents/emb-*.toml`
-- `emb-agent/`
-- `config.toml` 里的 emb-agent managed block
+- 看 [RELEASE.md](./RELEASE.md)
+- 先跑 `npm run release:check`
+
+## 当前边界
+
+`emb-agent` 当前已经覆盖：
+
+- 通用嵌入式工作流
+- 轻量 session / handoff
+- 文档解析接入
+- adapter source 管理
+- 抽象工具入口
+- profile / pack / chip 扩展入口
+
+它当前刻意不做：
+
+- 把厂商知识硬编码进 core
+- 内置所有 MCU 工具实现
+- 把项目状态写成厚重的流程系统
+
+如果你要补具体芯片能力，正确方向是补 adapter 仓库，而不是继续把 core 做重。
