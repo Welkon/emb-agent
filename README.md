@@ -1,56 +1,83 @@
+<div align="center">
+
 # emb-agent
 
-`emb-agent` 是一套面向嵌入式项目的轻量 agent 安装系统。
+**一套面向嵌入式项目的轻量 agent 系统。**
 
-它采用安装优先的轻量运行方式，重点放在：
-
-- 已有嵌入式工程接入
-- 硬件真值层沉淀
-- 轻量 `scan / plan / do / debug / review`
-- clear context 前后的 `pause / resume`
-- 外部 adapter 驱动的芯片工具与资料扩展
-
-它不是只面向某一类项目。8 位裸机、RTOS、IoT、brownfield 厂商 IDE 工程都可以接。
-
-更多信息：
-
-- 发布流程见 [RELEASE.md](./RELEASE.md)
-- 演进路线见 [ROADMAP.md](./ROADMAP.md)
-- runtime 目录说明见 [runtime/README.md](./runtime/README.md)
-
-## 定位
-
-- `installer-first`：先安装到 AI runtime，再进入项目使用
-- `runtime-in-codex-home`：核心 runtime 安装到 `.codex/emb-agent/`
-- `micro-plan`：保留轻量规划，不引入厚状态目录
-- `abstract-only core`：core 不内置任何厂商绑定、family/device/chip 公式实现
-- `adapter-first`：芯片差异、公式、寄存器边界、文档索引通过外部 adapter 提供
-
-一句话说清楚：
-
-`emb-agent` 负责通用流程和状态管理，具体 MCU 能力由外部 adapter 填进去。
-
-## 适合什么项目
-
-- 8 位 / 32 位 MCU 固件
-- 裸机主循环 + ISR 项目
-- 带 RTOS 的任务型工程
-- IoT / connected appliance
-- 已经由厂商 IDE、CubeMX、SDK 或历史仓库初始化过的 brownfield 工程
-
-## 安装
-
-要求：
-
-- Node.js `>= 18`
-
-全局安装到 `~/.codex/`：
+**解决嵌入式项目里的上下文膨胀、手册重复阅读、芯片知识散落、工具能力不可复用。**
 
 ```bash
 npx emb-agent --global
 ```
 
-本地安装到当前目录 `./.codex/`：
+**支持全局安装到 `~/.codex/`，也支持本地安装到当前项目。**
+
+[快速开始](#快速开始) · [工作原理](#工作原理) · [命令](#命令) · [配置](#配置) · [发布](./RELEASE.md)
+
+</div>
+
+---
+
+## 我为什么做这个
+
+嵌入式项目和普通应用开发不一样。
+
+你面对的不是纯代码，而是：
+
+- 芯片资料
+- 引脚和电路连接
+- 时序约束
+- 外设公式
+- 中断与主循环行为
+- RTOS 任务关系
+- 量产前必须反复确认的硬件真值
+
+问题是，大多数 AI 开发流都不擅长这类工作。
+
+它们容易反复读整本手册，反复问同样的问题，或者把项目做成很厚的流程系统。对小 MCU、裸机、brownfield 工程，这会很快变成负担。
+
+`emb-agent` 的目标不是把流程做重，而是把复杂性放进系统里，把用户看到的入口尽量压轻：
+
+- 用 `init` 接入现有工程
+- 用 `hw.yaml / req.yaml` 沉淀真值
+- 用 `next` 给出下一步
+- 用 `pause / resume` 解决 clear context
+- 用 adapter 承载芯片差异和计算工具
+
+---
+
+## 适合谁
+
+适合这些项目：
+
+- 8 位 / 32 位 MCU 固件
+- 裸机 `main loop + ISR`
+- RTOS 工程
+- IoT / connected appliance
+- 已由厂商 IDE、CubeMX、SDK、历史仓库初始化过的 brownfield 工程
+
+适合这些人：
+
+- 不想每次都重新喂整本手册的人
+- 想把 MCU / board / timing / power / review 事实沉下来的人
+- 想要轻量化 agent 流程，而不是厚 planning 系统的人
+- 想把芯片工具能力做成可复用 adapter 的人
+
+---
+
+## 快速开始
+
+要求：
+
+- Node.js `>= 18`
+
+全局安装：
+
+```bash
+npx emb-agent --global
+```
+
+本地安装：
 
 ```bash
 npx emb-agent --local
@@ -62,118 +89,235 @@ npx emb-agent --local
 npx emb-agent --global --config-dir /path/to/codex-home
 ```
 
-从 Git 仓库直接安装：
+如果 npm 包暂时不可用，也可以直接从 Git 安装：
 
 ```bash
-npx github:<you>/emb-agent --global
+npx github:Welkon/emb-agent --global
 ```
 
-卸载：
+验证安装：
 
-```bash
-npx emb-agent --global --uninstall
-```
+- Codex 内运行 `$emb-help`
+- 或直接运行 `node ~/.codex/emb-agent/bin/emb-agent.cjs help`
 
-## 安装后会得到什么
-
-安装后会在 Codex 目录下生成三层内容：
-
-- `skills/emb-*`
-  轻量入口壳，给上层 AI runtime 调用
-- `agents/emb-*.toml`
-  子 agent 定义
-- `emb-agent/`
-  真正工作的 runtime
-
-运行时主体大致如下：
+安装完成后，runtime 默认在：
 
 ```text
-<codex-home>/
-├── skills/
-├── agents/
-├── emb-agent/
-│   ├── bin/
-│   ├── lib/
-│   ├── templates/
-│   ├── profiles/
-│   ├── packs/
-│   ├── tools/
-│   ├── chips/
-│   ├── adapters/
-│   ├── extensions/
-│   └── state/
-└── config.toml
+~/.codex/emb-agent/
 ```
 
-安装时还会生成 `.env.example`：
+项目运行态状态默认在：
 
-- 全局安装时落在 `~/.codex/.env.example`
-- 本地安装时落在当前项目根目录 `.env.example`
+```text
+~/.codex/state/emb-agent/projects/
+```
 
-## 最短使用流程
+### 保持更新
 
-第一次进入项目：
+需要更新时，直接重新安装：
+
+```bash
+npx emb-agent --global
+```
+
+当前运行时会在 `SessionStart` 后台检查新版本，并在检测到以下情况时给出提醒：
+
+- 有新版本可更新
+- hooks / runtime / skills 版本不一致，属于 `stale install`
+
+### 第一次进入项目
 
 ```bash
 node ~/.codex/emb-agent/bin/emb-agent.cjs init
 node ~/.codex/emb-agent/bin/emb-agent.cjs next
 ```
 
-如果需要把手册解析进项目缓存：
+如果需要把手册或 PDF 先转进项目缓存：
 
 ```bash
 node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
 ```
 
-后续继续当前项目：
+如果后续继续当前项目：
 
 ```bash
 node ~/.codex/emb-agent/bin/emb-agent.cjs next
 ```
 
-清上下文前做 handoff：
+如果准备 clear context：
 
 ```bash
 node ~/.codex/emb-agent/bin/emb-agent.cjs pause
 node ~/.codex/emb-agent/bin/emb-agent.cjs resume
 ```
 
-这里的原则是：
+---
 
-- `init` 是唯一官方初始化入口
-- `next` 是默认入口，优先给出下一步
-- 真值先沉到项目里，再做后续 scan/plan/review
+## 工作原理
 
-## 日常命令
+### 1. 接入项目
 
-最常用的一组：
+```bash
+node ~/.codex/emb-agent/bin/emb-agent.cjs init
+```
 
-- `init`
-- `next`
-- `ingest hardware`
-- `ingest requirements`
-- `ingest doc`
-- `scan`
-- `plan`
-- `do`
-- `debug`
-- `review`
-- `arch-review`
-- `pause`
-- `resume`
+这一步会：
 
-如果你只记一条主线，就记这个：
+- 创建 `emb-agent/project.json`
+- 创建 `emb-agent/hw.yaml`
+- 创建 `emb-agent/req.yaml`
+- 创建项目级缓存目录
+- 按当前 profile / pack 创建 `docs/` 下的固定骨架文档
+- 为已有工程建立最小工作上下文
+
+默认 profile / pack 下，通常会创建：
+
+- `docs/HARDWARE-LOGIC.md`
+- `docs/DEBUG-NOTES.md`
+
+`init` 是唯一官方初始化入口。
+
+---
+
+### 2. 沉淀真值
+
+嵌入式项目最重要的是“已经确认的事实”。
+
+`emb-agent` 把这层拆成两类：
+
+- `hw.yaml`
+  MCU、板级连接、引脚、外设、约束、unknowns
+- `req.yaml`
+  目标、功能、约束、验收、failure mode
+
+文档导入后，可以继续把稳定信息吸收到真值层，而不是每次重新读整本资料。
+
+常用入口：
+
+```bash
+node ~/.codex/emb-agent/bin/emb-agent.cjs ingest hardware --truth "PWM 输出走 PA3" --source docs/xxx.md
+node ~/.codex/emb-agent/bin/emb-agent.cjs ingest requirements --constraint "上电 100ms 内完成初始化" --source docs/req.md
+node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU.pdf --provider mineru --kind datasheet --to hardware
+```
+
+---
+
+### 3. 进入轻量主流程
+
+日常主线不是厚 planning，而是：
+
+1. `next`
+2. `scan`
+3. `plan`
+4. `do`
+5. `debug`
+6. `review`
+
+`next` 会根据当前项目状态、真值层、最近文件、风险和问题，给出最合适的下一步。
+
+如果你只记一条链路，就记这个：
 
 1. `init`
 2. `ingest`
 3. `next`
-4. 需要时进入 `scan / plan / do / debug / review`
-5. 上下文变重时 `pause -> clear -> resume`
+4. 按需进入 `scan / plan / do / debug / review`
+5. 上下文过重时 `pause -> clear -> resume`
 
-## 命令分层
+---
 
-日常主流程：
+### 4. 控制上下文膨胀
 
+这是 `emb-agent` 的重点之一。
+
+它通过两层机制防止“会话越跑越重”：
+
+- 项目侧上下文卫生判断
+  基于最近文件、open questions、known risks、当前 focus
+- 运行时 hook 提醒
+  在 `PostToolUse` 时读取上下文指标，接近上限时提醒 `pause`
+
+当上下文变重时，系统会引导你：
+
+```text
+pause -> clear -> resume
+```
+
+如果已经有 handoff，则直接：
+
+```text
+clear -> resume
+```
+
+---
+
+### 5. 用 adapter 扩展芯片能力
+
+`emb-agent` 的 core 故意保持抽象，不内置任何厂商绑定。
+
+core 提供的是：
+
+- 通用命令流
+- 状态和 handoff
+- 轻量调度
+- tool spec
+- chip/profile/pack 扩展入口
+
+具体芯片能力通过 adapter 提供，例如：
+
+- 定时器计算
+- PWM 计算
+- 比较器阈值计算
+- family / device 寄存器边界
+- chip profile
+
+常用入口：
+
+```bash
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
+node ~/.codex/emb-agent/bin/emb-agent.cjs tool list
+node ~/.codex/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
+```
+
+---
+
+## 为什么有效
+
+### 真值优先
+
+嵌入式项目最怕的是“看起来像知道，实际上没确认”。
+
+`emb-agent` 把已确认硬件事实和需求事实单独落到项目里，后续流程优先消费它们，而不是继续猜。
+
+### 轻量 micro-plan
+
+不是每个问题都值得拉出一套重 planning。
+
+对 8 位 MCU、裸机和板级闭环，小而准的 `micro-plan` 更实用。
+
+### adapter-first
+
+芯片差异属于外部知识，不该硬编码进 core。
+
+这让 `emb-agent` 可以保持通用，同时把真实 MCU 能力下沉到 adapter 仓库。
+
+### 面向上下文衰减设计
+
+会话状态、handoff、context hygiene、hook 提醒、resume 链路，都是为了解决长会话质量下降。
+
+### brownfield 友好
+
+很多嵌入式项目不是从空目录开始，而是从厂商工程、SDK、IDE 工程接入。
+
+`emb-agent` 默认就是沿着这个现实去设计的。
+
+---
+
+## 命令
+
+### 核心工作流
+
+- `init`
 - `status`
 - `next`
 - `scan`
@@ -184,7 +328,7 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs resume
 - `arch-review`
 - `resolve`
 
-真值与文档：
+### 真值与文档
 
 - `ingest hardware`
 - `ingest requirements`
@@ -195,33 +339,60 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs resume
 - `doc diff`
 - `note`
 
-项目配置：
+### 配置与画像
 
+- `config show`
 - `project show`
 - `project set`
-- `profile list/show/set`
-- `pack list/show/add/remove/clear`
-- `prefs show/set/reset`
+- `profile list`
+- `profile show`
+- `profile set`
+- `pack list`
+- `pack show`
+- `pack add`
+- `pack remove`
+- `pack clear`
+- `prefs show`
+- `prefs set`
+- `prefs reset`
 
-扩展与工具：
+### adapter / tool / chip
 
 - `adapter status`
-- `adapter source add/remove/list/show`
+- `adapter source list`
+- `adapter source show`
+- `adapter source add`
+- `adapter source remove`
 - `adapter sync`
-- `tool list/show/run`
-- `tool family list/show`
-- `tool device list/show`
-- `chip list/show`
-- `template list/show/fill`
+- `tool list`
+- `tool show`
+- `tool run`
+- `tool family list`
+- `tool family show`
+- `tool device list`
+- `tool device show`
+- `chip list`
+- `chip show`
 
-自省与调度输出：
+### 会话与调度
 
+- `pause`
+- `pause show`
+- `pause clear`
+- `resume`
 - `dispatch show`
 - `dispatch next`
 - `schedule show`
 - `session show`
-- `agents list/show`
-- `commands list/show`
+- `template list/show/fill`
+- `review context`
+- `review axes`
+- `note targets`
+- `focus get`
+- `focus set`
+- `last-files list/add/remove/clear`
+- `question list/add/remove/clear`
+- `risk list/add/remove/clear`
 
 完整帮助：
 
@@ -229,96 +400,46 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs resume
 node ~/.codex/emb-agent/bin/emb-agent.cjs help
 ```
 
-## Profile 和 Pack 是什么
+---
 
-`profile` 描述项目的基础运行画像，例如：
+## 配置
 
-- 运行模型
-- 并发模型
-- 资源优先级
-- 搜索优先级
-- review 轴
-- 默认 agent
+### 运行时安装目录
 
-例如内置的 `baremetal-8bit` 会强调：
-
-- `rom`
-- `ram`
-- `stack`
-- `isr_time`
-
-`pack` 是场景叠加层，不改变 core，只补充：
-
-- 当前场景的关注点
-- 附加 review 轴
-- 推荐记录的 notes 目标
-- 默认 agent 增量
-
-例如 `sensor-node` 会增加：
-
-- `sampling`
-- `timing`
-- `calibration`
-- `low_power`
-
-## Adapter 模型
-
-这是 `emb-agent` 最重要的边界。
-
-core 只提供：
-
-- 抽象命令流
-- 调度与状态
-- 工具 spec
-- 空 registry
-
-core 不提供：
-
-- 某厂商 timer 计算器实现
-- 某 family 的寄存器边界
-- 某 chip 的 pin map / peripheral profile
-
-这些都应通过 adapter 注入。
-
-adapter 可以来自：
-
-- 项目本地路径
-- 外部 Git 仓库
-
-典型操作：
-
-```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
-node ~/.codex/emb-agent/bin/emb-agent.cjs tool list
-node ~/.codex/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
-```
-
-`tool run` 只有在检测到对应 adapter 后才会真正执行，否则稳定返回 `adapter-required`。
-
-运行时扩展目录：
+默认安装结构：
 
 ```text
-~/.codex/emb-agent/
-├── adapters/
-└── extensions/
-    ├── tools/
-    └── chips/
+<codex-home>/
+├── skills/
+├── agents/
+├── state/
+│   └── emb-agent/
+├── emb-agent/
+│   ├── bin/
+│   ├── lib/
+│   ├── hooks/
+│   ├── templates/
+│   ├── profiles/
+│   ├── packs/
+│   ├── tools/
+│   ├── chips/
+│   ├── adapters/
+│   ├── extensions/
+│   ├── config.json
+│   └── VERSION
+└── config.toml
 ```
 
-项目级扩展目录：
+其中：
 
-```text
-<repo>/emb-agent/
-├── adapters/
-└── extensions/
-    ├── tools/
-    └── chips/
-```
+- `emb-agent/`
+  放 runtime 本体
+- `state/emb-agent/projects/`
+  放 session、handoff、lock
 
-## 项目侧会生成什么
+### 项目目录
 
-`emb-agent` 不会把整套 runtime 塞进项目，只会放轻量项目产物：
+项目里只保留轻量扩展和真值层：
 
 ```text
 <repo>/
@@ -334,58 +455,53 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NA
     └── packs/
 ```
 
-各自职责：
+### profile 和 pack
 
-- `emb-agent/project.json`
-  项目默认配置，包含 profile、pack、adapter source、integration 偏好
-- `emb-agent/hw.yaml`
-  硬件真值层，记录 MCU、引脚、外设、约束、unknowns
-- `emb-agent/req.yaml`
-  需求真值层，记录目标、约束、验收和 failure mode
-- `emb-agent/cache/docs/`
-  手册解析缓存
-- `emb-agent/cache/adapter-sources/`
-  Git adapter source 本地缓存
+`profile` 描述项目运行画像，例如：
 
-## State 是干什么的
+- 裸机还是 RTOS
+- 并发模型
+- 资源优先级
+- review 轴
 
-`state` 是 runtime 的轻量持久化层，用来让当前项目在 clear context 后还能接上。
+`pack` 描述场景叠加，例如：
 
-它不属于项目交付物，而是安装态本地状态。
+- sensor-node
+- connected-appliance
+
+它们共同决定：
+
+- 搜索优先级
+- review 重点
+- notes 目标
+- 默认 agent 组合
+
+### State
+
+`state` 是安装态的轻量持久化层，不属于项目交付物。
 
 关键文件：
 
 - `runtime/state/default-session.json`
-  默认 session 模板，会随仓库发布
-- `runtime/state/projects/<project-key>.json`
-  当前项目的 session 持久化
-- `runtime/state/projects/<project-key>.handoff.json`
-  `pause / resume` 的 handoff 文件
+  默认 session 模板
+- `<codex-home>/state/emb-agent/projects/<project-key>.json`
+  项目 session
+- `<codex-home>/state/emb-agent/projects/<project-key>.handoff.json`
+  `pause / resume` handoff
 
-`project-key` 是按项目路径算出来的，所以同一个安装 runtime 可以同时记住多个仓库。
+`project-key` 按项目路径计算，所以同一个 runtime 可以并行记住多个仓库。
 
-这层状态用于保存：
+---
 
-- 当前 profile
-- 当前 packs
-- focus
-- last files
-- open questions
-- known risks
-- clear context 前的 handoff 信息
-
-当前仓库已经把 `runtime/state/projects/*` 视为运行时缓存，不再应该提交进 Git。
-
-## 文档解析与 MinerU
+## 文档解析
 
 当前 `ingest doc` 支持 `mineru` provider。
 
 推荐做法：
 
-- API key 放 `.env` 或环境变量
-- 不要硬编码进项目配置
-- 小文档优先走 agent
-- 大文档按页数和文件大小阈值自动切 API
+- token 放环境变量或 `.env`
+- 文档先进入缓存，再选择性写回真值层
+- 小文档走轻量链路，大文档按阈值切 API
 
 示例：
 
@@ -394,21 +510,40 @@ export MINERU_API_KEY=<your-token>
 node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
 ```
 
-## 对上层 AI runtime 的关系
+---
 
-`emb-agent` 不是单独 skill。
+## 故障排除
 
-更准确地说：
+常见情况：
 
-- 安装包负责把技能入口、子 agent、runtime 一起装好
-- skill 只是入口壳
-- 真正的状态、调度、输出结构都在 `emb-agent/bin/emb-agent.cjs`
+- `next` 没法给出合理下一步
+  先补 `hw.yaml / req.yaml` 或先执行一次 `scan`
+- `tool run` 返回 `adapter-required`
+  当前还没同步到对应 adapter
+- clear context 后接不上
+  先检查是否执行过 `pause`，再执行 `resume`
+- SessionStart 提示 `stale install`
+  重新跑一次安装，让 hooks / runtime / skills 对齐
 
-因此它既能给 Codex 用，也能被其他 AI runtime 复用。
+### 卸载
+
+全局卸载：
+
+```bash
+npx emb-agent --global --uninstall
+```
+
+本地卸载：
+
+```bash
+npx emb-agent --local --uninstall
+```
+
+---
 
 ## 开发与发布
 
-仓库内最常用的开发命令：
+仓库内常用命令：
 
 ```bash
 npm test
@@ -416,26 +551,10 @@ npm run release:check
 npm pack --dry-run
 ```
 
-如果你要发布或检查发布内容：
+当前采用手动发布模式。
 
-- 看 [RELEASE.md](./RELEASE.md)
-- 先跑 `npm run release:check`
+发布前先看：
 
-## 当前边界
-
-`emb-agent` 当前已经覆盖：
-
-- 通用嵌入式工作流
-- 轻量 session / handoff
-- 文档解析接入
-- adapter source 管理
-- 抽象工具入口
-- profile / pack / chip 扩展入口
-
-它当前刻意不做：
-
-- 把厂商知识硬编码进 core
-- 内置所有 MCU 工具实现
-- 把项目状态写成厚重的流程系统
-
-如果你要补具体芯片能力，正确方向是补 adapter 仓库，而不是继续把 core 做重。
+- [RELEASE.md](./RELEASE.md)
+- [ROADMAP.md](./ROADMAP.md)
+- [runtime/README.md](./runtime/README.md)
