@@ -1,0 +1,28 @@
+{
+  "session_version": 1,
+  "project_profile": "rtos-iot",
+  "active_packs": [
+    "sensor-node",
+    "connected-appliance"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [
+    "docs/CONNECTIVITY.md"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-note-rtos-3e8qg6",
+  "project_key": "26c8bc1ac678",
+  "project_name": "emb-agent-note-rtos-3e8qg6",
+  "last_command": "note add",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-04T06:26:23.890Z",
+  "updated_at": "2026-04-04T06:26:24.009Z"
+}

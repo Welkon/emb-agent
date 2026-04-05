@@ -1,0 +1,16 @@
+name: sensor-node
+focus_areas:
+  - sampling
+  - timing
+  - calibration
+  - low_power
+  - signal_integrity
+extra_review_axes:
+  - sampling_window
+  - sensor_settle_time
+  - debounce_or_filtering
+  - measurement_update_path
+preferred_notes:
+  - docs/HARDWARE-LOGIC.md
+  - docs/DEBUG-NOTES.md
+

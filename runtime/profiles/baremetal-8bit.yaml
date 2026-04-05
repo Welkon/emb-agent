@@ -1,0 +1,38 @@
+name: baremetal-8bit
+runtime_model: main_loop_plus_isr
+concurrency_model: interrupt_shared_state
+resource_priority:
+  - rom
+  - ram
+  - stack
+  - isr_time
+search_priority:
+  - hardware_truth
+  - registers
+  - entry_points
+  - shared_state
+guardrails:
+  - no_heavy_abstraction
+  - thin_isr
+  - scan_handle_output
+  - verify_hardware_before_change
+  - prefer_direct_state
+review_axes:
+  - interrupt_safety
+  - shared_state
+  - timing_path
+  - rom_ram_budget
+  - pin_mux_conflicts
+notes_targets:
+  - docs/HARDWARE-LOGIC.md
+  - docs/DEBUG-NOTES.md
+default_agents:
+  - hw-scout
+  - fw-doer
+  - bug-hunter
+arch_review_triggers:
+  - 芯片选型
+  - 器件选型
+  - 方案预审
+  - PoC转量产
+  - pre-mortem

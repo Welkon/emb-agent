@@ -1,0 +1,17 @@
+name: connected-appliance
+focus_areas:
+  - local_control
+  - connectivity
+  - config_sync
+  - ota
+  - fault_reporting
+extra_review_axes:
+  - local_remote_consistency
+  - reconnect_strategy
+  - safe_defaults
+  - upgrade_recovery
+preferred_notes:
+  - docs/CONNECTIVITY.md
+  - docs/RELEASE-NOTES.md
+  - docs/DEBUG-NOTES.md
+

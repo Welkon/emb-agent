@@ -1,0 +1,25 @@
+{
+  "session_version": 1,
+  "project_profile": "baremetal-8bit",
+  "active_packs": [
+    "sensor-node"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-init-preserve-WeaUYd",
+  "project_key": "9f827a94aeb2",
+  "project_name": "emb-agent-init-preserve-WeaUYd",
+  "last_command": "init",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-05T06:47:43.212Z",
+  "updated_at": "2026-04-05T06:47:43.215Z"
+}

@@ -1,0 +1,27 @@
+{
+  "session_version": 1,
+  "project_profile": "baremetal-8bit",
+  "active_packs": [
+    "sensor-node"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [
+    "docs/DEBUG-NOTES.md"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-scan-debug-qI0i4d",
+  "project_key": "e244632eccb6",
+  "project_name": "emb-agent-scan-debug-qI0i4d",
+  "last_command": "scan save",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-04T08:49:41.883Z",
+  "updated_at": "2026-04-04T08:49:41.923Z"
+}

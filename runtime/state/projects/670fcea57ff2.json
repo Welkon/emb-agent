@@ -1,0 +1,27 @@
+{
+  "session_version": 1,
+  "project_profile": "baremetal-8bit",
+  "active_packs": [
+    "sensor-node"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [
+    "emb-agent/req.yaml"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-ingest-req-tc476j",
+  "project_key": "670fcea57ff2",
+  "project_name": "emb-agent-ingest-req-tc476j",
+  "last_command": "ingest requirements",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-04T08:49:36.528Z",
+  "updated_at": "2026-04-04T08:49:36.531Z"
+}

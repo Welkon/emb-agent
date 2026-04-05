@@ -1,0 +1,27 @@
+{
+  "session_version": 1,
+  "project_profile": "rtos-iot",
+  "active_packs": [
+    "connected-appliance"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [
+    "docs/REVIEW-REPORT.md"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-dedupe-review-2SIZu9",
+  "project_key": "d9f096e1d706",
+  "project_name": "emb-agent-dedupe-review-2SIZu9",
+  "last_command": "review save",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-04T07:55:57.325Z",
+  "updated_at": "2026-04-04T07:55:57.407Z"
+}

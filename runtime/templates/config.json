@@ -1,0 +1,82 @@
+{
+  "hardware-logic": {
+    "source": "hardware-logic.md.tpl",
+    "description": "板级硬件真值、引脚和时序结论文档模板",
+    "default_output": "docs/HARDWARE-LOGIC.md"
+  },
+  "hw-truth": {
+    "source": "hw.yaml.tpl",
+    "description": "项目内硬件真值层模板，沉淀 MCU、引脚、外设、约束和未知项",
+    "default_output": "emb-agent/hw.yaml"
+  },
+  "req-truth": {
+    "source": "req.yaml.tpl",
+    "description": "项目内需求真值层模板，沉淀目标、约束、验收和未知项",
+    "default_output": "emb-agent/req.yaml"
+  },
+  "debug-notes": {
+    "source": "debug-notes.md.tpl",
+    "description": "持续积累调试结论和排障记录的模板",
+    "default_output": "docs/DEBUG-NOTES.md"
+  },
+  "review-report": {
+    "source": "review-report.md.tpl",
+    "description": "复杂系统结构性检查输出模板",
+    "default_output": "docs/REVIEW-REPORT.md"
+  },
+  "architecture-review": {
+    "source": "architecture-review.md.tpl",
+    "description": "芯片选型、系统架构预审和失败预演模板",
+    "default_output": "docs/ARCH-REVIEW.md"
+  },
+  "connectivity": {
+    "source": "connectivity.md.tpl",
+    "description": "联网、离线、重连和云端一致性约束模板",
+    "default_output": "docs/CONNECTIVITY.md"
+  },
+  "release-notes": {
+    "source": "release-notes.md.tpl",
+    "description": "升级、回滚和发布闭环记录模板",
+    "default_output": "docs/RELEASE-NOTES.md"
+  },
+  "profile": {
+    "source": "profile.yaml.tpl",
+    "description": "新增项目 profile 的 YAML 模板",
+    "default_output": "emb-agent/profiles/{{SLUG}}.yaml"
+  },
+  "pack": {
+    "source": "pack.yaml.tpl",
+    "description": "新增领域 pack 的 YAML 模板",
+    "default_output": "emb-agent/packs/{{SLUG}}.yaml"
+  },
+  "tool-extension-registry": {
+    "source": "tool-extension-registry.json.tpl",
+    "description": "项目级外部 tool registry 模板",
+    "default_output": "emb-agent/extensions/tools/registry.json"
+  },
+  "chip-extension-registry": {
+    "source": "chip-extension-registry.json.tpl",
+    "description": "项目级外部 chip registry 模板",
+    "default_output": "emb-agent/extensions/chips/registry.json"
+  },
+  "tool-adapter": {
+    "source": "tool-adapter.cjs.tpl",
+    "description": "项目级外部 tool adapter 模板",
+    "default_output": "emb-agent/extensions/tools/{{TOOL_NAME}}.cjs"
+  },
+  "tool-family": {
+    "source": "tool-family.json.tpl",
+    "description": "项目级外部 tool family profile 模板",
+    "default_output": "emb-agent/extensions/tools/families/{{SLUG}}.json"
+  },
+  "tool-device": {
+    "source": "tool-device.json.tpl",
+    "description": "项目级外部 tool device profile 模板",
+    "default_output": "emb-agent/extensions/tools/devices/{{SLUG}}.json"
+  },
+  "chip-profile": {
+    "source": "chip-profile.json.tpl",
+    "description": "项目级外部 chip profile 模板",
+    "default_output": "emb-agent/extensions/chips/devices/{{SLUG}}.json"
+  }
+}

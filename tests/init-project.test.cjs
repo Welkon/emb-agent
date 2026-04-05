@@ -1,0 +1,106 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const repoRoot = path.resolve(__dirname, '..');
+const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
+const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+
+test('init-project creates project defaults and seeded docs', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main([
+      '--project',
+      tempProject,
+      '--profile',
+      'rtos-iot',
+      '--pack',
+      'connected-appliance'
+    ]);
+
+    const projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, 'emb-agent', 'project.json'), 'utf8')
+    );
+
+    assert.equal(projectConfig.project_profile, 'rtos-iot');
+    assert.deepEqual(projectConfig.active_packs, ['connected-appliance']);
+    assert.deepEqual(projectConfig.adapter_sources, []);
+    assert.equal(projectConfig.integrations.mineru.mode, 'auto');
+    assert.equal(projectConfig.integrations.mineru.base_url, '');
+    assert.equal(projectConfig.integrations.mineru.api_key, '');
+    assert.equal(projectConfig.integrations.mineru.api_key_env, 'MINERU_API_KEY');
+    assert.equal(projectConfig.integrations.mineru.model_version, '');
+    assert.equal(projectConfig.integrations.mineru.auto_api_page_threshold, 12);
+    assert.equal(projectConfig.integrations.mineru.auto_api_file_size_kb, 4096);
+    assert.deepEqual(projectConfig.arch_review.trigger_patterns, []);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'hw.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'req.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'docs')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'adapter-sources')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'specs')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'devices')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'CONNECTIVITY.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'RELEASE-NOTES.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'DEBUG-NOTES.md')), true);
+
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    const status = cli.buildStatus();
+    assert.equal(status.project_profile, 'rtos-iot');
+    assert.deepEqual(status.active_packs, ['connected-appliance']);
+    assert.equal(status.preferences.truth_source_mode, 'hardware_first');
+    assert.equal(status.project_defaults.project_profile, 'rtos-iot');
+    assert.deepEqual(status.project_defaults.arch_review.trigger_patterns, []);
+    assert.ok(Array.isArray(status.arch_review_triggers));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('init preserves existing docs files without force', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-preserve-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const customDebugPath = path.join(tempProject, 'docs', 'DEBUG-NOTES.md');
+  const customHardwarePath = path.join(tempProject, 'docs', 'HARDWARE-LOGIC.md');
+
+  process.stdout.write = () => true;
+
+  try {
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.writeFileSync(customDebugPath, '# custom debug\nkeep me\n', 'utf8');
+    fs.writeFileSync(customHardwarePath, '# custom hardware\nkeep me too\n', 'utf8');
+
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    assert.equal(fs.readFileSync(customDebugPath, 'utf8'), '# custom debug\nkeep me\n');
+    assert.equal(fs.readFileSync(customHardwarePath, 'utf8'), '# custom hardware\nkeep me too\n');
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'project.json')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'hw.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'req.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'adapter-sources')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'specs')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'devices')), true);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});

@@ -1,0 +1,30 @@
+{
+  "name": "pwm-calc",
+  "kind": "calculator",
+  "status": "abstract",
+  "sample": false,
+  "description": "通用 PWM 频率、占空比和误差搜索工具。emb-agent core 只保留抽象规格，不内置任何厂商 PWM block 实现。",
+  "inputs": [
+    "clock frequency",
+    "clock source",
+    "timer or pwm block",
+    "target pwm frequency",
+    "target duty cycle",
+    "counter width or period mode"
+  ],
+  "outputs": [
+    "candidate prescaler and period combinations",
+    "actual pwm frequency",
+    "actual duty cycle",
+    "frequency and duty error",
+    "register or code hints"
+  ],
+  "family_profiles": [],
+  "device_profiles": [],
+  "source_modules": [],
+  "notes": [
+    "优先支持问题域级命令，不做厂商 GUI 克隆。",
+    "emb core 只定义协议，具体 PWM 公式、寄存器提示和误差搜索应由外部 adapter 提供。",
+    "厂商/器件绑定不要进入 emb-agent core。"
+  ]
+}

@@ -1,0 +1,45 @@
+name: rtos-iot
+runtime_model: task_scheduler_plus_isr
+concurrency_model: tasks_queues_locks_timers
+resource_priority:
+  - responsiveness
+  - stack
+  - memory
+  - reconnect_reliability
+search_priority:
+  - tasks
+  - queues
+  - mutexes
+  - timers
+  - connectivity_state
+  - ota_path
+guardrails:
+  - verify_isr_to_task_boundaries
+  - verify_priority_and_blocking
+  - verify_offline_behavior
+  - verify_upgrade_recovery
+  - avoid_hidden_background_state
+review_axes:
+  - task_boundaries
+  - deadlock_risk
+  - priority_inversion
+  - reconnect_strategy
+  - local_cloud_consistency
+  - ota_rollback
+notes_targets:
+  - docs/ARCH.md
+  - docs/CONNECTIVITY.md
+  - docs/RELEASE-NOTES.md
+  - docs/DEBUG-NOTES.md
+default_agents:
+  - hw-scout
+  - fw-doer
+  - bug-hunter
+  - sys-reviewer
+  - release-checker
+arch_review_triggers:
+  - 架构预审
+  - 系统预审
+  - 选型评审
+  - 原型转量产
+  - architecture review

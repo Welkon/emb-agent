@@ -1,0 +1,27 @@
+{
+  "name": "comparator-threshold",
+  "kind": "calculator",
+  "status": "abstract",
+  "sample": false,
+  "description": "比较器正负输入、内部参考档位与外部电压范围辅助工具。emb-agent core 只保留抽象规格，不内置任何器件绑定。",
+  "inputs": [
+    "vdd",
+    "positive input voltage or pin",
+    "negative input voltage or pin",
+    "internal reference range",
+    "comparator enable mode"
+  ],
+  "outputs": [
+    "valid reference range",
+    "threshold feasibility",
+    "input polarity guidance",
+    "boundary warnings"
+  ],
+  "family_profiles": [],
+  "source_modules": [],
+  "notes": [
+    "必须同时输出电压范围检查，而不是只给理论阈值。",
+    "后续如果芯片支持迟滞、窗口比较器，再由外部 adapter 扩展。",
+    "厂商/芯片绑定不要进入 emb-agent core。"
+  ]
+}

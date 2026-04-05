@@ -1,0 +1,29 @@
+{
+  "session_version": 1,
+  "project_profile": "baremetal-8bit",
+  "active_packs": [
+    "sensor-node"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "stabilize timer wakeup path",
+  "last_files": [
+    "docs/DEBUG-NOTES.md",
+    "emb-agent/req.yaml",
+    "main.c"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-plan-CtflcD",
+  "project_key": "64c94a5ff952",
+  "project_name": "emb-agent-plan-CtflcD",
+  "last_command": "plan save",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-04T08:18:14.216Z",
+  "updated_at": "2026-04-04T08:18:14.301Z"
+}

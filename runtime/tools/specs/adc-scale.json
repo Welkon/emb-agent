@@ -1,0 +1,25 @@
+{
+  "name": "adc-scale",
+  "kind": "calculator",
+  "status": "abstract",
+  "sample": false,
+  "description": "ADC 参考电压、测量引脚和量化结果换算工具。emb-agent core 只保留抽象规格，不内置任何芯片级实现。",
+  "inputs": [
+    "reference voltage",
+    "measurement pin or source",
+    "adc resolution",
+    "measured code or target voltage"
+  ],
+  "outputs": [
+    "converted voltage",
+    "reference selection guidance",
+    "range warnings",
+    "quantization notes"
+  ],
+  "family_profiles": [],
+  "source_modules": [],
+  "notes": [
+    "先做问题域建模，不急于做完整 ADC 配置器。",
+    "芯片参考源和公式边界应由外部 adapter 自行维护。"
+  ]
+}

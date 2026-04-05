@@ -1,0 +1,32 @@
+{
+  "session_version": 1,
+  "project_profile": "baremetal-8bit",
+  "active_packs": [
+    "sensor-node"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [
+    "emb-agent/hw.yaml",
+    "emb-agent/cache/docs/256670b019b4a588/facts.hardware.json",
+    "emb-agent/cache/docs/256670b019b4a588/parse.md",
+    "emb-agent/cache/docs/256670b019b4a588/parse.json",
+    "emb-agent/cache/docs/index.json",
+    "emb-agent/cache/docs/256670b019b4a588/facts.hardware.yaml"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-ingest-doc-X4uCZL",
+  "project_key": "ca8888d94bc8",
+  "project_name": "emb-agent-ingest-doc-X4uCZL",
+  "last_command": "ingest doc-hardware",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-04T08:03:43.967Z",
+  "updated_at": "2026-04-04T08:03:44.118Z"
+}

@@ -1,0 +1,27 @@
+{
+  "session_version": 1,
+  "project_profile": "baremetal-8bit",
+  "active_packs": [
+    "sensor-node"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [
+    "emb-agent/hw.yaml"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-ingest-hw-rF4Q31",
+  "project_key": "e251f7573ca0",
+  "project_name": "emb-agent-ingest-hw-rF4Q31",
+  "last_command": "ingest hardware",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-05T04:19:02.332Z",
+  "updated_at": "2026-04-05T04:19:02.335Z"
+}

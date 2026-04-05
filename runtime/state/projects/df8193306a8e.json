@@ -1,0 +1,28 @@
+{
+  "session_version": 1,
+  "project_profile": "baremetal-8bit",
+  "active_packs": [
+    "sensor-node"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [
+    "src/main.c",
+    "project.ioc"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-attach-R2PEAC",
+  "project_key": "df8193306a8e",
+  "project_name": "emb-agent-attach-R2PEAC",
+  "last_command": "init",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-05T00:55:54.729Z",
+  "updated_at": "2026-04-05T00:55:54.733Z"
+}

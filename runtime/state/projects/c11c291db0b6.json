@@ -1,0 +1,27 @@
+{
+  "session_version": 1,
+  "project_profile": "rtos-iot",
+  "active_packs": [
+    "connected-appliance"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "review ota rollback path",
+  "last_files": [
+    "docs/REVIEW-REPORT.md"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-review-mhwqdc",
+  "project_key": "c11c291db0b6",
+  "project_name": "emb-agent-review-mhwqdc",
+  "last_command": "review save",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-04T07:10:03.676Z",
+  "updated_at": "2026-04-04T07:10:03.751Z"
+}

@@ -1,0 +1,29 @@
+{
+  "session_version": 1,
+  "project_profile": "baremetal-8bit",
+  "active_packs": [
+    "sensor-node"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [
+    "docs/HARDWARE-LOGIC.md",
+    "emb-agent/hw.yaml",
+    "main.c"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-scan-vhKHdI",
+  "project_key": "952b783c6c9e",
+  "project_name": "emb-agent-scan-vhKHdI",
+  "last_command": "scan save",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-05T00:56:05.781Z",
+  "updated_at": "2026-04-05T00:56:05.873Z"
+}

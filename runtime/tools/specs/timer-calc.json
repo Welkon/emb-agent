@@ -1,0 +1,29 @@
+{
+  "name": "timer-calc",
+  "kind": "calculator",
+  "status": "abstract",
+  "sample": false,
+  "description": "通用定时器周期、频率、初值和误差搜索工具。emb-agent core 只保留抽象规格，不内置任何厂商 family/device adapter。",
+  "inputs": [
+    "clock frequency",
+    "clock source",
+    "prescaler candidates",
+    "counter width",
+    "target period or frequency",
+    "interrupt or polling mode"
+  ],
+  "outputs": [
+    "candidate register combinations",
+    "actual frequency or period",
+    "absolute and relative error",
+    "mode-specific notes"
+  ],
+  "family_profiles": [],
+  "device_profiles": [],
+  "source_modules": [],
+  "notes": [
+    "核心只定义输入输出和结果结构，具体公式应由外部 adapter 承担。",
+    "不直接生成最终代码，先统一工具协议和扩展点。",
+    "厂商/芯片相关实现应放在 emb-agent core 之外。"
+  ]
+}

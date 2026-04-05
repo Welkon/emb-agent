@@ -1,0 +1,27 @@
+{
+  "session_version": 1,
+  "project_profile": "baremetal-8bit",
+  "active_packs": [
+    "sensor-node"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [
+    "emb-agent/req.yaml"
+  ],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-ingest-req-nYuk8J",
+  "project_key": "01133060f7b9",
+  "project_name": "emb-agent-ingest-req-nYuk8J",
+  "last_command": "ingest requirements",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-05T03:38:33.589Z",
+  "updated_at": "2026-04-05T03:38:33.592Z"
+}

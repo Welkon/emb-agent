@@ -1,0 +1,37 @@
+{
+  "session_version": 1,
+  "project_profile": "baremetal-8bit",
+  "active_packs": [
+    "sensor-node"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "review board timing split",
+  "last_files": [
+    "src/f5.c",
+    "src/f4.c",
+    "src/f3.c",
+    "src/f2.c",
+    "src/f1.c"
+  ],
+  "open_questions": [
+    "timer reload margin enough?",
+    "irq ordering stable after wake?"
+  ],
+  "known_risks": [
+    "wakeup edge may race with debounce",
+    "shared timer may drift after divider switch"
+  ],
+  "project_root": "/tmp/emb-agent-context-hygiene-MwRrQm",
+  "project_key": "966da0ae53bc",
+  "project_name": "emb-agent-context-hygiene-MwRrQm",
+  "last_command": "pause",
+  "paused_at": "2026-04-05T03:43:58.803Z",
+  "last_resumed_at": "",
+  "created_at": "2026-04-05T03:43:58.513Z",
+  "updated_at": "2026-04-05T03:43:58.818Z"
+}

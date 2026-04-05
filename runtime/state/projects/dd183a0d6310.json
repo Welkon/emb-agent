@@ -1,0 +1,25 @@
+{
+  "session_version": 1,
+  "project_profile": "rtos-iot",
+  "active_packs": [
+    "connected-appliance"
+  ],
+  "preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "focus": "",
+  "last_files": [],
+  "open_questions": [],
+  "known_risks": [],
+  "project_root": "/tmp/emb-agent-init-4tmp3e",
+  "project_key": "dd183a0d6310",
+  "project_name": "emb-agent-init-4tmp3e",
+  "last_command": "",
+  "paused_at": "",
+  "last_resumed_at": "",
+  "created_at": "2026-04-05T04:14:57.654Z",
+  "updated_at": "2026-04-05T04:14:57.654Z"
+}

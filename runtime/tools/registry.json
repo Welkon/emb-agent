@@ -1,0 +1,10 @@
+{
+  "specs": [
+    "timer-calc",
+    "pwm-calc",
+    "comparator-threshold",
+    "adc-scale"
+  ],
+  "families": [],
+  "devices": []
+}

@@ -1,0 +1,18 @@
+{
+  "runtime_version": 1,
+  "session_version": 1,
+  "default_profile": "baremetal-8bit",
+  "default_packs": [
+    "sensor-node"
+  ],
+  "default_preferences": {
+    "truth_source_mode": "hardware_first",
+    "plan_mode": "auto",
+    "review_mode": "auto",
+    "verification_mode": "lean"
+  },
+  "project_state_dir": "state/projects",
+  "lock_timeout_ms": 2000,
+  "lock_stale_ms": 15000,
+  "max_last_files": 12
+}
