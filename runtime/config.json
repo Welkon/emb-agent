@@ -11,7 +11,8 @@
     "review_mode": "auto",
     "verification_mode": "lean"
   },
-  "project_state_dir": "state/projects",
+  "project_state_dir": "../state/emb-agent/projects",
+  "legacy_project_state_dir": "state/projects",
   "lock_timeout_ms": 2000,
   "lock_stale_ms": 15000,
   "max_last_files": 12

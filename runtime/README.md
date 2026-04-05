@@ -8,10 +8,14 @@
 - `config.json`: runtime 默认配置
 - `lib/`: 校验、状态与路径辅助逻辑
 - `scripts/`: 模板等辅助脚本
-- `templates/`: 类似 GSD 的扁平模板库
+- `templates/`: 扁平模板库
 - `profiles/`: 内置项目画像
 - `packs/`: 内置场景 pack
-- `state/`: 按项目路径索引的轻量状态
+- `state/default-session.json`: 默认 session 模板
+
+可变项目状态默认放在：
+
+- `~/.codex/state/emb-agent/projects/`
 
 ## 用法
 

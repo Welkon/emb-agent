@@ -9,6 +9,8 @@ const COMMANDS_SRC = path.join(REPO_ROOT, 'commands', 'emb');
 const AGENTS_SRC = path.join(REPO_ROOT, 'agents');
 const RUNTIME_SRC = path.join(REPO_ROOT, 'runtime');
 const RUNTIME_HOOKS_SRC = path.join(RUNTIME_SRC, 'hooks');
+const PACKAGE_JSON = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+const PACKAGE_VERSION = PACKAGE_JSON.version || '0.0.0';
 const MANAGED_MARKER_START = '# EMB-AGENT managed start';
 const MANAGED_MARKER_END = '# EMB-AGENT managed end';
 const SKILL_PREFIX = 'emb-';
@@ -153,7 +155,8 @@ function replaceInstallPaths(content, targetDir) {
   return content
     .replace(/~\/\.codex\/emb-agent\//g, runtimePath)
     .replace(/\$HOME\/\.codex\/emb-agent\//g, runtimePath)
-    .replace(/\.\/\.codex\/emb-agent\//g, runtimePath);
+    .replace(/\.\/\.codex\/emb-agent\//g, runtimePath)
+    .replace(/\{\{EMB_VERSION\}\}/g, PACKAGE_VERSION);
 }
 
 function extractFrontmatterAndBody(content) {
@@ -373,7 +376,16 @@ function installRuntime(targetDir, force) {
 
   ensureDir(runtimeDir);
   copyDir(path.join(RUNTIME_SRC, 'bin'), path.join(runtimeDir, 'bin'));
-  copyDir(RUNTIME_HOOKS_SRC, runtimeHooksDir);
+  ensureDir(runtimeHooksDir);
+  for (const file of fs.readdirSync(RUNTIME_HOOKS_SRC)) {
+    const sourcePath = path.join(RUNTIME_HOOKS_SRC, file);
+    if (fs.statSync(sourcePath).isDirectory()) {
+      copyDir(sourcePath, path.join(runtimeHooksDir, file));
+      continue;
+    }
+    const raw = fs.readFileSync(sourcePath, 'utf8');
+    fs.writeFileSync(path.join(runtimeHooksDir, file), replaceInstallPaths(raw, targetDir));
+  }
   copyDir(path.join(RUNTIME_SRC, 'lib'), path.join(runtimeDir, 'lib'));
   copyDir(path.join(RUNTIME_SRC, 'scripts'), path.join(runtimeDir, 'scripts'));
   copyDir(path.join(RUNTIME_SRC, 'templates'), path.join(runtimeDir, 'templates'));
@@ -383,6 +395,7 @@ function installRuntime(targetDir, force) {
   copyDir(path.join(RUNTIME_SRC, 'chips'), runtimeChipsDir);
   copyDir(path.join(RUNTIME_SRC, 'state'), path.join(runtimeDir, 'state'));
   fs.copyFileSync(path.join(RUNTIME_SRC, 'config.json'), path.join(runtimeDir, 'config.json'));
+  fs.writeFileSync(path.join(runtimeDir, 'VERSION'), `${PACKAGE_VERSION}\n`, 'utf8');
   ensureDir(path.join(runtimeDir, 'adapters'));
   ensureDir(path.join(runtimeExtensionsDir, 'tools'));
   ensureDir(path.join(runtimeExtensionsDir, 'tools', 'specs'));

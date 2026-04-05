@@ -43,3 +43,29 @@ test('context monitor hook emits only when session context is heavy', () => {
     process.chdir(currentCwd);
   }
 });
+
+test('context monitor prioritizes live context metrics and warns to pause', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-metrics-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    const output = contextMonitor.runHook({
+      cwd: tempProject,
+      event: 'PostToolUse',
+      context_window: {
+        remaining_percentage: 18
+      }
+    });
+
+    assert.notEqual(output.trim(), '');
+    const payload = JSON.parse(output);
+    assert.match(payload.hookSpecificOutput.additionalContext, /EMB CONTEXT CRITICAL/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /pause/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /clear -> resume|pause -> clear -> resume/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});

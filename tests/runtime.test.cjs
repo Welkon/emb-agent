@@ -22,7 +22,8 @@ test('loadRuntimeConfig returns validated defaults', () => {
     review_mode: 'auto',
     verification_mode: 'lean'
   });
-  assert.equal(config.project_state_dir, 'state/projects');
+  assert.equal(config.project_state_dir, '../state/emb-agent/projects');
+  assert.equal(config.legacy_project_state_dir, 'state/projects');
   assert.equal(config.max_last_files, 12);
 });
 
@@ -69,6 +70,36 @@ test('normalizePreferences rejects invalid values', () => {
     () => runtime.normalizePreferences({ verification_mode: 'full' }),
     /preferences\.verification_mode/
   );
+});
+
+test('project state paths resolve outside runtime root and migrate legacy files', () => {
+  const config = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-runtime-root-'));
+  const runtimeRoot = path.join(tempRoot, 'emb-agent');
+  const projectRoot = path.join(tempRoot, 'demo-project');
+
+  fs.mkdirSync(runtimeRoot, { recursive: true });
+  fs.mkdirSync(projectRoot, { recursive: true });
+
+  const paths = runtime.getProjectStatePaths(runtimeRoot, projectRoot, config);
+
+  assert.equal(paths.stateDir, path.join(tempRoot, 'state', 'emb-agent', 'projects'));
+  assert.equal(paths.legacyStateDir, path.join(runtimeRoot, 'state', 'projects'));
+
+  fs.mkdirSync(paths.legacyStateDir, { recursive: true });
+  fs.writeFileSync(paths.legacySessionPath, JSON.stringify({ focus: 'legacy' }, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(
+    paths.legacyHandoffPath,
+    JSON.stringify({ version: '1.0', status: 'paused', packs: [] }, null, 2) + '\n',
+    'utf8'
+  );
+
+  runtime.ensureProjectStateStorage(paths);
+
+  assert.equal(fs.existsSync(paths.sessionPath), true);
+  assert.equal(fs.existsSync(paths.handoffPath), true);
+  assert.equal(fs.existsSync(paths.legacySessionPath), false);
+  assert.equal(fs.existsSync(paths.legacyHandoffPath), false);
 });
 
 test('project config defaults can override runtime defaults', () => {

@@ -103,7 +103,7 @@ function initProjectLayout() {
 
 function ensureSession() {
   const paths = getProjectStatePaths();
-  runtime.ensureDir(paths.stateDir);
+  runtime.ensureProjectStateStorage(paths);
 
   if (!fs.existsSync(paths.sessionPath)) {
     const session = readDefaultSession(paths);
@@ -122,6 +122,7 @@ function loadSession() {
 
 function saveSession(session) {
   const paths = getProjectStatePaths();
+  runtime.ensureProjectStateStorage(paths);
   const next = normalizeSession(session, paths);
   next.updated_at = new Date().toISOString();
   runtime.writeJson(paths.sessionPath, next);
@@ -129,6 +130,7 @@ function saveSession(session) {
 
 function loadHandoff() {
   const paths = getProjectStatePaths();
+  runtime.ensureProjectStateStorage(paths);
   if (!fs.existsSync(paths.handoffPath)) {
     return null;
   }
@@ -137,11 +139,13 @@ function loadHandoff() {
 
 function saveHandoff(handoff) {
   const paths = getProjectStatePaths();
+  runtime.ensureProjectStateStorage(paths);
   runtime.writeJson(paths.handoffPath, runtime.validateHandoff(handoff, RUNTIME_CONFIG));
 }
 
 function clearHandoff() {
   const paths = getProjectStatePaths();
+  runtime.ensureProjectStateStorage(paths);
   if (fs.existsSync(paths.handoffPath)) {
     fs.unlinkSync(paths.handoffPath);
   }

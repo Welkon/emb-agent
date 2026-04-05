@@ -22,8 +22,9 @@ function usage() {
 
 function loadProjectSession(cwd) {
   const paths = runtime.getProjectStatePaths(ROOT, cwd, RUNTIME_CONFIG);
+  runtime.ensureProjectStateStorage(paths);
   const projectConfig = runtime.loadProjectConfig(cwd, RUNTIME_CONFIG);
-  const sessionPath = runtime.getProjectStatePaths(ROOT, cwd, RUNTIME_CONFIG).sessionPath;
+  const sessionPath = paths.sessionPath;
   if (fs.existsSync(sessionPath)) {
     return runtime.normalizeSession(runtime.readJson(sessionPath), paths, RUNTIME_CONFIG, projectConfig);
   }

@@ -42,6 +42,7 @@ test('installer lays down config/lib and runtime commands work', () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'chip-catalog.cjs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'VERSION')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'tools', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'chips', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'adapters')), true);
@@ -59,6 +60,7 @@ test('installer lays down config/lib and runtime commands work', () => {
     assert.match(codexConfig, /emb-session-start\.js/);
     assert.match(codexConfig, /\[\[hooks\]\]\s*[\r\n]+event = "PostToolUse"/);
     assert.match(codexConfig, /emb-context-monitor\.js/);
+    assert.doesNotMatch(fs.readFileSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js'), 'utf8'), /\{\{EMB_VERSION\}\}/);
     assert.match(stdout, /Created env example:/);
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
@@ -66,7 +68,7 @@ test('installer lays down config/lib and runtime commands work', () => {
     process.chdir(tempProject);
     installedCli.main(['init']);
 
-    const sessionPath = path.join(runtimeRoot, 'state', 'projects');
+    const sessionPath = path.join(tempHome, 'state', 'emb-agent', 'projects');
     assert.equal(fs.existsSync(sessionPath), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'project.json')), true);
@@ -93,7 +95,13 @@ test('installer lays down config/lib and runtime commands work', () => {
     installedCli.main(['prefs', 'reset']);
 
     installedCli.main(['pause', 'resume irq race first']);
-    const handoffPath = path.join(runtimeRoot, 'state', 'projects', `${path.basename(fs.readdirSync(path.join(runtimeRoot, 'state', 'projects')).find(name => name.endsWith('.handoff.json')) || '')}`);
+    const handoffPath = path.join(
+      tempHome,
+      'state',
+      'emb-agent',
+      'projects',
+      `${path.basename(fs.readdirSync(path.join(tempHome, 'state', 'emb-agent', 'projects')).find(name => name.endsWith('.handoff.json')) || '')}`
+    );
     const plan = installedCli.buildActionOutput('plan');
     const scan = installedCli.buildActionOutput('scan');
     const resume = installedCli.buildResumeContext();

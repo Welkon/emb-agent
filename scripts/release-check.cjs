@@ -70,6 +70,7 @@ function runPackDryRunCheck() {
   const blocked = files.filter(
       item =>
         item.includes('package/runtime/state/projects/') ||
+        item.includes('package/state/emb-agent/projects/') ||
         item.includes('package/.tmp/') ||
         item.endsWith('.handoff.json')
   );

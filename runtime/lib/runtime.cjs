@@ -21,6 +21,21 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + '\n', 'utf8');
 }
 
+function moveFile(sourcePath, targetPath) {
+  ensureDir(path.dirname(targetPath));
+
+  try {
+    fs.renameSync(sourcePath, targetPath);
+  } catch (error) {
+    if (error && error.code === 'EXDEV') {
+      fs.copyFileSync(sourcePath, targetPath);
+      fs.unlinkSync(sourcePath);
+      return;
+    }
+    throw error;
+  }
+}
+
 function parseScalar(raw) {
   const value = raw.trim();
 
@@ -367,7 +382,14 @@ function validateRuntimeConfig(config) {
     default_preferences: normalizePreferences(config.default_preferences || {}, {
       default_preferences: DEFAULT_PREFERENCES
     }),
-    project_state_dir: ensureString(config.project_state_dir || 'state/projects', 'project_state_dir'),
+    project_state_dir: ensureString(
+      config.project_state_dir || '../state/emb-agent/projects',
+      'project_state_dir'
+    ),
+    legacy_project_state_dir: ensureString(
+      config.legacy_project_state_dir || 'state/projects',
+      'legacy_project_state_dir'
+    ),
     lock_timeout_ms: Number(config.lock_timeout_ms || 2000),
     lock_stale_ms: Number(config.lock_stale_ms || 15000),
     max_last_files: Number(config.max_last_files || 12)
@@ -449,16 +471,53 @@ function getProjectKey(projectRoot) {
 function getProjectStatePaths(rootDir, cwd, runtimeConfig) {
   const projectRoot = path.resolve(cwd);
   const projectKey = getProjectKey(projectRoot);
-  const stateDir = path.join(rootDir, runtimeConfig.project_state_dir);
+  const stateDir = path.resolve(rootDir, runtimeConfig.project_state_dir);
+  const legacyStateDir = path.resolve(
+    rootDir,
+    runtimeConfig.legacy_project_state_dir || 'state/projects'
+  );
 
   return {
     projectRoot,
     projectKey,
     stateDir,
+    legacyStateDir,
     sessionPath: path.join(stateDir, `${projectKey}.json`),
     handoffPath: path.join(stateDir, `${projectKey}.handoff.json`),
-    lockPath: path.join(stateDir, `${projectKey}.lock`)
+    lockPath: path.join(stateDir, `${projectKey}.lock`),
+    legacySessionPath: path.join(legacyStateDir, `${projectKey}.json`),
+    legacyHandoffPath: path.join(legacyStateDir, `${projectKey}.handoff.json`),
+    legacyLockPath: path.join(legacyStateDir, `${projectKey}.lock`)
   };
+}
+
+function ensureProjectStateStorage(paths) {
+  ensureDir(paths.stateDir);
+
+  const migrations = [
+    [paths.legacySessionPath, paths.sessionPath],
+    [paths.legacyHandoffPath, paths.handoffPath],
+    [paths.legacyLockPath, paths.lockPath]
+  ];
+
+  for (const [legacyPath, currentPath] of migrations) {
+    if (!legacyPath || legacyPath === currentPath) {
+      continue;
+    }
+    if (!fs.existsSync(legacyPath) || fs.existsSync(currentPath)) {
+      continue;
+    }
+    moveFile(legacyPath, currentPath);
+  }
+
+  if (
+    paths.legacyStateDir &&
+    paths.legacyStateDir !== paths.stateDir &&
+    fs.existsSync(paths.legacyStateDir) &&
+    fs.readdirSync(paths.legacyStateDir).length === 0
+  ) {
+    fs.rmSync(paths.legacyStateDir, { recursive: true, force: true });
+  }
 }
 
 function normalizeSession(session, paths, runtimeConfig, projectConfig) {
@@ -565,6 +624,7 @@ function validateHandoff(handoff, runtimeConfig) {
 module.exports = {
   cleanupStaleLock,
   ensureDir,
+  ensureProjectStateStorage,
   getProjectKey,
   getProjectStatePaths,
   listNames,
