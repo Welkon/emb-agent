@@ -10,6 +10,8 @@
   "description": "External chip profile for {{CHIP_NAME}}.",
   "summary": {},
   "capabilities": [],
+  "packages": [],
+  "pins": {},
   "docs": [],
   "related_tools": [
     "{{TOOL_NAME}}"

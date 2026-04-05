@@ -23,6 +23,7 @@ function createCommandGroupHelpers(deps) {
     parseAdapterSyncArgs,
     syncNamedAdapterSource,
     syncAllAdapterSources,
+    runAdapterDerive,
     saveScanReport,
     savePlanReport,
     saveReviewReport,
@@ -248,6 +249,10 @@ function createCommandGroupHelpers(deps) {
       }
 
       return syncNamedAdapterSource(rest[0], parseAdapterSyncArgs(rest.slice(1)));
+    }
+
+    if (cmd === 'adapter' && subcmd === 'derive') {
+      return runAdapterDerive(rest);
     }
 
     if (cmd === 'tool' && subcmd === 'list') {

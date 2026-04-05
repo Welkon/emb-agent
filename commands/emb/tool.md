@@ -44,6 +44,7 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs chip show CHIP_NAME
 ## 建议生成方式
 
 ```bash
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-extension-registry --field FAMILY_NAME=vendor-family --field DEVICE_NAME=vendor-device --force
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-adapter --field TOOL_NAME=timer-calc --field ADAPTER_NAME=vendor-timer-adapter --force
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-family --field SLUG=vendor-family --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force
@@ -51,3 +52,6 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-device --field SLUG
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill chip-extension-registry --field CHIP_NAME=vendor-chip --force
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill chip-profile --field SLUG=vendor-chip --field CHIP_NAME=vendor-chip --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force
 ```
+
+- 优先用 `adapter derive` 起草 profile
+- 只有要精细定制模板内容时，再回退到 `template fill`

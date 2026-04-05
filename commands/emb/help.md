@@ -207,6 +207,7 @@ Output the emb-agent command reference below and nothing else.
 - `<runtime-cli> adapter source add <name> --type git --location <git-url-or-local-repo> [--branch main] [--subdir emb-agent]`
 - `<runtime-cli> adapter sync <name>`
 - `<runtime-cli> adapter sync --all`
+- `<runtime-cli> adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8`
 - `<runtime-cli> adapter source remove <name>`
 - `<runtime-cli> tool list`
 - `<runtime-cli> tool show timer-calc`
@@ -239,7 +240,7 @@ Output the emb-agent command reference below and nothing else.
 - adapter source 支持本地 path 仓库，也支持 git 仓库
 - source 根目录既可以直接包含 `adapters/` 和 `extensions/`，也可以再包一层 `emb-agent/`
 - `tool family/device` 与 `chip` 命令只展示外部安装或项目自带的 profile；core 默认为空
-- `init` 不再预建空的 `extensions/tools/*`、`extensions/chips/*`；这些目录会在 `adapter sync`、`template fill` 或首次写 registry 时按需创建
+- `init` 不再预建空的 `extensions/tools/*`、`extensions/chips/*`；这些目录会在 `adapter sync`、`adapter derive`、`template fill` 或首次写 registry 时按需创建
 - 已存在的 `docs/*.md` 默认不覆盖；只有显式 `--force` 才重写模板输出
 
 `project.json` 除了 `profile`、`pack`、`preferences`、`integrations`，也可以加：

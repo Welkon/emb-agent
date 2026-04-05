@@ -39,7 +39,7 @@ node <runtime-home>/emb-agent/scripts/init-project.cjs
 - `lib/`
   runtime 内部库，包括 session、handoff、调度、dispatch、host/path 解析。
 - `scripts/`
-  runtime 辅助脚本，例如 `init-project`、`attach-project`、`ingest-doc`。
+  runtime 辅助脚本，例如 `init-project`、`attach-project`、`ingest-doc`、`adapter-derive`。
 - `templates/`
   固定输出模板。
 - `profiles/`
@@ -51,7 +51,7 @@ node <runtime-home>/emb-agent/scripts/init-project.cjs
 - `chips/`
   core 抽象 chip registry。
 - `extensions/`
-  可选扩展根目录；仅在 `adapter sync`、`template fill` 或首次写扩展 registry 时创建。
+  可选扩展根目录；仅在 `adapter sync`、`adapter derive`、`template fill` 或首次写扩展 registry 时创建。
 - `state/default-session.json`
   默认 session 模板。
 - `config.json`

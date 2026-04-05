@@ -11,6 +11,7 @@ const AGENTS_DIR = path.join(ROOT, 'agents');
 const COMMANDS_DIR = path.join(ROOT, 'commands');
 const TEMPLATES_DIR = path.join(ROOT, 'templates');
 const templateCli = require(path.join(ROOT, 'scripts', 'template.cjs'));
+const adapterDeriveCli = require(path.join(ROOT, 'scripts', 'adapter-derive.cjs'));
 const attachProjectCli = require(path.join(ROOT, 'scripts', 'attach-project.cjs'));
 const ingestTruthCli = require(path.join(ROOT, 'scripts', 'ingest-truth.cjs'));
 const ingestDocCli = require(path.join(ROOT, 'scripts', 'ingest-doc.cjs'));
@@ -501,6 +502,13 @@ function runTemplateScript(args) {
   templateCli.runTemplateCli(args);
 }
 
+function runAdapterDerive(args) {
+  return adapterDeriveCli.deriveProfiles(args, {
+    runtimeRoot: ROOT,
+    projectRoot: resolveProjectRoot()
+  });
+}
+
 function getTemplateConfig() {
   return runtime.validateTemplateConfig(
     runtime.readJson(path.join(TEMPLATES_DIR, 'config.json'))
@@ -639,6 +647,7 @@ const {
   parseAdapterSyncArgs,
   syncNamedAdapterSource,
   syncAllAdapterSources,
+  runAdapterDerive,
   saveScanReport,
   savePlanReport,
   saveReviewReport,
@@ -702,6 +711,7 @@ module.exports = {
   removeAdapterSource,
   syncNamedAdapterSource,
   syncAllAdapterSources,
+  runAdapterDerive,
   parseProjectShowArgs,
   parseProjectSetArgs,
   parseAdapterSourceAddArgs,
@@ -710,6 +720,7 @@ module.exports = {
   buildArchReviewContext,
   buildReviewContext,
   adapterSources,
+  adapterDeriveCli,
   toolCatalog,
   toolRuntime,
   chipCatalog,

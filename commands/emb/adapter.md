@@ -26,11 +26,14 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add <name> --type git -
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync <name>
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync <name> --to runtime
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync --all
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source remove <name>
 ```
 
 ## Notes
 
+- `adapter derive` 只生成 family/device/chip 草稿与 registry，不会伪造 bindings 参数
+- `chip profile` 现在建议把封装与引脚知识放进 `packages` / `pins`
 - `adapter source add` 只写入 `emb-agent/project.json`，不会自动同步
 - `adapter sync` 才会真正把 adapter/profile 文件铺到项目或 runtime
 - `--to project` 是默认值，适合项目私有扩展

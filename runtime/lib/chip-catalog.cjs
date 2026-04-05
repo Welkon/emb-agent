@@ -37,6 +37,28 @@ function ensureOptionalString(value, label) {
   return ensureString(value, label);
 }
 
+function ensureOptionalPositiveInteger(value, label) {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return number;
+}
+
+function ensureOptionalNonNegativeInteger(value, label) {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+  return number;
+}
+
 function ensureOptionalBoolean(value, label, fallback) {
   if (value === undefined || value === null) {
     return fallback;
@@ -114,6 +136,85 @@ function validateDocEntry(name, value, index) {
   };
 }
 
+function validatePackagePin(name, packageName, value, index) {
+  ensureObject(value, `chip ${name} packages.${packageName}.pins[${index}]`);
+  return {
+    number: ensureOptionalPositiveInteger(
+      value.number,
+      `chip ${name} packages.${packageName}.pins[${index}].number`
+    ),
+    signal: ensureString(value.signal, `chip ${name} packages.${packageName}.pins[${index}].signal`),
+    label: ensureOptionalString(value.label, `chip ${name} packages.${packageName}.pins[${index}].label`),
+    default_function: ensureOptionalString(
+      value.default_function,
+      `chip ${name} packages.${packageName}.pins[${index}].default_function`
+    ),
+    mux: ensureOptionalStringArray(
+      value.mux,
+      `chip ${name} packages.${packageName}.pins[${index}].mux`
+    ),
+    notes: ensureOptionalStringArray(
+      value.notes,
+      `chip ${name} packages.${packageName}.pins[${index}].notes`
+    )
+  };
+}
+
+function validatePackageEntry(name, value, index) {
+  ensureObject(value, `chip ${name} packages[${index}]`);
+  const packageName = ensureString(value.name, `chip ${name} packages[${index}].name`);
+  const pins = Array.isArray(value.pins)
+    ? value.pins.map((item, pinIndex) => validatePackagePin(name, packageName, item, pinIndex))
+    : [];
+
+  return {
+    name: packageName,
+    pin_count: ensureOptionalPositiveInteger(value.pin_count, `chip ${name} packages[${index}].pin_count`),
+    pins,
+    notes: ensureOptionalStringArray(value.notes, `chip ${name} packages[${index}].notes`)
+  };
+}
+
+function validatePinEntry(name, key, value) {
+  ensureObject(value, `chip ${name} pins.${key}`);
+  const packageLocations = value.package_locations || {};
+  ensureObject(packageLocations, `chip ${name} pins.${key}.package_locations`);
+
+  const normalizedLocations = {};
+  Object.entries(packageLocations).forEach(([packageName, pinNumber]) => {
+    normalizedLocations[ensureString(packageName, `chip ${name} pins.${key}.package_locations key`)] =
+      ensureOptionalPositiveInteger(
+        pinNumber,
+        `chip ${name} pins.${key}.package_locations.${packageName}`
+      );
+  });
+
+  return {
+    name: ensureString(value.name || key, `chip ${name} pins.${key}.name`),
+    port: ensureOptionalString(value.port, `chip ${name} pins.${key}.port`),
+    bit: ensureOptionalNonNegativeInteger(value.bit, `chip ${name} pins.${key}.bit`),
+    functions: ensureOptionalStringArray(value.functions, `chip ${name} pins.${key}.functions`),
+    interrupts: ensureOptionalStringArray(value.interrupts, `chip ${name} pins.${key}.interrupts`),
+    package_locations: normalizedLocations,
+    notes: ensureOptionalStringArray(value.notes, `chip ${name} pins.${key}.notes`)
+  };
+}
+
+function validatePins(name, value) {
+  if (value === undefined || value === null) {
+    return {};
+  }
+
+  ensureObject(value, `chip ${name} pins`);
+  const normalized = {};
+
+  Object.entries(value).forEach(([key, pin]) => {
+    normalized[ensureString(key, `chip ${name} pins key`)] = validatePinEntry(name, key, pin);
+  });
+
+  return normalized;
+}
+
 function validateChip(name, value) {
   ensureObject(value, `Chip ${name}`);
   return {
@@ -128,6 +229,10 @@ function validateChip(name, value) {
     description: ensureString(value.description, `chip ${name} description`),
     summary: value.summary ? validateSummary(name, value.summary) : {},
     capabilities: ensureOptionalStringArray(value.capabilities, `chip ${name} capabilities`),
+    packages: Array.isArray(value.packages)
+      ? value.packages.map((item, index) => validatePackageEntry(name, item, index))
+      : [],
+    pins: validatePins(name, value.pins),
     docs: Array.isArray(value.docs) ? value.docs.map((item, index) => validateDocEntry(name, item, index)) : [],
     related_tools: ensureOptionalStringArray(value.related_tools, `chip ${name} related_tools`),
     source_modules: ensureOptionalStringArray(value.source_modules, `chip ${name} source_modules`),

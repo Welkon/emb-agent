@@ -272,12 +272,14 @@ core 提供的是：
 - 比较器阈值计算
 - family / device 寄存器边界
 - chip profile
+- package / pin / mux 结构化资料
 
 常用入口：
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool list
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
 ```
@@ -321,7 +323,7 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 
 ### adapter / tool / chip
 
-- `adapter status/source/sync`
+- `adapter status/source/sync/derive`
 - `tool list/show/run`
 - `tool family/device`
 - `chip list/show`
@@ -375,7 +377,7 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 - `state/emb-agent/projects/`
   放 session、handoff、lock
 - `extensions/`
-  仅在 `adapter sync`、`template fill` 或首次写扩展 registry 时创建
+  仅在 `adapter sync`、`adapter derive`、`template fill` 或首次写扩展 registry 时创建
 - `skills/`
   安装命令 skill
 - `agents/`
@@ -409,7 +411,7 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 说明：
 
 - `extensions/` 不再由 `init` 预创建
-- 首次执行 `adapter sync`、`template fill tool-family/device/chip-profile` 或首次写扩展 registry 时才会生成
+- 首次执行 `adapter sync`、`adapter derive`、`template fill tool-family/device/chip-profile` 或首次写扩展 registry 时才会生成
 
 ### profile 和 pack
 
