@@ -9,7 +9,18 @@
     "bin",
     "commands",
     "agents",
-    "runtime",
+    "runtime/bin",
+    "runtime/chips",
+    "runtime/config.json",
+    "runtime/hooks",
+    "runtime/lib",
+    "runtime/packs",
+    "runtime/profiles",
+    "runtime/README.md",
+    "runtime/scripts",
+    "runtime/state/default-session.json",
+    "runtime/templates",
+    "runtime/tools",
     "scripts"
   ],
   "keywords": [
@@ -25,6 +36,8 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node scripts/run-tests.cjs"
+    "test": "node scripts/run-tests.cjs",
+    "pack:dry-run": "npm pack --dry-run",
+    "release:check": "node scripts/release-check.cjs"
   }
 }

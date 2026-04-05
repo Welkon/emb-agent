@@ -12,6 +12,7 @@
 
 实现路线见 [ROADMAP.md](./ROADMAP.md)。
 当前已支持轻量 `micro-plan`，不是 GSD 式厚 `planning`。
+发布流程见 [RELEASE.md](./RELEASE.md)。
 
 ## 仓库结构
 
