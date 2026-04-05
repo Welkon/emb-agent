@@ -10,7 +10,7 @@
 npx emb-agent --global
 ```
 
-**支持全局安装到 `~/.codex/`，也支持本地安装到当前项目。**
+**支持安装到 `Codex` 与 `Claude Code`，也支持全局或当前项目本地安装。**
 
 [快速开始](#快速开始) · [工作原理](#工作原理) · [命令](#命令) · [配置](#配置) · [发布](./RELEASE.md)
 
@@ -77,16 +77,22 @@ npx emb-agent --global
 npx emb-agent --global
 ```
 
+显式安装到 Claude Code：
+
+```bash
+npx emb-agent --claude --global
+```
+
 本地安装：
 
 ```bash
 npx emb-agent --local
 ```
 
-自定义 Codex 目录：
+自定义 runtime 配置目录：
 
 ```bash
-npx emb-agent --global --config-dir /path/to/codex-home
+npx emb-agent --global --config-dir /path/to/runtime-home
 ```
 
 如果 npm 包暂时不可用，也可以直接从 Git 安装：
@@ -97,20 +103,17 @@ npx github:Welkon/emb-agent --global
 
 验证安装：
 
-- Codex 内运行 `$emb-help`
-- 或直接运行 `node ~/.codex/emb-agent/bin/emb-agent.cjs help`
+- 在安装后的运行时里调用 `emb-help`
+- 或直接运行 runtime CLI，例如：
+  `node <runtime-home>/emb-agent/bin/emb-agent.cjs help`
+  其中 `Codex -> ~/.codex`，`Claude Code -> ~/.claude`
 
-安装完成后，runtime 默认在：
+安装完成后：
 
-```text
-~/.codex/emb-agent/
-```
-
-项目运行态状态默认在：
-
-```text
-~/.codex/state/emb-agent/projects/
-```
+- runtime 本体在 `<runtime-home>/emb-agent/`
+- 会话状态在 `<runtime-home>/state/emb-agent/projects/`
+- `Codex -> ~/.codex`
+- `Claude Code -> ~/.claude`
 
 ### 保持更新
 
@@ -128,27 +131,27 @@ npx emb-agent --global
 ### 第一次进入项目
 
 ```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs init
-node ~/.codex/emb-agent/bin/emb-agent.cjs next
+node <runtime-home>/emb-agent/bin/emb-agent.cjs init
+node <runtime-home>/emb-agent/bin/emb-agent.cjs next
 ```
 
 如果需要把手册或 PDF 先转进项目缓存：
 
 ```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
+node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
 ```
 
 如果后续继续当前项目：
 
 ```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs next
+node <runtime-home>/emb-agent/bin/emb-agent.cjs next
 ```
 
 如果准备 clear context：
 
 ```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs pause
-node ~/.codex/emb-agent/bin/emb-agent.cjs resume
+node <runtime-home>/emb-agent/bin/emb-agent.cjs pause
+node <runtime-home>/emb-agent/bin/emb-agent.cjs resume
 ```
 
 ---
@@ -158,7 +161,7 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs resume
 ### 1. 接入项目
 
 ```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs init
+node <runtime-home>/emb-agent/bin/emb-agent.cjs init
 ```
 
 这一步会：
@@ -195,9 +198,9 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs init
 常用入口：
 
 ```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest hardware --truth "PWM 输出走 PA3" --source docs/xxx.md
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest requirements --constraint "上电 100ms 内完成初始化" --source docs/req.md
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU.pdf --provider mineru --kind datasheet --to hardware
+node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest hardware --truth "PWM 输出走 PA3" --source docs/xxx.md
+node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest requirements --constraint "上电 100ms 内完成初始化" --source docs/req.md
+node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU.pdf --provider mineru --kind datasheet --to hardware
 ```
 
 ---
@@ -273,52 +276,25 @@ core 提供的是：
 常用入口：
 
 ```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
-node ~/.codex/emb-agent/bin/emb-agent.cjs tool list
-node ~/.codex/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
+node <runtime-home>/emb-agent/bin/emb-agent.cjs tool list
+node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
 ```
-
----
-
-## 为什么有效
-
-### 真值优先
-
-嵌入式项目最怕的是“看起来像知道，实际上没确认”。
-
-`emb-agent` 把已确认硬件事实和需求事实单独落到项目里，后续流程优先消费它们，而不是继续猜。
-
-### 轻量 micro-plan
-
-不是每个问题都值得拉出一套重 planning。
-
-对 8 位 MCU、裸机和板级闭环，小而准的 `micro-plan` 更实用。
-
-### adapter-first
-
-芯片差异属于外部知识，不该硬编码进 core。
-
-这让 `emb-agent` 可以保持通用，同时把真实 MCU 能力下沉到 adapter 仓库。
-
-### 面向上下文衰减设计
-
-会话状态、handoff、context hygiene、hook 提醒、resume 链路，都是为了解决长会话质量下降。
-
-### brownfield 友好
-
-很多嵌入式项目不是从空目录开始，而是从厂商工程、SDK、IDE 工程接入。
-
-`emb-agent` 默认就是沿着这个现实去设计的。
 
 ---
 
 ## 命令
 
+README 只保留命令分组，不展开每个子命令的长列表。完整命令请看：
+
+```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs help
+```
+
 ### 核心工作流
 
 - `init`
-- `status`
 - `next`
 - `scan`
 - `plan`
@@ -326,79 +302,41 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NA
 - `debug`
 - `review`
 - `arch-review`
-- `resolve`
+- `orchestrate`
 
 ### 真值与文档
 
 - `ingest hardware`
 - `ingest requirements`
 - `ingest doc`
-- `ingest apply doc`
-- `doc list`
-- `doc show`
-- `doc diff`
+- `doc list/show/diff`
 - `note`
 
 ### 配置与画像
 
-- `config show`
-- `project show`
-- `project set`
-- `profile list`
-- `profile show`
-- `profile set`
-- `pack list`
-- `pack show`
-- `pack add`
-- `pack remove`
-- `pack clear`
-- `prefs show`
-- `prefs set`
-- `prefs reset`
+- `project show/set`
+- `profile list/show/set`
+- `pack list/show/add/remove/clear`
+- `prefs show/set/reset`
 
 ### adapter / tool / chip
 
-- `adapter status`
-- `adapter source list`
-- `adapter source show`
-- `adapter source add`
-- `adapter source remove`
-- `adapter sync`
-- `tool list`
-- `tool show`
-- `tool run`
-- `tool family list`
-- `tool family show`
-- `tool device list`
-- `tool device show`
-- `chip list`
-- `chip show`
+- `adapter status/source/sync`
+- `tool list/show/run`
+- `tool family/device`
+- `chip list/show`
 
 ### 会话与调度
 
-- `pause`
-- `pause show`
-- `pause clear`
+- `pause/show/clear`
 - `resume`
-- `dispatch show`
-- `dispatch next`
+- `dispatch show/next`
 - `schedule show`
-- `session show`
 - `template list/show/fill`
-- `review context`
-- `review axes`
-- `note targets`
-- `focus get`
-- `focus set`
-- `last-files list/add/remove/clear`
-- `question list/add/remove/clear`
-- `risk list/add/remove/clear`
-
-完整帮助：
-
-```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs help
-```
+- `focus`
+- `last-files`
+- `question`
+- `risk`
 
 ---
 
@@ -406,10 +344,10 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs help
 
 ### 运行时安装目录
 
-默认安装结构：
+运行时结构在两种宿主下基本一致，只是宿主配置文件不同：
 
 ```text
-<codex-home>/
+<runtime-home>/
 ├── skills/
 ├── agents/
 ├── state/
@@ -424,10 +362,10 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs help
 │   ├── tools/
 │   ├── chips/
 │   ├── adapters/
-│   ├── extensions/
+│   ├── extensions/           [optional, lazy-created]
 │   ├── config.json
 │   └── VERSION
-└── config.toml
+└── <host-config>
 ```
 
 其中：
@@ -436,6 +374,19 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs help
   放 runtime 本体
 - `state/emb-agent/projects/`
   放 session、handoff、lock
+- `extensions/`
+  仅在 `adapter sync`、`template fill` 或首次写扩展 registry 时创建
+- `skills/`
+  安装命令 skill
+- `agents/`
+  安装可复用 agent
+- `config.toml / settings.json`
+  由宿主 runtime 接管 hooks 或 agent 注册
+
+宿主映射：
+
+- `Codex -> <runtime-home>=~/.codex, <host-config>=config.toml`
+- `Claude Code -> <runtime-home>=~/.claude, <host-config>=settings.json`
 
 ### 项目目录
 
@@ -450,10 +401,15 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs help
     ├── req.yaml
     ├── cache/
     ├── adapters/
-    ├── extensions/
+    ├── extensions/           [optional, lazy-created]
     ├── profiles/
     └── packs/
 ```
+
+说明：
+
+- `extensions/` 不再由 `init` 预创建
+- 首次执行 `adapter sync`、`template fill tool-family/device/chip-profile` 或首次写扩展 registry 时才会生成
 
 ### profile 和 pack
 
@@ -484,9 +440,9 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs help
 
 - `runtime/state/default-session.json`
   默认 session 模板
-- `<codex-home>/state/emb-agent/projects/<project-key>.json`
+- `<runtime-home>/state/emb-agent/projects/<project-key>.json`
   项目 session
-- `<codex-home>/state/emb-agent/projects/<project-key>.handoff.json`
+- `<runtime-home>/state/emb-agent/projects/<project-key>.handoff.json`
   `pause / resume` handoff
 
 `project-key` 按项目路径计算，所以同一个 runtime 可以并行记住多个仓库。
@@ -507,7 +463,7 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs help
 
 ```bash
 export MINERU_API_KEY=<your-token>
-node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
+node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
 ```
 
 ---
@@ -540,21 +496,3 @@ npx emb-agent --local --uninstall
 ```
 
 ---
-
-## 开发与发布
-
-仓库内常用命令：
-
-```bash
-npm test
-npm run release:check
-npm pack --dry-run
-```
-
-当前采用手动发布模式。
-
-发布前先看：
-
-- [RELEASE.md](./RELEASE.md)
-- [ROADMAP.md](./ROADMAP.md)
-- [runtime/README.md](./runtime/README.md)

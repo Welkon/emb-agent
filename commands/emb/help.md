@@ -9,13 +9,19 @@ Output the emb-agent command reference below and nothing else.
 
 ## Quick Flow
 
+- 运行时路径约定：
+  `Codex -> ~/.codex/emb-agent/bin/emb-agent.cjs`
+  `Claude Code -> ~/.claude/emb-agent/bin/emb-agent.cjs`
+  `runtime-home -> Codex: ~/.codex, Claude Code: ~/.claude`
+  下文统一写作 `<runtime-cli> = node <runtime-home>/emb-agent/bin/emb-agent.cjs`
+
 - 第一次进入项目：
-  `node ~/.codex/emb-agent/bin/emb-agent.cjs init`
-  `node ~/.codex/emb-agent/bin/emb-agent.cjs next`
+  `<runtime-cli> init`
+  `<runtime-cli> next`
 - 后续继续当前项目：
-  `node ~/.codex/emb-agent/bin/emb-agent.cjs next`
+  `<runtime-cli> next`
 - 需要导入手册/PDF：
-  `node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
+  `<runtime-cli> ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
 
 ## Basic
 
@@ -37,12 +43,18 @@ Output the emb-agent command reference below and nothing else.
   用于复杂系统的结构性检查，例如 RTOS、IoT、升级链路，并支持直接保存 review 报告。
 - `$emb-dispatch`
   用于把当前动作或下一步直接转成轻量子 agent 分发合同，方便上层 agent 自动执行。
+- `$emb-orchestrate`
+  用于把 `next + dispatch + context hygiene` 合成一个统一轻量 orchestrator 合同，告诉上层 agent 当前该 inline、该起谁、何时该 pause/resume。
 - `$emb-arch-review`
   用于显式触发一次更重的系统级架构审查，覆盖选型、架构压力测试、量产前预审和失败预演，但不把默认流程做重。
 - `$emb-pause`
   用于创建轻量 handoff，让 clear context 后的恢复更稳定。
 - `$emb-resume`
   clear 上下文后恢复当前项目的嵌入式工作上下文。
+- `$emb-thread`
+  用于管理长期存在的轻量技术线程，例如某个外设坑点、板级疑点或跨会话跟踪问题，但不升级成厚 planning。
+- `$emb-forensics`
+  用于在流程卡住、上下文漂移、handoff 堆积或真值层异常时做一次轻量取证，输出证据化诊断报告。
 
 对 `scan / plan / do / debug / review / note`，runtime 输出现在都会带 `agent_execution`，用于告诉上层 agent:
 
@@ -63,12 +75,18 @@ Output the emb-agent command reference below and nothing else.
   用于把长期有效的技术结论写入固定文档，并支持直接追加到目标文档。
 - `$emb-prefs`
   用于查看或设置轻量偏好，例如真值优先级、`plan/review` 路由和验证强度。
+- `$emb-settings`
+  用统一入口管理 profile、packs 和轻量偏好，适合日常切换，不必分别记 `profile / pack / prefs`。
+- `$emb-manager`
+  用单终端轻量总控视图汇总当前 `next`、handoff、threads、settings 和最新报告，方便快速决定下一步。
 - `$emb-template`
   用于生成固定文档骨架或 profile / pack 模板。
 - `$emb-adapter`
   用于管理外部 adapter source，并把 path/git 扩展同步到项目或 runtime。
 - `$emb-tool`
   用于查看工具子系统骨架，包括抽象 calculator spec 与可选扩展接口。
+- `$emb-session-report`
+  用于把当前工作状态压成轻量 session report，方便审计和下次快速恢复。
 
 ## Compatibility
 
@@ -77,88 +95,136 @@ Output the emb-agent command reference below and nothing else.
 
 ## Runtime Layout
 
-安装器会在 Codex 目录下铺这些内容：
+安装器会在运行时目录下铺这些内容：
 
 - `skills/emb-*`
-- `agents/emb-*.toml`
+- `agents/emb-*`
 - `emb-agent/`
-- `config.toml` 中的 emb-agent managed block
+- 宿主配置文件中的 emb-agent hook / agent 注册
+
+当前正式支持：
+
+- `Codex`
+  - agents 为 `agents/emb-*.toml`
+  - hooks 进入 `config.toml`
+  - runtime home 通常为 `~/.codex`
+- `Claude Code`
+  - agents 为 `agents/emb-*.md`
+  - hooks 进入 `settings.json`
+  - runtime home 通常为 `~/.claude`
 
 真正工作的 runtime 在：
 
-- `~/.codex/emb-agent/` 或 `./.codex/emb-agent/`
+- `<runtime-home>/emb-agent/`
+- `./.codex/emb-agent/` 或 `./.claude/emb-agent/`（本地安装）
 
 ## Runtime
 
-下面这些是 runtime 原生命令，主要服务高级用户、脚本和其他 agent 复用，不要求普通用户记住全部：
+下面这些是 runtime 原生命令，主要服务高级用户、脚本和其他 agent 复用。统一前缀均为：
 
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs next`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs init`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs init --mcu <name> --board <name> --goal <text>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs ingest hardware --truth <text> --source <path>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs ingest requirements --goal <text> --source <path>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs ingest doc --file <path> --provider mineru --kind datasheet`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs ingest apply doc <doc-id> --to hardware`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs ingest apply doc <doc-id> --to hardware --only constraints,sources`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs ingest apply doc <doc-id> --from-last-diff`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs ingest apply doc <doc-id> --preset hw-safe`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs doc list`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs doc show <doc-id>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs doc show <doc-id> --preset hw-safe`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs doc show <doc-id> --preset hw-safe --apply-ready`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs doc diff <doc-id> --to hardware --only constraints,sources`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs doc diff <doc-id> --to hardware --only constraints,sources --save-as hw-safe`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs pause`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs pause show`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs pause clear`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs scan`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs scan save <target> <summary> --fact <text>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs plan`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs arch-review`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs template fill architecture-review --force`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-extension-registry --field FAMILY_NAME=vendor-family --field DEVICE_NAME=vendor-device --force`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs template fill chip-extension-registry --field CHIP_NAME=vendor-chip --force`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-adapter --field TOOL_NAME=timer-calc --field ADAPTER_NAME=vendor-timer-adapter --force`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-family --field SLUG=vendor-family --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-device --field SLUG=vendor-device --field DEVICE_NAME=vendor-device --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs template fill chip-profile --field SLUG=vendor-chip --field CHIP_NAME=vendor-chip --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs plan save <summary> --risk <text> --step <text> --verify <text>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs do`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs debug`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs review`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs review save <summary> --finding <text> --check <text>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs note`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs note add <target> <summary> --kind <kind> --evidence <text>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs dispatch next`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs dispatch show <action>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs prefs show`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs prefs set <key> <value>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs adapter status`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source list`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add <name> --type path --location /abs/path/to/source`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add <name> --type git --location <git-url-or-local-repo> [--branch main] [--subdir emb-agent]`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync <name>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync --all`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source remove <name>`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs tool list`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs tool show timer-calc`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs tool family list`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs tool family show FAMILY_NAME`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs tool device list`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs tool device show DEVICE_NAME`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs chip list`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs chip show CHIP_NAME`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs project show`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs project show --effective`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs project show --effective --field effective.arch_review_triggers`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs project set --field arch_review.trigger_patterns --value '["chip selection","方案预审"]'`
-- `node ~/.codex/emb-agent/bin/emb-agent.cjs schedule show <action>`
+- `<runtime-cli>`
+
+项目进入与主流程：
+
+- `<runtime-cli> init`
+- `<runtime-cli> init --mcu <name> --board <name> --goal <text>`
+- `<runtime-cli> next`
+- `<runtime-cli> scan`
+- `<runtime-cli> scan save <target> <summary> --fact <text>`
+- `<runtime-cli> plan`
+- `<runtime-cli> plan save <summary> --risk <text> --step <text> --verify <text>`
+- `<runtime-cli> do`
+- `<runtime-cli> debug`
+- `<runtime-cli> review`
+- `<runtime-cli> review save <summary> --finding <text> --check <text>`
+- `<runtime-cli> arch-review`
+- `<runtime-cli> orchestrate`
+- `<runtime-cli> orchestrate show <action>`
+- `<runtime-cli> dispatch next`
+- `<runtime-cli> dispatch show <action>`
+- `<runtime-cli> schedule show <action>`
+
+真值、文档与笔记：
+
+- `<runtime-cli> ingest hardware --truth <text> --source <path>`
+- `<runtime-cli> ingest requirements --goal <text> --source <path>`
+- `<runtime-cli> ingest doc --file <path> --provider mineru --kind datasheet`
+- `<runtime-cli> ingest apply doc <doc-id> --to hardware`
+- `<runtime-cli> ingest apply doc <doc-id> --to hardware --only constraints,sources`
+- `<runtime-cli> ingest apply doc <doc-id> --from-last-diff`
+- `<runtime-cli> ingest apply doc <doc-id> --preset hw-safe`
+- `<runtime-cli> doc list`
+- `<runtime-cli> doc show <doc-id>`
+- `<runtime-cli> doc show <doc-id> --preset hw-safe`
+- `<runtime-cli> doc show <doc-id> --preset hw-safe --apply-ready`
+- `<runtime-cli> doc diff <doc-id> --to hardware --only constraints,sources`
+- `<runtime-cli> doc diff <doc-id> --to hardware --only constraints,sources --save-as hw-safe`
+- `<runtime-cli> note`
+- `<runtime-cli> note add <target> <summary> --kind <kind> --evidence <text>`
+
+上下文、线程与取证：
+
+- `<runtime-cli> pause`
+- `<runtime-cli> pause show`
+- `<runtime-cli> pause clear`
+- `<runtime-cli> thread list`
+- `<runtime-cli> thread add <summary>`
+- `<runtime-cli> thread show <name>`
+- `<runtime-cli> thread resume <name>`
+- `<runtime-cli> thread resolve <name> [note]`
+- `<runtime-cli> forensics`
+- `<runtime-cli> forensics why planner keeps drifting after resume`
+- `<runtime-cli> session-report`
+- `<runtime-cli> session-report capture current bring-up handoff`
+- `<runtime-cli> manager`
+
+设置、画像与项目状态：
+
+- `<runtime-cli> settings show`
+- `<runtime-cli> settings set profile rtos-iot`
+- `<runtime-cli> settings set packs sensor-node,connected-appliance`
+- `<runtime-cli> settings set plan_mode always`
+- `<runtime-cli> settings reset`
+- `<runtime-cli> prefs show`
+- `<runtime-cli> prefs set <key> <value>`
+- `<runtime-cli> project show`
+- `<runtime-cli> project show --effective`
+- `<runtime-cli> project show --effective --field effective.arch_review_triggers`
+- `<runtime-cli> project set --field arch_review.trigger_patterns --value '["chip selection","方案预审"]'`
+
+模板、adapter、tool、chip：
+
+- `<runtime-cli> template fill architecture-review --force`
+- `<runtime-cli> template fill tool-extension-registry --field FAMILY_NAME=vendor-family --field DEVICE_NAME=vendor-device --force`
+- `<runtime-cli> template fill chip-extension-registry --field CHIP_NAME=vendor-chip --force`
+- `<runtime-cli> template fill tool-adapter --field TOOL_NAME=timer-calc --field ADAPTER_NAME=vendor-timer-adapter --force`
+- `<runtime-cli> template fill tool-family --field SLUG=vendor-family --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force`
+- `<runtime-cli> template fill tool-device --field SLUG=vendor-device --field DEVICE_NAME=vendor-device --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force`
+- `<runtime-cli> template fill chip-profile --field SLUG=vendor-chip --field CHIP_NAME=vendor-chip --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force`
+- `<runtime-cli> adapter status`
+- `<runtime-cli> adapter source list`
+- `<runtime-cli> adapter source add <name> --type path --location /abs/path/to/source`
+- `<runtime-cli> adapter source add <name> --type git --location <git-url-or-local-repo> [--branch main] [--subdir emb-agent]`
+- `<runtime-cli> adapter sync <name>`
+- `<runtime-cli> adapter sync --all`
+- `<runtime-cli> adapter source remove <name>`
+- `<runtime-cli> tool list`
+- `<runtime-cli> tool show timer-calc`
+- `<runtime-cli> tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560`
+- `<runtime-cli> tool family list`
+- `<runtime-cli> tool family show FAMILY_NAME`
+- `<runtime-cli> tool device list`
+- `<runtime-cli> tool device show DEVICE_NAME`
+- `<runtime-cli> chip list`
+- `<runtime-cli> chip show CHIP_NAME`
 
 项目内若需要自定义，只使用轻量扩展目录：
 
 - `./emb-agent/project.json`
 - `./emb-agent/cache/docs/`
+- `./emb-agent/threads/`
+- `./emb-agent/reports/forensics/`
+- `./emb-agent/reports/sessions/`
 - `./emb-agent/adapters/`
 - `./emb-agent/extensions/tools/`
 - `./emb-agent/extensions/chips/`
@@ -173,7 +239,7 @@ Output the emb-agent command reference below and nothing else.
 - adapter source 支持本地 path 仓库，也支持 git 仓库
 - source 根目录既可以直接包含 `adapters/` 和 `extensions/`，也可以再包一层 `emb-agent/`
 - `tool family/device` 与 `chip` 命令只展示外部安装或项目自带的 profile；core 默认为空
-- `init` 会预建 `docs/`、`emb-agent/cache/docs/`、`emb-agent/cache/adapter-sources/`、`emb-agent/adapters/`、`emb-agent/extensions/tools/*`、`emb-agent/extensions/chips/*`
+- `init` 不再预建空的 `extensions/tools/*`、`extensions/chips/*`；这些目录会在 `adapter sync`、`template fill` 或首次写 registry 时按需创建
 - 已存在的 `docs/*.md` 默认不覆盖；只有显式 `--force` 才重写模板输出
 
 `project.json` 除了 `profile`、`pack`、`preferences`、`integrations`，也可以加：
@@ -202,4 +268,5 @@ Output the emb-agent command reference below and nothing else.
 
 这样 `$emb-next` 遇到这些语义时，会优先建议 `$emb-arch-review`。
 
-MinerU 默认是 `mode=auto + 空 base_url`。小文档默认走 agent；当页数或文件大小超过阈值且能拿到 `MINERU_API_KEY` 时会自动走官方 API。若显式把 `base_url` 设成 `https://mineru.net/api/v4` 或 `https://mineru.net/api/v1/agent`，则以该路由为准。项目根目录和 Codex 根目录里的 `.env` 都会被轻量读取。
+项目根目录和当前 runtime 根目录里的 `.env` 都会被轻量读取。
+MinerU 默认是 `mode=auto + 空 base_url`。小文档默认走 agent；当页数或文件大小超过阈值且能拿到 `MINERU_API_KEY` 时会自动走官方 API。若显式把 `base_url` 设成 `https://mineru.net/api/v4` 或 `https://mineru.net/api/v1/agent`，则以该路由为准。
