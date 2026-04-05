@@ -241,9 +241,13 @@ function validateChip(name, value) {
 }
 
 function loadChip(rootDir, name) {
-  const candidates = [path.join(chipsRoot(rootDir), 'devices', `${name}.json`)];
+  const candidates = [
+    path.join(chipsRoot(rootDir), 'profiles', `${name}.json`),
+    path.join(chipsRoot(rootDir), 'devices', `${name}.json`)
+  ];
 
   for (const extRoot of extensionChipsRoots(rootDir)) {
+    candidates.push(path.join(extRoot, 'profiles', `${name}.json`));
     candidates.push(path.join(extRoot, 'devices', `${name}.json`));
   }
 

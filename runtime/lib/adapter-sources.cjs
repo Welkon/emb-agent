@@ -203,8 +203,17 @@ function walkFiles(dirPath, extension, prefixParts) {
 
 function collectSourceFiles(layoutRoot) {
   const mappings = [];
+  const seen = new Set();
 
-  const addFiles = (sourceDir, extension, targetParts, recursive) => {
+  const pushMapping = item => {
+    if (seen.has(item.relativePath)) {
+      return;
+    }
+    seen.add(item.relativePath);
+    mappings.push(item);
+  };
+
+  const addFiles = (sourceDir, extension, targetParts, recursive, mapRelativePath) => {
     const nextFiles = recursive
       ? walkFiles(sourceDir, extension, targetParts)
       : listFiles(sourceDir, extension).map(fileName => ({
@@ -213,7 +222,10 @@ function collectSourceFiles(layoutRoot) {
         }));
 
     nextFiles.forEach(item => {
-      mappings.push(item);
+      pushMapping({
+        sourcePath: item.sourcePath,
+        relativePath: mapRelativePath ? mapRelativePath(item.relativePath) : item.relativePath
+      });
     });
   };
 
@@ -230,11 +242,16 @@ function collectSourceFiles(layoutRoot) {
     'tools',
     'devices'
   ]);
+  addFiles(path.join(layoutRoot, 'extensions', 'chips', 'profiles'), '.json', [
+    'extensions',
+    'chips',
+    'profiles'
+  ]);
   addFiles(path.join(layoutRoot, 'extensions', 'chips', 'devices'), '.json', [
     'extensions',
     'chips',
     'devices'
-  ]);
+  ], false, relativePath => relativePath.replace(`${path.sep}devices${path.sep}`, `${path.sep}profiles${path.sep}`));
 
   return mappings;
 }
@@ -276,11 +293,13 @@ function rebuildRegistries(targetEmbDir) {
   const toolSpecsDir = path.join(toolsRoot, 'specs');
   const toolFamiliesDir = path.join(toolsRoot, 'families');
   const toolDevicesDir = path.join(toolsRoot, 'devices');
+  const chipProfilesDir = path.join(chipsRoot, 'profiles');
   const chipDevicesDir = path.join(chipsRoot, 'devices');
 
   runtime.ensureDir(toolSpecsDir);
   runtime.ensureDir(toolFamiliesDir);
   runtime.ensureDir(toolDevicesDir);
+  runtime.ensureDir(chipProfilesDir);
   runtime.ensureDir(chipDevicesDir);
 
   runtime.writeJson(path.join(toolsRoot, 'registry.json'), {
@@ -290,7 +309,11 @@ function rebuildRegistries(targetEmbDir) {
   });
 
   runtime.writeJson(path.join(chipsRoot, 'registry.json'), {
-    devices: listFiles(chipDevicesDir, '.json').map(name => name.slice(0, -5))
+    devices: runtime.unique(
+      listFiles(chipProfilesDir, '.json')
+        .concat(listFiles(chipDevicesDir, '.json'))
+        .map(name => name.slice(0, -5))
+    )
   });
 
   return [

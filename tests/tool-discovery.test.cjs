@@ -21,7 +21,7 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
     process.chdir(tempProject);
     cli.main(['init', '--mcu', 'vendor-chip']);
 
-    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'devices'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
 
@@ -33,7 +33,7 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
       'utf8'
     );
     fs.writeFileSync(
-      path.join(projectEmbDir, 'extensions', 'chips', 'devices', 'vendor-chip.json'),
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
       JSON.stringify({
         name: 'vendor-chip',
         vendor: 'VendorName',

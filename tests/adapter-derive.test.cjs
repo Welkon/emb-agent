@@ -76,7 +76,7 @@ test('adapter derive creates extension registries and profile skeletons', () => 
       fs.readFileSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json'), 'utf8')
     );
     const chipProfile = JSON.parse(
-      fs.readFileSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'devices', 'sc8f072ad608sp.json'), 'utf8')
+      fs.readFileSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'sc8f072ad608sp.json'), 'utf8')
     );
     const loadedChip = cli.chipCatalog.loadChip(runtimeRoot, 'sc8f072ad608sp');
 

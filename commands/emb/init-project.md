@@ -53,7 +53,7 @@ description: Initialize emb-agent for the current project with one command, crea
 - `emb-agent/extensions/tools/specs/`
 - `emb-agent/extensions/tools/families/`
 - `emb-agent/extensions/tools/devices/`
-- `emb-agent/extensions/chips/devices/`
+- `emb-agent/extensions/chips/profiles/`
 
 覆盖规则：
 

@@ -77,6 +77,6 @@
   "chip-profile": {
     "source": "chip-profile.json.tpl",
     "description": "项目级外部 chip profile 模板",
-    "default_output": "emb-agent/extensions/chips/devices/{{SLUG}}.json"
+    "default_output": "emb-agent/extensions/chips/profiles/{{SLUG}}.json"
   }
 }

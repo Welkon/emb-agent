@@ -59,7 +59,7 @@ test('tool and chip catalogs discover project external registries', () => {
   try {
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'devices'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
 
     fs.writeFileSync(
       path.join(projectEmbDir, 'extensions', 'tools', 'registry.json'),
@@ -99,12 +99,12 @@ test('tool and chip catalogs discover project external registries', () => {
     fs.writeFileSync(
       path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
       JSON.stringify({
-        devices: ['vendor-chip']
+        devices: ['vendor-chip', 'legacy-chip']
       }, null, 2) + '\n',
       'utf8'
     );
     fs.writeFileSync(
-      path.join(projectEmbDir, 'extensions', 'chips', 'devices', 'vendor-chip.json'),
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
       JSON.stringify({
         name: 'vendor-chip',
         vendor: 'VendorName',
@@ -124,6 +124,28 @@ test('tool and chip catalogs discover project external registries', () => {
       }, null, 2) + '\n',
       'utf8'
     );
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'devices'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'devices', 'legacy-chip.json'),
+      JSON.stringify({
+        name: 'legacy-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'sop8',
+        architecture: '8-bit',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'Legacy chip profile.',
+        summary: {},
+        capabilities: ['timer16'],
+        docs: [],
+        related_tools: ['timer-calc'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
 
     process.chdir(tempProject);
 
@@ -133,10 +155,11 @@ test('tool and chip catalogs discover project external registries', () => {
 
     assert.deepEqual(families.map(item => item.name), ['vendor-family']);
     assert.deepEqual(devices.map(item => item.name), ['vendor-device']);
-    assert.deepEqual(chips.map(item => item.name), ['vendor-chip']);
+    assert.deepEqual(chips.map(item => item.name), ['vendor-chip', 'legacy-chip']);
     assert.equal(cli.toolCatalog.loadFamily(runtimeRoot, 'vendor-family').vendor, 'VendorName');
     assert.equal(cli.toolCatalog.loadDevice(runtimeRoot, 'vendor-device').family, 'vendor-family');
     assert.equal(cli.chipCatalog.loadChip(runtimeRoot, 'vendor-chip').package, 'qfp32');
+    assert.equal(cli.chipCatalog.loadChip(runtimeRoot, 'legacy-chip').package, 'sop8');
   } finally {
     process.chdir(currentCwd);
   }

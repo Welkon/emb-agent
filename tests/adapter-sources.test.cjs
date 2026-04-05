@@ -244,6 +244,14 @@ test('adapter source add and sync install project adapters from path source', as
       cli.chipCatalog.listChips(runtimeRoot).map(item => item.name),
       ['vendor-chip']
     );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'vendor-chip.json')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'devices', 'vendor-chip.json')),
+      false
+    );
 
     const status = JSON.parse(
       await captureStdout(() => cli.main(['adapter', 'status', 'vendor-pack']))

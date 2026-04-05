@@ -258,7 +258,7 @@ function deriveProfiles(argv, options) {
 
   runtime.ensureDir(path.join(toolExtRoot, 'families'));
   runtime.ensureDir(path.join(toolExtRoot, 'devices'));
-  runtime.ensureDir(path.join(chipExtRoot, 'devices'));
+  runtime.ensureDir(path.join(chipExtRoot, 'profiles'));
 
   const toolRegistryPath = path.join(toolExtRoot, 'registry.json');
   const chipRegistryPath = path.join(chipExtRoot, 'registry.json');
@@ -276,7 +276,7 @@ function deriveProfiles(argv, options) {
 
   const familyPath = path.join(toolExtRoot, 'families', `${config.family}.json`);
   const devicePath = path.join(toolExtRoot, 'devices', `${config.device}.json`);
-  const chipPath = path.join(chipExtRoot, 'devices', `${config.chip}.json`);
+  const chipPath = path.join(chipExtRoot, 'profiles', `${config.chip}.json`);
 
   const writes = [
     {
