@@ -7,9 +7,11 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
+const runtimeHostHelpers = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
 const docCache = require(path.join(ROOT, 'lib', 'doc-cache.cjs'));
 const mineruProvider = require(path.join(ROOT, 'lib', 'doc-providers', 'mineru.cjs'));
 const ingestTruthCli = require(path.join(ROOT, 'scripts', 'ingest-truth.cjs'));
+const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
 
 const DOC_LIST_PRESET_NAME_LIMIT = 3;
 
@@ -1053,7 +1055,7 @@ function buildApplyReadyHint(docId, selectedPreset, presetDiff, enabled) {
   const argv = ['ingest', 'apply', 'doc', docId, '--preset', selectedPreset.name];
 
   return {
-    command: `node ~/.codex/emb-agent/bin/emb-agent.cjs ingest apply doc ${docId} --preset ${selectedPreset.name}`,
+    command: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, argv),
     argv,
     doc_id: docId,
     preset: selectedPreset.name,

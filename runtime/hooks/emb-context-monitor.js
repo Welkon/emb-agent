@@ -7,11 +7,13 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const runtimeHostHelpers = require('../lib/runtime-host.cjs');
 
 const DEBOUNCE_CALLS = 5;
 const WARNING_REMAINING_PERCENT = 35;
 const CRITICAL_REMAINING_PERCENT = 25;
 const METRICS_STALE_MS = 60 * 1000;
+const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
 function getWarnPath(projectRoot) {
   const key = crypto.createHash('sha1').update(projectRoot).digest('hex');
@@ -104,7 +106,7 @@ function buildMetricsMessage(metrics, contextHygiene) {
   const prefix = isCritical ? 'EMB CONTEXT CRITICAL:' : 'EMB CONTEXT WARNING:';
   const pauseCli = contextHygiene && contextHygiene.pause_cli
     ? contextHygiene.pause_cli
-    : 'node ~/.codex/emb-agent/bin/emb-agent.cjs pause';
+    : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['pause']);
   const resumeChain = contextHygiene && contextHygiene.clear_hint
     ? contextHygiene.clear_hint
     : 'pause -> clear -> resume';

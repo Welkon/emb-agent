@@ -7,11 +7,14 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
+const runtimeHostHelpers = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
 const initProject = require(path.join(ROOT, 'scripts', 'init-project.cjs'));
+const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
 
 const IGNORE_DIRS = new Set([
   '.git',
   '.codex',
+  '.claude',
   'node_modules',
   'dist',
   'build',
@@ -321,8 +324,8 @@ function attachProject(argv) {
     ],
     detected,
     next_steps: [
-      'node ~/.codex/emb-agent/bin/emb-agent.cjs status',
-      'node ~/.codex/emb-agent/bin/emb-agent.cjs next'
+      runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['status']),
+      runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
     ]
   };
 }

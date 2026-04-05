@@ -47,10 +47,7 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'docs')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'adapter-sources')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'specs')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'devices')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'CONNECTIVITY.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'RELEASE-NOTES.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'DEBUG-NOTES.md')), true);
@@ -95,10 +92,7 @@ test('init preserves existing docs files without force', () => {
     assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'req.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'adapter-sources')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'specs')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'devices')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions')), false);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

@@ -7,9 +7,11 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
+const runtimeHostHelpers = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 const TEMPLATES_DIR = path.join(ROOT, 'templates');
+const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
 const TEMPLATE_CONFIG = runtime.validateTemplateConfig(
   runtime.readJson(path.join(TEMPLATES_DIR, 'config.json'))
 );
@@ -253,13 +255,6 @@ function scaffoldProject(projectRoot, projectConfig, force) {
   ensureDir(path.join(projectConfigDir, 'profiles'));
   ensureDir(path.join(projectConfigDir, 'packs'));
   ensureDir(path.join(projectConfigDir, 'adapters'));
-  ensureDir(path.join(projectConfigDir, 'extensions'));
-  ensureDir(path.join(projectConfigDir, 'extensions', 'tools'));
-  ensureDir(path.join(projectConfigDir, 'extensions', 'tools', 'specs'));
-  ensureDir(path.join(projectConfigDir, 'extensions', 'tools', 'families'));
-  ensureDir(path.join(projectConfigDir, 'extensions', 'tools', 'devices'));
-  ensureDir(path.join(projectConfigDir, 'extensions', 'chips'));
-  ensureDir(path.join(projectConfigDir, 'extensions', 'chips', 'devices'));
   ensureDir(path.join(projectRoot, 'docs'));
 
   const created = [];
@@ -311,9 +306,9 @@ function main(argv) {
       {
         ...result,
         next_steps: [
-          'node ~/.codex/emb-agent/bin/emb-agent.cjs init',
-          'node ~/.codex/emb-agent/bin/emb-agent.cjs status',
-          'node ~/.codex/emb-agent/bin/emb-agent.cjs next'
+          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['init']),
+          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['status']),
+          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
         ]
       },
       null,

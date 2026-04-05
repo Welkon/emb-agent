@@ -9,7 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const installer = require(path.join(repoRoot, 'bin', 'install.js'));
 
-test('installer lays down config/lib and runtime commands work', () => {
+test('installer lays down config/lib and runtime commands work', async () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-home-'));
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-proj-'));
   const currentCwd = process.cwd();
@@ -23,7 +23,7 @@ test('installer lays down config/lib and runtime commands work', () => {
 
   try {
     process.chdir(repoRoot);
-    installer.main(['--global', '--config-dir', tempHome]);
+    await installer.main(['--codex', '--global', '--config-dir', tempHome]);
 
     const runtimeRoot = path.join(tempHome, 'emb-agent');
     const cliPath = path.join(runtimeRoot, 'bin', 'emb-agent.cjs');
@@ -32,10 +32,18 @@ test('installer lays down config/lib and runtime commands work', () => {
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-arch-review', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-adapter', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-dispatch', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-orchestrate', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-tool', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-thread', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-forensics', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-settings', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-session-report', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-manager', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.toml')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'config.json')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'runtime.cjs')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'runtime-host.cjs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'adapter-sources.cjs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'tool-catalog.cjs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'tool-runtime.cjs')), true);
@@ -46,10 +54,7 @@ test('installer lays down config/lib and runtime commands work', () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'tools', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'chips', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'adapters')), true);
-    assert.equal(fs.existsSync(path.join(runtimeRoot, 'extensions', 'tools', 'specs')), true);
-    assert.equal(fs.existsSync(path.join(runtimeRoot, 'extensions', 'tools', 'families')), true);
-    assert.equal(fs.existsSync(path.join(runtimeRoot, 'extensions', 'tools', 'devices')), true);
-    assert.equal(fs.existsSync(path.join(runtimeRoot, 'extensions', 'chips', 'devices')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'extensions')), false);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'scheduler.cjs')), true);
     assert.equal(fs.existsSync(cliPath), true);
     assert.equal(fs.existsSync(path.join(tempHome, '.env.example')), true);
@@ -76,21 +81,30 @@ test('installer lays down config/lib and runtime commands work', () => {
     assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'req.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'adapter-sources')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'specs')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'devices')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions')), false);
 
     const configData = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'config.json'), 'utf8'));
+    const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
+    const runtimeHost = require(path.join(runtimeRoot, 'lib', 'runtime-host.cjs'));
+    const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
     assert.equal(configData.session_version, 1);
     assert.equal(configData.default_preferences.truth_source_mode, 'hardware_first');
+    assert.equal(hostMetadata.name, 'codex');
+    assert.equal(resolvedHost.name, 'codex');
+    assert.equal(resolvedHost.stateRoot, path.join(tempHome, 'state', 'emb-agent'));
+    assert.match(resolvedHost.cliCommand, /emb-agent\/bin\/emb-agent\.cjs$/);
 
     const nextBeforeContext = installedCli.buildNextContext();
     assert.equal(nextBeforeContext.next.command, 'scan');
+    const orchestratorBeforeContext = installedCli.buildOrchestratorContext('next');
+    assert.equal(orchestratorBeforeContext.workflow.strategy, 'inline');
+    assert.equal(orchestratorBeforeContext.resolved_action, 'scan');
 
     installedCli.main(['prefs', 'set', 'plan_mode', 'always']);
     const nextWithForcedPlan = installedCli.buildNextContext();
     assert.equal(nextWithForcedPlan.next.command, 'plan');
+    const orchestratorWithForcedPlan = installedCli.buildOrchestratorContext('next');
+    assert.equal(orchestratorWithForcedPlan.resolved_action, 'plan');
 
     installedCli.main(['prefs', 'reset']);
 
@@ -325,6 +339,61 @@ test('installer lays down config/lib and runtime commands work', () => {
     throw error;
   } finally {
     process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer rejects declared but unsupported runtime targets', () => {
+  return assert.rejects(
+    () => installer.main(['--runtime', 'cursor', '--global', '--config-dir', '/tmp/emb-agent-cursor']),
+    /Runtime target "cursor" is not supported yet/
+  );
+});
+
+test('installer lays down claude skills agents and settings hooks', async () => {
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-claude-home-'));
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    await installer.main(['--claude', '--global', '--config-dir', tempHome]);
+
+    const runtimeRoot = path.join(tempHome, 'emb-agent');
+    const settingsPath = path.join(tempHome, 'settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const runtimeHost = require(path.join(runtimeRoot, 'lib', 'runtime-host.cjs'));
+    const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
+    const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
+
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-help', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.md')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'config.toml')), false);
+    assert.ok(Array.isArray(settings.hooks.SessionStart));
+    assert.ok(Array.isArray(settings.hooks.PostToolUse));
+    assert.match(JSON.stringify(settings.hooks.SessionStart), /emb-session-start\.js/);
+    assert.match(JSON.stringify(settings.hooks.PostToolUse), /emb-context-monitor\.js/);
+    assert.ok(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-help', 'SKILL.md'), 'utf8').includes(
+        `${runtimeRoot.replace(/\\/g, '/')}/bin/emb-agent.cjs`
+      )
+    );
+    const sessionFlowContent = fs.readFileSync(path.join(runtimeRoot, 'lib', 'session-flow.cjs'), 'utf8');
+    assert.doesNotMatch(sessionFlowContent, /~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs/);
+    assert.doesNotMatch(sessionFlowContent, /~\/\.claude\/emb-agent\/bin\/emb-agent\.cjs/);
+    assert.equal(hostMetadata.name, 'claude');
+    assert.equal(resolvedHost.name, 'claude');
+    assert.equal(resolvedHost.stateRoot, path.join(tempHome, 'state', 'emb-agent'));
+    assert.match(resolvedHost.cliCommand, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.match(stdout, /Updated Claude Code config:/);
+  } finally {
     process.stdout.write = originalWrite;
   }
 });

@@ -6,28 +6,18 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const runtimeHostHelpers = require('../lib/runtime-host.cjs');
 
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const HOOK_VERSION = '{{EMB_VERSION}}';
+const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
 function getRuntimeRoot() {
-  return path.resolve(__dirname, '..');
-}
-
-function getCodexHome() {
-  return path.resolve(getRuntimeRoot(), '..');
-}
-
-function isSourceRuntimeLayout() {
-  const runtimeRoot = getRuntimeRoot();
-  return path.basename(runtimeRoot) === 'runtime' && fs.existsSync(path.resolve(runtimeRoot, '..', 'package.json'));
+  return RUNTIME_HOST.runtimeRoot;
 }
 
 function getStateRoot() {
-  if (isSourceRuntimeLayout()) {
-    return path.join(getCodexHome(), '.tmp', 'state', 'emb-agent');
-  }
-  return path.join(getCodexHome(), 'state', 'emb-agent');
+  return RUNTIME_HOST.stateRoot;
 }
 
 function getUpdateCachePath() {

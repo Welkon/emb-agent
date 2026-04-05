@@ -3,6 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 const runtime = require('./runtime.cjs');
+const runtimeHostHelpers = require('./runtime-host.cjs');
+
+const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
 const ACTIONS = ['scan', 'plan', 'do', 'debug', 'review', 'note'];
 
@@ -301,7 +304,10 @@ function buildSpawnFallback(agentName, role) {
     fallback_tool: 'spawn_agent',
     fallback_agent_type: fallbackType,
     role,
-    instructions_source_cli: `node ~/.codex/emb-agent/bin/emb-agent.cjs agents show ${installedAgent}`,
+    instructions_source_cli: runtimeHostHelpers.buildCliCommand(
+      RUNTIME_HOST,
+      ['agents', 'show', installedAgent]
+    ),
     prompt_contract: [
       `先读取 ${installedAgent} 的 agent 指令`,
       '再结合 dispatch_contract 提供的 context_bundle 和 expected_output 执行',
@@ -441,7 +447,7 @@ function buildDispatchContract(action, resolved, primaryAgent, supportingAgents,
   }));
 
   return {
-    launch_via: 'installed-codex-agent',
+    launch_via: 'installed-emb-agent',
     auto_invoke_when_recommended: recommended,
     primary_first: mode !== 'parallel-recommended',
     parallel_safe: runtime.unique([
