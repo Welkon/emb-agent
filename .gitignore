@@ -1,3 +1,4 @@
 .tmp/
 emb-agent-*.tgz
-runtime/state/projects/
+runtime/state/projects/*
+!runtime/state/projects/.gitkeep

@@ -1,2 +1,3 @@
 .tmp/
-runtime/state/projects/
+runtime/state/projects/*
+!runtime/state/projects/.gitkeep
