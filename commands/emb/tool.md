@@ -65,4 +65,5 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs template fill chip-profile --field SLU
 
 - 优先用 `adapter derive` 起草 profile
 - 已有 `hw.yaml` 或已 ingest 文档时，优先用 `--from-project` / `--from-doc`，不要重复手填 slug
+- `adapter derive` 现在会同步起草 `device bindings` 的 draft 骨架，但真实公式和寄存器边界仍要你或 agent 按手册补完
 - 只有要精细定制模板内容时，再回退到 `template fill`

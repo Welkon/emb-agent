@@ -301,6 +301,7 @@ function loadProjectHardwareTruth(projectRoot) {
       constraints: readListBlock(content, 'constraints:', '  '),
       unknowns: readListBlock(content, 'unknowns:', '  '),
       sources: readListBlock(content, '  datasheet:', '    '),
+      signals: readObjectList(content, 'signals:', '  '),
       peripherals: readObjectList(content, 'peripherals:', '  ')
     }
   };
@@ -370,12 +371,194 @@ function buildDocReference(docInfo, model, pkg) {
   ];
 }
 
+function uniqueObjectsByName(items) {
+  const seen = new Set();
+  return (items || []).filter(item => {
+    const name = String((item && item.name) || '').trim();
+    if (!name || seen.has(name)) {
+      return false;
+    }
+    seen.add(name);
+    return true;
+  });
+}
+
+function slugSuffix(toolName) {
+  return String(toolName || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function findPeripheral(peripherals, matcher) {
+  return uniqueObjectsByName(peripherals).find(item => matcher.test(String(item.name || '')));
+}
+
+function findSignal(signals, matcher) {
+  return uniqueObjectsByName(signals).find(item => {
+    return matcher.test(String(item.name || '')) || matcher.test(String(item.usage || ''));
+  });
+}
+
+function buildBindingNotes(baseNotes, evidence) {
+  return runtime.unique([
+    '由 adapter derive 自动生成的 draft binding，仅供 agent/开发者继续补全。',
+    '当前只补安全可推断字段；具体公式、寄存器位宽、时钟源和边界仍需查手册确认。',
+    ...(baseNotes || []),
+    ...(evidence || [])
+  ]);
+}
+
+function buildTimerBinding(toolName, config) {
+  const timer = findPeripheral(config.peripherals, /\bTIMER(?:\d+)?\b|\bT16\b|\bTM2\b|\bTM3\b/i);
+  const timerName = timer ? String(timer.name) : '';
+
+  return {
+    algorithm: `${config.device}-${slugSuffix(toolName)}`,
+    draft: true,
+    params: {
+      default_timer: timerName || undefined,
+      timer_variants: timerName
+        ? {
+            [timerName]: {
+              peripheral: timerName
+            }
+          }
+        : {}
+    },
+    evidence: runtime.unique([
+      timerName ? `peripheral:${timerName}` : '',
+      ...(config.docs || []).map(item => `doc:${item.id}`)
+    ]),
+    notes: buildBindingNotes(
+      [],
+      [timerName ? `已从 truth/doc 识别到计时器外设 ${timerName}。` : '未识别到具体计时器名，需要手工补充。']
+    )
+  };
+}
+
+function buildPwmBinding(toolName, config) {
+  const signal = findSignal(config.signals, /PWM/i);
+  const outputPin = signal ? String(signal.pin || '') : '';
+  const pwm = findPeripheral(config.peripherals, /\bPWM\b/i);
+  const pwmName = pwm ? String(pwm.name) : 'PWM';
+  const outputPins = outputPin
+    ? {
+        [outputPin]: {
+          signal: String(signal.name || ''),
+          role: 'pwm-output'
+        }
+      }
+    : {};
+
+  return {
+    algorithm: `${config.device}-${slugSuffix(toolName)}`,
+    draft: true,
+    params: {
+      default_output_pin: outputPin || undefined,
+      output_pins: outputPins,
+      pwm_block: pwmName
+    },
+    evidence: runtime.unique([
+      pwmName ? `peripheral:${pwmName}` : '',
+      outputPin ? `signal:${outputPin}` : '',
+      ...(config.docs || []).map(item => `doc:${item.id}`)
+    ]),
+    notes: buildBindingNotes(
+      [],
+      [
+        pwmName ? `已识别 PWM 能力 ${pwmName}。` : '仅识别到 PWM 关键词，具体 block 未确认。',
+        outputPin ? `已从项目 truth 识别默认 PWM 引脚 ${outputPin}。` : '默认 PWM 输出引脚未确认。'
+      ]
+    )
+  };
+}
+
+function buildAdcBinding(toolName, config) {
+  const adc = findPeripheral(config.peripherals, /\bADC\b/i);
+  const adcName = adc ? String(adc.name) : 'ADC';
+  const channelSignal = findSignal(config.signals, /ADC|ANALOG|SENSE/i);
+  const channelName = channelSignal ? String(channelSignal.pin || '') : '';
+  const channels = channelName
+    ? {
+        [channelName]: {
+          signal: String(channelSignal.name || ''),
+          role: 'adc-input'
+        }
+      }
+    : {};
+
+  return {
+    algorithm: `${config.device}-${slugSuffix(toolName)}`,
+    draft: true,
+    params: {
+      default_channel: channelName || undefined,
+      channels,
+      reference_sources: {}
+    },
+    evidence: runtime.unique([
+      adcName ? `peripheral:${adcName}` : '',
+      channelName ? `signal:${channelName}` : '',
+      ...(config.docs || []).map(item => `doc:${item.id}`)
+    ]),
+    notes: buildBindingNotes(
+      [],
+      [
+        adcName ? `已识别 ADC 能力 ${adcName}。` : '仅识别到 ADC 关键词，通道映射未确认。',
+        channelName ? `已从项目 truth 识别默认 ADC 通道候选 ${channelName}。` : '默认 ADC 通道未确认。'
+      ]
+    )
+  };
+}
+
+function buildComparatorBinding(toolName, config) {
+  const cmp = findPeripheral(config.peripherals, /\bCOMPARATOR\b|\bCMP\b/i);
+  const cmpName = cmp ? String(cmp.name) : 'Comparator';
+
+  return {
+    algorithm: `${config.device}-${slugSuffix(toolName)}`,
+    draft: true,
+    params: {
+      positive_sources: {},
+      negative_sources: {}
+    },
+    evidence: runtime.unique([
+      cmpName ? `peripheral:${cmpName}` : '',
+      ...(config.docs || []).map(item => `doc:${item.id}`)
+    ]),
+    notes: buildBindingNotes(
+      [],
+      [cmpName ? `已识别比较器能力 ${cmpName}。` : '仅识别到比较器关键词，输入源未确认。']
+    )
+  };
+}
+
+function buildDraftBindings(config) {
+  const builders = {
+    'timer-calc': buildTimerBinding,
+    'pwm-calc': buildPwmBinding,
+    'adc-scale': buildAdcBinding,
+    'comparator-threshold': buildComparatorBinding
+  };
+
+  return config.tools.reduce((bindings, toolName) => {
+    const builder = builders[toolName];
+    if (!builder) {
+      return bindings;
+    }
+    bindings[toolName] = builder(toolName, config);
+    return bindings;
+  }, {});
+}
+
 function resolveDerivedConfig(config, projectRoot) {
   let truthInfo = null;
   let docInfo = null;
   let vendor = config.vendor || '';
   let model = '';
   let pkg = config.package || '';
+  const signals = [];
   const peripherals = [];
   const truths = [];
   const constraints = [];
@@ -387,6 +570,7 @@ function resolveDerivedConfig(config, projectRoot) {
     vendor = vendor || truthInfo.data.vendor || '';
     model = model || truthInfo.data.model || '';
     pkg = pkg || truthInfo.data.package || '';
+    signals.push(...(truthInfo.data.signals || []));
     peripherals.push(...(truthInfo.data.peripherals || []));
     truths.push(...(truthInfo.data.truths || []));
     constraints.push(...(truthInfo.data.constraints || []));
@@ -415,10 +599,7 @@ function resolveDerivedConfig(config, projectRoot) {
   const chipResolved = config.chip || compactSlug(`${chipSeed}${packageSeed}`);
   const inferredTools = inferTools(peripherals, [...truths, ...constraints, ...unknowns]);
   const toolsResolved = config.tools.length > 0 ? config.tools.slice() : (inferredTools.length > 0 ? inferredTools : ['timer-calc']);
-
-  return {
-    truthInfo,
-    docInfo,
+  const resolved = {
     vendor: vendorResolved,
     series: seriesResolved,
     family: familyResolved,
@@ -429,11 +610,20 @@ function resolveDerivedConfig(config, projectRoot) {
     tools: runtime.unique(toolsResolved),
     capabilities: runtime.unique(peripherals.map(item => (item && item.name) || '')),
     docs: buildDocReference(docInfo, model, pkg),
+    signals: uniqueObjectsByName(signals),
+    peripherals: uniqueObjectsByName(peripherals),
     notes: runtime.unique([
       ...notes,
       truthInfo ? `truths=${(truthInfo.data.truths || []).length}` : '',
       docInfo ? `doc_id=${docInfo.entry.doc_id}` : ''
     ])
+  };
+
+  return {
+    truthInfo,
+    docInfo,
+    ...resolved,
+    bindings: buildDraftBindings(resolved)
   };
 }
 
@@ -488,10 +678,10 @@ function buildDeviceProfile(config) {
     sample: false,
     description: `External tool device profile for ${config.device}.`,
       supported_tools: config.tools.slice(),
-      bindings: {},
+      bindings: config.bindings || {},
       notes: [
         '由 adapter derive 生成的 device 草稿。',
-        '请根据手册、例程或已验证代码补真实 bindings。',
+        '已自动补 draft bindings；请根据手册、例程或已验证代码补真实算法参数。',
         ...(config.inference_notes || [])
       ]
   };
@@ -563,6 +753,9 @@ function deriveProfiles(argv, options) {
   config.tools = derived.tools.slice();
   config.capabilities = derived.capabilities.slice();
   config.docs = derived.docs.slice();
+  config.signals = (derived.signals || []).slice();
+  config.peripherals = (derived.peripherals || []).slice();
+  config.bindings = { ...(derived.bindings || {}) };
   config.inference_notes = derived.notes.slice();
   config.source_mode = config.fromDoc && config.fromProject ? 'project+doc' : config.fromDoc ? 'doc' : config.fromProject ? 'project' : 'manual';
 
@@ -624,7 +817,8 @@ function deriveProfiles(argv, options) {
       from_doc: config.fromDoc || '',
       source_mode: config.source_mode,
       capabilities: config.capabilities,
-      docs: config.docs.map(item => item.id)
+      docs: config.docs.map(item => item.id),
+      binding_tools: Object.keys(config.bindings || {})
     },
     registries: {
       tools: path.relative(projectRoot, toolRegistryPath) || path.basename(toolRegistryPath),
@@ -635,8 +829,8 @@ function deriveProfiles(argv, options) {
       status: item.status
     })),
     notes: [
-      '只生成 family/device/chip 草稿，不会伪造 bindings 参数。',
-      '下一步应结合手册、例程或已验证代码补 device bindings 与 algorithm params。'
+      '已生成 family/device/chip 草稿，并按可推断信息补了 device draft bindings。',
+      '下一步应结合手册、例程或已验证代码补齐 device bindings 细节与外部 adapter 实现。'
     ]
   };
 }

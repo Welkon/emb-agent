@@ -84,7 +84,11 @@ test('adapter derive creates extension registries and profile skeletons', () => 
     assert.deepEqual(toolRegistry.devices, ['sc8f072']);
     assert.deepEqual(chipRegistry.devices, ['sc8f072ad608sp']);
     assert.deepEqual(deviceProfile.supported_tools, ['timer-calc', 'pwm-calc']);
-    assert.deepEqual(deviceProfile.bindings, {});
+    assert.deepEqual(Object.keys(deviceProfile.bindings), ['timer-calc', 'pwm-calc']);
+    assert.equal(deviceProfile.bindings['timer-calc'].draft, true);
+    assert.equal(deviceProfile.bindings['timer-calc'].algorithm, 'sc8f072-timer-calc');
+    assert.equal(deviceProfile.bindings['pwm-calc'].draft, true);
+    assert.equal(deviceProfile.bindings['pwm-calc'].algorithm, 'sc8f072-pwm-calc');
     assert.equal(chipProfile.packages[0].name, 'sop8');
     assert.equal(chipProfile.packages[0].pin_count, 8);
     assert.deepEqual(chipProfile.pins, {});
@@ -172,11 +176,21 @@ test('adapter derive can infer family device chip and tools from project truth',
     assert.deepEqual(result.tools, ['timer-calc', 'pwm-calc', 'adc-scale']);
     assert.equal(result.inferred.from_project, true);
     assert.equal(result.inferred.source_mode, 'project');
+    assert.deepEqual(result.inferred.binding_tools, ['timer-calc', 'pwm-calc', 'adc-scale']);
     assert.deepEqual(chipProfile.related_tools, ['timer-calc', 'pwm-calc', 'adc-scale']);
     assert.deepEqual(chipProfile.capabilities, ['Timer16', 'PWM', 'ADC']);
     assert.equal(chipProfile.package, 'SOP8');
     assert.equal(chipProfile.packages[0].pin_count, 8);
     assert.equal(chipProfile.summary.source_mode, 'project');
+
+    const deviceProfile = JSON.parse(
+      fs.readFileSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json'), 'utf8')
+    );
+
+    assert.equal(deviceProfile.bindings['timer-calc'].draft, true);
+    assert.equal(deviceProfile.bindings['timer-calc'].params.default_timer, 'Timer16');
+    assert.equal(deviceProfile.bindings['pwm-calc'].params.default_output_pin, 'PA3');
+    assert.equal(deviceProfile.bindings['adc-scale'].draft, true);
   } finally {
     process.chdir(currentCwd);
   }
@@ -247,6 +261,10 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
       ['timer-calc', 'pwm-calc', 'adc-scale', 'comparator-threshold']
     );
     assert.equal(result.inferred.from_doc, ingested.doc_id);
+    assert.deepEqual(
+      result.inferred.binding_tools,
+      ['timer-calc', 'pwm-calc', 'adc-scale', 'comparator-threshold']
+    );
     assert.deepEqual(chipProfile.related_tools, ['timer-calc', 'pwm-calc', 'adc-scale', 'comparator-threshold']);
     assert.deepEqual(chipProfile.capabilities, ['Timer16', 'PWM', 'ADC', 'Comparator']);
     assert.equal(chipProfile.docs.length, 1);
@@ -254,6 +272,15 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
     assert.equal(chipProfile.docs[0].kind, 'datasheet');
     assert.equal(chipProfile.packages[0].pin_count, 8);
     assert.equal(chipProfile.summary.source_mode, 'doc');
+
+    const deviceProfile = JSON.parse(
+      fs.readFileSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'pms150g.json'), 'utf8')
+    );
+
+    assert.equal(deviceProfile.bindings['timer-calc'].draft, true);
+    assert.equal(deviceProfile.bindings['timer-calc'].params.default_timer, 'Timer16');
+    assert.equal(deviceProfile.bindings['comparator-threshold'].draft, true);
+    assert.equal(deviceProfile.bindings['adc-scale'].draft, true);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

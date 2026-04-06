@@ -42,9 +42,10 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source remove <name>
 
 ## Notes
 
-- `adapter derive` 只生成 family/device/chip 草稿与 registry，不会伪造 bindings 参数
+- `adapter derive` 会生成 family/device/chip 草稿与 registry，并按可推断信息补 `device bindings` 的 draft 骨架
 - `adapter derive --from-project` 会从 `emb-agent/hw.yaml` 推断 vendor/model/package、family/device/chip slug、tool 建议和 `pin_count`
 - `adapter derive --from-doc <doc-id>` 会从 `emb-agent/cache/docs/<doc-id>/facts.hardware.json` 推断能力，并把文档元数据挂到 chip profile `docs`
+- 自动生成的 binding 只会补安全可推断字段，例如 `default_timer`、`default_output_pin`、文档证据和 placeholder params，不会伪造真实公式实现
 - 自动推断可被手工参数覆盖，例如先 `--from-doc` 再补 `--vendor` 或直接指定 `--chip`
 - `chip profile` 现在建议把封装与引脚知识放进 `packages` / `pins`
 - `adapter source add` 只写入 `emb-agent/project.json`，不会自动同步
