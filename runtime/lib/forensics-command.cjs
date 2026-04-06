@@ -12,6 +12,7 @@ function createForensicsCommandHelpers(deps) {
     loadHandoff,
     resolveSession,
     buildContextHygiene,
+    upsertForensicsThread,
     updateSession
   } = deps;
 
@@ -232,6 +233,7 @@ function createForensicsCommandHelpers(deps) {
       `- Generated: ${new Date().toISOString()}`,
       `- Project: ${report.projectRoot}`,
       `- Problem: ${report.problemText || '(not provided)'}`,
+      `- Linked Thread: ${report.linkedThread ? report.linkedThread.name : '(none)'}`,
       '',
       '## Session Snapshot',
       '',
@@ -284,18 +286,61 @@ function createForensicsCommandHelpers(deps) {
     const timestamp = buildTimestampSlug(new Date().toISOString());
     const fileName = `report-${timestamp}.md`;
     const filePath = path.join(getForensicsDir(), fileName);
+    const reportFile = path.relative(process.cwd(), filePath);
+    const summary = (report.problemText || '').trim()
+      ? `Forensics: ${report.problemText.trim()}`
+      : `Forensics: ${report.findings[0].title}`;
+    const highestSeverity = report.findings.some(item => item.severity === 'high')
+      ? 'high'
+      : report.findings.some(item => item.severity === 'medium')
+        ? 'medium'
+        : report.findings.some(item => item.severity === 'low')
+          ? 'low'
+          : 'info';
+    const linkedThread = upsertForensicsThread(summary, {
+      report_file: reportFile,
+      problem: report.problemText,
+      findings_count: report.findings.length,
+      highest_severity: highestSeverity,
+      primary_recommendation: report.findings[0] ? report.findings[0].recommendation : ''
+    });
+    report.linkedThread = linkedThread;
     const markdown = buildReportMarkdown(report);
 
     fs.writeFileSync(filePath, markdown, 'utf8');
 
     updateSession(current => {
       current.last_command = 'forensics';
+      current.focus = linkedThread.title;
+      current.active_thread = {
+        name: linkedThread.name,
+        title: linkedThread.title,
+        status: linkedThread.status,
+        path: linkedThread.path,
+        updated_at: linkedThread.updated_at
+      };
+      current.diagnostics = {
+        ...(current.diagnostics || {}),
+        latest_forensics: {
+          report_file: reportFile,
+          problem: report.problemText || '',
+          linked_thread: linkedThread.name,
+          highest_severity: highestSeverity,
+          generated_at: new Date().toISOString()
+        }
+      };
     });
 
     return {
       generated: true,
-      report_file: path.relative(process.cwd(), filePath),
+      report_file: reportFile,
       problem: report.problemText,
+      linked_thread: {
+        name: linkedThread.name,
+        title: linkedThread.title,
+        status: linkedThread.status,
+        path: linkedThread.path
+      },
       context_hygiene: report.contextHygiene,
       findings: report.findings,
       git: report.git,

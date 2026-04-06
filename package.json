@@ -1,7 +1,7 @@
 {
   "name": "emb-agent",
   "version": "0.2.0",
-  "description": "A lightweight embedded workflow system for Codex and other AI runtimes, installed like GSD but optimized for MCU, RTOS, and IoT repositories.",
+  "description": "A lightweight embedded workflow system for Codex and other AI runtimes, optimized for MCU, RTOS, and IoT repositories.",
   "bin": {
     "emb-agent": "bin/install.js"
   },

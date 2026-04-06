@@ -20,6 +20,10 @@ Output the emb-agent command reference below and nothing else.
   `<runtime-cli> next`
 - 后续继续当前项目：
   `<runtime-cli> next`
+- 如果是定时器 / PWM / ADC / 比较器 / 引脚 / 寄存器 / 手册定位问题：
+  先看 `next.tool_recommendation`
+  再看 `dispatch next` / `orchestrate` 里的 `tool_execution`
+  若 `tool_execution.status = ready`，优先执行对应 `tool run ...`
 - 需要导入手册/PDF：
   `<runtime-cli> ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
 
@@ -29,6 +33,10 @@ Output the emb-agent command reference below and nothing else.
   唯一官方初始化入口。用于初始化当前项目的 emb-agent 轻量上下文、项目默认配置、真值层和固定文档骨架，不创建项目私有 runtime。
 - `$emb-next`
   默认入口。根据当前 session 和 handoff 自动给出最合理的下一步。
+- `$emb-health`
+  用于检查当前项目的真值层、session、adapter、文档缓存与芯片画像是否一致，先判断当前上下文是否可信。
+- `$emb-update`
+  用于查看当前 runtime 的安装版本、hook/runtime 是否漂移，以及最近一次版本检查结果。
 - `$emb-ingest`
   用于把新确认的硬件或需求事实写回 `hw.yaml / req.yaml`，或先把外部文档解析进项目缓存。
 - `$emb-scan`
@@ -42,9 +50,9 @@ Output the emb-agent command reference below and nothing else.
 - `$emb-review`
   用于复杂系统的结构性检查，例如 RTOS、IoT、升级链路，并支持直接保存 review 报告。
 - `$emb-dispatch`
-  用于把当前动作或下一步直接转成轻量子 agent 分发合同，方便上层 agent 自动执行。
+  用于把当前动作或下一步直接转成轻量子 agent 分发合同；若 scan 已命中可执行工具，也会直接给出 `tool_execution`。
 - `$emb-orchestrate`
-  用于把 `next + dispatch + context hygiene` 合成一个统一轻量 orchestrator 合同，告诉上层 agent 当前该 inline、该起谁、何时该 pause/resume。
+  用于把 `next + dispatch + context hygiene` 合成一个统一轻量 orchestrator 合同，告诉上层 agent 当前该 inline、该起谁、何时该 pause/resume；若 scan 已命中可执行工具，会切到 `inline-tool-first`。
 - `$emb-arch-review`
   用于显式触发一次更重的系统级架构审查，覆盖选型、架构压力测试、量产前预审和失败预演，但不把默认流程做重。
 - `$emb-pause`
@@ -68,6 +76,17 @@ Output the emb-agent command reference below and nothing else.
 - 哪个 agent 应该先启动，哪些 supporting agent 可以并行
 - 每个子 agent 应拿到哪些上下文、该产出什么、由谁整合
 - 如果运行时只支持通用 `spawn_agent`，该走哪个 `spawn_fallback`
+
+对 `next / dispatch next / orchestrate`，如果已经识别到可直接运行的硬件工具，还会额外带：
+
+- `tool_recommendation`
+  - 当前首选工具
+  - `cli_draft`
+  - `missing_inputs`
+- `tool_execution`
+  - 当前是否应先跑 tool
+  - tool 是否已经 `ready`
+  - 在 orchestrator 里是否切到 `inline-tool-first`
 
 ## Advanced
 
@@ -129,6 +148,9 @@ Output the emb-agent command reference below and nothing else.
 - `<runtime-cli> init`
 - `<runtime-cli> init --mcu <name> --board <name> --goal <text>`
 - `<runtime-cli> next`
+- `<runtime-cli> health`
+- `<runtime-cli> update`
+- `<runtime-cli> update check`
 - `<runtime-cli> scan`
 - `<runtime-cli> scan save <target> <summary> --fact <text>`
 - `<runtime-cli> plan`

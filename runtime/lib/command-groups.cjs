@@ -190,7 +190,7 @@ function createCommandGroupHelpers(deps) {
       return buildOrchestratorContext(rest[0]);
     }
 
-    if (cmd === 'orchestrate' && ['scan', 'plan', 'do', 'debug', 'review', 'note', 'arch-review'].includes(subcmd)) {
+    if (cmd === 'orchestrate' && ['scan', 'plan', 'do', 'debug', 'review', 'forensics', 'note', 'arch-review'].includes(subcmd)) {
       return buildOrchestratorContext(subcmd);
     }
 

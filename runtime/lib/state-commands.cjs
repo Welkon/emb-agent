@@ -22,6 +22,7 @@ function createStateCommandHelpers(deps) {
     getProjectConfig,
     requireRestText,
     requirePreferenceKey,
+    handleHealthUpdateCommands,
     handleThreadCommands,
     handleForensicsCommands,
     handleSettingsCommands,
@@ -30,6 +31,13 @@ function createStateCommandHelpers(deps) {
   } = deps;
 
   function handleCatalogAndStateCommands(cmd, subcmd, rest) {
+    const healthUpdateResult = handleHealthUpdateCommands
+      ? handleHealthUpdateCommands(cmd, subcmd, rest)
+      : undefined;
+    if (healthUpdateResult !== undefined) {
+      return healthUpdateResult;
+    }
+
     const threadResult = handleThreadCommands ? handleThreadCommands(cmd, subcmd, rest) : undefined;
     if (threadResult !== undefined) {
       return threadResult;

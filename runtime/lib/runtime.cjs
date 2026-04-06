@@ -161,6 +161,47 @@ function ensureBoolean(value, label, fallback) {
   return value;
 }
 
+function normalizeActiveThread(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      name: '',
+      title: '',
+      status: '',
+      path: '',
+      updated_at: ''
+    };
+  }
+
+  return {
+    name: ensureOptionalString(value.name, 'active_thread.name'),
+    title: ensureOptionalString(value.title, 'active_thread.title'),
+    status: ensureOptionalString(value.status, 'active_thread.status'),
+    path: ensureOptionalString(value.path, 'active_thread.path'),
+    updated_at: ensureOptionalString(value.updated_at, 'active_thread.updated_at')
+  };
+}
+
+function normalizeDiagnostics(value) {
+  const source = (!value || typeof value !== 'object' || Array.isArray(value)) ? {} : value;
+  const latestForensics =
+    !source.latest_forensics || typeof source.latest_forensics !== 'object' || Array.isArray(source.latest_forensics)
+      ? {}
+      : source.latest_forensics;
+
+  return {
+    latest_forensics: {
+      report_file: ensureOptionalString(latestForensics.report_file, 'diagnostics.latest_forensics.report_file'),
+      problem: ensureOptionalString(latestForensics.problem, 'diagnostics.latest_forensics.problem'),
+      linked_thread: ensureOptionalString(latestForensics.linked_thread, 'diagnostics.latest_forensics.linked_thread'),
+      highest_severity: ensureOptionalString(
+        latestForensics.highest_severity,
+        'diagnostics.latest_forensics.highest_severity'
+      ),
+      generated_at: ensureOptionalString(latestForensics.generated_at, 'diagnostics.latest_forensics.generated_at')
+    }
+  };
+}
+
 function ensurePositiveInteger(value, label, fallback) {
   const next = value === undefined || value === null || value === '' ? fallback : Number(value);
   if (!Number.isInteger(next) || next < 1) {
@@ -542,6 +583,8 @@ function normalizeSession(session, paths, runtimeConfig, projectConfig) {
   next.last_files = ensureStringArray(next.last_files || [], 'last_files').slice(0, defaults.max_last_files);
   next.open_questions = ensureStringArray(next.open_questions || [], 'open_questions');
   next.known_risks = ensureStringArray(next.known_risks || [], 'known_risks');
+  next.active_thread = normalizeActiveThread(next.active_thread || {});
+  next.diagnostics = normalizeDiagnostics(next.diagnostics || {});
   next.last_command = ensureOptionalString(next.last_command, 'last_command');
   next.paused_at = ensureOptionalString(next.paused_at, 'paused_at');
   next.last_resumed_at = ensureOptionalString(next.last_resumed_at, 'last_resumed_at');

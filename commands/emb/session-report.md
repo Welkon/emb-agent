@@ -17,6 +17,7 @@ description: Write a lightweight session report so the current embedded work sta
    - 是否存在 handoff
    - 当前 threads 概况
    - 下一步推荐命令与建议流程
+   - 如果已有首选 tool，也要写入 `tool_recommendation / tool_status / tool_cli / tool_missing_inputs`
 3. 结果应落到项目内 report 目录，方便下次 resume 前快速回读。
 
 ## 输出要求

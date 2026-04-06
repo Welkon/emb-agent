@@ -45,11 +45,14 @@ test('thread commands create list resume and resolve lightweight threads', () =>
     const resumedContent = fs.readFileSync(path.join(threadsDir, threadFiles[0]), 'utf8');
     assert.match(resumedContent, /## Status\s+IN_PROGRESS/);
     assert.equal(cli.loadSession().focus, 'Track timer wakeup jitter across sessions');
+    assert.equal(cli.loadSession().active_thread.name, threadName);
+    assert.equal(cli.loadSession().active_thread.status, 'IN_PROGRESS');
 
     cli.main(['thread', 'resolve', threadName, 'bench result captured']);
     const resolvedContent = fs.readFileSync(path.join(threadsDir, threadFiles[0]), 'utf8');
     assert.match(resolvedContent, /## Status\s+RESOLVED/);
     assert.match(resolvedContent, /resolved: bench result captured/);
+    assert.equal(cli.loadSession().active_thread.name, '');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

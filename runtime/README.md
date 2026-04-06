@@ -67,14 +67,24 @@ node <runtime-home>/emb-agent/scripts/init-project.cjs
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs init
+node <runtime-home>/emb-agent/bin/emb-agent.cjs health
 node <runtime-home>/emb-agent/bin/emb-agent.cjs next
+node <runtime-home>/emb-agent/bin/emb-agent.cjs dispatch next
 ```
+
+如果是外设公式、引脚或寄存器定位问题，优先看 `next` / `dispatch next` 里是否已经给出 `tool_recommendation` 或 `tool_execution`。
 
 上下文收口：
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs pause
 node <runtime-home>/emb-agent/bin/emb-agent.cjs resume
+```
+
+查看运行时更新状态：
+
+```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs update
 ```
 
 查看 runtime 帮助：

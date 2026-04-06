@@ -80,6 +80,11 @@ test('tool and chip catalogs discover project external registries', () => {
         description: 'External tool family profile.',
         supported_tools: ['timer-calc'],
         clock_sources: ['sysclk'],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-timer'
+          }
+        },
         notes: []
       }, null, 2) + '\n',
       'utf8'
@@ -92,6 +97,11 @@ test('tool and chip catalogs discover project external registries', () => {
         sample: false,
         description: 'External tool device profile.',
         supported_tools: ['timer-calc'],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-device-timer'
+          }
+        },
         notes: []
       }, null, 2) + '\n',
       'utf8'
@@ -157,7 +167,15 @@ test('tool and chip catalogs discover project external registries', () => {
     assert.deepEqual(devices.map(item => item.name), ['vendor-device']);
     assert.deepEqual(chips.map(item => item.name), ['vendor-chip', 'legacy-chip']);
     assert.equal(cli.toolCatalog.loadFamily(runtimeRoot, 'vendor-family').vendor, 'VendorName');
+    assert.equal(
+      cli.toolCatalog.loadFamily(runtimeRoot, 'vendor-family').bindings['timer-calc'].algorithm,
+      'vendor-timer'
+    );
     assert.equal(cli.toolCatalog.loadDevice(runtimeRoot, 'vendor-device').family, 'vendor-family');
+    assert.equal(
+      cli.toolCatalog.loadDevice(runtimeRoot, 'vendor-device').bindings['timer-calc'].algorithm,
+      'vendor-device-timer'
+    );
     assert.equal(cli.chipCatalog.loadChip(runtimeRoot, 'vendor-chip').package, 'qfp32');
     assert.equal(cli.chipCatalog.loadChip(runtimeRoot, 'legacy-chip').package, 'sop8');
   } finally {

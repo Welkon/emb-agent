@@ -7,7 +7,7 @@ const runtimeHostHelpers = require('./runtime-host.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
-const ACTIONS = ['scan', 'plan', 'do', 'debug', 'review', 'note'];
+const ACTIONS = ['scan', 'plan', 'do', 'debug', 'review', 'forensics', 'note'];
 
 const READ_HINTS = {
   hardware_truth: '硬件真值来源: 数据手册 / 原理图 / 引脚映射',
@@ -174,6 +174,11 @@ function buildSafetyChecks(action, resolved) {
     checks.push('区分已确认风险与待验证风险');
   }
 
+  if (action === 'forensics') {
+    checks.push('只基于当前 session、handoff、报告和项目事实做结论');
+    checks.push('不要把取证结果直接冒充最终修复方案');
+  }
+
   if (action === 'note') {
     checks.push('只记录长期有效结论，不记录会话碎片');
     checks.push('每条结论都要标注依据与未验证项');
@@ -213,6 +218,11 @@ function choosePrimaryAgent(action, resolved) {
       return 'hw-scout';
     }
     return (resolved.effective.review_agents || [])[0] || (resolved.effective.agents || [])[0] || '';
+  }
+  if (action === 'forensics') {
+    return hasAgent(resolved, 'bug-hunter')
+      ? 'bug-hunter'
+      : (hasAgent(resolved, 'hw-scout') ? 'hw-scout' : (resolved.effective.agents || [])[0] || '');
   }
   if (action === 'note') {
     return hasAgent(resolved, 'fw-doer')
@@ -262,6 +272,13 @@ function chooseSupportingAgents(action, resolved, primaryAgent) {
 
   if (action === 'review') {
     return reviewAgents.filter(name => name !== primaryAgent);
+  }
+
+  if (action === 'forensics') {
+    return runtime.unique([
+      hasAgent(resolved, 'hw-scout') ? 'hw-scout' : '',
+      context.isRtos && hasAgent(resolved, 'sys-reviewer') ? 'sys-reviewer' : ''
+    ]).filter(name => name !== primaryAgent);
   }
 
   if (action === 'note') {
@@ -559,6 +576,20 @@ function buildAgentExecution(action, resolved, primaryAgentInput, supportingAgen
       '只是做一次单点实现检查',
       '当前 scope 过小，不值得并行'
     ];
+  } else if (action === 'forensics') {
+    recommended = Boolean(primaryAgent);
+    mode = context.isRtos || context.isConnected ? 'parallel-recommended' : 'primary-recommended';
+    reason = context.isRtos || context.isConnected
+      ? '复杂恢复或漂移问题适合让取证与结构复查并行推进。'
+      : 'forensics 适合先让 bug-hunter 主导取证，再由主线程决定回到 debug、review 还是 do。';
+    suggestedWhen = [
+      '问题反复出现，且 session / handoff / thread 已开始漂移',
+      '需要先收敛证据，再决定继续 debug、review 还是实现'
+    ];
+    avoidWhen = [
+      '根因已经明确，只差直接修复',
+      '只是普通硬件公式或寄存器定位问题'
+    ];
   } else if (action === 'note') {
     recommended = Boolean(primaryAgent) && context.isConnected;
     mode = recommended ? 'primary-recommended' : 'inline-preferred';
@@ -652,6 +683,12 @@ function buildSuggestedSteps(action, resolved) {
     }
   }
 
+  if (action === 'forensics') {
+    steps.push('先固定当前问题描述、最新 thread 和最近一次 forensics 摘要');
+    steps.push('只收敛最关键证据，不直接跳到修复');
+    steps.push('明确下一步应该回到 debug、review 还是 do');
+  }
+
   if (action === 'note') {
     steps.push('先选定要写入的固定文档');
     steps.push('只记录稳定结论与依据');
@@ -677,6 +714,9 @@ function buildOutputShape(action) {
   }
   if (action === 'review') {
     return ['scope', 'axes', 'findings_template', 'required_checks', 'review_agents', 'scheduler'];
+  }
+  if (action === 'forensics') {
+    return ['problem', 'evidence_sources', 'findings_template', 'next_step', 'chosen_agent', 'scheduler'];
   }
   if (action === 'note') {
     return ['target_docs', 'recordable_items', 'excluded_items', 'chosen_agent', 'scheduler'];
@@ -1001,6 +1041,33 @@ function buildReviewOutput(resolved) {
   };
 }
 
+function buildForensicsOutput(resolved) {
+  const diagnostics = resolved.session.diagnostics && resolved.session.diagnostics.latest_forensics
+    ? resolved.session.diagnostics.latest_forensics
+    : {};
+  const activeThread = resolved.session.active_thread || {};
+  const steps = buildSuggestedSteps('forensics', resolved);
+
+  return {
+    problem: diagnostics.problem || resolved.session.focus || '当前问题仍在漂移，需先做取证',
+    evidence_sources: runtime.unique([
+      diagnostics.report_file ? `最近一次 forensics: ${diagnostics.report_file}` : '',
+      activeThread.name ? `当前活动 thread: ${activeThread.name}` : '',
+      ...(resolved.session.last_files || []).slice(0, 2).map(file => `最近文件: ${file}`),
+      ...getProjectTruthFiles(resolved).map(file => `项目真值层: ${file}`)
+    ]),
+    findings_template: [
+      'Observed symptom',
+      'Evidence collected',
+      'Most likely branch',
+      'Next recommended action'
+    ],
+    next_step: steps[0] || '先固定问题描述和关键证据',
+    chosen_agent: choosePrimaryAgent('forensics', resolved),
+    scheduler: buildSchedule('forensics', resolved)
+  };
+}
+
 function buildNoteOutput(resolved) {
   return {
     target_docs: resolved.effective.note_targets || [],
@@ -1020,6 +1087,7 @@ module.exports = {
   buildAgentExecution,
   buildDoOutput,
   buildDebugOutput,
+  buildForensicsOutput,
   buildNoteOutput,
   buildPlanOutput,
   buildReviewOutput,

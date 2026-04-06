@@ -55,6 +55,22 @@ test('normalizeSession fills metadata and trims arrays', () => {
   assert.equal(session.last_files.length, 12);
   assert.deepEqual(session.open_questions, ['q1']);
   assert.deepEqual(session.known_risks, ['r1']);
+  assert.deepEqual(session.active_thread, {
+    name: '',
+    title: '',
+    status: '',
+    path: '',
+    updated_at: ''
+  });
+  assert.deepEqual(session.diagnostics, {
+    latest_forensics: {
+      report_file: '',
+      problem: '',
+      linked_thread: '',
+      highest_severity: '',
+      generated_at: ''
+    }
+  });
   assert.equal(session.last_command, '');
   assert.equal(session.paused_at, '');
   assert.equal(session.last_resumed_at, '');

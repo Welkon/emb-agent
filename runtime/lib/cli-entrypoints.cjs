@@ -32,6 +32,8 @@ function createCliEntryHelpers(deps) {
       '  doc diff <doc-id> --to hardware|requirements [--only field1,field2] [--force] [--save-as <name>]',
       '  status',
       '  next',
+      '  health',
+      '  update [check]',
       '  pause [note]',
       '  pause show',
       '  pause clear',

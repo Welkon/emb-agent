@@ -40,6 +40,23 @@ function ensureOptionalBoolean(value, label, fallback) {
   return value;
 }
 
+function ensureOptionalNamedObjectMap(value, label) {
+  if (value === undefined || value === null) {
+    return {};
+  }
+
+  ensureObject(value, label);
+  const normalized = {};
+
+  Object.entries(value).forEach(([key, entry]) => {
+    const name = ensureString(key, `${label} key`);
+    ensureObject(entry, `${label}.${name}`);
+    normalized[name] = entry;
+  });
+
+  return normalized;
+}
+
 function toolsRoot(rootDir) {
   return path.join(rootDir, 'tools');
 }
@@ -129,6 +146,7 @@ function validateFamily(name, value) {
     description: ensureString(value.description, `family ${name} description`),
     supported_tools: ensureOptionalStringArray(value.supported_tools, `family ${name} supported_tools`),
     clock_sources: ensureOptionalStringArray(value.clock_sources, `family ${name} clock_sources`),
+    bindings: ensureOptionalNamedObjectMap(value.bindings, `family ${name} bindings`),
     notes: ensureOptionalStringArray(value.notes, `family ${name} notes`)
   };
 }
@@ -141,6 +159,7 @@ function validateDevice(name, value) {
     sample: ensureOptionalBoolean(value.sample, `device ${name} sample`, false),
     description: ensureString(value.description, `device ${name} description`),
     supported_tools: ensureOptionalStringArray(value.supported_tools, `device ${name} supported_tools`),
+    bindings: ensureOptionalNamedObjectMap(value.bindings, `device ${name} bindings`),
     notes: ensureOptionalStringArray(value.notes, `device ${name} notes`)
   };
 }

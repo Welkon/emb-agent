@@ -11,6 +11,7 @@ function createDispatchHelpers(deps) {
     buildGuidance,
     getPreferences,
     enrichWithToolSuggestions,
+    buildToolExecutionFromNext,
     buildNextContext,
     buildActionOutput,
     buildArchReviewDispatchContext
@@ -47,6 +48,10 @@ function createDispatchHelpers(deps) {
       }
 
       const output = buildActionOutput(resolvedAction);
+      const toolExecution =
+        resolvedAction === 'scan'
+          ? buildToolExecutionFromNext(next)
+          : null;
       return {
         source: 'next',
         requested_action: 'next',
@@ -60,6 +65,7 @@ function createDispatchHelpers(deps) {
         next_actions: next.next_actions,
         current: next.current,
         handoff: next.handoff,
+        tool_execution: toolExecution,
         action_context: output
       };
     }
@@ -83,6 +89,7 @@ function createDispatchHelpers(deps) {
       dispatch_ready: Boolean(output.agent_execution && output.agent_execution.available),
       agent_execution: output.agent_execution || null,
       context_hygiene: output.context_hygiene || null,
+      tool_execution: null,
       action_context: output
     };
   }
@@ -107,6 +114,7 @@ function createDispatchHelpers(deps) {
 
   function buildOrchestratorSteps(dispatch) {
     const execution = dispatch.agent_execution || {};
+    const toolExecution = dispatch.tool_execution || null;
     const contract = execution.dispatch_contract || {};
     const primary = contract.primary || null;
     const supporting = contract.supporting || [];
@@ -120,6 +128,26 @@ function createDispatchHelpers(deps) {
         outcome: '恢复当前项目 session、handoff 和轻量工作上下文'
       }
     ];
+
+    if (toolExecution && toolExecution.available) {
+      steps.push({
+        id: 'run-tool',
+        kind: 'tool',
+        required: toolExecution.recommended,
+        when: toolExecution.recommended
+          ? '当前 scan 已识别到可直接执行的硬件计算工具，先收敛寄存器/公式真值'
+          : '如需继续推进该工具，先补齐缺失依赖或 adapter',
+        cli: toolExecution.cli,
+        tool: toolExecution.tool,
+        status: toolExecution.status,
+        reason: toolExecution.reason,
+        missing_inputs: toolExecution.missing_inputs || [],
+        defaults_applied: toolExecution.defaults_applied || {},
+        outcome: toolExecution.recommended
+          ? '先产出工具计算结果，再决定是否继续 scan / debug / do'
+          : '当前只输出工具草案和缺失输入，不直接执行'
+      });
+    }
 
     if (!execution.available || !execution.recommended) {
       steps.push({
@@ -197,6 +225,7 @@ function createDispatchHelpers(deps) {
     const guidance = buildGuidance(resolved, handoff);
     const dispatch = buildDispatchContext((requestedAction || 'next').trim() || 'next');
     const execution = dispatch.agent_execution || {};
+    const toolExecution = dispatch.tool_execution || null;
     const strategy = buildOrchestratorStrategy(execution);
     const current = dispatch.source === 'next'
       ? (dispatch.current || {})
@@ -235,7 +264,10 @@ function createDispatchHelpers(deps) {
         suggested_flow: guidance.suggested_flow,
         next_skill: dispatch.skill,
         next_cli: dispatch.cli,
-        strategy,
+        strategy: toolExecution && toolExecution.recommended ? 'inline-tool-first' : strategy,
+        tool_first: Boolean(toolExecution && toolExecution.recommended),
+        tool_cli: toolExecution ? toolExecution.cli : '',
+        tool_name: toolExecution ? toolExecution.tool : '',
         primary_agent: execution.primary_agent || '',
         supporting_agents: execution.supporting_agents || [],
         wait_strategy: execution.wait_strategy || '主线程继续推进，只有在主路径被阻塞时才等待',
@@ -244,6 +276,7 @@ function createDispatchHelpers(deps) {
       orchestrator_steps: buildOrchestratorSteps(dispatch),
       context_hygiene: dispatch.context_hygiene || null,
       next_actions: dispatch.next_actions || guidance.next_actions,
+      tool_execution: toolExecution,
       dispatch_contract: execution.dispatch_contract || null,
       action_context: dispatch.action_context || null
     }, resolved);

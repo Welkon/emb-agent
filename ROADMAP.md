@@ -86,7 +86,7 @@
 
 目标：
 
-- 给 `emb-agent` 增加轻量 `plan`，但不回到 GSD 式厚 planning
+- 给 `emb-agent` 增加轻量 `plan`，但不回到厚 planning
 - 在复杂嵌入式改动前，先输出一份可执行的最小计划
 - 让 `plan` 成为 `scan -> plan -> do -> verify` 中的可选增强，而不是强制前置
 
@@ -122,7 +122,7 @@
 边界：
 
 - `emb plan` 是任务级 `micro-plan`
-- 不是 GSD 那种阶段级 `phase-plan`
+- 不是阶段级 `phase-plan`
 - 不承担 roadmap 管理
 - 不承担长期 planning 文档沉淀
 

@@ -1,0 +1,28 @@
+---
+name: emb-health
+description: Check whether the current emb-agent project state is structurally healthy before continuing work.
+---
+
+# emb-health
+
+你负责做一次轻量但可信的项目健康检查。
+
+## 执行规则
+
+1. 直接运行：
+   `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" health`
+2. 重点查看：
+   - `project.json / hw.yaml / req.yaml` 是否齐全且合法
+   - `docs`、文档缓存、adapter 缓存是否存在
+   - session / handoff 是否损坏或断链
+   - 当前 profile / packs 是否可解析
+   - `hw.yaml` 里的 MCU 型号是否已映射到 chip profile
+   - MinerU API 模式是否缺少 key
+3. `health` 是只读自检入口，不要在里面自动改真值层。
+
+## 输出要求
+
+- 先说明整体状态：`pass / warn / fail`
+- 明确列出最需要先处理的 `fail` 或 `warn`
+- 如果存在 handoff，提醒是否应优先 `resume`
+- 如果状态基本健康，再指出下一步适合走 `next / scan / do / review` 哪条线

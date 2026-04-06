@@ -13,9 +13,11 @@ description: Route to the next logical lightweight embedded action using current
    `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" next`
 2. 基于当前 session、handoff、focus、最近文件、未决问题和已知风险判断：
    - 是先 `scan`
+   - 是否先 `scan` 并结合工具建议处理公式 / 外设 / 引脚 / 手册问题
    - 还是先 `plan`
    - 还是先 `debug`
    - 还是先 `review`
+   - 还是先 `forensics`
    - 或者已经可以直接 `do`
 
 ## 输出要求
@@ -23,3 +25,7 @@ description: Route to the next logical lightweight embedded action using current
 - 只做轻量自动路由，不引入 phase 流程
 - 必须说明为什么是这个下一步
 - 给出对应的 skill 和 CLI 入口
+- 如果 `next.tool_recommendation` 存在：
+  - 优先读取 `cli_draft`
+  - 注意 `missing_inputs`
+  - `next_actions` 里的 `首选工具草案` / `工具待补参数` 代表当前最值得先跑的硬件计算路径

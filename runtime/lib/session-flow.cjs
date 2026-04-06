@@ -3,6 +3,64 @@
 const runtimeHostHelpers = require('./runtime-host.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
+const FORENSICS_PATTERNS = [
+  'drift',
+  'drifting',
+  'stuck',
+  'keeps failing',
+  'repeat failure',
+  'resume',
+  'handoff',
+  '漂移',
+  '卡住',
+  '反复失败',
+  '重复失败',
+  '上下文漂移',
+  '恢复后',
+  'resume后'
+];
+const HARDWARE_TOOL_PATTERNS = [
+  'timer',
+  'tm2',
+  'tm3',
+  'pwm',
+  'comparator',
+  'adc',
+  'uart',
+  'spi',
+  'i2c',
+  'gpio',
+  'register',
+  'registers',
+  'pin',
+  'pinmux',
+  'datasheet',
+  'manual',
+  '引脚',
+  '寄存器',
+  '手册',
+  '定时器',
+  '比较器',
+  'pwm',
+  '波特率',
+  '时序',
+  '公式',
+  '外设'
+];
+const REVIEW_PATTERNS = [
+  'ota',
+  'rollback',
+  'reconnect',
+  'offline',
+  'upgrade',
+  'release',
+  '量产',
+  '回滚',
+  '重连',
+  '离线',
+  '升级',
+  '发布'
+];
 
 function createSessionFlowHelpers(deps) {
   const {
@@ -12,11 +70,54 @@ function createSessionFlowHelpers(deps) {
     resolveSession,
     getProjectConfig,
     loadHandoff,
-    enrichWithToolSuggestions
+    enrichWithToolSuggestions,
+    listThreads
   } = deps;
 
   function getPreferences(session) {
     return runtime.normalizePreferences((session && session.preferences) || {}, RUNTIME_CONFIG);
+  }
+
+  function collectRoutingTexts(session) {
+    const latestForensics =
+      session &&
+      session.diagnostics &&
+      session.diagnostics.latest_forensics
+        ? session.diagnostics.latest_forensics
+        : null;
+
+    return runtime.unique([
+      session && session.focus ? session.focus : '',
+      ...((session && session.open_questions) || []),
+      ...((session && session.known_risks) || []),
+      session && session.active_thread && session.active_thread.title ? session.active_thread.title : '',
+      latestForensics && latestForensics.problem ? latestForensics.problem : ''
+    ]).filter(Boolean);
+  }
+
+  function hasPattern(texts, patterns) {
+    return texts.some(text =>
+      patterns.some(pattern => String(text).toLowerCase().includes(String(pattern).toLowerCase()))
+    );
+  }
+
+  function resolveActiveThread(session) {
+    const stored = session && session.active_thread ? session.active_thread : null;
+    if (stored && stored.name) {
+      return stored;
+    }
+
+    const threads = listThreads ? listThreads() : { threads: [] };
+    const openThread = (threads.threads || []).find(item => item.status !== 'RESOLVED');
+    return openThread
+      ? {
+          name: openThread.name,
+          title: openThread.title,
+          status: openThread.status,
+          path: openThread.path,
+          updated_at: openThread.updated_at
+        }
+      : null;
   }
 
   function shouldSuggestPlan(resolved) {
@@ -45,6 +146,8 @@ function createSessionFlowHelpers(deps) {
     const hasWideReviewSurface =
       (resolved.effective.review_agents || []).length > 2 ||
       (resolved.effective.review_axes || []).length > 6;
+    const texts = collectRoutingTexts(session);
+    const hasReviewSignal = hasPattern(texts, REVIEW_PATTERNS);
 
     if (mode === 'always') {
       return true;
@@ -53,7 +156,35 @@ function createSessionFlowHelpers(deps) {
       return false;
     }
 
-    return isComplexRuntime && hasWideReviewSurface;
+    return (isComplexRuntime && hasWideReviewSurface) || (hasReviewSignal && (isComplexRuntime || hasWideReviewSurface));
+  }
+
+  function shouldSuggestForensics(resolved) {
+    const session = resolved.session;
+    const texts = collectRoutingTexts(session);
+    const latestForensics =
+      session.diagnostics && session.diagnostics.latest_forensics
+        ? session.diagnostics.latest_forensics
+        : null;
+    const hasForensicsSignal = hasPattern(texts, FORENSICS_PATTERNS);
+
+    if ((session.last_command || '').startsWith('forensics')) {
+      return false;
+    }
+
+    if (latestForensics && latestForensics.highest_severity === 'high' && session.active_thread && session.active_thread.name) {
+      return true;
+    }
+
+    return hasForensicsSignal;
+  }
+
+  function shouldSuggestScanTool(resolved) {
+    const session = resolved.session;
+    const texts = collectRoutingTexts(session);
+    const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
+
+    return hasPattern(texts, HARDWARE_TOOL_PATTERNS) || suggestedTools.length > 0;
   }
 
   function buildReviewContext() {
@@ -129,10 +260,28 @@ function createSessionFlowHelpers(deps) {
       knownRisks.length > 0 ||
       Boolean(handoff);
 
-    if (openQuestions.length > 0) {
+    if (shouldSuggestForensics(resolved)) {
+      return {
+        command: 'forensics',
+        reason: '当前上下文带有漂移、恢复失败或重复失败信号，先做一次取证收敛问题空间'
+      };
+    }
+
+    if (openQuestions.length > 0 && !shouldSuggestScanTool(resolved)) {
       return {
         command: 'debug',
         reason: `存在未决问题，先围绕 "${openQuestions[0]}" 收敛根因`
+      };
+    }
+
+    if (shouldSuggestScanTool(resolved)) {
+      const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
+      const firstTool = suggestedTools[0];
+      return {
+        command: 'scan',
+        reason: firstTool
+          ? `当前更像硬件/公式/工具定位问题，先 scan 并评估 ${firstTool.name}`
+          : '当前更像硬件真值、寄存器、引脚或公式定位问题，先 scan 再决定是否进入 tool'
       };
     }
 
@@ -232,7 +381,7 @@ function createSessionFlowHelpers(deps) {
 
     if (handoff) {
       score += 2;
-      reasons.push('已存在 pause handoff，可像 GSD 一样清空后直接 resume');
+      reasons.push('已存在 pause handoff，可直接清空后 resume');
     }
 
     let level = 'stable';
@@ -264,6 +413,28 @@ function createSessionFlowHelpers(deps) {
     };
   }
 
+  function getToolRecommendationScore(item) {
+    const status = item && item.status ? item.status : '';
+    if (status === 'ready') return 0;
+    if (status === 'route-required') return 1;
+    if (status === 'adapter-required') return 2;
+    return 9;
+  }
+
+  function selectPrimaryToolRecommendation(toolRecommendations) {
+    const items = Array.isArray(toolRecommendations) ? toolRecommendations.slice() : [];
+    if (items.length === 0) {
+      return null;
+    }
+
+    return items
+      .map((item, index) => ({ item, index }))
+      .sort((left, right) => {
+        return getToolRecommendationScore(left.item) - getToolRecommendationScore(right.item) ||
+          left.index - right.index;
+      })[0].item;
+  }
+
   function suggestFlow(resolved) {
     const session = resolved.session;
     const preferences = getPreferences(session);
@@ -293,6 +464,14 @@ function createSessionFlowHelpers(deps) {
     const openQuestions = session.open_questions || [];
     const knownRisks = session.known_risks || [];
     const lastFiles = session.last_files || [];
+    const openThread = resolveActiveThread(session);
+    const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
+    const toolRecommendations = (resolved.effective && resolved.effective.tool_recommendations) || [];
+    const primaryToolRecommendation = selectPrimaryToolRecommendation(toolRecommendations);
+    const latestForensics =
+      session.diagnostics && session.diagnostics.latest_forensics
+        ? session.diagnostics.latest_forensics
+        : null;
     const suggestedFlow = handoff && handoff.suggested_flow
       ? handoff.suggested_flow
       : suggestFlow(resolved);
@@ -302,9 +481,21 @@ function createSessionFlowHelpers(deps) {
     return {
       suggested_flow: suggestedFlow,
       next,
+      primary_tool_recommendation: primaryToolRecommendation,
       next_actions: runtime.unique([
         handoff && handoff.next_action ? `按 handoff 恢复: ${handoff.next_action}` : '',
         ...(handoff ? handoff.human_actions_pending.map(action => `需要人工动作: ${action}`) : []),
+        openThread ? `优先恢复 thread ${openThread.name}: ${openThread.title}` : '',
+        latestForensics && latestForensics.report_file
+          ? `最近一次 forensics: ${latestForensics.report_file} (${latestForensics.highest_severity || 'info'})`
+          : '',
+        ...suggestedTools.slice(0, 2).map(tool => `可优先评估工具: ${tool.name} (${tool.status})`),
+        primaryToolRecommendation
+          ? `首选工具草案: ${primaryToolRecommendation.cli_draft}`
+          : '',
+        primaryToolRecommendation && (primaryToolRecommendation.missing_inputs || []).length > 0
+          ? `工具待补参数: ${primaryToolRecommendation.missing_inputs.join(', ')}`
+          : '',
         focus ? `先围绕 focus "${focus}" 继续` : '',
         lastFiles[0] ? `先重读 ${lastFiles[0]}` : '',
         openQuestions[0] ? `优先确认问题: ${openQuestions[0]}` : '',
@@ -356,11 +547,14 @@ function createSessionFlowHelpers(deps) {
             last_files: handoff.last_files
           }
         : null,
+      thread: resolveActiveThread(resolved.session),
+      diagnostics: resolved.session.diagnostics || { latest_forensics: {} },
       carry_over: {
         last_files: resolved.session.last_files || [],
         open_questions: resolved.session.open_questions || [],
         known_risks: resolved.session.known_risks || []
       },
+      tool_recommendation: guidance.primary_tool_recommendation,
       context_hygiene: contextHygiene,
       next_actions: guidance.next_actions
     }, resolved);
@@ -394,11 +588,14 @@ function createSessionFlowHelpers(deps) {
             timestamp: handoff.timestamp
           }
         : null,
+      thread: resolveActiveThread(resolved.session),
+      diagnostics: resolved.session.diagnostics || { latest_forensics: {} },
       next: {
         command: guidance.next.command,
         reason: guidance.next.reason,
         skill: `$emb-${guidance.next.command}`,
-        cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [guidance.next.command])
+        cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [guidance.next.command]),
+        tool_recommendation: guidance.primary_tool_recommendation
       },
       context_hygiene: contextHygiene,
       next_actions: guidance.next_actions
@@ -470,6 +667,8 @@ function createSessionFlowHelpers(deps) {
     buildStatus,
     buildReviewContext,
     shouldSuggestArchReview,
+    shouldSuggestForensics,
+    shouldSuggestScanTool,
     buildArchReviewContext,
     buildNextCommand,
     buildContextHygiene,

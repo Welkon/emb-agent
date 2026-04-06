@@ -54,6 +54,12 @@ function createSessionReportCommandHelpers(deps) {
     const next = buildNextContext();
     const resume = buildResumeContext();
     const threadStats = countThreadStats();
+    const toolRecommendation =
+      next &&
+      next.next &&
+      next.next.tool_recommendation
+        ? next.next.tool_recommendation
+        : null;
 
     return {
       generated_at: new Date().toISOString(),
@@ -75,6 +81,7 @@ function createSessionReportCommandHelpers(deps) {
           }
         : null,
       thread_stats: threadStats,
+      tool_recommendation: toolRecommendation,
       next,
       resume
     };
@@ -127,6 +134,14 @@ function createSessionReportCommandHelpers(deps) {
     lines.push('');
     lines.push(`- next_command: ${report.next.next.command}`);
     lines.push(`- next_reason: ${report.next.next.reason}`);
+    lines.push(`- tool_recommendation: ${report.tool_recommendation ? report.tool_recommendation.tool : '(none)'}`);
+    lines.push(`- tool_status: ${report.tool_recommendation ? report.tool_recommendation.status : '(none)'}`);
+    lines.push(`- tool_cli: ${report.tool_recommendation ? report.tool_recommendation.cli_draft : '(none)'}`);
+    lines.push(
+      `- tool_missing_inputs: ${report.tool_recommendation && (report.tool_recommendation.missing_inputs || []).length > 0
+        ? report.tool_recommendation.missing_inputs.join(', ')
+        : '(none)'}`
+    );
     lines.push(`- suggested_flow: ${report.next.current.suggested_flow || ''}`);
     lines.push(`- context_hygiene: ${report.next.context_hygiene.level}`);
     lines.push('');
@@ -154,6 +169,7 @@ function createSessionReportCommandHelpers(deps) {
       report_file: path.relative(process.cwd(), filePath),
       summary: report.summary,
       next: report.next.next,
+      tool_recommendation: report.tool_recommendation,
       thread_stats: report.thread_stats,
       handoff_present: Boolean(report.handoff)
     };

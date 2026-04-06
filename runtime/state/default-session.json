@@ -13,5 +13,21 @@
   "focus": "",
   "last_files": [],
   "open_questions": [],
-  "known_risks": []
+  "known_risks": [],
+  "active_thread": {
+    "name": "",
+    "title": "",
+    "status": "",
+    "path": "",
+    "updated_at": ""
+  },
+  "diagnostics": {
+    "latest_forensics": {
+      "report_file": "",
+      "problem": "",
+      "linked_thread": "",
+      "highest_severity": "",
+      "generated_at": ""
+    }
+  }
 }

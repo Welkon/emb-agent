@@ -158,6 +158,44 @@ function createThreadCommandHelpers(deps) {
     return replaceThreadSection(content, 'Context', next);
   }
 
+  function appendThreadReference(content, reference) {
+    if (!reference) {
+      return content;
+    }
+
+    const current = readThreadSection(content, 'References');
+    const lines = current
+      .split(/\r?\n/)
+      .map(item => item.trim())
+      .filter(Boolean);
+    const entry = `- ${reference}`;
+
+    if (lines.includes(entry)) {
+      return content;
+    }
+
+    return replaceThreadSection(content, 'References', [...lines, entry].join('\n'));
+  }
+
+  function prependThreadNextStep(content, step) {
+    if (!step) {
+      return content;
+    }
+
+    const current = readThreadSection(content, 'Next Steps');
+    const lines = current
+      .split(/\r?\n/)
+      .map(item => item.trim())
+      .filter(Boolean);
+    const entry = `- ${step}`;
+
+    if (lines.includes(entry)) {
+      return content;
+    }
+
+    return replaceThreadSection(content, 'Next Steps', [entry, ...lines].join('\n'));
+  }
+
   function readThreadSection(content, sectionName) {
     const match = String(content || '').match(
       new RegExp(`## ${escapeRegExp(sectionName)}\\s+([\\s\\S]*?)(?=\\n## |$)`, 'm')
@@ -205,6 +243,13 @@ function createThreadCommandHelpers(deps) {
     updateSession(current => {
       current.last_command = 'thread resume';
       current.focus = thread.title;
+      current.active_thread = {
+        name: thread.name,
+        title: thread.title,
+        status: 'IN_PROGRESS',
+        path: thread.path,
+        updated_at: new Date().toISOString()
+      };
     });
 
     return {
@@ -226,6 +271,15 @@ function createThreadCommandHelpers(deps) {
 
     updateSession(current => {
       current.last_command = 'thread resolve';
+      if (current.active_thread && current.active_thread.name === name) {
+        current.active_thread = {
+          name: '',
+          title: '',
+          status: '',
+          path: '',
+          updated_at: ''
+        };
+      }
     });
 
     thread = readThread(name);
@@ -234,6 +288,44 @@ function createThreadCommandHelpers(deps) {
       resolved: true,
       thread
     };
+  }
+
+  function upsertForensicsThread(summary, details) {
+    const title = String(summary || '').trim();
+    if (!title) {
+      throw new Error('Missing forensics thread summary');
+    }
+
+    const session = loadSession();
+    const existing = listThreads().threads.find(
+      item => item.status !== 'RESOLVED' && item.title === title
+    );
+    const name = existing ? existing.name : buildUniqueThreadSlug(title);
+
+    if (!existing) {
+      writeThread(name, buildThreadFile(title, session));
+    }
+
+    let thread = readThread(name);
+    let content = thread.content;
+    const noteParts = [
+      'forensics linked',
+      details && details.report_file ? `report=${details.report_file}` : '',
+      details && details.problem ? `problem=${details.problem}` : '',
+      details && details.findings_count ? `findings=${details.findings_count}` : '',
+      details && details.highest_severity ? `highest=${details.highest_severity}` : ''
+    ].filter(Boolean);
+
+    content = replaceThreadSection(content, 'Status', 'IN_PROGRESS');
+    content = appendThreadContext(content, noteParts.join(' | '));
+    content = appendThreadReference(content, details && details.report_file ? details.report_file : '');
+    content = prependThreadNextStep(
+      content,
+      details && details.primary_recommendation ? `先处理取证建议：${details.primary_recommendation}` : ''
+    );
+    writeThread(name, content);
+
+    return readThread(name);
   }
 
   function handleThreadCommands(cmd, subcmd, rest) {
@@ -271,6 +363,7 @@ function createThreadCommandHelpers(deps) {
     getThreadsDir,
     listThreads,
     readThread,
+    upsertForensicsThread,
     handleThreadCommands
   };
 }

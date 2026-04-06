@@ -5,8 +5,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const childProcess = require('child_process');
 const runtimeHostHelpers = require('../lib/runtime-host.cjs');
+const updateCheckHelpers = require('../lib/update-check.cjs');
 
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const HOOK_VERSION = '{{EMB_VERSION}}';
@@ -21,7 +22,7 @@ function getStateRoot() {
 }
 
 function getUpdateCachePath() {
-  return path.join(getStateRoot(), 'cache', 'update-check.json');
+  return updateCheckHelpers.getUpdateCachePath(path, getStateRoot());
 }
 
 function ensureDir(dirPath) {
@@ -29,139 +30,47 @@ function ensureDir(dirPath) {
 }
 
 function readInstalledVersion() {
-  const runtimeRoot = getRuntimeRoot();
-  const versionFile = path.join(runtimeRoot, 'VERSION');
-  if (fs.existsSync(versionFile)) {
-    return fs.readFileSync(versionFile, 'utf8').trim();
-  }
-
-  const packageFile = path.resolve(runtimeRoot, '..', 'package.json');
-  if (fs.existsSync(packageFile)) {
-    try {
-      return JSON.parse(fs.readFileSync(packageFile, 'utf8')).version || '';
-    } catch {
-      return '';
-    }
-  }
-
-  return '';
+  return updateCheckHelpers.readInstalledVersion(fs, path, getRuntimeRoot());
 }
 
 function parseVersion(version) {
-  return String(version || '')
-    .trim()
-    .split('.')
-    .map(part => Number(part.replace(/[^0-9].*$/, '')) || 0);
+  return updateCheckHelpers.parseVersion(version);
 }
 
 function compareVersions(left, right) {
-  const leftParts = parseVersion(left);
-  const rightParts = parseVersion(right);
-  const size = Math.max(leftParts.length, rightParts.length);
-
-  for (let index = 0; index < size; index += 1) {
-    const leftValue = leftParts[index] || 0;
-    const rightValue = rightParts[index] || 0;
-    if (leftValue > rightValue) return 1;
-    if (leftValue < rightValue) return -1;
-  }
-
-  return 0;
+  return updateCheckHelpers.compareVersions(left, right);
 }
 
 function readUpdateCache() {
-  const cachePath = getUpdateCachePath();
-  if (!fs.existsSync(cachePath)) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-  } catch {
-    return null;
-  }
+  return updateCheckHelpers.readUpdateCache(fs, getUpdateCachePath());
 }
 
 function isUpdateCacheStale(cache) {
-  if (!cache || !cache.checked_at) {
-    return true;
-  }
-  return Date.now() - Number(cache.checked_at) > UPDATE_CHECK_INTERVAL_MS;
+  return updateCheckHelpers.isUpdateCacheStale(cache, UPDATE_CHECK_INTERVAL_MS);
 }
 
 function triggerUpdateCheck(cache) {
-  if (process.env.EMB_AGENT_SKIP_UPDATE_CHECK === '1') {
-    return;
-  }
-  if (!isUpdateCacheStale(cache)) {
-    return;
-  }
-
   const cachePath = getUpdateCachePath();
   ensureDir(path.dirname(cachePath));
   const installed = readInstalledVersion();
 
-  const child = spawn(
-    process.execPath,
-    [
-      '-e',
-      `
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
-
-const cachePath = ${JSON.stringify(cachePath)};
-const installed = ${JSON.stringify(installed)};
-
-let latest = '';
-let error = '';
-try {
-  latest = execSync('npm view emb-agent version', {
-    encoding: 'utf8',
-    timeout: 10000,
-    windowsHide: true
-  }).trim();
-} catch (err) {
-  error = err && err.message ? err.message : 'npm view failed';
-}
-
-const result = {
-  installed,
-  latest,
-  checked_at: Date.now(),
-  update_available: Boolean(installed && latest && installed !== latest),
-  status: latest ? 'ok' : 'unavailable',
-  error
-};
-
-fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-fs.writeFileSync(cachePath, JSON.stringify(result, null, 2) + '\\n', 'utf8');
-      `
-    ],
-    {
-      stdio: 'ignore',
-      windowsHide: true,
-      detached: true
-    }
-  );
-
-  child.unref();
+  return updateCheckHelpers.triggerUpdateCheck({
+    fs,
+    path,
+    childProcess,
+    process,
+    cachePath,
+    installed,
+    packageName: 'emb-agent',
+    intervalMs: UPDATE_CHECK_INTERVAL_MS,
+    cache
+  });
 }
 
 function detectStaleInstall() {
   const installed = readInstalledVersion();
   const hookVersion = process.env.EMB_AGENT_FORCE_HOOK_VERSION || HOOK_VERSION;
-  if (!installed || !hookVersion || hookVersion.includes('{')) {
-    return null;
-  }
-  if (compareVersions(hookVersion, installed) === 0) {
-    return null;
-  }
-
-  return {
-    installed,
-    hook: hookVersion
-  };
+  return updateCheckHelpers.detectStaleInstall(installed, hookVersion);
 }
 
 function buildUpdateLines() {

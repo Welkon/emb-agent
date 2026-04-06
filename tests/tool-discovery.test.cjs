@@ -67,6 +67,45 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
       ].join('\n'),
       'utf8'
     );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc', 'pwm-calc'],
+        clock_sources: ['sysclk'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        family: 'vendor-family',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['timer-calc', 'pwm-calc'],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-timer16',
+            params: {
+              chip: 'vendor-chip',
+              peripheral: 'tm16',
+              default_clock_source: 'sysclk',
+              prescalers: [1, 4, 16, 64],
+              interrupt_bits: [8, 9, 10]
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
 
     const status = cli.buildStatus();
     const next = cli.buildNextContext();
@@ -81,9 +120,27 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
         { name: 'pwm-calc', status: 'adapter-required' }
       ]
     );
+    assert.equal(status.tool_recommendations.length, 2);
+    assert.equal(status.tool_recommendations[0].tool, 'timer-calc');
+    assert.equal(status.tool_recommendations[0].status, 'ready');
+    assert.equal(status.tool_recommendations[0].binding_source, 'device');
+    assert.match(status.tool_recommendations[0].cli_draft, /tool run timer-calc/);
+    assert.match(status.tool_recommendations[0].cli_draft, /--family vendor-family/);
+    assert.match(status.tool_recommendations[0].cli_draft, /--device vendor-chip/);
+    assert.match(status.tool_recommendations[0].cli_draft, /--timer tm16/);
+    assert.deepEqual(status.tool_recommendations[0].missing_inputs, ['clock-hz', 'target-us or target-hz']);
+    assert.equal(status.tool_recommendations[1].status, 'adapter-required');
+    assert.match(status.tool_recommendations[1].cli_draft, /tool run pwm-calc/);
+    assert.deepEqual(status.tool_recommendations[1].missing_inputs, ['clock-hz', 'target-hz']);
     assert.equal(next.hardware.chip_profile.family, 'vendor-family');
     assert.equal(next.suggested_tools.length, 2);
+    assert.equal(next.tool_recommendations.length, 2);
+    assert.equal(next.next.tool_recommendation.tool, 'timer-calc');
+    assert.match(next.next.tool_recommendation.cli_draft, /tool run timer-calc/);
+    assert.ok(next.next_actions.some(item => item.includes('首选工具草案:')));
+    assert.ok(next.next_actions.some(item => item.includes('工具待补参数:')));
     assert.equal(plan.suggested_tools[0].chip, 'vendor-chip');
+    assert.equal(plan.tool_recommendations[0].binding_algorithm, 'vendor-timer16');
     assert.equal(plan.suggested_tools[0].implementation, 'external-adapter');
     assert.equal(plan.suggested_tools[1].implementation, 'abstract-only');
   } finally {

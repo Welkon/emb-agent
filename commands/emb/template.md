@@ -1,6 +1,6 @@
 ---
 name: emb-template
-description: List, preview, and fill emb-agent templates like the GSD template subsystem, but for embedded workflows.
+description: List, preview, and fill emb-agent templates for embedded workflows.
 ---
 
 # emb-template

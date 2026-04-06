@@ -39,8 +39,10 @@ npx emb-agent --global
 `emb-agent` 的目标不是把流程做重，而是把复杂性放进系统里，把用户看到的入口尽量压轻：
 
 - 用 `init` 接入现有工程
+- 用 `health` 先判断当前状态是不是可信
 - 用 `hw.yaml / req.yaml` 沉淀真值
 - 用 `next` 给出下一步
+- 对公式 / 外设 / 引脚 / 寄存器问题，优先让 `next -> dispatch/orchestrate` 给出 `tool_recommendation / tool_execution`
 - 用 `pause / resume` 解决 clear context
 - 用 adapter 承载芯片差异和计算工具
 
@@ -128,10 +130,17 @@ npx emb-agent --global
 - 有新版本可更新
 - hooks / runtime / skills 版本不一致，属于 `stale install`
 
+也可以显式查看：
+
+```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs update
+```
+
 ### 第一次进入项目
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs init
+node <runtime-home>/emb-agent/bin/emb-agent.cjs health
 node <runtime-home>/emb-agent/bin/emb-agent.cjs next
 ```
 
@@ -217,6 +226,12 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU.pdf -
 6. `review`
 
 `next` 会根据当前项目状态、真值层、最近文件、风险和问题，给出最合适的下一步。
+
+如果当前问题更像定时器 / PWM / ADC / 比较器 / 引脚 / 寄存器公式定位，`next` 不只会建议 `scan`，还会带首选 `tool_recommendation`。这时再看 `dispatch next` 或 `orchestrate`：
+
+- 若 `tool_execution.status = ready`，先跑 `tool run ...`
+- 再继续 `scan` 的阅读、整合和落盘
+- 不要跳过工具草案直接空谈公式
 
 如果你只记一条链路，就记这个：
 
@@ -333,7 +348,9 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 - `pause/show/clear`
 - `resume`
 - `dispatch show/next`
+- `dispatch next` 会在 scan 命中可执行工具时额外给出 `tool_execution`
 - `schedule show`
+- `orchestrate` 会在需要时切到 `inline-tool-first`
 - `template list/show/fill`
 - `focus`
 - `last-files`

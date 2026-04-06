@@ -14,6 +14,7 @@ function createManagerCommandHelpers(deps) {
     loadHandoff,
     buildNextContext,
     buildResumeContext,
+    buildToolExecutionFromNext,
     buildSettingsView,
     listThreads
   } = deps;
@@ -39,6 +40,7 @@ function createManagerCommandHelpers(deps) {
 
   function buildRecommendedActions(next, resume, threads, handoff) {
     const actions = [];
+    const toolExecution = buildToolExecutionFromNext(next);
 
     if (handoff) {
       actions.push({
@@ -48,13 +50,6 @@ function createManagerCommandHelpers(deps) {
         reason: handoff.next_action || '存在未消费 handoff'
       });
     }
-
-    actions.push({
-      type: 'next',
-      label: `执行 ${next.next.command}`,
-      cli: next.next.cli,
-      reason: next.next.reason
-    });
 
     if ((threads.threads || []).length > 0) {
       const openThread = (threads.threads || []).find(item => item.status !== 'RESOLVED');
@@ -66,6 +61,31 @@ function createManagerCommandHelpers(deps) {
           reason: `${openThread.title}`
         });
       }
+    }
+
+    if (toolExecution && toolExecution.recommended) {
+      actions.push({
+        type: 'tool',
+        label: `执行 ${toolExecution.tool}`,
+        cli: toolExecution.cli,
+        reason: toolExecution.reason || '已生成首条工具执行草案'
+      });
+    }
+
+    actions.push({
+      type: 'next',
+      label: `执行 ${next.next.command}`,
+      cli: next.next.cli,
+      reason: next.next.reason
+    });
+
+    if (toolExecution && !toolExecution.recommended) {
+      actions.push({
+        type: 'tool',
+        label: `执行 ${toolExecution.tool}`,
+        cli: toolExecution.cli,
+        reason: toolExecution.reason || '已生成首条工具执行草案'
+      });
     }
 
     if ((resume.carry_over && resume.carry_over.open_questions || []).length > 0) {
@@ -97,6 +117,7 @@ function createManagerCommandHelpers(deps) {
     const reportsRoot = path.join(getProjectExtDir(), 'reports');
     const latestForensics = listLatestReports(path.join(reportsRoot, 'forensics'));
     const latestSessions = listLatestReports(path.join(reportsRoot, 'sessions'));
+    const toolExecution = buildToolExecutionFromNext(next);
 
     return {
       mode: 'manager-lite',
@@ -108,9 +129,17 @@ function createManagerCommandHelpers(deps) {
         last_command: session.last_command || '',
         last_files: session.last_files || [],
         open_questions: session.open_questions || [],
-        known_risks: session.known_risks || []
+        known_risks: session.known_risks || [],
+        active_thread: session.active_thread || {
+          name: '',
+          title: '',
+          status: '',
+          path: '',
+          updated_at: ''
+        }
       },
       next: next.next,
+      tool_execution: toolExecution,
       context_hygiene: next.context_hygiene,
       handoff: resume.handoff,
       settings: settings.settings,
@@ -124,6 +153,7 @@ function createManagerCommandHelpers(deps) {
         forensics: latestForensics,
         sessions: latestSessions
       },
+      diagnostics: session.diagnostics || { latest_forensics: {} },
       recommended_actions: buildRecommendedActions(next, resume, threads, handoff)
     };
   }

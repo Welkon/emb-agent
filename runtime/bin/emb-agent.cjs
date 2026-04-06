@@ -19,6 +19,7 @@ const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const scheduler = require(path.join(ROOT, 'lib', 'scheduler.cjs'));
 const toolCatalog = require(path.join(ROOT, 'lib', 'tool-catalog.cjs'));
 const toolRuntime = require(path.join(ROOT, 'lib', 'tool-runtime.cjs'));
+const toolSuggestionHelpers = require(path.join(ROOT, 'lib', 'tool-suggestions.cjs'));
 const chipCatalog = require(path.join(ROOT, 'lib', 'chip-catalog.cjs'));
 const adapterSources = require(path.join(ROOT, 'lib', 'adapter-sources.cjs'));
 const noteReportHelpers = require(path.join(ROOT, 'lib', 'note-reports.cjs'));
@@ -36,6 +37,7 @@ const projectStateStoreHelpers = require(path.join(ROOT, 'lib', 'project-state-s
 const settingsCommandHelpers = require(path.join(ROOT, 'lib', 'settings-command.cjs'));
 const sessionReportCommandHelpers = require(path.join(ROOT, 'lib', 'session-report-command.cjs'));
 const managerCommandHelpers = require(path.join(ROOT, 'lib', 'manager-command.cjs'));
+const healthUpdateCommandHelpers = require(path.join(ROOT, 'lib', 'health-update-command.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 
@@ -224,61 +226,17 @@ function findChipProfileByModel(model) {
   }
 }
 
-function buildSuggestedTools(chipProfile) {
-  if (!chipProfile || !Array.isArray(chipProfile.related_tools) || chipProfile.related_tools.length === 0) {
-    return [];
-  }
-
-  return runtime.unique(chipProfile.related_tools)
-    .map(toolName => {
-      try {
-        const spec = toolCatalog.loadToolSpec(ROOT, toolName);
-        const adapter = toolRuntime.loadExternalAdapter(ROOT, toolName);
-
-        return {
-          name: spec.name,
-          description: spec.description,
-          tool_kind: spec.kind,
-          chip: chipProfile.name,
-          family: chipProfile.family,
-          discovered_from: 'chip-profile',
-          status: adapter ? 'ready' : 'adapter-required',
-          implementation: adapter ? 'external-adapter' : 'abstract-only',
-          adapter_path: adapter ? adapter.file_path : ''
-        };
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
-}
-
-function enrichWithToolSuggestions(output, resolved) {
-  const hardwareIdentity = resolved && resolved.hardware ? resolved.hardware.identity : null;
-  const chipProfile = resolved && resolved.hardware ? resolved.hardware.chip_profile : null;
-  const suggestedTools = (resolved && resolved.effective && resolved.effective.suggested_tools) || [];
-
-  if (!suggestedTools.length && !chipProfile && !(hardwareIdentity && hardwareIdentity.model)) {
-    return output;
-  }
-
-  return {
-    ...output,
-    hardware: {
-      mcu: hardwareIdentity || { file: 'emb-agent/hw.yaml', vendor: '', model: '', package: '' },
-      chip_profile: chipProfile
-        ? {
-            name: chipProfile.name,
-            vendor: chipProfile.vendor,
-            family: chipProfile.family,
-            package: chipProfile.package,
-            runtime_model: chipProfile.runtime_model
-          }
-        : null
-    },
-    suggested_tools: suggestedTools
-  };
-}
+const {
+  buildSuggestedTools,
+  buildToolRecommendations,
+  buildToolExecutionFromNext,
+  enrichWithToolSuggestions
+} = toolSuggestionHelpers.createToolSuggestionHelpers({
+  ROOT,
+  runtime,
+  toolCatalog,
+  toolRuntime
+});
 
 function resolveSession() {
   const session = loadSession();
@@ -288,6 +246,7 @@ function resolveSession() {
   const hardwareIdentity = loadHardwareIdentity(session.project_root || resolveProjectRoot());
   const chipProfile = findChipProfileByModel(hardwareIdentity.model);
   const suggestedTools = buildSuggestedTools(chipProfile);
+  const toolRecommendations = buildToolRecommendations(chipProfile, suggestedTools);
   const agents = runtime.unique([
     ...(profile.default_agents || []),
     ...packs.flatMap(pack => pack.default_agents || [])
@@ -322,6 +281,7 @@ function resolveSession() {
       guardrails: profile.guardrails || [],
       resource_priority: profile.resource_priority || [],
       suggested_tools: suggestedTools,
+      tool_recommendations: toolRecommendations,
       arch_review_triggers:
         projectConfig &&
         projectConfig.arch_review &&
@@ -334,6 +294,21 @@ function resolveSession() {
     }
   };
 }
+
+const {
+  listThreads,
+  upsertForensicsThread,
+  handleThreadCommands
+} = threadCommandHelpers.createThreadCommandHelpers({
+  fs,
+  path,
+  runtime,
+  resolveProjectRoot,
+  getProjectExtDir,
+  loadSession,
+  updateSession,
+  requireRestText
+});
 
 const {
   getPreferences,
@@ -357,7 +332,8 @@ const {
   resolveSession,
   getProjectConfig,
   loadHandoff,
-  enrichWithToolSuggestions
+  enrichWithToolSuggestions,
+  listThreads
 });
 
 const {
@@ -393,20 +369,6 @@ const {
 });
 
 const {
-  listThreads,
-  handleThreadCommands
-} = threadCommandHelpers.createThreadCommandHelpers({
-  fs,
-  path,
-  runtime,
-  resolveProjectRoot,
-  getProjectExtDir,
-  loadSession,
-  updateSession,
-  requireRestText
-});
-
-const {
   handleForensicsCommands
 } = forensicsCommandHelpers.createForensicsCommandHelpers({
   fs,
@@ -419,6 +381,7 @@ const {
   loadHandoff,
   resolveSession,
   buildContextHygiene,
+  upsertForensicsThread,
   updateSession
 });
 
@@ -460,8 +423,31 @@ const {
   loadHandoff,
   buildNextContext,
   buildResumeContext,
+  buildToolExecutionFromNext,
   buildSettingsView,
   listThreads
+});
+
+const {
+  buildHealthReport,
+  buildUpdateView,
+  handleHealthUpdateCommands
+} = healthUpdateCommandHelpers.createHealthUpdateCommandHelpers({
+  fs,
+  path,
+  process,
+  childProcess,
+  runtime,
+  RUNTIME_CONFIG,
+  resolveProjectRoot,
+  getProjectExtDir,
+  getProjectStatePaths,
+  getProjectConfig,
+  normalizeSession,
+  loadProfile,
+  loadPack,
+  findChipProfileByModel,
+  updateSession
 });
 
 const {
@@ -487,6 +473,7 @@ const {
   getProjectConfig,
   requireRestText,
   requirePreferenceKey,
+  handleHealthUpdateCommands,
   handleThreadCommands,
   handleForensicsCommands,
   handleSettingsCommands,
@@ -615,6 +602,7 @@ const {
   buildGuidance,
   getPreferences,
   enrichWithToolSuggestions,
+  buildToolExecutionFromNext,
   buildNextContext,
   buildActionOutput,
   buildArchReviewDispatchContext
@@ -704,6 +692,8 @@ module.exports = {
   buildNextContext,
   buildPausePayload,
   buildStatus,
+  buildHealthReport,
+  buildUpdateView,
   buildProjectShow,
   buildAdapterStatus,
   setProjectConfigValue,
