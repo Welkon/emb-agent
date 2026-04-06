@@ -152,3 +152,145 @@ test('tool runtime loads project external adapter when available', () => {
     process.chdir(currentCwd);
   }
 });
+
+test('generated draft timer route can execute first-pass timer search', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-tool-runtime-generated-'));
+  const currentCwd = process.cwd();
+  const repoRoot = path.resolve(__dirname, '..');
+  const runtimeRoot = path.join(repoRoot, 'runtime');
+  const cli = require(path.join(runtimeRoot, 'bin', 'emb-agent.cjs'));
+  const originalWrite = process.stdout.write;
+
+  try {
+    process.chdir(tempProject);
+    process.stdout.write = () => true;
+    cli.main(['init']);
+    process.stdout.write = originalWrite;
+
+    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'registry.json'),
+      JSON.stringify({
+        specs: [],
+        families: ['vendor-family'],
+        devices: ['vendor-device']
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc'],
+        clock_sources: ['sysclk'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'vendor-device.json'),
+      JSON.stringify({
+        name: 'vendor-device',
+        family: 'vendor-family',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['timer-calc'],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-device-timer-calc',
+            draft: true,
+            params: {
+              default_timer: 'Timer16',
+              default_clock_source: 'sysclk',
+              prescalers: [1, 4, 16, 64],
+              interrupt_bits: [8, 9, 10]
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs'),
+      [
+        "'use strict';",
+        '',
+        "const path = require('path');",
+        '',
+        "const TOOL_NAME = 'timer-calc';",
+        "const DEFAULT_FAMILY = 'vendor-family';",
+        "const DEFAULT_DEVICE = 'vendor-device';",
+        '',
+        'function loadBinding(context, options) {',
+        "  const toolCatalog = require(path.join(context.rootDir, 'lib', 'tool-catalog.cjs'));",
+        "  const requestedDevice = String(options.device || DEFAULT_DEVICE || '').trim();",
+        "  const requestedFamily = String(options.family || DEFAULT_FAMILY || '').trim();",
+        '  let deviceProfile = null;',
+        '  let familyProfile = null;',
+        '  if (requestedDevice) {',
+        '    try { deviceProfile = toolCatalog.loadDevice(context.rootDir, requestedDevice); } catch { deviceProfile = null; }',
+        '  }',
+        '  const resolvedFamily = (deviceProfile && deviceProfile.family) || requestedFamily;',
+        '  if (resolvedFamily) {',
+        '    try { familyProfile = toolCatalog.loadFamily(context.rootDir, resolvedFamily); } catch { familyProfile = null; }',
+        '  }',
+        "  const deviceBinding = deviceProfile && deviceProfile.bindings ? deviceProfile.bindings[TOOL_NAME] : null;",
+        "  const familyBinding = familyProfile && familyProfile.bindings ? familyProfile.bindings[TOOL_NAME] : null;",
+        '  return {',
+        '    device: requestedDevice,',
+        '    family: resolvedFamily,',
+        '    source: deviceBinding ? "device" : familyBinding ? "family" : "none",',
+        '    binding: deviceBinding || familyBinding || null',
+        '  };',
+        '}',
+        '',
+        'module.exports = {',
+        '  draft: true,',
+        '  runTool(context) {',
+        "    const generated = require(path.join(context.rootDir, 'lib', 'generated-tool-adapters.cjs'));",
+        '    const options = context.parseLongOptions(context.tokens || []);',
+        '    const resolved = loadBinding(context, options);',
+        '    return generated.runGeneratedTimerAdapter(context, resolved, options);',
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    const result = toolRuntime.runTool(runtimeRoot, 'timer-calc', [
+      '--family',
+      'vendor-family',
+      '--device',
+      'vendor-device',
+      '--clock-source',
+      'sysclk',
+      '--clock-hz',
+      '16000000',
+      '--target-us',
+      '64'
+    ]);
+
+    assert.equal(result.status, 'ok');
+    assert.equal(result.implementation, 'external-adapter-draft');
+    assert.equal(result.timer.name, 'Timer16');
+    assert.equal(result.best_candidate.actual_us, 64);
+    assert.equal(result.best_candidate.error_us, 0);
+    assert.ok(Array.isArray(result.candidates));
+    assert.ok(result.candidates.length > 0);
+    assert.ok(
+      result.candidates.some(item => item.prescaler === 4 && item.interrupt_bit === 8 && item.actual_us === 64)
+    );
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});

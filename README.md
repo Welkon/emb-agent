@@ -301,7 +301,7 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs tool list
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
 ```
 
-`adapter derive` 现在除了 profile 和 registry，还会自动起草 `adapters/routes/*.cjs`。这些 route 默认是 `draft-adapter`，用于承接 binding 草稿，不会伪造真实计算结果。
+`adapter derive` 现在除了 profile 和 registry，还会自动起草 `adapters/routes/*.cjs`。这些 route 默认是 `draft-adapter`，用于承接 binding 草稿；其中 `timer-calc` 已带首版通用搜索实现，参数够时可以直接跑出候选结果。
 
 ---
 
