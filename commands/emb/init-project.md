@@ -1,6 +1,12 @@
 ---
 name: emb-init-project
 description: Initialize emb-agent for the current project with one command, creating lightweight project context without a project-local runtime.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - Glob
+  - SlashCommand
 ---
 
 # emb-init-project

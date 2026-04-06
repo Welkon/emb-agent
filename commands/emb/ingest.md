@@ -1,6 +1,14 @@
 ---
 name: emb-ingest
 description: Persist newly learned hardware or requirement facts into project truth files without introducing a heavy knowledge system.
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-ingest

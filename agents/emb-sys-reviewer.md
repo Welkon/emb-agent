@@ -1,6 +1,8 @@
 ---
 name: emb-sys-reviewer
 description: 对复杂 RTOS 和 IoT 固件做结构性检查的系统审查 agent。
+tools: Read, Bash, Grep, Glob
+color: purple
 ---
 
 # emb-sys-reviewer

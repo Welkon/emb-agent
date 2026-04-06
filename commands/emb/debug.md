@@ -1,6 +1,14 @@
 ---
 name: emb-debug
 description: Run the minimal debug loop for unknown embedded issues using installed emb-agent state for the current repository.
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-debug

@@ -1,6 +1,12 @@
 ---
 name: emb-orchestrate
 description: Build one lightweight orchestration contract that chooses the next embedded action and tells the runtime when to inline or spawn agents.
+allowed-tools:
+  - Read
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-orchestrate

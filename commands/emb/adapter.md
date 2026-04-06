@@ -1,6 +1,14 @@
 ---
 name: emb-adapter
 description: Manage external adapter sources, sync vendor/device/chip extensions, and inspect adapter status.
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-adapter

@@ -1,6 +1,11 @@
 ---
 name: emb-settings
 description: Manage lightweight emb-agent settings through one unified facade instead of toggling profile, packs, and prefs separately.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - SlashCommand
 ---
 
 # emb-settings

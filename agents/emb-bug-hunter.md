@@ -1,6 +1,8 @@
 ---
 name: emb-bug-hunter
 description: 处理嵌入式问题根因不明场景的最小闭环调试 agent。
+tools: Read, Write, Edit, Bash, Grep, Glob
+color: orange
 ---
 
 # emb-bug-hunter

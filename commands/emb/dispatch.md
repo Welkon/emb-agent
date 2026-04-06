@@ -1,6 +1,12 @@
 ---
 name: emb-dispatch
 description: Build a lightweight sub-agent dispatch contract for the current embedded action or next step.
+allowed-tools:
+  - Read
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-dispatch

@@ -1,6 +1,10 @@
 ---
 name: emb-attach
 description: Legacy alias of emb-init-project for existing embedded projects.
+allowed-tools:
+  - Read
+  - Bash
+  - SlashCommand
 ---
 
 # emb-attach

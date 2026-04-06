@@ -1,6 +1,12 @@
 ---
 name: emb-next
 description: Route to the next logical lightweight embedded action using current emb-agent session and handoff state.
+allowed-tools:
+  - Read
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-next

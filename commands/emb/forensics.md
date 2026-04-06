@@ -1,6 +1,13 @@
 ---
 name: emb-forensics
 description: Diagnose why the current emb-agent workflow is stuck, noisy, or drifting using lightweight evidence from session, handoff, files, and git state.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-forensics

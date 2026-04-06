@@ -1,6 +1,14 @@
 ---
 name: emb-do
 description: Execute direct lightweight embedded changes using installed emb-agent runtime context.
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-do

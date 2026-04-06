@@ -1,6 +1,11 @@
 ---
 name: emb-pause
 description: Create a lightweight handoff so emb-agent can resume the current repository after context is cleared.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - SlashCommand
 ---
 
 # emb-pause

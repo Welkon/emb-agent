@@ -1,6 +1,13 @@
 ---
 name: emb-session-report
 description: Write a lightweight session report so the current embedded work state can be audited and resumed later.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-session-report

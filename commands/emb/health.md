@@ -1,6 +1,12 @@
 ---
 name: emb-health
 description: Check whether the current emb-agent project state is structurally healthy before continuing work.
+allowed-tools:
+  - Read
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-health

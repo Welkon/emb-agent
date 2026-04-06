@@ -1,6 +1,13 @@
 ---
 name: emb-plan
 description: Produce a lightweight micro-plan for complex embedded work using installed emb-agent runtime context.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-plan

@@ -1,6 +1,13 @@
 ---
 name: emb-review
 description: Run structural embedded review using installed emb-agent review context.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-review

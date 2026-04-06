@@ -1,6 +1,12 @@
 ---
 name: emb-resume
 description: Resume the current embedded workflow from emb-agent state keyed by the current repository path.
+allowed-tools:
+  - Read
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-resume

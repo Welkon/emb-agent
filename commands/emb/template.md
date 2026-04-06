@@ -1,6 +1,14 @@
 ---
 name: emb-template
 description: List, preview, and fill emb-agent templates for embedded workflows.
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-template

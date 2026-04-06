@@ -1,6 +1,8 @@
 ---
 name: emb-arch-reviewer
 description: 面向芯片选型、系统架构预审和失败预演的重型嵌入式架构审查 agent。
+tools: Read, Bash, Grep, Glob
+color: red
 ---
 
 # emb-arch-reviewer

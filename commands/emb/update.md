@@ -1,6 +1,12 @@
 ---
 name: emb-update
 description: Show emb-agent runtime update status, stale-install drift, and cached latest-version info.
+allowed-tools:
+  - Read
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-update

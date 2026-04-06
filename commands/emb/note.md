@@ -1,6 +1,14 @@
 ---
 name: emb-note
 description: Record long-lived embedded conclusions into fixed project notes using installed emb-agent context.
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-note

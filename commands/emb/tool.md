@@ -1,6 +1,14 @@
 ---
 name: emb-tool
 description: Inspect the lightweight emb-agent tool subsystem for abstract calculator specs and optional external adapters.
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-tool

@@ -1,6 +1,12 @@
 ---
 name: emb-manager
 description: Show a lightweight single-terminal control view for the current embedded work, combining next action, settings, threads, handoff, and latest reports.
+allowed-tools:
+  - Read
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-manager

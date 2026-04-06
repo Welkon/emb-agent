@@ -1,6 +1,13 @@
 ---
 name: emb-scan
 description: Run the lightweight embedded scan flow using installed emb-agent context for the current repository.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-scan

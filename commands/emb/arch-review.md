@@ -1,6 +1,12 @@
 ---
 name: emb-arch-review
 description: Run a heavyweight embedded architecture and chip-selection review without turning the default workflow heavy.
+allowed-tools:
+  - Read
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-arch-review

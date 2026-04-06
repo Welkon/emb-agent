@@ -1,6 +1,13 @@
 ---
 name: emb-thread
 description: Manage lightweight long-lived embedded threads that should survive context clears without turning into heavy planning.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - Grep
+  - Glob
+  - SlashCommand
 ---
 
 # emb-thread

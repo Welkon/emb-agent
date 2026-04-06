@@ -1,6 +1,8 @@
 ---
 name: emb-hw-scout
 description: 查硬件真值、时序、寄存器和板级约束的嵌入式硬件侦察 agent。
+tools: Read, Bash, Grep, Glob
+color: cyan
 ---
 
 # emb-hw-scout

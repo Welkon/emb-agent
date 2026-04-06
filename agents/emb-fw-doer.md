@@ -1,6 +1,8 @@
 ---
 name: emb-fw-doer
 description: 直接执行嵌入式代码或文档改动的固件执行 agent。
+tools: Read, Write, Edit, Bash, Grep, Glob
+color: yellow
 ---
 
 # emb-fw-doer

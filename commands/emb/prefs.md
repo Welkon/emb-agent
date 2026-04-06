@@ -1,6 +1,11 @@
 ---
 name: emb-prefs
 description: Show or update lightweight embedded preferences that steer emb-agent routing.
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+  - SlashCommand
 ---
 
 # emb-prefs

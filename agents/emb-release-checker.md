@@ -1,6 +1,8 @@
 ---
 name: emb-release-checker
 description: 检查联网或可升级嵌入式系统发布闭环的发布审查 agent。
+tools: Read, Bash, Grep, Glob
+color: green
 ---
 
 # emb-release-checker
