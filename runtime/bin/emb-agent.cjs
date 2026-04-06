@@ -5,10 +5,13 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
+const SOURCE_ROOT = path.resolve(ROOT, '..');
+const runtimeHost = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
+const SOURCE_LAYOUT = runtimeHost.isSourceRuntimeLayout(ROOT);
 const PROFILES_DIR = path.join(ROOT, 'profiles');
 const PACKS_DIR = path.join(ROOT, 'packs');
-const AGENTS_DIR = path.join(ROOT, 'agents');
-const COMMANDS_DIR = path.join(ROOT, 'commands');
+const AGENTS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'agents') : path.join(ROOT, 'agents');
+const COMMANDS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'commands', 'emb') : path.join(ROOT, 'commands');
 const TEMPLATES_DIR = path.join(ROOT, 'templates');
 const templateCli = require(path.join(ROOT, 'scripts', 'template.cjs'));
 const adapterDeriveCli = require(path.join(ROOT, 'scripts', 'adapter-derive.cjs'));

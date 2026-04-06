@@ -1,6 +1,10 @@
 ---
 name: emb-help
 description: Show the installed emb-agent command set and when to use each command.
+allowed-tools:
+  - Read
+  - Bash
+  - SlashCommand
 ---
 
 # emb-help
@@ -29,6 +33,8 @@ Output the emb-agent command reference below and nothing else.
 
 ## Basic
 
+- `$emb-help`
+  用于查看当前安装的 emb-agent 官方命令入口、推荐使用顺序和 runtime 参考命令。
 - `$emb-init-project`
   唯一官方初始化入口。用于初始化当前项目的 emb-agent 轻量上下文、项目默认配置、真值层和固定文档骨架，不创建项目私有 runtime。
 - `$emb-next`
@@ -106,11 +112,6 @@ Output the emb-agent command reference below and nothing else.
   用于查看工具子系统骨架，包括抽象 calculator spec 与可选扩展接口。
 - `$emb-session-report`
   用于把当前工作状态压成轻量 session report，方便审计和下次快速恢复。
-
-## Compatibility
-
-- `$emb-attach`
-  兼容旧用法的别名。保留实现，但不再作为官方流程入口。
 
 ## Runtime Layout
 

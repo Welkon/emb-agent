@@ -85,7 +85,9 @@ function createStateCommandHelpers(deps) {
     }
 
     if (cmd === 'commands' && subcmd === 'list') {
-      return runtime.listNames(COMMANDS_DIR, '.md');
+      return runtime
+        .listNames(COMMANDS_DIR, '.md')
+        .filter(name => name !== 'attach');
     }
 
     if (cmd === 'commands' && subcmd === 'show') {
