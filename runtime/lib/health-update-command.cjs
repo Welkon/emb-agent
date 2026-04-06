@@ -342,7 +342,7 @@ function createHealthUpdateCommandHelpers(deps) {
         )
       );
     } else {
-      const chipProfile = findChipProfileByModel(hardwareIdentity.model);
+      const chipProfile = findChipProfileByModel(hardwareIdentity.model, hardwareIdentity.package);
       checks.push(
         createCheck(
           'hardware_identity',

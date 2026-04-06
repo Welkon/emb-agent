@@ -303,6 +303,8 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAM
 
 `adapter derive` 现在除了 profile 和 registry，还会自动起草 `adapters/routes/*.cjs`。这些 route 默认是 `draft-adapter`，用于承接 binding 草稿；其中 `timer-calc` 已带首版通用搜索实现，参数够时可以直接跑出候选结果。
 
+自动发现链路现在会优先用 `hw.yaml` 的 `model/package` 去回退匹配 derive 生成的 chip slug，例如 `SC8F072 + SOP8 -> sc8f072sop8`，不需要你手工把 slug 写回 truth。
+
 ---
 
 ## 命令

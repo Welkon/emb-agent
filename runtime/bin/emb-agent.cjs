@@ -208,25 +208,52 @@ function loadHardwareIdentity(projectRoot) {
   };
 }
 
-function findChipProfileByModel(model) {
-  const normalized = String(model || '').trim();
-  if (!normalized) {
+function normalizeHardwareSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function compactHardwareSlug(value) {
+  return normalizeHardwareSlug(value).replace(/-/g, '');
+}
+
+function findChipProfileByModel(model, packageName) {
+  const normalizedModel = String(model || '').trim();
+  const normalizedPackage = String(packageName || '').trim();
+  if (!normalizedModel) {
     return null;
   }
 
-  try {
-    return chipCatalog.loadChip(ROOT, normalized);
-  } catch {
-    const matched = chipCatalog
-      .listChips(ROOT)
-      .find(item => item.name.toLowerCase() === normalized.toLowerCase());
+  const candidates = runtime.unique([
+    normalizedModel,
+    compactHardwareSlug(normalizedModel),
+    normalizedPackage ? compactHardwareSlug(`${normalizedModel}${normalizedPackage}`) : '',
+    normalizedPackage ? compactHardwareSlug(`${normalizedModel}-${normalizedPackage}`) : ''
+  ].filter(Boolean));
 
-    if (!matched) {
-      return null;
+  for (const candidate of candidates) {
+    try {
+      return chipCatalog.loadChip(ROOT, candidate);
+    } catch {
+      // keep trying fallback candidates
     }
-
-    return chipCatalog.loadChip(ROOT, matched.name);
   }
+
+  const matched = chipCatalog
+    .listChips(ROOT)
+    .find(item => {
+      const itemName = String(item.name || '').toLowerCase();
+      return candidates.some(candidate => itemName === String(candidate).toLowerCase());
+    });
+
+  if (!matched) {
+    return null;
+  }
+
+  return chipCatalog.loadChip(ROOT, matched.name);
 }
 
 const {
@@ -247,7 +274,7 @@ function resolveSession() {
   const packs = session.active_packs.map(loadPack);
   const projectConfig = getProjectConfig();
   const hardwareIdentity = loadHardwareIdentity(session.project_root || resolveProjectRoot());
-  const chipProfile = findChipProfileByModel(hardwareIdentity.model);
+  const chipProfile = findChipProfileByModel(hardwareIdentity.model, hardwareIdentity.package);
   const suggestedTools = buildSuggestedTools(chipProfile);
   const toolRecommendations = buildToolRecommendations(chipProfile, suggestedTools);
   const agents = runtime.unique([

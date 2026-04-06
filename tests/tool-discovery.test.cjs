@@ -270,3 +270,158 @@ test('draft adapter route is discoverable but not treated as ready', () => {
     process.stdout.write = originalWrite;
   }
 });
+
+test('hardware model plus package can resolve derived chip slug automatically', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-chip-slug-discovery-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const projectEmbDir = path.join(tempProject, 'emb-agent');
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'hw.yaml'),
+      [
+        'mcu:',
+        '  vendor: "SCMCU"',
+        '  model: "SC8F072"',
+        '  package: "SOP8"',
+        '',
+        'board:',
+        '  name: ""',
+        '  target: ""',
+        '',
+        'sources:',
+        '  datasheet:',
+        '    - ""',
+        '  schematic:',
+        '    - ""',
+        '  code:',
+        '    - ""',
+        '',
+        'signals:',
+        '  - name: "PWM_OUT"',
+        '    pin: "PA3"',
+        '    direction: "output"',
+        '    default_state: "low"',
+        '    confirmed: false',
+        '    note: ""',
+        '',
+        'peripherals:',
+        '  - name: "Timer16"',
+        '    usage: "time base"',
+        '',
+        'truths:',
+        '  - "Board uses SC8F072 SOP8"',
+        '',
+        'constraints:',
+        '  - ""',
+        '',
+        'unknowns:',
+        '  - ""',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({
+        devices: ['sc8f072sop8']
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'sc8f072sop8.json'),
+      JSON.stringify({
+        name: 'sc8f072sop8',
+        vendor: 'SCMCU',
+        family: 'scmcu-sc8f072',
+        sample: false,
+        series: 'SC8F072',
+        package: 'SOP8',
+        architecture: '8-bit',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        summary: {},
+        capabilities: ['Timer16'],
+        docs: [],
+        related_tools: ['timer-calc'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'registry.json'),
+      JSON.stringify({
+        specs: [],
+        families: ['scmcu-sc8f072'],
+        devices: ['sc8f072']
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'scmcu-sc8f072.json'),
+      JSON.stringify({
+        name: 'scmcu-sc8f072',
+        vendor: 'SCMCU',
+        series: 'SC8F072',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc'],
+        clock_sources: ['sysclk'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'sc8f072.json'),
+      JSON.stringify({
+        name: 'sc8f072',
+        family: 'scmcu-sc8f072',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['timer-calc'],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'sc8f072-timer-calc',
+            draft: true,
+            params: {
+              default_timer: 'Timer16',
+              prescalers: [1, 4, 16],
+              interrupt_bits: [8, 9, 10]
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    const status = cli.buildStatus();
+    const health = cli.buildHealthReport();
+
+    assert.equal(status.hardware.mcu.model, 'SC8F072');
+    assert.equal(status.hardware.mcu.package, 'SOP8');
+    assert.equal(status.hardware.chip_profile.name, 'sc8f072sop8');
+    assert.equal(status.hardware.chip_profile.family, 'scmcu-sc8f072');
+    assert.equal(status.suggested_tools[0].tool_kind, 'calculator');
+    assert.equal(
+      health.checks.find(item => item.key === 'hardware_identity').status,
+      'pass'
+    );
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
