@@ -295,6 +295,8 @@ core 提供的是：
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --from-project
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --from-doc <doc-id> --vendor Padauk
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool list
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
 ```

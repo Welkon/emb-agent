@@ -35,12 +35,17 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync <name>
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync <name> --to runtime
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync --all
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --from-project
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --from-doc <doc-id> --vendor Padauk
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source remove <name>
 ```
 
 ## Notes
 
 - `adapter derive` 只生成 family/device/chip 草稿与 registry，不会伪造 bindings 参数
+- `adapter derive --from-project` 会从 `emb-agent/hw.yaml` 推断 vendor/model/package、family/device/chip slug、tool 建议和 `pin_count`
+- `adapter derive --from-doc <doc-id>` 会从 `emb-agent/cache/docs/<doc-id>/facts.hardware.json` 推断能力，并把文档元数据挂到 chip profile `docs`
+- 自动推断可被手工参数覆盖，例如先 `--from-doc` 再补 `--vendor` 或直接指定 `--chip`
 - `chip profile` 现在建议把封装与引脚知识放进 `packages` / `pins`
 - `adapter source add` 只写入 `emb-agent/project.json`，不会自动同步
 - `adapter sync` 才会真正把 adapter/profile 文件铺到项目或 runtime

@@ -83,7 +83,7 @@ function createCliEntryHelpers(deps) {
       '  adapter source remove <name>',
       '  adapter sync <name> [--to project|runtime] [--force]',
       '  adapter sync --all [--to project|runtime] [--force]',
-      '  adapter derive --family <slug> --device <slug> --chip <slug> [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',
+      '  adapter derive [--from-project] [--from-doc <doc-id>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',
       '  tool list',
       '  tool show <name>',
       '  tool run <name> [--family <name>] [--device <name>] [tool options]',

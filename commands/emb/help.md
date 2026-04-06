@@ -231,6 +231,8 @@ Output the emb-agent command reference below and nothing else.
 - `<runtime-cli> adapter sync <name>`
 - `<runtime-cli> adapter sync --all`
 - `<runtime-cli> adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8`
+- `<runtime-cli> adapter derive --from-project`
+- `<runtime-cli> adapter derive --from-doc <doc-id> --vendor Padauk`
 - `<runtime-cli> adapter source remove <name>`
 - `<runtime-cli> tool list`
 - `<runtime-cli> tool show timer-calc`

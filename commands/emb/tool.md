@@ -53,6 +53,8 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs chip show CHIP_NAME
 
 ```bash
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --from-project
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --from-doc <doc-id> --vendor Padauk
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-extension-registry --field FAMILY_NAME=vendor-family --field DEVICE_NAME=vendor-device --force
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-adapter --field TOOL_NAME=timer-calc --field ADAPTER_NAME=vendor-timer-adapter --force
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-family --field SLUG=vendor-family --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force
@@ -62,4 +64,5 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs template fill chip-profile --field SLU
 ```
 
 - 优先用 `adapter derive` 起草 profile
+- 已有 `hw.yaml` 或已 ingest 文档时，优先用 `--from-project` / `--from-doc`，不要重复手填 slug
 - 只有要精细定制模板内容时，再回退到 `template fill`
