@@ -416,8 +416,9 @@ function createSessionFlowHelpers(deps) {
   function getToolRecommendationScore(item) {
     const status = item && item.status ? item.status : '';
     if (status === 'ready') return 0;
-    if (status === 'route-required') return 1;
-    if (status === 'adapter-required') return 2;
+    if (status === 'draft-adapter') return 1;
+    if (status === 'route-required') return 2;
+    if (status === 'adapter-required') return 3;
     return 9;
   }
 

@@ -148,3 +148,125 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
     process.stdout.write = originalWrite;
   }
 });
+
+test('draft adapter route is discoverable but not treated as ready', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-tool-draft-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const projectEmbDir = path.join(tempProject, 'emb-agent');
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init', '--mcu', 'vendor-chip']);
+
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'adapters', 'routes'), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({
+        devices: ['vendor-chip']
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'qfp32',
+        architecture: '8-bit',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        summary: {},
+        capabilities: ['timer16'],
+        docs: [],
+        related_tools: ['timer-calc'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc'],
+        clock_sources: ['sysclk'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        family: 'vendor-family',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['timer-calc'],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-timer16',
+            draft: true,
+            params: {
+              default_timer: 'tm16'
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'adapters', 'routes', 'timer-calc.cjs'),
+      [
+        "'use strict';",
+        '',
+        'module.exports = {',
+        '  draft: true,',
+        '  runTool(context) {',
+        '    const options = context.parseLongOptions(context.tokens || []);',
+        '    return {',
+        "      tool: context.toolName,",
+        "      status: 'draft-adapter',",
+        "      implementation: 'external-adapter-draft',",
+        '      inputs: { options }',
+        '    };',
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    const status = cli.buildStatus();
+    const next = cli.buildNextContext();
+
+    assert.deepEqual(
+      status.suggested_tools.map(item => ({ name: item.name, status: item.status, implementation: item.implementation })),
+      [
+        { name: 'timer-calc', status: 'draft-adapter', implementation: 'external-adapter-draft' }
+      ]
+    );
+    assert.equal(status.tool_recommendations[0].status, 'draft-adapter');
+    assert.equal(status.tool_recommendations[0].binding_source, 'device');
+    assert.equal(next.next.tool_recommendation.status, 'draft-adapter');
+    assert.equal(next.next.tool_recommendation.tool, 'timer-calc');
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});

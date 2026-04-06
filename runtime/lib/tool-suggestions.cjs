@@ -314,6 +314,12 @@ function createToolSuggestionHelpers(deps) {
   }
 
   function buildRecommendationReason(tool, bindingInfo) {
+    if (tool.status === 'draft-adapter') {
+      return bindingInfo.binding
+        ? '已生成 draft route 和 profile binding，但 route 里还没有真实公式实现。'
+        : '已生成 draft route，但当前还没有对应 binding；先补 device/family bindings。';
+    }
+
     if (tool.status !== 'ready') {
       return bindingInfo.binding
         ? '已识别到 profile binding，但当前 runtime 还没有外部 adapter，先安装或同步 adapter 仓库。'
@@ -328,6 +334,10 @@ function createToolSuggestionHelpers(deps) {
   }
 
   function buildRecommendationStatus(tool, bindingInfo) {
+    if (tool.status === 'draft-adapter') {
+      return 'draft-adapter';
+    }
+
     if (tool.status !== 'ready') {
       return 'adapter-required';
     }
@@ -373,6 +383,12 @@ function createToolSuggestionHelpers(deps) {
         try {
           const spec = toolCatalog.loadToolSpec(ROOT, toolName);
           const adapter = toolRuntime.loadExternalAdapter(ROOT, toolName);
+          const adapterStatus = adapter
+            ? (adapter.adapter && adapter.adapter.draft === true ? 'draft-adapter' : 'ready')
+            : 'adapter-required';
+          const implementation = adapter
+            ? (adapter.adapter && adapter.adapter.draft === true ? 'external-adapter-draft' : 'external-adapter')
+            : 'abstract-only';
 
           return {
             name: spec.name,
@@ -381,8 +397,8 @@ function createToolSuggestionHelpers(deps) {
             chip: chipProfile.name,
             family: chipProfile.family,
             discovered_from: 'chip-profile',
-            status: adapter ? 'ready' : 'adapter-required',
-            implementation: adapter ? 'external-adapter' : 'abstract-only',
+            status: adapterStatus,
+            implementation,
             adapter_path: adapter ? adapter.file_path : ''
           };
         } catch {

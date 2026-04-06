@@ -78,17 +78,30 @@ test('adapter derive creates extension registries and profile skeletons', () => 
     const chipProfile = JSON.parse(
       fs.readFileSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'sc8f072ad608sp.json'), 'utf8')
     );
+    const timerRoutePath = path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs');
     const loadedChip = cli.chipCatalog.loadChip(runtimeRoot, 'sc8f072ad608sp');
+    const routeResult = cli.toolRuntime.runTool(runtimeRoot, 'timer-calc', [
+      '--family',
+      'scmcu-sc8f0xx',
+      '--device',
+      'sc8f072',
+      '--target-us',
+      '560'
+    ]);
 
     assert.deepEqual(toolRegistry.families, ['scmcu-sc8f0xx']);
     assert.deepEqual(toolRegistry.devices, ['sc8f072']);
     assert.deepEqual(chipRegistry.devices, ['sc8f072ad608sp']);
+    assert.equal(fs.existsSync(timerRoutePath), true);
     assert.deepEqual(deviceProfile.supported_tools, ['timer-calc', 'pwm-calc']);
     assert.deepEqual(Object.keys(deviceProfile.bindings), ['timer-calc', 'pwm-calc']);
     assert.equal(deviceProfile.bindings['timer-calc'].draft, true);
     assert.equal(deviceProfile.bindings['timer-calc'].algorithm, 'sc8f072-timer-calc');
     assert.equal(deviceProfile.bindings['pwm-calc'].draft, true);
     assert.equal(deviceProfile.bindings['pwm-calc'].algorithm, 'sc8f072-pwm-calc');
+    assert.equal(routeResult.status, 'draft-adapter');
+    assert.equal(routeResult.implementation, 'external-adapter-draft');
+    assert.equal(routeResult.binding.algorithm, 'sc8f072-timer-calc');
     assert.equal(chipProfile.packages[0].name, 'sop8');
     assert.equal(chipProfile.packages[0].pin_count, 8);
     assert.deepEqual(chipProfile.pins, {});

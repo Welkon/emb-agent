@@ -653,6 +653,127 @@ function writeJsonUnlessExists(filePath, value, force) {
   return 'written';
 }
 
+function writeTextUnlessExists(filePath, value, force) {
+  if (fs.existsSync(filePath) && !force) {
+    return 'skipped';
+  }
+  fs.writeFileSync(filePath, value, 'utf8');
+  return 'written';
+}
+
+function buildDraftAdapterRoute(toolName, config) {
+  const adapterName = `${config.device}-${slugSuffix(toolName)}-draft`;
+
+  return [
+    "'use strict';",
+    '',
+    "const path = require('path');",
+    '',
+    `const TOOL_NAME = ${JSON.stringify(toolName)};`,
+    `const DEFAULT_FAMILY = ${JSON.stringify(config.family)};`,
+    `const DEFAULT_DEVICE = ${JSON.stringify(config.device)};`,
+    `const ADAPTER_NAME = ${JSON.stringify(adapterName)};`,
+    '',
+    'function loadBinding(context, options) {',
+    "  const toolCatalog = require(path.join(context.rootDir, 'lib', 'tool-catalog.cjs'));",
+    "  const requestedDevice = String(options.device || DEFAULT_DEVICE || '').trim();",
+    "  const requestedFamily = String(options.family || DEFAULT_FAMILY || '').trim();",
+    '  let deviceProfile = null;',
+    '  let familyProfile = null;',
+    '',
+    '  if (requestedDevice) {',
+    '    try {',
+    '      deviceProfile = toolCatalog.loadDevice(context.rootDir, requestedDevice);',
+    '    } catch {',
+    '      deviceProfile = null;',
+    '    }',
+    '  }',
+    '',
+    '  const resolvedFamily = (deviceProfile && deviceProfile.family) || requestedFamily;',
+    '  if (resolvedFamily) {',
+    '    try {',
+    '      familyProfile = toolCatalog.loadFamily(context.rootDir, resolvedFamily);',
+    '    } catch {',
+    '      familyProfile = null;',
+    '    }',
+    '  }',
+    '',
+    "  const deviceBinding = deviceProfile && deviceProfile.bindings ? deviceProfile.bindings[TOOL_NAME] : null;",
+    "  const familyBinding = familyProfile && familyProfile.bindings ? familyProfile.bindings[TOOL_NAME] : null;",
+    '',
+    '  return {',
+    '    device: requestedDevice,',
+    '    family: resolvedFamily,',
+    '    source: deviceBinding ? "device" : familyBinding ? "family" : "none",',
+    '    binding: deviceBinding || familyBinding || null',
+    '  };',
+    '}',
+    '',
+    'module.exports = {',
+    '  draft: true,',
+    '  runTool(context) {',
+    '    const options = context.parseLongOptions(context.tokens || []);',
+    '    const resolved = loadBinding(context, options);',
+    '',
+    '    if (!resolved.binding) {',
+    '      return {',
+    '        tool: context.toolName,',
+    "        status: 'route-required',",
+    "        implementation: 'external-adapter-draft',",
+    '        adapter_name: ADAPTER_NAME,',
+    '        adapter_path: context.adapterPath,',
+    '        inputs: {',
+    '          raw_tokens: context.tokens || [],',
+    '          options',
+    '        },',
+    '        resolution: {',
+    "          family: resolved.family || '',",
+    "          device: resolved.device || ''",
+    '        },',
+    '        notes: [',
+    "          '这是 adapter derive 生成的 draft route，当前只负责把 binding 草稿暴露给 agent/开发者。',",
+    "          '尚未找到对应 binding；请先补 device/family bindings，或重新执行 adapter derive。'",
+    '        ]',
+    '      };',
+    '    }',
+    '',
+    '    return {',
+    '      tool: context.toolName,',
+    "      status: 'draft-adapter',",
+    "      implementation: 'external-adapter-draft',",
+    '      adapter_name: ADAPTER_NAME,',
+    '      adapter_path: context.adapterPath,',
+    '      inputs: {',
+    '        raw_tokens: context.tokens || [],',
+    '        options',
+    '      },',
+    '      resolution: {',
+    "        family: resolved.family || '',",
+    "        device: resolved.device || '',",
+    '        binding_source: resolved.source',
+    '      },',
+    '      binding: {',
+    "        algorithm: resolved.binding.algorithm || '',",
+    '        draft: resolved.binding.draft !== false,',
+    '        params: resolved.binding.params || {},',
+    '        evidence: resolved.binding.evidence || [],',
+    '        notes: resolved.binding.notes || []',
+    '      },',
+    '      next_steps: [',
+    "        '根据 binding.algorithm 和 params 在这个 route 中补真实公式实现。',",
+    "        '实现完成后可去掉 module.exports.draft 标记，让调度把该工具视为 ready。'",
+    '      ],',
+    '      notes: [',
+    "        '这是 adapter derive 生成的 draft route，不执行真实计算。',",
+    "        '它的作用是为 agent 提供稳定入口和 binding 草稿，而不是伪造结果。'",
+    '      ]',
+    '    };',
+    '  }',
+    '};',
+    ''
+  ].join('\n');
+}
+
 function buildFamilyProfile(config) {
   return {
     name: config.family,
@@ -762,10 +883,12 @@ function deriveProfiles(argv, options) {
   const embRoot = targetEmbRoot(runtimeRoot, projectRoot, config.target);
   const toolExtRoot = path.join(embRoot, 'extensions', 'tools');
   const chipExtRoot = path.join(embRoot, 'extensions', 'chips');
+  const adapterRoutesRoot = path.join(embRoot, 'adapters', 'routes');
 
   runtime.ensureDir(path.join(toolExtRoot, 'families'));
   runtime.ensureDir(path.join(toolExtRoot, 'devices'));
   runtime.ensureDir(path.join(chipExtRoot, 'profiles'));
+  runtime.ensureDir(adapterRoutesRoot);
 
   const toolRegistryPath = path.join(toolExtRoot, 'registry.json');
   const chipRegistryPath = path.join(chipExtRoot, 'registry.json');
@@ -799,6 +922,14 @@ function deriveProfiles(argv, options) {
       status: writeJsonUnlessExists(chipPath, buildChipProfile(config), config.force)
     }
   ];
+
+  config.tools.forEach(toolName => {
+    const adapterPath = path.join(adapterRoutesRoot, `${toolName}.cjs`);
+    writes.push({
+      path: adapterPath,
+      status: writeTextUnlessExists(adapterPath, buildDraftAdapterRoute(toolName, config), config.force)
+    });
+  });
 
   return {
     status: 'ok',
