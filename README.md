@@ -166,6 +166,12 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs next
 node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
 ```
 
+如果输出里已经带 `apply_ready`，直接执行它，再回到：
+
+```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs next
+```
+
 如果后续继续当前项目：
 
 ```bash
@@ -227,6 +233,8 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest hardware --truth "PWM 输
 node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest requirements --constraint "上电 100ms 内完成初始化" --source docs/req.md
 node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU.pdf --provider mineru --kind datasheet --to hardware
 ```
+
+如果 `ingest doc` 返回了 `apply_ready`，优先直接执行这条 CLI，再继续 `next`。
 
 ---
 

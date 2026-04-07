@@ -907,7 +907,7 @@ function buildChipPackages(config) {
       name: config.package,
       pin_count: config.pinCount || undefined,
       pins: [],
-      notes: ['TODO: 按封装补充物理引脚表。']
+      notes: ['建议后续按封装补充物理引脚表。']
     }
   ];
 }

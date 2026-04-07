@@ -30,6 +30,7 @@ Output the emb-agent command reference below and nothing else.
   若 `tool_execution.status = ready`，优先执行对应 `tool run ...`
 - 需要导入手册/PDF：
   `<runtime-cli> ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
+  若返回里已有 `apply_ready`，直接执行它，再回到 `<runtime-cli> next`
 
 ## Basic
 
@@ -268,6 +269,8 @@ Output the emb-agent command reference below and nothing else.
 - `emb-agent` 是通用嵌入式 agent，不绑定任何厂商、MCU 家族或固定 datasheet
 - `tool run` 若没有外部 adapter，会返回 `adapter-required`
 - `adapter bootstrap` 是首次接入的最短路径；会先确保 source 存在，再按当前项目匹配同步
+- `ingest doc --to hardware|requirements` 若已经能安全落盘，会直接返回 `apply_ready`
+- `health.quickstart` 现在可能是 `adapter bootstrap -> next`，也可能是 `ingest apply doc -> next`
 - `adapter source add` 只登记 source；`adapter sync` 才会真正同步文件
 - `adapter sync` 默认优先按 `hw.yaml` 自动匹配当前芯片，只同步命中的 adapter/profile 子集；匹配不到时再回退全量同步
 - adapter source 支持本地 path 仓库，也支持 git 仓库
