@@ -233,10 +233,14 @@ Output the emb-agent command reference below and nothing else.
 - `<runtime-cli> adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8`
 - `<runtime-cli> adapter derive --from-project`
 - `<runtime-cli> adapter derive --from-doc <doc-id> --vendor Padauk`
+- `<runtime-cli> adapter generate --from-project --output-root /abs/path/to/emb-agent-adapters`
 - `<runtime-cli> adapter source remove <name>`
 - `<runtime-cli> tool list`
 - `<runtime-cli> tool show timer-calc`
 - `<runtime-cli> tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560`
+- `<runtime-cli> tool run pwm-calc --family FAMILY_NAME --device DEVICE_NAME --output-pin PA3 --clock-source SYSCLK --clock-hz 16000000 --target-hz 3906.25 --target-duty 50`
+- `<runtime-cli> tool run adc-scale --family FAMILY_NAME --device DEVICE_NAME --channel PA0 --reference-source vdd --resolution 10 --sample-code 512`
+- `<runtime-cli> tool run comparator-threshold --family FAMILY_NAME --device DEVICE_NAME --positive-source PA0 --negative-source vref_ladder --vdd 5 --target-threshold-v 2.5`
 - `<runtime-cli> tool family list`
 - `<runtime-cli> tool family show FAMILY_NAME`
 - `<runtime-cli> tool device list`

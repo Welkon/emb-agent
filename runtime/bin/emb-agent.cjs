@@ -526,6 +526,13 @@ function runAdapterDerive(args) {
   });
 }
 
+function runAdapterGenerate(args) {
+  return adapterDeriveCli.deriveProfiles(args, {
+    runtimeRoot: ROOT,
+    projectRoot: resolveProjectRoot()
+  });
+}
+
 function getTemplateConfig() {
   return runtime.validateTemplateConfig(
     runtime.readJson(path.join(TEMPLATES_DIR, 'config.json'))
@@ -666,6 +673,7 @@ const {
   syncNamedAdapterSource,
   syncAllAdapterSources,
   runAdapterDerive,
+  runAdapterGenerate,
   saveScanReport,
   savePlanReport,
   saveReviewReport,
@@ -732,6 +740,7 @@ module.exports = {
   syncNamedAdapterSource,
   syncAllAdapterSources,
   runAdapterDerive,
+  runAdapterGenerate,
   parseProjectShowArgs,
   parseProjectSetArgs,
   parseAdapterSourceAddArgs,

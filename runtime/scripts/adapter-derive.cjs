@@ -17,7 +17,7 @@ function usage() {
       '    [--from-project] [--from-doc <doc-id>]',
       '    [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>]',
       '    [--pin-count <n>] [--architecture <text>] [--runtime-model <name>]',
-      '    [--target project|runtime] [--project <path>] [--force]'
+      '    [--target project|runtime] [--output-root <path>] [--project <path>] [--force]'
     ].join('\n') + '\n'
   );
 }
@@ -42,6 +42,7 @@ function parseArgs(argv) {
     architecture: '',
     runtimeModel: 'main_loop_plus_isr',
     target: 'project',
+    outputRoot: '',
     projectRoot: '',
     force: false,
     fromProject: false,
@@ -120,6 +121,11 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (token === '--output-root') {
+      result.outputRoot = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
     if (token === '--project') {
       result.projectRoot = argv[index + 1] || '';
       index += 1;
@@ -139,6 +145,7 @@ function parseArgs(argv) {
 
   result.runtimeModel = ensureNonEmpty(result.runtimeModel, '--runtime-model');
   result.target = ensureNonEmpty(result.target || 'project', '--target');
+  result.outputRoot = String(result.outputRoot || '').trim();
 
   if (!result.fromProject && !result.fromDoc) {
     result.family = ensureNonEmpty(result.family, '--family');
@@ -148,8 +155,11 @@ function parseArgs(argv) {
   if (result.fromDoc) {
     result.fromDoc = ensureNonEmpty(result.fromDoc, '--from-doc');
   }
-  if (!['project', 'runtime'].includes(result.target)) {
+  if (!['project', 'runtime'].includes(result.target) && !result.outputRoot) {
     throw new Error('--target must be project or runtime');
+  }
+  if (result.outputRoot) {
+    result.target = 'path';
   }
   if (result.pinCount !== 0 && (!Number.isInteger(result.pinCount) || result.pinCount < 1)) {
     throw new Error('--pin-count must be a positive integer');
@@ -634,6 +644,13 @@ function targetEmbRoot(runtimeRoot, projectRoot, target) {
   return path.join(projectRoot, 'emb-agent');
 }
 
+function resolveEmbOutputRoot(runtimeRoot, projectRoot, config) {
+  if (config.outputRoot) {
+    return path.resolve(projectRoot, config.outputRoot);
+  }
+  return targetEmbRoot(runtimeRoot, projectRoot, config.target);
+}
+
 function ensureRegistryValue(filePath, emptyValue, key, value) {
   const current = runtime.readJson(filePath);
   const next = {
@@ -664,7 +681,20 @@ function writeTextUnlessExists(filePath, value, force) {
 function buildDraftAdapterRoute(toolName, config) {
   const adapterName = `${config.device}-${slugSuffix(toolName)}-draft`;
 
-  if (toolName === 'timer-calc') {
+  if (
+    toolName === 'timer-calc' ||
+    toolName === 'pwm-calc' ||
+    toolName === 'adc-scale' ||
+    toolName === 'comparator-threshold'
+  ) {
+    const generatedHandler = toolName === 'timer-calc'
+      ? 'runGeneratedTimerAdapter'
+      : (
+        toolName === 'pwm-calc'
+          ? 'runGeneratedPwmAdapter'
+          : (toolName === 'adc-scale' ? 'runGeneratedAdcAdapter' : 'runGeneratedComparatorAdapter')
+      );
+
     return [
       "'use strict';",
       '',
@@ -716,7 +746,7 @@ function buildDraftAdapterRoute(toolName, config) {
       "    const generated = require(path.join(context.rootDir, 'lib', 'generated-tool-adapters.cjs'));",
       '    const options = context.parseLongOptions(context.tokens || []);',
       '    const resolved = loadBinding(context, options);',
-      '    return generated.runGeneratedTimerAdapter(context, resolved, options);',
+      `    return generated.${generatedHandler}(context, resolved, options);`,
       '  }',
       '};',
       ''
@@ -939,7 +969,7 @@ function deriveProfiles(argv, options) {
   config.inference_notes = derived.notes.slice();
   config.source_mode = config.fromDoc && config.fromProject ? 'project+doc' : config.fromDoc ? 'doc' : config.fromProject ? 'project' : 'manual';
 
-  const embRoot = targetEmbRoot(runtimeRoot, projectRoot, config.target);
+  const embRoot = resolveEmbOutputRoot(runtimeRoot, projectRoot, config);
   const toolExtRoot = path.join(embRoot, 'extensions', 'tools');
   const chipExtRoot = path.join(embRoot, 'extensions', 'chips');
   const adapterRoutesRoot = path.join(embRoot, 'adapters', 'routes');
@@ -993,6 +1023,7 @@ function deriveProfiles(argv, options) {
   return {
     status: 'ok',
     target: config.target,
+    output_root: config.outputRoot || '',
     emb_root: embRoot,
     family: config.family,
     device: config.device,

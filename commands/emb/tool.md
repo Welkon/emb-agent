@@ -55,6 +55,7 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs chip show CHIP_NAME
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --from-project
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --from-doc <doc-id> --vendor Padauk
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter generate --from-project --output-root /abs/path/to/emb-agent-adapters
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-extension-registry --field FAMILY_NAME=vendor-family --field DEVICE_NAME=vendor-device --force
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-adapter --field TOOL_NAME=timer-calc --field ADAPTER_NAME=vendor-timer-adapter --force
 node ~/.codex/emb-agent/bin/emb-agent.cjs template fill tool-family --field SLUG=vendor-family --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force
@@ -64,8 +65,12 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs template fill chip-profile --field SLU
 ```
 
 - 优先用 `adapter derive` 起草 profile
+- 要往 `emb-agent-adapters` 这类共享仓库直接产出时，用 `adapter generate --output-root <path>`
 - 已有 `hw.yaml` 或已 ingest 文档时，优先用 `--from-project` / `--from-doc`，不要重复手填 slug
 - `adapter derive` 现在会同步起草 `device bindings` 的 draft 骨架，但真实公式和寄存器边界仍要你或 agent 按手册补完
 - `adapter derive` 还会生成对应 tool 的 draft route；在 route 去掉 `draft` 标记并补真实实现前，调度只会把它视为 `draft-adapter`
 - `timer-calc` 的 draft route 已支持首版通用搜索；当 binding 里有 `prescalers` 和 `interrupt_bits/counter_bits` 时，可以直接执行并拿到候选组合
+- `pwm-calc` 的 draft route 也已支持首版通用搜索；当 binding 里有 `default_output_pin`、`prescalers` 和 `counter_bits/period_bits` 时，可以直接执行并拿到 PWM 候选组合
+- `adc-scale` 的 draft route 也已支持首版通用换算；当 binding 里有 `default_channel`，并提供 `reference-v` 或固定参考源与 `resolution` 时，可以直接执行并拿到换算结果
+- `comparator-threshold` 的 draft route 也已支持首版可行性检查；当 binding 里有正负输入源范围，且提供 `vdd` 与目标阈值时，可以直接执行并拿到推荐参考侧与边界告警
 - 只有要精细定制模板内容时，再回退到 `template fill`

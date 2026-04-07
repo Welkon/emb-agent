@@ -297,11 +297,17 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --from-project
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --from-doc <doc-id> --vendor Padauk
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter generate --from-project --output-root /abs/path/to/emb-agent-adapters
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool list
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
+node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run pwm-calc --family FAMILY_NAME --device DEVICE_NAME --output-pin PA3 --clock-source SYSCLK --clock-hz 16000000 --target-hz 3906.25 --target-duty 50
+node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run adc-scale --family FAMILY_NAME --device DEVICE_NAME --channel PA0 --reference-source vdd --resolution 10 --sample-code 512
+node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run comparator-threshold --family FAMILY_NAME --device DEVICE_NAME --positive-source PA0 --negative-source vref_ladder --vdd 5 --target-threshold-v 2.5
 ```
 
-`adapter derive` 现在除了 profile 和 registry，还会自动起草 `adapters/routes/*.cjs`。这些 route 默认是 `draft-adapter`，用于承接 binding 草稿；其中 `timer-calc` 已带首版通用搜索实现，参数够时可以直接跑出候选结果。
+`adapter derive` 现在除了 profile 和 registry，还会自动起草 `adapters/routes/*.cjs`。这些 route 默认是 `draft-adapter`，用于承接 binding 草稿；其中 `timer-calc`、`pwm-calc`、`adc-scale` 和 `comparator-threshold` 已带首版通用实现，参数够时可以直接跑出候选结果。
+
+`adapter generate` 复用同一套生成引擎，但把输出根目录显式交给调用方。适配器贡献仓库可以直接把它指向仓库根目录，用同一套 AI 生成逻辑产出可提交的 adapter 草稿。
 
 自动发现链路现在会优先用 `hw.yaml` 的 `model/package` 去回退匹配 derive 生成的 chip slug，例如 `SC8F072 + SOP8 -> sc8f072sop8`，不需要你手工把 slug 写回 truth。
 
