@@ -10,6 +10,80 @@ const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
+function writeText(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
+function writeJson(filePath, value) {
+  writeText(filePath, JSON.stringify(value, null, 2) + '\n');
+}
+
+function createHealthAdapterSource(rootDir) {
+  writeText(
+    path.join(rootDir, 'adapters', 'core', 'shared.cjs'),
+    "'use strict';\nmodule.exports = {};\n"
+  );
+
+  writeText(
+    path.join(rootDir, 'adapters', 'algorithms', 'scmcu-timer.cjs'),
+    "'use strict';\nmodule.exports = { name: 'scmcu-timer' };\n"
+  );
+
+  writeText(
+    path.join(rootDir, 'adapters', 'routes', 'timer-calc.cjs'),
+    [
+      "'use strict';",
+      '',
+      'module.exports = {',
+      '  runTool() {',
+      "    return { status: 'ok' };",
+      '  }',
+      '};',
+      ''
+    ].join('\n')
+  );
+
+  writeJson(path.join(rootDir, 'extensions', 'tools', 'families', 'scmcu-sc8f0xx.json'), {
+    name: 'scmcu-sc8f0xx',
+    vendor: 'SCMCU',
+    series: 'SC8F0xx',
+    description: 'SCMCU family.',
+    supported_tools: ['timer-calc'],
+    bindings: {},
+    notes: []
+  });
+
+  writeJson(path.join(rootDir, 'extensions', 'tools', 'devices', 'sc8f072.json'), {
+    name: 'sc8f072',
+    family: 'scmcu-sc8f0xx',
+    description: 'SC8F072 device.',
+    supported_tools: ['timer-calc'],
+    bindings: {
+      'timer-calc': {
+        algorithm: 'scmcu-timer',
+        params: {
+          chip: 'sc8f072'
+        }
+      }
+    },
+    notes: []
+  });
+
+  writeJson(path.join(rootDir, 'extensions', 'chips', 'profiles', 'sc8f072.json'), {
+    name: 'sc8f072',
+    vendor: 'SCMCU',
+    family: 'scmcu-sc8f0xx',
+    description: 'SC8F072 chip.',
+    package: 'sop8',
+    runtime_model: 'main_loop_plus_isr',
+    summary: {},
+    capabilities: ['tmr0'],
+    related_tools: ['timer-calc'],
+    notes: []
+  });
+}
+
 test('manager view aggregates next handoff settings threads and reports', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-manager-'));
   const currentCwd = process.cwd();
@@ -289,6 +363,68 @@ test('manager prioritizes doc-apply quickstart before next when parsed docs are 
 
     assert.equal(manager.health.quickstart.stage, 'doc-apply-then-next');
     assert.ok(manager.health.quickstart.steps[0].cli.includes('ingest apply doc'));
+    const quickstartIndex = manager.recommended_actions.findIndex(item => item.type === 'quickstart');
+    const nextIndex = manager.recommended_actions.findIndex(item => item.type === 'next');
+    assert.ok(quickstartIndex >= 0);
+    assert.ok(nextIndex >= 0);
+    assert.ok(quickstartIndex < nextIndex);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('manager prioritizes derive quickstart when adapters are synced but doc-backed chip still has no match', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-manager-derive-quickstart-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-manager-derive-source-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  process.stdout.write = () => true;
+
+  try {
+    createHealthAdapterSource(tempSource);
+    process.chdir(tempProject);
+    cli.main(['init']);
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, 'docs', 'PMS150G.pdf'), 'fake pdf content', 'utf8');
+
+    const providerImpls = {
+      mineru: {
+        async parseDocument() {
+          return {
+            provider: 'mineru',
+            mode: 'agent',
+            task_id: 'task-manager-derive-doc',
+            markdown: '# PMS150G SOP8\n\n- Timer16 exists\n- PWM output supported\n- PA5 reserved for programming\n',
+            metadata: {
+              completed: {
+                full_md_url: 'https://mineru.invalid/result.md'
+              }
+            }
+          };
+        }
+      }
+    };
+
+    const ingested = await cli.runIngestCommand(
+      'doc',
+      ['--file', 'docs/PMS150G.pdf', '--kind', 'datasheet', '--to', 'hardware'],
+      { providerImpls }
+    );
+    await cli.runIngestCommand('apply', ['doc', ingested.doc_id, '--to', 'hardware']);
+    cli.main(['adapter', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
+    cli.main(['adapter', 'sync', 'default-pack']);
+
+    let stdout = '';
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+    cli.main(['manager']);
+    const manager = JSON.parse(stdout);
+
+    assert.equal(manager.health.quickstart.stage, 'derive-then-next');
+    assert.ok(manager.health.quickstart.steps[0].cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`));
     const quickstartIndex = manager.recommended_actions.findIndex(item => item.type === 'quickstart');
     const nextIndex = manager.recommended_actions.findIndex(item => item.type === 'next');
     assert.ok(quickstartIndex >= 0);

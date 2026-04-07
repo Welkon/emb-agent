@@ -152,6 +152,7 @@ function createHealthUpdateCommandHelpers(deps) {
     }
 
     const bootstrap = commands.find(item => item.key === 'adapter-bootstrap');
+    const derive = commands.find(item => item.key === 'adapter-derive-from-doc');
 
     if (bootstrap) {
       return {
@@ -167,6 +168,24 @@ function createHealthUpdateCommandHelpers(deps) {
             cli: NEXT_CLI
           }
         ]
+      };
+    }
+
+    if (derive) {
+      return {
+        stage: 'derive-then-next',
+        summary: '现有 adapter 还没覆盖当前硬件；先按最近文档起草 adapter，再执行 next',
+        steps: [
+          {
+            label: derive.summary || '执行 adapter derive',
+            cli: derive.cli || ''
+          },
+          {
+            label: '进入 emb-agent 推荐的下一步',
+            cli: NEXT_CLI
+          }
+        ],
+        followup: `先执行: ${derive.cli} -> ${NEXT_CLI}`
       };
     }
 
@@ -189,6 +208,40 @@ function createHealthUpdateCommandHelpers(deps) {
     }
 
     return null;
+  }
+
+  function findLatestHardwareDoc(projectRoot, pendingDocApply) {
+    if (!ingestDocCli || typeof ingestDocCli.listDocs !== 'function') {
+      return null;
+    }
+
+    const listing = ingestDocCli.listDocs(projectRoot);
+    const documents = Array.isArray(listing && listing.documents) ? listing.documents : [];
+    const blockedDocId = pendingDocApply && pendingDocApply.doc_id ? pendingDocApply.doc_id : '';
+
+    return documents.find(item => {
+      if (!item || item.intended_to !== 'hardware') {
+        return false;
+      }
+      if (blockedDocId && item.doc_id === blockedDocId) {
+        return false;
+      }
+      return true;
+    }) || null;
+  }
+
+  function buildAdapterDeriveCli(docEntry) {
+    if (!docEntry || !docEntry.doc_id) {
+      return '';
+    }
+
+    return runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [
+      'adapter',
+      'derive',
+      '--from-project',
+      '--from-doc',
+      docEntry.doc_id
+    ]);
   }
 
   function buildHealthReport() {
@@ -607,6 +660,35 @@ function createHealthUpdateCommandHelpers(deps) {
                 ? '检查 hw.yaml 的 vendor/model/package 是否准确，或补齐对应的 family/device/chip profiles。'
                 : '先补 hw.yaml，再执行 adapter sync，让 emb-agent 自动挑出当前芯片需要的 adapters。'
           )
+        );
+      }
+
+      const latestHardwareDoc = findLatestHardwareDoc(projectRoot, pendingDocApply);
+      if (
+        hardwareIdentity.model &&
+        syncedProjectSources.length > 0 &&
+        matchedProjectSources.length === 0 &&
+        latestHardwareDoc
+      ) {
+        checks.push(
+          createCheck(
+            'adapter_derive_candidate',
+            'warn',
+            `最近硬件文档 ${latestHardwareDoc.doc_id} 可直接起草 adapter 草案`,
+            [
+              latestHardwareDoc.title ? `title=${latestHardwareDoc.title}` : '',
+              latestHardwareDoc.source ? `source=${latestHardwareDoc.source}` : '',
+              latestHardwareDoc.cached_at ? `cached_at=${latestHardwareDoc.cached_at}` : ''
+            ],
+            '优先按最近硬件文档起草 adapter 草案，再执行 next；这样比手工猜 family/device/chip 更稳。'
+          )
+        );
+        pushNextCommand(
+          nextCommands,
+          'adapter-derive-from-doc',
+          `从文档 ${latestHardwareDoc.doc_id} 起草当前硬件的 adapter 草案`,
+          buildAdapterDeriveCli(latestHardwareDoc),
+          'adapter'
         );
       }
     }

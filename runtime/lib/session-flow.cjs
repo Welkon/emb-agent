@@ -102,7 +102,14 @@ function createSessionFlowHelpers(deps) {
       ? healthReport.checks.some(item => blockingChecks.has(item.key) && (item.status === 'warn' || item.status === 'fail'))
       : false;
     const actionableHealthCommands = Array.isArray(healthReport.next_commands)
-      ? healthReport.next_commands.some(item => ['init', 'adapter-source-add', 'adapter-sync', 'adapter-bootstrap', 'doc-apply'].includes(item.key))
+      ? healthReport.next_commands.some(item => [
+          'init',
+          'adapter-source-add',
+          'adapter-sync',
+          'adapter-bootstrap',
+          'adapter-derive-from-doc',
+          'doc-apply'
+        ].includes(item.key))
       : false;
 
     return hasBlockingCheck || actionableHealthCommands;

@@ -308,3 +308,65 @@ test('health surfaces pending doc apply as quickstart before generic next', asyn
     process.stdout.write = originalWrite;
   }
 });
+
+test('health routes from applied hardware doc to adapter derive when synced adapters still miss the chip', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-derive-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-derive-source-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  try {
+    createHealthAdapterSource(tempSource);
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, 'docs', 'PMS150G.pdf'), 'fake pdf content', 'utf8');
+
+    const providerImpls = {
+      mineru: {
+        async parseDocument() {
+          return {
+            provider: 'mineru',
+            mode: 'agent',
+            task_id: 'task-health-derive-doc',
+            markdown: '# PMS150G SOP8\n\n- Timer16 exists\n- PWM output supported\n- PA5 reserved for programming\n',
+            metadata: {
+              completed: {
+                full_md_url: 'https://mineru.invalid/result.md'
+              }
+            }
+          };
+        }
+      }
+    };
+
+    const ingested = await cli.runIngestCommand(
+      'doc',
+      ['--file', 'docs/PMS150G.pdf', '--kind', 'datasheet', '--to', 'hardware'],
+      { providerImpls }
+    );
+    await cli.runIngestCommand('apply', ['doc', ingested.doc_id, '--to', 'hardware']);
+    cli.main(['adapter', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
+    cli.main(['adapter', 'sync', 'default-pack']);
+
+    stdout = '';
+    cli.main(['health']);
+    const report = JSON.parse(stdout);
+
+    assert.equal(report.checks.find(item => item.key === 'adapter_match').status, 'warn');
+    assert.equal(report.checks.find(item => item.key === 'adapter_derive_candidate').status, 'warn');
+    assert.ok(report.next_commands.some(item => item.key === 'adapter-derive-from-doc'));
+    assert.ok(report.next_commands.some(item => item.cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`)));
+    assert.equal(report.quickstart.stage, 'derive-then-next');
+    assert.ok(report.quickstart.steps[0].cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});

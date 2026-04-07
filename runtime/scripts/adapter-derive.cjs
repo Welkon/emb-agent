@@ -393,6 +393,259 @@ function uniqueObjectsByName(items) {
   });
 }
 
+function normalizePinName(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '')
+    .replace(/\./g, '');
+}
+
+function parsePortBit(pinName) {
+  const match = normalizePinName(pinName).match(/^P([A-G])(\d+)$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    port: `P${match[1]}`,
+    bit: Number(match[2])
+  };
+}
+
+function signalHaystack(signal) {
+  return [
+    signal && signal.name,
+    signal && signal.pin,
+    signal && signal.direction,
+    signal && signal.usage,
+    signal && signal.note
+  ].filter(Boolean).join(' ');
+}
+
+function inferSignalDescriptor(text) {
+  const haystack = String(text || '');
+
+  if (/\bPWM\b|调光|占空比/i.test(haystack)) {
+    return {
+      name: 'PWM_OUT',
+      usage: 'pwm-output',
+      direction: 'output'
+    };
+  }
+  if (/\bADC\b|ANALOG|SENSE|采样|模拟/i.test(haystack)) {
+    return {
+      name: 'ADC_IN',
+      usage: 'adc-input',
+      direction: 'input'
+    };
+  }
+  if (/\bCOMPARATOR\b|\bCMP\b|比较器/i.test(haystack)) {
+    return {
+      name: 'CMP_IN',
+      usage: 'comparator-input',
+      direction: 'input'
+    };
+  }
+  if (/PROGRAM|烧录|编程|ICP|ICSP|DEBUG|SWD/i.test(haystack)) {
+    return {
+      name: 'PROG',
+      usage: 'programming',
+      direction: ''
+    };
+  }
+  if (/\bUART\b.*\bTX\b|\bTX\b/i.test(haystack)) {
+    return {
+      name: 'UART_TX',
+      usage: 'uart-tx',
+      direction: 'output'
+    };
+  }
+  if (/\bUART\b.*\bRX\b|\bRX\b/i.test(haystack)) {
+    return {
+      name: 'UART_RX',
+      usage: 'uart-rx',
+      direction: 'input'
+    };
+  }
+
+  return {
+    name: 'GPIO',
+    usage: 'gpio',
+    direction: ''
+  };
+}
+
+function normalizeSignal(signal) {
+  const normalizedPin = normalizePinName(signal && signal.pin);
+  const normalizedName = String((signal && signal.name) || '').trim();
+  if (!normalizedName && !normalizedPin) {
+    return null;
+  }
+
+  return {
+    name: normalizedName || normalizedPin,
+    pin: normalizedPin,
+    direction: String((signal && signal.direction) || '').trim(),
+    default_state: String((signal && signal.default_state) || '').trim(),
+    confirmed: signal && Object.prototype.hasOwnProperty.call(signal, 'confirmed')
+      ? Boolean(signal.confirmed)
+      : undefined,
+    usage: String((signal && signal.usage) || '').trim(),
+    note: String((signal && signal.note) || '').trim()
+  };
+}
+
+function mergeSignal(current, next) {
+  if (!current) {
+    return next;
+  }
+
+  const currentNameIsGeneric =
+    !current.name ||
+    current.name === current.pin ||
+    current.name.startsWith('GPIO_');
+  const nextNameIsGeneric =
+    !next.name ||
+    next.name === next.pin ||
+    next.name.startsWith('GPIO_');
+
+  return {
+    name: currentNameIsGeneric && !nextNameIsGeneric ? next.name : (current.name || next.name),
+    pin: current.pin || next.pin,
+    direction: current.direction || next.direction,
+    default_state: current.default_state || next.default_state,
+    confirmed:
+      current.confirmed === true || next.confirmed === true
+        ? true
+        : (current.confirmed !== undefined ? current.confirmed : next.confirmed),
+    usage:
+      !current.usage || current.usage === 'gpio'
+        ? (next.usage || current.usage)
+        : current.usage,
+    note: runtime.unique([current.note, next.note]).filter(Boolean).join(' | ')
+  };
+}
+
+function deriveSignalsFromTexts(texts) {
+  const derived = [];
+
+  (texts || []).forEach(text => {
+    const matches = String(text || '').match(/\bP[A-G]\d+\b/gi);
+    if (!matches) {
+      return;
+    }
+
+    const descriptor = inferSignalDescriptor(text);
+    matches.forEach(rawPin => {
+      const pin = normalizePinName(rawPin);
+      derived.push({
+        name: `${descriptor.name}_${pin}`,
+        pin,
+        direction: descriptor.direction,
+        confirmed: false,
+        usage: descriptor.usage,
+        note: String(text || '').trim()
+      });
+    });
+  });
+
+  return derived;
+}
+
+function buildSignals(explicitSignals, textHints) {
+  const map = new Map();
+
+  [...(explicitSignals || []), ...deriveSignalsFromTexts(textHints || [])]
+    .map(item => normalizeSignal(item))
+    .filter(Boolean)
+    .forEach(signal => {
+      const key = signal.pin || signal.name;
+      map.set(key, mergeSignal(map.get(key), signal));
+    });
+
+  return [...map.values()];
+}
+
+function matchSignals(signals, matcher) {
+  return buildSignals(signals, []).filter(item => matcher.test(signalHaystack(item)));
+}
+
+function matchPeripherals(peripherals, matcher) {
+  return uniqueObjectsByName(peripherals).filter(item => matcher.test(String(item.name || '')));
+}
+
+function buildBindingMap(signals, role) {
+  return signals.reduce((result, signal) => {
+    if (!signal.pin) {
+      return result;
+    }
+    result[signal.pin] = {
+      signal: signal.name || signal.pin,
+      role
+    };
+    return result;
+  }, {});
+}
+
+function inferComparatorPolarity(signal) {
+  const haystack = signalHaystack(signal);
+  if (/\bPOSITIVE\b|\bNON-?INVERT(?:ING)?\b|\bVINP\b|\bCMPP\b|\bCMP_POS\b|\bPLUS\b|\+/i.test(haystack)) {
+    return 'positive';
+  }
+  if (/\bNEGATIVE\b|\bINVERT(?:ING)?\b|\bVINN\b|\bCMPN\b|\bCMP_NEG\b|\bVREF\b|\bLADDER\b|\bBANDGAP\b|\bREFERENCE\b|\bMINUS\b/i.test(haystack)) {
+    return 'negative';
+  }
+  return '';
+}
+
+function buildPackagePins(signals) {
+  return buildSignals(signals, [])
+    .filter(item => item.pin)
+    .map(signal => ({
+      signal: signal.pin,
+      label: signal.name && signal.name !== signal.pin ? signal.name : undefined,
+      default_function: signal.usage || undefined,
+      mux: runtime.unique([
+        signal.name && signal.name !== signal.pin ? signal.name : '',
+        signal.usage
+      ]).filter(Boolean),
+      notes: runtime.unique([
+        signal.note,
+        signal.direction ? `direction: ${signal.direction}` : '',
+        signal.confirmed === false ? 'draft inferred from project/doc evidence' : ''
+      ]).filter(Boolean)
+    }));
+}
+
+function buildChipPinMap(signals) {
+  return buildSignals(signals, []).reduce((result, signal) => {
+    if (!signal.pin) {
+      return result;
+    }
+
+    const portBit = parsePortBit(signal.pin);
+    result[signal.pin] = {
+      name: signal.pin,
+      port: portBit ? portBit.port : undefined,
+      bit: portBit ? portBit.bit : undefined,
+      functions: runtime.unique([
+        signal.name && signal.name !== signal.pin ? signal.name : '',
+        signal.usage
+      ]).filter(Boolean),
+      interrupts: [],
+      package_locations: {},
+      notes: runtime.unique([
+        signal.note,
+        signal.direction ? `direction: ${signal.direction}` : '',
+        signal.default_state ? `default_state: ${signal.default_state}` : '',
+        signal.confirmed === false ? 'draft inferred from project/doc evidence' : ''
+      ]).filter(Boolean)
+    };
+    return result;
+  }, {});
+}
+
 function slugSuffix(toolName) {
   return String(toolName || '')
     .trim()
@@ -406,9 +659,7 @@ function findPeripheral(peripherals, matcher) {
 }
 
 function findSignal(signals, matcher) {
-  return uniqueObjectsByName(signals).find(item => {
-    return matcher.test(String(item.name || '')) || matcher.test(String(item.usage || ''));
-  });
+  return matchSignals(signals, matcher)[0] || null;
 }
 
 function buildBindingNotes(baseNotes, evidence) {
@@ -421,46 +672,46 @@ function buildBindingNotes(baseNotes, evidence) {
 }
 
 function buildTimerBinding(toolName, config) {
-  const timer = findPeripheral(config.peripherals, /\bTIMER(?:\d+)?\b|\bT16\b|\bTM2\b|\bTM3\b/i);
-  const timerName = timer ? String(timer.name) : '';
+  const timers = matchPeripherals(config.peripherals, /\bTIMER(?:\d+)?\b|\bT16\b|\bTM2\b|\bTM3\b/i)
+    .map(item => String(item.name || '').trim())
+    .filter(Boolean);
+  const timerName = timers[0] || '';
+  const timerVariants = timers.reduce((result, name) => {
+    result[name] = {
+      peripheral: name
+    };
+    return result;
+  }, {});
 
   return {
     algorithm: `${config.device}-${slugSuffix(toolName)}`,
     draft: true,
     params: {
       default_timer: timerName || undefined,
-      timer_variants: timerName
-        ? {
-            [timerName]: {
-              peripheral: timerName
-            }
-          }
-        : {}
+      timer_variants: timerVariants
     },
     evidence: runtime.unique([
-      timerName ? `peripheral:${timerName}` : '',
+      ...timers.map(name => `peripheral:${name}`),
       ...(config.docs || []).map(item => `doc:${item.id}`)
     ]),
     notes: buildBindingNotes(
       [],
-      [timerName ? `已从 truth/doc 识别到计时器外设 ${timerName}。` : '未识别到具体计时器名，需要手工补充。']
+      [
+        timerName
+          ? `已从 truth/doc 识别计时器外设 ${timers.join(', ')}。`
+          : '未识别到具体计时器名，需要手工补充。'
+      ]
     )
   };
 }
 
 function buildPwmBinding(toolName, config) {
-  const signal = findSignal(config.signals, /PWM/i);
+  const pwmSignals = matchSignals(config.signals, /PWM|pwm-output/i);
+  const signal = pwmSignals[0] || null;
   const outputPin = signal ? String(signal.pin || '') : '';
   const pwm = findPeripheral(config.peripherals, /\bPWM\b/i);
   const pwmName = pwm ? String(pwm.name) : 'PWM';
-  const outputPins = outputPin
-    ? {
-        [outputPin]: {
-          signal: String(signal.name || ''),
-          role: 'pwm-output'
-        }
-      }
-    : {};
+  const outputPins = buildBindingMap(pwmSignals, 'pwm-output');
 
   return {
     algorithm: `${config.device}-${slugSuffix(toolName)}`,
@@ -472,7 +723,7 @@ function buildPwmBinding(toolName, config) {
     },
     evidence: runtime.unique([
       pwmName ? `peripheral:${pwmName}` : '',
-      outputPin ? `signal:${outputPin}` : '',
+      ...Object.keys(outputPins).map(pin => `signal:${pin}`),
       ...(config.docs || []).map(item => `doc:${item.id}`)
     ]),
     notes: buildBindingNotes(
@@ -488,16 +739,10 @@ function buildPwmBinding(toolName, config) {
 function buildAdcBinding(toolName, config) {
   const adc = findPeripheral(config.peripherals, /\bADC\b/i);
   const adcName = adc ? String(adc.name) : 'ADC';
-  const channelSignal = findSignal(config.signals, /ADC|ANALOG|SENSE/i);
+  const adcSignals = matchSignals(config.signals, /ADC|ANALOG|SENSE|adc-input/i);
+  const channelSignal = adcSignals[0] || null;
   const channelName = channelSignal ? String(channelSignal.pin || '') : '';
-  const channels = channelName
-    ? {
-        [channelName]: {
-          signal: String(channelSignal.name || ''),
-          role: 'adc-input'
-        }
-      }
-    : {};
+  const channels = buildBindingMap(adcSignals, 'adc-input');
 
   return {
     algorithm: `${config.device}-${slugSuffix(toolName)}`,
@@ -509,7 +754,7 @@ function buildAdcBinding(toolName, config) {
     },
     evidence: runtime.unique([
       adcName ? `peripheral:${adcName}` : '',
-      channelName ? `signal:${channelName}` : '',
+      ...Object.keys(channels).map(pin => `signal:${pin}`),
       ...(config.docs || []).map(item => `doc:${item.id}`)
     ]),
     notes: buildBindingNotes(
@@ -525,21 +770,31 @@ function buildAdcBinding(toolName, config) {
 function buildComparatorBinding(toolName, config) {
   const cmp = findPeripheral(config.peripherals, /\bCOMPARATOR\b|\bCMP\b/i);
   const cmpName = cmp ? String(cmp.name) : 'Comparator';
+  const comparatorSignals = matchSignals(config.signals, /COMPARATOR|CMP|comparator-input|ANALOG|ADC/i);
+  const positiveSignals = comparatorSignals.filter(item => inferComparatorPolarity(item) !== 'negative');
+  const negativeSignals = comparatorSignals.filter(item => inferComparatorPolarity(item) === 'negative');
 
   return {
     algorithm: `${config.device}-${slugSuffix(toolName)}`,
     draft: true,
     params: {
-      positive_sources: {},
-      negative_sources: {}
+      positive_sources: buildBindingMap(positiveSignals, 'comparator-positive'),
+      negative_sources: buildBindingMap(negativeSignals, 'comparator-negative')
     },
     evidence: runtime.unique([
       cmpName ? `peripheral:${cmpName}` : '',
+      ...positiveSignals.map(item => item.pin ? `signal:${item.pin}` : ''),
+      ...negativeSignals.map(item => item.pin ? `signal:${item.pin}` : ''),
       ...(config.docs || []).map(item => `doc:${item.id}`)
     ]),
     notes: buildBindingNotes(
       [],
-      [cmpName ? `已识别比较器能力 ${cmpName}。` : '仅识别到比较器关键词，输入源未确认。']
+      [
+        cmpName ? `已识别比较器能力 ${cmpName}。` : '仅识别到比较器关键词，输入源未确认。',
+        comparatorSignals.length > 0
+          ? `已根据 truth/doc 提取比较器输入候选 ${comparatorSignals.map(item => item.pin || item.name).join(', ')}。`
+          : '比较器输入源仍需手工确认。'
+      ]
     )
   };
 }
@@ -620,7 +875,7 @@ function resolveDerivedConfig(config, projectRoot) {
     tools: runtime.unique(toolsResolved),
     capabilities: runtime.unique(peripherals.map(item => (item && item.name) || '')),
     docs: buildDocReference(docInfo, model, pkg),
-    signals: uniqueObjectsByName(signals),
+    signals: buildSignals(signals, [...truths, ...constraints, ...unknowns]),
     peripherals: uniqueObjectsByName(peripherals),
     notes: runtime.unique([
       ...notes,
@@ -902,12 +1157,18 @@ function buildChipPackages(config) {
     return [];
   }
 
+  const pins = buildPackagePins(config.signals || []);
+
   return [
     {
       name: config.package,
       pin_count: config.pinCount || undefined,
-      pins: [],
-      notes: ['建议后续按封装补充物理引脚表。']
+      pins,
+      notes: runtime.unique([
+        pins.length > 0
+          ? '当前为按 truth/doc 自动起草的部分引脚草案，物理 pin number 仍需按 datasheet pin table 复核。'
+          : '建议后续按封装补充物理引脚表。'
+      ])
     }
   ];
 }
@@ -930,7 +1191,7 @@ function buildChipProfile(config) {
     },
     capabilities: (config.capabilities || []).slice(),
     packages: buildChipPackages(config),
-    pins: {},
+    pins: buildChipPinMap(config.signals || []),
     docs: (config.docs || []).slice(),
     related_tools: config.tools.slice(),
     source_modules: [],

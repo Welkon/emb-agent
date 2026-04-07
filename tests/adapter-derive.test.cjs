@@ -241,6 +241,136 @@ test('adapter derive can infer family device chip and tools from project truth',
   }
 });
 
+test('adapter derive drafts chip pins and richer bindings from project signals', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-derive-project-signals-'));
+  const currentCwd = process.cwd();
+
+  try {
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    fs.writeFileSync(
+      path.join(tempProject, 'emb-agent', 'hw.yaml'),
+      [
+        'mcu:',
+        '  vendor: "SCMCU"',
+        '  model: "SC8F072"',
+        '  package: "SOP8"',
+        '',
+        'board:',
+        '  name: ""',
+        '  target: ""',
+        '',
+        'sources:',
+        '  datasheet:',
+        '    - "docs/SC8F072.pdf"',
+        '  schematic:',
+        '    - ""',
+        '  code:',
+        '    - ""',
+        '',
+        'signals:',
+        '  - name: "PWM_OUT"',
+        '    pin: "PA3"',
+        '    direction: "output"',
+        '    default_state: "low"',
+        '    confirmed: true',
+        '    usage: "pwm-output"',
+        '    note: "TM2 PWM output"',
+        '  - name: "ADC_TEMP"',
+        '    pin: "PA0"',
+        '    direction: "input"',
+        '    default_state: ""',
+        '    confirmed: true',
+        '    usage: "adc-input"',
+        '    note: "Temperature sense input"',
+        '  - name: "CMP_REF_NEG"',
+        '    pin: "PA1"',
+        '    direction: "input"',
+        '    default_state: ""',
+        '    confirmed: false',
+        '    usage: "comparator-input"',
+        '    note: "Comparator negative reference / VREF"',
+        '',
+        'peripherals:',
+        '  - name: "Timer16"',
+        '    usage: "time base"',
+        '  - name: "TM2"',
+        '    usage: "pwm generator"',
+        '  - name: "PWM"',
+        '    usage: "dimming"',
+        '  - name: "ADC"',
+        '    usage: "sampling"',
+        '  - name: "Comparator"',
+        '    usage: "threshold detect"',
+        '',
+        'truths:',
+        '  - "Board uses SC8F072 SOP8"',
+        '',
+        'constraints:',
+        '  - "PA5 reserved for programming"',
+        '',
+        'unknowns:',
+        '  - ""',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    const result = captureJson(() =>
+      cli.main([
+        'adapter',
+        'derive',
+        '--from-project',
+        '--tool',
+        'timer-calc',
+        '--tool',
+        'pwm-calc',
+        '--tool',
+        'adc-scale',
+        '--tool',
+        'comparator-threshold'
+      ])
+    );
+
+    const chipProfile = JSON.parse(
+      fs.readFileSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'sc8f072sop8.json'), 'utf8')
+    );
+    const deviceProfile = JSON.parse(
+      fs.readFileSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json'), 'utf8')
+    );
+
+    assert.equal(result.status, 'ok');
+    assert.equal(chipProfile.packages[0].pins.length, 4);
+    assert.equal(chipProfile.packages[0].pins.find(item => item.signal === 'PA3').label, 'PWM_OUT');
+    assert.equal(chipProfile.packages[0].pins.find(item => item.signal === 'PA0').default_function, 'adc-input');
+    assert.equal(chipProfile.pins.PA3.port, 'PA');
+    assert.equal(chipProfile.pins.PA3.bit, 3);
+    assert.deepEqual(chipProfile.pins.PA3.functions, ['PWM_OUT', 'pwm-output']);
+    assert.ok(chipProfile.pins.PA5.notes.some(item => item.includes('programming')));
+    assert.equal(deviceProfile.bindings['timer-calc'].params.default_timer, 'Timer16');
+    assert.deepEqual(
+      Object.keys(deviceProfile.bindings['timer-calc'].params.timer_variants),
+      ['Timer16', 'TM2']
+    );
+    assert.equal(deviceProfile.bindings['pwm-calc'].params.default_output_pin, 'PA3');
+    assert.deepEqual(Object.keys(deviceProfile.bindings['pwm-calc'].params.output_pins), ['PA3']);
+    assert.equal(deviceProfile.bindings['adc-scale'].params.default_channel, 'PA0');
+    assert.deepEqual(Object.keys(deviceProfile.bindings['adc-scale'].params.channels), ['PA0']);
+    assert.deepEqual(
+      Object.keys(deviceProfile.bindings['comparator-threshold'].params.positive_sources),
+      ['PA0']
+    );
+    assert.deepEqual(
+      Object.keys(deviceProfile.bindings['comparator-threshold'].params.negative_sources),
+      ['PA1']
+    );
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('adapter derive can infer from hardware doc draft and attach doc metadata', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-derive-doc-'));
   const currentCwd = process.cwd();
@@ -263,7 +393,7 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
             provider: 'mineru',
             mode: 'agent',
             task_id: 'task-adapter-derive',
-            markdown: '# PMS150G SOP8\n\n- Timer16 exists\n- PWM output supported\n- ADC input supported\n- Comparator available\n',
+            markdown: '# PMS150G SOP8\n\n- Timer16 exists\n- PWM output supported\n- ADC input supported\n- Comparator available\n- PA5 reserved for programming\n',
             metadata: {
               completed: {
                 full_md_url: 'https://mineru.invalid/result.md'
@@ -327,6 +457,10 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
     assert.equal(chipProfile.docs[0].id, ingested.doc_id);
     assert.equal(chipProfile.docs[0].kind, 'datasheet');
     assert.equal(chipProfile.packages[0].pin_count, 8);
+    assert.equal(chipProfile.packages[0].pins[0].signal, 'PA5');
+    assert.equal(chipProfile.packages[0].pins[0].default_function, 'programming');
+    assert.equal(chipProfile.pins.PA5.port, 'PA');
+    assert.equal(chipProfile.pins.PA5.bit, 5);
     assert.equal(chipProfile.summary.source_mode, 'doc');
     assert.equal(fs.existsSync(comparatorRoutePath), true);
 

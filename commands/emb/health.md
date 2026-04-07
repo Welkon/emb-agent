@@ -37,4 +37,5 @@ allowed-tools:
 - 如果返回了 `quickstart`，优先按 `quickstart.steps` 执行，这是当前最短闭环
 - 如果返回了 `next_commands`，优先执行里面最靠前、最具体的那条 CLI
 - 如果存在待应用文档，优先先执行 `ingest apply doc ...`，再回到 `next`
+- 如果 `quickstart.stage` 是 `derive-then-next`，说明已有文档足够起草当前芯片 adapter，先执行 `adapter derive --from-project --from-doc <doc-id>`
 - 如果状态基本健康，再指出下一步适合走 `next / scan / do / review` 哪条线

@@ -53,9 +53,9 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source remove <name>
 - `timer-calc`、`pwm-calc`、`adc-scale` 和 `comparator-threshold` 例外：生成的 draft route 已带首版通用实现，只要 binding 参数足够即可直接运行
 - `adapter derive --from-project` 会从 `emb-agent/hw.yaml` 推断 vendor/model/package、family/device/chip slug、tool 建议和 `pin_count`
 - `adapter derive --from-doc <doc-id>` 会从 `emb-agent/cache/docs/<doc-id>/facts.hardware.json` 推断能力，并把文档元数据挂到 chip profile `docs`
-- 自动生成的 binding 只会补安全可推断字段，例如 `default_timer`、`default_output_pin`、文档证据和 placeholder params，不会伪造真实公式实现
+- 自动生成的 binding 只会补安全可推断字段，例如 `default_timer`、`timer_variants`、`default_output_pin`、`channels`、比较器输入候选、文档证据和 placeholder params，不会伪造真实公式实现
 - 自动推断可被手工参数覆盖，例如先 `--from-doc` 再补 `--vendor` 或直接指定 `--chip`
-- `chip profile` 现在建议把封装与引脚知识放进 `packages` / `pins`
+- `chip profile` 现在会优先把封装与引脚知识草案放进 `packages` / `pins`；如果 truth/doc 里只看到了部分 pin，这里就只生成部分草案
 - `adapter bootstrap` 是首次接入的轻量入口：source 不存在时先登记，再立即按当前项目匹配同步；source 已存在时只做同步
 - `adapter source add` 只写入 `emb-agent/project.json`，不会自动同步
 - `adapter sync` 才会真正把 adapter/profile 文件铺到项目或 runtime

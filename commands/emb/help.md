@@ -273,6 +273,7 @@ Output the emb-agent command reference below and nothing else.
 - `health.quickstart` 现在可能是 `adapter bootstrap -> next`，也可能是 `ingest apply doc -> next`
 - `adapter source add` 只登记 source；`adapter sync` 才会真正同步文件
 - `adapter sync` 默认优先按 `hw.yaml` 自动匹配当前芯片，只同步命中的 adapter/profile 子集；匹配不到时再回退全量同步
+- 当 `health` 发现“文档已落到 hw.yaml、adapter 已同步、但当前芯片仍未命中”时，会直接把 quickstart 切到 `adapter derive --from-project --from-doc <doc-id> -> next`
 - adapter source 支持本地 path 仓库，也支持 git 仓库
 - source 根目录既可以直接包含 `adapters/` 和 `extensions/`，也可以再包一层 `emb-agent/`
 - `tool family/device` 与 `chip` 命令只展示外部安装或项目自带的 profile；core 默认为空
