@@ -176,7 +176,29 @@ function createProjectConfigHelpers(deps) {
     const result = {
       all: false,
       target: 'project',
-      force: false
+      force: false,
+      match_project: true,
+      tools: [],
+      families: [],
+      devices: [],
+      chips: []
+    };
+
+    const pushListValues = (target, raw, label) => {
+      const values = String(raw || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+
+      if (values.length === 0) {
+        throw new Error(`Missing value after ${label}`);
+      }
+
+      values.forEach(value => {
+        if (!target.includes(value)) {
+          target.push(value);
+        }
+      });
     };
 
     for (let index = 0; index < tokens.length; index += 1) {
@@ -198,6 +220,40 @@ function createProjectConfigHelpers(deps) {
 
       if (token === '--force') {
         result.force = true;
+        continue;
+      }
+
+      if (token === '--no-match-project') {
+        result.match_project = false;
+        continue;
+      }
+
+      if (token === '--match-project') {
+        result.match_project = true;
+        continue;
+      }
+
+      if (token === '--tool') {
+        pushListValues(result.tools, tokens[index + 1], '--tool');
+        index += 1;
+        continue;
+      }
+
+      if (token === '--family') {
+        pushListValues(result.families, tokens[index + 1], '--family');
+        index += 1;
+        continue;
+      }
+
+      if (token === '--device') {
+        pushListValues(result.devices, tokens[index + 1], '--device');
+        index += 1;
+        continue;
+      }
+
+      if (token === '--chip') {
+        pushListValues(result.chips, tokens[index + 1], '--chip');
+        index += 1;
         continue;
       }
 

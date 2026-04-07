@@ -228,8 +228,8 @@ Output the emb-agent command reference below and nothing else.
 - `<runtime-cli> adapter source list`
 - `<runtime-cli> adapter source add <name> --type path --location /abs/path/to/source`
 - `<runtime-cli> adapter source add <name> --type git --location <git-url-or-local-repo> [--branch main] [--subdir emb-agent]`
-- `<runtime-cli> adapter sync <name>`
-- `<runtime-cli> adapter sync --all`
+- `<runtime-cli> adapter sync <name> [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>]`
+- `<runtime-cli> adapter sync --all [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>]`
 - `<runtime-cli> adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8`
 - `<runtime-cli> adapter derive --from-project`
 - `<runtime-cli> adapter derive --from-doc <doc-id> --vendor Padauk`
@@ -266,6 +266,7 @@ Output the emb-agent command reference below and nothing else.
 - `emb-agent` 是通用嵌入式 agent，不绑定任何厂商、MCU 家族或固定 datasheet
 - `tool run` 若没有外部 adapter，会返回 `adapter-required`
 - `adapter source add` 只登记 source；`adapter sync` 才会真正同步文件
+- `adapter sync` 默认优先按 `hw.yaml` 自动匹配当前芯片，只同步命中的 adapter/profile 子集；匹配不到时再回退全量同步
 - adapter source 支持本地 path 仓库，也支持 git 仓库
 - source 根目录既可以直接包含 `adapters/` 和 `extensions/`，也可以再包一层 `emb-agent/`
 - `tool family/device` 与 `chip` 命令只展示外部安装或项目自带的 profile；core 默认为空

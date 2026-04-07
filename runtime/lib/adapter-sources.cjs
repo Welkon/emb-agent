@@ -256,6 +256,479 @@ function collectSourceFiles(layoutRoot) {
   return mappings;
 }
 
+function parseScalar(content, key) {
+  const lines = String(content || '').split(/\r?\n/);
+  const pattern = new RegExp(`^\\s*${key}:\\s*(.*)$`);
+
+  for (const line of lines) {
+    const match = line.match(pattern);
+    if (!match) {
+      continue;
+    }
+
+    return String(match[1] || '')
+      .trim()
+      .replace(/^['"]|['"]$/g, '');
+  }
+
+  return '';
+}
+
+function normalizeSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function compactSlug(value) {
+  return normalizeSlug(value).replace(/-/g, '');
+}
+
+function ensureArrayStrings(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
+    .map(item => String(item || '').trim())
+    .filter(Boolean);
+}
+
+function readProjectHardwareIdentity(projectRoot) {
+  const hwPath = path.join(projectRoot, 'emb-agent', 'hw.yaml');
+  if (!pathExists(hwPath)) {
+    return {
+      vendor: '',
+      model: '',
+      package: ''
+    };
+  }
+
+  const content = runtime.readText(hwPath);
+  return {
+    vendor: parseScalar(content, 'vendor'),
+    model: parseScalar(content, 'model'),
+    package: parseScalar(content, 'package')
+  };
+}
+
+function inferProjectChipCandidates(projectRoot) {
+  const hardware = readProjectHardwareIdentity(projectRoot);
+  const model = String(hardware.model || '').trim();
+  const packageName = String(hardware.package || '').trim();
+
+  if (!model) {
+    return {
+      hardware,
+      chips: []
+    };
+  }
+
+  return {
+    hardware,
+    chips: runtime.unique(
+      [
+        model,
+        normalizeSlug(model),
+        compactSlug(model),
+        packageName ? compactSlug(`${model}-${packageName}`) : '',
+        packageName ? compactSlug(`${model}${packageName}`) : ''
+      ]
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+    )
+  };
+}
+
+function relativePathStartsWith(relativePath, parts) {
+  return relativePath.startsWith(path.join(...parts) + path.sep);
+}
+
+function fileBaseName(relativePath) {
+  return path.basename(relativePath, path.extname(relativePath));
+}
+
+function tryReadJson(filePath) {
+  try {
+    return runtime.readJson(filePath);
+  } catch {
+    return null;
+  }
+}
+
+function buildSyncSelection(projectRoot, options) {
+  const tools = ensureArrayStrings(options && options.tools);
+  const families = ensureArrayStrings(options && options.families);
+  const devices = ensureArrayStrings(options && options.devices);
+  const chips = ensureArrayStrings(options && options.chips);
+  const hasExplicit =
+    tools.length > 0 || families.length > 0 || devices.length > 0 || chips.length > 0;
+
+  if (hasExplicit) {
+    return {
+      filtered: true,
+      inferred_from_project: false,
+      hardware: {
+        vendor: '',
+        model: '',
+        package: ''
+      },
+      selectors: {
+        tools,
+        families,
+        devices,
+        chips
+      }
+    };
+  }
+
+  if (options && options.match_project === false) {
+    return {
+      filtered: false,
+      inferred_from_project: false,
+      hardware: {
+        vendor: '',
+        model: '',
+        package: ''
+      },
+      selectors: {
+        tools: [],
+        families: [],
+        devices: [],
+        chips: []
+      }
+    };
+  }
+
+  const inferred = inferProjectChipCandidates(projectRoot);
+  if (inferred.chips.length === 0) {
+    return {
+      filtered: false,
+      inferred_from_project: false,
+      hardware: inferred.hardware,
+      selectors: {
+        tools: [],
+        families: [],
+        devices: [],
+        chips: []
+      }
+    };
+  }
+
+  return {
+    filtered: true,
+    inferred_from_project: true,
+    hardware: inferred.hardware,
+    selectors: {
+      tools: [],
+      families: [],
+      devices: [],
+      chips: inferred.chips
+    }
+  };
+}
+
+function scanLocalRequires(layoutRoot, selectedPaths) {
+  const queue = Array.from(selectedPaths);
+  const discovered = new Set(selectedPaths);
+
+  while (queue.length > 0) {
+    const relativePath = queue.shift();
+    const fullPath = path.join(layoutRoot, relativePath);
+
+    if (!pathExists(fullPath) || !fs.statSync(fullPath).isFile()) {
+      continue;
+    }
+
+    const content = runtime.readText(fullPath);
+    const requirePattern = /require\(\s*['"](\.[^'"]*)['"]\s*\)/g;
+    let match = requirePattern.exec(content);
+
+    while (match) {
+      const rawImport = match[1];
+      const resolved = path.normalize(path.join(path.dirname(relativePath), rawImport));
+      const candidates = [resolved, `${resolved}.cjs`, path.join(resolved, 'index.cjs')];
+
+      candidates.forEach(candidate => {
+        const normalized = path.normalize(candidate);
+        const targetPath = path.join(layoutRoot, normalized);
+        if (!normalized.startsWith('..') && pathExists(targetPath) && !discovered.has(normalized)) {
+          discovered.add(normalized);
+          queue.push(normalized);
+        }
+      });
+
+      match = requirePattern.exec(content);
+    }
+  }
+
+  return discovered;
+}
+
+function filterSourceFiles(layoutRoot, files, selection) {
+  if (!selection || !selection.filtered) {
+    return {
+      files,
+      selection: {
+        filtered: false,
+        inferred_from_project: false,
+        hardware: (selection && selection.hardware) || {
+          vendor: '',
+          model: '',
+          package: ''
+        },
+        requested: {
+          tools: [],
+          families: [],
+          devices: [],
+          chips: []
+        },
+        matched: {
+          tools: [],
+          families: [],
+          devices: [],
+          chips: []
+        },
+        total_files: files.length,
+        selected_files: files.length
+      }
+    };
+  }
+
+  const requestedTools = new Set(selection.selectors.tools);
+  const requestedFamilies = new Set(selection.selectors.families);
+  const requestedDevices = new Set(selection.selectors.devices);
+  const requestedChips = new Set(selection.selectors.chips);
+  const chipProfiles = new Map();
+  const toolFamilies = new Map();
+  const toolDevices = new Map();
+  const specFiles = new Map();
+  const routeFiles = new Map();
+  const adapterFiles = [];
+  const selectedRelativePaths = new Set();
+
+  files.forEach(item => {
+    const fileName = fileBaseName(item.relativePath);
+
+    if (relativePathStartsWith(item.relativePath, ['extensions', 'chips', 'profiles'])) {
+      chipProfiles.set(fileName, {
+        file: item,
+        json: tryReadJson(item.sourcePath) || {}
+      });
+      return;
+    }
+
+    if (relativePathStartsWith(item.relativePath, ['extensions', 'tools', 'families'])) {
+      toolFamilies.set(fileName, {
+        file: item,
+        json: tryReadJson(item.sourcePath) || {}
+      });
+      return;
+    }
+
+    if (relativePathStartsWith(item.relativePath, ['extensions', 'tools', 'devices'])) {
+      toolDevices.set(fileName, {
+        file: item,
+        json: tryReadJson(item.sourcePath) || {}
+      });
+      return;
+    }
+
+    if (relativePathStartsWith(item.relativePath, ['extensions', 'tools', 'specs'])) {
+      specFiles.set(fileName, item);
+      return;
+    }
+
+    if (relativePathStartsWith(item.relativePath, ['adapters', 'routes'])) {
+      routeFiles.set(fileName, item);
+      return;
+    }
+
+    if (relativePathStartsWith(item.relativePath, ['adapters'])) {
+      adapterFiles.push(item);
+    }
+  });
+
+  if (requestedFamilies.size > 0) {
+    toolDevices.forEach((entry, name) => {
+      if (requestedFamilies.has(String(entry.json.family || '').trim())) {
+        requestedDevices.add(name);
+      }
+    });
+
+    chipProfiles.forEach((entry, name) => {
+      if (requestedFamilies.has(String(entry.json.family || '').trim())) {
+        requestedChips.add(name);
+      }
+    });
+  }
+
+  if (requestedChips.size > 0) {
+    requestedChips.forEach(name => {
+      const chip = chipProfiles.get(name);
+      if (!chip) {
+        return;
+      }
+
+      const chipFamily = String(chip.json.family || '').trim();
+      if (chipFamily) {
+        requestedFamilies.add(chipFamily);
+      }
+
+      if (toolDevices.has(name)) {
+        requestedDevices.add(name);
+      }
+
+      toolDevices.forEach((deviceEntry, deviceName) => {
+        const deviceFamily = String(deviceEntry.json.family || '').trim();
+        if (!deviceFamily || deviceFamily !== chipFamily) {
+          return;
+        }
+
+        if (name.startsWith(deviceName) || deviceName.startsWith(name)) {
+          requestedDevices.add(deviceName);
+        }
+      });
+    });
+  }
+
+  if (requestedDevices.size > 0) {
+    requestedDevices.forEach(name => {
+      const device = toolDevices.get(name);
+      if (!device) {
+        return;
+      }
+
+      const familyName = String(device.json.family || '').trim();
+      if (familyName) {
+        requestedFamilies.add(familyName);
+      }
+
+      if (chipProfiles.has(name)) {
+        requestedChips.add(name);
+      }
+    });
+  }
+
+  const matchedChips = Array.from(requestedChips).filter(name => chipProfiles.has(name));
+  const matchedDevices = Array.from(requestedDevices).filter(name => toolDevices.has(name));
+  const matchedFamilies = Array.from(requestedFamilies).filter(name => toolFamilies.has(name));
+  const matchedTools = new Set(requestedTools);
+
+  matchedChips.forEach(name => {
+    const chip = chipProfiles.get(name).json || {};
+    ensureArrayStrings(chip.related_tools).forEach(toolName => matchedTools.add(toolName));
+    ensureArrayStrings(chip.supported_tools).forEach(toolName => matchedTools.add(toolName));
+  });
+
+  matchedDevices.forEach(name => {
+    const device = toolDevices.get(name).json || {};
+    ensureArrayStrings(device.supported_tools).forEach(toolName => matchedTools.add(toolName));
+  });
+
+  matchedFamilies.forEach(name => {
+    const family = toolFamilies.get(name).json || {};
+    ensureArrayStrings(family.supported_tools).forEach(toolName => matchedTools.add(toolName));
+  });
+
+  matchedFamilies.forEach(name => {
+    selectedRelativePaths.add(toolFamilies.get(name).file.relativePath);
+  });
+  matchedDevices.forEach(name => {
+    selectedRelativePaths.add(toolDevices.get(name).file.relativePath);
+  });
+  matchedChips.forEach(name => {
+    selectedRelativePaths.add(chipProfiles.get(name).file.relativePath);
+  });
+
+  matchedTools.forEach(name => {
+    if (specFiles.has(name)) {
+      selectedRelativePaths.add(specFiles.get(name).relativePath);
+    }
+    if (routeFiles.has(name)) {
+      selectedRelativePaths.add(routeFiles.get(name).relativePath);
+    }
+  });
+
+  const selectedAlgorithms = new Set();
+  const collectAlgorithmsFromBindings = bindings => {
+    if (!bindings || typeof bindings !== 'object' || Array.isArray(bindings)) {
+      return;
+    }
+
+    Object.entries(bindings).forEach(([toolName, binding]) => {
+      if (!matchedTools.has(toolName)) {
+        return;
+      }
+
+      if (binding && typeof binding === 'object' && typeof binding.algorithm === 'string' && binding.algorithm.trim()) {
+        selectedAlgorithms.add(binding.algorithm.trim());
+      }
+    });
+  };
+
+  matchedFamilies.forEach(name => collectAlgorithmsFromBindings(toolFamilies.get(name).json.bindings));
+  matchedDevices.forEach(name => collectAlgorithmsFromBindings(toolDevices.get(name).json.bindings));
+
+  adapterFiles.forEach(item => {
+    if (relativePathStartsWith(item.relativePath, ['adapters', 'core'])) {
+      selectedRelativePaths.add(item.relativePath);
+      return;
+    }
+
+    if (
+      relativePathStartsWith(item.relativePath, ['adapters', 'algorithms']) &&
+      selectedAlgorithms.has(fileBaseName(item.relativePath))
+    ) {
+      selectedRelativePaths.add(item.relativePath);
+    }
+  });
+
+  const discovered = scanLocalRequires(layoutRoot, selectedRelativePaths);
+  const filteredFiles = files.filter(item => discovered.has(item.relativePath) || selectedRelativePaths.has(item.relativePath));
+
+  if (filteredFiles.length === 0) {
+    return {
+      files,
+      selection: {
+        filtered: false,
+        fallback_to_full_sync: true,
+        inferred_from_project: selection.inferred_from_project,
+        hardware: selection.hardware,
+        requested: selection.selectors,
+        matched: {
+          tools: Array.from(matchedTools).sort(),
+          families: matchedFamilies.sort(),
+          devices: matchedDevices.sort(),
+          chips: matchedChips.sort()
+        },
+        total_files: files.length,
+        selected_files: files.length
+      }
+    };
+  }
+
+  return {
+    files: filteredFiles,
+    selection: {
+      filtered: true,
+      inferred_from_project: selection.inferred_from_project,
+      hardware: selection.hardware,
+      requested: selection.selectors,
+      matched: {
+        tools: Array.from(matchedTools).sort(),
+        families: matchedFamilies.sort(),
+        devices: matchedDevices.sort(),
+        chips: matchedChips.sort()
+      },
+      total_files: files.length,
+      selected_files: filteredFiles.length
+    }
+  };
+}
+
 function buildOwnedPathMap(manifest, excludeKey) {
   const owned = new Map();
 
@@ -331,7 +804,10 @@ function syncAdapterSource(rootDir, projectRoot, source, options) {
   const previousEntry = manifest.entries[entryKey] || null;
   const ownedByOthers = buildOwnedPathMap(manifest, entryKey);
   const resolved = resolveSourceRoot(rootDir, projectRoot, source, target);
-  const files = collectSourceFiles(resolved.layout_root);
+  const allFiles = collectSourceFiles(resolved.layout_root);
+  const selectionRequest = buildSyncSelection(projectRoot, options || {});
+  const filtered = filterSourceFiles(resolved.layout_root, allFiles, selectionRequest);
+  const files = filtered.files;
 
   if (files.length === 0) {
     throw new Error(`Adapter source ${source.name} does not contain any syncable adapter files`);
@@ -403,6 +879,7 @@ function syncAdapterSource(rootDir, projectRoot, source, options) {
     synced_at: new Date().toISOString(),
     checkout_root: resolved.checkout_root,
     source_root: resolved.layout_root,
+    selection: filtered.selection,
     files: nextFiles,
     generated
   };
@@ -415,6 +892,7 @@ function syncAdapterSource(rootDir, projectRoot, source, options) {
     source_type: source.type,
     checkout_root: resolved.checkout_root,
     source_root: resolved.layout_root,
+    selection: filtered.selection,
     files: nextFiles,
     generated,
     manifest: getManifestPath(rootDir, projectRoot, target)
@@ -473,7 +951,8 @@ function summarizeManifestEntry(entry) {
       synced_at: '',
       files_count: 0,
       source_root: '',
-      checkout_root: ''
+      checkout_root: '',
+      selection: null
     };
   }
 
@@ -482,7 +961,8 @@ function summarizeManifestEntry(entry) {
     synced_at: entry.synced_at || '',
     files_count: Array.isArray(entry.files) ? entry.files.length : 0,
     source_root: entry.source_root || '',
-    checkout_root: entry.checkout_root || ''
+    checkout_root: entry.checkout_root || '',
+    selection: entry.selection || null
   };
 }
 

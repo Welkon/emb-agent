@@ -32,7 +32,8 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source show <name>
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add <name> --type path --location /abs/path/to/adapter-source
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add <name> --type git --location <git-url-or-local-repo> [--branch main] [--subdir emb-agent]
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync <name>
-node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync <name> --to runtime
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync <name> --chip sc8f072 --tool timer-calc
+node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync <name> --to runtime --no-match-project
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter sync --all
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
 node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --from-project
@@ -54,6 +55,10 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source remove <name>
 - `chip profile` 现在建议把封装与引脚知识放进 `packages` / `pins`
 - `adapter source add` 只写入 `emb-agent/project.json`，不会自动同步
 - `adapter sync` 才会真正把 adapter/profile 文件铺到项目或 runtime
+- `adapter sync` 现在默认会优先读取 `emb-agent/hw.yaml`，按当前项目匹配到的 chip/device/family/tool 只同步最小需要子集
+- 如果当前项目还没有 `hw.yaml`，或推断不到 chip，则自动回退到原来的全量同步
+- 可以显式传 `--tool`、`--family`、`--device`、`--chip` 强制筛选；多个值可用逗号分隔
+- 传 `--no-match-project` 可关闭 `hw.yaml` 自动匹配，恢复显式筛选或全量同步语义
 - `--to project` 是默认值，适合项目私有扩展
 - `--to runtime` 适合团队共用扩展，但要注意 runtime 目录会被更新
 - path 源支持直接读取本地目录

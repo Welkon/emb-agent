@@ -181,6 +181,156 @@ function createGitAdapterSource(rootDir) {
   );
 }
 
+function createFilteredAdapterSource(rootDir) {
+  writeText(
+    path.join(rootDir, 'adapters', 'core', 'shared.cjs'),
+    [
+      "'use strict';",
+      '',
+      'module.exports = {',
+      '  ok(tool) {',
+      "    return { status: 'ok', tool };",
+      '  }',
+      '};',
+      ''
+    ].join('\n')
+  );
+
+  writeText(
+    path.join(rootDir, 'adapters', 'algorithms', 'scmcu-timer.cjs'),
+    [
+      "'use strict';",
+      '',
+      'module.exports = {',
+      "  name: 'scmcu-timer'",
+      '};',
+      ''
+    ].join('\n')
+  );
+
+  writeText(
+    path.join(rootDir, 'adapters', 'algorithms', 'padauk-tm2-pwm.cjs'),
+    [
+      "'use strict';",
+      '',
+      'module.exports = {',
+      "  name: 'padauk-tm2-pwm'",
+      '};',
+      ''
+    ].join('\n')
+  );
+
+  writeText(
+    path.join(rootDir, 'adapters', 'routes', 'timer-calc.cjs'),
+    [
+      "'use strict';",
+      '',
+      "const shared = require('../core/shared.cjs');",
+      '',
+      'module.exports = {',
+      '  runTool() {',
+      "    return shared.ok('timer-calc');",
+      '  }',
+      '};',
+      ''
+    ].join('\n')
+  );
+
+  writeText(
+    path.join(rootDir, 'adapters', 'routes', 'pwm-calc.cjs'),
+    [
+      "'use strict';",
+      '',
+      "const shared = require('../core/shared.cjs');",
+      '',
+      'module.exports = {',
+      '  runTool() {',
+      "    return shared.ok('pwm-calc');",
+      '  }',
+      '};',
+      ''
+    ].join('\n')
+  );
+
+  writeJson(path.join(rootDir, 'extensions', 'tools', 'families', 'scmcu-sc8f0xx.json'), {
+    name: 'scmcu-sc8f0xx',
+    vendor: 'SCMCU',
+    series: 'SC8F0xx',
+    description: 'SCMCU family.',
+    supported_tools: ['timer-calc'],
+    bindings: {},
+    notes: []
+  });
+
+  writeJson(path.join(rootDir, 'extensions', 'tools', 'families', 'padauk-pms15b-150g.json'), {
+    name: 'padauk-pms15b-150g',
+    vendor: 'Padauk',
+    series: 'PMS15B/PMS150G',
+    description: 'Padauk family.',
+    supported_tools: ['pwm-calc'],
+    bindings: {},
+    notes: []
+  });
+
+  writeJson(path.join(rootDir, 'extensions', 'tools', 'devices', 'sc8f072.json'), {
+    name: 'sc8f072',
+    family: 'scmcu-sc8f0xx',
+    description: 'SC8F072 device.',
+    supported_tools: ['timer-calc'],
+    bindings: {
+      'timer-calc': {
+        algorithm: 'scmcu-timer',
+        params: {
+          chip: 'sc8f072'
+        }
+      }
+    },
+    notes: []
+  });
+
+  writeJson(path.join(rootDir, 'extensions', 'tools', 'devices', 'pms150g.json'), {
+    name: 'pms150g',
+    family: 'padauk-pms15b-150g',
+    description: 'PMS150G device.',
+    supported_tools: ['pwm-calc'],
+    bindings: {
+      'pwm-calc': {
+        algorithm: 'padauk-tm2-pwm',
+        params: {
+          chip: 'pms150g'
+        }
+      }
+    },
+    notes: []
+  });
+
+  writeJson(path.join(rootDir, 'extensions', 'chips', 'profiles', 'sc8f072.json'), {
+    name: 'sc8f072',
+    vendor: 'SCMCU',
+    family: 'scmcu-sc8f0xx',
+    description: 'SC8F072 chip.',
+    package: 'sop8',
+    runtime_model: 'main_loop_plus_isr',
+    summary: {},
+    capabilities: ['tmr0'],
+    related_tools: ['timer-calc'],
+    notes: []
+  });
+
+  writeJson(path.join(rootDir, 'extensions', 'chips', 'profiles', 'pms150g.json'), {
+    name: 'pms150g',
+    vendor: 'Padauk',
+    family: 'padauk-pms15b-150g',
+    description: 'PMS150G chip.',
+    package: 'sop8',
+    runtime_model: 'main_loop_plus_isr',
+    summary: {},
+    capabilities: ['tm2-pwm'],
+    related_tools: ['pwm-calc'],
+    notes: []
+  });
+}
+
 test('adapter source add and sync install project adapters from path source', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-path-project-'));
   const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-path-source-'));
@@ -325,6 +475,136 @@ test('adapter source sync supports git source and remove cleans project artifact
         families: [],
         devices: []
       }
+    );
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('adapter sync auto-filters files by project hardware identity', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-filter-project-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-filter-source-'));
+  const currentCwd = process.cwd();
+
+  try {
+    createFilteredAdapterSource(tempSource);
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    writeText(
+      path.join(tempProject, 'emb-agent', 'hw.yaml'),
+      ['mcu:', '  vendor: "SCMCU"', '  model: "SC8F072"', '  package: "SOP8"', ''].join('\n')
+    );
+
+    await captureStdout(() =>
+      cli.main([
+        'adapter',
+        'source',
+        'add',
+        'filtered-pack',
+        '--type',
+        'path',
+        '--location',
+        tempSource
+      ])
+    );
+
+    const syncResult = JSON.parse(
+      await captureStdout(() => cli.main(['adapter', 'sync', 'filtered-pack']))
+    );
+
+    assert.equal(syncResult.selection.filtered, true);
+    assert.equal(syncResult.selection.inferred_from_project, true);
+    assert.deepEqual(syncResult.selection.matched.chips, ['sc8f072']);
+    assert.deepEqual(syncResult.selection.matched.tools, ['timer-calc']);
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
+      false
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'pms150g.json')),
+      false
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'sc8f072.json')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'pms150g.json')),
+      false
+    );
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('adapter sync supports explicit chip and tool filters', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-explicit-project-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-explicit-source-'));
+  const currentCwd = process.cwd();
+
+  try {
+    createFilteredAdapterSource(tempSource);
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    await captureStdout(() =>
+      cli.main([
+        'adapter',
+        'source',
+        'add',
+        'filtered-pack',
+        '--type',
+        'path',
+        '--location',
+        tempSource
+      ])
+    );
+
+    const syncResult = JSON.parse(
+      await captureStdout(() =>
+        cli.main([
+          'adapter',
+          'sync',
+          'filtered-pack',
+          '--chip',
+          'pms150g',
+          '--tool',
+          'pwm-calc',
+          '--no-match-project'
+        ])
+      )
+    );
+
+    assert.equal(syncResult.selection.filtered, true);
+    assert.equal(syncResult.selection.inferred_from_project, false);
+    assert.deepEqual(syncResult.selection.matched.chips, ['pms150g']);
+    assert.deepEqual(syncResult.selection.matched.tools, ['pwm-calc']);
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      false
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'pms150g.json')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json')),
+      false
     );
   } finally {
     process.chdir(currentCwd);
