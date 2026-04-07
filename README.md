@@ -117,6 +117,22 @@ npx github:Welkon/emb-agent --global
 - `Codex -> ~/.codex`
 - `Claude Code -> ~/.claude`
 
+首次接入外部 adapters 的最短路径：
+
+```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs init
+
+# 先把当前项目的 MCU 真值写进 emb-agent/hw.yaml
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync default-pack
+```
+
+说明：
+
+- `adapter sync` 现在默认优先读取 `emb-agent/hw.yaml`
+- 如果能识别出当前 `chip/device/family`，只会同步命中的最小 adapter 子集
+- 如果 `hw.yaml` 还没补全，才回退为全量同步
+
 ### 保持更新
 
 需要更新时，直接重新安装：
@@ -294,6 +310,7 @@ core 提供的是：
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack --chip sc8f072 --tool timer-calc --no-match-project
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --from-project
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --from-doc <doc-id> --vendor Padauk
