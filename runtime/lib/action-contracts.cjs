@@ -10,6 +10,7 @@ function createActionContractHelpers(deps) {
     scheduler,
     resolveSession,
     loadHandoff,
+    buildHealthReport,
     buildContextHygiene,
     enrichWithToolSuggestions,
     buildArchReviewContext
@@ -34,6 +35,31 @@ function createActionContractHelpers(deps) {
       output = scheduler.buildForensicsOutput(resolved);
     } else if (action === 'note') {
       output = scheduler.buildNoteOutput(resolved);
+    } else if (action === 'health') {
+      const health = buildHealthReport();
+      output = {
+        checks: health.checks || [],
+        recommendations: health.recommendations || [],
+        next_commands: health.next_commands || [],
+        summary: health.summary || {},
+        status: health.status || 'warn',
+        scheduler: {
+          primary_agent: '',
+          supporting_agents: [],
+          parallel_safe: false,
+          agent_execution: {
+            available: false,
+            spawn_available: false,
+            recommended: false,
+            inline_ok: true,
+            mode: 'inline-preferred',
+            reason: 'health 是只读自检动作，默认由当前主线程 inline 执行。',
+            primary_agent: '',
+            supporting_agents: [],
+            dispatch_contract: null
+          }
+        }
+      };
     } else {
       throw new Error(`Unsupported action: ${action}`);
     }

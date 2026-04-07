@@ -361,6 +361,7 @@ const {
   RUNTIME_CONFIG,
   DEFAULT_ARCH_REVIEW_PATTERNS,
   resolveSession,
+  getHealthReport: () => buildHealthReport(),
   getProjectConfig,
   loadHandoff,
   enrichWithToolSuggestions,
@@ -629,6 +630,7 @@ const {
   scheduler,
   resolveSession,
   loadHandoff,
+  buildHealthReport: () => buildHealthReport(),
   buildContextHygiene,
   enrichWithToolSuggestions,
   buildArchReviewContext

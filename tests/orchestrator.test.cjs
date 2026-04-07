@@ -24,9 +24,9 @@ test('orchestrator defaults to next and stays inline for empty project context',
 
     assert.equal(orchestrator.mode, 'lightweight-action-orchestrator');
     assert.equal(orchestrator.source, 'next');
-    assert.equal(orchestrator.resolved_action, 'scan');
+    assert.equal(orchestrator.resolved_action, 'health');
     assert.equal(orchestrator.workflow.strategy, 'inline');
-    assert.equal(orchestrator.workflow.next_skill, '$emb-scan');
+    assert.equal(orchestrator.workflow.next_skill, '$emb-health');
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'inline-action'));
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'integrate'));
   } finally {

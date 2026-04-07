@@ -133,6 +133,8 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
     assert.match(status.tool_recommendations[1].cli_draft, /tool run pwm-calc/);
     assert.deepEqual(status.tool_recommendations[1].missing_inputs, ['clock-hz', 'target-hz']);
     assert.equal(next.hardware.chip_profile.family, 'vendor-family');
+    assert.equal(next.next.command, 'scan');
+    assert.equal(next.next.gated_by_health, false);
     assert.equal(next.suggested_tools.length, 2);
     assert.equal(next.tool_recommendations.length, 2);
     assert.equal(next.next.tool_recommendation.tool, 'timer-calc');

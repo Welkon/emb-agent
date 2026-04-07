@@ -68,11 +68,45 @@ function createSessionFlowHelpers(deps) {
     RUNTIME_CONFIG,
     DEFAULT_ARCH_REVIEW_PATTERNS,
     resolveSession,
+    getHealthReport,
     getProjectConfig,
     loadHandoff,
     enrichWithToolSuggestions,
     listThreads
   } = deps;
+
+  function shouldGateNextWithHealth(resolved, handoff, nextCommand, healthReport) {
+    if (!healthReport || nextCommand !== 'scan' || handoff) {
+      return false;
+    }
+
+    if (shouldSuggestScanTool(resolved)) {
+      return false;
+    }
+
+    const hardware = resolved && resolved.hardware ? resolved.hardware : {};
+    const hasChipProfile = Boolean(hardware.chip_profile);
+    const toolRecommendations =
+      resolved &&
+      resolved.effective &&
+      Array.isArray(resolved.effective.tool_recommendations)
+        ? resolved.effective.tool_recommendations
+        : [];
+
+    if (hasChipProfile || toolRecommendations.length > 0) {
+      return false;
+    }
+
+    const blockingChecks = new Set(['hw_truth', 'req_truth', 'hardware_identity']);
+    const hasBlockingCheck = Array.isArray(healthReport.checks)
+      ? healthReport.checks.some(item => blockingChecks.has(item.key) && (item.status === 'warn' || item.status === 'fail'))
+      : false;
+    const actionableHealthCommands = Array.isArray(healthReport.next_commands)
+      ? healthReport.next_commands.some(item => ['init', 'adapter-source-add', 'adapter-sync'].includes(item.key))
+      : false;
+
+    return hasBlockingCheck || actionableHealthCommands;
+  }
 
   function getPreferences(session) {
     return runtime.normalizePreferences((session && session.preferences) || {}, RUNTIME_CONFIG);
@@ -565,7 +599,24 @@ function createSessionFlowHelpers(deps) {
     const resolved = resolveSession();
     const handoff = loadHandoff();
     const guidance = buildGuidance(resolved, handoff);
-    const contextHygiene = buildContextHygiene(resolved, handoff, guidance.next.command);
+    const health = getHealthReport ? getHealthReport() : null;
+    const gatedByHealth = shouldGateNextWithHealth(resolved, handoff, guidance.next.command, health);
+    const nextCommand = gatedByHealth
+      ? {
+          command: 'health',
+          reason: '当前基础接入尚未闭环，先按 health 建议补齐硬件真值或 adapter 同步，再进入 scan',
+          health_next_commands: health && Array.isArray(health.next_commands) ? health.next_commands : []
+        }
+      : guidance.next;
+    const contextHygiene = buildContextHygiene(resolved, handoff, nextCommand.command);
+    const nextActions = gatedByHealth
+      ? runtime.unique([
+          ...(health && Array.isArray(health.next_commands)
+            ? health.next_commands.map(item => `优先执行 health 建议: ${item.cli}`)
+            : []),
+          ...guidance.next_actions
+        ])
+      : guidance.next_actions;
 
     return enrichWithToolSuggestions({
       current: {
@@ -591,15 +642,24 @@ function createSessionFlowHelpers(deps) {
         : null,
       thread: resolveActiveThread(resolved.session),
       diagnostics: resolved.session.diagnostics || { latest_forensics: {} },
+      health: health
+        ? {
+            status: health.status,
+            summary: health.summary,
+            next_commands: health.next_commands || []
+          }
+        : null,
       next: {
-        command: guidance.next.command,
-        reason: guidance.next.reason,
-        skill: `$emb-${guidance.next.command}`,
-        cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [guidance.next.command]),
+        command: nextCommand.command,
+        reason: nextCommand.reason,
+        skill: `$emb-${nextCommand.command}`,
+        cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [nextCommand.command]),
+        gated_by_health: gatedByHealth,
+        health_next_commands: nextCommand.health_next_commands || [],
         tool_recommendation: guidance.primary_tool_recommendation
       },
       context_hygiene: contextHygiene,
-      next_actions: guidance.next_actions
+      next_actions: nextActions
     }, resolved);
   }
 

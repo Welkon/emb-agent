@@ -31,6 +31,7 @@ allowed-tools:
 - 只做轻量自动路由，不引入 phase 流程
 - 必须说明为什么是这个下一步
 - 给出对应的 skill 和 CLI 入口
+- 如果当前只是“泛化 scan”，但 `health` 已发现基础接入没闭环，优先返回 `health`
 - 如果 `next.tool_recommendation` 存在：
   - 优先读取 `cli_draft`
   - 注意 `missing_inputs`

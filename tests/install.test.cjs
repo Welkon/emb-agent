@@ -95,10 +95,14 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(resolvedHost.cliCommand, /emb-agent\/bin\/emb-agent\.cjs$/);
 
     const nextBeforeContext = installedCli.buildNextContext();
-    assert.equal(nextBeforeContext.next.command, 'scan');
+    assert.equal(nextBeforeContext.next.command, 'health');
+    assert.equal(nextBeforeContext.next.gated_by_health, true);
+    assert.ok(Array.isArray(nextBeforeContext.next.health_next_commands));
+    assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes('adapter source add default-pack')));
     const orchestratorBeforeContext = installedCli.buildOrchestratorContext('next');
     assert.equal(orchestratorBeforeContext.workflow.strategy, 'inline');
-    assert.equal(orchestratorBeforeContext.resolved_action, 'scan');
+    assert.equal(orchestratorBeforeContext.resolved_action, 'health');
+    assert.equal(orchestratorBeforeContext.workflow.next_skill, '$emb-health');
 
     installedCli.main(['prefs', 'set', 'plan_mode', 'always']);
     const nextWithForcedPlan = installedCli.buildNextContext();
