@@ -37,6 +37,7 @@ test('manager view aggregates next handoff settings threads and reports', () => 
 
     assert.equal(manager.mode, 'manager-lite');
     assert.equal(manager.session.profile, 'rtos-iot');
+    assert.equal(typeof manager.health.status, 'string');
     assert.equal(manager.handoff.next_action, 'resume ota rollback');
     assert.equal(manager.threads.open, 2);
     assert.match(manager.session.active_thread.title, /Forensics:/);
@@ -50,6 +51,39 @@ test('manager view aggregates next handoff settings threads and reports', () => 
     assert.ok(threadIndex >= 0);
     assert.ok(nextIndex >= 0);
     assert.ok(threadIndex < nextIndex);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('manager surfaces health next commands before generic next action', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-manager-health-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    let stdout = '';
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+    cli.main(['manager']);
+    const manager = JSON.parse(stdout);
+
+    assert.ok(Array.isArray(manager.health.next_commands));
+    assert.ok(manager.health.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
+    const healthIndex = manager.recommended_actions.findIndex(
+      item => item.type === 'health' && item.cli.includes('adapter source add default-pack')
+    );
+    const nextIndex = manager.recommended_actions.findIndex(item => item.type === 'next');
+    assert.ok(healthIndex >= 0);
+    assert.ok(nextIndex >= 0);
+    assert.ok(healthIndex < nextIndex);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

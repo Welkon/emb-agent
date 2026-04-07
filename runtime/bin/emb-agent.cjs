@@ -452,6 +452,7 @@ const {
   getProjectExtDir,
   loadSession,
   loadHandoff,
+  getHealthReport: () => buildHealthReport(),
   buildNextContext,
   buildResumeContext,
   buildToolExecutionFromNext,

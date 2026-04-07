@@ -12,6 +12,7 @@ function createManagerCommandHelpers(deps) {
     getProjectExtDir,
     loadSession,
     loadHandoff,
+    getHealthReport,
     buildNextContext,
     buildResumeContext,
     buildToolExecutionFromNext,
@@ -38,7 +39,7 @@ function createManagerCommandHelpers(deps) {
       .slice(0, 3);
   }
 
-  function buildRecommendedActions(next, resume, threads, handoff) {
+  function buildRecommendedActions(next, resume, threads, handoff, health) {
     const actions = [];
     const toolExecution = buildToolExecutionFromNext(next);
 
@@ -71,6 +72,18 @@ function createManagerCommandHelpers(deps) {
         reason: toolExecution.reason || '已生成首条工具执行草案'
       });
     }
+
+    const healthCommands = health && Array.isArray(health.next_commands)
+      ? health.next_commands
+      : [];
+    healthCommands.forEach(item => {
+      actions.push({
+        type: 'health',
+        label: item.summary || '执行 health 建议',
+        cli: item.cli,
+        reason: item.summary || '来自 health 的可执行建议'
+      });
+    });
 
     actions.push({
       type: 'next',
@@ -110,6 +123,7 @@ function createManagerCommandHelpers(deps) {
   function buildManagerView() {
     const session = loadSession();
     const handoff = loadHandoff();
+    const health = getHealthReport ? getHealthReport() : { status: 'pass', summary: {}, next_commands: [] };
     const next = buildNextContext();
     const resume = buildResumeContext();
     const settings = buildSettingsView();
@@ -139,6 +153,11 @@ function createManagerCommandHelpers(deps) {
         }
       },
       next: next.next,
+      health: {
+        status: health.status,
+        summary: health.summary,
+        next_commands: health.next_commands || []
+      },
       tool_execution: toolExecution,
       context_hygiene: next.context_hygiene,
       handoff: resume.handoff,
@@ -154,7 +173,7 @@ function createManagerCommandHelpers(deps) {
         sessions: latestSessions
       },
       diagnostics: session.diagnostics || { latest_forensics: {} },
-      recommended_actions: buildRecommendedActions(next, resume, threads, handoff)
+      recommended_actions: buildRecommendedActions(next, resume, threads, handoff, health)
     };
   }
 

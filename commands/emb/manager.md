@@ -19,6 +19,7 @@ allowed-tools:
    `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" manager`
 2. 输出中要重点关注：
    - 当前 `next` 建议
+   - `health` 摘要与 `health.next_commands`
    - 当前 `tool_execution` 摘要
    - `context_hygiene`
    - 是否存在 handoff
@@ -33,5 +34,6 @@ allowed-tools:
 - 说明当前最推荐动作
 - 如果已有 handoff，优先提醒 `resume`
 - 如果最近一次 forensics 已挂到 open thread，优先提示恢复该 thread
+- 如果 `health.next_commands` 已经给出更具体的 CLI，优先于泛化的 `next`
 - 如果 `tool_execution.recommended = true`，优先提示 tool，再提示通用 `next`
 - 如果没有明显阻塞，再按 `next` 给出最小推进方向
