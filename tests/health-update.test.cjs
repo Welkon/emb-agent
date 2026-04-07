@@ -106,6 +106,8 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.equal(report.status, 'warn');
     assert.ok(report.checks.some(item => item.key === 'project_config_valid' && item.status === 'pass'));
     assert.ok(report.checks.some(item => item.key === 'hardware_identity' && item.status === 'warn'));
+    assert.ok(Array.isArray(report.next_commands));
+    assert.ok(report.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
     assert.equal(cli.loadSession().last_command, 'health');
 
     stdout = '';
@@ -218,6 +220,7 @@ test('health reports adapter registration and sync readiness', async () => {
     let report = JSON.parse(stdout);
     assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'warn');
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'info');
+    assert.ok(report.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
 
     stdout = '';
     cli.main(['adapter', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
@@ -227,6 +230,7 @@ test('health reports adapter registration and sync readiness', async () => {
     report = JSON.parse(stdout);
     assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'warn');
+    assert.ok(report.next_commands.some(item => item.cli.includes('adapter sync default-pack')));
 
     stdout = '';
     cli.main(['adapter', 'sync', 'default-pack']);
@@ -237,6 +241,7 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'adapter_match').status, 'pass');
     assert.ok(report.recommendations.every(item => !item.includes('adapter sync default-pack')));
+    assert.ok(report.next_commands.some(item => item.cli.includes('tool run timer-calc')));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

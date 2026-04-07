@@ -260,6 +260,7 @@ const {
   buildSuggestedTools,
   buildToolRecommendations,
   buildToolExecutionFromNext,
+  buildToolExecutionFromRecommendation,
   enrichWithToolSuggestions
 } = toolSuggestionHelpers.createToolSuggestionHelpers({
   ROOT,
@@ -477,6 +478,8 @@ const {
   loadProfile,
   loadPack,
   findChipProfileByModel,
+  resolveSession,
+  buildToolExecutionFromRecommendation,
   adapterSources,
   rootDir: ROOT,
   updateSession

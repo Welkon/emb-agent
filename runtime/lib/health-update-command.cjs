@@ -22,6 +22,8 @@ function createHealthUpdateCommandHelpers(deps) {
     loadProfile,
     loadPack,
     findChipProfileByModel,
+    resolveSession,
+    buildToolExecutionFromRecommendation,
     adapterSources,
     rootDir,
     updateSession
@@ -89,6 +91,23 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
+  function pushNextCommand(target, key, summary, cli, kind) {
+    if (!cli) {
+      return;
+    }
+
+    if (target.some(item => item.key === key || item.cli === cli)) {
+      return;
+    }
+
+    target.push({
+      key,
+      kind: kind || 'command',
+      summary,
+      cli
+    });
+  }
+
   function summarizeChecks(checks) {
     const counts = {
       pass: 0,
@@ -119,6 +138,7 @@ function createHealthUpdateCommandHelpers(deps) {
     const adaptersDir = path.join(projectExtDir, 'adapters');
     const statePaths = getProjectStatePaths();
     const checks = [];
+    const nextCommands = [];
     let projectConfig = null;
     let normalizedSession = null;
     let rawSession = null;
@@ -241,6 +261,12 @@ function createHealthUpdateCommandHelpers(deps) {
           '执行一次 init、next 或 resume，让 emb-agent 建立项目会话状态。'
         )
       );
+      pushNextCommand(
+        nextCommands,
+        'init',
+        '初始化或重建当前项目的 emb-agent 骨架',
+        runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['init'])
+      );
     }
 
     if (fs.existsSync(statePaths.handoffPath)) {
@@ -258,6 +284,12 @@ function createHealthUpdateCommandHelpers(deps) {
             ],
             '如果这就是当前工作现场，优先执行 resume；否则先确认这份 handoff 是否过期。'
           )
+        );
+        pushNextCommand(
+          nextCommands,
+          'resume',
+          '当前存在 handoff，优先接回上次上下文',
+          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume'])
         );
       } catch (error) {
         checks.push(
@@ -409,6 +441,14 @@ function createHealthUpdateCommandHelpers(deps) {
             : '先执行 adapter source add，把 emb-agent-adapters 或你的私有 source 登记进项目。'
         )
       );
+      if (enabledSources.length === 0) {
+        pushNextCommand(
+          nextCommands,
+          'adapter-source-add',
+          '登记默认 adapter 仓库',
+          `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'source', 'add', 'default-pack'])} --type git --location https://github.com/Welkon/emb-agent-adapters.git`
+        );
+      }
 
       checks.push(
         createCheck(
@@ -431,6 +471,14 @@ function createHealthUpdateCommandHelpers(deps) {
               : ''
         )
       );
+      if (enabledSources.length > 0 && syncedProjectSources.length === 0) {
+        pushNextCommand(
+          nextCommands,
+          'adapter-sync',
+          '把已登记的 adapter source 同步到当前项目',
+          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'sync', enabledSources[0].name])
+        );
+      }
 
       if (hardwareIdentity.model) {
         checks.push(
@@ -494,6 +542,45 @@ function createHealthUpdateCommandHelpers(deps) {
     }
 
     const summary = summarizeChecks(checks);
+    let resolvedSession = null;
+
+    try {
+      resolvedSession = resolveSession ? resolveSession() : null;
+    } catch {
+      resolvedSession = null;
+    }
+
+    const toolRecommendations =
+      resolvedSession &&
+      resolvedSession.effective &&
+      Array.isArray(resolvedSession.effective.tool_recommendations)
+        ? resolvedSession.effective.tool_recommendations
+        : [];
+    const primaryToolExecution =
+      toolRecommendations.length > 0
+        ? buildToolExecutionFromRecommendation(toolRecommendations[0])
+        : null;
+
+    if (primaryToolExecution && primaryToolExecution.cli) {
+      pushNextCommand(
+        nextCommands,
+        'tool-run-primary',
+        primaryToolExecution.recommended
+          ? `运行首选工具：${primaryToolExecution.tool}`
+          : `准备首个工具草案：${primaryToolExecution.tool}`,
+        primaryToolExecution.cli,
+        'tool'
+      );
+    }
+
+    if (nextCommands.length === 0 && summary.status !== 'fail') {
+      pushNextCommand(
+        nextCommands,
+        'next',
+        '进入 emb-agent 推荐的下一步',
+        runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
+      );
+    }
 
     return {
       command: 'health',
@@ -502,6 +589,7 @@ function createHealthUpdateCommandHelpers(deps) {
       status: summary.status,
       summary: summary.counts,
       checks,
+      next_commands: nextCommands,
       recommendations: runtime.unique(
         checks
           .filter(item => item.status === 'fail' || item.status === 'warn')

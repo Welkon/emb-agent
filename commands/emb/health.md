@@ -34,4 +34,5 @@ allowed-tools:
 - 先说明整体状态：`pass / warn / fail`
 - 明确列出最需要先处理的 `fail` 或 `warn`
 - 如果存在 handoff，提醒是否应优先 `resume`
+- 如果返回了 `next_commands`，优先执行里面最靠前、最具体的那条 CLI
 - 如果状态基本健康，再指出下一步适合走 `next / scan / do / review` 哪条线
