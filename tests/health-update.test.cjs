@@ -10,6 +10,80 @@ const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const sessionStartHook = require(path.join(repoRoot, 'runtime', 'hooks', 'emb-session-start.js'));
 
+function writeText(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
+function writeJson(filePath, value) {
+  writeText(filePath, JSON.stringify(value, null, 2) + '\n');
+}
+
+function createHealthAdapterSource(rootDir) {
+  writeText(
+    path.join(rootDir, 'adapters', 'core', 'shared.cjs'),
+    "'use strict';\nmodule.exports = {};\n"
+  );
+
+  writeText(
+    path.join(rootDir, 'adapters', 'algorithms', 'scmcu-timer.cjs'),
+    "'use strict';\nmodule.exports = { name: 'scmcu-timer' };\n"
+  );
+
+  writeText(
+    path.join(rootDir, 'adapters', 'routes', 'timer-calc.cjs'),
+    [
+      "'use strict';",
+      '',
+      'module.exports = {',
+      '  runTool() {',
+      "    return { status: 'ok' };",
+      '  }',
+      '};',
+      ''
+    ].join('\n')
+  );
+
+  writeJson(path.join(rootDir, 'extensions', 'tools', 'families', 'scmcu-sc8f0xx.json'), {
+    name: 'scmcu-sc8f0xx',
+    vendor: 'SCMCU',
+    series: 'SC8F0xx',
+    description: 'SCMCU family.',
+    supported_tools: ['timer-calc'],
+    bindings: {},
+    notes: []
+  });
+
+  writeJson(path.join(rootDir, 'extensions', 'tools', 'devices', 'sc8f072.json'), {
+    name: 'sc8f072',
+    family: 'scmcu-sc8f0xx',
+    description: 'SC8F072 device.',
+    supported_tools: ['timer-calc'],
+    bindings: {
+      'timer-calc': {
+        algorithm: 'scmcu-timer',
+        params: {
+          chip: 'sc8f072'
+        }
+      }
+    },
+    notes: []
+  });
+
+  writeJson(path.join(rootDir, 'extensions', 'chips', 'profiles', 'sc8f072.json'), {
+    name: 'sc8f072',
+    vendor: 'SCMCU',
+    family: 'scmcu-sc8f0xx',
+    description: 'SC8F072 chip.',
+    package: 'sop8',
+    runtime_model: 'main_loop_plus_isr',
+    summary: {},
+    capabilities: ['tmr0'],
+    related_tools: ['timer-calc'],
+    notes: []
+  });
+}
+
 test('health reports warn for incomplete hardware identity and fail for missing truth files', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-'));
   const currentCwd = process.cwd();
@@ -112,6 +186,58 @@ test('update reports stale install and cached newer version', () => {
     } else {
       process.env.EMB_AGENT_FORCE_HOOK_VERSION = previousHookVersion;
     }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('health reports adapter registration and sync readiness', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-adapter-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-adapter-source-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  try {
+    createHealthAdapterSource(tempSource);
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+    fs.writeFileSync(
+      path.join(tempProject, 'emb-agent', 'hw.yaml'),
+      'mcu:\n  vendor: "SCMCU"\n  model: "SC8F072"\n  package: "SOP8"\n',
+      'utf8'
+    );
+
+    stdout = '';
+    cli.main(['health']);
+    let report = JSON.parse(stdout);
+    assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'warn');
+    assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'info');
+
+    stdout = '';
+    cli.main(['adapter', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
+
+    stdout = '';
+    cli.main(['health']);
+    report = JSON.parse(stdout);
+    assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'pass');
+    assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'warn');
+
+    stdout = '';
+    cli.main(['adapter', 'sync', 'default-pack']);
+
+    stdout = '';
+    cli.main(['health']);
+    report = JSON.parse(stdout);
+    assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'pass');
+    assert.equal(report.checks.find(item => item.key === 'adapter_match').status, 'pass');
+    assert.ok(report.recommendations.every(item => !item.includes('adapter sync default-pack')));
+  } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }

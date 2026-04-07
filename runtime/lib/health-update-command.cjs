@@ -22,6 +22,8 @@ function createHealthUpdateCommandHelpers(deps) {
     loadProfile,
     loadPack,
     findChipProfileByModel,
+    adapterSources,
+    rootDir,
     updateSession
   } = deps;
 
@@ -379,6 +381,90 @@ function createHealthUpdateCommandHelpers(deps) {
             : ''
         )
       );
+    }
+
+    if (projectConfig) {
+      const adapterSourceStatus = adapterSources.listSourceStatus(rootDir, projectRoot, projectConfig);
+      const enabledSources = adapterSourceStatus.filter(item => item.enabled !== false);
+      const syncedProjectSources = enabledSources.filter(
+        item => item.targets && item.targets.project && item.targets.project.synced
+      );
+      const matchedProjectSources = syncedProjectSources.filter(item => {
+        const selection = item.targets.project.selection;
+        return selection && selection.filtered && Array.isArray(selection.matched && selection.matched.chips)
+          ? selection.matched.chips.length > 0
+          : false;
+      });
+
+      checks.push(
+        createCheck(
+          'adapter_sources_registered',
+          enabledSources.length > 0 ? 'pass' : 'warn',
+          enabledSources.length > 0 ? '已登记 adapter sources' : '尚未登记 adapter source',
+          enabledSources.length > 0
+            ? enabledSources.map(item => `source=${item.name}`)
+            : ['emb-agent/project.json -> adapter_sources'],
+          enabledSources.length > 0
+            ? ''
+            : '先执行 adapter source add，把 emb-agent-adapters 或你的私有 source 登记进项目。'
+        )
+      );
+
+      checks.push(
+        createCheck(
+          'adapter_sync_project',
+          syncedProjectSources.length > 0 ? 'pass' : enabledSources.length > 0 ? 'warn' : 'info',
+          syncedProjectSources.length > 0
+            ? 'adapter 已同步到项目目录'
+            : enabledSources.length > 0
+              ? 'adapter source 已登记，但尚未同步'
+              : '当前还没有可同步的 adapter source',
+          syncedProjectSources.length > 0
+            ? syncedProjectSources.map(item => `source=${item.name}, files=${item.targets.project.files_count}`)
+            : enabledSources.length > 0
+              ? enabledSources.map(item => `source=${item.name}`)
+              : [],
+          syncedProjectSources.length > 0
+            ? ''
+            : enabledSources.length > 0
+              ? `执行 adapter sync ${enabledSources[0].name}，把匹配到的 adapter/profile 铺到项目里。`
+              : ''
+        )
+      );
+
+      if (hardwareIdentity.model) {
+        checks.push(
+          createCheck(
+            'adapter_match',
+            matchedProjectSources.length > 0 ? 'pass' : syncedProjectSources.length > 0 ? 'warn' : 'info',
+            matchedProjectSources.length > 0
+              ? '已发现与当前硬件匹配的 adapter 子集'
+              : syncedProjectSources.length > 0
+                ? 'adapter 已同步，但还没有确认命中当前硬件'
+                : '等待 adapter source 完成同步后再检查匹配结果',
+            matchedProjectSources.length > 0
+              ? matchedProjectSources.map(item => {
+                  const selection = item.targets.project.selection;
+                  const chips = (selection && selection.matched && selection.matched.chips) || [];
+                  const tools = (selection && selection.matched && selection.matched.tools) || [];
+                  return `source=${item.name}, chips=${chips.join(',') || '(none)'}, tools=${tools.join(',') || '(none)'}`;
+                })
+              : syncedProjectSources.length > 0
+                ? syncedProjectSources.map(item => {
+                    const selection = item.targets.project.selection;
+                    return selection && selection.filtered === false
+                      ? `source=${item.name}, mode=full-sync`
+                      : `source=${item.name}, matched_chips=${((selection && selection.matched && selection.matched.chips) || []).join(',') || '(none)'}`;
+                  })
+                : [`model=${hardwareIdentity.model}`, `package=${hardwareIdentity.package || '(empty)'}`],
+            matchedProjectSources.length > 0
+              ? ''
+              : syncedProjectSources.length > 0
+                ? '检查 hw.yaml 的 vendor/model/package 是否准确，或补齐对应的 family/device/chip profiles。'
+                : '先补 hw.yaml，再执行 adapter sync，让 emb-agent 自动挑出当前芯片需要的 adapters。'
+          )
+        );
+      }
     }
 
     if (normalizedSession) {

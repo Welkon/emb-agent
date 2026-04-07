@@ -17,6 +17,71 @@ function createCliEntryHelpers(deps) {
     ingestDocCli
   } = deps;
 
+  function parseScalar(content, key) {
+    const line = String(content || '')
+      .split(/\r?\n/)
+      .find(item => item.trim().startsWith(`${key}:`));
+
+    if (!line) {
+      return '';
+    }
+
+    return line
+      .split(':')
+      .slice(1)
+      .join(':')
+      .trim()
+      .replace(/^['"]|['"]$/g, '');
+  }
+
+  function loadInitHardwareIdentity(projectRoot) {
+    const hwPath = path.join(projectRoot, 'emb-agent', 'hw.yaml');
+    if (!fs.existsSync(hwPath)) {
+      return {
+        vendor: '',
+        model: '',
+        package: ''
+      };
+    }
+
+    const content = runtime.readText(hwPath);
+    return {
+      vendor: parseScalar(content, 'vendor'),
+      model: parseScalar(content, 'model'),
+      package: parseScalar(content, 'package')
+    };
+  }
+
+  function buildInitGuidance(projectRoot) {
+    const hardware = loadInitHardwareIdentity(projectRoot);
+    const configPath = path.join(projectRoot, 'emb-agent', 'project.json');
+    const projectConfig = fs.existsSync(configPath) ? runtime.readJson(configPath) : { adapter_sources: [] };
+    const sources = Array.isArray(projectConfig.adapter_sources) ? projectConfig.adapter_sources : [];
+    const nextSteps = [];
+
+    if (!hardware.model || !hardware.package) {
+      nextSteps.push('补全 emb-agent/hw.yaml 里的 vendor / model / package');
+    }
+
+    nextSteps.push('运行 health');
+
+    if (sources.length === 0) {
+      nextSteps.push(
+        '运行 adapter source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git'
+      );
+      nextSteps.push('运行 adapter sync default-pack');
+    } else {
+      nextSteps.push(`运行 adapter sync ${sources[0].name}`);
+    }
+
+    return {
+      hardware_identity_present: Boolean(hardware.model),
+      package_present: Boolean(hardware.package),
+      adapter_sources_registered: sources.length,
+      next_steps: nextSteps
+    };
+  }
+
   function usage() {
     const text = [
       'emb-agent usage:',
@@ -152,6 +217,7 @@ function createCliEntryHelpers(deps) {
     if (fs.existsSync(existingProjectConfig) && !hasInitOptions) {
       initProjectLayout();
       const session = ensureSession();
+      const guidance = buildInitGuidance(resolveProjectRoot());
       return {
         initialized: true,
         reused_existing: true,
@@ -160,7 +226,9 @@ function createCliEntryHelpers(deps) {
         project_root: session.project_root,
         project_dir: path.relative(process.cwd(), getProjectExtDir()) || 'emb-agent',
         project_profile: session.project_profile,
-        active_packs: session.active_packs
+        active_packs: session.active_packs,
+        onboarding: guidance,
+        next_steps: guidance.next_steps
       };
     }
 
@@ -172,11 +240,14 @@ function createCliEntryHelpers(deps) {
         .unique([...(attached.detected.code || []), ...(attached.detected.projects || []), ...(current.last_files || [])])
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
+    const guidance = buildInitGuidance(resolveProjectRoot());
 
     return {
       ...attached,
       initialized: true,
       init_alias: aliasUsed || 'init',
+      onboarding: guidance,
+      next_steps: guidance.next_steps,
       session: {
         project_profile: session.project_profile,
         active_packs: session.active_packs,

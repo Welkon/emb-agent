@@ -98,3 +98,32 @@ test('init preserves existing docs files without force', () => {
     process.stdout.write = originalWrite;
   }
 });
+
+test('init returns onboarding guidance for adapter setup', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-guidance-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  try {
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+    const result = JSON.parse(stdout);
+
+    assert.equal(result.initialized, true);
+    assert.equal(result.onboarding.hardware_identity_present, false);
+    assert.equal(result.onboarding.adapter_sources_registered, 0);
+    assert.ok(result.next_steps.some(item => item.includes('emb-agent/hw.yaml')));
+    assert.ok(result.next_steps.some(item => item.includes('adapter source add default-pack')));
+    assert.ok(result.next_steps.some(item => item.includes('adapter sync default-pack')));
+    assert.ok(result.next_steps.some(item => item.includes('health')));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});

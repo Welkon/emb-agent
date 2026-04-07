@@ -23,6 +23,9 @@ allowed-tools:
    - session / handoff 是否损坏或断链
    - 当前 profile / packs 是否可解析
    - `hw.yaml` 里的 MCU 型号是否已映射到 chip profile
+   - 是否已经登记 adapter source
+   - 是否已经执行过 `adapter sync`
+   - 当前同步结果是否真的命中了项目硬件，而不是停留在全量同步或未匹配状态
    - MinerU API 模式是否缺少 key
 3. `health` 是只读自检入口，不要在里面自动改真值层。
 

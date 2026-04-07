@@ -477,6 +477,8 @@ const {
   loadProfile,
   loadPack,
   findChipProfileByModel,
+  adapterSources,
+  rootDir: ROOT,
   updateSession
 });
 
