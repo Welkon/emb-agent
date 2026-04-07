@@ -41,6 +41,7 @@ function createActionContractHelpers(deps) {
         checks: health.checks || [],
         recommendations: health.recommendations || [],
         next_commands: health.next_commands || [],
+        quickstart: health.quickstart || null,
         summary: health.summary || {},
         status: health.status || 'warn',
         scheduler: {

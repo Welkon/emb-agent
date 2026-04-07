@@ -40,6 +40,7 @@ npx emb-agent --global
 
 - 用 `init` 接入现有工程
 - 用 `health` 先判断当前状态是不是可信
+- 如果 `health.quickstart` 已出现，就按它给的最短闭环走，通常是 `adapter bootstrap -> next`
 - 用 `hw.yaml / req.yaml` 沉淀真值
 - 用 `next` 给出下一步
 - 对公式 / 外设 / 引脚 / 寄存器问题，优先让 `next -> dispatch/orchestrate` 给出 `tool_recommendation / tool_execution`

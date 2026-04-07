@@ -77,6 +77,7 @@ test('manager surfaces health next commands before generic next action', () => {
 
     assert.ok(Array.isArray(manager.health.next_commands));
     assert.ok(manager.health.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
+    assert.equal(manager.health.quickstart.stage, 'fill-hardware-identity');
     const healthIndex = manager.recommended_actions.findIndex(
       item => item.type === 'health' && item.cli.includes('adapter source add default-pack')
     );
@@ -84,6 +85,42 @@ test('manager surfaces health next commands before generic next action', () => {
     assert.ok(healthIndex >= 0);
     assert.ok(nextIndex >= 0);
     assert.ok(healthIndex < nextIndex);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('manager surfaces quickstart action before next when bootstrap path is ready', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-manager-quickstart-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+    fs.writeFileSync(
+      path.join(tempProject, 'emb-agent', 'hw.yaml'),
+      'mcu:\n  vendor: "SCMCU"\n  model: "SC8F072"\n  package: "SOP8"\n',
+      'utf8'
+    );
+
+    let stdout = '';
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+    cli.main(['manager']);
+    const manager = JSON.parse(stdout);
+
+    assert.equal(manager.health.quickstart.stage, 'bootstrap-then-next');
+    assert.ok(manager.health.quickstart.steps[0].cli.includes('adapter bootstrap'));
+    const quickstartIndex = manager.recommended_actions.findIndex(item => item.type === 'quickstart');
+    const nextIndex = manager.recommended_actions.findIndex(item => item.type === 'next');
+    assert.ok(quickstartIndex >= 0);
+    assert.ok(nextIndex >= 0);
+    assert.ok(quickstartIndex < nextIndex);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

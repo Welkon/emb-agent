@@ -605,12 +605,23 @@ function createSessionFlowHelpers(deps) {
       ? {
           command: 'health',
           reason: '当前基础接入尚未闭环，先按 health 建议补齐硬件真值或 adapter 同步，再进入 scan',
-          health_next_commands: health && Array.isArray(health.next_commands) ? health.next_commands : []
+          health_next_commands: health && Array.isArray(health.next_commands) ? health.next_commands : [],
+          health_quickstart: health && health.quickstart ? health.quickstart : null
         }
       : guidance.next;
     const contextHygiene = buildContextHygiene(resolved, handoff, nextCommand.command);
     const nextActions = gatedByHealth
       ? runtime.unique([
+          ...(health && health.quickstart
+            ? [
+                health.quickstart.followup
+                  ? `首次闭环: ${health.quickstart.followup}`
+                  : `首次闭环: ${(health.quickstart.steps || [])
+                      .map(step => step.cli || step.label)
+                      .filter(Boolean)
+                      .join(' -> ')}`
+              ]
+            : []),
           ...(health && Array.isArray(health.next_commands)
             ? health.next_commands.map(item => `优先执行 health 建议: ${item.cli}`)
             : []),
@@ -646,7 +657,8 @@ function createSessionFlowHelpers(deps) {
         ? {
             status: health.status,
             summary: health.summary,
-            next_commands: health.next_commands || []
+            next_commands: health.next_commands || [],
+            quickstart: health.quickstart || null
           }
         : null,
       next: {
@@ -656,6 +668,7 @@ function createSessionFlowHelpers(deps) {
         cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [nextCommand.command]),
         gated_by_health: gatedByHealth,
         health_next_commands: nextCommand.health_next_commands || [],
+        health_quickstart: nextCommand.health_quickstart || null,
         tool_recommendation: guidance.primary_tool_recommendation
       },
       context_hygiene: contextHygiene,

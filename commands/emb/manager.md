@@ -20,6 +20,7 @@ allowed-tools:
 2. 输出中要重点关注：
    - 当前 `next` 建议
    - `health` 摘要与 `health.next_commands`
+   - 如果存在 `health.quickstart`，优先把它当成首次闭环入口
    - 当前 `tool_execution` 摘要
    - `context_hygiene`
    - 是否存在 handoff
@@ -35,5 +36,6 @@ allowed-tools:
 - 如果已有 handoff，优先提醒 `resume`
 - 如果最近一次 forensics 已挂到 open thread，优先提示恢复该 thread
 - 如果 `health.next_commands` 已经给出更具体的 CLI，优先于泛化的 `next`
+- 如果 `health.quickstart.steps[0].cli` 存在，优先提示这条 quickstart，再提示普通 `health.next_commands`
 - 如果 `tool_execution.recommended = true`，优先提示 tool，再提示通用 `next`
 - 如果没有明显阻塞，再按 `next` 给出最小推进方向

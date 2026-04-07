@@ -108,6 +108,8 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.ok(report.checks.some(item => item.key === 'hardware_identity' && item.status === 'warn'));
     assert.ok(Array.isArray(report.next_commands));
     assert.ok(report.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
+    assert.equal(report.quickstart.stage, 'fill-hardware-identity');
+    assert.ok(report.quickstart.followup.includes('adapter bootstrap'));
     assert.equal(cli.loadSession().last_command, 'health');
 
     stdout = '';
@@ -221,6 +223,9 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'warn');
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'info');
     assert.ok(report.next_commands.some(item => item.cli.includes('adapter bootstrap')));
+    assert.equal(report.quickstart.stage, 'bootstrap-then-next');
+    assert.ok(report.quickstart.steps[0].cli.includes('adapter bootstrap'));
+    assert.ok(report.quickstart.steps[1].cli.endsWith(' next'));
 
     stdout = '';
     cli.main(['adapter', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);

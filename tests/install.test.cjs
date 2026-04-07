@@ -99,6 +99,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(nextBeforeContext.next.gated_by_health, true);
     assert.ok(Array.isArray(nextBeforeContext.next.health_next_commands));
     assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes('adapter source add default-pack')));
+    assert.equal(nextBeforeContext.health.quickstart.stage, 'fill-hardware-identity');
+    assert.ok(nextBeforeContext.next.health_quickstart.followup.includes('adapter bootstrap'));
     const orchestratorBeforeContext = installedCli.buildOrchestratorContext('next');
     assert.equal(orchestratorBeforeContext.workflow.strategy, 'inline');
     assert.equal(orchestratorBeforeContext.resolved_action, 'health');

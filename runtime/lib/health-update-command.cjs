@@ -7,6 +7,8 @@ const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirnam
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI =
   `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'bootstrap'])}`;
+const NEXT_CLI = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next']);
+const HEALTH_CLI = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['health']);
 
 function createHealthUpdateCommandHelpers(deps) {
   const {
@@ -126,6 +128,48 @@ function createHealthUpdateCommandHelpers(deps) {
       status: counts.fail > 0 ? 'fail' : counts.warn > 0 ? 'warn' : 'pass',
       counts
     };
+  }
+
+  function buildQuickstartHint(hardwareIdentity, nextCommands) {
+    const commands = Array.isArray(nextCommands) ? nextCommands : [];
+    const bootstrap = commands.find(item => item.key === 'adapter-bootstrap');
+
+    if (bootstrap) {
+      return {
+        stage: 'bootstrap-then-next',
+        summary: '最短闭环已就绪：先 bootstrap，同步匹配 adapter；然后直接执行 next',
+        steps: [
+          {
+            label: bootstrap.summary || '执行 adapter bootstrap',
+            cli: bootstrap.cli || ''
+          },
+          {
+            label: '进入 emb-agent 推荐的下一步',
+            cli: NEXT_CLI
+          }
+        ]
+      };
+    }
+
+    if (!hardwareIdentity.model || !hardwareIdentity.package) {
+      return {
+        stage: 'fill-hardware-identity',
+        summary: '先补全 hw.yaml 的硬件身份；补完后即可走 bootstrap -> next 的最短闭环',
+        steps: [
+          {
+            label: '补全 emb-agent/hw.yaml 的 vendor / model / package',
+            cli: ''
+          },
+          {
+            label: '重新执行 health，确认可以进入最短闭环',
+            cli: HEALTH_CLI
+          }
+        ],
+        followup: `硬件真值补完后，直接执行: ${DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI} -> ${NEXT_CLI}`
+      };
+    }
+
+    return null;
   }
 
   function buildHealthReport() {
@@ -596,6 +640,7 @@ function createHealthUpdateCommandHelpers(deps) {
       summary: summary.counts,
       checks,
       next_commands: nextCommands,
+      quickstart: buildQuickstartHint(hardwareIdentity, nextCommands),
       recommendations: runtime.unique(
         checks
           .filter(item => item.status === 'fail' || item.status === 'warn')

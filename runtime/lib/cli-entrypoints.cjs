@@ -62,6 +62,7 @@ function createCliEntryHelpers(deps) {
 
     if (!hardwareReady) {
       nextSteps.push('补全 emb-agent/hw.yaml 里的 vendor / model / package');
+      nextSteps.push('补完后直接执行: adapter bootstrap -> next');
     }
 
     nextSteps.push('运行 health');
@@ -69,12 +70,14 @@ function createCliEntryHelpers(deps) {
     if (sources.length === 0) {
       if (hardwareReady) {
         nextSteps.push('运行 adapter bootstrap');
+        nextSteps.push('执行完 adapter bootstrap 后运行 next');
       } else {
         nextSteps.push('填完 hw.yaml 后运行 adapter bootstrap');
       }
     } else {
       if (hardwareReady) {
         nextSteps.push(`运行 adapter bootstrap ${sources[0].name}`);
+        nextSteps.push('执行完 adapter bootstrap 后运行 next');
       } else {
         nextSteps.push(`填完 hw.yaml 后运行 adapter bootstrap ${sources[0].name}`);
       }

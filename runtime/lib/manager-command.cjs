@@ -42,6 +42,7 @@ function createManagerCommandHelpers(deps) {
   function buildRecommendedActions(next, resume, threads, handoff, health) {
     const actions = [];
     const toolExecution = buildToolExecutionFromNext(next);
+    const quickstart = health && health.quickstart ? health.quickstart : null;
 
     if (handoff) {
       actions.push({
@@ -70,6 +71,15 @@ function createManagerCommandHelpers(deps) {
         label: `执行 ${toolExecution.tool}`,
         cli: toolExecution.cli,
         reason: toolExecution.reason || '已生成首条工具执行草案'
+      });
+    }
+
+    if (quickstart && Array.isArray(quickstart.steps) && quickstart.steps[0] && quickstart.steps[0].cli) {
+      actions.push({
+        type: 'quickstart',
+        label: quickstart.summary || '执行首次闭环',
+        cli: quickstart.steps[0].cli,
+        reason: quickstart.followup || '先跑最短接入步骤，再执行 next'
       });
     }
 
@@ -156,7 +166,8 @@ function createManagerCommandHelpers(deps) {
       health: {
         status: health.status,
         summary: health.summary,
-        next_commands: health.next_commands || []
+        next_commands: health.next_commands || [],
+        quickstart: health.quickstart || null
       },
       tool_execution: toolExecution,
       context_hygiene: next.context_hygiene,
