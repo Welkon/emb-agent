@@ -37,8 +37,8 @@ test('attach seeds hw and req truth from existing project inputs', () => {
       'stabilize wakeup path'
     ]);
 
-    const hwContent = fs.readFileSync(path.join(tempProject, 'emb-agent', 'hw.yaml'), 'utf8');
-    const reqContent = fs.readFileSync(path.join(tempProject, 'emb-agent', 'req.yaml'), 'utf8');
+    const hwContent = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
+    const reqContent = fs.readFileSync(path.join(tempProject, '.emb-agent', 'req.yaml'), 'utf8');
     const status = cli.buildStatus();
 
     assert.match(hwContent, /model: "PMS150G"/);

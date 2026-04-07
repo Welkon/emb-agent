@@ -21,6 +21,7 @@ allowed-tools:
 2. session report 应覆盖：
    - 当前 profile / packs / preferences
    - 当前 focus、最近文件、未决问题、已知风险
+   - 如果存在活跃 workspace，也要写入它的 `refreshed_at / link_counts / snapshot_counts`
    - 是否存在 handoff
    - 当前 threads 概况
    - 下一步推荐命令与建议流程

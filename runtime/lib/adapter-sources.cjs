@@ -22,7 +22,7 @@ function ensureTarget(value) {
 }
 
 function getProjectEmbDir(projectRoot) {
-  return path.join(projectRoot, 'emb-agent');
+  return runtime.getProjectExtDir(projectRoot);
 }
 
 function getTargetEmbDir(rootDir, projectRoot, target) {
@@ -103,7 +103,11 @@ function hasLayoutContent(layoutRoot) {
 
 function resolveLayoutRoot(baseRoot, subdir) {
   const rootWithSubdir = subdir ? path.resolve(baseRoot, subdir) : baseRoot;
-  const candidates = [rootWithSubdir, path.join(rootWithSubdir, 'emb-agent')];
+  const candidates = [
+    rootWithSubdir,
+    path.join(rootWithSubdir, '.emb-agent'),
+    path.join(rootWithSubdir, 'emb-agent')
+  ];
 
   for (const candidate of candidates) {
     if (pathExists(candidate) && hasLayoutContent(candidate)) {
@@ -297,7 +301,7 @@ function ensureArrayStrings(values) {
 }
 
 function readProjectHardwareIdentity(projectRoot) {
-  const hwPath = path.join(projectRoot, 'emb-agent', 'hw.yaml');
+  const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
   if (!pathExists(hwPath)) {
     return {
       vendor: '',

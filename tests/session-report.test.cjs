@@ -10,7 +10,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
-test('session-report writes lightweight session report with next guidance', () => {
+test('session-report writes lightweight session report with next guidance', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -21,23 +21,28 @@ test('session-report writes lightweight session report with next guidance', () =
     initProject.main(['--project', tempProject]);
 
     process.chdir(tempProject);
-    cli.main(['init']);
-    cli.main(['focus', 'set', 'capture bring-up summary']);
-    cli.main(['question', 'add', 'is pwm divider restored after sleep']);
-    cli.main(['risk', 'add', 'resume path may skip timer reload']);
-    cli.main(['thread', 'add', 'Track PWM divider restore issue']);
-    cli.main(['session-report', 'capture current bring-up handoff']);
+    await cli.main(['init']);
+    await cli.main(['focus', 'set', 'capture bring-up summary']);
+    await cli.main(['question', 'add', 'is pwm divider restored after sleep']);
+    await cli.main(['risk', 'add', 'resume path may skip timer reload']);
+    await cli.main(['workspace', 'add', 'Bring-up lane', '--type', 'flow']);
+    await cli.main(['workspace', 'activate', 'bring-up-lane']);
+    await cli.main(['thread', 'add', 'Track PWM divider restore issue']);
+    await cli.main(['session-report', 'capture current bring-up handoff']);
 
-    const reportDir = path.join(tempProject, 'emb-agent', 'reports', 'sessions');
+    const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
     const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
     assert.equal(reports.length, 1);
 
     const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
     assert.match(content, /# Emb-Agent Session Report/);
     assert.match(content, /capture current bring-up handoff/);
-    assert.match(content, /capture bring-up summary/);
+    assert.match(content, /Bring-up lane/);
     assert.match(content, /is pwm divider restored after sleep/);
     assert.match(content, /resume path may skip timer reload/);
+    assert.match(content, /active_workspace: bring-up-lane \(Bring-up lane\)/);
+    assert.match(content, /## Workspace/);
+    assert.match(content, /- name: bring-up-lane/);
     assert.match(content, /next_command: forensics/);
     assert.match(content, /open: 1/);
     assert.equal(cli.loadSession().last_command, 'session-report');
@@ -47,18 +52,18 @@ test('session-report writes lightweight session report with next guidance', () =
   }
 });
 
-test('session-report records tool recommendation when scan tool is ready', () => {
+test('session-report records tool recommendation when scan tool is ready', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-tool-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
-  const projectEmbDir = path.join(tempProject, 'emb-agent');
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
 
   process.stdout.write = () => true;
 
   try {
     process.chdir(tempProject);
-    cli.main(['init', '--mcu', 'vendor-chip']);
-    cli.main(['question', 'add', 'tm2 prescaler 和 pwm 公式怎么算']);
+    await cli.main(['init', '--mcu', 'vendor-chip']);
+    await cli.main(['question', 'add', 'tm2 prescaler 和 pwm 公式怎么算']);
 
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
@@ -142,9 +147,9 @@ test('session-report records tool recommendation when scan tool is ready', () =>
       'utf8'
     );
 
-    cli.main(['session-report', 'capture timer formula path']);
+    await cli.main(['session-report', 'capture timer formula path']);
 
-    const reportDir = path.join(tempProject, 'emb-agent', 'reports', 'sessions');
+    const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
     const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
     assert.equal(reports.length, 1);
 

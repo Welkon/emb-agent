@@ -457,7 +457,12 @@ function createToolSuggestionHelpers(deps) {
     return {
       ...output,
       hardware: {
-        mcu: hardwareIdentity || { file: 'emb-agent/hw.yaml', vendor: '', model: '', package: '' },
+        mcu: hardwareIdentity || {
+          file: runtime.getProjectAssetRelativePath('hw.yaml'),
+          vendor: '',
+          model: '',
+          package: ''
+        },
         chip_profile: chipProfile
           ? {
               name: chipProfile.name,

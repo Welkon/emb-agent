@@ -18,7 +18,7 @@ Use this command when the project needs concrete tool adapters instead of abstra
 ## When To Use
 
 - 需要把厂商/芯片工具扩展接入当前项目
-- 需要同步外部 adapter 仓库到项目 `emb-agent/` 目录
+- 需要同步外部 adapter 仓库到项目 `./.emb-agent/` 目录
 - 需要确认某个 adapter source 是否已经同步
 - 需要移除旧的 adapter source 并清理已同步产物
 
@@ -49,17 +49,17 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source remove <name>
 
 - `adapter derive` 会生成 family/device/chip 草稿与 registry，并按可推断信息补 `device bindings` 的 draft 骨架
 - `adapter generate` 复用同一套生成引擎，但允许把结果直接写到任意 `emb-agent` 风格目录；适合 `emb-agent-adapters` 这类贡献仓库
-- `adapter derive` 也会为每个 tool 生成 `emb-agent/adapters/routes/<tool>.cjs` draft route；默认仍是 draft 语义
+- `adapter derive` 也会为每个 tool 生成 `./.emb-agent/adapters/routes/<tool>.cjs` draft route；默认仍是 draft 语义
 - `timer-calc`、`pwm-calc`、`adc-scale` 和 `comparator-threshold` 例外：生成的 draft route 已带首版通用实现，只要 binding 参数足够即可直接运行
-- `adapter derive --from-project` 会从 `emb-agent/hw.yaml` 推断 vendor/model/package、family/device/chip slug、tool 建议和 `pin_count`
-- `adapter derive --from-doc <doc-id>` 会从 `emb-agent/cache/docs/<doc-id>/facts.hardware.json` 推断能力，并把文档元数据挂到 chip profile `docs`
+- `adapter derive --from-project` 会从 `./.emb-agent/hw.yaml` 推断 vendor/model/package、family/device/chip slug、tool 建议和 `pin_count`
+- `adapter derive --from-doc <doc-id>` 会从 `./.emb-agent/cache/docs/<doc-id>/facts.hardware.json` 推断能力，并把文档元数据挂到 chip profile `docs`
 - 自动生成的 binding 只会补安全可推断字段，例如 `default_timer`、`timer_variants`、`default_output_pin`、`channels`、比较器输入候选、文档证据和 placeholder params，不会伪造真实公式实现
 - 自动推断可被手工参数覆盖，例如先 `--from-doc` 再补 `--vendor` 或直接指定 `--chip`
 - `chip profile` 现在会优先把封装与引脚知识草案放进 `packages` / `pins`；如果 truth/doc 里只看到了部分 pin，这里就只生成部分草案
 - `adapter bootstrap` 是首次接入的轻量入口：source 不存在时先登记，再立即按当前项目匹配同步；source 已存在时只做同步
-- `adapter source add` 只写入 `emb-agent/project.json`，不会自动同步
+- `adapter source add` 只写入 `./.emb-agent/project.json`，不会自动同步
 - `adapter sync` 才会真正把 adapter/profile 文件铺到项目或 runtime
-- `adapter sync` 现在默认会优先读取 `emb-agent/hw.yaml`，按当前项目匹配到的 chip/device/family/tool 只同步最小需要子集
+- `adapter sync` 现在默认会优先读取 `./.emb-agent/hw.yaml`，按当前项目匹配到的 chip/device/family/tool 只同步最小需要子集
 - 如果当前项目还没有 `hw.yaml`，或推断不到 chip，则自动回退到原来的全量同步
 - 可以显式传 `--tool`、`--family`、`--device`、`--chip` 强制筛选；多个值可用逗号分隔
 - 传 `--no-match-project` 可关闭 `hw.yaml` 自动匹配，恢复显式筛选或全量同步语义

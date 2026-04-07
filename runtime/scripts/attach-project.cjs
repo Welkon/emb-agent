@@ -294,8 +294,9 @@ function attachProject(argv) {
   const projectConfig = initProject.buildProjectConfig(configArgs);
   const detected = detectProjectInputs(projectRoot);
   const scaffolded = initProject.scaffoldProject(projectRoot, projectConfig, args.force);
-  const hwPath = path.join(projectRoot, 'emb-agent', 'hw.yaml');
-  const reqPath = path.join(projectRoot, 'emb-agent', 'req.yaml');
+  const projectExtDir = runtime.getProjectExtDir(projectRoot);
+  const hwPath = path.join(projectExtDir, 'hw.yaml');
+  const reqPath = path.join(projectExtDir, 'req.yaml');
 
   seedHwTruth(hwPath, {
     mcu: args.mcu,

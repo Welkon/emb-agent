@@ -38,7 +38,7 @@ test('scan save appends scan snapshot to hardware logic doc', () => {
     ]);
 
     const content = fs.readFileSync(path.join(tempProject, 'docs', 'HARDWARE-LOGIC.md'), 'utf8');
-    const hwTruth = fs.readFileSync(path.join(tempProject, 'emb-agent', 'hw.yaml'), 'utf8');
+    const hwTruth = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
 
     assert.match(content, /## Emb-Agent Scans/);
     assert.match(content, /Mapped current firmware entry and truth sources/);

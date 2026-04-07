@@ -298,11 +298,11 @@ function readObjectList(content, keyLine, listIndent) {
 }
 
 function loadProjectHardwareTruth(projectRoot) {
-  const filePath = path.join(projectRoot, 'emb-agent', 'hw.yaml');
+  const filePath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
   const content = fs.existsSync(filePath) ? runtime.readText(filePath) : '';
 
   return {
-    path: path.relative(projectRoot, filePath),
+    path: runtime.getProjectAssetRelativePath('hw.yaml'),
     data: {
       vendor: readScalarLine(content, '  vendor: '),
       model: readScalarLine(content, '  model: '),
@@ -348,6 +348,9 @@ function inferTools(peripherals, extraTextParts) {
   const patterns = [
     ['timer-calc', /\bTIMER(?:\d+)?\b|\bT16\b|\bTM2\b|\bTM3\b/i],
     ['pwm-calc', /\bPWM\b/i],
+    ['lpwmg-calc', /\bLPWMG\b|\bLPG\dPWM\b/i],
+    ['lvdc-threshold', /\bLVDC\b|\bLVD\b|低压检测/i],
+    ['charger-config', /\bCHG\b|\bCHARG(?:E|ER|ING)\b|充电/i],
     ['adc-scale', /\bADC\b/i],
     ['comparator-threshold', /\bCOMPARATOR\b|\bCMP\b/i]
   ];
@@ -736,6 +739,52 @@ function buildPwmBinding(toolName, config) {
   };
 }
 
+function buildLpwmgBinding(toolName, config) {
+  const lpwmg = findPeripheral(config.peripherals, /\bLPWMG\b|\bLPG\dPWM\b/i);
+  const lpwmgName = lpwmg ? String(lpwmg.name) : 'LPWMG';
+  const lpwmgSignals = matchSignals(config.signals, /\bLPWMG\b|\bLPG\dPWM\b|PWM|pwm-output/i);
+  const channelPins = {
+    lpwmg0: buildBindingMap(
+      lpwmgSignals.filter(item => /\bLPWMG0\b|\bLPG0PWM\b/i.test(signalHaystack(item))),
+      'lpwmg-output'
+    ),
+    lpwmg1: buildBindingMap(
+      lpwmgSignals.filter(item => /\bLPWMG1\b|\bLPG1PWM\b/i.test(signalHaystack(item))),
+      'lpwmg-output'
+    ),
+    lpwmg2: buildBindingMap(
+      lpwmgSignals.filter(item => /\bLPWMG2\b|\bLPG2PWM\b/i.test(signalHaystack(item))),
+      'lpwmg-output'
+    )
+  };
+  const defaultChannel = Object.entries(channelPins).find(([, pins]) => Object.keys(pins).length > 0);
+  const defaultPin = defaultChannel ? Object.keys(defaultChannel[1])[0] : '';
+
+  return {
+    algorithm: `${config.device}-${slugSuffix(toolName)}`,
+    draft: true,
+    params: {
+      default_channel: defaultChannel ? defaultChannel[0] : undefined,
+      default_output_pin: defaultPin || undefined,
+      channels: channelPins
+    },
+    evidence: runtime.unique([
+      lpwmgName ? `peripheral:${lpwmgName}` : '',
+      ...Object.values(channelPins).flatMap(pins => Object.keys(pins).map(pin => `signal:${pin}`)),
+      ...(config.docs || []).map(item => `doc:${item.id}`)
+    ]),
+    notes: buildBindingNotes(
+      [],
+      [
+        lpwmgName ? `已识别 LPWMG 能力 ${lpwmgName}。` : '仅识别到 LPWMG 关键词，具体通道仍需手工确认。',
+        defaultPin
+          ? `已从项目 truth 识别默认 LPWMG 输出候选 ${defaultPin}。`
+          : '默认 LPWMG 输出引脚未确认。'
+      ]
+    )
+  };
+}
+
 function buildAdcBinding(toolName, config) {
   const adc = findPeripheral(config.peripherals, /\bADC\b/i);
   const adcName = adc ? String(adc.name) : 'ADC';
@@ -762,6 +811,53 @@ function buildAdcBinding(toolName, config) {
       [
         adcName ? `已识别 ADC 能力 ${adcName}。` : '仅识别到 ADC 关键词，通道映射未确认。',
         channelName ? `已从项目 truth 识别默认 ADC 通道候选 ${channelName}。` : '默认 ADC 通道未确认。'
+      ]
+    )
+  };
+}
+
+function buildLvdcBinding(toolName, config) {
+  const lvdc = findPeripheral(config.peripherals, /\bLVDC\b|\bLVD\b/i);
+  const lvdcName = lvdc ? String(lvdc.name) : 'LVDC';
+
+  return {
+    algorithm: `${config.device}-${slugSuffix(toolName)}`,
+    draft: true,
+    params: {
+      register_name: 'LVDC'
+    },
+    evidence: runtime.unique([
+      lvdcName ? `peripheral:${lvdcName}` : '',
+      ...(config.docs || []).map(item => `doc:${item.id}`)
+    ]),
+    notes: buildBindingNotes(
+      [],
+      [
+        lvdcName ? `已识别低压检测能力 ${lvdcName}。` : '仅识别到 LVDC/LVD 关键词，具体寄存器字段仍需手工确认。'
+      ]
+    )
+  };
+}
+
+function buildChargerBinding(toolName, config) {
+  const charger = findPeripheral(config.peripherals, /\bCHG\b|\bCHARG(?:E|ER|ING)\b|充电/i);
+  const chargerName = charger ? String(charger.name) : 'Charger';
+
+  return {
+    algorithm: `${config.device}-${slugSuffix(toolName)}`,
+    draft: true,
+    params: {
+      control_macro: 'CHG_CTRL',
+      status_register: 'CHG_TEMP'
+    },
+    evidence: runtime.unique([
+      chargerName ? `peripheral:${chargerName}` : '',
+      ...(config.docs || []).map(item => `doc:${item.id}`)
+    ]),
+    notes: buildBindingNotes(
+      [],
+      [
+        chargerName ? `已识别充电能力 ${chargerName}。` : '仅识别到 CHG/充电关键词，电流档位与状态位仍需手工确认。'
       ]
     )
   };
@@ -803,6 +899,9 @@ function buildDraftBindings(config) {
   const builders = {
     'timer-calc': buildTimerBinding,
     'pwm-calc': buildPwmBinding,
+    'lpwmg-calc': buildLpwmgBinding,
+    'lvdc-threshold': buildLvdcBinding,
+    'charger-config': buildChargerBinding,
     'adc-scale': buildAdcBinding,
     'comparator-threshold': buildComparatorBinding
   };
@@ -896,7 +995,7 @@ function targetEmbRoot(runtimeRoot, projectRoot, target) {
   if (target === 'runtime') {
     return runtimeRoot;
   }
-  return path.join(projectRoot, 'emb-agent');
+  return runtime.getProjectExtDir(projectRoot);
 }
 
 function resolveEmbOutputRoot(runtimeRoot, projectRoot, config) {

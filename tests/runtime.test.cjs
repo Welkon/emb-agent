@@ -55,7 +55,22 @@ test('normalizeSession fills metadata and trims arrays', () => {
   assert.equal(session.last_files.length, 12);
   assert.deepEqual(session.open_questions, ['q1']);
   assert.deepEqual(session.known_risks, ['r1']);
+  assert.deepEqual(session.active_workspace, {
+    name: '',
+    title: '',
+    type: '',
+    status: '',
+    path: '',
+    updated_at: ''
+  });
   assert.deepEqual(session.active_thread, {
+    name: '',
+    title: '',
+    status: '',
+    path: '',
+    updated_at: ''
+  });
+  assert.deepEqual(session.active_task, {
     name: '',
     title: '',
     status: '',
@@ -118,10 +133,30 @@ test('project state paths resolve outside runtime root and migrate legacy files'
   assert.equal(fs.existsSync(paths.legacyHandoffPath), false);
 });
 
+test('project layout migrates legacy emb-agent directory into .emb-agent', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-project-layout-'));
+  const legacyDir = path.join(tempProject, 'emb-agent');
+  const currentDir = path.join(tempProject, '.emb-agent');
+
+  fs.mkdirSync(path.join(legacyDir, 'cache', 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(legacyDir, 'project.json'), '{}\n', 'utf8');
+  fs.writeFileSync(path.join(legacyDir, 'hw.yaml'), 'mcu:\n  model: test\n', 'utf8');
+
+  const resolvedDir = runtime.initProjectLayout(tempProject);
+
+  assert.equal(resolvedDir, currentDir);
+  assert.equal(fs.existsSync(path.join(currentDir, 'project.json')), true);
+  assert.equal(fs.existsSync(path.join(currentDir, 'hw.yaml')), true);
+  assert.equal(fs.existsSync(path.join(currentDir, 'cache', 'docs')), true);
+  assert.equal(fs.existsSync(path.join(currentDir, 'specs')), true);
+  assert.equal(fs.existsSync(path.join(currentDir, 'workspace')), true);
+  assert.equal(fs.existsSync(legacyDir), false);
+});
+
 test('project config defaults can override runtime defaults', () => {
   const config = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-project-'));
-  const projectConfigDir = path.join(tempProject, 'emb-agent');
+  const projectConfigDir = path.join(tempProject, '.emb-agent');
   fs.mkdirSync(projectConfigDir, { recursive: true });
   fs.writeFileSync(
     path.join(projectConfigDir, 'project.json'),
@@ -165,7 +200,7 @@ test('project config defaults can override runtime defaults', () => {
 test('project config accepts mineru api mode settings', () => {
   const config = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-project-api-'));
-  const projectConfigDir = path.join(tempProject, 'emb-agent');
+  const projectConfigDir = path.join(tempProject, '.emb-agent');
   fs.mkdirSync(projectConfigDir, { recursive: true });
   fs.writeFileSync(
     path.join(projectConfigDir, 'project.json'),
@@ -226,7 +261,7 @@ test('profile validator accepts arch review triggers', () => {
 test('project config accepts mineru auto mode settings', () => {
   const config = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-project-auto-'));
-  const projectConfigDir = path.join(tempProject, 'emb-agent');
+  const projectConfigDir = path.join(tempProject, '.emb-agent');
   fs.mkdirSync(projectConfigDir, { recursive: true });
   fs.writeFileSync(
     path.join(projectConfigDir, 'project.json'),

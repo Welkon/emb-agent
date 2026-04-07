@@ -25,6 +25,7 @@ const toolRuntime = require(path.join(ROOT, 'lib', 'tool-runtime.cjs'));
 const toolSuggestionHelpers = require(path.join(ROOT, 'lib', 'tool-suggestions.cjs'));
 const chipCatalog = require(path.join(ROOT, 'lib', 'chip-catalog.cjs'));
 const adapterSources = require(path.join(ROOT, 'lib', 'adapter-sources.cjs'));
+const docCache = require(path.join(ROOT, 'lib', 'doc-cache.cjs'));
 const noteReportHelpers = require(path.join(ROOT, 'lib', 'note-reports.cjs'));
 const dispatchHelpers = require(path.join(ROOT, 'lib', 'dispatch-orchestrator.cjs'));
 const sessionFlowHelpers = require(path.join(ROOT, 'lib', 'session-flow.cjs'));
@@ -35,6 +36,9 @@ const commandGroupHelpers = require(path.join(ROOT, 'lib', 'command-groups.cjs')
 const cliEntryHelpers = require(path.join(ROOT, 'lib', 'cli-entrypoints.cjs'));
 const cliRouterHelpers = require(path.join(ROOT, 'lib', 'cli-router.cjs'));
 const threadCommandHelpers = require(path.join(ROOT, 'lib', 'thread-commands.cjs'));
+const taskCommandHelpers = require(path.join(ROOT, 'lib', 'task-commands.cjs'));
+const workspaceCommandHelpers = require(path.join(ROOT, 'lib', 'workspace-commands.cjs'));
+const specCommandHelpers = require(path.join(ROOT, 'lib', 'spec-commands.cjs'));
 const forensicsCommandHelpers = require(path.join(ROOT, 'lib', 'forensics-command.cjs'));
 const projectStateStoreHelpers = require(path.join(ROOT, 'lib', 'project-state-store.cjs'));
 const settingsCommandHelpers = require(path.join(ROOT, 'lib', 'settings-command.cjs'));
@@ -78,7 +82,7 @@ function resolveProjectRoot() {
 }
 
 function getProjectExtDir() {
-  return path.join(resolveProjectRoot(), 'emb-agent');
+  return runtime.getProjectExtDir(resolveProjectRoot());
 }
 
 function getProjectProfilesDir() {
@@ -106,18 +110,7 @@ function readDefaultSession(paths) {
 }
 
 function initProjectLayout() {
-  runtime.ensureDir(getProjectExtDir());
-  runtime.ensureDir(path.join(getProjectExtDir(), 'cache'));
-  runtime.ensureDir(path.join(getProjectExtDir(), 'cache', 'docs'));
-  runtime.ensureDir(path.join(getProjectExtDir(), 'cache', 'adapter-sources'));
-  runtime.ensureDir(path.join(getProjectExtDir(), 'threads'));
-  runtime.ensureDir(path.join(getProjectExtDir(), 'reports'));
-  runtime.ensureDir(path.join(getProjectExtDir(), 'reports', 'forensics'));
-  runtime.ensureDir(path.join(getProjectExtDir(), 'reports', 'sessions'));
-  runtime.ensureDir(getProjectProfilesDir());
-  runtime.ensureDir(getProjectPacksDir());
-  runtime.ensureDir(path.join(getProjectExtDir(), 'adapters'));
-  runtime.ensureDir(path.join(resolveProjectRoot(), 'docs'));
+  return runtime.initProjectLayout(resolveProjectRoot());
 }
 
 const {
@@ -197,11 +190,11 @@ function readScalarLine(content, prefix) {
 }
 
 function loadHardwareIdentity(projectRoot) {
-  const hwPath = path.join(projectRoot, 'emb-agent', 'hw.yaml');
+  const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
   const content = fs.existsSync(hwPath) ? runtime.readText(hwPath) : '';
 
   return {
-    file: path.relative(projectRoot, hwPath),
+    file: runtime.getProjectAssetRelativePath('hw.yaml'),
     vendor: readScalarLine(content, '  vendor: '),
     model: readScalarLine(content, '  model: '),
     package: readScalarLine(content, '  package: ')
@@ -327,6 +320,47 @@ function resolveSession() {
 }
 
 const {
+  handleSpecCommands
+} = specCommandHelpers.createSpecCommandHelpers({
+  fs,
+  path,
+  runtime,
+  getProjectExtDir
+});
+
+const {
+  getActiveTask,
+  handleTaskCommands
+} = taskCommandHelpers.createTaskCommandHelpers({
+  fs,
+  path,
+  runtime,
+  resolveProjectRoot,
+  getProjectExtDir,
+  getProjectConfig,
+  loadSession,
+  resolveSession,
+  updateSession,
+  requireRestText,
+  docCache,
+  adapterSources,
+  rootDir: ROOT
+});
+
+const {
+  listWorkspaces,
+  getActiveWorkspace,
+  handleWorkspaceCommands
+} = workspaceCommandHelpers.createWorkspaceCommandHelpers({
+  fs,
+  path,
+  runtime,
+  getProjectExtDir,
+  loadSession,
+  updateSession
+});
+
+const {
   listThreads,
   upsertForensicsThread,
   handleThreadCommands
@@ -365,7 +399,10 @@ const {
   getProjectConfig,
   loadHandoff,
   enrichWithToolSuggestions,
-  listThreads
+  listThreads,
+  listWorkspaces,
+  getActiveTask,
+  getActiveWorkspace
 });
 
 const {
@@ -514,6 +551,9 @@ const {
   requireRestText,
   requirePreferenceKey,
   handleHealthUpdateCommands,
+  handleSpecCommands,
+  handleTaskCommands,
+  handleWorkspaceCommands,
   handleThreadCommands,
   handleForensicsCommands,
   handleSettingsCommands,
@@ -773,6 +813,7 @@ module.exports = {
   shouldSuggestArchReview,
   shouldSuggestPlan,
   shouldSuggestReview,
+  listWorkspaces,
   scheduler
 };
 

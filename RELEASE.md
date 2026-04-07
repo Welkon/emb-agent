@@ -115,6 +115,9 @@ node ./.codex/emb-agent/bin/emb-agent.cjs adapter sync default-pack
 
 - `timer-calc`
 - `pwm-calc`
+- `lpwmg-calc`
+- `lvdc-threshold`
+- `charger-config`
 - `comparator-threshold`
 
 ## 当前已知阻塞

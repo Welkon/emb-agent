@@ -68,7 +68,7 @@ function ensureUniqueStrings(values) {
 function extensionToolsRoots(rootDir) {
   return ensureUniqueStrings([
     path.join(rootDir, 'extensions', 'tools'),
-    path.join(process.cwd(), 'emb-agent', 'extensions', 'tools')
+    path.join(runtime.getProjectExtDir(process.cwd()), 'extensions', 'tools')
   ]);
 }
 

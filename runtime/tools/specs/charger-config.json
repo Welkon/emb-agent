@@ -1,0 +1,27 @@
+{
+  "name": "charger-config",
+  "kind": "calculator",
+  "status": "abstract",
+  "sample": false,
+  "description": "充电电流档位选择与充电状态位解码工具。emb-agent core 只保留抽象规格，不内置任何充电控制器实现。",
+  "inputs": [
+    "target charge current",
+    "discrete current table",
+    "status bits or flags",
+    "charger control register model"
+  ],
+  "outputs": [
+    "nearest supported current setting",
+    "register or macro hints",
+    "decoded charging state",
+    "operating warnings"
+  ],
+  "family_profiles": [],
+  "device_profiles": [],
+  "source_modules": [],
+  "notes": [
+    "这不是电池算法模拟器，只处理手册已给出的离散配置与状态解释。",
+    "如果芯片支持温度曲线、终止电流或充电阶段切换，再由外部 adapter 继续扩展。",
+    "厂商/芯片绑定不要进入 emb-agent core。"
+  ]
+}

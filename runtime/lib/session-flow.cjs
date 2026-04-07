@@ -72,8 +72,43 @@ function createSessionFlowHelpers(deps) {
     getProjectConfig,
     loadHandoff,
     enrichWithToolSuggestions,
-    listThreads
+    listThreads,
+    listWorkspaces,
+    getActiveTask,
+    getActiveWorkspace
   } = deps;
+
+  function buildWorkspaceView(workspace) {
+    if (!workspace || !workspace.name) {
+      return null;
+    }
+
+    return {
+      name: workspace.name,
+      title: workspace.title,
+      type: workspace.type,
+      status: workspace.status,
+      path: workspace.path,
+      notes_path: workspace.notes_path || workspace.path,
+      manifest_path: workspace.manifest_path || '',
+      snapshot: workspace.snapshot || {
+        last_files: [],
+        open_questions: [],
+        known_risks: [],
+        refreshed_at: ''
+      },
+      links: workspace.links || {
+        tasks: [],
+        specs: [],
+        threads: []
+      },
+      link_counts: workspace.link_counts || {
+        tasks: Array.isArray(workspace.links && workspace.links.tasks) ? workspace.links.tasks.length : 0,
+        specs: Array.isArray(workspace.links && workspace.links.specs) ? workspace.links.specs.length : 0,
+        threads: Array.isArray(workspace.links && workspace.links.threads) ? workspace.links.threads.length : 0
+      }
+    };
+  }
 
   function shouldGateNextWithHealth(resolved, handoff, nextCommand, healthReport) {
     if (!healthReport || nextCommand !== 'scan' || handoff) {
@@ -131,7 +166,9 @@ function createSessionFlowHelpers(deps) {
       session && session.focus ? session.focus : '',
       ...((session && session.open_questions) || []),
       ...((session && session.known_risks) || []),
+      session && session.active_workspace && session.active_workspace.title ? session.active_workspace.title : '',
       session && session.active_thread && session.active_thread.title ? session.active_thread.title : '',
+      session && session.active_task && session.active_task.title ? session.active_task.title : '',
       latestForensics && latestForensics.problem ? latestForensics.problem : ''
     ]).filter(Boolean);
   }
@@ -157,6 +194,26 @@ function createSessionFlowHelpers(deps) {
           status: openThread.status,
           path: openThread.path,
           updated_at: openThread.updated_at
+        }
+      : null;
+  }
+
+  function resolveActiveWorkspace(session) {
+    const stored = session && session.active_workspace ? session.active_workspace : null;
+    if (stored && stored.name) {
+      return stored;
+    }
+
+    const workspaces = listWorkspaces ? listWorkspaces() : { workspaces: [] };
+    const activeWorkspace = (workspaces.workspaces || []).find(item => item.status === 'ACTIVE');
+    return activeWorkspace
+      ? {
+          name: activeWorkspace.name,
+          title: activeWorkspace.title,
+          type: activeWorkspace.type,
+          status: activeWorkspace.status,
+          path: activeWorkspace.path,
+          updated_at: activeWorkspace.updated_at
         }
       : null;
   }
@@ -507,6 +564,8 @@ function createSessionFlowHelpers(deps) {
     const knownRisks = session.known_risks || [];
     const lastFiles = session.last_files || [];
     const openThread = resolveActiveThread(session);
+    const activeTask = getActiveTask ? getActiveTask() : null;
+    const activeWorkspace = getActiveWorkspace ? getActiveWorkspace() : resolveActiveWorkspace(session);
     const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
     const toolRecommendations = (resolved.effective && resolved.effective.tool_recommendations) || [];
     const primaryToolRecommendation = selectPrimaryToolRecommendation(toolRecommendations);
@@ -527,6 +586,8 @@ function createSessionFlowHelpers(deps) {
       next_actions: runtime.unique([
         handoff && handoff.next_action ? `按 handoff 恢复: ${handoff.next_action}` : '',
         ...(handoff ? handoff.human_actions_pending.map(action => `需要人工动作: ${action}`) : []),
+        activeWorkspace ? `优先回到 workspace ${activeWorkspace.name}: ${activeWorkspace.title}` : '',
+        activeTask ? `优先恢复 task ${activeTask.name}: ${activeTask.title}` : '',
         openThread ? `优先恢复 thread ${openThread.name}: ${openThread.title}` : '',
         latestForensics && latestForensics.report_file
           ? `最近一次 forensics: ${latestForensics.report_file} (${latestForensics.highest_severity || 'info'})`
@@ -559,6 +620,8 @@ function createSessionFlowHelpers(deps) {
     const handoff = loadHandoff();
     const guidance = buildGuidance(resolved, handoff);
     const contextHygiene = buildContextHygiene(resolved, handoff, 'resume');
+    const activeTask = getActiveTask ? getActiveTask() : null;
+    const activeWorkspace = getActiveWorkspace ? getActiveWorkspace() : resolveActiveWorkspace(resolved.session);
 
     return enrichWithToolSuggestions({
       summary: {
@@ -589,6 +652,20 @@ function createSessionFlowHelpers(deps) {
             last_files: handoff.last_files
           }
         : null,
+      task: activeTask
+        ? {
+            name: activeTask.name,
+            title: activeTask.title,
+            status: activeTask.status,
+            type: activeTask.type,
+            path: activeTask.path,
+            context_files: activeTask.context_files,
+            context: activeTask.context
+          }
+        : null,
+      workspace: activeWorkspace
+        ? buildWorkspaceView(activeWorkspace)
+        : null,
       thread: resolveActiveThread(resolved.session),
       diagnostics: resolved.session.diagnostics || { latest_forensics: {} },
       carry_over: {
@@ -607,6 +684,8 @@ function createSessionFlowHelpers(deps) {
     const handoff = loadHandoff();
     const guidance = buildGuidance(resolved, handoff);
     const health = getHealthReport ? getHealthReport() : null;
+    const activeTask = getActiveTask ? getActiveTask() : null;
+    const activeWorkspace = getActiveWorkspace ? getActiveWorkspace() : resolveActiveWorkspace(resolved.session);
     const gatedByHealth = shouldGateNextWithHealth(resolved, handoff, guidance.next.command, health);
     const nextCommand = gatedByHealth
       ? {
@@ -650,6 +729,19 @@ function createSessionFlowHelpers(deps) {
         open_questions: resolved.session.open_questions || [],
         known_risks: resolved.session.known_risks || []
       },
+      task: activeTask
+        ? {
+            name: activeTask.name,
+            title: activeTask.title,
+            status: activeTask.status,
+            type: activeTask.type,
+            path: activeTask.path,
+            context_files: activeTask.context_files
+          }
+        : null,
+      workspace: activeWorkspace
+        ? buildWorkspaceView(activeWorkspace)
+        : null,
       handoff: handoff
         ? {
             next_action: handoff.next_action,
@@ -722,6 +814,8 @@ function createSessionFlowHelpers(deps) {
     const projectConfig = getProjectConfig();
     const handoff = loadHandoff();
     const contextHygiene = buildContextHygiene(resolved, handoff, 'status');
+    const activeTask = getActiveTask ? getActiveTask() : null;
+    const activeWorkspace = getActiveWorkspace ? getActiveWorkspace() : resolveActiveWorkspace(resolved.session);
 
     return enrichWithToolSuggestions({
       session_version: resolved.session.session_version,
@@ -739,6 +833,19 @@ function createSessionFlowHelpers(deps) {
       open_questions: resolved.session.open_questions,
       known_risks: resolved.session.known_risks,
       last_files: resolved.session.last_files,
+      active_workspace: activeWorkspace
+        ? buildWorkspaceView(activeWorkspace)
+        : null,
+      active_task: activeTask
+        ? {
+            name: activeTask.name,
+            title: activeTask.title,
+            status: activeTask.status,
+            type: activeTask.type,
+            path: activeTask.path,
+            context_files: activeTask.context_files
+          }
+        : null,
       context_hygiene: contextHygiene
     }, resolved);
   }

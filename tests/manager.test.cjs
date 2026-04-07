@@ -131,6 +131,47 @@ test('manager view aggregates next handoff settings threads and reports', () => 
   }
 });
 
+test('manager recommends workspace refresh when active workspace has not been refreshed yet', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-manager-workspace-refresh-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['workspace', 'add', 'Power lane', '--type', 'board']);
+    await cli.main(['workspace', 'activate', 'power-lane']);
+    await cli.main(['thread', 'add', 'Track power sequencing']);
+    const threadsDir = path.join(tempProject, '.emb-agent', 'threads');
+    const threadName = fs.readdirSync(threadsDir).find(name => name.endsWith('.md')).replace(/\.md$/, '');
+    await cli.main(['thread', 'resume', threadName]);
+
+    let stdout = '';
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+    await cli.main(['manager']);
+    const manager = JSON.parse(stdout);
+
+    assert.equal(manager.workspace.name, 'power-lane');
+    assert.equal(manager.workspace.refresh_recommendation.recommended, true);
+    assert.ok(manager.workspace.refresh_recommendation.reasons.some(item => item.includes('workspace 还没有执行过 refresh')));
+    const refreshIndex = manager.recommended_actions.findIndex(item => item.type === 'workspace-refresh');
+    const workspaceIndex = manager.recommended_actions.findIndex(item => item.type === 'workspace');
+    const nextIndex = manager.recommended_actions.findIndex(item => item.type === 'next');
+    assert.ok(refreshIndex >= 0);
+    assert.ok(workspaceIndex >= 0);
+    assert.ok(nextIndex >= 0);
+    assert.ok(refreshIndex < workspaceIndex);
+    assert.ok(refreshIndex < nextIndex);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('manager surfaces health next commands before generic next action', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-manager-health-'));
   const currentCwd = process.cwd();
@@ -175,7 +216,7 @@ test('manager surfaces quickstart action before next when bootstrap path is read
     process.chdir(tempProject);
     cli.main(['init']);
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'hw.yaml'),
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
       'mcu:\n  vendor: "SCMCU"\n  model: "SC8F072"\n  package: "SOP8"\n',
       'utf8'
     );
@@ -205,7 +246,7 @@ test('manager view surfaces tool execution before generic next action when ready
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-manager-tool-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
-  const projectEmbDir = path.join(tempProject, 'emb-agent');
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
   process.stdout.write = () => true;
 
   try {

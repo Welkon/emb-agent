@@ -83,8 +83,8 @@ test('pwm-calc also requires external adapter by default', () => {
 test('tool runtime loads project external adapter when available', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-tool-runtime-'));
   const currentCwd = process.cwd();
-  const sharedPath = path.join(tempProject, 'emb-agent', 'adapters', 'core', 'shared.cjs');
-  const adapterPath = path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs');
+  const sharedPath = path.join(tempProject, '.emb-agent', 'adapters', 'core', 'shared.cjs');
+  const adapterPath = path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs');
 
   try {
     fs.mkdirSync(path.dirname(sharedPath), { recursive: true });
@@ -167,11 +167,11 @@ test('generated draft timer route can execute first-pass timer search', () => {
     cli.main(['init']);
     process.stdout.write = originalWrite;
 
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes'), { recursive: true });
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'registry.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'),
       JSON.stringify({
         specs: [],
         families: ['vendor-family'],
@@ -180,7 +180,7 @@ test('generated draft timer route can execute first-pass timer search', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families', 'vendor-family.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families', 'vendor-family.json'),
       JSON.stringify({
         name: 'vendor-family',
         vendor: 'VendorName',
@@ -195,7 +195,7 @@ test('generated draft timer route can execute first-pass timer search', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'vendor-device.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices', 'vendor-device.json'),
       JSON.stringify({
         name: 'vendor-device',
         family: 'vendor-family',
@@ -219,7 +219,7 @@ test('generated draft timer route can execute first-pass timer search', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs'),
+      path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs'),
       [
         "'use strict';",
         '',
@@ -309,11 +309,11 @@ test('generated draft pwm route can execute first-pass pwm search', () => {
     cli.main(['init']);
     process.stdout.write = originalWrite;
 
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes'), { recursive: true });
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'registry.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'),
       JSON.stringify({
         specs: [],
         families: ['vendor-family'],
@@ -322,7 +322,7 @@ test('generated draft pwm route can execute first-pass pwm search', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families', 'vendor-family.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families', 'vendor-family.json'),
       JSON.stringify({
         name: 'vendor-family',
         vendor: 'VendorName',
@@ -336,7 +336,7 @@ test('generated draft pwm route can execute first-pass pwm search', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'vendor-device.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices', 'vendor-device.json'),
       JSON.stringify({
         name: 'vendor-device',
         family: 'vendor-family',
@@ -361,7 +361,7 @@ test('generated draft pwm route can execute first-pass pwm search', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'pwm-calc.cjs'),
+      path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs'),
       [
         "'use strict';",
         '',
@@ -456,11 +456,11 @@ test('generated draft adc route can execute first-pass adc scaling', () => {
     cli.main(['init']);
     process.stdout.write = originalWrite;
 
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes'), { recursive: true });
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'registry.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'),
       JSON.stringify({
         specs: [],
         families: ['vendor-family'],
@@ -469,7 +469,7 @@ test('generated draft adc route can execute first-pass adc scaling', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families', 'vendor-family.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families', 'vendor-family.json'),
       JSON.stringify({
         name: 'vendor-family',
         vendor: 'VendorName',
@@ -483,7 +483,7 @@ test('generated draft adc route can execute first-pass adc scaling', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'vendor-device.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices', 'vendor-device.json'),
       JSON.stringify({
         name: 'vendor-device',
         family: 'vendor-family',
@@ -518,7 +518,7 @@ test('generated draft adc route can execute first-pass adc scaling', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'adc-scale.cjs'),
+      path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'adc-scale.cjs'),
       [
         "'use strict';",
         '',
@@ -604,11 +604,11 @@ test('generated draft comparator route can execute first-pass threshold feasibil
     cli.main(['init']);
     process.stdout.write = originalWrite;
 
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes'), { recursive: true });
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'registry.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'),
       JSON.stringify({
         specs: [],
         families: ['vendor-family'],
@@ -617,7 +617,7 @@ test('generated draft comparator route can execute first-pass threshold feasibil
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'families', 'vendor-family.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families', 'vendor-family.json'),
       JSON.stringify({
         name: 'vendor-family',
         vendor: 'VendorName',
@@ -631,7 +631,7 @@ test('generated draft comparator route can execute first-pass threshold feasibil
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'vendor-device.json'),
+      path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices', 'vendor-device.json'),
       JSON.stringify({
         name: 'vendor-device',
         family: 'vendor-family',
@@ -666,7 +666,7 @@ test('generated draft comparator route can execute first-pass threshold feasibil
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'comparator-threshold.cjs'),
+      path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'comparator-threshold.cjs'),
       [
         "'use strict';",
         '',

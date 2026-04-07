@@ -149,7 +149,7 @@ test('preferences can switch truth source ordering and strict verification', () 
 
 test('project truth files are preferred when present', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-truth-'));
-  const embDir = path.join(tempProject, 'emb-agent');
+  const embDir = path.join(tempProject, '.emb-agent');
   fs.mkdirSync(embDir, { recursive: true });
   fs.writeFileSync(path.join(embDir, 'hw.yaml'), 'mcu:\n  model: test\n', 'utf8');
   fs.writeFileSync(path.join(embDir, 'req.yaml'), 'goals:\n  - test\n', 'utf8');
@@ -162,8 +162,8 @@ test('project truth files are preferred when present', () => {
   const scan = scheduler.buildScanOutput(resolved);
   const plan = scheduler.buildPlanOutput(resolved);
 
-  assert.equal(scan.relevant_files[0], 'emb-agent/hw.yaml');
-  assert.ok(scan.relevant_files.includes('emb-agent/req.yaml'));
-  assert.ok(scan.next_reads.some(item => item.includes('emb-agent/hw.yaml')));
-  assert.ok(plan.truth_sources.some(item => item.includes('emb-agent/req.yaml')));
+  assert.equal(scan.relevant_files[0], '.emb-agent/hw.yaml');
+  assert.ok(scan.relevant_files.includes('.emb-agent/req.yaml'));
+  assert.ok(scan.next_reads.some(item => item.includes('.emb-agent/hw.yaml')));
+  assert.ok(plan.truth_sources.some(item => item.includes('.emb-agent/req.yaml')));
 });

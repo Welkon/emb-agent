@@ -73,6 +73,7 @@ function createSessionReportCommandHelpers(deps) {
       last_files: resolved.session.last_files || [],
       open_questions: resolved.session.open_questions || [],
       known_risks: resolved.session.known_risks || [],
+      workspace: resume.workspace || next.workspace || null,
       handoff: handoff
         ? {
             timestamp: handoff.timestamp,
@@ -104,6 +105,7 @@ function createSessionReportCommandHelpers(deps) {
       `- last_files: ${report.last_files.join(', ') || '(none)'}`,
       `- open_questions: ${report.open_questions.join(' | ') || '(none)'}`,
       `- known_risks: ${report.known_risks.join(' | ') || '(none)'}`,
+      `- active_workspace: ${report.workspace ? `${report.workspace.name} (${report.workspace.title})` : '(none)'}`,
       '',
       '## Preferences',
       '',
@@ -129,6 +131,24 @@ function createSessionReportCommandHelpers(deps) {
     lines.push(`- total: ${report.thread_stats.total}`);
     lines.push(`- open: ${report.thread_stats.open}`);
     lines.push(`- resolved: ${report.thread_stats.resolved}`);
+    lines.push('');
+    lines.push('## Workspace');
+    lines.push('');
+    lines.push(`- present: ${report.workspace ? 'yes' : 'no'}`);
+    if (report.workspace) {
+      lines.push(`- name: ${report.workspace.name || ''}`);
+      lines.push(`- title: ${report.workspace.title || ''}`);
+      lines.push(`- type: ${report.workspace.type || ''}`);
+      lines.push(`- status: ${report.workspace.status || ''}`);
+      lines.push(`- notes_path: ${report.workspace.notes_path || report.workspace.path || ''}`);
+      lines.push(`- refreshed_at: ${(report.workspace.snapshot && report.workspace.snapshot.refreshed_at) || ''}`);
+      lines.push(
+        `- link_counts: tasks=${((report.workspace.link_counts || {}).tasks || 0)}, specs=${((report.workspace.link_counts || {}).specs || 0)}, threads=${((report.workspace.link_counts || {}).threads || 0)}`
+      );
+      lines.push(
+        `- snapshot_counts: files=${((report.workspace.snapshot && report.workspace.snapshot.last_files) || []).length}, questions=${((report.workspace.snapshot && report.workspace.snapshot.open_questions) || []).length}, risks=${((report.workspace.snapshot && report.workspace.snapshot.known_risks) || []).length}`
+      );
+    }
     lines.push('');
     lines.push('## Guidance');
     lines.push('');

@@ -20,6 +20,58 @@ function createManagerCommandHelpers(deps) {
     listThreads
   } = deps;
 
+  function buildWorkspaceRefreshAnalysis(workspace, session) {
+    if (!workspace || !workspace.name) {
+      return null;
+    }
+
+    const snapshot = workspace.snapshot || {
+      last_files: [],
+      open_questions: [],
+      known_risks: [],
+      refreshed_at: ''
+    };
+    const links = workspace.links || {
+      tasks: [],
+      specs: [],
+      threads: []
+    };
+    const reasons = [];
+
+    if (!snapshot.refreshed_at) {
+      reasons.push('workspace 还没有执行过 refresh');
+    }
+    if ((session.last_files || []).length > 0 && (snapshot.last_files || []).length === 0) {
+      reasons.push('最近文件还没沉到 workspace snapshot');
+    }
+    if ((session.open_questions || []).some(item => !(snapshot.open_questions || []).includes(item))) {
+      reasons.push('当前未决问题还没沉到 workspace snapshot');
+    }
+    if ((session.known_risks || []).some(item => !(snapshot.known_risks || []).includes(item))) {
+      reasons.push('当前已知风险还没沉到 workspace snapshot');
+    }
+    if (
+      session.active_task &&
+      session.active_task.name &&
+      !(links.tasks || []).some(item => item.name === session.active_task.name)
+    ) {
+      reasons.push(`active task ${session.active_task.name} 还没挂到 workspace`);
+    }
+    if (
+      session.active_thread &&
+      session.active_thread.name &&
+      !(links.threads || []).some(item => item.name === session.active_thread.name)
+    ) {
+      reasons.push(`active thread ${session.active_thread.name} 还没挂到 workspace`);
+    }
+
+    return {
+      recommended: reasons.length > 0,
+      reasons,
+      refresh_cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['workspace', 'refresh', workspace.name])
+    };
+  }
+
   function listLatestReports(dirPath) {
     if (!fs.existsSync(dirPath)) {
       return [];
@@ -39,10 +91,12 @@ function createManagerCommandHelpers(deps) {
       .slice(0, 3);
   }
 
-  function buildRecommendedActions(next, resume, threads, handoff, health) {
+  function buildRecommendedActions(next, resume, threads, handoff, health, session) {
     const actions = [];
     const toolExecution = buildToolExecutionFromNext(next);
     const quickstart = health && health.quickstart ? health.quickstart : null;
+    const activeWorkspace = resume && resume.workspace ? resume.workspace : null;
+    const workspaceRefresh = buildWorkspaceRefreshAnalysis(activeWorkspace, session || {});
 
     if (handoff) {
       actions.push({
@@ -63,6 +117,24 @@ function createManagerCommandHelpers(deps) {
           reason: `${openThread.title}`
         });
       }
+    }
+
+    if (activeWorkspace) {
+      if (workspaceRefresh && workspaceRefresh.recommended) {
+        actions.push({
+          type: 'workspace-refresh',
+          label: `刷新 workspace ${activeWorkspace.name}`,
+          cli: workspaceRefresh.refresh_cli,
+          reason: workspaceRefresh.reasons[0] || '当前 workspace 需要同步最近上下文'
+        });
+      }
+
+      actions.push({
+        type: 'workspace',
+        label: `查看 workspace ${activeWorkspace.name}`,
+        cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['workspace', 'show', activeWorkspace.name]),
+        reason: activeWorkspace.title || '当前存在活跃 workspace'
+      });
     }
 
     if (toolExecution && toolExecution.recommended) {
@@ -142,6 +214,8 @@ function createManagerCommandHelpers(deps) {
     const latestForensics = listLatestReports(path.join(reportsRoot, 'forensics'));
     const latestSessions = listLatestReports(path.join(reportsRoot, 'sessions'));
     const toolExecution = buildToolExecutionFromNext(next);
+    const workspace = resume.workspace || null;
+    const workspaceRefresh = buildWorkspaceRefreshAnalysis(workspace, session);
 
     return {
       mode: 'manager-lite',
@@ -154,6 +228,21 @@ function createManagerCommandHelpers(deps) {
         last_files: session.last_files || [],
         open_questions: session.open_questions || [],
         known_risks: session.known_risks || [],
+        active_workspace: session.active_workspace || {
+          name: '',
+          title: '',
+          type: '',
+          status: '',
+          path: '',
+          updated_at: ''
+        },
+        active_task: session.active_task || {
+          name: '',
+          title: '',
+          status: '',
+          path: '',
+          updated_at: ''
+        },
         active_thread: session.active_thread || {
           name: '',
           title: '',
@@ -184,7 +273,13 @@ function createManagerCommandHelpers(deps) {
         sessions: latestSessions
       },
       diagnostics: session.diagnostics || { latest_forensics: {} },
-      recommended_actions: buildRecommendedActions(next, resume, threads, handoff, health)
+      workspace: workspace
+        ? {
+            ...workspace,
+            refresh_recommendation: workspaceRefresh
+          }
+        : null,
+      recommended_actions: buildRecommendedActions(next, resume, threads, handoff, health, session)
     };
   }
 

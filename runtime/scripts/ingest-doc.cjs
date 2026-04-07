@@ -794,10 +794,10 @@ function readListBlock(content, keyLine, itemIndent) {
 }
 
 function loadCurrentHardwareTruth(projectRoot) {
-  const filePath = path.join(projectRoot, 'emb-agent', 'hw.yaml');
+  const filePath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
   const content = fs.existsSync(filePath) ? runtime.readText(filePath) : '';
   return {
-    filePath: path.relative(projectRoot, filePath),
+    filePath: runtime.getProjectAssetRelativePath('hw.yaml'),
     content,
     data: {
       model: readScalarLine(content, '  model: '),
@@ -811,10 +811,10 @@ function loadCurrentHardwareTruth(projectRoot) {
 }
 
 function loadCurrentRequirementsTruth(projectRoot) {
-  const filePath = path.join(projectRoot, 'emb-agent', 'req.yaml');
+  const filePath = runtime.resolveProjectDataPath(projectRoot, 'req.yaml');
   const content = fs.existsSync(filePath) ? runtime.readText(filePath) : '';
   return {
-    filePath: path.relative(projectRoot, filePath),
+    filePath: runtime.getProjectAssetRelativePath('req.yaml'),
     content,
     data: {
       goals: readListBlock(content, 'goals:', '  '),
@@ -964,7 +964,10 @@ function diffDoc(projectRoot, docId, to, fields, force) {
     force: Boolean(force),
     source: entry.source,
     draft: draft.path,
-    target: to === 'hardware' ? 'emb-agent/hw.yaml' : 'emb-agent/req.yaml',
+    target:
+      to === 'hardware'
+        ? runtime.getProjectAssetRelativePath('hw.yaml')
+        : runtime.getProjectAssetRelativePath('req.yaml'),
     changes
   };
 }
@@ -1102,7 +1105,10 @@ function buildAutoApplyReadyHint(projectRoot, entry) {
     doc_id: entry.doc_id,
     to,
     only,
-    target: to === 'hardware' ? 'emb-agent/hw.yaml' : 'emb-agent/req.yaml',
+    target:
+      to === 'hardware'
+        ? runtime.getProjectAssetRelativePath('hw.yaml')
+        : runtime.getProjectAssetRelativePath('req.yaml'),
     title: entry.title || '',
     source: entry.source || '',
     kind: entry.kind || ''
@@ -1324,7 +1330,10 @@ async function applyDoc(argv, options) {
     throw new Error(`Document cache entry not found: ${args.docId}`);
   }
   const resolvedApply = resolveApplySelection(projectRoot, args);
-  const truthFile = resolvedApply.to === 'hardware' ? 'emb-agent/hw.yaml' : 'emb-agent/req.yaml';
+  const truthFile =
+    resolvedApply.to === 'hardware'
+      ? runtime.getProjectAssetRelativePath('hw.yaml')
+      : runtime.getProjectAssetRelativePath('req.yaml');
   const draft = loadDraftFacts(projectRoot, entry, resolvedApply.to);
   const selectedFields = resolvedApply.only;
 

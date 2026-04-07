@@ -235,27 +235,18 @@ function buildDocsPlan(projectConfig) {
 
 function buildTruthPlan() {
   return [
-    { output: 'emb-agent/hw.yaml', template: 'hw-truth' },
-    { output: 'emb-agent/req.yaml', template: 'req-truth' }
+    { output: runtime.getProjectAssetRelativePath('hw.yaml'), template: 'hw-truth' },
+    { output: runtime.getProjectAssetRelativePath('req.yaml'), template: 'req-truth' }
   ];
 }
 
 function scaffoldProject(projectRoot, projectConfig, force) {
-  const projectConfigDir = path.join(projectRoot, 'emb-agent');
-  const projectConfigPath = path.join(projectConfigDir, 'project.json');
-
   if (!fs.existsSync(projectRoot) || !fs.statSync(projectRoot).isDirectory()) {
     throw new Error(`Project root not found: ${projectRoot}`);
   }
 
-  ensureDir(projectConfigDir);
-  ensureDir(path.join(projectConfigDir, 'cache'));
-  ensureDir(path.join(projectConfigDir, 'cache', 'docs'));
-  ensureDir(path.join(projectConfigDir, 'cache', 'adapter-sources'));
-  ensureDir(path.join(projectConfigDir, 'profiles'));
-  ensureDir(path.join(projectConfigDir, 'packs'));
-  ensureDir(path.join(projectConfigDir, 'adapters'));
-  ensureDir(path.join(projectRoot, 'docs'));
+  const projectConfigDir = runtime.initProjectLayout(projectRoot);
+  const projectConfigPath = path.join(projectConfigDir, 'project.json');
 
   const created = [];
   const reused = [];

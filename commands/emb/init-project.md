@@ -1,6 +1,6 @@
 ---
 name: emb-init-project
-description: Initialize emb-agent for the current project with one command, creating lightweight project context without a project-local runtime.
+description: Initialize emb-agent for the current project with one command, creating a visible lightweight project context under .emb-agent.
 allowed-tools:
   - Read
   - Write
@@ -25,7 +25,7 @@ allowed-tools:
 
 ## 执行规则
 
-1. 不要创建 `./.emb-agent/` 这类项目私有 runtime。
+1. 项目级资产统一放到 `./.emb-agent/`，但不要把整套 runtime 复制进仓库。
 2. 运行：
    `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" init`
 3. 如已知信息明确，可补：
@@ -44,22 +44,24 @@ allowed-tools:
 
 - 不引入 phase、roadmap、planning 目录
 - 保持轻量
-- 若项目内生成了 `./emb-agent/`，它只应包含项目配置、真值层、缓存和轻量扩展，而不是整套 runtime
+- 若项目内生成了 `./.emb-agent/`，它只应包含项目配置、真值层、缓存和轻量扩展，而不是整套 runtime
 
 默认会创建这些目录或文件：
 
 - `docs/`
-- `emb-agent/project.json`
-- `emb-agent/hw.yaml`
-- `emb-agent/req.yaml`
-- `emb-agent/cache/docs/`
-- `emb-agent/profiles/`
-- `emb-agent/packs/`
-- `emb-agent/adapters/`
-- `emb-agent/extensions/tools/specs/`
-- `emb-agent/extensions/tools/families/`
-- `emb-agent/extensions/tools/devices/`
-- `emb-agent/extensions/chips/profiles/`
+- `.emb-agent/project.json`
+- `.emb-agent/hw.yaml`
+- `.emb-agent/req.yaml`
+- `.emb-agent/cache/docs/`
+- `.emb-agent/profiles/`
+- `.emb-agent/packs/`
+- `.emb-agent/adapters/`
+- `.emb-agent/specs/`
+- `.emb-agent/workspace/`
+- `.emb-agent/extensions/tools/specs/`
+- `.emb-agent/extensions/tools/families/`
+- `.emb-agent/extensions/tools/devices/`
+- `.emb-agent/extensions/chips/profiles/`
 
 覆盖规则：
 

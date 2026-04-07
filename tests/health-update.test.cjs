@@ -113,7 +113,7 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.equal(cli.loadSession().last_command, 'health');
 
     stdout = '';
-    fs.rmSync(path.join(tempProject, 'emb-agent', 'req.yaml'), { force: true });
+    fs.rmSync(path.join(tempProject, '.emb-agent', 'req.yaml'), { force: true });
     cli.main(['health']);
     report = JSON.parse(stdout);
 
@@ -212,7 +212,7 @@ test('health reports adapter registration and sync readiness', async () => {
 
     cli.main(['init']);
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'hw.yaml'),
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
       'mcu:\n  vendor: "SCMCU"\n  model: "SC8F072"\n  package: "SOP8"\n',
       'utf8'
     );

@@ -1,0 +1,30 @@
+{
+  "name": "lpwmg-calc",
+  "kind": "calculator",
+  "status": "abstract",
+  "sample": false,
+  "description": "低频/长周期 PWM 频率、占空比和共享上限寄存器搜索工具。emb-agent core 只保留抽象规格，不内置任何芯片级 LPWMG 实现。",
+  "inputs": [
+    "clock frequency",
+    "clock source",
+    "lpwmg channel or output pin",
+    "target pwm frequency",
+    "target duty cycle",
+    "shared upper-bound register model"
+  ],
+  "outputs": [
+    "candidate prescaler and shared upper-bound combinations",
+    "actual pwm frequency",
+    "actual duty cycle",
+    "frequency and duty error",
+    "channel register hints"
+  ],
+  "family_profiles": [],
+  "device_profiles": [],
+  "source_modules": [],
+  "notes": [
+    "这个工具用于独立于普通 TMx PWM 的 LPWMG/长周期 PWM block。",
+    "emb core 只定义协议；共享周期寄存器、half-step duty、通道输出复用和宏提示都应由外部 adapter 提供。",
+    "厂商/器件绑定不要进入 emb-agent core。"
+  ]
+}

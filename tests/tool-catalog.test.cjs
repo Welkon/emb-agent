@@ -54,7 +54,7 @@ test('tool and chip catalogs discover project external registries', () => {
   const runtimeRoot = path.join(repoRoot, 'runtime');
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-tool-catalog-'));
   const currentCwd = process.cwd();
-  const projectEmbDir = path.join(tempProject, 'emb-agent');
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
 
   try {
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });

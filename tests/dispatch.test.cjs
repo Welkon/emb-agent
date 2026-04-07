@@ -114,7 +114,7 @@ test('dispatch next exposes direct tool execution when scan has ready recommenda
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-tool-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
-  const projectEmbDir = path.join(tempProject, 'emb-agent');
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
 
   process.stdout.write = () => true;
 
@@ -212,6 +212,31 @@ test('dispatch next exposes direct tool execution when scan has ready recommenda
     assert.equal(dispatch.tool_execution.status, 'ready');
     assert.match(dispatch.tool_execution.cli, /tool run timer-calc/);
     assert.deepEqual(dispatch.tool_execution.missing_inputs, ['clock-hz', 'target-us or target-hz']);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('dispatch next surfaces active workspace context when workspace is activated', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-workspace-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+    cli.main(['workspace', 'add', 'Power rail validation', '--type', 'board']);
+    cli.main(['workspace', 'activate', 'power-rail-validation']);
+    cli.main(['question', 'add', 'why irq misses']);
+
+    const dispatch = cli.buildDispatchContext('next');
+
+    assert.equal(dispatch.workspace.name, 'power-rail-validation');
+    assert.equal(dispatch.workspace.type, 'board');
+    assert.match(dispatch.workspace.notes_path, /\.emb-agent\/workspace\/power-rail-validation\/notes\.md$/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

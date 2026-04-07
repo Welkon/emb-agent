@@ -15,7 +15,7 @@ function hashString(text) {
 }
 
 function getDocsCacheRoot(projectRoot) {
-  return path.join(projectRoot, 'emb-agent', 'cache', 'docs');
+  return path.join(runtime.getProjectExtDir(projectRoot), 'cache', 'docs');
 }
 
 function getDocsIndexPath(projectRoot) {

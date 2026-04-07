@@ -1,0 +1,27 @@
+{
+  "name": "lvdc-threshold",
+  "kind": "calculator",
+  "status": "abstract",
+  "sample": false,
+  "description": "低压检测阈值、档位编码和状态位解读工具。emb-agent core 只保留抽象规格，不内置任何器件级 LVDC 实现。",
+  "inputs": [
+    "target threshold voltage",
+    "lvdc range and step",
+    "register encoding model",
+    "optional sampled status bit"
+  ],
+  "outputs": [
+    "nearest threshold candidates",
+    "register value or code hint",
+    "actual threshold and error",
+    "status bit interpretation"
+  ],
+  "family_profiles": [],
+  "device_profiles": [],
+  "source_modules": [],
+  "notes": [
+    "这类工具适合做离散阈值档位搜索，而不是模拟电源系统。",
+    "中断/唤醒支持与否必须由外部 adapter 明确说明。",
+    "厂商/芯片绑定不要进入 emb-agent core。"
+  ]
+}

@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const runtime = require('./runtime.cjs');
 const toolCatalog = require('./tool-catalog.cjs');
 
 function ensureString(value, label) {
@@ -55,6 +56,7 @@ function parseLongOptions(tokens) {
 }
 
 function resolveAdapterCandidates(rootDir, toolName) {
+  const projectExtDir = runtime.getProjectExtDir(process.cwd());
   const names = [
     path.join(rootDir, 'adapters', `${toolName}.cjs`),
     path.join(rootDir, 'adapters', toolName, 'index.cjs'),
@@ -62,12 +64,12 @@ function resolveAdapterCandidates(rootDir, toolName) {
     path.join(rootDir, 'extensions', 'tools', `${toolName}.cjs`),
     path.join(rootDir, 'extensions', 'tools', toolName, 'index.cjs'),
     path.join(rootDir, 'extensions', 'tools', 'routes', `${toolName}.cjs`),
-    path.join(process.cwd(), 'emb-agent', 'adapters', `${toolName}.cjs`),
-    path.join(process.cwd(), 'emb-agent', 'adapters', toolName, 'index.cjs'),
-    path.join(process.cwd(), 'emb-agent', 'adapters', 'routes', `${toolName}.cjs`),
-    path.join(process.cwd(), 'emb-agent', 'extensions', 'tools', `${toolName}.cjs`),
-    path.join(process.cwd(), 'emb-agent', 'extensions', 'tools', toolName, 'index.cjs'),
-    path.join(process.cwd(), 'emb-agent', 'extensions', 'tools', 'routes', `${toolName}.cjs`)
+    path.join(projectExtDir, 'adapters', `${toolName}.cjs`),
+    path.join(projectExtDir, 'adapters', toolName, 'index.cjs'),
+    path.join(projectExtDir, 'adapters', 'routes', `${toolName}.cjs`),
+    path.join(projectExtDir, 'extensions', 'tools', `${toolName}.cjs`),
+    path.join(projectExtDir, 'extensions', 'tools', toolName, 'index.cjs'),
+    path.join(projectExtDir, 'extensions', 'tools', 'routes', `${toolName}.cjs`)
   ];
 
   return [...new Set(names)];
