@@ -28,7 +28,7 @@ test('init-project creates project defaults and seeded docs', () => {
     ]);
 
     const projectConfig = JSON.parse(
-      fs.readFileSync(path.join(tempProject, 'emb-agent', 'project.json'), 'utf8')
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
     );
 
     assert.equal(projectConfig.project_profile, 'rtos-iot');
@@ -42,12 +42,12 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.equal(projectConfig.integrations.mineru.auto_api_page_threshold, 12);
     assert.equal(projectConfig.integrations.mineru.auto_api_file_size_kb, 4096);
     assert.deepEqual(projectConfig.arch_review.trigger_patterns, []);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'hw.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'req.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'docs')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'adapter-sources')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'docs')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'CONNECTIVITY.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'RELEASE-NOTES.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'DEBUG-NOTES.md')), true);
@@ -87,12 +87,12 @@ test('init preserves existing docs files without force', () => {
 
     assert.equal(fs.readFileSync(customDebugPath, 'utf8'), '# custom debug\nkeep me\n');
     assert.equal(fs.readFileSync(customHardwarePath, 'utf8'), '# custom hardware\nkeep me too\n');
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'project.json')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'hw.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'req.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'adapter-sources')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -118,7 +118,7 @@ test('init returns onboarding guidance for adapter setup', () => {
     assert.equal(result.initialized, true);
     assert.equal(result.onboarding.hardware_identity_present, false);
     assert.equal(result.onboarding.adapter_sources_registered, 0);
-    assert.ok(result.next_steps.some(item => item.includes('emb-agent/hw.yaml')));
+    assert.ok(result.next_steps.some(item => item.includes('.emb-agent/hw.yaml')));
     assert.ok(result.next_steps.some(item => item.includes('填完 hw.yaml 后运行 adapter bootstrap')));
     assert.ok(result.next_steps.some(item => item.includes('health')));
   } finally {

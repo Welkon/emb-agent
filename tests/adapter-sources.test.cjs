@@ -368,7 +368,7 @@ test('adapter source add and sync install project adapters from path source', as
     assert.equal(syncResult.status, 'synced');
     assert.ok(syncResult.files.includes(path.join('adapters', 'routes', 'timer-calc.cjs')));
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
       true
     );
 
@@ -395,11 +395,11 @@ test('adapter source add and sync install project adapters from path source', as
       ['vendor-chip']
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'vendor-chip.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'profiles', 'vendor-chip.json')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'devices', 'vendor-chip.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'devices', 'vendor-chip.json')),
       false
     );
 
@@ -424,7 +424,7 @@ test('adapter bootstrap adds source and syncs matching project adapters in one s
     process.chdir(tempProject);
     cli.main(['init']);
     fs.writeFileSync(
-      path.join(tempProject, 'emb-agent', 'hw.yaml'),
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
       'mcu:\n  vendor: "VendorName"\n  model: "vendor-chip"\n  package: "sop8"\n',
       'utf8'
     );
@@ -450,11 +450,11 @@ test('adapter bootstrap adds source and syncs matching project adapters in one s
     assert.equal(bootstrap.sync.selection.filtered, true);
     assert.deepEqual(bootstrap.sync.selection.matched.chips, ['vendor-chip']);
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'vendor-chip.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'profiles', 'vendor-chip.json')),
       true
     );
   } finally {
@@ -493,7 +493,7 @@ test('adapter source sync supports git source and remove cleans project artifact
     assert.equal(syncResult.status, 'synced');
     assert.ok(syncResult.source_root.endsWith(path.join('repo', 'emb-agent')));
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
       true
     );
 
@@ -512,12 +512,12 @@ test('adapter source sync supports git source and remove cleans project artifact
 
     assert.equal(removeResult.action, 'removed');
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
       false
     );
     assert.deepEqual(
       JSON.parse(
-        fs.readFileSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'registry.json'), 'utf8')
+        fs.readFileSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'), 'utf8')
       ),
       {
         specs: [],
@@ -542,7 +542,7 @@ test('adapter sync auto-filters files by project hardware identity', async () =>
     cli.main(['init']);
 
     writeText(
-      path.join(tempProject, 'emb-agent', 'hw.yaml'),
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
       ['mcu:', '  vendor: "SCMCU"', '  model: "SC8F072"', '  package: "SOP8"', ''].join('\n')
     );
 
@@ -568,27 +568,27 @@ test('adapter sync auto-filters files by project hardware identity', async () =>
     assert.deepEqual(syncResult.selection.matched.chips, ['sc8f072']);
     assert.deepEqual(syncResult.selection.matched.tools, ['timer-calc']);
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
       false
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'pms150g.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices', 'pms150g.json')),
       false
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'sc8f072.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'profiles', 'sc8f072.json')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'pms150g.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'profiles', 'pms150g.json')),
       false
     );
   } finally {
@@ -640,19 +640,19 @@ test('adapter sync supports explicit chip and tool filters', async () => {
     assert.deepEqual(syncResult.selection.matched.chips, ['pms150g']);
     assert.deepEqual(syncResult.selection.matched.tools, ['pwm-calc']);
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
       false
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'pms150g.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices', 'pms150g.json')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json')),
       false
     );
   } finally {

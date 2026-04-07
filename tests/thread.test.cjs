@@ -28,7 +28,7 @@ test('thread commands create list resume and resolve lightweight threads', () =>
 
     cli.main(['thread', 'add', 'Track timer wakeup jitter across sessions']);
 
-    const threadsDir = path.join(tempProject, 'emb-agent', 'threads');
+    const threadsDir = path.join(tempProject, '.emb-agent', 'threads');
     const threadFiles = fs.readdirSync(threadsDir).filter(name => name.endsWith('.md'));
 
     assert.equal(threadFiles.length, 1);

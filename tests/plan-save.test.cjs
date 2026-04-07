@@ -38,7 +38,7 @@ test('plan save appends micro-plan to debug notes by default', () => {
     ]);
 
     const content = fs.readFileSync(path.join(tempProject, 'docs', 'DEBUG-NOTES.md'), 'utf8');
-    const reqTruth = fs.readFileSync(path.join(tempProject, 'emb-agent', 'req.yaml'), 'utf8');
+    const reqTruth = fs.readFileSync(path.join(tempProject, '.emb-agent', 'req.yaml'), 'utf8');
 
     assert.match(content, /## Emb-Agent Plans/);
     assert.match(content, /Prepare minimal wakeup-timer fix plan/);

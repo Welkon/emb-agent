@@ -66,6 +66,12 @@ Output the emb-agent command reference below and nothing else.
   用于创建轻量 handoff，让 clear context 后的恢复更稳定。
 - `$emb-resume`
   clear 上下文后恢复当前项目的嵌入式工作上下文。
+- `$emb-task`
+  用于管理轻量 task-local context，把某个外设、芯片适配或板级问题绑定到一组精确文件，并自动吸收当前 docs / adapter / tool 线索，避免每次恢复都重扫全部项目。
+- `$emb-workspace`
+  用于管理项目内可见的长期工作面，例如子系统、板级 bring-up、升级链路或某条验证流，让 clear context 后仍能快速接回主线，并可显式挂接或自动吸收 `task/spec/thread`。
+- `$emb-spec`
+  用于管理项目内可见的轻量 spec 库，把长期复用的接口、约束和行为合同沉到 `./.emb-agent/specs/`，而不是混进 task 或 planning。
 - `$emb-thread`
   用于管理长期存在的轻量技术线程，例如某个外设坑点、板级疑点或跨会话跟踪问题，但不升级成厚 planning。
 - `$emb-forensics`
@@ -191,6 +197,20 @@ Output the emb-agent command reference below and nothing else.
 - `<runtime-cli> pause`
 - `<runtime-cli> pause show`
 - `<runtime-cli> pause clear`
+- `<runtime-cli> task list`
+- `<runtime-cli> task add <summary> [--type implement|debug|review|investigate]`
+- `<runtime-cli> task show <name>`
+- `<runtime-cli> task activate <name>`
+- `<runtime-cli> task resolve <name> [note]`
+- `<runtime-cli> task context list <name> [implement|check|debug|all]`
+- `<runtime-cli> task context add <name> <implement|check|debug> <path> [reason]`
+- `<runtime-cli> workspace list`
+- `<runtime-cli> workspace add <summary> [--type subsystem|board|flow|domain]`
+- `<runtime-cli> workspace show <name>`
+- `<runtime-cli> workspace activate <name>`
+- `<runtime-cli> workspace refresh <name>`
+- `<runtime-cli> workspace link <workspace> <task|spec|thread> <name>`
+- `<runtime-cli> workspace unlink <workspace> <task|spec|thread> <name>`
 - `<runtime-cli> thread list`
 - `<runtime-cli> thread add <summary>`
 - `<runtime-cli> thread show <name>`
@@ -253,16 +273,19 @@ Output the emb-agent command reference below and nothing else.
 
 项目内若需要自定义，只使用轻量扩展目录：
 
-- `./emb-agent/project.json`
-- `./emb-agent/cache/docs/`
-- `./emb-agent/threads/`
-- `./emb-agent/reports/forensics/`
-- `./emb-agent/reports/sessions/`
-- `./emb-agent/adapters/`
-- `./emb-agent/extensions/tools/`
-- `./emb-agent/extensions/chips/`
-- `./emb-agent/profiles/`
-- `./emb-agent/packs/`
+- `./.emb-agent/project.json`
+- `./.emb-agent/cache/docs/`
+- `./.emb-agent/tasks/`
+- `./.emb-agent/threads/`
+- `./.emb-agent/reports/forensics/`
+- `./.emb-agent/reports/sessions/`
+- `./.emb-agent/adapters/`
+- `./.emb-agent/extensions/tools/`
+- `./.emb-agent/extensions/chips/`
+- `./.emb-agent/profiles/`
+- `./.emb-agent/packs/`
+- `./.emb-agent/specs/`
+- `./.emb-agent/workspace/`
 
 说明：
 

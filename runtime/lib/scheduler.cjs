@@ -47,8 +47,8 @@ function getProjectTruthFiles(resolved) {
   }
 
   const candidates = [
-    'emb-agent/hw.yaml',
-    'emb-agent/req.yaml'
+    runtime.getProjectAssetRelativePath('hw.yaml'),
+    runtime.getProjectAssetRelativePath('req.yaml')
   ];
 
   return candidates.filter(file => fs.existsSync(path.join(projectRoot, file)));

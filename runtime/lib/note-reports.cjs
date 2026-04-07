@@ -652,7 +652,7 @@ function createNoteReportHelpers(deps) {
     updateSession(current => {
       current.last_command = 'scan save';
       current.last_files = runtime
-        .unique([target, syncedTruth ? 'emb-agent/hw.yaml' : '', ...(current.last_files || [])])
+        .unique([target, syncedTruth ? runtime.getProjectAssetRelativePath('hw.yaml') : '', ...(current.last_files || [])])
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
 
@@ -711,7 +711,7 @@ function createNoteReportHelpers(deps) {
     updateSession(current => {
       current.last_command = 'plan save';
       current.last_files = runtime
-        .unique([target, syncedReq ? 'emb-agent/req.yaml' : '', ...(current.last_files || [])])
+        .unique([target, syncedReq ? runtime.getProjectAssetRelativePath('req.yaml') : '', ...(current.last_files || [])])
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
 
@@ -766,7 +766,7 @@ function createNoteReportHelpers(deps) {
     updateSession(current => {
       current.last_command = 'note add';
       current.last_files = runtime
-        .unique([target, syncedTruth ? 'emb-agent/hw.yaml' : '', ...(current.last_files || [])])
+        .unique([target, syncedTruth ? runtime.getProjectAssetRelativePath('hw.yaml') : '', ...(current.last_files || [])])
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
 

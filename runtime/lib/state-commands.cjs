@@ -23,6 +23,9 @@ function createStateCommandHelpers(deps) {
     requireRestText,
     requirePreferenceKey,
     handleHealthUpdateCommands,
+    handleSpecCommands,
+    handleTaskCommands,
+    handleWorkspaceCommands,
     handleThreadCommands,
     handleForensicsCommands,
     handleSettingsCommands,
@@ -36,6 +39,21 @@ function createStateCommandHelpers(deps) {
       : undefined;
     if (healthUpdateResult !== undefined) {
       return healthUpdateResult;
+    }
+
+    const specResult = handleSpecCommands ? handleSpecCommands(cmd, subcmd, rest) : undefined;
+    if (specResult !== undefined) {
+      return specResult;
+    }
+
+    const taskResult = handleTaskCommands ? handleTaskCommands(cmd, subcmd, rest) : undefined;
+    if (taskResult !== undefined) {
+      return taskResult;
+    }
+
+    const workspaceResult = handleWorkspaceCommands ? handleWorkspaceCommands(cmd, subcmd, rest) : undefined;
+    if (workspaceResult !== undefined) {
+      return workspaceResult;
     }
 
     const threadResult = handleThreadCommands ? handleThreadCommands(cmd, subcmd, rest) : undefined;

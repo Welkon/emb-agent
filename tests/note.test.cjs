@@ -38,7 +38,7 @@ test('note add appends structured entry to hardware doc', () => {
     ]);
 
     const content = fs.readFileSync(path.join(tempProject, 'docs', 'HARDWARE-LOGIC.md'), 'utf8');
-    const hwTruth = fs.readFileSync(path.join(tempProject, 'emb-agent', 'hw.yaml'), 'utf8');
+    const hwTruth = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
 
     assert.match(content, /## Emb-Agent Notes/);
     assert.match(content, /PA5 is reserved for programming path/);

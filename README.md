@@ -123,13 +123,13 @@ npx github:Welkon/emb-agent --global
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs init
 
-# 先把当前项目的 MCU 真值写进 emb-agent/hw.yaml
+# 先把当前项目的 MCU 真值写进 .emb-agent/hw.yaml
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter bootstrap
 ```
 
 说明：
 
-- `adapter sync` 现在默认优先读取 `emb-agent/hw.yaml`
+- `adapter sync` 现在默认优先读取 `.emb-agent/hw.yaml`
 - 如果能识别出当前 `chip/device/family`，只会同步命中的最小 adapter 子集
 - 如果 `hw.yaml` 还没补全，才回退为全量同步
 
@@ -197,12 +197,23 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs init
 
 这一步会：
 
-- 创建 `emb-agent/project.json`
-- 创建 `emb-agent/hw.yaml`
-- 创建 `emb-agent/req.yaml`
+- 创建 `.emb-agent/project.json`
+- 创建 `.emb-agent/hw.yaml`
+- 创建 `.emb-agent/req.yaml`
 - 创建项目级缓存目录
 - 按当前 profile / pack 创建 `docs/` 下的固定骨架文档
 - 为已有工程建立最小工作上下文
+
+现在项目内长期资产统一放在可见目录 `./.emb-agent/`，典型包括：
+
+- `./.emb-agent/hw.yaml`
+- `./.emb-agent/req.yaml`
+- `./.emb-agent/workspace/`
+- `./.emb-agent/specs/`
+- `./.emb-agent/tasks/`
+- `./.emb-agent/threads/`
+- `./.emb-agent/cache/docs/`
+- `./.emb-agent/adapters/`
 
 默认 profile / pack 下，通常会创建：
 
@@ -267,6 +278,33 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU.pdf -
 
 ---
 
+### 4. 用 workspace 固定长期工作面
+
+如果 `task` 是局部问题，`workspace` 就是当前主工作面。
+
+例如：
+
+- 电源域 bring-up
+- 某块板卡验证
+- 升级链路联调
+- 某个无线/传感器子系统
+
+常用入口：
+
+```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs workspace add "Power stage bring-up" --type board
+node <runtime-home>/emb-agent/bin/emb-agent.cjs workspace activate power-stage-bring-up
+node <runtime-home>/emb-agent/bin/emb-agent.cjs workspace refresh power-stage-bring-up
+node <runtime-home>/emb-agent/bin/emb-agent.cjs workspace link power-stage-bring-up task tm2-pwm-bringup
+node <runtime-home>/emb-agent/bin/emb-agent.cjs workspace show power-stage-bring-up
+```
+
+被激活后，`resume / manager / session hook` 都会自动带出当前 workspace。
+如果一个长期工作面下有多个 `task/spec/thread`，直接用 `workspace link` 显式挂进去，避免下次恢复时还得靠记忆重建关系。
+如果你已经围绕这个工作面持续干了一段时间，也可以直接执行一次 `workspace refresh`，把最近上下文自动沉进去。
+
+---
+
 ### 4. 控制上下文膨胀
 
 这是 `emb-agent` 的重点之一。
@@ -328,6 +366,9 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter generate --from-project 
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool list
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run pwm-calc --family FAMILY_NAME --device DEVICE_NAME --output-pin PA3 --clock-source SYSCLK --clock-hz 16000000 --target-hz 3906.25 --target-duty 50
+node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run lpwmg-calc --family FAMILY_NAME --device DEVICE_NAME --channel LPWMG0 --output-pin PA0 --clock-source SYSCLK --clock-hz 1000000 --target-hz 10000 --target-duty 60
+node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run lvdc-threshold --family FAMILY_NAME --device DEVICE_NAME --target-v 4.5 --status-bit 1
+node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run charger-config --family FAMILY_NAME --device DEVICE_NAME --target-current-ma 300 --charge-indicator 0 --vcc-greater-than-vbat 1 --vcc-normal 1
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run adc-scale --family FAMILY_NAME --device DEVICE_NAME --channel PA0 --reference-source vdd --resolution 10 --sample-code 512
 node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run comparator-threshold --family FAMILY_NAME --device DEVICE_NAME --positive-source PA0 --negative-source vref_ladder --vdd 5 --target-threshold-v 2.5
 ```

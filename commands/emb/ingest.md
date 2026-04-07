@@ -45,14 +45,14 @@ allowed-tools:
    `--save-as hw-safe`
 7. 只把已经足够稳定、后续会复用的事实写回真值层。
 8. 结果要写入：
-   - `emb-agent/hw.yaml`
-   - `emb-agent/req.yaml`
+   - `./.emb-agent/hw.yaml`
+   - `./.emb-agent/req.yaml`
    或先落到：
-   - `emb-agent/cache/docs/`
+   - `./.emb-agent/cache/docs/`
 
 ## MinerU API
 
-若项目想让 MinerU 自动判断调用链路，在 `emb-agent/project.json` 里配置：
+若项目想让 MinerU 自动判断调用链路，在 `./.emb-agent/project.json` 里配置：
 
 ```json
 {

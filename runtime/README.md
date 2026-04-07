@@ -96,6 +96,6 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 ## 维护边界
 
 - 这里是安装态 runtime，不是项目交付物。
-- 项目侧可变内容应写回仓库内的 `./emb-agent/` 与 `./docs/`。
+- 项目侧可变内容应写回仓库内的 `./.emb-agent/` 与 `./docs/`。
 - 宿主相关差异优先放进 `HOST.json + runtime-host.cjs`，不要重新散落写死 `~/.codex` 或 `~/.claude`。
 - 用户流程说明优先放主 [README](../README.md) 和安装后的 `emb-help`，这里不要再复制一整份用户手册。

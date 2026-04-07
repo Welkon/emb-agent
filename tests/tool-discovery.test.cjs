@@ -13,7 +13,7 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-tool-discovery-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
-  const projectEmbDir = path.join(tempProject, 'emb-agent');
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
 
   process.stdout.write = () => true;
 
@@ -155,7 +155,7 @@ test('draft adapter route is discoverable but not treated as ready', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-tool-draft-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
-  const projectEmbDir = path.join(tempProject, 'emb-agent');
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
 
   process.stdout.write = () => true;
 
@@ -277,7 +277,7 @@ test('hardware model plus package can resolve derived chip slug automatically', 
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-chip-slug-discovery-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
-  const projectEmbDir = path.join(tempProject, 'emb-agent');
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
 
   process.stdout.write = () => true;
 

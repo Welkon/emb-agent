@@ -76,12 +76,12 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const sessionPath = path.join(tempHome, 'state', 'emb-agent', 'projects');
     assert.equal(fs.existsSync(sessionPath), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'project.json')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'hw.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'req.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'adapter-sources')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
 
     const configData = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'config.json'), 'utf8'));
     const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
@@ -259,14 +259,14 @@ test('installer lays down config/lib and runtime commands work', async () => {
 
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'ARCH-REVIEW.md')), true);
     assert.match(fs.readFileSync(path.join(tempProject, 'docs', 'ARCH-REVIEW.md'), 'utf8'), /PMS150G/);
-    assert.equal(fs.existsSync(path.join(tempProject, 'emb-agent', 'profiles', 'test-profile.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'profiles', 'test-profile.yaml')), true);
 
     const configuredProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-configured-'));
     const initProject = require(path.join(runtimeRoot, 'scripts', 'init-project.cjs'));
 
     initProject.main(['--project', configuredProject, '--profile', 'rtos-iot', '--pack', 'connected-appliance']);
 
-    const projectConfigPath = path.join(configuredProject, 'emb-agent', 'project.json');
+    const projectConfigPath = path.join(configuredProject, '.emb-agent', 'project.json');
 
     process.chdir(configuredProject);
     installedCli.main(['init']);
@@ -310,7 +310,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(resetPrefs.plan_mode, 'always');
 
     const localProfileProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-local-profile-'));
-    const localProfileDir = path.join(localProfileProject, 'emb-agent', 'profiles');
+    const localProfileDir = path.join(localProfileProject, '.emb-agent', 'profiles');
     fs.mkdirSync(localProfileDir, { recursive: true });
     fs.writeFileSync(
       path.join(localProfileDir, 'project-local.yaml'),

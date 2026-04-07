@@ -35,7 +35,7 @@ test('ingest hardware appends stable facts into hw truth file', () => {
       'docs/PMS150G文档.md'
     ]);
 
-    const content = fs.readFileSync(path.join(tempProject, 'emb-agent', 'hw.yaml'), 'utf8');
+    const content = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
     const status = cli.buildStatus();
 
     assert.match(content, /model: "PMS150G"/);
@@ -43,7 +43,7 @@ test('ingest hardware appends stable facts into hw truth file', () => {
     assert.match(content, /ISR must stay thin/);
     assert.match(content, /board pull-up value on KEY_IN/);
     assert.match(content, /docs\/PMS150G文档\.md/);
-    assert.equal(status.last_files[0], 'emb-agent/hw.yaml');
+    assert.equal(status.last_files[0], '.emb-agent/hw.yaml');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -79,7 +79,7 @@ test('ingest requirements appends reusable requirement facts into req truth file
       'README.md'
     ]);
 
-    const content = fs.readFileSync(path.join(tempProject, 'emb-agent', 'req.yaml'), 'utf8');
+    const content = fs.readFileSync(path.join(tempProject, '.emb-agent', 'req.yaml'), 'utf8');
     const status = cli.buildStatus();
 
     assert.match(content, /stabilize wakeup path/);
@@ -89,7 +89,7 @@ test('ingest requirements appends reusable requirement facts into req truth file
     assert.match(content, /invalid sensor data forces safe off/);
     assert.match(content, /long-press duration not confirmed/);
     assert.match(content, /README\.md/);
-    assert.equal(status.last_files[0], 'emb-agent/req.yaml');
+    assert.equal(status.last_files[0], '.emb-agent/req.yaml');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

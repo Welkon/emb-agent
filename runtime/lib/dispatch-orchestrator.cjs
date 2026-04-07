@@ -17,6 +17,38 @@ function createDispatchHelpers(deps) {
     buildArchReviewDispatchContext
   } = deps;
 
+  function buildWorkspaceSnapshot(workspace) {
+    if (!workspace || !workspace.name) {
+      return null;
+    }
+
+    return {
+      name: workspace.name || '',
+      title: workspace.title || '',
+      type: workspace.type || '',
+      status: workspace.status || '',
+      path: workspace.path || '',
+      notes_path: workspace.notes_path || workspace.path || '',
+      manifest_path: workspace.manifest_path || '',
+      snapshot: workspace.snapshot || {
+        last_files: [],
+        open_questions: [],
+        known_risks: [],
+        refreshed_at: ''
+      },
+      links: workspace.links || {
+        tasks: [],
+        specs: [],
+        threads: []
+      },
+      link_counts: workspace.link_counts || {
+        tasks: Array.isArray(workspace.links && workspace.links.tasks) ? workspace.links.tasks.length : 0,
+        specs: Array.isArray(workspace.links && workspace.links.specs) ? workspace.links.specs.length : 0,
+        threads: Array.isArray(workspace.links && workspace.links.threads) ? workspace.links.threads.length : 0
+      }
+    };
+  }
+
   function buildDispatchContext(requestedAction) {
     const action = (requestedAction || '').trim();
 
@@ -64,6 +96,7 @@ function createDispatchHelpers(deps) {
         context_hygiene: next.context_hygiene,
         next_actions: next.next_actions,
         current: next.current,
+        workspace: buildWorkspaceSnapshot(next.workspace),
         handoff: next.handoff,
         tool_execution: toolExecution,
         action_context: output
@@ -78,6 +111,8 @@ function createDispatchHelpers(deps) {
     }
 
     const output = buildActionOutput(action);
+    const resolved = resolveSession();
+    const workspace = buildWorkspaceSnapshot(resolved.session.active_workspace);
 
     return {
       source: 'action',
@@ -89,6 +124,7 @@ function createDispatchHelpers(deps) {
       dispatch_ready: Boolean(output.agent_execution && output.agent_execution.available),
       agent_execution: output.agent_execution || null,
       context_hygiene: output.context_hygiene || null,
+      workspace,
       tool_execution: null,
       action_context: output
     };
@@ -240,7 +276,8 @@ function createDispatchHelpers(deps) {
           resume_source: handoff ? 'handoff' : 'session',
           last_files: resolved.session.last_files || [],
           open_questions: resolved.session.open_questions || [],
-          known_risks: resolved.session.known_risks || []
+          known_risks: resolved.session.known_risks || [],
+          active_workspace: buildWorkspaceSnapshot(resolved.session.active_workspace)
         };
 
     return enrichWithToolSuggestions({
@@ -250,6 +287,7 @@ function createDispatchHelpers(deps) {
       resolved_action: dispatch.resolved_action,
       reason: dispatch.reason,
       current,
+      workspace: dispatch.workspace || buildWorkspaceSnapshot(resolved.session.active_workspace),
       handoff: dispatch.handoff || (handoff
         ? {
             next_action: handoff.next_action,

@@ -4,6 +4,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+const PROJECT_EXT_DIR_NAME = '.emb-agent';
+const LEGACY_PROJECT_EXT_DIR_NAME = 'emb-agent';
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -34,6 +37,185 @@ function moveFile(sourcePath, targetPath) {
     }
     throw error;
   }
+}
+
+function copyPathRecursive(sourcePath, targetPath) {
+  const stats = fs.statSync(sourcePath);
+
+  if (stats.isDirectory()) {
+    ensureDir(targetPath);
+    for (const name of fs.readdirSync(sourcePath)) {
+      copyPathRecursive(path.join(sourcePath, name), path.join(targetPath, name));
+    }
+    return;
+  }
+
+  ensureDir(path.dirname(targetPath));
+  fs.copyFileSync(sourcePath, targetPath);
+}
+
+function removePathIfEmpty(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+
+  const stats = fs.statSync(filePath);
+  if (stats.isDirectory()) {
+    if (fs.readdirSync(filePath).length === 0) {
+      fs.rmdirSync(filePath);
+    }
+    return;
+  }
+
+  fs.unlinkSync(filePath);
+}
+
+function mergeDirectoryInto(sourceDir, targetDir) {
+  if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+    return;
+  }
+
+  ensureDir(targetDir);
+
+  for (const name of fs.readdirSync(sourceDir)) {
+    const sourcePath = path.join(sourceDir, name);
+    const targetPath = path.join(targetDir, name);
+    const sourceStats = fs.statSync(sourcePath);
+
+    if (sourceStats.isDirectory()) {
+      if (fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory()) {
+        mergeDirectoryInto(sourcePath, targetPath);
+        removePathIfEmpty(sourcePath);
+        continue;
+      }
+
+      try {
+        fs.renameSync(sourcePath, targetPath);
+      } catch (error) {
+        if (error && error.code === 'EXDEV') {
+          copyPathRecursive(sourcePath, targetPath);
+          fs.rmSync(sourcePath, { recursive: true, force: true });
+          continue;
+        }
+        throw error;
+      }
+      continue;
+    }
+
+    if (fs.existsSync(targetPath)) {
+      continue;
+    }
+
+    moveFile(sourcePath, targetPath);
+  }
+
+  removePathIfEmpty(sourceDir);
+}
+
+function buildProjectExtDir(projectRoot) {
+  return path.join(path.resolve(projectRoot), PROJECT_EXT_DIR_NAME);
+}
+
+function getLegacyProjectExtDir(projectRoot) {
+  return path.join(path.resolve(projectRoot), LEGACY_PROJECT_EXT_DIR_NAME);
+}
+
+function getProjectExtDir(projectRoot) {
+  return migrateLegacyProjectExtDir(projectRoot);
+}
+
+function getProjectAssetRelativePath(...parts) {
+  const normalized = parts
+    .flat()
+    .map(item => String(item || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+    .filter(Boolean);
+
+  return [PROJECT_EXT_DIR_NAME].concat(normalized).join('/');
+}
+
+function normalizeProjectRelativePath(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  const normalized = text.replace(/\\/g, '/');
+
+  if (normalized === LEGACY_PROJECT_EXT_DIR_NAME) {
+    return PROJECT_EXT_DIR_NAME;
+  }
+
+  if (normalized.startsWith(`${LEGACY_PROJECT_EXT_DIR_NAME}/`)) {
+    return `${PROJECT_EXT_DIR_NAME}/${normalized.slice(LEGACY_PROJECT_EXT_DIR_NAME.length + 1)}`;
+  }
+
+  return normalized;
+}
+
+function migrateLegacyProjectExtDir(projectRoot) {
+  const currentDir = buildProjectExtDir(projectRoot);
+  const legacyDir = getLegacyProjectExtDir(projectRoot);
+
+  if (!fs.existsSync(legacyDir)) {
+    return currentDir;
+  }
+
+  if (!fs.existsSync(currentDir)) {
+    try {
+      fs.renameSync(legacyDir, currentDir);
+      return currentDir;
+    } catch (error) {
+      if (!error || error.code !== 'EXDEV') {
+        throw error;
+      }
+
+      copyPathRecursive(legacyDir, currentDir);
+      fs.rmSync(legacyDir, { recursive: true, force: true });
+      return currentDir;
+    }
+  }
+
+  mergeDirectoryInto(legacyDir, currentDir);
+  if (fs.existsSync(legacyDir) && fs.statSync(legacyDir).isDirectory() && fs.readdirSync(legacyDir).length === 0) {
+    fs.rmSync(legacyDir, { recursive: true, force: true });
+  }
+  return currentDir;
+}
+
+function resolveProjectDataPath(projectRoot, ...parts) {
+  const currentPath = path.join(buildProjectExtDir(projectRoot), ...parts);
+  if (fs.existsSync(currentPath)) {
+    return currentPath;
+  }
+
+  const legacyPath = path.join(getLegacyProjectExtDir(projectRoot), ...parts);
+  if (fs.existsSync(legacyPath)) {
+    return legacyPath;
+  }
+
+  return currentPath;
+}
+
+function initProjectLayout(projectRoot) {
+  const projectExtDir = migrateLegacyProjectExtDir(projectRoot);
+
+  ensureDir(projectExtDir);
+  ensureDir(path.join(projectExtDir, 'cache'));
+  ensureDir(path.join(projectExtDir, 'cache', 'docs'));
+  ensureDir(path.join(projectExtDir, 'cache', 'adapter-sources'));
+  ensureDir(path.join(projectExtDir, 'tasks'));
+  ensureDir(path.join(projectExtDir, 'threads'));
+  ensureDir(path.join(projectExtDir, 'reports'));
+  ensureDir(path.join(projectExtDir, 'reports', 'forensics'));
+  ensureDir(path.join(projectExtDir, 'reports', 'sessions'));
+  ensureDir(path.join(projectExtDir, 'profiles'));
+  ensureDir(path.join(projectExtDir, 'packs'));
+  ensureDir(path.join(projectExtDir, 'adapters'));
+  ensureDir(path.join(projectExtDir, 'specs'));
+  ensureDir(path.join(projectExtDir, 'workspace'));
+  ensureDir(path.join(path.resolve(projectRoot), 'docs'));
+
+  return projectExtDir;
 }
 
 function parseScalar(raw) {
@@ -176,8 +358,50 @@ function normalizeActiveThread(value) {
     name: ensureOptionalString(value.name, 'active_thread.name'),
     title: ensureOptionalString(value.title, 'active_thread.title'),
     status: ensureOptionalString(value.status, 'active_thread.status'),
-    path: ensureOptionalString(value.path, 'active_thread.path'),
+    path: normalizeProjectRelativePath(ensureOptionalString(value.path, 'active_thread.path')),
     updated_at: ensureOptionalString(value.updated_at, 'active_thread.updated_at')
+  };
+}
+
+function normalizeActiveTask(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      name: '',
+      title: '',
+      status: '',
+      path: '',
+      updated_at: ''
+    };
+  }
+
+  return {
+    name: ensureOptionalString(value.name, 'active_task.name'),
+    title: ensureOptionalString(value.title, 'active_task.title'),
+    status: ensureOptionalString(value.status, 'active_task.status'),
+    path: normalizeProjectRelativePath(ensureOptionalString(value.path, 'active_task.path')),
+    updated_at: ensureOptionalString(value.updated_at, 'active_task.updated_at')
+  };
+}
+
+function normalizeActiveWorkspace(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      name: '',
+      title: '',
+      type: '',
+      status: '',
+      path: '',
+      updated_at: ''
+    };
+  }
+
+  return {
+    name: ensureOptionalString(value.name, 'active_workspace.name'),
+    title: ensureOptionalString(value.title, 'active_workspace.title'),
+    type: ensureOptionalString(value.type, 'active_workspace.type'),
+    status: ensureOptionalString(value.status, 'active_workspace.status'),
+    path: normalizeProjectRelativePath(ensureOptionalString(value.path, 'active_workspace.path')),
+    updated_at: ensureOptionalString(value.updated_at, 'active_workspace.updated_at')
   };
 }
 
@@ -190,9 +414,13 @@ function normalizeDiagnostics(value) {
 
   return {
     latest_forensics: {
-      report_file: ensureOptionalString(latestForensics.report_file, 'diagnostics.latest_forensics.report_file'),
+      report_file: normalizeProjectRelativePath(
+        ensureOptionalString(latestForensics.report_file, 'diagnostics.latest_forensics.report_file')
+      ),
       problem: ensureOptionalString(latestForensics.problem, 'diagnostics.latest_forensics.problem'),
-      linked_thread: ensureOptionalString(latestForensics.linked_thread, 'diagnostics.latest_forensics.linked_thread'),
+      linked_thread: normalizeProjectRelativePath(
+        ensureOptionalString(latestForensics.linked_thread, 'diagnostics.latest_forensics.linked_thread')
+      ),
       highest_severity: ensureOptionalString(
         latestForensics.highest_severity,
         'diagnostics.latest_forensics.highest_severity'
@@ -389,7 +617,7 @@ function validateProjectConfig(config, runtimeConfig) {
 }
 
 function loadProjectConfig(projectRoot, runtimeConfig) {
-  const filePath = path.join(projectRoot, 'emb-agent', 'project.json');
+  const filePath = resolveProjectDataPath(projectRoot, 'project.json');
   if (!fs.existsSync(filePath)) {
     return null;
   }
@@ -580,10 +808,14 @@ function normalizeSession(session, paths, runtimeConfig, projectConfig) {
   );
   next.preferences = normalizePreferences(next.preferences || {}, defaults);
   next.focus = typeof next.focus === 'string' ? next.focus : '';
-  next.last_files = ensureStringArray(next.last_files || [], 'last_files').slice(0, defaults.max_last_files);
+  next.last_files = ensureStringArray(next.last_files || [], 'last_files')
+    .map(normalizeProjectRelativePath)
+    .slice(0, defaults.max_last_files);
   next.open_questions = ensureStringArray(next.open_questions || [], 'open_questions');
   next.known_risks = ensureStringArray(next.known_risks || [], 'known_risks');
+  next.active_workspace = normalizeActiveWorkspace(next.active_workspace || {});
   next.active_thread = normalizeActiveThread(next.active_thread || {});
+  next.active_task = normalizeActiveTask(next.active_task || {});
   next.diagnostics = normalizeDiagnostics(next.diagnostics || {});
   next.last_command = ensureOptionalString(next.last_command, 'last_command');
   next.paused_at = ensureOptionalString(next.paused_at, 'paused_at');
@@ -655,10 +887,9 @@ function validateHandoff(handoff, runtimeConfig) {
       handoff.human_actions_pending || [],
       'handoff.human_actions_pending'
     ),
-    last_files: ensureStringArray(handoff.last_files || [], 'handoff.last_files').slice(
-      0,
-      runtimeConfig.max_last_files
-    ),
+    last_files: ensureStringArray(handoff.last_files || [], 'handoff.last_files')
+      .map(normalizeProjectRelativePath)
+      .slice(0, runtimeConfig.max_last_files),
     open_questions: ensureStringArray(handoff.open_questions || [], 'handoff.open_questions'),
     known_risks: ensureStringArray(handoff.known_risks || [], 'handoff.known_risks')
   };
@@ -668,19 +899,26 @@ module.exports = {
   cleanupStaleLock,
   ensureDir,
   ensureProjectStateStorage,
+  getLegacyProjectExtDir,
+  getProjectAssetRelativePath,
+  getProjectExtDir,
   getProjectKey,
   getProjectStatePaths,
+  initProjectLayout,
   listNames,
   loadDefaultSession,
   loadProjectConfig,
   loadRuntimeConfig,
   mergeRuntimeDefaults,
+  migrateLegacyProjectExtDir,
   normalizeSession,
+  normalizeProjectRelativePath,
   normalizePreferences,
   parseSimpleYaml,
   readJson,
   readText,
   removeValue,
+  resolveProjectDataPath,
   requireFile,
   unique,
   validateAdapterSource,

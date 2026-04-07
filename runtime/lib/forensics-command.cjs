@@ -151,8 +151,8 @@ function createForensicsCommandHelpers(deps) {
     }
 
     const requiredArtifacts = [
-      'emb-agent/hw.yaml',
-      'emb-agent/req.yaml',
+      runtime.getProjectAssetRelativePath('hw.yaml'),
+      runtime.getProjectAssetRelativePath('req.yaml'),
       'docs'
     ];
     const missingArtifacts = requiredArtifacts.filter(item =>

@@ -67,7 +67,7 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     assert.equal(fs.existsSync(path.join(cacheDir, 'facts.hardware.yaml')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'facts.hardware.json')), true);
     assert.equal(
-      fs.existsSync(path.join(tempProject, 'emb-agent', 'cache', 'docs', 'index.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'docs', 'index.json')),
       true
     );
     assert.match(
@@ -109,15 +109,15 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
       { providerImpls }
     );
 
-    const hwTruth = fs.readFileSync(path.join(tempProject, 'emb-agent', 'hw.yaml'), 'utf8');
+    const hwTruth = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
     const appliedStatus = cli.buildStatus();
 
-    assert.equal(applied.target, 'emb-agent/hw.yaml');
+    assert.equal(applied.target, '.emb-agent/hw.yaml');
     assert.equal(applied.skipped, undefined);
     assert.match(hwTruth, /model: "PMS150G"/);
     assert.match(hwTruth, /package: "SOP8"/);
     assert.match(hwTruth, /PA5 reserved for programming/);
-    assert.equal(appliedStatus.last_files[0], 'emb-agent/hw.yaml');
+    assert.equal(appliedStatus.last_files[0], '.emb-agent/hw.yaml');
 
     const docsList = ingestDocCli.listDocs(tempProject);
     assert.equal(docsList.documents.length, 1);
@@ -131,14 +131,14 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     assert.equal(docView.artifact_state.markdown, true);
     assert.equal(docView.parse_info.provider, 'mineru');
     assert.equal(docView.auto_apply_ready, null);
-    assert.equal(docView.entry.applied.hardware.target, 'emb-agent/hw.yaml');
+    assert.equal(docView.entry.applied.hardware.target, '.emb-agent/hw.yaml');
 
     const skipped = await cli.runIngestCommand(
       'apply',
       ['doc', first.doc_id, '--to', 'hardware'],
       { providerImpls }
     );
-    const hwTruthAfterSkipped = fs.readFileSync(path.join(tempProject, 'emb-agent', 'hw.yaml'), 'utf8');
+    const hwTruthAfterSkipped = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
 
     assert.equal(skipped.skipped, true);
     assert.equal(skipped.reason, 'already_applied');
@@ -194,7 +194,7 @@ test('apply doc supports selective field application with --only', async () => {
       { providerImpls }
     );
 
-    const hwTruth = fs.readFileSync(path.join(tempProject, 'emb-agent', 'hw.yaml'), 'utf8');
+    const hwTruth = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
 
     assert.deepEqual(applied.only, ['constraints', 'sources']);
     assert.match(hwTruth, /constraints:\n  - "PA5 reserved for programming"/);
@@ -255,7 +255,7 @@ test('doc diff previews selective hardware application before apply', async () =
     );
 
     assert.deepEqual(diffView.only, ['constraints', 'sources']);
-    assert.equal(diffView.target, 'emb-agent/hw.yaml');
+    assert.equal(diffView.target, '.emb-agent/hw.yaml');
     assert.equal(diffView.changes.find(item => item.field === 'constraints').action, 'append');
     assert.equal(diffView.changes.find(item => item.field === 'sources').action, 'append');
     assert.equal(diffView.changes.find(item => item.field === 'constraints').additions[0], 'PA5 reserved for programming');
@@ -314,7 +314,7 @@ test('apply doc can replay the latest diff selection', async () => {
       'constraints,sources'
     ]);
 
-    const indexPath = path.join(tempProject, 'emb-agent', 'cache', 'docs', 'index.json');
+    const indexPath = path.join(tempProject, '.emb-agent', 'cache', 'docs', 'index.json');
     const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
     assert.deepEqual(index.session.last_diff.only, ['constraints', 'sources']);
     assert.equal(index.session.last_diff.doc_id, ingested.doc_id);
@@ -325,7 +325,7 @@ test('apply doc can replay the latest diff selection', async () => {
       { providerImpls }
     );
 
-    const hwTruth = fs.readFileSync(path.join(tempProject, 'emb-agent', 'hw.yaml'), 'utf8');
+    const hwTruth = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
 
     assert.equal(applied.from_last_diff, true);
     assert.deepEqual(applied.only, ['constraints', 'sources']);
@@ -394,7 +394,7 @@ test('doc show exposes the latest diff summary for the current doc', async () =>
     assert.equal(docView.last_diff.doc_id, ingested.doc_id);
     assert.equal(docView.last_diff.to, 'hardware');
     assert.deepEqual(docView.last_diff.only, ['constraints', 'sources']);
-    assert.equal(docView.last_diff.target, 'emb-agent/hw.yaml');
+    assert.equal(docView.last_diff.target, '.emb-agent/hw.yaml');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -609,7 +609,7 @@ test('doc diff can save a named preset and apply can replay it', async () => {
       'hw-safe'
     ]);
 
-    const indexPath = path.join(tempProject, 'emb-agent', 'cache', 'docs', 'index.json');
+    const indexPath = path.join(tempProject, '.emb-agent', 'cache', 'docs', 'index.json');
     const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
     assert.deepEqual(index.session.diff_presets['hw-safe'].only, ['constraints', 'sources']);
     assert.equal(index.session.diff_presets['hw-safe'].to, 'hardware');
@@ -620,7 +620,7 @@ test('doc diff can save a named preset and apply can replay it', async () => {
       { providerImpls }
     );
 
-    const hwTruth = fs.readFileSync(path.join(tempProject, 'emb-agent', 'hw.yaml'), 'utf8');
+    const hwTruth = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
 
     assert.equal(applied.from_preset, true);
     assert.equal(applied.replayed_preset.name, 'hw-safe');
@@ -694,7 +694,7 @@ test('doc show exposes available diff presets with current-doc marker', async ()
     assert.equal(preset.doc_id, ingested.doc_id);
     assert.equal(preset.to, 'hardware');
     assert.deepEqual(preset.only, ['constraints', 'sources']);
-    assert.equal(preset.target, 'emb-agent/hw.yaml');
+    assert.equal(preset.target, '.emb-agent/hw.yaml');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -828,7 +828,7 @@ test('doc show can emit an apply-ready hint for a preset preview', async () => {
     assert.equal(docView.apply_ready.doc_id, ingested.doc_id);
     assert.equal(docView.apply_ready.to, 'hardware');
     assert.deepEqual(docView.apply_ready.only, ['constraints', 'sources']);
-    assert.equal(docView.apply_ready.target, 'emb-agent/hw.yaml');
+    assert.equal(docView.apply_ready.target, '.emb-agent/hw.yaml');
     assert.equal(
       docView.apply_ready.command,
       `node ~/.codex/emb-agent/bin/emb-agent.cjs ingest apply doc ${ingested.doc_id} --preset hw-safe`

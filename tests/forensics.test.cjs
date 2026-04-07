@@ -34,9 +34,9 @@ test('forensics writes lightweight diagnostic report with evidence', () => {
     cli.main(['forensics', 'why flow keeps drifting after resume']);
     const result = JSON.parse(stdout);
 
-    const reportDir = path.join(tempProject, 'emb-agent', 'reports', 'forensics');
+    const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'forensics');
     const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
-    const threadsDir = path.join(tempProject, 'emb-agent', 'threads');
+    const threadsDir = path.join(tempProject, '.emb-agent', 'threads');
     const threadFiles = fs.readdirSync(threadsDir).filter(name => name.endsWith('.md'));
 
     assert.equal(reports.length, 1);

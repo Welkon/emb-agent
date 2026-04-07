@@ -106,6 +106,40 @@ function runHook(rawInput) {
     const resume = cli.buildResumeContext();
     const lines = buildUpdateLines();
 
+    function buildWorkspaceRefreshHint(workspace, carryOver) {
+      if (!workspace || !workspace.name) {
+        return null;
+      }
+
+      const snapshot = workspace.snapshot || {
+        last_files: [],
+        open_questions: [],
+        known_risks: [],
+        refreshed_at: ''
+      };
+      const reasons = [];
+
+      if (!snapshot.refreshed_at) {
+        reasons.push('workspace 还没 refresh');
+      }
+      if ((carryOver.last_files || []).length > 0 && (snapshot.last_files || []).length === 0) {
+        reasons.push('最近文件还没沉到 workspace snapshot');
+      }
+      if ((carryOver.open_questions || []).some(item => !(snapshot.open_questions || []).includes(item))) {
+        reasons.push('未决问题还没沉到 workspace snapshot');
+      }
+      if ((carryOver.known_risks || []).some(item => !(snapshot.known_risks || []).includes(item))) {
+        reasons.push('已知风险还没沉到 workspace snapshot');
+      }
+
+      return reasons.length > 0
+        ? {
+            reasons,
+            cli: `node ${RUNTIME_HOST.runtimeRoot}/bin/emb-agent.cjs workspace refresh ${workspace.name}`
+          }
+        : null;
+    }
+
     if (resume.handoff) {
       const nextAction = resume.handoff.next_action || '先执行 resume 恢复现场';
       lines.unshift(
@@ -115,6 +149,40 @@ function runHook(rawInput) {
         `下一步: ${nextAction}`,
         `建议链路: ${resume.context_hygiene.clear_hint}`
       );
+    }
+
+    if (!resume.handoff && resume.task) {
+      const implementFiles = (((resume.task.context || {}).implement) || [])
+        .slice(0, 4)
+        .map(item => item.path)
+        .filter(Boolean);
+
+      lines.unshift(
+        '## Emb-Agent Session Reminder',
+        '',
+        `当前活跃 task: ${resume.task.name} (${resume.task.title})`,
+        `状态: ${resume.task.status} / 类型: ${resume.task.type}`,
+        implementFiles.length > 0
+          ? `建议先回读 task implement context: ${implementFiles.join(', ')}`
+          : '建议先执行 task context list <name>，确认当前 task 的局部上下文。'
+      );
+    }
+
+    if (!resume.handoff && !resume.task && resume.workspace) {
+      const refreshHint = buildWorkspaceRefreshHint(resume.workspace, resume.carry_over || {});
+      lines.unshift(
+        '## Emb-Agent Session Reminder',
+        '',
+        `当前活跃 workspace: ${resume.workspace.name} (${resume.workspace.title})`,
+        `类型: ${resume.workspace.type} / 状态: ${resume.workspace.status}`,
+        `建议先回读 workspace notes: ${resume.workspace.notes_path || resume.workspace.path}`,
+        refreshHint
+          ? `建议先同步 workspace: ${refreshHint.cli}`
+          : 'workspace 已有 refresh 快照，可直接沿当前工作面继续'
+      );
+      if (refreshHint) {
+        lines.splice(5, 0, `原因: ${refreshHint.reasons[0]}`);
+      }
     }
 
     if (lines.length === 0) {

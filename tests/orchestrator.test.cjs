@@ -114,7 +114,7 @@ test('orchestrator exposes tool-first step when scan has ready tool recommendati
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-tool-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
-  const projectEmbDir = path.join(tempProject, 'emb-agent');
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
 
   process.stdout.write = () => true;
 
@@ -212,6 +212,30 @@ test('orchestrator exposes tool-first step when scan has ready tool recommendati
     assert.equal(orchestrator.workflow.tool_first, true);
     assert.equal(orchestrator.tool_execution.tool, 'timer-calc');
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'run-tool'));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('orchestrator surfaces active workspace in current context', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-workspace-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+    cli.main(['workspace', 'add', 'Upgrade flow bring-up', '--type', 'flow']);
+    cli.main(['workspace', 'activate', 'upgrade-flow-bring-up']);
+    cli.main(['risk', 'add', 'irq race']);
+
+    const orchestrator = cli.buildOrchestratorContext('next');
+
+    assert.equal(orchestrator.workspace.name, 'upgrade-flow-bring-up');
+    assert.equal(orchestrator.workspace.type, 'flow');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

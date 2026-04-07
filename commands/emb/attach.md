@@ -20,7 +20,7 @@ allowed-tools:
 3. 然后读取：
    `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" status`
 4. 最后给出：
-   - 新生成或复用的 `emb-agent/project.json`、`emb-agent/hw.yaml`、`emb-agent/req.yaml`
+   - 新生成或复用的 `./.emb-agent/project.json`、`./.emb-agent/hw.yaml`、`./.emb-agent/req.yaml`
    - 检测到的 datasheet / schematic / code / project files
    - 下一步建议使用哪个 emb 命令
 

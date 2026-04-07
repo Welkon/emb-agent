@@ -80,7 +80,7 @@ function ensureUniqueStrings(values) {
 function extensionChipsRoots(rootDir) {
   return ensureUniqueStrings([
     path.join(rootDir, 'extensions', 'chips'),
-    path.join(process.cwd(), 'emb-agent', 'extensions', 'chips')
+    path.join(runtime.getProjectExtDir(process.cwd()), 'extensions', 'chips')
   ]);
 }
 

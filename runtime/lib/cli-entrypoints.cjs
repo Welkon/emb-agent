@@ -35,7 +35,7 @@ function createCliEntryHelpers(deps) {
   }
 
   function loadInitHardwareIdentity(projectRoot) {
-    const hwPath = path.join(projectRoot, 'emb-agent', 'hw.yaml');
+    const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
     if (!fs.existsSync(hwPath)) {
       return {
         vendor: '',
@@ -54,14 +54,14 @@ function createCliEntryHelpers(deps) {
 
   function buildInitGuidance(projectRoot) {
     const hardware = loadInitHardwareIdentity(projectRoot);
-    const configPath = path.join(projectRoot, 'emb-agent', 'project.json');
+    const configPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
     const projectConfig = fs.existsSync(configPath) ? runtime.readJson(configPath) : { adapter_sources: [] };
     const sources = Array.isArray(projectConfig.adapter_sources) ? projectConfig.adapter_sources : [];
     const nextSteps = [];
     const hardwareReady = Boolean(hardware.model && hardware.package);
 
     if (!hardwareReady) {
-      nextSteps.push('补全 emb-agent/hw.yaml 里的 vendor / model / package');
+      nextSteps.push(`补全 ${runtime.getProjectAssetRelativePath('hw.yaml')} 里的 vendor / model / package`);
       nextSteps.push('补完后直接执行: adapter bootstrap -> next');
     }
 
@@ -113,6 +113,23 @@ function createCliEntryHelpers(deps) {
       '  pause show',
       '  pause clear',
       '  resume',
+      '  task list',
+      '  task add <summary> [--type implement|debug|review|investigate]',
+      '  task show <name>',
+      '  task activate <name>',
+      '  task resolve <name> [note]',
+      '  task context list <name> [implement|check|debug|all]',
+      '  task context add <name> <implement|check|debug> <path> [reason]',
+      '  workspace list',
+      '  workspace add <summary> [--type subsystem|board|flow|domain]',
+      '  workspace show <name>',
+      '  workspace activate <name>',
+      '  workspace refresh <name>',
+      '  workspace link <workspace> <task|spec|thread> <name>',
+      '  workspace unlink <workspace> <task|spec|thread> <name>',
+      '  spec list',
+      '  spec add <summary> [--type feature|hardware|workflow|interface]',
+      '  spec show <name>',
       '  thread list',
       '  thread add <summary>',
       '  thread show <name>',
@@ -222,7 +239,7 @@ function createCliEntryHelpers(deps) {
         '--force'
       ].includes(token)
     );
-    const existingProjectConfig = path.join(resolveProjectRoot(), 'emb-agent', 'project.json');
+    const existingProjectConfig = runtime.resolveProjectDataPath(resolveProjectRoot(), 'project.json');
 
     if (fs.existsSync(existingProjectConfig) && !hasInitOptions) {
       initProjectLayout();
@@ -234,7 +251,7 @@ function createCliEntryHelpers(deps) {
         init_alias: aliasUsed || 'init',
         session_version: session.session_version,
         project_root: session.project_root,
-        project_dir: path.relative(process.cwd(), getProjectExtDir()) || 'emb-agent',
+        project_dir: path.relative(process.cwd(), getProjectExtDir()) || runtime.getProjectAssetRelativePath(),
         project_profile: session.project_profile,
         active_packs: session.active_packs,
         onboarding: guidance,
@@ -284,7 +301,10 @@ function createCliEntryHelpers(deps) {
       lastFiles = ingested.last_files || [];
     } else {
       ingested = ingestTruthCli.ingestTruth([subcmd, ...rest]);
-      const truthFile = ingested.domain === 'hardware' ? 'emb-agent/hw.yaml' : 'emb-agent/req.yaml';
+      const truthFile =
+        ingested.domain === 'hardware'
+          ? runtime.getProjectAssetRelativePath('hw.yaml')
+          : runtime.getProjectAssetRelativePath('req.yaml');
       lastFiles = [truthFile];
     }
 

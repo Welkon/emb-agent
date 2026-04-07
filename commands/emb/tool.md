@@ -47,7 +47,7 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs chip show CHIP_NAME
 ## 扩展目录
 
 - 运行时：`~/.codex/emb-agent/adapters/`、`~/.codex/emb-agent/extensions/tools/`、`~/.codex/emb-agent/extensions/chips/`
-- 项目侧：`./emb-agent/adapters/`、`./emb-agent/extensions/tools/`、`./emb-agent/extensions/chips/`
+- 项目侧：`./.emb-agent/adapters/`、`./.emb-agent/extensions/tools/`、`./.emb-agent/extensions/chips/`
 
 ## 建议生成方式
 

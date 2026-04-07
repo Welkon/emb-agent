@@ -2,6 +2,9 @@
   "specs": [
     "timer-calc",
     "pwm-calc",
+    "lpwmg-calc",
+    "lvdc-threshold",
+    "charger-config",
     "comparator-threshold",
     "adc-scale"
   ],

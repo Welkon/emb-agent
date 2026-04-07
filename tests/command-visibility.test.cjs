@@ -42,6 +42,9 @@ function extractImplementedTopLevelCommands() {
   const files = [
     path.join(repoRoot, 'runtime', 'lib', 'cli-router.cjs'),
     path.join(repoRoot, 'runtime', 'lib', 'state-commands.cjs'),
+    path.join(repoRoot, 'runtime', 'lib', 'spec-commands.cjs'),
+    path.join(repoRoot, 'runtime', 'lib', 'task-commands.cjs'),
+    path.join(repoRoot, 'runtime', 'lib', 'workspace-commands.cjs'),
     path.join(repoRoot, 'runtime', 'lib', 'command-groups.cjs'),
     path.join(repoRoot, 'runtime', 'lib', 'thread-commands.cjs'),
     path.join(repoRoot, 'runtime', 'lib', 'forensics-command.cjs'),

@@ -470,7 +470,7 @@ function createProjectConfigHelpers(deps) {
     const resolved = resolveSession();
     const projectConfig = getProjectConfig();
     const output = {
-      path: path.join(resolveProjectRoot(), 'emb-agent', 'project.json'),
+      path: runtime.resolveProjectDataPath(resolveProjectRoot(), 'project.json'),
       config: projectConfig
     };
 
@@ -530,7 +530,7 @@ function createProjectConfigHelpers(deps) {
 
   function writeProjectConfig(validated) {
     initProjectLayout();
-    const projectConfigPath = path.join(resolveProjectRoot(), 'emb-agent', 'project.json');
+    const projectConfigPath = runtime.resolveProjectDataPath(resolveProjectRoot(), 'project.json');
     runtime.writeJson(projectConfigPath, validated);
     const session = syncSessionWithProjectConfig(validated);
 

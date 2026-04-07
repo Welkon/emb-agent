@@ -67,10 +67,10 @@ function createHealthUpdateCommandHelpers(deps) {
   }
 
   function loadHardwareIdentity() {
-    const hwPath = path.join(resolveProjectRoot(), 'emb-agent', 'hw.yaml');
+    const hwPath = runtime.resolveProjectDataPath(resolveProjectRoot(), 'hw.yaml');
     if (!fs.existsSync(hwPath)) {
       return {
-        file: path.relative(resolveProjectRoot(), hwPath),
+        file: runtime.getProjectAssetRelativePath('hw.yaml'),
         vendor: '',
         model: '',
         package: ''
@@ -79,7 +79,7 @@ function createHealthUpdateCommandHelpers(deps) {
 
     const content = runtime.readText(hwPath);
     return {
-      file: path.relative(resolveProjectRoot(), hwPath),
+      file: runtime.getProjectAssetRelativePath('hw.yaml'),
       vendor: parseScalar(content, 'vendor'),
       model: parseScalar(content, 'model'),
       package: parseScalar(content, 'package')
@@ -195,7 +195,7 @@ function createHealthUpdateCommandHelpers(deps) {
         summary: '先补全 hw.yaml 的硬件身份；补完后即可走 bootstrap -> next 的最短闭环',
         steps: [
           {
-            label: '补全 emb-agent/hw.yaml 的 vendor / model / package',
+            label: `补全 ${runtime.getProjectAssetRelativePath('hw.yaml')} 的 vendor / model / package`,
             cli: ''
           },
           {
@@ -276,9 +276,9 @@ function createHealthUpdateCommandHelpers(deps) {
       createCheck(
         'emb_agent_dir',
         fs.existsSync(projectExtDir) ? 'pass' : 'fail',
-        fs.existsSync(projectExtDir) ? 'emb-agent 目录存在' : 'emb-agent 目录缺失',
-        [path.relative(projectRoot, projectExtDir) || 'emb-agent'],
-        fs.existsSync(projectExtDir) ? '' : '先执行 init，生成 emb-agent 最小项目骨架。'
+        fs.existsSync(projectExtDir) ? '.emb-agent 目录存在' : '.emb-agent 目录缺失',
+        [path.relative(projectRoot, projectExtDir) || runtime.getProjectAssetRelativePath()],
+        fs.existsSync(projectExtDir) ? '' : '先执行 init，生成 .emb-agent 最小项目骨架。'
       )
     );
 
@@ -288,7 +288,7 @@ function createHealthUpdateCommandHelpers(deps) {
         fs.existsSync(projectConfigPath) ? 'pass' : 'fail',
         fs.existsSync(projectConfigPath) ? 'project.json 已存在' : 'project.json 缺失',
         [path.relative(projectRoot, projectConfigPath)],
-        fs.existsSync(projectConfigPath) ? '' : '先执行 init，补齐 emb-agent/project.json。'
+        fs.existsSync(projectConfigPath) ? '' : `先执行 init，补齐 ${runtime.getProjectAssetRelativePath('project.json')}。`
       )
     );
 
@@ -316,18 +316,18 @@ function createHealthUpdateCommandHelpers(deps) {
           'fail',
           'project.json 非法',
           [error.message],
-          '先修正 emb-agent/project.json，再继续使用 emb-agent。'
+          `先修正 ${runtime.getProjectAssetRelativePath('project.json')}，再继续使用 emb-agent。`
         )
       );
     }
 
     [
-      ['hw_truth', hwPath, 'hw.yaml 已存在', 'hw.yaml 缺失', '先补齐 emb-agent/hw.yaml，沉淀 MCU/引脚/约束真值。'],
-      ['req_truth', reqPath, 'req.yaml 已存在', 'req.yaml 缺失', '先补齐 emb-agent/req.yaml，沉淀目标/功能/验收。'],
+      ['hw_truth', hwPath, 'hw.yaml 已存在', 'hw.yaml 缺失', `先补齐 ${runtime.getProjectAssetRelativePath('hw.yaml')}，沉淀 MCU/引脚/约束真值。`],
+      ['req_truth', reqPath, 'req.yaml 已存在', 'req.yaml 缺失', `先补齐 ${runtime.getProjectAssetRelativePath('req.yaml')}，沉淀目标/功能/验收。`],
       ['docs_dir', docsDir, 'docs 目录存在', 'docs 目录缺失', '先创建 docs 目录，便于后续文档导入与固定报告落盘。'],
-      ['doc_cache_dir', docCacheDir, '文档缓存目录存在', '文档缓存目录缺失', '重新执行 init，补齐 emb-agent/cache/docs。'],
-      ['adapter_cache_dir', adapterCacheDir, 'adapter 缓存目录存在', 'adapter 缓存目录缺失', '重新执行 init，补齐 emb-agent/cache/adapter-sources。'],
-      ['adapters_dir', adaptersDir, 'adapter 目录存在', 'adapter 目录缺失', '重新执行 init，补齐 emb-agent/adapters。']
+      ['doc_cache_dir', docCacheDir, '文档缓存目录存在', '文档缓存目录缺失', `重新执行 init，补齐 ${runtime.getProjectAssetRelativePath('cache', 'docs')}。`],
+      ['adapter_cache_dir', adapterCacheDir, 'adapter 缓存目录存在', 'adapter 缓存目录缺失', `重新执行 init，补齐 ${runtime.getProjectAssetRelativePath('cache', 'adapter-sources')}。`],
+      ['adapters_dir', adaptersDir, 'adapter 目录存在', 'adapter 目录缺失', `重新执行 init，补齐 ${runtime.getProjectAssetRelativePath('adapters')}。`]
     ].forEach(([key, targetPath, passSummary, failSummary, recommendation]) => {
       const exists = fs.existsSync(targetPath);
       checks.push(
@@ -580,7 +580,7 @@ function createHealthUpdateCommandHelpers(deps) {
           enabledSources.length > 0 ? '已登记 adapter sources' : '尚未登记 adapter source',
           enabledSources.length > 0
             ? enabledSources.map(item => `source=${item.name}`)
-            : ['emb-agent/project.json -> adapter_sources'],
+            : [`${runtime.getProjectAssetRelativePath('project.json')} -> adapter_sources`],
           enabledSources.length > 0
             ? ''
             : '先执行 adapter source add，把 emb-agent-adapters 或你的私有 source 登记进项目。'
