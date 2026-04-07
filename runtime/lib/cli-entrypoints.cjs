@@ -58,20 +58,26 @@ function createCliEntryHelpers(deps) {
     const projectConfig = fs.existsSync(configPath) ? runtime.readJson(configPath) : { adapter_sources: [] };
     const sources = Array.isArray(projectConfig.adapter_sources) ? projectConfig.adapter_sources : [];
     const nextSteps = [];
+    const hardwareReady = Boolean(hardware.model && hardware.package);
 
-    if (!hardware.model || !hardware.package) {
+    if (!hardwareReady) {
       nextSteps.push('补全 emb-agent/hw.yaml 里的 vendor / model / package');
     }
 
     nextSteps.push('运行 health');
 
     if (sources.length === 0) {
-      nextSteps.push(
-        '运行 adapter source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git'
-      );
-      nextSteps.push('运行 adapter sync default-pack');
+      if (hardwareReady) {
+        nextSteps.push('运行 adapter bootstrap');
+      } else {
+        nextSteps.push('填完 hw.yaml 后运行 adapter bootstrap');
+      }
     } else {
-      nextSteps.push(`运行 adapter sync ${sources[0].name}`);
+      if (hardwareReady) {
+        nextSteps.push(`运行 adapter bootstrap ${sources[0].name}`);
+      } else {
+        nextSteps.push(`填完 hw.yaml 后运行 adapter bootstrap ${sources[0].name}`);
+      }
     }
 
     return {
@@ -146,6 +152,7 @@ function createCliEntryHelpers(deps) {
       '  adapter source show <name>',
       '  adapter source add <name> --type path|git --location <path-or-url> [--branch <name>] [--subdir <path>] [--disabled]',
       '  adapter source remove <name>',
+      '  adapter bootstrap [<name>] [--type path|git --location <path-or-url>] [--branch <name>] [--subdir <path>] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
       '  adapter sync <name> [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
       '  adapter sync --all [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
       '  adapter derive [--from-project] [--from-doc <doc-id>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',

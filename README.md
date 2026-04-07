@@ -123,8 +123,7 @@ npx github:Welkon/emb-agent --global
 node <runtime-home>/emb-agent/bin/emb-agent.cjs init
 
 # 先把当前项目的 MCU 真值写进 emb-agent/hw.yaml
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync default-pack
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter bootstrap
 ```
 
 说明：
@@ -308,7 +307,9 @@ core 提供的是：
 常用入口：
 
 ```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter bootstrap
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
+node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter bootstrap vendor-pack
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack --chip sc8f072 --tool timer-calc --no-match-project
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8

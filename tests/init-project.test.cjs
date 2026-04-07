@@ -119,8 +119,7 @@ test('init returns onboarding guidance for adapter setup', () => {
     assert.equal(result.onboarding.hardware_identity_present, false);
     assert.equal(result.onboarding.adapter_sources_registered, 0);
     assert.ok(result.next_steps.some(item => item.includes('emb-agent/hw.yaml')));
-    assert.ok(result.next_steps.some(item => item.includes('adapter source add default-pack')));
-    assert.ok(result.next_steps.some(item => item.includes('adapter sync default-pack')));
+    assert.ok(result.next_steps.some(item => item.includes('填完 hw.yaml 后运行 adapter bootstrap')));
     assert.ok(result.next_steps.some(item => item.includes('health')));
   } finally {
     process.chdir(currentCwd);

@@ -20,6 +20,7 @@ function createCommandGroupHelpers(deps) {
     buildAdapterStatus,
     addAdapterSource,
     removeAdapterSource,
+    bootstrapAdapterSource,
     parseAdapterSyncArgs,
     syncNamedAdapterSource,
     syncAllAdapterSources,
@@ -237,6 +238,13 @@ function createCommandGroupHelpers(deps) {
     if (cmd === 'adapter' && subcmd === 'source' && rest[0] === 'remove') {
       if (!rest[1]) throw new Error('Missing source name');
       return removeAdapterSource(rest[1]);
+    }
+
+    if (cmd === 'adapter' && subcmd === 'bootstrap') {
+      if (rest[0] && !rest[0].startsWith('--')) {
+        return bootstrapAdapterSource(rest[0], rest.slice(1));
+      }
+      return bootstrapAdapterSource('', rest);
     }
 
     if (cmd === 'adapter' && subcmd === 'sync') {

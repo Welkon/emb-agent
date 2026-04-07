@@ -226,6 +226,8 @@ Output the emb-agent command reference below and nothing else.
 - `<runtime-cli> template fill chip-profile --field SLUG=vendor-chip --field CHIP_NAME=vendor-chip --field FAMILY_NAME=vendor-family --field TOOL_NAME=timer-calc --force`
 - `<runtime-cli> adapter status`
 - `<runtime-cli> adapter source list`
+- `<runtime-cli> adapter bootstrap`
+- `<runtime-cli> adapter bootstrap <name> [--type path|git --location <path-or-url>]`
 - `<runtime-cli> adapter source add <name> --type path --location /abs/path/to/source`
 - `<runtime-cli> adapter source add <name> --type git --location <git-url-or-local-repo> [--branch main] [--subdir emb-agent]`
 - `<runtime-cli> adapter sync <name> [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>]`
@@ -265,6 +267,7 @@ Output the emb-agent command reference below and nothing else.
 
 - `emb-agent` 是通用嵌入式 agent，不绑定任何厂商、MCU 家族或固定 datasheet
 - `tool run` 若没有外部 adapter，会返回 `adapter-required`
+- `adapter bootstrap` 是首次接入的最短路径；会先确保 source 存在，再按当前项目匹配同步
 - `adapter source add` 只登记 source；`adapter sync` 才会真正同步文件
 - `adapter sync` 默认优先按 `hw.yaml` 自动匹配当前芯片，只同步命中的 adapter/profile 子集；匹配不到时再回退全量同步
 - adapter source 支持本地 path 仓库，也支持 git 仓库

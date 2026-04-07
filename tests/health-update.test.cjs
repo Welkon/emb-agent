@@ -220,7 +220,7 @@ test('health reports adapter registration and sync readiness', async () => {
     let report = JSON.parse(stdout);
     assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'warn');
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'info');
-    assert.ok(report.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
+    assert.ok(report.next_commands.some(item => item.cli.includes('adapter bootstrap')));
 
     stdout = '';
     cli.main(['adapter', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
@@ -230,7 +230,7 @@ test('health reports adapter registration and sync readiness', async () => {
     report = JSON.parse(stdout);
     assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'warn');
-    assert.ok(report.next_commands.some(item => item.cli.includes('adapter sync default-pack')));
+    assert.ok(report.next_commands.some(item => item.cli.includes('adapter bootstrap default-pack')));
 
     stdout = '';
     cli.main(['adapter', 'sync', 'default-pack']);

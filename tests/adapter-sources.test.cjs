@@ -413,6 +413,55 @@ test('adapter source add and sync install project adapters from path source', as
   }
 });
 
+test('adapter bootstrap adds source and syncs matching project adapters in one step', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-bootstrap-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-bootstrap-source-'));
+  const currentCwd = process.cwd();
+
+  try {
+    createPathAdapterSource(tempSource);
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main(['init']);
+    fs.writeFileSync(
+      path.join(tempProject, 'emb-agent', 'hw.yaml'),
+      'mcu:\n  vendor: "VendorName"\n  model: "vendor-chip"\n  package: "sop8"\n',
+      'utf8'
+    );
+
+    const bootstrap = JSON.parse(
+      await captureStdout(() =>
+        cli.main([
+          'adapter',
+          'bootstrap',
+          'vendor-pack',
+          '--type',
+          'path',
+          '--location',
+          tempSource
+        ])
+      )
+    );
+
+    assert.equal(bootstrap.action, 'bootstrapped');
+    assert.equal(bootstrap.source_action, 'added');
+    assert.equal(bootstrap.source.name, 'vendor-pack');
+    assert.equal(bootstrap.sync.status, 'synced');
+    assert.equal(bootstrap.sync.selection.filtered, true);
+    assert.deepEqual(bootstrap.sync.selection.matched.chips, ['vendor-chip']);
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, 'emb-agent', 'extensions', 'chips', 'profiles', 'vendor-chip.json')),
+      true
+    );
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('adapter source sync supports git source and remove cleans project artifacts', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-git-project-'));
   const tempSourceRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-git-source-'));

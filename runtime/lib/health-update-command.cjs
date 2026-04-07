@@ -5,6 +5,8 @@ const updateCheckHelpers = require('./update-check.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI =
+  `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'bootstrap'])}`;
 
 function createHealthUpdateCommandHelpers(deps) {
   const {
@@ -444,9 +446,11 @@ function createHealthUpdateCommandHelpers(deps) {
       if (enabledSources.length === 0) {
         pushNextCommand(
           nextCommands,
-          'adapter-source-add',
-          '登记默认 adapter 仓库',
-          `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'source', 'add', 'default-pack'])} --type git --location https://github.com/Welkon/emb-agent-adapters.git`
+          hardwareIdentity.model ? 'adapter-bootstrap' : 'adapter-source-add',
+          hardwareIdentity.model ? '登记默认 adapter 仓库并按当前项目匹配同步' : '登记默认 adapter 仓库',
+          hardwareIdentity.model
+            ? DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI
+            : `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'source', 'add', 'default-pack'])} --type git --location https://github.com/Welkon/emb-agent-adapters.git`
         );
       }
 
@@ -474,9 +478,11 @@ function createHealthUpdateCommandHelpers(deps) {
       if (enabledSources.length > 0 && syncedProjectSources.length === 0) {
         pushNextCommand(
           nextCommands,
-          'adapter-sync',
-          '把已登记的 adapter source 同步到当前项目',
-          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'sync', enabledSources[0].name])
+          hardwareIdentity.model ? 'adapter-bootstrap' : 'adapter-sync',
+          hardwareIdentity.model ? '按当前项目匹配同步 adapter source' : '把已登记的 adapter source 同步到当前项目',
+          hardwareIdentity.model
+            ? runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'bootstrap', enabledSources[0].name])
+            : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'sync', enabledSources[0].name])
         );
       }
 

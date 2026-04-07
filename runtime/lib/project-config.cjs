@@ -14,6 +14,9 @@ function createProjectConfigHelpers(deps) {
     updateSession,
     getPreferences
   } = deps;
+  const DEFAULT_ADAPTER_SOURCE_NAME = 'default-pack';
+  const DEFAULT_ADAPTER_SOURCE_TYPE = 'git';
+  const DEFAULT_ADAPTER_SOURCE_LOCATION = 'https://github.com/Welkon/emb-agent-adapters.git';
 
   function selectNestedField(source, fieldPath) {
     if (!fieldPath) {
@@ -258,6 +261,157 @@ function createProjectConfigHelpers(deps) {
       }
 
       throw new Error(`Unknown argument: ${token}`);
+    }
+
+    return result;
+  }
+
+  function parseAdapterBootstrapArgs(tokens, fallbackName) {
+    const result = {
+      name: String(fallbackName || '').trim() || DEFAULT_ADAPTER_SOURCE_NAME,
+      source_config_provided: false,
+      source: {
+        type: '',
+        location: '',
+        branch: '',
+        subdir: '',
+        enabled: true
+      },
+      sync: {
+        target: 'project',
+        force: false,
+        match_project: true,
+        tools: [],
+        families: [],
+        devices: [],
+        chips: []
+      }
+    };
+
+    const pushListValues = (target, raw, label) => {
+      const values = String(raw || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+
+      if (values.length === 0) {
+        throw new Error(`Missing value after ${label}`);
+      }
+
+      values.forEach(value => {
+        if (!target.includes(value)) {
+          target.push(value);
+        }
+      });
+    };
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+
+      if (token === '--type') {
+        result.source.type = tokens[index + 1] || '';
+        index += 1;
+        if (!result.source.type) {
+          throw new Error('Missing value after --type');
+        }
+        result.source_config_provided = true;
+        continue;
+      }
+
+      if (token === '--location') {
+        result.source.location = tokens[index + 1] || '';
+        index += 1;
+        if (!result.source.location) {
+          throw new Error('Missing value after --location');
+        }
+        result.source_config_provided = true;
+        continue;
+      }
+
+      if (token === '--branch') {
+        result.source.branch = tokens[index + 1] || '';
+        index += 1;
+        if (!result.source.branch) {
+          throw new Error('Missing value after --branch');
+        }
+        result.source_config_provided = true;
+        continue;
+      }
+
+      if (token === '--subdir') {
+        result.source.subdir = tokens[index + 1] || '';
+        index += 1;
+        if (!result.source.subdir) {
+          throw new Error('Missing value after --subdir');
+        }
+        result.source_config_provided = true;
+        continue;
+      }
+
+      if (token === '--disabled') {
+        result.source.enabled = false;
+        result.source_config_provided = true;
+        continue;
+      }
+
+      if (token === '--to') {
+        result.sync.target = tokens[index + 1] || '';
+        index += 1;
+        if (!result.sync.target) {
+          throw new Error('Missing value after --to');
+        }
+        continue;
+      }
+
+      if (token === '--force') {
+        result.sync.force = true;
+        continue;
+      }
+
+      if (token === '--match-project') {
+        result.sync.match_project = true;
+        continue;
+      }
+
+      if (token === '--no-match-project') {
+        result.sync.match_project = false;
+        continue;
+      }
+
+      if (token === '--tool') {
+        pushListValues(result.sync.tools, tokens[index + 1] || '', '--tool');
+        index += 1;
+        continue;
+      }
+
+      if (token === '--family') {
+        pushListValues(result.sync.families, tokens[index + 1] || '', '--family');
+        index += 1;
+        continue;
+      }
+
+      if (token === '--device') {
+        pushListValues(result.sync.devices, tokens[index + 1] || '', '--device');
+        index += 1;
+        continue;
+      }
+
+      if (token === '--chip') {
+        pushListValues(result.sync.chips, tokens[index + 1] || '', '--chip');
+        index += 1;
+        continue;
+      }
+
+      throw new Error(`Unknown argument: ${token}`);
+    }
+
+    if (result.name === DEFAULT_ADAPTER_SOURCE_NAME) {
+      if (!result.source.type) {
+        result.source.type = DEFAULT_ADAPTER_SOURCE_TYPE;
+      }
+      if (!result.source.location) {
+        result.source.location = DEFAULT_ADAPTER_SOURCE_LOCATION;
+      }
     }
 
     return result;
@@ -526,12 +680,49 @@ function createProjectConfigHelpers(deps) {
     };
   }
 
+  function bootstrapAdapterSource(name, tokens) {
+    const sourceName = String(name || '').trim();
+    const parsed = parseAdapterBootstrapArgs(tokens || [], sourceName);
+
+    initProjectLayout();
+    const projectConfig = buildProjectConfigSeed();
+    const existing = adapterSources.findSource(projectConfig, parsed.name);
+    let sourceResult = null;
+
+    if (!existing || parsed.source_config_provided) {
+      if (!parsed.source.type || !parsed.source.location) {
+        throw new Error(`Missing source config for adapter bootstrap: ${parsed.name}`);
+      }
+
+      const addTokens = ['--type', parsed.source.type, '--location', parsed.source.location];
+      if (parsed.source.branch) {
+        addTokens.push('--branch', parsed.source.branch);
+      }
+      if (parsed.source.subdir) {
+        addTokens.push('--subdir', parsed.source.subdir);
+      }
+      if (parsed.source.enabled === false) {
+        addTokens.push('--disabled');
+      }
+
+      sourceResult = addAdapterSource(parsed.name, addTokens);
+    }
+
+    return {
+      action: 'bootstrapped',
+      source_action: sourceResult ? sourceResult.action : 'existing',
+      source: sourceResult ? sourceResult.source : existing,
+      sync: syncNamedAdapterSource(parsed.name, parsed.sync)
+    };
+  }
+
   return {
     selectNestedField,
     parseProjectShowArgs,
     parseProjectSetArgs,
     parseAdapterSourceAddArgs,
     parseAdapterSyncArgs,
+    parseAdapterBootstrapArgs,
     parseProjectValue,
     assignNestedField,
     buildProjectShow,
@@ -542,6 +733,7 @@ function createProjectConfigHelpers(deps) {
     buildAdapterStatus,
     addAdapterSource,
     removeAdapterSource,
+    bootstrapAdapterSource,
     syncNamedAdapterSource,
     syncAllAdapterSources
   };
