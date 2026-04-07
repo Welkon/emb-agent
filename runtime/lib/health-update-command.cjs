@@ -28,6 +28,7 @@ function createHealthUpdateCommandHelpers(deps) {
     findChipProfileByModel,
     resolveSession,
     buildToolExecutionFromRecommendation,
+    ingestDocCli,
     adapterSources,
     rootDir,
     updateSession
@@ -130,8 +131,26 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
-  function buildQuickstartHint(hardwareIdentity, nextCommands) {
+  function buildQuickstartHint(hardwareIdentity, nextCommands, pendingDocApply) {
     const commands = Array.isArray(nextCommands) ? nextCommands : [];
+    if (pendingDocApply && pendingDocApply.command) {
+      return {
+        stage: 'doc-apply-then-next',
+        summary: '先把最新文档解析结果落到真值文件，再执行 next',
+        steps: [
+          {
+            label: `应用文档 ${pendingDocApply.doc_id} 到 ${pendingDocApply.target}`,
+            cli: pendingDocApply.command
+          },
+          {
+            label: '进入 emb-agent 推荐的下一步',
+            cli: NEXT_CLI
+          }
+        ],
+        followup: `先执行: ${pendingDocApply.command} -> ${NEXT_CLI}`
+      };
+    }
+
     const bootstrap = commands.find(item => item.key === 'adapter-bootstrap');
 
     if (bootstrap) {
@@ -461,6 +480,33 @@ function createHealthUpdateCommandHelpers(deps) {
       );
     }
 
+    const pendingDocApply =
+      ingestDocCli && typeof ingestDocCli.findPendingDocApply === 'function'
+        ? ingestDocCli.findPendingDocApply(projectRoot)
+        : null;
+    if (pendingDocApply) {
+      checks.push(
+        createCheck(
+          'doc_apply_backlog',
+          'warn',
+          `存在待应用文档：${pendingDocApply.doc_id}`,
+          [
+            pendingDocApply.title ? `title=${pendingDocApply.title}` : '',
+            `to=${pendingDocApply.to}`,
+            `target=${pendingDocApply.target}`
+          ],
+          '先把已解析文档应用到 hw.yaml/req.yaml，再让 next 基于沉淀后的真值继续推进。'
+        )
+      );
+      pushNextCommand(
+        nextCommands,
+        'doc-apply',
+        `应用文档 ${pendingDocApply.doc_id} 到 ${pendingDocApply.target}`,
+        pendingDocApply.command,
+        'doc'
+      );
+    }
+
     if (projectConfig) {
       const adapterSourceStatus = adapterSources.listSourceStatus(rootDir, projectRoot, projectConfig);
       const enabledSources = adapterSourceStatus.filter(item => item.enabled !== false);
@@ -640,7 +686,7 @@ function createHealthUpdateCommandHelpers(deps) {
       summary: summary.counts,
       checks,
       next_commands: nextCommands,
-      quickstart: buildQuickstartHint(hardwareIdentity, nextCommands),
+      quickstart: buildQuickstartHint(hardwareIdentity, nextCommands, pendingDocApply),
       recommendations: runtime.unique(
         checks
           .filter(item => item.status === 'fail' || item.status === 'warn')

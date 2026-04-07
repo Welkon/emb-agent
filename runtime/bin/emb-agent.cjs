@@ -484,6 +484,7 @@ const {
   findChipProfileByModel,
   resolveSession,
   buildToolExecutionFromRecommendation,
+  ingestDocCli,
   adapterSources,
   rootDir: ROOT,
   updateSession

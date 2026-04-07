@@ -252,3 +252,59 @@ test('health reports adapter registration and sync readiness', async () => {
     process.stdout.write = originalWrite;
   }
 });
+
+test('health surfaces pending doc apply as quickstart before generic next', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-doc-apply-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  try {
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, 'docs', 'PMS150G.pdf'), 'fake pdf content', 'utf8');
+
+    const providerImpls = {
+      mineru: {
+        async parseDocument() {
+          return {
+            provider: 'mineru',
+            mode: 'agent',
+            task_id: 'task-health-doc',
+            markdown: '# PMS150G SOP8\n\n- Timer16 exists\n- PA5 reserved for programming\n',
+            metadata: {
+              completed: {
+                full_md_url: 'https://mineru.invalid/result.md'
+              }
+            }
+          };
+        }
+      }
+    };
+
+    await cli.runIngestCommand(
+      'doc',
+      ['--file', 'docs/PMS150G.pdf', '--kind', 'datasheet', '--to', 'hardware'],
+      { providerImpls }
+    );
+
+    stdout = '';
+    cli.main(['health']);
+    const report = JSON.parse(stdout);
+
+    assert.equal(report.checks.find(item => item.key === 'doc_apply_backlog').status, 'warn');
+    assert.ok(report.next_commands.some(item => item.key === 'doc-apply'));
+    assert.equal(report.quickstart.stage, 'doc-apply-then-next');
+    assert.ok(report.quickstart.steps[0].cli.includes('ingest apply doc'));
+    assert.ok(report.quickstart.steps[1].cli.endsWith(' next'));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});

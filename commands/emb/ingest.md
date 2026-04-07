@@ -23,6 +23,7 @@ allowed-tools:
    `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" ingest requirements --goal <text> --feature <text> --constraint <text> --accept <text> --failure <text> --unknown <text> --source <path>`
 3. 若是要先解析 datasheet / 规格书 / 原理图片段，使用：
    `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" ingest doc --file <path> --provider mineru --kind datasheet [--pages <range>] [--to hardware|requirements]`
+   如果命令结果里已经带出 `apply_ready`，优先直接执行它，再回到 `next`
 4. 若是要把文档草稿应用到项目真值层，使用：
    `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" ingest apply doc <doc-id> --to hardware|requirements`
    若只想应用部分字段，可加：

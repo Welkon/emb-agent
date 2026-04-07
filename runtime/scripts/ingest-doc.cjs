@@ -583,6 +583,8 @@ async function ingestDoc(argv, options) {
       source: identity.source_path,
       title: cached.title || args.title || path.basename(identity.source_path),
       kind: cached.kind || args.kind,
+      intended_to: cached.intended_to || args.to || '',
+      apply_ready: buildAutoApplyReadyHint(projectRoot, cached),
       artifacts: cached.artifacts || {},
       last_files: runtime.unique([
         cached.artifacts && cached.artifacts.markdown,
@@ -618,6 +620,7 @@ async function ingestDoc(argv, options) {
       provider: args.provider,
       kind: args.kind,
       title: args.title || path.basename(identity.source_path),
+      intended_to: args.to || '',
       source_path: identity.source_path,
       source_hash: identity.source_hash,
       pages: args.pages || '',
@@ -659,6 +662,7 @@ async function ingestDoc(argv, options) {
     provider: args.provider,
     kind: args.kind,
     title: args.title || path.basename(identity.source_path),
+    intended_to: args.to || '',
     source: identity.source_path,
     source_hash: identity.source_hash,
     pages: args.pages || '',
@@ -674,7 +678,9 @@ async function ingestDoc(argv, options) {
     source: identity.source_path,
     title: args.title || path.basename(identity.source_path),
     kind: args.kind,
+    intended_to: args.to || '',
     cache_dir: path.relative(projectRoot, cacheDir),
+    apply_ready: buildAutoApplyReadyHint(projectRoot, docCache.getCachedEntry(projectRoot, identity.doc_id)),
     artifacts,
     last_files: runtime.unique([
       artifacts.markdown,
@@ -726,6 +732,7 @@ function listDocs(projectRoot) {
         kind: entry.kind,
         title: entry.title,
         source: entry.source,
+        intended_to: entry.intended_to || '',
         pages: entry.pages || '',
         cached_at: entry.cached_at || '',
         last_diff_hit: Boolean(lastDiff && lastDiff.doc_id === entry.doc_id),
@@ -733,6 +740,7 @@ function listDocs(projectRoot) {
         preset_count: presetNames.length,
         preset_names: presetNames.slice(0, DOC_LIST_PRESET_NAME_LIMIT),
         preset_names_more: Math.max(0, presetNames.length - DOC_LIST_PRESET_NAME_LIMIT),
+        apply_pending: Boolean(buildAutoApplyReadyHint(projectRoot, entry)),
         applied: entry.applied || {},
         artifacts: entry.artifacts || {}
       };
@@ -1065,6 +1073,55 @@ function buildApplyReadyHint(docId, selectedPreset, presetDiff, enabled) {
   };
 }
 
+function buildAutoApplyReadyHint(projectRoot, entry) {
+  if (!entry || !entry.doc_id) {
+    return null;
+  }
+
+  const to = String(entry.intended_to || '').trim();
+  if (!['hardware', 'requirements'].includes(to)) {
+    return null;
+  }
+
+  const only = normalizeOnlyFields(to, []);
+  if (shouldSkipApply(entry, to, only, false)) {
+    return null;
+  }
+
+  try {
+    loadDraftFacts(projectRoot, entry, to);
+  } catch {
+    return null;
+  }
+
+  const argv = ['ingest', 'apply', 'doc', entry.doc_id, '--to', to];
+
+  return {
+    command: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, argv),
+    argv,
+    doc_id: entry.doc_id,
+    to,
+    only,
+    target: to === 'hardware' ? 'emb-agent/hw.yaml' : 'emb-agent/req.yaml',
+    title: entry.title || '',
+    source: entry.source || '',
+    kind: entry.kind || ''
+  };
+}
+
+function findPendingDocApply(projectRoot) {
+  const index = docCache.loadDocsIndex(projectRoot);
+
+  for (const entry of index.documents || []) {
+    const hint = buildAutoApplyReadyHint(projectRoot, entry);
+    if (hint) {
+      return hint;
+    }
+  }
+
+  return null;
+}
+
 function showDoc(projectRoot, docId, options) {
   const entry = docCache.getCachedEntry(projectRoot, docId);
   if (!entry) {
@@ -1088,6 +1145,7 @@ function showDoc(projectRoot, docId, options) {
     presetPreview.preset_diff,
     Boolean(config.applyReady)
   );
+  const autoApplyReady = buildAutoApplyReadyHint(projectRoot, entry);
 
   return {
     entry,
@@ -1099,6 +1157,7 @@ function showDoc(projectRoot, docId, options) {
     diff_presets: buildDocPresetSummaries(projectRoot, docId),
     selected_preset: presetPreview.selected_preset,
     preset_diff: presetPreview.preset_diff,
+    auto_apply_ready: autoApplyReady,
     apply_ready: applyReady
   };
 }
@@ -1368,6 +1427,7 @@ module.exports = {
   diffDoc,
   diffHardwareDraft,
   diffRequirementsDraft,
+  findPendingDocApply,
   getProviders,
   ingestDoc,
   listDocs,

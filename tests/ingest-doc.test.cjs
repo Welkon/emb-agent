@@ -58,6 +58,9 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
 
     assert.equal(first.cached, false);
     assert.equal(parseCalls, 1);
+    assert.equal(first.intended_to, 'hardware');
+    assert.equal(first.apply_ready.to, 'hardware');
+    assert.match(first.apply_ready.command, /ingest apply doc .* --to hardware/);
     assert.equal(fs.existsSync(path.join(cacheDir, 'parse.md')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'parse.json')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'source.json')), true);
@@ -84,6 +87,12 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
       /PA5 reserved for programming/
     );
     assert.equal(status.last_files[0], first.artifacts.markdown);
+    const docsListBeforeApply = ingestDocCli.listDocs(tempProject);
+    assert.equal(docsListBeforeApply.documents[0].intended_to, 'hardware');
+    assert.equal(docsListBeforeApply.documents[0].apply_pending, true);
+    const docViewBeforeApply = ingestDocCli.showDoc(tempProject, first.doc_id);
+    assert.equal(docViewBeforeApply.auto_apply_ready.to, 'hardware');
+    assert.match(docViewBeforeApply.auto_apply_ready.command, /ingest apply doc .* --to hardware/);
 
     const second = await cli.runIngestCommand(
       'doc',
@@ -113,12 +122,15 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     const docsList = ingestDocCli.listDocs(tempProject);
     assert.equal(docsList.documents.length, 1);
     assert.equal(docsList.documents[0].doc_id, first.doc_id);
+    assert.equal(docsList.documents[0].intended_to, 'hardware');
+    assert.equal(docsList.documents[0].apply_pending, false);
     assert.equal(typeof docsList.documents[0].applied.hardware.applied_at, 'string');
 
     const docView = ingestDocCli.showDoc(tempProject, first.doc_id);
     assert.equal(docView.entry.doc_id, first.doc_id);
     assert.equal(docView.artifact_state.markdown, true);
     assert.equal(docView.parse_info.provider, 'mineru');
+    assert.equal(docView.auto_apply_ready, null);
     assert.equal(docView.entry.applied.hardware.target, 'emb-agent/hw.yaml');
 
     const skipped = await cli.runIngestCommand(

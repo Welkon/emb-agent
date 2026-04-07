@@ -242,3 +242,60 @@ test('manager view surfaces tool execution before generic next action when ready
     process.stdout.write = originalWrite;
   }
 });
+
+test('manager prioritizes doc-apply quickstart before next when parsed docs are pending apply', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-manager-doc-quickstart-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, 'docs', 'PMS150G.pdf'), 'fake pdf content', 'utf8');
+
+    const providerImpls = {
+      mineru: {
+        async parseDocument() {
+          return {
+            provider: 'mineru',
+            mode: 'agent',
+            task_id: 'task-manager-doc',
+            markdown: '# PMS150G SOP8\n\n- Timer16 exists\n- PA5 reserved for programming\n',
+            metadata: {
+              completed: {
+                full_md_url: 'https://mineru.invalid/result.md'
+              }
+            }
+          };
+        }
+      }
+    };
+
+    await cli.runIngestCommand(
+      'doc',
+      ['--file', 'docs/PMS150G.pdf', '--kind', 'datasheet', '--to', 'hardware'],
+      { providerImpls }
+    );
+
+    let stdout = '';
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+    cli.main(['manager']);
+    const manager = JSON.parse(stdout);
+
+    assert.equal(manager.health.quickstart.stage, 'doc-apply-then-next');
+    assert.ok(manager.health.quickstart.steps[0].cli.includes('ingest apply doc'));
+    const quickstartIndex = manager.recommended_actions.findIndex(item => item.type === 'quickstart');
+    const nextIndex = manager.recommended_actions.findIndex(item => item.type === 'next');
+    assert.ok(quickstartIndex >= 0);
+    assert.ok(nextIndex >= 0);
+    assert.ok(quickstartIndex < nextIndex);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
