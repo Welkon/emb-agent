@@ -13,6 +13,7 @@ function createNoteReportHelpers(deps) {
     RUNTIME_CONFIG,
     resolveProjectRoot,
     resolveSession,
+    buildNextContext,
     getTemplateConfig,
     updateSession
   } = deps;
@@ -798,6 +799,20 @@ function createNoteReportHelpers(deps) {
 
   function buildVerifyEntry(verifyOutput, verifyInput) {
     const timestamp = new Date().toISOString();
+    const next = typeof buildNextContext === 'function' ? buildNextContext() : null;
+    const toolRecommendation =
+      next &&
+      next.next &&
+      next.next.tool_recommendation
+        ? next.next.tool_recommendation
+        : null;
+    const adapterHealth =
+      next &&
+      next.health &&
+      next.health.adapter_health &&
+      next.health.adapter_health.primary
+        ? next.health.adapter_health.primary
+        : null;
     const lines = [
       `### ${timestamp}`,
       `- Summary: ${verifyInput.summary}`,
@@ -806,6 +821,14 @@ function createNoteReportHelpers(deps) {
       `- Focus: ${verifyOutput.scope.focus || '-'}`,
       `- Runtime model: ${verifyOutput.scope.runtime_model || '-'}`,
       `- Concurrency model: ${verifyOutput.scope.concurrency_model || '-'}`,
+      `- Next command: ${next && next.next ? next.next.command : '-'}`,
+      `- Tool recommendation: ${toolRecommendation ? toolRecommendation.tool : '-'}`,
+      `- Tool trust: ${toolRecommendation && toolRecommendation.trust
+        ? `${toolRecommendation.trust.grade} (${toolRecommendation.trust.score}/100), executable=${toolRecommendation.trust.executable ? 'yes' : 'no'}`
+        : '-'}`,
+      `- Adapter health: ${adapterHealth
+        ? `${adapterHealth.tool} ${adapterHealth.grade} (${adapterHealth.score}/100), executable=${adapterHealth.executable ? 'yes' : 'no'}, action=${adapterHealth.recommended_action}`
+        : '-'}`,
       '- Checklist:'
     ];
 
@@ -857,6 +880,7 @@ function createNoteReportHelpers(deps) {
     const target = resolveKnownDocTarget(verifyInput.target || 'verify');
     const ensured = ensureNoteTargetDoc(target);
     const verifyOutput = scheduler.buildVerifyOutput(resolved);
+    const next = typeof buildNextContext === 'function' ? buildNextContext() : null;
     const content = runtime.readText(ensured.path);
     const nextContent = upsertSectionEntry(
       content,
@@ -881,7 +905,15 @@ function createNoteReportHelpers(deps) {
       checks: verifyInput.checks,
       results: verifyInput.results,
       evidence: verifyInput.evidence,
-      followups: verifyInput.followups
+      followups: verifyInput.followups,
+      tool_recommendation:
+        next && next.next && next.next.tool_recommendation
+          ? next.next.tool_recommendation
+          : null,
+      adapter_health:
+        next && next.health && next.health.adapter_health
+          ? next.health.adapter_health
+          : null
     };
   }
 

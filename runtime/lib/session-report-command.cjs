@@ -60,6 +60,12 @@ function createSessionReportCommandHelpers(deps) {
       next.next.tool_recommendation
         ? next.next.tool_recommendation
         : null;
+    const adapterHealth =
+      next &&
+      next.health &&
+      next.health.adapter_health
+        ? next.health.adapter_health
+        : null;
 
     return {
       generated_at: new Date().toISOString(),
@@ -83,6 +89,7 @@ function createSessionReportCommandHelpers(deps) {
         : null,
       thread_stats: threadStats,
       tool_recommendation: toolRecommendation,
+      adapter_health: adapterHealth,
       next,
       resume
     };
@@ -156,10 +163,20 @@ function createSessionReportCommandHelpers(deps) {
     lines.push(`- next_reason: ${report.next.next.reason}`);
     lines.push(`- tool_recommendation: ${report.tool_recommendation ? report.tool_recommendation.tool : '(none)'}`);
     lines.push(`- tool_status: ${report.tool_recommendation ? report.tool_recommendation.status : '(none)'}`);
+    lines.push(
+      `- tool_trust: ${report.tool_recommendation && report.tool_recommendation.trust
+        ? `${report.tool_recommendation.trust.grade} (${report.tool_recommendation.trust.score}/100), executable=${report.tool_recommendation.trust.executable ? 'yes' : 'no'}`
+        : '(none)'}`
+    );
     lines.push(`- tool_cli: ${report.tool_recommendation ? report.tool_recommendation.cli_draft : '(none)'}`);
     lines.push(
       `- tool_missing_inputs: ${report.tool_recommendation && (report.tool_recommendation.missing_inputs || []).length > 0
         ? report.tool_recommendation.missing_inputs.join(', ')
+        : '(none)'}`
+    );
+    lines.push(
+      `- adapter_health: ${report.adapter_health && report.adapter_health.primary
+        ? `${report.adapter_health.primary.tool} ${report.adapter_health.primary.grade} (${report.adapter_health.primary.score}/100), executable=${report.adapter_health.primary.executable ? 'yes' : 'no'}, action=${report.adapter_health.primary.recommended_action}`
         : '(none)'}`
     );
     lines.push(`- suggested_flow: ${report.next.current.suggested_flow || ''}`);
@@ -190,6 +207,7 @@ function createSessionReportCommandHelpers(deps) {
       summary: report.summary,
       next: report.next.next,
       tool_recommendation: report.tool_recommendation,
+      adapter_health: report.adapter_health,
       thread_stats: report.thread_stats,
       handoff_present: Boolean(report.handoff)
     };
