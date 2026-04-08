@@ -1,5 +1,7 @@
 'use strict';
 
+const adapterQualityHelpers = require('./adapter-quality.cjs');
+
 function createProjectConfigHelpers(deps) {
   const {
     path,
@@ -17,6 +19,51 @@ function createProjectConfigHelpers(deps) {
   const DEFAULT_ADAPTER_SOURCE_NAME = 'default-pack';
   const DEFAULT_ADAPTER_SOURCE_TYPE = 'git';
   const DEFAULT_ADAPTER_SOURCE_LOCATION = 'https://github.com/Welkon/emb-agent-adapters.git';
+
+  function buildAdapterSyncQuality(syncResult) {
+    let resolved = null;
+
+    try {
+      resolved = resolveSession ? resolveSession() : null;
+    } catch {
+      resolved = null;
+    }
+
+    const toolRecommendations =
+      resolved &&
+      resolved.effective &&
+      Array.isArray(resolved.effective.tool_recommendations)
+        ? resolved.effective.tool_recommendations
+        : [];
+    const recommendedSources =
+      resolved &&
+      resolved.effective &&
+      Array.isArray(resolved.effective.recommended_sources)
+        ? resolved.effective.recommended_sources
+        : [];
+
+    if (toolRecommendations.length > 0) {
+      return {
+        mode: 'session-aware',
+        ...adapterQualityHelpers.summarizeAdapterHealth(toolRecommendations, recommendedSources)
+      };
+    }
+
+    const selection = syncResult && syncResult.selection ? syncResult.selection : {};
+    const matched = selection && selection.matched ? selection.matched : {};
+
+    return {
+      mode: 'selection-only',
+      status: 'info',
+      summary: '同步已命中候选 adapter 文件，但当前项目上下文还不足以生成 trust 评分。',
+      matched_chips: matched.chips || [],
+      matched_tools: matched.tools || [],
+      inferred_from_project: Boolean(selection.inferred_from_project),
+      next_action: selection.inferred_from_project
+        ? 're-run-health-or-next'
+        : 'fill-hw-or-run-sync-with-project-match'
+    };
+  }
 
   function selectNestedField(source, fieldPath) {
     if (!fieldPath) {
@@ -661,7 +708,11 @@ function createProjectConfigHelpers(deps) {
       throw new Error(`Adapter source not found: ${sourceName}`);
     }
 
-    return adapterSources.syncAdapterSource(ROOT, resolveProjectRoot(), source, options || {});
+    const syncResult = adapterSources.syncAdapterSource(ROOT, resolveProjectRoot(), source, options || {});
+    return {
+      ...syncResult,
+      quality: buildAdapterSyncQuality(syncResult)
+    };
   }
 
   function syncAllAdapterSources(options) {
@@ -676,7 +727,10 @@ function createProjectConfigHelpers(deps) {
         resolveProjectRoot(),
         projectConfig,
         options || {}
-      )
+      ).map(item => ({
+        ...item,
+        quality: buildAdapterSyncQuality(item)
+      }))
     };
   }
 
