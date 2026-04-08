@@ -74,6 +74,8 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs dispatch next
 
 如果是外设公式、引脚或寄存器定位问题，优先看 `next` / `dispatch next` 里是否已经给出 `tool_recommendation` 或 `tool_execution`。
 
+如果 `health` / `next` / `adapter status` 已经带出 `adapter_health`、`quality_overview` 或 tool `trust`，先按 `recommended_action` 补 adapter 缺口，再决定是否把工具结果当成真值。
+
 上下文收口：
 
 ```bash
