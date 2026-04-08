@@ -192,6 +192,8 @@ function createCliEntryHelpers(deps) {
       '  agents show <name>',
       '  commands list',
       '  commands show <name>',
+      '  skills list',
+      '  skills show <name>',
       '  profile list',
       '  profile show <name>',
       '  profile set <name>',

@@ -42,6 +42,8 @@ node <runtime-home>/emb-agent/scripts/init-project.cjs
   runtime 辅助脚本，例如 `init-project`、`attach-project`、`ingest-doc`、`adapter-derive`。
 - `templates/`
   固定输出模板。
+- `skills/`
+  runtime 内置的非命令型 skill，例如 `using-emb-agent` 这类轻量路由 skill。
 - `profiles/`
   内置项目画像。
 - `packs/`

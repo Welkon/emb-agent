@@ -39,6 +39,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-settings', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-session-report', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-manager', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'using-emb-agent', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.toml')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'config.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
@@ -51,6 +52,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'VERSION')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'skills', 'using-emb-agent', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'tools', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'chips', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'adapters')), true);

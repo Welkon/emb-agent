@@ -103,6 +103,11 @@ Output the emb-agent command reference below and nothing else.
   - tool 是否已经 `ready`
   - 在 orchestrator 里是否切到 `inline-tool-first`
 
+安装后的 `skills/` 目录除了命令 skill，还会包含内部 routing skill：
+
+- `using-emb-agent`
+  用于在会话开始时优先把问题路由到最轻的 `init / ingest / tool / adapter / review` 路径，而不是默认拉重 planning
+
 ## Advanced
 
 - `$emb-note`
@@ -127,6 +132,7 @@ Output the emb-agent command reference below and nothing else.
 安装器会在运行时目录下铺这些内容：
 
 - `skills/emb-*`
+- `skills/using-emb-agent`
 - `agents/emb-*`
 - `emb-agent/`
 - 宿主配置文件中的 emb-agent hook / agent 注册
@@ -274,6 +280,8 @@ Output the emb-agent command reference below and nothing else.
 - `<runtime-cli> tool device show DEVICE_NAME`
 - `<runtime-cli> chip list`
 - `<runtime-cli> chip show CHIP_NAME`
+- `<runtime-cli> skills list`
+- `<runtime-cli> skills show using-emb-agent`
 
 项目内若需要自定义，只使用轻量扩展目录：
 

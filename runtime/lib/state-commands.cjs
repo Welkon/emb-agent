@@ -10,12 +10,14 @@ function createStateCommandHelpers(deps) {
     PACKS_DIR,
     AGENTS_DIR,
     COMMANDS_DIR,
+    SKILLS_DIR,
     RUNTIME_CONFIG,
     getProjectProfilesDir,
     getProjectPacksDir,
     loadProfile,
     loadPack,
     loadMarkdown,
+    loadSkill,
     loadSession,
     updateSession,
     getPreferences,
@@ -111,6 +113,23 @@ function createStateCommandHelpers(deps) {
     if (cmd === 'commands' && subcmd === 'show') {
       if (!rest[0]) throw new Error('Missing command name');
       return loadMarkdown(COMMANDS_DIR, rest[0], 'Command');
+    }
+
+    if (cmd === 'skills' && subcmd === 'list') {
+      if (!fs.existsSync(SKILLS_DIR)) {
+        return [];
+      }
+
+      return fs
+        .readdirSync(SKILLS_DIR, { withFileTypes: true })
+        .filter(entry => entry.isDirectory() && fs.existsSync(path.join(SKILLS_DIR, entry.name, 'SKILL.md')))
+        .map(entry => entry.name)
+        .sort();
+    }
+
+    if (cmd === 'skills' && subcmd === 'show') {
+      if (!rest[0]) throw new Error('Missing skill name');
+      return loadSkill(rest[0]);
     }
 
     if (cmd === 'profile' && subcmd === 'list') {
