@@ -39,10 +39,25 @@
     "description": "联网、离线、重连和云端一致性约束模板",
     "default_output": "docs/CONNECTIVITY.md"
   },
+  "power-charging": {
+    "source": "power-charging.md.tpl",
+    "description": "电池、充电、欠压和功率输出闭环模板",
+    "default_output": "docs/POWER-CHARGING.md"
+  },
   "release-notes": {
     "source": "release-notes.md.tpl",
     "description": "升级、回滚和发布闭环记录模板",
     "default_output": "docs/RELEASE-NOTES.md"
+  },
+  "pmb180b-hw-starter": {
+    "source": "pmb180b-hw.yaml.tpl",
+    "description": "PMB180B 项目 starter 硬件真值模板",
+    "default_output": ".emb-agent/starters/pmb180b/hw.yaml"
+  },
+  "pmb180b-req-starter": {
+    "source": "pmb180b-req.yaml.tpl",
+    "description": "PMB180B 项目 starter 需求真值模板",
+    "default_output": ".emb-agent/starters/pmb180b/req.yaml"
   },
   "profile": {
     "source": "profile.yaml.tpl",

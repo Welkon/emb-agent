@@ -68,6 +68,38 @@ test('init-project creates project defaults and seeded docs', () => {
   }
 });
 
+test('init-project with battery-charger pack seeds power charging doc', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-battery-charger-'));
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main([
+      '--project',
+      tempProject,
+      '--profile',
+      'baremetal-8bit',
+      '--pack',
+      'battery-charger'
+    ]);
+
+    const projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+
+    assert.equal(projectConfig.project_profile, 'baremetal-8bit');
+    assert.deepEqual(projectConfig.active_packs, ['battery-charger']);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-CHARGING.md')), true);
+    assert.match(
+      fs.readFileSync(path.join(tempProject, 'docs', 'POWER-CHARGING.md'), 'utf8'),
+      /Charging Logic/
+    );
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('init preserves existing docs files without force', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-preserve-'));
   const currentCwd = process.cwd();
