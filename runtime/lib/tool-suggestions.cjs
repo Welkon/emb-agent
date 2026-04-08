@@ -1,5 +1,6 @@
 'use strict';
 
+const adapterQualityHelpers = require('./adapter-quality.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
@@ -396,24 +397,32 @@ function createToolSuggestionHelpers(deps) {
     return buildGenericDraft(toolName, chipProfile, deviceProfile, familyProfile, spec);
   }
 
-  function buildRecommendationReason(tool, bindingInfo) {
+  function buildRecommendationReason(tool, bindingInfo, trust) {
+    const trustSummary = trust
+      ? `可信度 ${trust.score}/100 (${trust.grade})`
+      : '';
+
     if (tool.status === 'draft-adapter') {
-      return bindingInfo.binding
+      const base = bindingInfo.binding
         ? '已生成 draft route 和 profile binding，但 route 里还没有真实公式实现。'
         : '已生成 draft route，但当前还没有对应 binding；先补 device/family bindings。';
+      return trustSummary ? `${base} ${trustSummary}` : base;
     }
 
     if (tool.status !== 'ready') {
-      return bindingInfo.binding
+      const base = bindingInfo.binding
         ? '已识别到 profile binding，但当前 runtime 还没有外部 adapter，先安装或同步 adapter 仓库。'
         : '当前只有抽象工具规格；需要外部 adapter 才能真正执行该工具。';
+      return trustSummary ? `${base} ${trustSummary}` : base;
     }
 
     if (!bindingInfo.binding) {
-      return '外部 adapter 已存在，但当前 chip/device/family 还没有声明可执行 binding。';
+      const base = '外部 adapter 已存在，但当前 chip/device/family 还没有声明可执行 binding。';
+      return trustSummary ? `${base} ${trustSummary}` : base;
     }
 
-    return `已识别 ${bindingInfo.source} binding，可直接补齐缺失参数后执行。`;
+    const base = `已识别 ${bindingInfo.source} binding，可直接补齐缺失参数后执行。`;
+    return trustSummary ? `${base} ${trustSummary}` : base;
   }
 
   function buildRecommendationStatus(tool, bindingInfo) {
@@ -435,13 +444,15 @@ function createToolSuggestionHelpers(deps) {
 
     return {
       available: true,
-      recommended: recommendation.status === 'ready',
+      recommended: recommendation.status === 'ready' &&
+        Boolean(recommendation.trust && recommendation.trust.executable),
       tool: recommendation.tool,
       status: recommendation.status,
       cli: recommendation.cli_draft,
       reason: recommendation.reason || '',
       missing_inputs: recommendation.missing_inputs || [],
-      defaults_applied: recommendation.defaults_applied || {}
+      defaults_applied: recommendation.defaults_applied || {},
+      trust: recommendation.trust || null
     };
   }
 
@@ -509,6 +520,14 @@ function createToolSuggestionHelpers(deps) {
         spec || { inputs: [] },
         bindingInfo.binding
       );
+      const trust = adapterQualityHelpers.evaluateToolRecommendationTrust({
+        toolName: tool.name,
+        chipProfile,
+        deviceProfile: profiles.device,
+        familyProfile: profiles.family,
+        tool,
+        bindingInfo
+      });
 
       return {
         tool: tool.name,
@@ -519,7 +538,8 @@ function createToolSuggestionHelpers(deps) {
         binding_algorithm: bindingInfo.binding && bindingInfo.binding.algorithm
           ? bindingInfo.binding.algorithm
           : '',
-        reason: buildRecommendationReason(tool, bindingInfo),
+        trust,
+        reason: buildRecommendationReason(tool, bindingInfo, trust),
         cli_draft: draft.cli_draft,
         missing_inputs: draft.missing_inputs,
         defaults_applied: draft.defaults_applied

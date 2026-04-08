@@ -1,5 +1,6 @@
 'use strict';
 
+const adapterQualityHelpers = require('./adapter-quality.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const updateCheckHelpers = require('./update-check.cjs');
 
@@ -719,7 +720,6 @@ function createHealthUpdateCommandHelpers(deps) {
       }
     }
 
-    const summary = summarizeChecks(checks);
     let resolvedSession = null;
 
     try {
@@ -734,10 +734,82 @@ function createHealthUpdateCommandHelpers(deps) {
       Array.isArray(resolvedSession.effective.tool_recommendations)
         ? resolvedSession.effective.tool_recommendations
         : [];
+    const recommendedSources =
+      resolvedSession &&
+      resolvedSession.effective &&
+      Array.isArray(resolvedSession.effective.recommended_sources)
+        ? resolvedSession.effective.recommended_sources
+        : [];
+    const adapterHealth = adapterQualityHelpers.summarizeAdapterHealth(
+      toolRecommendations,
+      recommendedSources
+    );
+    const primaryRecommendation = adapterHealth.primary
+      ? toolRecommendations.find(item => item.tool === adapterHealth.primary.tool) || toolRecommendations[0]
+      : toolRecommendations[0];
     const primaryToolExecution =
-      toolRecommendations.length > 0
-        ? buildToolExecutionFromRecommendation(toolRecommendations[0])
+      primaryRecommendation
+        ? buildToolExecutionFromRecommendation(primaryRecommendation)
         : null;
+
+    if (toolRecommendations.length > 0) {
+      checks.push(
+        createCheck(
+          'adapter_quality',
+          adapterHealth.status,
+          adapterHealth.primary && adapterHealth.primary.executable
+            ? `首选工具 ${adapterHealth.primary.tool} 已达到可执行可信度`
+            : `首选工具 ${adapterHealth.primary ? adapterHealth.primary.tool : '(none)'} 仍需补 adapter 证据链`,
+          adapterHealth.primary
+            ? [
+                `tool=${adapterHealth.primary.tool}`,
+                `score=${adapterHealth.primary.score}`,
+                `grade=${adapterHealth.primary.grade}`,
+                `action=${adapterHealth.primary.recommended_action}`
+              ]
+            : [],
+          adapterHealth.primary && !adapterHealth.primary.executable
+            ? `优先处理 ${adapterHealth.primary.recommended_action}，再把工具结果当真值使用。`
+            : ''
+        )
+      );
+
+      checks.push(
+        createCheck(
+          'binding_quality',
+          adapterHealth.binding_ready_tools > 0 && adapterHealth.draft_binding_tools === 0 ? 'pass' : 'warn',
+          adapterHealth.binding_ready_tools > 0
+            ? '已识别 tool binding'
+            : '当前还没有稳定的 tool binding',
+          [
+            `binding_ready_tools=${adapterHealth.binding_ready_tools}`,
+            `draft_binding_tools=${adapterHealth.draft_binding_tools}`
+          ],
+          adapterHealth.binding_ready_tools > 0 && adapterHealth.draft_binding_tools === 0
+            ? ''
+            : '先补 device/family binding，避免 runtime route 存在但算法入口不稳定。'
+        )
+      );
+
+      checks.push(
+        createCheck(
+          'register_summary_available',
+          adapterHealth.register_summary_available ? 'pass' : 'warn',
+          adapterHealth.register_summary_available
+            ? '已发现寄存器摘要资料'
+            : '当前还缺寄存器摘要资料',
+          adapterHealth.register_summary_available
+            ? recommendedSources
+                .filter(item => item.priority_group === 'register-summary')
+                .slice(0, 3)
+                .map(item => item.path)
+            : [],
+          adapterHealth.register_summary_available
+            ? ''
+            : '补一份寄存器摘要到 source_refs，后续 timer/pwm/comparator 工具的可核查性会明显更稳。'
+        )
+      );
+    }
 
     if (primaryToolExecution && primaryToolExecution.cli) {
       pushNextCommand(
@@ -750,6 +822,8 @@ function createHealthUpdateCommandHelpers(deps) {
         'tool'
       );
     }
+
+    const summary = summarizeChecks(checks);
 
     if (nextCommands.length === 0 && summary.status !== 'fail') {
       pushNextCommand(
@@ -767,6 +841,7 @@ function createHealthUpdateCommandHelpers(deps) {
       status: summary.status,
       summary: summary.counts,
       checks,
+      adapter_health: adapterHealth,
       next_commands: nextCommands,
       quickstart: buildQuickstartHint(hardwareIdentity, nextCommands, pendingDocApply),
       recommendations: runtime.unique(

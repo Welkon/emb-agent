@@ -134,12 +134,15 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
     assert.equal(status.tool_recommendations[0].tool, 'timer-calc');
     assert.equal(status.tool_recommendations[0].status, 'ready');
     assert.equal(status.tool_recommendations[0].binding_source, 'device');
+    assert.equal(status.tool_recommendations[0].trust.grade, 'trusted');
+    assert.equal(status.tool_recommendations[0].trust.executable, true);
     assert.match(status.tool_recommendations[0].cli_draft, /tool run timer-calc/);
     assert.match(status.tool_recommendations[0].cli_draft, /--family vendor-family/);
     assert.match(status.tool_recommendations[0].cli_draft, /--device vendor-chip/);
     assert.match(status.tool_recommendations[0].cli_draft, /--timer tm16/);
     assert.deepEqual(status.tool_recommendations[0].missing_inputs, ['clock-hz', 'target-us or target-hz']);
     assert.equal(status.tool_recommendations[1].status, 'adapter-required');
+    assert.equal(status.tool_recommendations[1].trust.executable, false);
     assert.match(status.tool_recommendations[1].cli_draft, /tool run pwm-calc/);
     assert.deepEqual(status.tool_recommendations[1].missing_inputs, ['clock-hz', 'target-hz']);
     assert.equal(next.hardware.chip_profile.family, 'vendor-family');
@@ -149,6 +152,7 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
     assert.equal(next.tool_recommendations.length, 2);
     assert.equal(next.recommended_sources[0].id, 'mcu/vendor-chip-registers');
     assert.equal(next.next.tool_recommendation.tool, 'timer-calc');
+    assert.equal(next.next.tool_recommendation.trust.grade, 'trusted');
     assert.match(next.next.tool_recommendation.cli_draft, /tool run timer-calc/);
     assert.ok(next.next_actions.some(item => item.includes('优先重读寄存器摘要: .emb-agent/docs/sources/mcu/vendor-chip-registers.md')));
     assert.ok(next.next_actions.some(item => item.includes('首选工具草案:')));
@@ -278,6 +282,8 @@ test('draft adapter route is discoverable but not treated as ready', () => {
     );
     assert.equal(status.tool_recommendations[0].status, 'draft-adapter');
     assert.equal(status.tool_recommendations[0].binding_source, 'device');
+    assert.equal(status.tool_recommendations[0].trust.grade, 'draft');
+    assert.equal(status.tool_recommendations[0].trust.executable, false);
     assert.equal(next.next.tool_recommendation.status, 'draft-adapter');
     assert.equal(next.next.tool_recommendation.tool, 'timer-calc');
   } finally {
