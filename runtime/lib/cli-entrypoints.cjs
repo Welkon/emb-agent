@@ -52,6 +52,16 @@ function createCliEntryHelpers(deps) {
     };
   }
 
+  function loadInitDeveloperIdentity(projectRoot) {
+    const configPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
+    const projectConfig = fs.existsSync(configPath) ? runtime.readJson(configPath) : {};
+    const developer =
+      projectConfig && typeof projectConfig === 'object' && projectConfig.developer
+        ? projectConfig.developer
+        : {};
+    return runtime.validateDeveloperConfig(developer);
+  }
+
   function buildInitGuidance(projectRoot) {
     const hardware = loadInitHardwareIdentity(projectRoot);
     const configPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
@@ -95,7 +105,7 @@ function createCliEntryHelpers(deps) {
     const text = [
       'emb-agent usage:',
       '  help',
-      '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--board <name>] [--target <name>] [--goal <text>] [--force]',
+      '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [--user <name>|-u <name>] [--force]',
       '  ingest hardware [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
       '  ingest requirements [--goal <text>] [--feature <text>] [--constraint <text>] [--accept <text>] [--failure <text>] [--unknown <text>] [--source <path>]',
       '  ingest doc --file <path> [--provider mineru] [--kind datasheet] [--title <text>] [--pages <range>] [--language ch|en] [--ocr] [--force] [--to hardware|requirements]',
@@ -240,6 +250,11 @@ function createCliEntryHelpers(deps) {
         '--board',
         '--target',
         '--goal',
+        '--runtime',
+        '--codex',
+        '--claude',
+        '--user',
+        '-u',
         '--force'
       ].includes(token)
     );
@@ -247,7 +262,11 @@ function createCliEntryHelpers(deps) {
 
     if (fs.existsSync(existingProjectConfig) && !hasInitOptions) {
       initProjectLayout();
-      const session = ensureSession();
+      const developer = loadInitDeveloperIdentity(resolveProjectRoot());
+      const session = updateSession(current => {
+        current.last_command = 'init';
+        current.developer = developer;
+      });
       const guidance = buildInitGuidance(resolveProjectRoot());
       return {
         initialized: true,
@@ -258,6 +277,7 @@ function createCliEntryHelpers(deps) {
         project_dir: path.relative(process.cwd(), getProjectExtDir()) || runtime.getProjectAssetRelativePath(),
         project_profile: session.project_profile,
         active_packs: session.active_packs,
+        developer: session.developer,
         onboarding: guidance,
         next_steps: guidance.next_steps
       };
@@ -265,8 +285,10 @@ function createCliEntryHelpers(deps) {
 
     const attached = attachProjectCli.attachProject(rest);
     initProjectLayout();
+    const developer = loadInitDeveloperIdentity(resolveProjectRoot());
     const session = updateSession(current => {
       current.last_command = 'init';
+      current.developer = developer;
       current.last_files = runtime
         .unique([...(attached.detected.code || []), ...(attached.detected.projects || []), ...(current.last_files || [])])
         .slice(0, RUNTIME_CONFIG.max_last_files);
@@ -282,6 +304,7 @@ function createCliEntryHelpers(deps) {
       session: {
         project_profile: session.project_profile,
         active_packs: session.active_packs,
+        developer: session.developer,
         last_files: session.last_files
       }
     };

@@ -49,6 +49,7 @@ allowed-tools:
 默认会创建这些目录或文件：
 
 - `docs/`
+- `docs/MCU-FOUNDATION-CHECKLIST.md`
 - `.emb-agent/project.json`
 - `.emb-agent/hw.yaml`
 - `.emb-agent/req.yaml`

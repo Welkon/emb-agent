@@ -18,16 +18,19 @@ description: Use when starting an embedded development conversation or when the 
 
 1. 如果项目还没初始化，先走 `init`
 2. 如果缺 MCU 真值、封装、板级连接或需求，先补 `hw.yaml / req.yaml`
-3. 如果问题本质是手册/PDF解析，先走 `ingest doc`
-4. 如果问题本质是定时器 / PWM / ADC / 比较器 / LVDC / 充电参数计算，先看 `next.tool_recommendation`
-5. 如果 `tool_execution.status = ready`，优先执行 `tool run ...`
-6. 如果缺 adapter，优先走 `adapter bootstrap / sync / derive`
-7. 如果是复杂系统级风险、选型、RTOS/IoT 架构压力测试，再走 `arch-review` 或 `review`
-8. 只有在复杂实现、多步骤闭环、明显存在风险/问题时，才走轻量 `plan / debug / verify`
+3. 如果问题本质是寄存器、引脚复用、时序约束、阈值定义，先检查是否已有手册真值；没有就先走 `ingest doc`
+4. `ingest doc` 后优先走 `doc diff/apply`，把事实先落到 `hw.yaml / req.yaml`，再进入实现与计算
+5. 如果问题本质是定时器 / PWM / ADC / 比较器 / LVDC / 充电参数计算，先看 `next.tool_recommendation`
+6. 如果 `tool_execution.status = ready`，优先执行 `tool run ...`
+7. 如果 `tool` 缺输入，先补 `missing_inputs`，不要跳到拍脑袋实现
+8. 如果缺 adapter，优先走 `adapter bootstrap / sync / derive`
+9. 如果是复杂系统级风险、选型、RTOS/IoT 架构压力测试，再走 `arch-review` 或 `review`
+10. 只有在复杂实现、多步骤闭环、明显存在风险/问题时，才走轻量 `plan / debug / verify`
 
 ## 默认原则
 
 - 真值优先于猜测
+- 手册真值优先于代码习惯性猜测
 - 工具结果优先于空谈
 - adapter trust 不够时，不把结果直接当真值
 - clear context 风险变高前，提醒用户执行 `pause`

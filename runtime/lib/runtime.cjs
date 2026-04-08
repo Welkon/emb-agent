@@ -558,6 +558,16 @@ function validateIntegrations(config) {
   };
 }
 
+function validateDeveloperConfig(config) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, 'developer');
+
+  return {
+    name: ensureOptionalString(source.name, 'developer.name'),
+    runtime: ensureChoice(source.runtime, 'developer.runtime', ['', 'codex', 'claude'], '')
+  };
+}
+
 function validateArchReviewConfig(config) {
   const source = config === undefined || config === null ? {} : config;
   expectObject(source, 'arch_review');
@@ -610,6 +620,7 @@ function validateProjectConfig(config, runtimeConfig) {
     project_profile: ensureOptionalString(config.project_profile, 'project_profile'),
     active_packs: ensureStringArray(config.active_packs || [], 'active_packs'),
     adapter_sources: validateAdapterSources(config.adapter_sources || []),
+    developer: validateDeveloperConfig(config.developer || {}),
     preferences: normalizePreferences(config.preferences || {}, runtimeConfig),
     integrations: validateIntegrations(config.integrations || {}),
     arch_review: validateArchReviewConfig(config.arch_review || {})
@@ -792,6 +803,10 @@ function ensureProjectStateStorage(paths) {
 function normalizeSession(session, paths, runtimeConfig, projectConfig) {
   const next = { ...(session || {}) };
   const defaults = mergeRuntimeDefaults(runtimeConfig, projectConfig);
+  const developerDefaults =
+    projectConfig && projectConfig.developer
+      ? validateDeveloperConfig(projectConfig.developer)
+      : validateDeveloperConfig({});
 
   next.session_version = defaults.session_version;
   next.project_root = paths.projectRoot;
@@ -806,6 +821,14 @@ function normalizeSession(session, paths, runtimeConfig, projectConfig) {
       ? ensureStringArray(next.active_packs, 'active_packs')
       : defaults.default_packs
   );
+  const developerSource =
+    !next.developer || typeof next.developer !== 'object' || Array.isArray(next.developer)
+      ? {}
+      : next.developer;
+  next.developer = validateDeveloperConfig({
+    ...developerDefaults,
+    ...developerSource
+  });
   next.preferences = normalizePreferences(next.preferences || {}, defaults);
   next.focus = typeof next.focus === 'string' ? next.focus : '';
   next.last_files = ensureStringArray(next.last_files || [], 'last_files')
@@ -846,6 +869,10 @@ function loadDefaultSession(rootDir, paths, runtimeConfig, projectConfig) {
     if (projectConfig.active_packs && projectConfig.active_packs.length > 0) {
       seeded.active_packs = projectConfig.active_packs;
     }
+    seeded.developer = {
+      ...(raw.developer || {}),
+      ...(projectConfig.developer || {})
+    };
     seeded.preferences = {
       ...(raw.preferences || {}),
       ...(projectConfig.preferences || {})
@@ -923,6 +950,7 @@ module.exports = {
   unique,
   validateAdapterSource,
   validateAdapterSources,
+  validateDeveloperConfig,
   validateHandoff,
   validatePack,
   validateProfile,

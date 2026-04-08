@@ -122,6 +122,8 @@ npx github:Welkon/emb-agent --global
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs init
+# 或显式写入开发者身份与运行时
+node <runtime-home>/emb-agent/bin/emb-agent.cjs init --codex -u your-name
 
 # 先把当前项目的 MCU 真值写进 .emb-agent/hw.yaml
 node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter bootstrap
@@ -199,11 +201,13 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs init
 这一步会：
 
 - 创建 `.emb-agent/project.json`
+- 创建 `.emb-agent/.developer`（开发者身份标识）
 - 创建 `.emb-agent/hw.yaml`
 - 创建 `.emb-agent/req.yaml`
 - 创建项目级缓存目录
 - 按当前 profile / pack 创建 `docs/` 下的固定骨架文档
 - 为已有工程建立最小工作上下文
+- 自动把 `.emb-agent/.developer` 写入项目 `.gitignore`
 
 现在项目内长期资产统一放在可见目录 `./.emb-agent/`，典型包括：
 

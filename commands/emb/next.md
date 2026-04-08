@@ -34,6 +34,10 @@ allowed-tools:
 - 如果当前只是“泛化 scan”，但 `health` 已发现基础接入没闭环，优先返回 `health`
 - 如果输出里有 `health_quickstart`，优先按这个最短闭环提示执行，而不是自己重新拼 onboarding 步骤
 - `health_quickstart` 现在可能是 `doc-apply-then-next`、`bootstrap-then-next` 或 `derive-then-next`
+- 对涉及寄存器位定义、时序窗口、引脚复用、电气阈值的问题，默认按 `manual-first`：
+  - 先确认 `hw.yaml / req.yaml` 是否已有对应真值
+  - 若没有，先 `ingest doc`，再 `doc diff/apply`
+  - 真值落盘后再 `tool run` 或实现代码
 - 如果 `next.tool_recommendation` 存在：
   - 优先读取 `cli_draft`
   - 注意 `missing_inputs`

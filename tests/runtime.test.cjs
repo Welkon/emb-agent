@@ -46,6 +46,7 @@ test('normalizeSession fills metadata and trims arrays', () => {
   assert.equal(session.project_name, 'example-proj');
   assert.equal(session.project_profile, 'baremetal-8bit');
   assert.deepEqual(session.active_packs, ['sensor-node']);
+  assert.deepEqual(session.developer, { name: '', runtime: '' });
   assert.deepEqual(session.preferences, {
     truth_source_mode: 'hardware_first',
     plan_mode: 'auto',
@@ -164,6 +165,10 @@ test('project config defaults can override runtime defaults', () => {
       {
         project_profile: 'rtos-iot',
         active_packs: ['connected-appliance'],
+        developer: {
+          name: 'welkon',
+          runtime: 'codex'
+        },
         preferences: {
           truth_source_mode: 'code_first',
           plan_mode: 'always',
@@ -186,9 +191,11 @@ test('project config defaults can override runtime defaults', () => {
 
   assert.equal(projectConfig.project_profile, 'rtos-iot');
   assert.deepEqual(projectConfig.active_packs, ['connected-appliance']);
+  assert.deepEqual(projectConfig.developer, { name: 'welkon', runtime: 'codex' });
   assert.deepEqual(projectConfig.arch_review.trigger_patterns, ['custom arch gate']);
   assert.equal(session.project_profile, 'rtos-iot');
   assert.deepEqual(session.active_packs, ['connected-appliance']);
+  assert.deepEqual(session.developer, { name: 'welkon', runtime: 'codex' });
   assert.deepEqual(session.preferences, {
     truth_source_mode: 'code_first',
     plan_mode: 'always',

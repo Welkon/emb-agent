@@ -14,6 +14,11 @@
     "description": "项目内需求真值层模板，沉淀目标、约束、验收和未知项",
     "default_output": ".emb-agent/req.yaml"
   },
+  "mcu-foundation-checklist": {
+    "source": "mcu-foundation-checklist.md.tpl",
+    "description": "MCU 入门五件套（CPU/时钟/存储/引脚/中断）手册核对清单模板",
+    "default_output": "docs/MCU-FOUNDATION-CHECKLIST.md"
+  },
   "debug-notes": {
     "source": "debug-notes.md.tpl",
     "description": "持续积累调试结论和排障记录的模板",
