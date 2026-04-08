@@ -103,6 +103,17 @@ test('agents list and show resolve source-layout markdown files', async () => {
   assert.match(shown.content, /查硬件真值/);
 });
 
+test('skills list and show resolve source-layout internal skills', async () => {
+  const listed = await captureCliJson(['skills', 'list']);
+  const shown = await captureCliJson(['skills', 'show', 'using-emb-agent']);
+
+  assert.ok(Array.isArray(listed));
+  assert.ok(listed.includes('using-emb-agent'));
+  assert.equal(shown.name, 'using-emb-agent');
+  assert.equal(shown.path, 'skills/using-emb-agent/SKILL.md');
+  assert.match(shown.content, /优先走最轻、最接近真值的路径/);
+});
+
 test('commands show resolves source-layout command markdown files', async () => {
   const shown = await captureCliJson(['commands', 'show', 'help']);
 

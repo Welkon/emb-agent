@@ -507,7 +507,7 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 - `extensions/`
   仅在 `adapter sync`、`adapter derive`、`template fill` 或首次写扩展 registry 时创建
 - `skills/`
-  安装命令 skill
+  安装命令 skill，以及内部 routing skill，例如 `using-emb-agent`
 - `agents/`
   安装可复用 agent
 - `config.toml / settings.json`
@@ -517,6 +517,12 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 
 - `Codex -> <runtime-home>=~/.codex, <host-config>=config.toml`
 - `Claude Code -> <runtime-home>=~/.claude, <host-config>=settings.json`
+
+内部还有一层轻量 skill 路由：
+
+- `using-emb-agent`
+  自动把会话优先路由到 `init / ingest / tool / adapter / arch-review / review / debug / verify`
+- 这层只负责“先走哪条轻路径”，不引入 superpowers 式的重 planning 默认值
 
 ### 项目目录
 

@@ -12,6 +12,7 @@ const PROFILES_DIR = path.join(ROOT, 'profiles');
 const PACKS_DIR = path.join(ROOT, 'packs');
 const AGENTS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'agents') : path.join(ROOT, 'agents');
 const COMMANDS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'commands', 'emb') : path.join(ROOT, 'commands');
+const SKILLS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'skills') : path.join(ROOT, 'skills');
 const TEMPLATES_DIR = path.join(ROOT, 'templates');
 const templateCli = require(path.join(ROOT, 'scripts', 'template.cjs'));
 const adapterDeriveCli = require(path.join(ROOT, 'scripts', 'adapter-derive.cjs'));
@@ -165,6 +166,19 @@ function loadMarkdown(dirPath, name, kind) {
   const filePath = path.join(dirPath, `${name}.md`);
   if (!fs.existsSync(filePath)) {
     throw new Error(`${kind} not found: ${name}`);
+  }
+
+  return {
+    name,
+    path: path.relative(process.cwd(), filePath),
+    content: runtime.readText(filePath)
+  };
+}
+
+function loadSkill(name) {
+  const filePath = path.join(SKILLS_DIR, name, 'SKILL.md');
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Skill not found: ${name}`);
   }
 
   return {
@@ -541,12 +555,14 @@ const {
   PACKS_DIR,
   AGENTS_DIR,
   COMMANDS_DIR,
+  SKILLS_DIR,
   RUNTIME_CONFIG,
   getProjectProfilesDir,
   getProjectPacksDir,
   loadProfile,
   loadPack,
   loadMarkdown,
+  loadSkill,
   loadSession,
   updateSession,
   getPreferences,

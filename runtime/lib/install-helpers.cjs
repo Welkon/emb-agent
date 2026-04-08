@@ -11,6 +11,7 @@ function createInstallHelpers(deps) {
     installTargets,
     runtimeHost,
     commandsSrc,
+    internalSkillsSrc,
     agentsSrc,
     runtimeSrc,
     runtimeHooksSrc,
@@ -400,6 +401,22 @@ function createInstallHelpers(deps) {
       .sort();
   }
 
+  function listManagedInternalSkillDirs() {
+    if (!internalSkillsSrc || !fs.existsSync(internalSkillsSrc)) {
+      return [];
+    }
+
+    return fs
+      .readdirSync(internalSkillsSrc, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && fs.existsSync(path.join(internalSkillsSrc, entry.name, 'SKILL.md')))
+      .map(entry => entry.name)
+      .sort();
+  }
+
+  function listManagedSkillDirs() {
+    return [...new Set([...listManagedCommandFiles(), ...listManagedInternalSkillDirs()])].sort();
+  }
+
   function listManagedAgentFiles() {
     return fs
       .readdirSync(agentsSrc)
@@ -412,11 +429,12 @@ function createInstallHelpers(deps) {
     const skillsDir = path.join(targetDir, target.skillsDirName || 'skills');
     ensureDir(skillsDir);
 
-    for (const skillName of listManagedCommandFiles()) {
+    for (const skillName of listManagedSkillDirs()) {
       removeDirIfExists(path.join(skillsDir, skillName));
     }
 
     const commandFiles = fs.readdirSync(commandsSrc).filter(name => name.endsWith('.md'));
+    let installedCount = 0;
     for (const file of commandFiles) {
       const skillName = `${SKILL_PREFIX}${file.replace(/\.md$/, '')}`;
       const skillDir = path.join(skillsDir, skillName);
@@ -425,9 +443,26 @@ function createInstallHelpers(deps) {
       const raw = fs.readFileSync(path.join(commandsSrc, file), 'utf8');
       const content = replaceInstallPaths(raw, targetDir, target);
       fs.writeFileSync(path.join(skillDir, 'SKILL.md'), content);
+      installedCount += 1;
     }
 
-    return commandFiles.length;
+    if (internalSkillsSrc && fs.existsSync(internalSkillsSrc)) {
+      const skillDirs = fs
+        .readdirSync(internalSkillsSrc, { withFileTypes: true })
+        .filter(entry => entry.isDirectory() && fs.existsSync(path.join(internalSkillsSrc, entry.name, 'SKILL.md')));
+
+      for (const entry of skillDirs) {
+        copyDirWithReplacement(
+          path.join(internalSkillsSrc, entry.name),
+          path.join(skillsDir, entry.name),
+          targetDir,
+          target
+        );
+        installedCount += 1;
+      }
+    }
+
+    return installedCount;
   }
 
   function generateAgentToml(agentName, content) {
@@ -731,6 +766,7 @@ function createInstallHelpers(deps) {
     const runtimeToolsDir = path.join(runtimeDir, 'tools');
     const runtimeChipsDir = path.join(runtimeDir, 'chips');
     const runtimeHooksDir = path.join(runtimeDir, 'hooks');
+    const runtimeSkillsDir = path.join(runtimeDir, 'skills');
 
     if (fs.existsSync(runtimeDir)) {
       removeDirIfExists(runtimeDir);
@@ -751,6 +787,9 @@ function createInstallHelpers(deps) {
     copyDirWithReplacement(path.join(runtimeSrc, 'lib'), path.join(runtimeDir, 'lib'), targetDir, target);
     copyDirWithReplacement(path.join(runtimeSrc, 'scripts'), path.join(runtimeDir, 'scripts'), targetDir, target);
     copyDirWithReplacement(path.join(runtimeSrc, 'templates'), path.join(runtimeDir, 'templates'), targetDir, target);
+    if (internalSkillsSrc && fs.existsSync(internalSkillsSrc)) {
+      copyDirWithReplacement(internalSkillsSrc, runtimeSkillsDir, targetDir, target);
+    }
     copyDir(path.join(runtimeSrc, 'profiles'), path.join(runtimeDir, 'profiles'));
     copyDir(path.join(runtimeSrc, 'packs'), path.join(runtimeDir, 'packs'));
     copyDir(path.join(runtimeSrc, 'tools'), runtimeToolsDir);
@@ -815,7 +854,7 @@ function createInstallHelpers(deps) {
     const skillsDir = path.join(targetDir, target.skillsDirName || 'skills');
     const agentsDir = path.join(targetDir, target.agentsDirName || 'agents');
 
-    for (const skillName of listManagedCommandFiles()) {
+    for (const skillName of listManagedSkillDirs()) {
       removeDirIfExists(path.join(skillsDir, skillName));
     }
 
