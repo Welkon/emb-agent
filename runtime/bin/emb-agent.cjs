@@ -631,6 +631,7 @@ const {
   RUNTIME_CONFIG,
   resolveProjectRoot,
   resolveSession,
+  buildNextContext,
   getTemplateConfig,
   updateSession
 });

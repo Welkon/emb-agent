@@ -51,6 +51,9 @@ test('verify save creates verification report and appends structured entry', () 
     assert.match(content, /PASS: wakeup flag order matched expectation/);
     assert.match(content, /scope capture on PA0 wake edge/);
     assert.match(content, /Retest under low battery condition/);
+    assert.match(content, /Next command: plan/);
+    assert.match(content, /Tool recommendation: -/);
+    assert.match(content, /Adapter health: -/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
