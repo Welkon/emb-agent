@@ -59,6 +59,26 @@
     "description": "PMB180B 项目 starter 需求真值模板",
     "default_output": ".emb-agent/starters/pmb180b/req.yaml"
   },
+  "sc8f072-hw-starter": {
+    "source": "sc8f072-hw.yaml.tpl",
+    "description": "SC8F072 项目 starter 硬件真值模板",
+    "default_output": ".emb-agent/starters/sc8f072/hw.yaml"
+  },
+  "sc8f072-req-starter": {
+    "source": "sc8f072-req.yaml.tpl",
+    "description": "SC8F072 项目 starter 需求真值模板",
+    "default_output": ".emb-agent/starters/sc8f072/req.yaml"
+  },
+  "pms150g-hw-starter": {
+    "source": "pms150g-hw.yaml.tpl",
+    "description": "PMS150G 项目 starter 硬件真值模板",
+    "default_output": ".emb-agent/starters/pms150g/hw.yaml"
+  },
+  "pms150g-req-starter": {
+    "source": "pms150g-req.yaml.tpl",
+    "description": "PMS150G 项目 starter 需求真值模板",
+    "default_output": ".emb-agent/starters/pms150g/req.yaml"
+  },
   "profile": {
     "source": "profile.yaml.tpl",
     "description": "新增项目 profile 的 YAML 模板",
