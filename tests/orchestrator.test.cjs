@@ -211,7 +211,134 @@ test('orchestrator exposes tool-first step when scan has ready tool recommendati
     assert.equal(orchestrator.workflow.strategy, 'inline-tool-first');
     assert.equal(orchestrator.workflow.tool_first, true);
     assert.equal(orchestrator.tool_execution.tool, 'timer-calc');
-    assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'run-tool'));
+    assert.equal(orchestrator.adapter_health.primary.tool, 'timer-calc');
+    assert.equal(orchestrator.adapter_health.primary.executable, true);
+    const runToolStep = orchestrator.orchestrator_steps.find(item => item.id === 'run-tool');
+    assert.ok(runToolStep);
+    assert.equal(runToolStep.trust.grade, 'usable');
+    assert.equal(runToolStep.recommended_action, 'add-source-refs');
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('orchestrator keeps tool step non-required when adapter trust is not yet executable', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-tool-draft-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init', '--mcu', 'vendor-chip']);
+    cli.main(['question', 'add', 'tm2 prescaler 和 pwm 公式怎么算']);
+
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'adapters', 'routes'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({ devices: ['vendor-chip'] }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'qfp32',
+        architecture: '8-bit',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        summary: {},
+        capabilities: ['timer16'],
+        docs: [],
+        related_tools: ['timer-calc'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        family: 'vendor-family',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['timer-calc'],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-timer16',
+            draft: true,
+            params: {
+              default_timer: 'tm16'
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'adapters', 'routes', 'timer-calc.cjs'),
+      [
+        "'use strict';",
+        '',
+        'module.exports = {',
+        '  draft: true,',
+        '  runTool(context) {',
+        '    const options = context.parseLongOptions(context.tokens || []);',
+        '    return {',
+        "      tool: context.toolName,",
+        "      status: 'draft-adapter',",
+        "      implementation: 'external-adapter-draft',",
+        '      inputs: { options }',
+        '    };',
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    const next = cli.buildNextContext();
+    const orchestrator = cli.buildOrchestratorContext('next');
+
+    assert.equal(next.health.adapter_health.primary.tool, 'timer-calc');
+    assert.equal(next.health.adapter_health.primary.executable, false);
+    assert.ok(next.next_actions.some(item => item.includes('adapter 可信度提醒')));
+    assert.ok(next.next_actions.some(item => item.includes('implement-adapter')));
+
+    assert.equal(orchestrator.resolved_action, 'scan');
+    assert.equal(orchestrator.workflow.tool_first, false);
+    assert.equal(orchestrator.adapter_health.primary.recommended_action, 'implement-adapter');
+    const runToolStep = orchestrator.orchestrator_steps.find(item => item.id === 'run-tool');
+    assert.ok(runToolStep);
+    assert.equal(runToolStep.required, false);
+    assert.equal(runToolStep.trust.executable, false);
+    assert.equal(runToolStep.recommended_action, 'implement-adapter');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
