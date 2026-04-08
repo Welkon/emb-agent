@@ -466,6 +466,9 @@ test('adapter bootstrap adds source and syncs matching project adapters in one s
     assert.equal(bootstrap.sync.status, 'synced');
     assert.equal(bootstrap.sync.selection.filtered, true);
     assert.deepEqual(bootstrap.sync.selection.matched.chips, ['vendor-chip']);
+    assert.equal(bootstrap.sync.quality.mode, 'session-aware');
+    assert.equal(bootstrap.sync.quality.primary.tool, 'timer-calc');
+    assert.ok(!bootstrap.sync.quality.primary.executable);
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
       true
@@ -584,6 +587,9 @@ test('adapter sync auto-filters files by project hardware identity', async () =>
     assert.equal(syncResult.selection.inferred_from_project, true);
     assert.deepEqual(syncResult.selection.matched.chips, ['sc8f072']);
     assert.deepEqual(syncResult.selection.matched.tools, ['timer-calc']);
+    assert.equal(syncResult.quality.mode, 'session-aware');
+    assert.equal(syncResult.quality.primary.tool, 'timer-calc');
+    assert.equal(syncResult.quality.primary.executable, true);
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
       true
@@ -664,6 +670,9 @@ test('adapter sync supports explicit chip and tool filters', async () => {
     assert.equal(syncResult.selection.inferred_from_project, false);
     assert.deepEqual(syncResult.selection.matched.chips, ['pms150g']);
     assert.deepEqual(syncResult.selection.matched.tools, ['pwm-calc']);
+    assert.equal(syncResult.quality.mode, 'selection-only');
+    assert.deepEqual(syncResult.quality.matched_tools, ['pwm-calc']);
+    assert.equal(syncResult.quality.next_action, 'fill-hw-or-run-sync-with-project-match');
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
       true
