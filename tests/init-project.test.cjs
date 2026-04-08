@@ -34,6 +34,7 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.equal(projectConfig.project_profile, 'rtos-iot');
     assert.deepEqual(projectConfig.active_packs, ['connected-appliance']);
     assert.deepEqual(projectConfig.adapter_sources, []);
+    assert.deepEqual(projectConfig.developer, { name: '', runtime: '' });
     assert.equal(projectConfig.integrations.mineru.mode, 'auto');
     assert.equal(projectConfig.integrations.mineru.base_url, '');
     assert.equal(projectConfig.integrations.mineru.api_key, '');
@@ -47,10 +48,16 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'docs')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.developer')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'CONNECTIVITY.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'RELEASE-NOTES.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'DEBUG-NOTES.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), true);
+    assert.match(
+      fs.readFileSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md'), 'utf8'),
+      /manual-first/
+    );
 
     process.chdir(tempProject);
     cli.main(['init']);
@@ -59,6 +66,7 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.equal(status.project_profile, 'rtos-iot');
     assert.deepEqual(status.active_packs, ['connected-appliance']);
     assert.equal(status.preferences.truth_source_mode, 'hardware_first');
+    assert.deepEqual(status.developer, { name: '', runtime: '' });
     assert.equal(status.project_defaults.project_profile, 'rtos-iot');
     assert.deepEqual(status.project_defaults.arch_review.trigger_patterns, []);
     assert.ok(Array.isArray(status.arch_review_triggers));
@@ -125,6 +133,7 @@ test('init preserves existing docs files without force', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), true);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -153,6 +162,54 @@ test('init returns onboarding guidance for adapter setup', () => {
     assert.ok(result.next_steps.some(item => item.includes('.emb-agent/hw.yaml')));
     assert.ok(result.next_steps.some(item => item.includes('填完 hw.yaml 后运行 adapter bootstrap')));
     assert.ok(result.next_steps.some(item => item.includes('health')));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('init accepts runtime and developer identity flags and persists updates', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-developer-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init', '--codex', '-u', 'welkon']);
+
+    let projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+    let developerMarker = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', '.developer'), 'utf8')
+    );
+    let status = cli.buildStatus();
+
+    assert.deepEqual(projectConfig.developer, { name: 'welkon', runtime: 'codex' });
+    assert.equal(developerMarker.name, 'welkon');
+    assert.equal(developerMarker.runtime, 'codex');
+    assert.deepEqual(status.developer, { name: 'welkon', runtime: 'codex' });
+
+    cli.main(['init', '--claude', '-u', 'felix']);
+
+    projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+    developerMarker = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', '.developer'), 'utf8')
+    );
+    status = cli.buildStatus();
+
+    assert.deepEqual(projectConfig.developer, { name: 'felix', runtime: 'claude' });
+    assert.equal(developerMarker.name, 'felix');
+    assert.equal(developerMarker.runtime, 'claude');
+    assert.deepEqual(status.developer, { name: 'felix', runtime: 'claude' });
+    assert.match(
+      fs.readFileSync(path.join(tempProject, '.gitignore'), 'utf8'),
+      /\.emb-agent\/\.developer/
+    );
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

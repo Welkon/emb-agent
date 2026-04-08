@@ -32,8 +32,8 @@ function usage() {
     [
       'attach-project usage:',
       '  node scripts/attach-project.cjs',
-      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--pack <name> ...]',
-      '  node scripts/attach-project.cjs --mcu <name> [--board <name>] [--target <name>] [--goal <text>] [--force]'
+      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--pack <name> ...] [--runtime <codex|claude>|--codex|--claude] [-u <name>]',
+      '  node scripts/attach-project.cjs --mcu <name> [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [-u <name>] [--force]'
     ].join('\n') + '\n'
   );
 }
@@ -43,6 +43,10 @@ function parseArgs(argv) {
     project: '',
     profile: '',
     packs: [],
+    runtime: '',
+    runtimeSet: false,
+    user: '',
+    userSet: false,
     mcu: '',
     board: '',
     target: '',
@@ -50,6 +54,21 @@ function parseArgs(argv) {
     force: false,
     help: false
   };
+
+  function setRuntime(value, token) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      throw new Error(`Missing value after ${token}`);
+    }
+    if (!['codex', 'claude'].includes(normalized)) {
+      throw new Error(`Unsupported runtime: ${value}`);
+    }
+    if (result.runtimeSet && result.runtime !== normalized) {
+      throw new Error(`Conflicting runtime options: ${result.runtime} vs ${normalized}`);
+    }
+    result.runtime = normalized;
+    result.runtimeSet = true;
+  }
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -70,6 +89,25 @@ function parseArgs(argv) {
     }
     if (token === '--pack') {
       result.packs.push(argv[index + 1] || '');
+      index += 1;
+      continue;
+    }
+    if (token === '--runtime') {
+      setRuntime(argv[index + 1] || '', '--runtime');
+      index += 1;
+      continue;
+    }
+    if (token === '--codex') {
+      setRuntime('codex', '--codex');
+      continue;
+    }
+    if (token === '--claude') {
+      setRuntime('claude', '--claude');
+      continue;
+    }
+    if (token === '--user' || token === '-u') {
+      result.user = argv[index + 1] || '';
+      result.userSet = true;
       index += 1;
       continue;
     }
@@ -109,6 +147,9 @@ function parseArgs(argv) {
   }
   if (result.packs.includes('')) {
     throw new Error('Missing name after --pack');
+  }
+  if ((argv.includes('--user') || argv.includes('-u')) && !result.user) {
+    throw new Error('Missing name after --user/-u');
   }
   if (argv.includes('--mcu') && !result.mcu) {
     throw new Error('Missing value after --mcu');
@@ -289,11 +330,15 @@ function attachProject(argv) {
   const projectRoot = path.resolve(args.project || process.cwd());
   const configArgs = {
     profile: args.profile,
-    packs: args.packs
+    packs: args.packs,
+    runtime: args.runtime,
+    runtimeSet: args.runtimeSet,
+    user: args.user,
+    userSet: args.userSet
   };
   const projectConfig = initProject.buildProjectConfig(configArgs);
   const detected = detectProjectInputs(projectRoot);
-  const scaffolded = initProject.scaffoldProject(projectRoot, projectConfig, args.force);
+  const scaffolded = initProject.scaffoldProject(projectRoot, projectConfig, args.force, configArgs);
   const projectExtDir = runtime.getProjectExtDir(projectRoot);
   const hwPath = path.join(projectExtDir, 'hw.yaml');
   const reqPath = path.join(projectExtDir, 'req.yaml');

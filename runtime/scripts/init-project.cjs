@@ -22,7 +22,7 @@ function usage() {
       'init-project usage:',
       '  node scripts/init-project.cjs',
       '  node scripts/init-project.cjs --project <repo-root>',
-      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--pack <name> ...]',
+      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--pack <name> ...] [--runtime <codex|claude>|--codex|--claude] [-u <name>]',
       '  node scripts/init-project.cjs --force'
     ].join('\n') + '\n'
   );
@@ -33,9 +33,28 @@ function parseArgs(argv) {
     project: '',
     profile: '',
     packs: [],
+    runtime: '',
+    runtimeSet: false,
+    user: '',
+    userSet: false,
     force: false,
     help: false
   };
+
+  function setRuntime(value, token) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      throw new Error(`Missing value after ${token}`);
+    }
+    if (!['codex', 'claude'].includes(normalized)) {
+      throw new Error(`Unsupported runtime: ${value}`);
+    }
+    if (result.runtimeSet && result.runtime !== normalized) {
+      throw new Error(`Conflicting runtime options: ${result.runtime} vs ${normalized}`);
+    }
+    result.runtime = normalized;
+    result.runtimeSet = true;
+  }
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -59,6 +78,25 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (token === '--runtime') {
+      setRuntime(argv[index + 1] || '', '--runtime');
+      index += 1;
+      continue;
+    }
+    if (token === '--codex') {
+      setRuntime('codex', '--codex');
+      continue;
+    }
+    if (token === '--claude') {
+      setRuntime('claude', '--claude');
+      continue;
+    }
+    if (token === '--user' || token === '-u') {
+      result.user = argv[index + 1] || '';
+      result.userSet = true;
+      index += 1;
+      continue;
+    }
     if (token === '--force') {
       result.force = true;
       continue;
@@ -75,6 +113,9 @@ function parseArgs(argv) {
   }
   if (result.packs.includes('')) {
     throw new Error('Missing name after --pack');
+  }
+  if ((argv.includes('--user') || argv.includes('-u')) && !result.user) {
+    throw new Error('Missing name after --user/-u');
   }
 
   return result;
@@ -105,6 +146,7 @@ function applyTemplate(content, context) {
 }
 
 function buildTemplateContext(projectRoot, projectConfig) {
+  const developer = runtime.validateDeveloperConfig(projectConfig.developer || {});
   return {
     DATE: new Date().toISOString().slice(0, 10),
     PROJECT_NAME: path.basename(projectRoot),
@@ -146,7 +188,9 @@ function buildTemplateContext(projectRoot, projectConfig) {
     REQ_CONSTRAINT_1: '优先复用现有工程和硬件真值，不先扩架构',
     ACCEPTANCE_1: '当前目标在板级或最小验证路径上可确认',
     FAILURE_POLICY_1: '遇到未确认硬件或需求时先记录 unknown，不直接假设',
-    REQ_UNKNOWN_1: '客户或量产需求仍待确认'
+    REQ_UNKNOWN_1: '客户或量产需求仍待确认',
+    DEVELOPER_NAME: developer.name,
+    DEVELOPER_RUNTIME: developer.runtime
   };
 }
 
@@ -184,6 +228,10 @@ function buildProjectConfig(args) {
       project_profile,
       active_packs,
       adapter_sources: [],
+      developer: {
+        name: args.user || '',
+        runtime: args.runtime || ''
+      },
       preferences: RUNTIME_CONFIG.default_preferences,
       arch_review: {
         trigger_patterns: []
@@ -207,6 +255,32 @@ function buildProjectConfig(args) {
       }
     },
     RUNTIME_CONFIG
+  );
+}
+
+function ensureGitignoreRule(projectRoot, rule) {
+  const gitignorePath = path.join(projectRoot, '.gitignore');
+  const normalizedRule = String(rule || '').trim().replace(/\\/g, '/');
+  if (!normalizedRule) {
+    return;
+  }
+
+  if (!fs.existsSync(gitignorePath)) {
+    fs.writeFileSync(gitignorePath, `${normalizedRule}\n`, 'utf8');
+    return;
+  }
+
+  const content = fs.readFileSync(gitignorePath, 'utf8');
+  const lines = content.split(/\r?\n/).map(item => item.trim());
+  if (lines.includes(normalizedRule)) {
+    return;
+  }
+
+  const needsNewline = content.length > 0 && !content.endsWith('\n');
+  fs.writeFileSync(
+    gitignorePath,
+    `${content}${needsNewline ? '\n' : ''}${normalizedRule}\n`,
+    'utf8'
   );
 }
 
@@ -236,30 +310,86 @@ function buildDocsPlan(projectConfig) {
 function buildTruthPlan() {
   return [
     { output: runtime.getProjectAssetRelativePath('hw.yaml'), template: 'hw-truth' },
-    { output: runtime.getProjectAssetRelativePath('req.yaml'), template: 'req-truth' }
+    { output: runtime.getProjectAssetRelativePath('req.yaml'), template: 'req-truth' },
+    { output: path.join('docs', 'MCU-FOUNDATION-CHECKLIST.md'), template: 'mcu-foundation-checklist' }
   ];
 }
 
-function scaffoldProject(projectRoot, projectConfig, force) {
+function scaffoldProject(projectRoot, projectConfig, force, options) {
   if (!fs.existsSync(projectRoot) || !fs.statSync(projectRoot).isDirectory()) {
     throw new Error(`Project root not found: ${projectRoot}`);
   }
 
   const projectConfigDir = runtime.initProjectLayout(projectRoot);
   const projectConfigPath = path.join(projectConfigDir, 'project.json');
+  const developerPath = path.join(projectConfigDir, '.developer');
+  const initOptions = options || {};
+  const shouldUpdateDeveloper = Boolean(initOptions.userSet || initOptions.runtimeSet);
 
   const created = [];
+  const updated = [];
   const reused = [];
+  let effectiveProjectConfig = projectConfig;
 
   if (!fs.existsSync(projectConfigPath) || force) {
     fs.writeFileSync(projectConfigPath, JSON.stringify(projectConfig, null, 2) + '\n', 'utf8');
     created.push(path.relative(projectRoot, projectConfigPath));
   } else {
-    reused.push(path.relative(projectRoot, projectConfigPath));
+    if (shouldUpdateDeveloper) {
+      const existing = runtime.validateProjectConfig(runtime.readJson(projectConfigPath), RUNTIME_CONFIG);
+      const nextDeveloper = runtime.validateDeveloperConfig({
+        ...(existing.developer || {}),
+        ...(initOptions.userSet ? { name: initOptions.user || '' } : {}),
+        ...(initOptions.runtimeSet ? { runtime: initOptions.runtime || '' } : {})
+      });
+      effectiveProjectConfig = runtime.validateProjectConfig(
+        {
+          ...existing,
+          developer: nextDeveloper
+        },
+        RUNTIME_CONFIG
+      );
+      fs.writeFileSync(projectConfigPath, JSON.stringify(effectiveProjectConfig, null, 2) + '\n', 'utf8');
+      updated.push(path.relative(projectRoot, projectConfigPath));
+    } else {
+      reused.push(path.relative(projectRoot, projectConfigPath));
+    }
   }
 
-  const context = buildTemplateContext(projectRoot, projectConfig);
-  const docsPlan = buildDocsPlan(projectConfig);
+  const developerPayload = runtime.validateDeveloperConfig(
+    (effectiveProjectConfig && effectiveProjectConfig.developer) || {}
+  );
+  const developerExisted = fs.existsSync(developerPath);
+  const shouldWriteDeveloperMarker = force || shouldUpdateDeveloper || !developerExisted;
+
+  if (shouldWriteDeveloperMarker) {
+    fs.writeFileSync(
+      developerPath,
+      JSON.stringify(
+        {
+          name: developerPayload.name,
+          runtime: developerPayload.runtime,
+          updated_at: new Date().toISOString()
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    if (developerExisted) {
+      updated.push(path.relative(projectRoot, developerPath));
+    } else {
+      created.push(path.relative(projectRoot, developerPath));
+    }
+  } else {
+    reused.push(path.relative(projectRoot, developerPath));
+  }
+
+  ensureGitignoreRule(projectRoot, runtime.getProjectAssetRelativePath('.developer'));
+
+  const context = buildTemplateContext(projectRoot, effectiveProjectConfig);
+  const docsPlan = buildDocsPlan(effectiveProjectConfig);
   const truthPlan = buildTruthPlan();
 
   for (const item of [...truthPlan, ...docsPlan]) {
@@ -274,8 +404,9 @@ function scaffoldProject(projectRoot, projectConfig, force) {
   return {
     project_root: projectRoot,
     project_config: path.relative(projectRoot, projectConfigPath),
-    defaults: projectConfig,
+    defaults: effectiveProjectConfig,
     created,
+    updated,
     reused
   };
 }
@@ -290,7 +421,7 @@ function main(argv) {
 
   const projectRoot = path.resolve(args.project || process.cwd());
   const projectConfig = buildProjectConfig(args);
-  const result = scaffoldProject(projectRoot, projectConfig, args.force);
+  const result = scaffoldProject(projectRoot, projectConfig, args.force, args);
 
   process.stdout.write(
     JSON.stringify(
