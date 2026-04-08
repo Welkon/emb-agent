@@ -24,6 +24,11 @@
     "description": "复杂系统结构性检查输出模板",
     "default_output": "docs/REVIEW-REPORT.md"
   },
+  "verification-report": {
+    "source": "verification-report.md.tpl",
+    "description": "嵌入式实现闭环与板级验证记录模板",
+    "default_output": "docs/VERIFICATION.md"
+  },
   "architecture-review": {
     "source": "architecture-review.md.tpl",
     "description": "芯片选型、系统架构预审和失败预演模板",

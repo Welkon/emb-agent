@@ -154,6 +154,8 @@ function createCliEntryHelpers(deps) {
       '  debug',
       '  review',
       '  review save <summary> [--scope <text>] [--finding <text>] [--check <text>]',
+      '  verify',
+      '  verify save <summary> [--target <target>] [--check <text>] [--result <text>] [--evidence <text>] [--followup <text>]',
       '  note',
       '  note add <target> <summary> [--kind <kind>] [--evidence <text>] [--unverified <text>]',
       '  dispatch show <action>',

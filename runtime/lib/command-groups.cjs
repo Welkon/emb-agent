@@ -29,6 +29,7 @@ function createCommandGroupHelpers(deps) {
     saveScanReport,
     savePlanReport,
     saveReviewReport,
+    saveVerifyReport,
     addNoteEntry,
     runTemplateScript,
     ingestDocCli
@@ -150,6 +151,17 @@ function createCommandGroupHelpers(deps) {
       return buildActionOutput('review');
     }
 
+    if (cmd === 'verify' && subcmd === 'save') {
+      return saveVerifyReport(rest);
+    }
+
+    if (cmd === 'verify') {
+      updateSession(current => {
+        current.last_command = 'verify';
+      });
+      return buildActionOutput('verify');
+    }
+
     if (cmd === 'note' && subcmd === 'targets') {
       return { note_targets: resolveSession().effective.note_targets };
     }
@@ -192,7 +204,7 @@ function createCommandGroupHelpers(deps) {
       return buildOrchestratorContext(rest[0]);
     }
 
-    if (cmd === 'orchestrate' && ['scan', 'plan', 'do', 'debug', 'review', 'forensics', 'note', 'arch-review'].includes(subcmd)) {
+    if (cmd === 'orchestrate' && ['scan', 'plan', 'do', 'debug', 'review', 'verify', 'forensics', 'note', 'arch-review'].includes(subcmd)) {
       return buildOrchestratorContext(subcmd);
     }
 

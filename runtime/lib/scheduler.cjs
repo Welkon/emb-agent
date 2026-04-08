@@ -7,7 +7,7 @@ const runtimeHostHelpers = require('./runtime-host.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
-const ACTIONS = ['scan', 'plan', 'do', 'debug', 'review', 'forensics', 'note'];
+const ACTIONS = ['scan', 'plan', 'do', 'debug', 'review', 'verify', 'forensics', 'note'];
 
 const READ_HINTS = {
   hardware_truth: '硬件真值来源: 数据手册 / 原理图 / 引脚映射',
@@ -174,6 +174,12 @@ function buildSafetyChecks(action, resolved) {
     checks.push('区分已确认风险与待验证风险');
   }
 
+  if (action === 'verify') {
+    checks.push('区分 bench 实测、代码推断和文档假设');
+    checks.push('每个检查项都要给出 pass / fail / untested 结果');
+    checks.push('失败项必须能回写到 risk、question 或 note');
+  }
+
   if (action === 'forensics') {
     checks.push('只基于当前 session、handoff、报告和项目事实做结论');
     checks.push('不要把取证结果直接冒充最终修复方案');
@@ -223,6 +229,17 @@ function choosePrimaryAgent(action, resolved) {
     return hasAgent(resolved, 'bug-hunter')
       ? 'bug-hunter'
       : (hasAgent(resolved, 'hw-scout') ? 'hw-scout' : (resolved.effective.agents || [])[0] || '');
+  }
+  if (action === 'verify') {
+    if (context.isConnected && hasAgent(resolved, 'release-checker')) {
+      return 'release-checker';
+    }
+    if (context.isRtos && hasAgent(resolved, 'sys-reviewer')) {
+      return 'sys-reviewer';
+    }
+    return hasAgent(resolved, 'hw-scout')
+      ? 'hw-scout'
+      : (hasAgent(resolved, 'fw-doer') ? 'fw-doer' : (resolved.effective.agents || [])[0] || '');
   }
   if (action === 'note') {
     return hasAgent(resolved, 'fw-doer')
@@ -278,6 +295,15 @@ function chooseSupportingAgents(action, resolved, primaryAgent) {
     return runtime.unique([
       hasAgent(resolved, 'hw-scout') ? 'hw-scout' : '',
       context.isRtos && hasAgent(resolved, 'sys-reviewer') ? 'sys-reviewer' : ''
+    ]).filter(name => name !== primaryAgent);
+  }
+
+  if (action === 'verify') {
+    return runtime.unique([
+      hasAgent(resolved, 'hw-scout') ? 'hw-scout' : '',
+      hasAgent(resolved, 'fw-doer') ? 'fw-doer' : '',
+      context.isRtos && hasAgent(resolved, 'sys-reviewer') ? 'sys-reviewer' : '',
+      context.isConnected && hasAgent(resolved, 'release-checker') ? 'release-checker' : ''
     ]).filter(name => name !== primaryAgent);
   }
 
@@ -576,6 +602,20 @@ function buildAgentExecution(action, resolved, primaryAgentInput, supportingAgen
       '只是做一次单点实现检查',
       '当前 scope 过小，不值得并行'
     ];
+  } else if (action === 'verify') {
+    recommended = Boolean(primaryAgent);
+    mode = context.isConnected || context.isRtos ? 'parallel-recommended' : 'primary-recommended';
+    reason = context.isConnected || context.isRtos
+      ? '验证阶段往往同时覆盖行为、恢复链路和系统边界，适合并行收敛检查项。'
+      : 'baremetal 验证更像板级/时序收口，交给 verify agent 先列清单更稳。';
+    suggestedWhen = [
+      '刚完成 do，需要把实现闭环到 bench / 文档 / 风险面',
+      context.isBaremetal ? '需要复核寄存器、引脚、时序、睡眠唤醒或电源边界' : '需要复核任务边界、恢复链路和异常路径'
+    ];
+    avoidWhen = [
+      '还没完成最小 do 或 debug 收敛',
+      '当前只有模糊想法，没有可验证对象'
+    ];
   } else if (action === 'forensics') {
     recommended = Boolean(primaryAgent);
     mode = context.isRtos || context.isConnected ? 'parallel-recommended' : 'primary-recommended';
@@ -683,6 +723,13 @@ function buildSuggestedSteps(action, resolved) {
     }
   }
 
+  if (action === 'verify') {
+    steps.push('先列出本轮实现或结论对应的验证对象');
+    steps.push(context.isBaremetal ? '按上电、时序、引脚、寄存器、睡眠/低压等检查面逐项验证' : '按任务、恢复、异常路径、联网/升级行为逐项验证');
+    steps.push('每项给出 pass / fail / untested，并记录证据');
+    steps.push('失败项回写到 risk、question 或 note');
+  }
+
   if (action === 'forensics') {
     steps.push('先固定当前问题描述、最新 thread 和最近一次 forensics 摘要');
     steps.push('只收敛最关键证据，不直接跳到修复');
@@ -714,6 +761,9 @@ function buildOutputShape(action) {
   }
   if (action === 'review') {
     return ['scope', 'axes', 'findings_template', 'required_checks', 'review_agents', 'scheduler'];
+  }
+  if (action === 'verify') {
+    return ['scope', 'checklist', 'evidence_targets', 'result_template', 'next_step', 'scheduler'];
   }
   if (action === 'forensics') {
     return ['problem', 'evidence_sources', 'findings_template', 'next_step', 'chosen_agent', 'scheduler'];
@@ -815,6 +865,41 @@ function buildRequiredChecks(resolved) {
     context.isConnected ? '复查离线默认行为、升级恢复与回滚' : '',
     context.isSensor ? '复查采样窗口、稳定时间与测量更新链路' : ''
   ]);
+}
+
+function buildVerificationChecklist(resolved) {
+  const context = buildContext(resolved);
+
+  return runtime.unique([
+    context.isBaremetal ? '确认主入口、ISR 与共享状态行为符合预期' : '确认任务边界、调度与同步行为符合预期',
+    context.isBaremetal ? '确认关键寄存器、引脚复用和时序窗口没有回归' : '确认队列、锁、超时和恢复链路没有回归',
+    context.isBaremetal ? '确认上电、复位、睡眠唤醒、低压或电源边界行为' : '',
+    context.isConnected ? '确认离线默认行为、重连、升级恢复与回滚链路' : '',
+    context.isSensor ? '确认采样窗口、稳定时间、滤波、校准和测量更新链路' : '',
+    '确认异常输入、边界条件和失败路径处理结果'
+  ]);
+}
+
+function buildVerificationEvidenceTargets(resolved) {
+  const truthFiles = getProjectTruthFiles(resolved);
+  const suggestedSources = resolved && resolved.effective && Array.isArray(resolved.effective.recommended_sources)
+    ? resolved.effective.recommended_sources
+    : [];
+
+  return runtime.unique([
+    ...truthFiles.map(file => `项目真值层: ${file}`),
+    ...(resolved.session.last_files || []).slice(0, 3).map(file => `最近文件: ${file}`),
+    ...suggestedSources.slice(0, 2).map(item => `资料摘要: ${item.path}`)
+  ]);
+}
+
+function buildVerificationResultTemplate() {
+  return [
+    'PASS: 已验证通过',
+    'FAIL: 已复现失败或发现回归',
+    'WARN: 发现风险但证据未闭环',
+    'UNTESTED: 尚未 bench / 仿真 / 实机验证'
+  ];
 }
 
 function buildRecordableItems(resolved) {
@@ -1041,6 +1126,33 @@ function buildReviewOutput(resolved) {
   };
 }
 
+function buildVerifyOutput(resolved) {
+  const context = buildContext(resolved);
+  const steps = buildSuggestedSteps('verify', resolved);
+
+  return {
+    scope: {
+      profile: resolved.profile.name,
+      packs: (resolved.packs || []).map(pack => pack.name),
+      focus: resolved.session.focus || '',
+      runtime_model: resolved.profile.runtime_model,
+      concurrency_model: resolved.profile.concurrency_model,
+      last_files: resolved.session.last_files || []
+    },
+    checklist: buildVerificationChecklist(resolved),
+    evidence_targets: buildVerificationEvidenceTargets(resolved),
+    result_template: buildVerificationResultTemplate(),
+    next_step: steps[0] || '先列出本轮待验证对象',
+    scheduler: buildSchedule('verify', resolved),
+    verification_focus: runtime.unique([
+      context.isBaremetal ? 'board-behavior' : 'system-behavior',
+      context.isConnected ? 'connectivity-recovery' : '',
+      context.isSensor ? 'sampling-stability' : '',
+      'failure-paths'
+    ])
+  };
+}
+
 function buildForensicsOutput(resolved) {
   const diagnostics = resolved.session.diagnostics && resolved.session.diagnostics.latest_forensics
     ? resolved.session.diagnostics.latest_forensics
@@ -1091,6 +1203,7 @@ module.exports = {
   buildNoteOutput,
   buildPlanOutput,
   buildReviewOutput,
+  buildVerifyOutput,
   buildScanOutput,
   buildSchedule
 };

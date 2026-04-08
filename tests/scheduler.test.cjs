@@ -74,6 +74,7 @@ test('baremetal sensor profile routes scan plan debug do to lightweight agents',
   const scan = scheduler.buildScanOutput(resolved);
   const plan = scheduler.buildPlanOutput(resolved);
   const debug = scheduler.buildDebugOutput(resolved);
+  const verify = scheduler.buildVerifyOutput(resolved);
   const action = scheduler.buildDoOutput(resolved);
 
   assert.equal(scan.scheduler.primary_agent, 'hw-scout');
@@ -91,6 +92,9 @@ test('baremetal sensor profile routes scan plan debug do to lightweight agents',
   assert.ok(plan.constraints.some(item => item.includes('ISR 薄')));
   assert.ok(plan.verification.some(item => item.includes('时序窗口')));
   assert.ok(debug.hypotheses.some(item => item.includes('ISR')));
+  assert.equal(verify.scheduler.primary_agent, 'hw-scout');
+  assert.ok(verify.checklist.some(item => item.includes('寄存器')));
+  assert.ok(verify.result_template.some(item => item.includes('PASS')));
   assert.equal(debug.scheduler.agent_execution.primary_agent, 'emb-bug-hunter');
   assert.equal(action.chosen_agent, 'fw-doer');
   assert.ok(action.prerequisites.includes('先补一次最小 scan，确认真实改动点'));
@@ -107,6 +111,7 @@ test('rtos connected profile routes review note to system and release aware outp
 
   const plan = scheduler.buildPlanOutput(resolved);
   const review = scheduler.buildReviewOutput(resolved);
+  const verify = scheduler.buildVerifyOutput(resolved);
   const note = scheduler.buildNoteOutput(resolved);
 
   assert.equal(plan.scheduler.primary_agent, 'sys-reviewer');
@@ -125,6 +130,9 @@ test('rtos connected profile routes review note to system and release aware outp
   assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.some(item => item.spawn_fallback.fallback_agent_type === 'explorer'));
   assert.ok(review.review_agents.includes('release-checker'));
   assert.ok(review.required_checks.some(item => item.includes('离线默认行为')));
+  assert.equal(verify.scheduler.primary_agent, 'release-checker');
+  assert.ok(verify.checklist.some(item => item.includes('回滚链路')));
+  assert.ok(verify.verification_focus.includes('connectivity-recovery'));
   assert.ok(note.target_docs.includes('docs/CONNECTIVITY.md'));
   assert.ok(note.target_docs.includes('docs/RELEASE-NOTES.md'));
   assert.equal(note.chosen_agent, 'fw-doer');

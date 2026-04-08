@@ -31,6 +31,8 @@ function createActionContractHelpers(deps) {
       output = scheduler.buildDebugOutput(resolved);
     } else if (action === 'review') {
       output = scheduler.buildReviewOutput(resolved);
+    } else if (action === 'verify') {
+      output = scheduler.buildVerifyOutput(resolved);
     } else if (action === 'forensics') {
       output = scheduler.buildForensicsOutput(resolved);
     } else if (action === 'note') {

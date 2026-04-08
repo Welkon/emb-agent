@@ -56,6 +56,8 @@ Output the emb-agent command reference below and nothing else.
   用于处理“现象已知、根因不明”的问题。
 - `$emb-review`
   用于复杂系统的结构性检查，例如 RTOS、IoT、升级链路，并支持直接保存 review 报告。
+- `$emb-verify`
+  用于把本轮实现闭环到嵌入式验证清单、证据和结果记录，并支持直接保存 verification 报告。
 - `$emb-dispatch`
   用于把当前动作或下一步直接转成轻量子 agent 分发合同；若 scan 已命中可执行工具，也会直接给出 `tool_execution`。
 - `$emb-orchestrate`
@@ -77,7 +79,7 @@ Output the emb-agent command reference below and nothing else.
 - `$emb-forensics`
   用于在流程卡住、上下文漂移、handoff 堆积或真值层异常时做一次轻量取证，输出证据化诊断报告。
 
-对 `scan / plan / do / debug / review / note`，runtime 输出现在都会带 `agent_execution`，用于告诉上层 agent:
+对 `scan / plan / do / debug / review / verify / note`，runtime 输出现在都会带 `agent_execution`，用于告诉上层 agent:
 
 - 当前动作应 inline 还是调用安装后的 `emb-*` 子 agent
 - 推荐主 agent 和 supporting agents 是谁
@@ -167,6 +169,8 @@ Output the emb-agent command reference below and nothing else.
 - `<runtime-cli> debug`
 - `<runtime-cli> review`
 - `<runtime-cli> review save <summary> --finding <text> --check <text>`
+- `<runtime-cli> verify`
+- `<runtime-cli> verify save <summary> --check <text> --result <text> --evidence <text>`
 - `<runtime-cli> arch-review`
 - `<runtime-cli> orchestrate`
 - `<runtime-cli> orchestrate show <action>`

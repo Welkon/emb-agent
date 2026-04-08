@@ -203,6 +203,16 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const nextWithForcedReview = installedCli.buildNextContext();
     assert.equal(nextWithForcedReview.next.command, 'review');
 
+    installedCli.main(['prefs', 'reset']);
+    installedCli.main(['profile', 'set', 'baremetal-8bit']);
+    installedCli.main(['focus', 'set', 'close loop after irq fix']);
+    installedCli.main(['do']);
+    const nextAfterDo = installedCli.buildNextContext();
+    assert.equal(nextAfterDo.next.command, 'verify');
+    const verify = installedCli.buildActionOutput('verify');
+    assert.ok(verify.checklist.some(item => item.includes('异常输入')));
+    assert.ok(verify.result_template.some(item => item.includes('UNTESTED')));
+
     installedCli.main([
       'review',
       'save',
@@ -252,6 +262,21 @@ test('installer lays down config/lib and runtime commands work', async () => {
     ]);
     assert.equal(fs.existsSync(debugNotesPath), true);
     assert.match(fs.readFileSync(debugNotesPath, 'utf8'), /irq race reproduced after wakeup path/);
+
+    installedCli.main([
+      'verify',
+      'save',
+      'IRQ fix closed with bench validation',
+      '--check',
+      'Check interrupt ordering after wakeup',
+      '--result',
+      'PASS: wakeup ordering stable',
+      '--evidence',
+      'bench log #12'
+    ]);
+    const verificationPath = path.join(tempProject, 'docs', 'VERIFICATION.md');
+    assert.equal(fs.existsSync(verificationPath), true);
+    assert.match(fs.readFileSync(verificationPath, 'utf8'), /IRQ fix closed with bench validation/);
 
     const templateCli = require(path.join(runtimeRoot, 'scripts', 'template.cjs'));
     templateCli.fillCommand('architecture-review', '', { MCU_NAME: 'PMS150G', BOARD_NAME: 'SY_CST021' }, true);

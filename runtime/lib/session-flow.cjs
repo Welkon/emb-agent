@@ -383,6 +383,13 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
+    if ((session.last_command || '').trim() === 'do' && hasActiveContext) {
+      return {
+        command: 'verify',
+        reason: '刚完成 do，先把本轮实现收口到嵌入式验证清单和结果记录'
+      };
+    }
+
     if (preferences.review_mode === 'always') {
       return {
         command: 'review',

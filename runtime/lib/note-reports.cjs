@@ -77,6 +77,7 @@ function createNoteReportHelpers(deps) {
     if (base === 'debug-notes') return 'debug';
     if (base === 'connectivity') return 'connectivity';
     if (base === 'release-notes') return 'release';
+    if (base === 'verification') return 'verify';
     if (base === 'arch') return 'arch';
     return base;
   }
@@ -88,6 +89,8 @@ function createNoteReportHelpers(deps) {
       debug: 'docs/DEBUG-NOTES.md',
       connectivity: 'docs/CONNECTIVITY.md',
       release: 'docs/RELEASE-NOTES.md',
+      verify: 'docs/VERIFICATION.md',
+      verification: 'docs/VERIFICATION.md',
       review: 'docs/REVIEW-REPORT.md',
       arch: 'docs/ARCH.md'
     };
@@ -514,6 +517,72 @@ function createNoteReportHelpers(deps) {
     };
   }
 
+  function parseVerifySaveArgs(tokens) {
+    const result = {
+      target: '',
+      summaryParts: [],
+      checks: [],
+      results: [],
+      evidence: [],
+      followups: []
+    };
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+
+      if (token === '--target') {
+        const value = tokens[index + 1] || '';
+        if (!value) throw new Error('Missing value after --target');
+        result.target = value;
+        index += 1;
+        continue;
+      }
+
+      if (token === '--check') {
+        const value = tokens[index + 1] || '';
+        if (!value) throw new Error('Missing value after --check');
+        result.checks.push(value);
+        index += 1;
+        continue;
+      }
+
+      if (token === '--result') {
+        const value = tokens[index + 1] || '';
+        if (!value) throw new Error('Missing value after --result');
+        result.results.push(value);
+        index += 1;
+        continue;
+      }
+
+      if (token === '--evidence') {
+        const value = tokens[index + 1] || '';
+        if (!value) throw new Error('Missing value after --evidence');
+        result.evidence.push(value);
+        index += 1;
+        continue;
+      }
+
+      if (token === '--followup') {
+        const value = tokens[index + 1] || '';
+        if (!value) throw new Error('Missing value after --followup');
+        result.followups.push(value);
+        index += 1;
+        continue;
+      }
+
+      result.summaryParts.push(token);
+    }
+
+    return {
+      target: result.target.trim(),
+      summary: result.summaryParts.join(' ').trim(),
+      checks: result.checks,
+      results: result.results,
+      evidence: result.evidence,
+      followups: result.followups
+    };
+  }
+
   function buildScanEntry(scanOutput, scanInput) {
     const timestamp = new Date().toISOString();
     const lines = [
@@ -727,6 +796,95 @@ function createNoteReportHelpers(deps) {
     };
   }
 
+  function buildVerifyEntry(verifyOutput, verifyInput) {
+    const timestamp = new Date().toISOString();
+    const lines = [
+      `### ${timestamp}`,
+      `- Summary: ${verifyInput.summary}`,
+      `- Profile: ${verifyOutput.scope.profile}`,
+      `- Packs: ${(verifyOutput.scope.packs || []).join(', ') || '-'}`,
+      `- Focus: ${verifyOutput.scope.focus || '-'}`,
+      `- Runtime model: ${verifyOutput.scope.runtime_model || '-'}`,
+      `- Concurrency model: ${verifyOutput.scope.concurrency_model || '-'}`,
+      '- Checklist:'
+    ];
+
+    for (const item of runtime.unique([...(verifyInput.checks || []), ...(verifyOutput.checklist || [])])) {
+      lines.push(`  - ${item}`);
+    }
+
+    lines.push('- Results:');
+    for (const item of (verifyInput.results || []).length > 0 ? verifyInput.results : (verifyOutput.result_template || [])) {
+      lines.push(`  - ${item}`);
+    }
+
+    if ((verifyInput.evidence || []).length > 0 || (verifyOutput.evidence_targets || []).length > 0) {
+      lines.push('- Evidence:');
+      for (const item of runtime.unique([...(verifyInput.evidence || []), ...(verifyOutput.evidence_targets || [])])) {
+        lines.push(`  - ${item}`);
+      }
+    }
+
+    if ((verifyInput.followups || []).length > 0) {
+      lines.push('- Follow-up:');
+      for (const item of verifyInput.followups) {
+        lines.push(`  - ${item}`);
+      }
+    }
+
+    if ((verifyOutput.verification_focus || []).length > 0) {
+      lines.push('- Verification focus:');
+      for (const item of verifyOutput.verification_focus) {
+        lines.push(`  - ${item}`);
+      }
+    }
+
+    if (verifyOutput.scheduler && verifyOutput.scheduler.primary_agent) {
+      lines.push(`- Primary agent: ${verifyOutput.scheduler.primary_agent}`);
+    }
+
+    return lines.join('\n') + '\n';
+  }
+
+  function saveVerifyReport(tokens) {
+    const verifyInput = parseVerifySaveArgs(tokens);
+
+    if (!verifyInput.summary) {
+      throw new Error('Missing verify summary');
+    }
+
+    const resolved = resolveSession();
+    const target = resolveKnownDocTarget(verifyInput.target || 'verify');
+    const ensured = ensureNoteTargetDoc(target);
+    const verifyOutput = scheduler.buildVerifyOutput(resolved);
+    const content = runtime.readText(ensured.path);
+    const nextContent = upsertSectionEntry(
+      content,
+      '## Emb-Agent Verifications',
+      buildVerifyEntry(verifyOutput, verifyInput)
+    );
+
+    fs.writeFileSync(ensured.path, nextContent, 'utf8');
+
+    updateSession(current => {
+      current.last_command = 'verify save';
+      current.last_files = runtime
+        .unique([target, ...(current.last_files || [])])
+        .slice(0, RUNTIME_CONFIG.max_last_files);
+    });
+
+    return {
+      target,
+      created: ensured.created,
+      template: ensured.template,
+      summary: verifyInput.summary,
+      checks: verifyInput.checks,
+      results: verifyInput.results,
+      evidence: verifyInput.evidence,
+      followups: verifyInput.followups
+    };
+  }
+
   function addNoteEntry(tokens) {
     const noteInput = parseNoteAddArgs(tokens);
 
@@ -805,6 +963,9 @@ function createNoteReportHelpers(deps) {
     saveScanReport,
     syncRequirementsFromPlan,
     savePlanReport,
+    parseVerifySaveArgs,
+    buildVerifyEntry,
+    saveVerifyReport,
     addNoteEntry
   };
 }
