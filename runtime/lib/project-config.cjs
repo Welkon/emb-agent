@@ -608,13 +608,66 @@ function createProjectConfigHelpers(deps) {
     };
   }
 
+  function buildAdapterStatusQuality(projectConfig) {
+    let resolved = null;
+
+    try {
+      resolved = resolveSession ? resolveSession() : null;
+    } catch {
+      resolved = null;
+    }
+
+    const toolRecommendations =
+      resolved &&
+      resolved.effective &&
+      Array.isArray(resolved.effective.tool_recommendations)
+        ? resolved.effective.tool_recommendations
+        : [];
+    const recommendedSources =
+      resolved &&
+      resolved.effective &&
+      Array.isArray(resolved.effective.recommended_sources)
+        ? resolved.effective.recommended_sources
+        : [];
+
+    if (toolRecommendations.length > 0) {
+      return {
+        mode: 'session-aware',
+        ...adapterQualityHelpers.summarizeAdapterHealth(toolRecommendations, recommendedSources)
+      };
+    }
+
+    const sources = adapterSources.listSourceStatus(ROOT, resolveProjectRoot(), projectConfig);
+    const matched = sources
+      .flatMap(source => {
+        const projectTarget = source && source.targets ? source.targets.project : null;
+        const selection = projectTarget && projectTarget.selection ? projectTarget.selection : null;
+        const matchedTools = selection && selection.matched && Array.isArray(selection.matched.tools)
+          ? selection.matched.tools
+          : [];
+        return matchedTools;
+      })
+      .filter(Boolean);
+
+    return {
+      mode: 'selection-only',
+      status: matched.length > 0 ? 'info' : 'warn',
+      summary: matched.length > 0
+        ? '当前已有命中的 adapter 文件，但项目侧还不能形成完整 trust 评分。'
+        : '当前还没有足够的已命中 adapter 可供质量评估。',
+      matched_tools: runtime.unique(matched)
+    };
+  }
+
   function buildAdapterStatus(name) {
     const projectConfig = buildProjectConfigSeed();
     const sources = adapterSources.listSourceStatus(ROOT, resolveProjectRoot(), projectConfig);
+    const qualityOverview = buildAdapterStatusQuality(projectConfig);
 
     if (!name) {
       return {
         project_root: resolveProjectRoot(),
+        quality_overview: qualityOverview,
         adapter_sources: sources
       };
     }
@@ -624,7 +677,19 @@ function createProjectConfigHelpers(deps) {
       throw new Error(`Adapter source not found: ${name}`);
     }
 
-    return matched;
+    const projectTarget = matched.targets && matched.targets.project ? matched.targets.project : null;
+    const quality = projectTarget && projectTarget.synced
+      ? buildAdapterSyncQuality({
+          name: matched.name,
+          target: 'project',
+          selection: projectTarget.selection || null
+        })
+      : qualityOverview;
+
+    return {
+      ...matched,
+      quality
+    };
   }
 
   function addAdapterSource(name, tokens) {

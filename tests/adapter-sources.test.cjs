@@ -425,6 +425,8 @@ test('adapter source add and sync install project adapters from path source', as
     );
     assert.equal(status.targets.project.synced, true);
     assert.equal(status.targets.project.files_count, 5);
+    assert.equal(status.quality.mode, 'selection-only');
+    assert.deepEqual(status.quality.matched_tools, []);
   } finally {
     process.chdir(currentCwd);
   }
@@ -477,6 +479,49 @@ test('adapter bootstrap adds source and syncs matching project adapters in one s
       fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'profiles', 'vendor-chip.json')),
       true
     );
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('adapter status shows project-level quality overview', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-status-quality-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-status-quality-source-'));
+  const currentCwd = process.cwd();
+
+  try {
+    createFilteredAdapterSource(tempSource);
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    writeText(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      ['mcu:', '  vendor: "SCMCU"', '  model: "SC8F072"', '  package: "SOP8"', ''].join('\n')
+    );
+
+    await captureStdout(() =>
+      cli.main([
+        'adapter',
+        'source',
+        'add',
+        'filtered-pack',
+        '--type',
+        'path',
+        '--location',
+        tempSource
+      ])
+    );
+    await captureStdout(() => cli.main(['adapter', 'sync', 'filtered-pack']));
+
+    const status = JSON.parse(
+      await captureStdout(() => cli.main(['adapter', 'status']))
+    );
+
+    assert.equal(status.quality_overview.mode, 'session-aware');
+    assert.equal(status.quality_overview.primary.tool, 'timer-calc');
+    assert.equal(status.quality_overview.primary.executable, true);
+    assert.equal(status.adapter_sources.length, 1);
   } finally {
     process.chdir(currentCwd);
   }
