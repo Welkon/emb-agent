@@ -615,6 +615,9 @@ const {
   saveScanReport,
   syncRequirementsFromPlan,
   savePlanReport,
+  parseVerifySaveArgs,
+  buildVerifyEntry,
+  saveVerifyReport,
   addNoteEntry
 } = noteReportHelpers.createNoteReportHelpers({
   fs,
@@ -732,6 +735,7 @@ const {
   saveScanReport,
   savePlanReport,
   saveReviewReport,
+  saveVerifyReport,
   addNoteEntry,
   runTemplateScript,
   ingestDocCli
