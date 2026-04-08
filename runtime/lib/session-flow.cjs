@@ -527,6 +527,12 @@ function createSessionFlowHelpers(deps) {
     return 9;
   }
 
+  function getToolRecommendationTrustScore(item) {
+    return item && item.trust && Number.isFinite(item.trust.score)
+      ? Number(item.trust.score)
+      : 0;
+  }
+
   function selectPrimaryToolRecommendation(toolRecommendations) {
     const items = Array.isArray(toolRecommendations) ? toolRecommendations.slice() : [];
     if (items.length === 0) {
@@ -537,6 +543,9 @@ function createSessionFlowHelpers(deps) {
       .map((item, index) => ({ item, index }))
       .sort((left, right) => {
         return getToolRecommendationScore(left.item) - getToolRecommendationScore(right.item) ||
+          Number(Boolean(right.item && right.item.trust && right.item.trust.executable)) -
+            Number(Boolean(left.item && left.item.trust && left.item.trust.executable)) ||
+          getToolRecommendationTrustScore(right.item) - getToolRecommendationTrustScore(left.item) ||
           left.index - right.index;
       })[0].item;
   }

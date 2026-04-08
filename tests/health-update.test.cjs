@@ -245,6 +245,12 @@ test('health reports adapter registration and sync readiness', async () => {
     report = JSON.parse(stdout);
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'adapter_match').status, 'pass');
+    assert.equal(report.checks.find(item => item.key === 'adapter_quality').status, 'pass');
+    assert.equal(report.checks.find(item => item.key === 'binding_quality').status, 'pass');
+    assert.equal(report.checks.find(item => item.key === 'register_summary_available').status, 'warn');
+    assert.equal(report.adapter_health.primary.tool, 'timer-calc');
+    assert.equal(report.adapter_health.primary.grade, 'usable');
+    assert.equal(report.adapter_health.primary.executable, true);
     assert.ok(report.recommendations.every(item => !item.includes('adapter sync default-pack')));
     assert.ok(report.next_commands.some(item => item.cli.includes('tool run timer-calc')));
   } finally {

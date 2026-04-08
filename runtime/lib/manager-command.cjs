@@ -91,15 +91,78 @@ function createManagerCommandHelpers(deps) {
       .slice(0, 3);
   }
 
+  function pushAction(actions, action) {
+    if (!action) {
+      return;
+    }
+
+    if (
+      action.cli &&
+      actions.some(item => item.cli && item.cli === action.cli)
+    ) {
+      return;
+    }
+
+    actions.push(action);
+  }
+
+  function buildAdapterHealthAction(health, toolExecution) {
+    const adapterHealth = health && health.adapter_health ? health.adapter_health : null;
+    const primary = adapterHealth && adapterHealth.primary ? adapterHealth.primary : null;
+    const healthCommands = health && Array.isArray(health.next_commands)
+      ? health.next_commands
+      : [];
+
+    if (!primary || primary.executable) {
+      return null;
+    }
+
+    const preferredKeysByAction = {
+      'map-chip-profile': ['adapter-bootstrap', 'adapter-source-add'],
+      'sync-adapter': ['adapter-bootstrap', 'adapter-sync', 'adapter-source-add'],
+      'implement-adapter': ['adapter-derive-from-doc', 'tool-run-primary'],
+      'add-binding': ['adapter-derive-from-doc', 'tool-run-primary'],
+      'add-source-refs': ['tool-run-primary'],
+      'add-register-summary': ['tool-run-primary'],
+      'review-profile': ['tool-run-primary'],
+      'run-tool': ['tool-run-primary']
+    };
+    const preferredKeys = preferredKeysByAction[primary.recommended_action] || ['tool-run-primary'];
+    const matchedCommand = preferredKeys
+      .map(key => healthCommands.find(item => item.key === key))
+      .find(Boolean);
+
+    if (matchedCommand && matchedCommand.cli) {
+      return {
+        type: 'adapter-health',
+        label: `先修复 ${primary.tool} 可信度`,
+        cli: matchedCommand.cli,
+        reason: `${primary.summary} 当前等级 ${primary.grade}，建议先 ${primary.recommended_action}`
+      };
+    }
+
+    if (toolExecution && toolExecution.cli) {
+      return {
+        type: 'adapter-health',
+        label: `先校准 ${toolExecution.tool} adapter`,
+        cli: toolExecution.cli,
+        reason: `${primary.summary} 当前等级 ${primary.grade}，不要把工具输出直接当真值`
+      };
+    }
+
+    return null;
+  }
+
   function buildRecommendedActions(next, resume, threads, handoff, health, session) {
     const actions = [];
     const toolExecution = buildToolExecutionFromNext(next);
     const quickstart = health && health.quickstart ? health.quickstart : null;
     const activeWorkspace = resume && resume.workspace ? resume.workspace : null;
     const workspaceRefresh = buildWorkspaceRefreshAnalysis(activeWorkspace, session || {});
+    const adapterHealthAction = buildAdapterHealthAction(health, toolExecution);
 
     if (handoff) {
-      actions.push({
+      pushAction(actions, {
         type: 'resume',
         label: '优先恢复 handoff',
         cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume']),
@@ -110,7 +173,7 @@ function createManagerCommandHelpers(deps) {
     if ((threads.threads || []).length > 0) {
       const openThread = (threads.threads || []).find(item => item.status !== 'RESOLVED');
       if (openThread) {
-        actions.push({
+        pushAction(actions, {
           type: 'thread',
           label: `恢复 thread ${openThread.name}`,
           cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['thread', 'resume', openThread.name]),
@@ -121,7 +184,7 @@ function createManagerCommandHelpers(deps) {
 
     if (activeWorkspace) {
       if (workspaceRefresh && workspaceRefresh.recommended) {
-        actions.push({
+        pushAction(actions, {
           type: 'workspace-refresh',
           label: `刷新 workspace ${activeWorkspace.name}`,
           cli: workspaceRefresh.refresh_cli,
@@ -129,7 +192,7 @@ function createManagerCommandHelpers(deps) {
         });
       }
 
-      actions.push({
+      pushAction(actions, {
         type: 'workspace',
         label: `查看 workspace ${activeWorkspace.name}`,
         cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['workspace', 'show', activeWorkspace.name]),
@@ -137,8 +200,12 @@ function createManagerCommandHelpers(deps) {
       });
     }
 
+    if (adapterHealthAction) {
+      pushAction(actions, adapterHealthAction);
+    }
+
     if (toolExecution && toolExecution.recommended) {
-      actions.push({
+      pushAction(actions, {
         type: 'tool',
         label: `执行 ${toolExecution.tool}`,
         cli: toolExecution.cli,
@@ -147,7 +214,7 @@ function createManagerCommandHelpers(deps) {
     }
 
     if (quickstart && Array.isArray(quickstart.steps) && quickstart.steps[0] && quickstart.steps[0].cli) {
-      actions.push({
+      pushAction(actions, {
         type: 'quickstart',
         label: quickstart.summary || '执行首次闭环',
         cli: quickstart.steps[0].cli,
@@ -159,7 +226,7 @@ function createManagerCommandHelpers(deps) {
       ? health.next_commands
       : [];
     healthCommands.forEach(item => {
-      actions.push({
+      pushAction(actions, {
         type: 'health',
         label: item.summary || '执行 health 建议',
         cli: item.cli,
@@ -167,7 +234,7 @@ function createManagerCommandHelpers(deps) {
       });
     });
 
-    actions.push({
+    pushAction(actions, {
       type: 'next',
       label: `执行 ${next.next.command}`,
       cli: next.next.cli,
@@ -175,7 +242,7 @@ function createManagerCommandHelpers(deps) {
     });
 
     if (toolExecution && !toolExecution.recommended) {
-      actions.push({
+      pushAction(actions, {
         type: 'tool',
         label: `执行 ${toolExecution.tool}`,
         cli: toolExecution.cli,
@@ -184,7 +251,7 @@ function createManagerCommandHelpers(deps) {
     }
 
     if ((resume.carry_over && resume.carry_over.open_questions || []).length > 0) {
-      actions.push({
+      pushAction(actions, {
         type: 'forensics',
         label: '先做一次 forensics',
         cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['forensics']),
@@ -192,7 +259,7 @@ function createManagerCommandHelpers(deps) {
       });
     }
 
-    actions.push({
+    pushAction(actions, {
       type: 'session-report',
       label: '输出 session report',
       cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['session-report']),
@@ -255,6 +322,7 @@ function createManagerCommandHelpers(deps) {
       health: {
         status: health.status,
         summary: health.summary,
+        adapter_health: health.adapter_health || null,
         next_commands: health.next_commands || [],
         quickstart: health.quickstart || null
       },
