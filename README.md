@@ -132,6 +132,7 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter bootstrap
 - `adapter sync` 现在默认优先读取 `.emb-agent/hw.yaml`
 - 如果能识别出当前 `chip/device/family`，只会同步命中的最小 adapter 子集
 - 如果 `hw.yaml` 还没补全，才回退为全量同步
+- `adapter bootstrap` / `adapter sync` / `adapter status` 现在都会带一份 `quality` 视图，用来判断当前 adapter 是可信、可用还是仍停留在 draft
 
 ### 保持更新
 
@@ -379,6 +380,36 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run comparator-threshold --
 
 自动发现链路现在会优先用 `hw.yaml` 的 `model/package` 去回退匹配 derive 生成的 chip slug，例如 `SC8F072 + SOP8 -> sc8f072sop8`，不需要你手工把 slug 写回 truth。
 
+### Adapter Trust
+
+adapter trust 不是只看 route 文件在不在，而是综合下面几类证据：
+
+- chip / device / family profile 是否齐全
+- `source_refs` / register summary / component refs 是否齐全
+- device / family binding 是否存在、是否仍是 draft
+- runtime route 当前是 `ready` 还是 `draft-adapter`
+
+当前 grade 分五档：
+
+- `trusted`: 证据链完整，可直接作为可信 adapter 使用
+- `usable`: 主路径已可跑，但仍建议继续补资料或封装细节
+- `partial`: 已有部分 binding / 实现，但还不够稳定
+- `draft`: 仍以起草为主，结果不能直接当真值
+- `missing`: 证据明显不足，先别把工具结果拿去决策
+
+几个命令的 trust 语义不同：
+
+- `adapter bootstrap` / `adapter sync`
+  如果当前会话已经能解析出 tool recommendations，会返回 `mode: session-aware` 的质量视图，这代表是在真实项目上下文里评估 trust
+- `adapter bootstrap` / `adapter sync`
+  如果当前还只有筛选结果、没有完整项目上下文，会返回 `mode: selection-only`，这只表示命中了哪些 chips/tools，不代表已经可执行
+- `adapter status`
+  顶层会返回 `quality_overview`，用于快速判断当前项目里最值得先补的 adapter 缺口
+- `adapter derive`
+  会返回 `trust` 摘要，但 derive 产物默认仍是 draft；优先看 `trust.primary.recommended_action` 决定下一步补 source、register summary、binding 还是真实实现
+
+判断原则很简单：只有 `grade` 至少达到 `usable`，并且 `executable=true`，才适合把工具结果当成当前项目的高可信输入。
+
 ---
 
 ## 命令
@@ -575,6 +606,8 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datas
   先补 `hw.yaml / req.yaml` 或先执行一次 `scan`
 - `tool run` 返回 `adapter-required`
   当前还没同步到对应 adapter
+- `tool run` 能跑，但仍反复提示补 source / binding
+  这通常说明 route 已存在，但 trust 仍停留在 `partial` 或 `draft`；优先执行 `adapter status`，再按 `recommended_action` 补 `source_refs`、寄存器摘要、binding 或真实实现
 - clear context 后接不上
   先检查是否执行过 `pause`，再执行 `resume`
 - SessionStart 提示 `stale install`
