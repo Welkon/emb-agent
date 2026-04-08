@@ -96,6 +96,7 @@ function createDispatchHelpers(deps) {
         context_hygiene: next.context_hygiene,
         next_actions: next.next_actions,
         current: next.current,
+        health: next.health || null,
         workspace: buildWorkspaceSnapshot(next.workspace),
         handoff: next.handoff,
         tool_execution: toolExecution,
@@ -177,6 +178,11 @@ function createDispatchHelpers(deps) {
         tool: toolExecution.tool,
         status: toolExecution.status,
         reason: toolExecution.reason,
+        trust: toolExecution.trust || null,
+        recommended_action:
+          toolExecution.trust && toolExecution.trust.recommended_action
+            ? toolExecution.trust.recommended_action
+            : '',
         missing_inputs: toolExecution.missing_inputs || [],
         defaults_applied: toolExecution.defaults_applied || {},
         outcome: toolExecution.recommended
@@ -296,6 +302,7 @@ function createDispatchHelpers(deps) {
             timestamp: handoff.timestamp
           }
         : null),
+      health: dispatch.health || null,
       workflow: {
         style: 'action-based',
         orchestration_weight: 'light',
@@ -315,6 +322,14 @@ function createDispatchHelpers(deps) {
       context_hygiene: dispatch.context_hygiene || null,
       next_actions: dispatch.next_actions || guidance.next_actions,
       tool_execution: toolExecution,
+      adapter_health:
+        dispatch.health && dispatch.health.adapter_health
+          ? dispatch.health.adapter_health
+          : dispatch.source === 'next' &&
+            dispatch.action_context &&
+            dispatch.action_context.health
+            ? dispatch.action_context.health.adapter_health || null
+            : null,
       dispatch_contract: execution.dispatch_contract || null,
       action_context: dispatch.action_context || null
     }, resolved);

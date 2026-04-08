@@ -533,6 +533,29 @@ function createSessionFlowHelpers(deps) {
       : 0;
   }
 
+  function buildAdapterHealthHints(healthReport, primaryToolRecommendation) {
+    const adapterHealth = healthReport && healthReport.adapter_health ? healthReport.adapter_health : null;
+    const primary = adapterHealth && adapterHealth.primary ? adapterHealth.primary : null;
+
+    if (!primary) {
+      return [];
+    }
+
+    if (primary.executable) {
+      return [
+        `adapter 可信度: ${primary.tool} ${primary.grade} (${primary.score}/100)`
+      ];
+    }
+
+    return [
+      `adapter 可信度提醒: ${primary.tool} 目前为 ${primary.grade} (${primary.score}/100)`,
+      `先处理 adapter 缺口: ${primary.recommended_action}`,
+      primaryToolRecommendation && primaryToolRecommendation.cli_draft
+        ? `当前工具草案先用于校准，不要直接当真值: ${primaryToolRecommendation.cli_draft}`
+        : '当前工具输出先用于校准，不要直接当真值'
+    ];
+  }
+
   function selectPrimaryToolRecommendation(toolRecommendations) {
     const items = Array.isArray(toolRecommendations) ? toolRecommendations.slice() : [];
     if (items.length === 0) {
@@ -732,9 +755,13 @@ function createSessionFlowHelpers(deps) {
           ...(health && Array.isArray(health.next_commands)
             ? health.next_commands.map(item => `优先执行 health 建议: ${item.cli}`)
             : []),
+          ...buildAdapterHealthHints(health, guidance.primary_tool_recommendation),
           ...guidance.next_actions
         ])
-      : guidance.next_actions;
+      : runtime.unique([
+          ...buildAdapterHealthHints(health, guidance.primary_tool_recommendation),
+          ...guidance.next_actions
+        ]);
 
     return enrichWithToolSuggestions({
       current: {
@@ -777,6 +804,7 @@ function createSessionFlowHelpers(deps) {
         ? {
             status: health.status,
             summary: health.summary,
+            adapter_health: health.adapter_health || null,
             next_commands: health.next_commands || [],
             quickstart: health.quickstart || null
           }
