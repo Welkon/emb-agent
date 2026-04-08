@@ -258,6 +258,8 @@ function createFilteredAdapterSource(rootDir) {
     series: 'SC8F0xx',
     description: 'SCMCU family.',
     supported_tools: ['timer-calc'],
+    source_refs: ['mcu/scmcu-sc8f072'],
+    component_refs: [],
     bindings: {},
     notes: []
   });
@@ -268,6 +270,8 @@ function createFilteredAdapterSource(rootDir) {
     series: 'PMS15B/PMS150G',
     description: 'Padauk family.',
     supported_tools: ['pwm-calc'],
+    source_refs: ['mcu/padauk-pms150g'],
+    component_refs: [],
     bindings: {},
     notes: []
   });
@@ -277,6 +281,8 @@ function createFilteredAdapterSource(rootDir) {
     family: 'scmcu-sc8f0xx',
     description: 'SC8F072 device.',
     supported_tools: ['timer-calc'],
+    source_refs: ['mcu/scmcu-sc8f072-registers'],
+    component_refs: [],
     bindings: {
       'timer-calc': {
         algorithm: 'scmcu-timer',
@@ -293,6 +299,8 @@ function createFilteredAdapterSource(rootDir) {
     family: 'padauk-pms15b-150g',
     description: 'PMS150G device.',
     supported_tools: ['pwm-calc'],
+    source_refs: ['mcu/padauk-pms150g-registers'],
+    component_refs: [],
     bindings: {
       'pwm-calc': {
         algorithm: 'padauk-tm2-pwm',
@@ -311,6 +319,8 @@ function createFilteredAdapterSource(rootDir) {
     description: 'SC8F072 chip.',
     package: 'sop8',
     runtime_model: 'main_loop_plus_isr',
+    source_refs: ['mcu/scmcu-sc8f072', 'mcu/scmcu-sc8f072-registers'],
+    component_refs: [],
     summary: {},
     capabilities: ['tmr0'],
     related_tools: ['timer-calc'],
@@ -324,11 +334,18 @@ function createFilteredAdapterSource(rootDir) {
     description: 'PMS150G chip.',
     package: 'sop8',
     runtime_model: 'main_loop_plus_isr',
+    source_refs: ['mcu/padauk-pms150g', 'mcu/padauk-pms150g-registers'],
+    component_refs: [],
     summary: {},
     capabilities: ['tm2-pwm'],
     related_tools: ['pwm-calc'],
     notes: []
   });
+
+  writeText(path.join(rootDir, 'docs', 'sources', 'mcu', 'scmcu-sc8f072.md'), '# SC8F072 summary\n');
+  writeText(path.join(rootDir, 'docs', 'sources', 'mcu', 'scmcu-sc8f072-registers.md'), '# SC8F072 registers\n');
+  writeText(path.join(rootDir, 'docs', 'sources', 'mcu', 'padauk-pms150g.md'), '# PMS150G summary\n');
+  writeText(path.join(rootDir, 'docs', 'sources', 'mcu', 'padauk-pms150g-registers.md'), '# PMS150G registers\n');
 }
 
 test('adapter source add and sync install project adapters from path source', async () => {
@@ -586,6 +603,14 @@ test('adapter sync auto-filters files by project hardware identity', async () =>
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'profiles', 'sc8f072.json')),
       true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'docs', 'sources', 'mcu', 'scmcu-sc8f072-registers.md')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'docs', 'sources', 'mcu', 'padauk-pms150g-registers.md')),
+      false
     );
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'profiles', 'pms150g.json')),

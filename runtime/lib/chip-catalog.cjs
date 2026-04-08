@@ -227,6 +227,8 @@ function validateChip(name, value) {
     architecture: ensureOptionalString(value.architecture, `chip ${name} architecture`),
     runtime_model: ensureOptionalString(value.runtime_model, `chip ${name} runtime_model`),
     description: ensureString(value.description, `chip ${name} description`),
+    source_refs: ensureOptionalStringArray(value.source_refs, `chip ${name} source_refs`),
+    component_refs: ensureOptionalStringArray(value.component_refs, `chip ${name} component_refs`),
     summary: value.summary ? validateSummary(name, value.summary) : {},
     capabilities: ensureOptionalStringArray(value.capabilities, `chip ${name} capabilities`),
     packages: Array.isArray(value.packages)

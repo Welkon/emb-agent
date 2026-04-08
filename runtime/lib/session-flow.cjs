@@ -566,9 +566,12 @@ function createSessionFlowHelpers(deps) {
     const openThread = resolveActiveThread(session);
     const activeTask = getActiveTask ? getActiveTask() : null;
     const activeWorkspace = getActiveWorkspace ? getActiveWorkspace() : resolveActiveWorkspace(session);
+    const recommendedSources = (resolved.effective && resolved.effective.recommended_sources) || [];
     const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
     const toolRecommendations = (resolved.effective && resolved.effective.tool_recommendations) || [];
     const primaryToolRecommendation = selectPrimaryToolRecommendation(toolRecommendations);
+    const primaryRegisterSource = recommendedSources.find(item => item.priority_group === 'register-summary') || null;
+    const primarySource = primaryRegisterSource || recommendedSources[0] || null;
     const latestForensics =
       session.diagnostics && session.diagnostics.latest_forensics
         ? session.diagnostics.latest_forensics
@@ -592,6 +595,8 @@ function createSessionFlowHelpers(deps) {
         latestForensics && latestForensics.report_file
           ? `最近一次 forensics: ${latestForensics.report_file} (${latestForensics.highest_severity || 'info'})`
           : '',
+        primaryRegisterSource ? `优先重读寄存器摘要: ${primaryRegisterSource.path}` : '',
+        !primaryRegisterSource && primarySource ? `优先重读资料摘要: ${primarySource.path}` : '',
         ...suggestedTools.slice(0, 2).map(tool => `可优先评估工具: ${tool.name} (${tool.status})`),
         primaryToolRecommendation
           ? `首选工具草案: ${primaryToolRecommendation.cli_draft}`

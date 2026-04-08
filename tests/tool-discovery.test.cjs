@@ -44,6 +44,8 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
         architecture: '8-bit',
         runtime_model: 'main_loop_plus_isr',
         description: 'External chip profile.',
+        source_refs: ['mcu/vendor-chip', 'mcu/vendor-chip-registers'],
+        component_refs: [],
         summary: {},
         capabilities: ['timer16', 'pwm'],
         docs: [],
@@ -76,6 +78,8 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
         sample: false,
         description: 'External tool family profile.',
         supported_tools: ['timer-calc', 'pwm-calc'],
+        source_refs: ['mcu/vendor-family-overview'],
+        component_refs: [],
         clock_sources: ['sysclk'],
         bindings: {},
         notes: []
@@ -90,6 +94,8 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
         sample: false,
         description: 'External tool device profile.',
         supported_tools: ['timer-calc', 'pwm-calc'],
+        source_refs: ['mcu/vendor-chip-registers'],
+        component_refs: [],
         bindings: {
           'timer-calc': {
             algorithm: 'vendor-timer16',
@@ -113,6 +119,10 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
 
     assert.equal(status.hardware.mcu.model, 'vendor-chip');
     assert.equal(status.hardware.chip_profile.name, 'vendor-chip');
+    assert.deepEqual(status.hardware.chip_profile.source_refs, ['mcu/vendor-chip', 'mcu/vendor-chip-registers']);
+    assert.equal(status.recommended_sources[0].id, 'mcu/vendor-chip-registers');
+    assert.equal(status.recommended_sources[0].priority_group, 'register-summary');
+    assert.equal(status.recommended_sources[0].path, '.emb-agent/docs/sources/mcu/vendor-chip-registers.md');
     assert.deepEqual(
       status.suggested_tools.map(item => ({ name: item.name, status: item.status })),
       [
@@ -137,10 +147,13 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
     assert.equal(next.next.gated_by_health, false);
     assert.equal(next.suggested_tools.length, 2);
     assert.equal(next.tool_recommendations.length, 2);
+    assert.equal(next.recommended_sources[0].id, 'mcu/vendor-chip-registers');
     assert.equal(next.next.tool_recommendation.tool, 'timer-calc');
     assert.match(next.next.tool_recommendation.cli_draft, /tool run timer-calc/);
+    assert.ok(next.next_actions.some(item => item.includes('优先重读寄存器摘要: .emb-agent/docs/sources/mcu/vendor-chip-registers.md')));
     assert.ok(next.next_actions.some(item => item.includes('首选工具草案:')));
     assert.ok(next.next_actions.some(item => item.includes('工具待补参数:')));
+    assert.equal(plan.recommended_sources[0].id, 'mcu/vendor-chip-registers');
     assert.equal(plan.suggested_tools[0].chip, 'vendor-chip');
     assert.equal(plan.tool_recommendations[0].binding_algorithm, 'vendor-timer16');
     assert.equal(plan.suggested_tools[0].implementation, 'external-adapter');

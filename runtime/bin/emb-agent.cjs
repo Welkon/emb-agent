@@ -250,6 +250,7 @@ function findChipProfileByModel(model, packageName) {
 }
 
 const {
+  buildRecommendedSources,
   buildSuggestedTools,
   buildToolRecommendations,
   buildToolExecutionFromNext,
@@ -269,6 +270,7 @@ function resolveSession() {
   const projectConfig = getProjectConfig();
   const hardwareIdentity = loadHardwareIdentity(session.project_root || resolveProjectRoot());
   const chipProfile = findChipProfileByModel(hardwareIdentity.model, hardwareIdentity.package);
+  const recommendedSources = buildRecommendedSources(chipProfile);
   const suggestedTools = buildSuggestedTools(chipProfile);
   const toolRecommendations = buildToolRecommendations(chipProfile, suggestedTools);
   const agents = runtime.unique([
@@ -304,6 +306,7 @@ function resolveSession() {
       search_priority: profile.search_priority || [],
       guardrails: profile.guardrails || [],
       resource_priority: profile.resource_priority || [],
+      recommended_sources: recommendedSources,
       suggested_tools: suggestedTools,
       tool_recommendations: toolRecommendations,
       arch_review_triggers:
