@@ -67,6 +67,12 @@ test('adapter derive creates extension registries and profile skeletons', () => 
 
     assert.equal(result.status, 'ok');
     assert.deepEqual(result.tools, ['timer-calc', 'pwm-calc', 'adc-scale']);
+    assert.equal(result.trust.safe_to_execute, false);
+    assert.equal(result.trust.primary.tool, 'timer-calc');
+    assert.equal(result.trust.primary.grade, 'draft');
+    assert.equal(result.trust.primary.recommended_action, 'implement-adapter');
+    assert.ok(result.notes.some(item => item.includes('draft adapter')));
+    assert.ok(result.notes.some(item => item.includes('不应把工具输出直接当成真值')));
 
     const toolRegistry = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'), 'utf8')
@@ -218,6 +224,7 @@ test('adapter derive can infer family device chip and tools from project truth',
     assert.equal(result.family, 'scmcu-sc8f072');
     assert.equal(result.device, 'sc8f072');
     assert.equal(result.chip, 'sc8f072sop8');
+    assert.equal(result.trust.primary.recommended_action, 'implement-adapter');
     assert.deepEqual(result.tools, ['timer-calc', 'pwm-calc', 'adc-scale']);
     assert.equal(result.inferred.from_project, true);
     assert.equal(result.inferred.source_mode, 'project');
@@ -442,6 +449,8 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
     assert.equal(result.family, 'padauk-pms150g');
     assert.equal(result.device, 'pms150g');
     assert.equal(result.chip, 'pms150gsop8');
+    assert.equal(result.trust.safe_to_execute, false);
+    assert.equal(result.trust.primary.recommended_action, 'implement-adapter');
     assert.deepEqual(
       result.tools,
       ['timer-calc', 'pwm-calc', 'adc-scale', 'comparator-threshold']

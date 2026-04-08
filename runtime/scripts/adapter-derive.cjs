@@ -8,6 +8,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const docCache = require(path.join(ROOT, 'lib', 'doc-cache.cjs'));
+const adapterQualityHelpers = require(path.join(ROOT, 'lib', 'adapter-quality.cjs'));
 
 function usage() {
   process.stdout.write(
@@ -1302,6 +1303,56 @@ function buildChipProfile(config) {
   };
 }
 
+function buildDerivedTrustReport(config, embRoot, projectRoot) {
+  const familyProfile = buildFamilyProfile(config);
+  const deviceProfile = buildDeviceProfile(config);
+  const chipProfile = buildChipProfile(config);
+  const recommendations = config.tools.map(toolName => {
+    const binding = deviceProfile.bindings && deviceProfile.bindings[toolName]
+      ? deviceProfile.bindings[toolName]
+      : null;
+    const trust = adapterQualityHelpers.evaluateToolRecommendationTrust({
+      toolName,
+      chipProfile,
+      deviceProfile,
+      familyProfile,
+      tool: {
+        name: toolName,
+        status: 'draft-adapter',
+        implementation: 'external-adapter-draft',
+        adapter_path: path.relative(projectRoot, path.join(embRoot, 'adapters', 'routes', `${toolName}.cjs`)) || `${toolName}.cjs`
+      },
+      bindingInfo: {
+        source: binding ? 'device' : 'none',
+        binding
+      }
+    });
+
+    return {
+      tool: toolName,
+      status: 'draft-adapter',
+      binding_source: binding ? 'device' : 'none',
+      trust
+    };
+  });
+  const summary = adapterQualityHelpers.summarizeAdapterHealth(recommendations, []);
+
+  return {
+    status: summary.status,
+    overall_grade: summary.overall_grade,
+    safe_to_execute: summary.executable_tools > 0,
+    primary: summary.primary,
+    tools: recommendations.map(item => ({
+      tool: item.tool,
+      score: item.trust.score,
+      grade: item.trust.grade,
+      executable: item.trust.executable,
+      recommended_action: item.trust.recommended_action,
+      gaps: item.trust.gaps
+    }))
+  };
+}
+
 function deriveProfiles(argv, options) {
   const config = parseArgs(argv || []);
   if (config.help) {
@@ -1380,6 +1431,8 @@ function deriveProfiles(argv, options) {
     });
   });
 
+  const trustReport = buildDerivedTrustReport(config, embRoot, projectRoot);
+
   return {
     status: 'ok',
     target: config.target,
@@ -1409,8 +1462,13 @@ function deriveProfiles(argv, options) {
       path: path.relative(projectRoot, item.path) || path.basename(item.path),
       status: item.status
     })),
+    trust: trustReport,
     notes: [
       '已生成 family/device/chip 草稿，并按可推断信息补了 device draft bindings。',
+      '当前生成结果仍是 draft adapter，不应把工具输出直接当成真值。',
+      trustReport && trustReport.primary
+        ? `优先处理 ${trustReport.primary.tool}: ${trustReport.primary.recommended_action} (${trustReport.primary.grade} ${trustReport.primary.score}/100)。`
+        : '下一步应结合手册、例程或已验证代码补齐 device bindings 细节与外部 adapter 实现。',
       '下一步应结合手册、例程或已验证代码补齐 device bindings 细节与外部 adapter 实现。'
     ]
   };
