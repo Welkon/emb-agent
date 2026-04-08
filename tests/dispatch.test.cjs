@@ -143,6 +143,8 @@ test('dispatch next exposes direct tool execution when scan has ready recommenda
         architecture: '8-bit',
         runtime_model: 'main_loop_plus_isr',
         description: 'External chip profile.',
+        source_refs: ['mcu/vendor-chip', 'mcu/vendor-chip-registers'],
+        component_refs: [],
         summary: {},
         capabilities: ['timer16'],
         docs: [],
@@ -175,6 +177,8 @@ test('dispatch next exposes direct tool execution when scan has ready recommenda
         sample: false,
         description: 'External tool family profile.',
         supported_tools: ['timer-calc'],
+        source_refs: ['mcu/vendor-family-overview'],
+        component_refs: [],
         clock_sources: ['sysclk'],
         bindings: {},
         notes: []
@@ -189,6 +193,8 @@ test('dispatch next exposes direct tool execution when scan has ready recommenda
         sample: false,
         description: 'External tool device profile.',
         supported_tools: ['timer-calc'],
+        source_refs: ['mcu/vendor-chip-registers'],
+        component_refs: [],
         bindings: {
           'timer-calc': {
             algorithm: 'vendor-timer16',
@@ -210,6 +216,7 @@ test('dispatch next exposes direct tool execution when scan has ready recommenda
     assert.equal(dispatch.resolved_action, 'scan');
     assert.equal(dispatch.tool_execution.tool, 'timer-calc');
     assert.equal(dispatch.tool_execution.status, 'ready');
+    assert.equal(dispatch.action_context.recommended_sources[0].id, 'mcu/vendor-chip-registers');
     assert.match(dispatch.tool_execution.cli, /tool run timer-calc/);
     assert.deepEqual(dispatch.tool_execution.missing_inputs, ['clock-hz', 'target-us or target-hz']);
   } finally {

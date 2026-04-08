@@ -145,6 +145,8 @@ function validateFamily(name, value) {
     sample: ensureOptionalBoolean(value.sample, `family ${name} sample`, false),
     description: ensureString(value.description, `family ${name} description`),
     supported_tools: ensureOptionalStringArray(value.supported_tools, `family ${name} supported_tools`),
+    source_refs: ensureOptionalStringArray(value.source_refs, `family ${name} source_refs`),
+    component_refs: ensureOptionalStringArray(value.component_refs, `family ${name} component_refs`),
     clock_sources: ensureOptionalStringArray(value.clock_sources, `family ${name} clock_sources`),
     bindings: ensureOptionalNamedObjectMap(value.bindings, `family ${name} bindings`),
     notes: ensureOptionalStringArray(value.notes, `family ${name} notes`)
@@ -159,6 +161,8 @@ function validateDevice(name, value) {
     sample: ensureOptionalBoolean(value.sample, `device ${name} sample`, false),
     description: ensureString(value.description, `device ${name} description`),
     supported_tools: ensureOptionalStringArray(value.supported_tools, `device ${name} supported_tools`),
+    source_refs: ensureOptionalStringArray(value.source_refs, `device ${name} source_refs`),
+    component_refs: ensureOptionalStringArray(value.component_refs, `device ${name} component_refs`),
     bindings: ensureOptionalNamedObjectMap(value.bindings, `device ${name} bindings`),
     notes: ensureOptionalStringArray(value.notes, `device ${name} notes`)
   };

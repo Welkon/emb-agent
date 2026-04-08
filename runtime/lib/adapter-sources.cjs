@@ -256,6 +256,7 @@ function collectSourceFiles(layoutRoot) {
     'chips',
     'devices'
   ], false, relativePath => relativePath.replace(`${path.sep}devices${path.sep}`, `${path.sep}profiles${path.sep}`));
+  addFiles(path.join(layoutRoot, 'docs', 'sources'), '.md', ['docs', 'sources'], true);
 
   return mappings;
 }
@@ -360,6 +361,15 @@ function tryReadJson(filePath) {
   } catch {
     return null;
   }
+}
+
+function sourceRefIdFromRelativePath(relativePath) {
+  const normalized = String(relativePath || '').replace(/\\/g, '/');
+  if (!normalized.startsWith('docs/sources/') || !normalized.endsWith('.md')) {
+    return '';
+  }
+
+  return normalized.slice('docs/sources/'.length, -3);
 }
 
 function buildSyncSelection(projectRoot, options) {
@@ -510,6 +520,7 @@ function filterSourceFiles(layoutRoot, files, selection) {
   const toolDevices = new Map();
   const specFiles = new Map();
   const routeFiles = new Map();
+  const sourceDocs = new Map();
   const adapterFiles = [];
   const selectedRelativePaths = new Set();
 
@@ -547,6 +558,14 @@ function filterSourceFiles(layoutRoot, files, selection) {
 
     if (relativePathStartsWith(item.relativePath, ['adapters', 'routes'])) {
       routeFiles.set(fileName, item);
+      return;
+    }
+
+    if (relativePathStartsWith(item.relativePath, ['docs', 'sources'])) {
+      const refId = sourceRefIdFromRelativePath(item.relativePath);
+      if (refId) {
+        sourceDocs.set(refId, item);
+      }
       return;
     }
 
@@ -653,6 +672,26 @@ function filterSourceFiles(layoutRoot, files, selection) {
     }
     if (routeFiles.has(name)) {
       selectedRelativePaths.add(routeFiles.get(name).relativePath);
+    }
+  });
+
+  const selectedSourceRefs = new Set();
+  const collectProfileRefs = profile => {
+    if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+      return;
+    }
+
+    ensureArrayStrings(profile.source_refs).forEach(refId => selectedSourceRefs.add(refId));
+    ensureArrayStrings(profile.component_refs).forEach(refId => selectedSourceRefs.add(refId));
+  };
+
+  matchedFamilies.forEach(name => collectProfileRefs(toolFamilies.get(name).json));
+  matchedDevices.forEach(name => collectProfileRefs(toolDevices.get(name).json));
+  matchedChips.forEach(name => collectProfileRefs(chipProfiles.get(name).json));
+
+  selectedSourceRefs.forEach(refId => {
+    if (sourceDocs.has(refId)) {
+      selectedRelativePaths.add(sourceDocs.get(refId).relativePath);
     }
   });
 

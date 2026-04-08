@@ -100,6 +100,89 @@ function createToolSuggestionHelpers(deps) {
     };
   }
 
+  function refSortKey(entry) {
+    if (entry.kind === 'source' && entry.id.toLowerCase().includes('register')) {
+      return 0;
+    }
+    if (entry.kind === 'source') {
+      return 1;
+    }
+    return 2;
+  }
+
+  function refPriorityGroup(entry) {
+    if (entry.kind === 'source' && entry.id.toLowerCase().includes('register')) {
+      return 'register-summary';
+    }
+    if (entry.kind === 'source') {
+      return 'source-summary';
+    }
+    return 'component-summary';
+  }
+
+  function refPath(refId) {
+    const parts = String(refId || '')
+      .split('/')
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    return runtime.getProjectAssetRelativePath('docs', 'sources', ...parts) + '.md';
+  }
+
+  function buildRecommendedSources(chipProfile) {
+    if (!chipProfile) {
+      return [];
+    }
+
+    const profiles = resolveProfiles(chipProfile);
+    const collected = new Map();
+
+    function appendRefs(kind, refIds, scope, profileName) {
+      (Array.isArray(refIds) ? refIds : []).forEach(rawId => {
+        const id = String(rawId || '').trim();
+        if (!id) {
+          return;
+        }
+
+        const key = `${kind}:${id}`;
+        if (!collected.has(key)) {
+          collected.set(key, {
+            id,
+            kind,
+            path: refPath(id),
+            scopes: [],
+            profiles: []
+          });
+        }
+
+        const entry = collected.get(key);
+        if (!entry.scopes.includes(scope)) {
+          entry.scopes.push(scope);
+        }
+        if (profileName && !entry.profiles.includes(profileName)) {
+          entry.profiles.push(profileName);
+        }
+      });
+    }
+
+    appendRefs('source', chipProfile.source_refs, 'chip', chipProfile.name);
+    appendRefs('component', chipProfile.component_refs, 'chip', chipProfile.name);
+    appendRefs('source', profiles.device && profiles.device.source_refs, 'device', profiles.device && profiles.device.name);
+    appendRefs('component', profiles.device && profiles.device.component_refs, 'device', profiles.device && profiles.device.name);
+    appendRefs('source', profiles.family && profiles.family.source_refs, 'family', profiles.family && profiles.family.name);
+    appendRefs('component', profiles.family && profiles.family.component_refs, 'family', profiles.family && profiles.family.name);
+
+    return Array.from(collected.values())
+      .map(entry => ({
+        ...entry,
+        priority_group: refPriorityGroup(entry)
+      }))
+      .sort((left, right) => {
+        return refSortKey(left) - refSortKey(right) ||
+          left.id.localeCompare(right.id);
+      });
+  }
+
   function resolveBinding(toolName, deviceProfile, familyProfile) {
     const deviceBindings = (deviceProfile && deviceProfile.bindings) || {};
     if (deviceBindings[toolName]) {
@@ -449,8 +532,15 @@ function createToolSuggestionHelpers(deps) {
     const chipProfile = resolved && resolved.hardware ? resolved.hardware.chip_profile : null;
     const suggestedTools = (resolved && resolved.effective && resolved.effective.suggested_tools) || [];
     const toolRecommendations = (resolved && resolved.effective && resolved.effective.tool_recommendations) || [];
+    const recommendedSources = (resolved && resolved.effective && resolved.effective.recommended_sources) || [];
 
-    if (!suggestedTools.length && !toolRecommendations.length && !chipProfile && !(hardwareIdentity && hardwareIdentity.model)) {
+    if (
+      !suggestedTools.length &&
+      !toolRecommendations.length &&
+      !recommendedSources.length &&
+      !chipProfile &&
+      !(hardwareIdentity && hardwareIdentity.model)
+    ) {
       return output;
     }
 
@@ -469,16 +559,20 @@ function createToolSuggestionHelpers(deps) {
               vendor: chipProfile.vendor,
               family: chipProfile.family,
               package: chipProfile.package,
-              runtime_model: chipProfile.runtime_model
+              runtime_model: chipProfile.runtime_model,
+              source_refs: chipProfile.source_refs || [],
+              component_refs: chipProfile.component_refs || []
             }
           : null
       },
+      recommended_sources: recommendedSources,
       suggested_tools: suggestedTools,
       tool_recommendations: toolRecommendations
     };
   }
 
   return {
+    buildRecommendedSources,
     buildSuggestedTools,
     buildToolRecommendations,
     buildToolExecutionFromNext,
