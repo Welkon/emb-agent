@@ -10,34 +10,34 @@ const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirnam
 const ACTIONS = ['scan', 'plan', 'do', 'debug', 'review', 'verify', 'forensics', 'note'];
 
 const READ_HINTS = {
-  hardware_truth: '硬件真值来源: 数据手册 / 原理图 / 引脚映射',
-  registers: '寄存器与位定义: 芯片手册寄存器章节 / 头文件',
-  entry_points: '代码入口: reset / main loop / ISR 入口',
-  shared_state: '共享状态: ISR 与主循环共享变量 / 标志位',
-  tasks: '任务入口: task 创建点 / 主任务循环',
-  queues: '消息路径: queue / mailbox / event path',
-  mutexes: '同步原语: mutex / lock / critical section',
-  timers: '定时路径: software timer / hardware timer / callback',
-  connectivity_state: '联网状态: reconnect / offline / cloud sync 状态机',
-  ota_path: '升级路径: 版本校验 / 下载 / 切换 / 回滚'
+  hardware_truth: 'Hardware truth sources: datasheet / schematic / pin map',
+  registers: 'Registers and bit definitions: manual register chapter / headers',
+  entry_points: 'Code entry points: reset / main loop / ISR entry',
+  shared_state: 'Shared state: variables / flags shared by ISR and main loop',
+  tasks: 'Task entry points: task creation sites / main task loops',
+  queues: 'Message paths: queue / mailbox / event path',
+  mutexes: 'Synchronization primitives: mutex / lock / critical section',
+  timers: 'Timing paths: software timer / hardware timer / callback',
+  connectivity_state: 'Connectivity state: reconnect / offline / cloud sync state machine',
+  ota_path: 'Upgrade path: version check / download / switch / rollback'
 };
 
 const AGENT_PURPOSES = {
-  'hw-scout': '锁定硬件真值、寄存器、引脚、时序和板级约束',
-  'fw-doer': '执行最小代码或文档改动，并回传影响面与验证结果',
-  'bug-hunter': '按现象 -> 假设 -> 检查 -> 结果 -> 下一步收敛根因',
-  'sys-reviewer': '检查任务边界、并发路径、状态同步和恢复链路',
-  'release-checker': '检查升级、回滚、离线默认行为和发布闭环',
-  'arch-reviewer': '对选型、架构压力和量产风险做 pre-mortem 审查'
+  'hw-scout': 'Lock hardware truth, registers, pins, timing, and board-level constraints',
+  'fw-doer': 'Execute the smallest code or documentation change and report scope and verification results',
+  'bug-hunter': 'Converge on root cause by symptom -> hypothesis -> check -> result -> next step',
+  'sys-reviewer': 'Inspect task boundaries, concurrency paths, state sync, and recovery paths',
+  'release-checker': 'Inspect upgrade, rollback, offline defaults, and release closure',
+  'arch-reviewer': 'Run a pre-mortem review for selection, architecture pressure, and production risk'
 };
 
 const AGENT_OWNERSHIP = {
-  'hw-scout': '只负责事实侦察和真值定位，不直接落业务改动',
-  'fw-doer': '只负责已锁定改动面的实现与最小验证，不扩散重构',
-  'bug-hunter': '只负责调试闭环与假设排除，不替代最终实现',
-  'sys-reviewer': '只负责结构性审查，不把代码风格问题冒充结构问题',
-  'release-checker': '只负责发布闭环与恢复路径，不主导业务实现',
-  'arch-reviewer': '只负责系统级预审，不替代具体实现 agent'
+  'hw-scout': 'Own only fact-finding and truth-source localization; do not implement product changes directly',
+  'fw-doer': 'Own only implementation within the locked change surface plus minimal verification; do not expand into refactors',
+  'bug-hunter': 'Own only the debugging loop and hypothesis elimination; do not replace the final implementation',
+  'sys-reviewer': 'Own only structural review; do not present style issues as structural issues',
+  'release-checker': 'Own only release closure and recovery paths; do not drive product implementation',
+  'arch-reviewer': 'Own only system-level preflight review; do not replace the implementation agent'
 };
 
 function getProjectTruthFiles(resolved) {
@@ -122,11 +122,11 @@ function buildFocusOrder(resolved) {
   const context = buildContext(resolved);
 
   return runtime.unique([
-    context.focus ? `当前 focus: ${context.focus}` : '',
-    ...context.focusAreas.map(area => `场景关注: ${area}`),
-    ...context.lastFiles.map(file => `最近文件: ${file}`),
-    ...context.openQuestions.slice(0, 2).map(question => `未决问题: ${question}`),
-    ...context.knownRisks.slice(0, 2).map(risk => `已知风险: ${risk}`)
+    context.focus ? `Current focus: ${context.focus}` : '',
+    ...context.focusAreas.map(area => `Scenario focus: ${area}`),
+    ...context.lastFiles.map(file => `Recent file: ${file}`),
+    ...context.openQuestions.slice(0, 2).map(question => `Open question: ${question}`),
+    ...context.knownRisks.slice(0, 2).map(risk => `Known risk: ${risk}`)
   ]);
 }
 
@@ -138,56 +138,56 @@ function buildSafetyChecks(action, resolved) {
   ];
 
   if (action === 'scan') {
-    checks.push('先读真值来源，再做结论');
-    checks.push('区分文档明确说明与工程推断');
+    checks.push('Read truth sources before drawing conclusions');
+    checks.push('Separate explicit documentation from engineering inference');
   }
 
   if (action === 'do') {
-    checks.push('改动前先定位真实实现位置');
-    checks.push('默认使用更小、更浅、更直接的实现');
+    checks.push('Locate the real implementation site before changing anything');
+    checks.push('Default to the smallest, shallowest, most direct implementation');
     if (context.isBaremetal) {
-      checks.push('改 ISR 或共享状态前复查中断路径和时序窗口');
+      checks.push('Before changing ISR or shared state, re-check interrupt paths and timing windows');
     }
     if (context.isConnected) {
-      checks.push('改联网或升级行为前复查离线默认行为和恢复路径');
+      checks.push('Before changing connectivity or upgrade behavior, re-check offline defaults and recovery paths');
     }
   }
 
   if (action === 'plan') {
-    checks.push('只做任务级 micro-plan，不扩展成 phase planning');
-    checks.push('先明确真值来源、约束和验证，再排执行步骤');
+    checks.push('Only produce a task-level micro-plan; do not expand into phase planning');
+    checks.push('Clarify truth sources, constraints, and verification before sequencing steps');
     if (context.isBaremetal) {
-      checks.push('涉及引脚、寄存器、时序或 ISR 时必须先锁定硬件真值');
+      checks.push('When pins, registers, timing, or ISR are involved, lock hardware truth first');
     }
     if (context.isConnected) {
-      checks.push('涉及联网、升级或回滚时必须覆盖离线默认行为和恢复路径');
+      checks.push('When connectivity, upgrade, or rollback is involved, cover offline defaults and recovery paths');
     }
   }
 
   if (action === 'debug') {
-    checks.push('把假设收敛到 1 到 3 个高价值项');
-    checks.push('一次只验证一个假设，结果要能排除分支');
+    checks.push('Converge to 1 to 3 high-value hypotheses');
+    checks.push('Validate only one hypothesis at a time, and make the result eliminate branches');
   }
 
   if (action === 'review') {
-    checks.push('不是代码风格审查');
-    checks.push('区分已确认风险与待验证风险');
+    checks.push('This is not a code-style review');
+    checks.push('Separate confirmed risks from risks that still need verification');
   }
 
   if (action === 'verify') {
-    checks.push('区分 bench 实测、代码推断和文档假设');
-    checks.push('每个检查项都要给出 pass / fail / untested 结果');
-    checks.push('失败项必须能回写到 risk、question 或 note');
+    checks.push('Separate bench evidence, code inference, and document assumptions');
+    checks.push('Every check item must report pass / fail / untested');
+    checks.push('Failed items must be written back to risk, question, or note');
   }
 
   if (action === 'forensics') {
-    checks.push('只基于当前 session、handoff、报告和项目事实做结论');
-    checks.push('不要把取证结果直接冒充最终修复方案');
+    checks.push('Base conclusions only on the current session, handoff, reports, and project facts');
+    checks.push('Do not present forensics output as the final fix');
   }
 
   if (action === 'note') {
-    checks.push('只记录长期有效结论，不记录会话碎片');
-    checks.push('每条结论都要标注依据与未验证项');
+    checks.push('Record only durable conclusions, not session fragments');
+    checks.push('Every conclusion must note its basis and any unverified items');
   }
 
   return runtime.unique(checks);
@@ -352,36 +352,36 @@ function buildSpawnFallback(agentName, role) {
       ['agents', 'show', installedAgent]
     ),
     prompt_contract: [
-      `先读取 ${installedAgent} 的 agent 指令`,
-      '再结合 dispatch_contract 提供的 context_bundle 和 expected_output 执行',
-      '输出后由主线程整合，不直接替代主线程结论'
+      `Read the agent instructions for ${installedAgent} first`,
+      'Then execute with the context_bundle and expected_output from dispatch_contract',
+      'Let the main thread integrate the output instead of replacing the main-thread conclusion'
     ]
   };
 }
 
 function buildAgentCall(action, agentName, role, context) {
-  let when = '当前动作需要这个 agent 的专长时再调用';
+  let when = 'Call this agent only when the current action needs its specialization';
   let blocking = role === 'primary';
 
   if (agentName === 'hw-scout') {
     when = context.isBaremetal
-      ? '涉及寄存器、引脚、时序、板级连接或手册真值时先调用'
-      : '需要补硬件边界、接口定义或板级真值时调用';
+      ? 'Call it first when registers, pins, timing, board connections, or manual truth are involved'
+      : 'Call it when hardware boundaries, interface definitions, or board truth need to be filled in';
   } else if (agentName === 'fw-doer') {
-    when = '真实改动点已经锁定，需要执行最小实现时调用';
+    when = 'Call it when the real change point is locked and minimal implementation is needed';
   } else if (agentName === 'bug-hunter') {
-    when = '现象已知但根因不明，需要快速收敛假设时调用';
+    when = 'Call it when symptoms are known but root cause is unclear and hypotheses must be narrowed quickly';
     blocking = false;
   } else if (agentName === 'sys-reviewer') {
     when = context.isRtos || context.isConnected
-      ? '涉及 task / queue / lock / timer / reconnect / OTA 边界时优先调用'
-      : '需要做结构性边界审查时调用';
+      ? 'Prefer calling it when task / queue / lock / timer / reconnect / OTA boundaries are involved'
+      : 'Call it when a structural boundary review is needed';
     blocking = false;
   } else if (agentName === 'release-checker') {
-    when = '涉及升级、回滚、离线默认行为或发布闭环时调用';
+    when = 'Call it when upgrade, rollback, offline defaults, or release closure is involved';
     blocking = false;
   } else if (agentName === 'arch-reviewer') {
-    when = '进入芯片选型、PoC 转量产或失败预演时调用';
+    when = 'Call it when entering chip selection, PoC-to-production, or pre-mortem scenarios';
     blocking = false;
   }
 
@@ -393,8 +393,8 @@ function buildAgentCall(action, agentName, role, context) {
     agent: toInstalledAgentName(agentName),
     role,
     blocking,
-    purpose: AGENT_PURPOSES[agentName] || `支撑 ${action} 动作`,
-    ownership: AGENT_OWNERSHIP[agentName] || '只处理自己负责的输出面，不回退其他 agent 的工作',
+    purpose: AGENT_PURPOSES[agentName] || `Support the ${action} action`,
+    ownership: AGENT_OWNERSHIP[agentName] || 'Handle only the assigned output surface and do not revert other agents\' work',
     when,
     spawn_fallback: buildSpawnFallback(agentName, role)
   };
@@ -403,47 +403,47 @@ function buildAgentCall(action, agentName, role, context) {
 function buildAgentOutputExpectation(action, agentName, context) {
   if (agentName === 'hw-scout') {
     return runtime.unique([
-      '列出硬件真值来源、关键定位点和明确结论',
-      context.isBaremetal ? '补出寄存器、引脚、时序和共享状态约束' : '补出接口、电压域或板级边界约束'
+      'List hardware truth sources, key anchor points, and explicit conclusions',
+      context.isBaremetal ? 'Fill in register, pin, timing, and shared-state constraints' : 'Fill in interface, voltage-domain, or board-boundary constraints'
     ]);
   }
 
   if (agentName === 'fw-doer') {
     return [
-      '给出最小改动方案或已执行改动',
-      '说明影响范围、最小验证和剩余风险'
+      'Provide the minimal change plan or the change already executed',
+      'Explain impact scope, minimal verification, and residual risk'
     ];
   }
 
   if (agentName === 'bug-hunter') {
     return [
-      '按 symptom -> hypothesis -> check -> result -> next step 输出',
-      '只保留 1 到 3 个高价值假设'
+      'Output in symptom -> hypothesis -> check -> result -> next step format',
+      'Keep only 1 to 3 high-value hypotheses'
     ];
   }
 
   if (agentName === 'sys-reviewer') {
     return [
-      '区分已确认风险与待验证风险',
-      '说明任务边界、并发路径、状态同步或恢复链路问题'
+      'Separate confirmed risks from risks that still need verification',
+      'Explain task-boundary, concurrency-path, state-sync, or recovery-path issues'
     ];
   }
 
   if (agentName === 'release-checker') {
     return [
-      '说明升级、回滚、离线默认行为和发布闭环风险',
-      '补出发布前必须验证的检查项'
+      'Explain upgrade, rollback, offline-default, and release-closure risks',
+      'Add the checks that must be verified before release'
     ];
   }
 
   if (agentName === 'arch-reviewer') {
     return [
-      '给出三套方案、评价矩阵和 pre-mortem',
-      '区分事实、工程推断和经验警告'
+      'Provide three options, an evaluation matrix, and a pre-mortem',
+      'Separate facts, engineering inference, and experience-based warnings'
     ];
   }
 
-  return [`输出 ${action} 相关结论`];
+  return [`Output conclusions related to ${action}`];
 }
 
 function buildAgentContextBundle(action, resolved) {
@@ -477,7 +477,7 @@ function buildDispatchContract(action, resolved, primaryAgent, supportingAgents,
         ...buildAgentCall(action, primaryAgent, 'primary', context),
         expected_output: buildAgentOutputExpectation(action, primaryAgent, context),
         context_bundle: contextBundle,
-        start_when: recommended ? '立即启动' : '仅当当前线程不想 inline 时启动'
+        start_when: recommended ? 'Start immediately' : 'Start only when the current thread does not want to inline'
       }
     : null;
   const supporting = supportingAgents.map(agentName => ({
@@ -485,8 +485,8 @@ function buildDispatchContract(action, resolved, primaryAgent, supportingAgents,
     expected_output: buildAgentOutputExpectation(action, agentName, context),
     context_bundle: contextBundle,
     start_when: mode === 'parallel-recommended' || mode === 'primary-plus-supporting'
-      ? '可与主线程并行启动'
-      : '仅在主线程发现侧边问题时启动'
+      ? 'Can start in parallel with the main thread'
+      : 'Start only when the main thread finds a side issue'
   }));
 
   return {
@@ -499,14 +499,14 @@ function buildDispatchContract(action, resolved, primaryAgent, supportingAgents,
         .map(item => item.agent)
     ]),
     do_not_parallelize: [
-      '不要让多个可写 agent 改同一组文件',
-      '不要为了小任务把 orchestration 做重'
+      'Do not let multiple writable agents modify the same file set',
+      'Do not overbuild orchestration for a small task'
     ],
-    integration_owner: '当前主线程',
+    integration_owner: 'Current main thread',
     integration_steps: runtime.unique([
-      '主线程继续推进，不要空等所有子 agent',
-      '只在主路径被阻塞时等待关键子 agent',
-      `最终把子 agent 结果整合回 ${action} 的标准输出结构`
+      'Keep the main thread moving; do not sit idle waiting for every sub-agent',
+      'Wait for a critical sub-agent only when the main path is blocked',
+      `Integrate sub-agent results back into the standard output shape for ${action}`
     ]),
     primary,
     supporting
@@ -526,7 +526,7 @@ function buildAgentExecution(action, resolved, primaryAgentInput, supportingAgen
   let mode = 'inline-preferred';
   let recommended = false;
   let inlineOk = true;
-  let reason = '当前动作默认 inline 即可，不必主动展开子 agent 链路。';
+  let reason = 'The current action can stay inline by default; there is no need to expand the sub-agent chain proactively.';
   let suggestedWhen = [];
   let avoidWhen = [];
 
@@ -535,114 +535,114 @@ function buildAgentExecution(action, resolved, primaryAgentInput, supportingAgen
     mode = recommended ? 'primary-recommended' : 'inline-preferred';
     reason = recommended
       ? context.isRtos || context.isConnected
-        ? '任务/联网边界更复杂，先拆给侦察或审查 agent 收集真值更稳。'
-        : '当前存在未决问题，先让侦察 agent 锁定真值可以减少猜测。'
-      : 'scan 常常只是轻量读上下文，默认 inline 更省。';
+        ? 'Task/connectivity boundaries are more complex; splitting first to scouting or review agents is safer for gathering truth sources.'
+        : 'Open questions exist; letting a scouting agent lock truth sources first reduces guessing.'
+      : 'Scan is often just lightweight context reading, so inline is cheaper by default.';
     suggestedWhen = [
-      '未决问题已经出现，但真值来源还没锁定',
-      context.isBaremetal ? '需要先核对引脚、寄存器或时序要求' : '需要先核对任务、队列、锁或联网状态边界'
+      'Open questions already exist, but truth sources are not locked yet',
+      context.isBaremetal ? 'Pins, registers, or timing requirements need to be checked first' : 'Task, queue, lock, or connectivity-state boundaries need to be checked first'
     ];
     avoidWhen = [
-      '只是回读一个已知文件',
-      '真值来源和改动边界都已明确'
+      'This is only re-reading a known file',
+      'Truth sources and change boundaries are both clear'
     ];
   } else if (action === 'plan') {
     recommended = Boolean(primaryAgent);
     mode = context.isRtos || context.isConnected ? 'parallel-recommended' : 'primary-recommended';
     reason = context.isRtos || context.isConnected
-      ? 'RTOS / IoT 计划通常要把结构边界和发布约束拆开看，适合轻量并行。'
-      : 'baremetal micro-plan 更适合先由主 agent 锁定硬件真值和约束，再由主线程整合。';
+      ? 'RTOS / IoT planning usually benefits from separating structural boundaries from release constraints, which fits lightweight parallelism.'
+      : 'A baremetal micro-plan works better when the primary agent locks hardware truth and constraints first, then the main thread integrates.';
     suggestedWhen = [
-      '任务已经超出单文件小改动',
-      context.isConnected ? '要同时覆盖恢复、升级或回滚路径' : '要同时覆盖硬件约束和实现路径'
+      'The task already exceeds a small single-file change',
+      context.isConnected ? 'Recovery, upgrade, or rollback paths must all be covered' : 'Both hardware constraints and implementation paths must be covered'
     ];
     avoidWhen = [
-      'scan 后已经能直接 do',
-      '只是一次极小的注释或文档修订'
+      'After scan, it can already move directly into do',
+      'This is only a tiny comment or documentation update'
     ];
   } else if (action === 'do') {
     recommended = Boolean(primaryAgent) && (context.openQuestions.length > 0 || context.isConnected);
     mode = recommended ? 'primary-plus-supporting' : 'inline-preferred';
     reason = recommended
       ? context.isConnected
-        ? '联网或升级改动更容易漏恢复路径，适合让 supporting agent 并行复查。'
-        : '仍有未决问题时，先让 supporting agent 复查真值或风险，再落代码更稳。'
-      : 'do 默认应保持直接，不要为了小改动把执行链做重。';
+        ? 'Connectivity or upgrade changes are more likely to miss recovery paths, so a supporting agent is useful for parallel review.'
+        : 'When open questions still exist, let a supporting agent re-check truth sources or risks before landing code.'
+      : 'Do should stay direct by default; do not make the execution chain heavy for a small change.';
     suggestedWhen = [
-      '需要一个 agent 专注实现，另一个 agent 专注真值或发布复查',
-      '主线程希望一边整合方案，一边让子 agent 处理侧边问题'
+      'One agent should focus on implementation while another focuses on truth-source or release review',
+      'The main thread wants to integrate the plan while a sub-agent handles side issues'
     ];
     avoidWhen = [
-      '只有单文件小改动且真值已确认',
-      '多个可写 agent 会碰到同一组文件'
+      'Only a small single-file change remains and truth sources are already confirmed',
+      'Multiple writable agents would touch the same file set'
     ];
   } else if (action === 'debug') {
     recommended = Boolean(primaryAgent);
     mode = context.isRtos || context.isConnected ? 'parallel-recommended' : 'primary-recommended';
     reason = context.isRtos || context.isConnected
-      ? '复杂并发或联网问题适合让调试与结构复查并行推进。'
-      : '调试默认可先交给 bug-hunter 收敛假设，再由主线程决定改动。';
+      ? 'Complex concurrency or connectivity issues fit parallel debugging and structural review.'
+      : 'By default, debugging can go to bug-hunter first to narrow hypotheses, then the main thread decides the change.';
     suggestedWhen = [
-      '现象稳定但根因分支多',
-      context.isConnected ? '问题跨越任务、联网和恢复路径' : '问题跨越 ISR、主循环和时序窗口'
+      'Symptoms are stable but there are many root-cause branches',
+      context.isConnected ? 'The problem spans tasks, connectivity, and recovery paths' : 'The problem spans ISR, the main loop, and timing windows'
     ];
     avoidWhen = [
-      '根因已经非常明确，只差直接修复',
-      '没有足够现象证据支撑子 agent 调试'
+      'The root cause is already very clear; only the direct fix remains',
+      'There is not enough symptom evidence to justify sub-agent debugging'
     ];
   } else if (action === 'review') {
     recommended = Boolean(primaryAgent);
     mode = installedSupporting.length > 0 ? 'parallel-recommended' : 'primary-recommended';
-    reason = 'review 天然适合把结构、硬件边界和发布闭环拆给不同只读 agent。';
+    reason = 'Review naturally fits splitting structural, hardware-boundary, and release-closure concerns across different read-only agents.';
     suggestedWhen = [
-      '需要同时看模块边界、恢复路径和发布风险',
-      '希望把已确认风险与待验证风险分开收敛'
+      'Module boundaries, recovery paths, and release risks all need simultaneous review',
+      'You want confirmed risks and risks awaiting verification to converge separately'
     ];
     avoidWhen = [
-      '只是做一次单点实现检查',
-      '当前 scope 过小，不值得并行'
+      'This is only a single-point implementation check',
+      'The current scope is too small to justify parallelism'
     ];
   } else if (action === 'verify') {
     recommended = Boolean(primaryAgent);
     mode = context.isConnected || context.isRtos ? 'parallel-recommended' : 'primary-recommended';
     reason = context.isConnected || context.isRtos
-      ? '验证阶段往往同时覆盖行为、恢复链路和系统边界，适合并行收敛检查项。'
-      : 'baremetal 验证更像板级/时序收口，交给 verify agent 先列清单更稳。';
+      ? 'Verification often covers behavior, recovery chains, and system boundaries at the same time, which fits parallel convergence of check items.'
+      : 'Baremetal verification is more like board-level/timing closure; let a verify agent list the checklist first.';
     suggestedWhen = [
-      '刚完成 do，需要把实现闭环到 bench / 文档 / 风险面',
-      context.isBaremetal ? '需要复核寄存器、引脚、时序、睡眠唤醒或电源边界' : '需要复核任务边界、恢复链路和异常路径'
+      'A do step just finished; the implementation now needs closure across bench / docs / risk surface',
+      context.isBaremetal ? 'Registers, pins, timing, sleep/wake, or power boundaries need re-checking' : 'Task boundaries, recovery paths, and failure paths need re-checking'
     ];
     avoidWhen = [
-      '还没完成最小 do 或 debug 收敛',
-      '当前只有模糊想法，没有可验证对象'
+      'Minimal do or debug convergence has not been completed yet',
+      'The current state has only vague ideas and no verifiable target'
     ];
   } else if (action === 'forensics') {
     recommended = Boolean(primaryAgent);
     mode = context.isRtos || context.isConnected ? 'parallel-recommended' : 'primary-recommended';
     reason = context.isRtos || context.isConnected
-      ? '复杂恢复或漂移问题适合让取证与结构复查并行推进。'
-      : 'forensics 适合先让 bug-hunter 主导取证，再由主线程决定回到 debug、review 还是 do。';
+      ? 'Complex recovery or drift issues fit parallel forensics and structural review.'
+      : 'Forensics works well when bug-hunter leads evidence gathering first, then the main thread decides whether to return to debug, review, or do.';
     suggestedWhen = [
-      '问题反复出现，且 session / handoff / thread 已开始漂移',
-      '需要先收敛证据，再决定继续 debug、review 还是实现'
+      'The problem keeps recurring, and session / handoff / thread have started to drift',
+      'Evidence must converge first before deciding whether to continue with debug, review, or implementation'
     ];
     avoidWhen = [
-      '根因已经明确，只差直接修复',
-      '只是普通硬件公式或寄存器定位问题'
+      'The root cause is already clear; only the direct fix remains',
+      'This is only a normal hardware-formula or register-location problem'
     ];
   } else if (action === 'note') {
     recommended = Boolean(primaryAgent) && context.isConnected;
     mode = recommended ? 'primary-recommended' : 'inline-preferred';
     reason = recommended
-      ? '联网或发布约束更容易遗漏，必要时可让专门 agent 先补齐记录面。'
-      : 'note 主要是沉淀稳定结论，默认 inline 足够。';
+      ? 'Connectivity or release constraints are easier to miss; a specialized agent can fill the record surface first when needed.'
+      : 'Note is mainly for recording stable conclusions, so inline is usually enough.';
     suggestedWhen = [
-      '需要先把发布或联网约束补齐后再落文档',
-      '记录内容横跨硬件真值和发布限制'
+      'Release or connectivity constraints must be filled in before writing documentation',
+      'The recorded content spans hardware truth and release constraints'
     ];
     avoidWhen = [
-      '只是追加一个稳定结论',
-      '会话还处于探索阶段，结论尚未稳定'
+      'This only appends one stable conclusion',
+      'The session is still exploratory and the conclusion is not stable yet'
     ];
   }
 
@@ -656,14 +656,14 @@ function buildAgentExecution(action, resolved, primaryAgentInput, supportingAgen
     primary_agent: installedPrimary,
     supporting_agents: installedSupporting,
     wait_strategy: recommended
-      ? '只在主路径被阻塞时等待子 agent 结果，其他情况下继续本线程工作'
-      : '默认不等待子 agent，除非当前步骤被其结果阻塞',
+      ? 'Wait for sub-agent results only when the main path is blocked; otherwise keep working in the main thread'
+      : 'Do not wait for sub-agents by default unless the current step is blocked on their result',
     execution_rules: runtime.unique([
-      '不要同时让多个可写 agent 修改同一组文件',
-      '主线程负责整合结论，不把 orchestration 本身做重',
+      'Do not let multiple writable agents modify the same file set',
+      'The main thread owns integration of conclusions and should not make orchestration itself heavy',
       context.isBaremetal
-        ? '涉及寄存器、引脚、时序或板级真值时，优先先调 emb-hw-scout'
-        : '涉及 task、queue、lock、timer、reconnect 或 OTA 边界时，优先先调结构审查 agent'
+        ? 'When registers, pins, timing, or board truth are involved, call emb-hw-scout first'
+        : 'When task, queue, lock, timer, reconnect, or OTA boundaries are involved, call the structural review agent first'
     ]),
     suggested_when: runtime.unique(suggestedWhen),
     avoid_when: runtime.unique(avoidWhen),
@@ -680,67 +680,67 @@ function buildSuggestedSteps(action, resolved) {
   const steps = [];
 
   if (action === 'scan') {
-    steps.push('先锁定硬件真值来源和主入口');
-    steps.push(context.isBaremetal ? '再读 ISR、共享状态和时序路径' : '再读任务、队列、锁和定时器边界');
+    steps.push('Lock hardware truth sources and the main entry first');
+    steps.push(context.isBaremetal ? 'Then read ISR, shared-state, and timing paths' : 'Then read task, queue, lock, and timer boundaries');
     if (context.lastFiles[0]) {
-      steps.push(`回读最近文件 ${context.lastFiles[0]}`);
+      steps.push(`Re-read the recent file ${context.lastFiles[0]}`);
     }
     if (context.openQuestions[0]) {
-      steps.push(`围绕未决问题收敛: ${context.openQuestions[0]}`);
+      steps.push(`Converge around the open question: ${context.openQuestions[0]}`);
     }
-    steps.push('输出 relevant_files / key_facts / open_questions / next_reads');
+    steps.push('Output relevant_files / key_facts / open_questions / next_reads');
   }
 
   if (action === 'do') {
     if (context.lastFiles.length === 0) {
-      steps.push('先补一次最小 scan，确认真实改动点');
+      steps.push('Add a minimal scan first to confirm the real change point');
     }
-    steps.push('确认改动前置真值与约束');
-    steps.push('执行最小改动');
-    steps.push('给出最小验证与剩余风险');
+    steps.push('Confirm prerequisite truth sources and constraints for the change');
+    steps.push('Execute the minimal change');
+    steps.push('Report minimal verification and residual risk');
   }
 
   if (action === 'plan') {
-    steps.push('先明确目标和影响边界');
-    steps.push('锁定真值来源、约束和主要风险');
-    steps.push('拆成最小可执行步骤');
-    steps.push('给出执行前验证和执行后验证');
+    steps.push('Clarify the goal and impact boundary first');
+    steps.push('Lock truth sources, constraints, and primary risks');
+    steps.push('Split into the smallest executable steps');
+    steps.push('Provide pre-execution and post-execution verification');
   }
 
   if (action === 'debug') {
-    steps.push('先固定 symptom');
-    steps.push('收敛到 1 到 3 个高价值假设');
-    steps.push('按 Check -> Result 逐个排除');
-    steps.push('只保留最可能的 next step');
+    steps.push('Pin down the symptom first');
+    steps.push('Converge to 1 to 3 high-value hypotheses');
+    steps.push('Eliminate one by one using Check -> Result');
+    steps.push('Keep only the most likely next step');
   }
 
   if (action === 'review') {
-    steps.push('先界定 review scope');
-    steps.push('按 review axes 做结构性检查');
-    steps.push('输出 findings 和 required checks');
+    steps.push('Define the review scope first');
+    steps.push('Perform structural checks by review axis');
+    steps.push('Output findings and required checks');
     if (context.isConnected) {
-      steps.push('补查升级、回滚、离线默认行为');
+      steps.push('Add checks for upgrade, rollback, and offline defaults');
     }
   }
 
   if (action === 'verify') {
-    steps.push('先列出本轮实现或结论对应的验证对象');
-    steps.push(context.isBaremetal ? '按上电、时序、引脚、寄存器、睡眠/低压等检查面逐项验证' : '按任务、恢复、异常路径、联网/升级行为逐项验证');
-    steps.push('每项给出 pass / fail / untested，并记录证据');
-    steps.push('失败项回写到 risk、question 或 note');
+    steps.push('List the verification targets for this round of implementation or conclusions first');
+    steps.push(context.isBaremetal ? 'Verify item by item across power-up, timing, pins, registers, sleep/low-voltage, and related surfaces' : 'Verify item by item across tasks, recovery, failure paths, and connectivity/upgrade behavior');
+    steps.push('Give pass / fail / untested for each item and record the evidence');
+    steps.push('Write failed items back to risk, question, or note');
   }
 
   if (action === 'forensics') {
-    steps.push('先固定当前问题描述、最新 thread 和最近一次 forensics 摘要');
-    steps.push('只收敛最关键证据，不直接跳到修复');
-    steps.push('明确下一步应该回到 debug、review 还是 do');
+    steps.push('Pin down the current problem statement, latest thread, and latest forensics summary first');
+    steps.push('Converge only the most critical evidence; do not jump straight to a fix');
+    steps.push('Clarify whether the next step should return to debug, review, or do');
   }
 
   if (action === 'note') {
-    steps.push('先选定要写入的固定文档');
-    steps.push('只记录稳定结论与依据');
-    steps.push('标记未验证项');
-    steps.push('避免写入会话碎片或 planning 过程');
+    steps.push('Select the target durable document first');
+    steps.push('Record only stable conclusions and their basis');
+    steps.push('Mark unverified items');
+    steps.push('Avoid writing session fragments or planning process notes');
   }
 
   return steps;
@@ -783,29 +783,29 @@ function buildDefaultOpenQuestions(resolved) {
 
   if (context.isBaremetal) {
     return runtime.unique([
-      '硬件真值来源是否已经确认到引脚、寄存器、时序级别？',
-      '哪些 ISR 与主循环共享状态最值得先复查？',
-      context.isSensor ? '采样窗口、滤波或稳定时间是否已被明确约束？' : ''
+      'Have hardware truth sources been confirmed down to pins, registers, and timing?',
+      'Which ISR and main-loop shared states are most worth re-checking first?',
+      context.isSensor ? 'Have sampling windows, filtering, or settling time been constrained explicitly?' : ''
     ]);
   }
 
   return runtime.unique([
-    '任务、队列、锁、定时器的边界是否已经定位清楚？',
-    '联网状态机与离线默认行为是否一致？',
-    context.isConnected ? 'OTA / 回滚 / 升级恢复路径是否已经被明确？' : ''
+    'Have the boundaries of tasks, queues, locks, and timers been located clearly?',
+    'Are the connectivity state machine and offline defaults consistent?',
+    context.isConnected ? 'Have OTA / rollback / upgrade-recovery paths been defined clearly?' : ''
   ]);
 }
 
 function buildNextReads(resolved) {
   const context = buildContext(resolved);
   const hintedReads = buildPreferredReadKeys(resolved).map(key => READ_HINTS[key] || key);
-  const truthFiles = getProjectTruthFiles(resolved).map(file => `项目真值层: ${file}`);
+  const truthFiles = getProjectTruthFiles(resolved).map(file => `Project truth layer: ${file}`);
 
   return runtime.unique([
     ...truthFiles,
     ...hintedReads,
-    context.lastFiles[0] ? `回读最近文件: ${context.lastFiles[0]}` : '',
-    context.knownRisks[0] ? `复查风险来源: ${context.knownRisks[0]}` : ''
+    context.lastFiles[0] ? `Re-read recent file: ${context.lastFiles[0]}` : '',
+    context.knownRisks[0] ? `Re-check risk source: ${context.knownRisks[0]}` : ''
   ]);
 }
 
@@ -814,16 +814,16 @@ function buildHypotheses(resolved) {
 
   if (context.isBaremetal) {
     return runtime.unique([
-      'ISR 与主循环共享状态更新顺序错误',
-      '时序窗口或寄存器配置不满足当前行为',
-      context.isSensor ? '采样稳定时间、滤波或校准路径不正确' : '引脚复用或板级连接理解有误'
+      'Update order for ISR and main-loop shared state is incorrect',
+      'Timing windows or register configuration do not satisfy current behavior',
+      context.isSensor ? 'Sampling settling time, filtering, or calibration path is incorrect' : 'Pin mux or board-connection understanding is incorrect'
     ]).slice(0, 3);
   }
 
   return runtime.unique([
-    '任务优先级、锁或队列边界导致行为异常',
-    '联网状态机、重连或缓存一致性存在缺口',
-    context.isConnected ? '升级恢复、离线默认行为或回滚链路不完整' : '定时器或后台任务交互路径错误'
+    'Task priority, lock, or queue boundaries are causing abnormal behavior',
+    'There is a gap in the connectivity state machine, reconnect logic, or cache consistency',
+    context.isConnected ? 'Upgrade recovery, offline defaults, or rollback paths are incomplete' : 'Timer or background-task interaction path is incorrect'
   ]).slice(0, 3);
 }
 
@@ -832,16 +832,16 @@ function buildChecks(resolved) {
 
   if (context.isBaremetal) {
     return runtime.unique([
-      '检查 ISR 置位/清标志与主循环消费顺序',
-      '核对关键寄存器、引脚复用和时序要求',
-      context.isSensor ? '核对采样窗口、稳定时间、滤波或校准流程' : '核对板级连接与输出路径'
+      'Check ISR set/clear flag handling and main-loop consumption order',
+      'Check critical registers, pin muxing, and timing requirements',
+      context.isSensor ? 'Check sampling windows, settling time, filtering, or calibration flow' : 'Check board connections and output paths'
     ]);
   }
 
   return runtime.unique([
-    '检查任务边界、阻塞点和优先级',
-    '检查 queue / lock / timer 的交互路径',
-    context.isConnected ? '检查 reconnect / offline / OTA / rollback 闭环' : '检查后台状态机与超时恢复'
+    'Check task boundaries, blocking points, and priorities',
+    'Check interaction paths among queue / lock / timer',
+    context.isConnected ? 'Check reconnect / offline / OTA / rollback closure' : 'Check background state machines and timeout recovery'
   ]);
 }
 
@@ -861,9 +861,9 @@ function buildRequiredChecks(resolved) {
 
   return runtime.unique([
     ...(resolved.effective.guardrails || []).map(item => `guardrail: ${item}`),
-    context.isBaremetal ? '复查 ISR、共享状态与 ROM/RAM 预算' : '复查任务边界、阻塞与优先级',
-    context.isConnected ? '复查离线默认行为、升级恢复与回滚' : '',
-    context.isSensor ? '复查采样窗口、稳定时间与测量更新链路' : ''
+    context.isBaremetal ? 'Re-check ISR, shared state, and ROM/RAM budget' : 'Re-check task boundaries, blocking, and priority',
+    context.isConnected ? 'Re-check offline defaults, upgrade recovery, and rollback' : '',
+    context.isSensor ? 'Re-check sampling windows, settling time, and measurement-update flow' : ''
   ]);
 }
 
@@ -871,12 +871,12 @@ function buildVerificationChecklist(resolved) {
   const context = buildContext(resolved);
 
   return runtime.unique([
-    context.isBaremetal ? '确认主入口、ISR 与共享状态行为符合预期' : '确认任务边界、调度与同步行为符合预期',
-    context.isBaremetal ? '确认关键寄存器、引脚复用和时序窗口没有回归' : '确认队列、锁、超时和恢复链路没有回归',
-    context.isBaremetal ? '确认上电、复位、睡眠唤醒、低压或电源边界行为' : '',
-    context.isConnected ? '确认离线默认行为、重连、升级恢复与回滚链路' : '',
-    context.isSensor ? '确认采样窗口、稳定时间、滤波、校准和测量更新链路' : '',
-    '确认异常输入、边界条件和失败路径处理结果'
+    context.isBaremetal ? 'Confirm main entry, ISR, and shared-state behavior match expectations' : 'Confirm task boundaries, scheduling, and synchronization behavior match expectations',
+    context.isBaremetal ? 'Confirm there is no regression in critical registers, pin muxing, and timing windows' : 'Confirm there is no regression in queues, locks, timeouts, and recovery paths',
+    context.isBaremetal ? 'Confirm behavior for power-up, reset, sleep wake, low voltage, and power boundaries' : '',
+    context.isConnected ? 'Confirm offline defaults, reconnect, upgrade recovery, and rollback paths' : '',
+    context.isSensor ? 'Confirm sampling windows, settling time, filtering, calibration, and measurement-update flow' : '',
+    'Confirm handling for abnormal inputs, boundary conditions, and failure paths'
   ]);
 }
 
@@ -887,18 +887,18 @@ function buildVerificationEvidenceTargets(resolved) {
     : [];
 
   return runtime.unique([
-    ...truthFiles.map(file => `项目真值层: ${file}`),
-    ...(resolved.session.last_files || []).slice(0, 3).map(file => `最近文件: ${file}`),
-    ...suggestedSources.slice(0, 2).map(item => `资料摘要: ${item.path}`)
+    ...truthFiles.map(file => `Project truth layer: ${file}`),
+    ...(resolved.session.last_files || []).slice(0, 3).map(file => `Recent file: ${file}`),
+    ...suggestedSources.slice(0, 2).map(item => `Source summary: ${item.path}`)
   ]);
 }
 
 function buildVerificationResultTemplate() {
   return [
-    'PASS: 已验证通过',
-    'FAIL: 已复现失败或发现回归',
-    'WARN: 发现风险但证据未闭环',
-    'UNTESTED: 尚未 bench / 仿真 / 实机验证'
+    'PASS: verified',
+    'FAIL: reproduced failure or found regression',
+    'WARN: risk found but evidence is incomplete',
+    'UNTESTED: not yet bench / simulated / hardware verified'
   ];
 }
 
@@ -906,12 +906,12 @@ function buildRecordableItems(resolved) {
   const context = buildContext(resolved);
 
   return runtime.unique([
-    '硬件真值',
-    'bring-up 结论',
-    '已知限制',
-    '调试结论',
-    context.isConnected ? '联网与发布约束' : '',
-    context.isSensor ? '采样、校准与低功耗约束' : ''
+    'Hardware truth',
+    'Bring-up conclusions',
+    'Known limits',
+    'Debug conclusions',
+    context.isConnected ? 'Connectivity and release constraints' : '',
+    context.isSensor ? 'Sampling, calibration, and low-power constraints' : ''
   ]);
 }
 
@@ -924,20 +924,20 @@ function buildPlanGoal(resolved) {
 
   if (context.isBaremetal) {
     return context.isSensor
-      ? '先锁定硬件真值与采样路径，再执行最小改动'
-      : '先锁定硬件真值与关键时序，再执行最小改动';
+      ? 'Lock hardware truth and the sampling path first, then execute the minimal change'
+      : 'Lock hardware truth and critical timing first, then execute the minimal change';
   }
 
   return context.isConnected
-    ? '先锁定任务边界、联网状态和恢复路径，再执行最小改动'
-    : '先锁定任务边界和共享状态，再执行最小改动';
+    ? 'Lock task boundaries, connectivity state, and recovery paths first, then execute the minimal change'
+    : 'Lock task boundaries and shared state first, then execute the minimal change';
 }
 
 function buildPlanTruthSources(resolved) {
   const context = buildContext(resolved);
   const fileReads = [
-    context.lastFiles[0] ? `当前最相关文件: ${context.lastFiles[0]}` : '',
-    context.lastFiles[1] ? `次相关文件: ${context.lastFiles[1]}` : ''
+    context.lastFiles[0] ? `Most relevant file: ${context.lastFiles[0]}` : '',
+    context.lastFiles[1] ? `Second most relevant file: ${context.lastFiles[1]}` : ''
   ];
 
   if (context.preferences.truth_source_mode === 'code_first') {
@@ -959,9 +959,9 @@ function buildPlanConstraints(resolved) {
   return runtime.unique([
     ...(resolved.profile.resource_priority || []).map(item => `resource: ${item}`),
     ...(resolved.effective.guardrails || []).map(item => `guardrail: ${item}`),
-    context.isBaremetal ? '约束: 保持 ISR 薄、主循环扁平、避免额外抽象' : '',
-    context.isConnected ? '约束: 不能破坏离线默认行为、重连和恢复路径' : '',
-    context.isSensor ? '约束: 不能破坏采样窗口、稳定时间和测量更新链路' : ''
+    context.isBaremetal ? 'Constraint: keep ISR thin, main loop flat, and avoid extra abstraction' : '',
+    context.isConnected ? 'Constraint: do not break offline defaults, reconnect, or recovery paths' : '',
+    context.isSensor ? 'Constraint: do not break sampling windows, settling time, or measurement-update flow' : ''
   ]);
 }
 
@@ -970,9 +970,9 @@ function buildPlanRisks(resolved) {
 
   return runtime.unique([
     ...(resolved.session.known_risks || []),
-    context.isBaremetal ? 'ISR / 主循环共享状态竞争' : '任务边界、阻塞和优先级风险',
-    context.isConnected ? '离线行为、重连、一致性或回滚链路回归' : '',
-    context.isSensor ? '采样稳定时间、滤波或校准路径回归' : ''
+    context.isBaremetal ? 'ISR / main-loop shared-state race' : 'Task-boundary, blocking, and priority risks',
+    context.isConnected ? 'Regression in offline behavior, reconnect, consistency, or rollback paths' : '',
+    context.isSensor ? 'Regression in sampling settling time, filtering, or calibration paths' : ''
   ]);
 }
 
@@ -981,24 +981,24 @@ function buildPlanSteps(resolved) {
   const steps = [];
 
   if (context.lastFiles.length === 0) {
-    steps.push('先执行最小 scan，确认真实改动点');
+    steps.push('Run a minimal scan first to confirm the real change point');
   }
 
-  steps.push('确认目标涉及的硬件真值、代码入口和影响边界');
-  steps.push('把改动拆成单个最小提交面，不同时展开多个风险面');
-  steps.push('先改最关键路径，再补最小验证');
+  steps.push('Confirm the hardware truth, code entry points, and impact boundary involved in the goal');
+  steps.push('Split the change into a single minimal submission surface instead of expanding multiple risk surfaces at once');
+  steps.push('Modify the most critical path first, then add minimal verification');
 
   if (context.isBaremetal) {
-    steps.push('优先修改寄存器、引脚、ISR 或主循环共享状态的真实落点');
+    steps.push('Prefer modifying the true landing points for registers, pins, ISR, or main-loop shared state');
   } else {
-    steps.push('优先修改任务边界、队列、锁、定时器或联网状态机的真实落点');
+    steps.push('Prefer modifying the true landing points for task boundaries, queues, locks, timers, or connectivity state machines');
   }
 
   if (context.isConnected) {
-    steps.push('执行前后都复查离线默认行为、恢复路径和升级链路');
+    steps.push('Re-check offline defaults, recovery paths, and upgrade chains both before and after execution');
   }
 
-  steps.push('完成后再决定是否需要 note 沉淀长期结论');
+  steps.push('After completion, decide whether a note is needed to record a durable conclusion');
   return steps;
 }
 
@@ -1006,13 +1006,13 @@ function buildPlanVerification(resolved) {
   const context = buildContext(resolved);
 
   return runtime.unique([
-    context.isBaremetal ? '验证 ISR、主循环、共享状态和时序窗口' : '验证任务边界、阻塞点和并发路径',
-    context.isConnected ? '验证离线默认行为、重连、升级恢复和回滚路径' : '',
-    context.isSensor ? '验证采样窗口、稳定时间、滤波和测量更新路径' : '',
+    context.isBaremetal ? 'Verify ISR, main loop, shared state, and timing windows' : 'Verify task boundaries, blocking points, and concurrency paths',
+    context.isConnected ? 'Verify offline defaults, reconnect, upgrade recovery, and rollback paths' : '',
+    context.isSensor ? 'Verify sampling windows, settling time, filtering, and measurement-update paths' : '',
     context.preferences.verification_mode === 'strict'
-      ? '验证失败路径、异常输入、超时恢复和边界条件'
+      ? 'Verify failure paths, abnormal inputs, timeout recovery, and boundary conditions'
       : '',
-    '验证影响面之外没有引入新的已知风险'
+    'Verify that no new known risks were introduced outside the impact surface'
   ]);
 }
 
@@ -1078,10 +1078,10 @@ function buildDoOutput(resolved) {
   return {
     chosen_agent: choosePrimaryAgent('do', resolved),
     prerequisites: runtime.unique([
-      context.lastFiles.length === 0 ? '先补一次最小 scan，确认真实改动点' : '',
-      '确认硬件真值或实现真值来源',
-      context.focus ? `围绕当前 focus 执行: ${context.focus}` : '',
-      context.isConnected ? '确认离线默认行为、升级恢复和一致性约束' : ''
+      context.lastFiles.length === 0 ? 'Add a minimal scan first to confirm the real change point' : '',
+      'Confirm hardware truth sources or implementation truth sources',
+      context.focus ? `Execute around the current focus: ${context.focus}` : '',
+      context.isConnected ? 'Confirm offline defaults, upgrade recovery, and consistency constraints' : ''
     ]),
     safety_checks: buildSafetyChecks('do', resolved),
     execution_brief: {
@@ -1099,7 +1099,7 @@ function buildDebugOutput(resolved) {
   return {
     hypotheses: buildHypotheses(resolved),
     checks: buildChecks(resolved),
-    next_step: steps[0] || '先固定问题现象',
+    next_step: steps[0] || 'Pin down the current symptom first',
     chosen_agent: choosePrimaryAgent('debug', resolved),
     scheduler: buildSchedule('debug', resolved)
   };
@@ -1142,7 +1142,7 @@ function buildVerifyOutput(resolved) {
     checklist: buildVerificationChecklist(resolved),
     evidence_targets: buildVerificationEvidenceTargets(resolved),
     result_template: buildVerificationResultTemplate(),
-    next_step: steps[0] || '先列出本轮待验证对象',
+    next_step: steps[0] || 'List this round\'s verification targets first',
     scheduler: buildSchedule('verify', resolved),
     verification_focus: runtime.unique([
       context.isBaremetal ? 'board-behavior' : 'system-behavior',
@@ -1157,16 +1157,31 @@ function buildForensicsOutput(resolved) {
   const diagnostics = resolved.session.diagnostics && resolved.session.diagnostics.latest_forensics
     ? resolved.session.diagnostics.latest_forensics
     : {};
+  const latestExecutor = resolved.session.diagnostics && resolved.session.diagnostics.latest_executor
+    ? resolved.session.diagnostics.latest_executor
+    : {};
   const activeThread = resolved.session.active_thread || {};
   const steps = buildSuggestedSteps('forensics', resolved);
 
   return {
-    problem: diagnostics.problem || resolved.session.focus || '当前问题仍在漂移，需先做取证',
+    problem:
+      diagnostics.problem ||
+      (latestExecutor && ['failed', 'error'].includes(latestExecutor.status)
+        ? `Latest executor ${latestExecutor.name || 'unknown'} ${latestExecutor.status}`
+        : '') ||
+      resolved.session.focus ||
+      'The current problem is still drifting; forensics should come first',
     evidence_sources: runtime.unique([
-      diagnostics.report_file ? `最近一次 forensics: ${diagnostics.report_file}` : '',
-      activeThread.name ? `当前活动 thread: ${activeThread.name}` : '',
-      ...(resolved.session.last_files || []).slice(0, 2).map(file => `最近文件: ${file}`),
-      ...getProjectTruthFiles(resolved).map(file => `项目真值层: ${file}`)
+      diagnostics.report_file ? `Latest forensics: ${diagnostics.report_file}` : '',
+      latestExecutor && latestExecutor.name
+        ? `Latest executor: ${latestExecutor.name} ${latestExecutor.status || 'unknown'}${
+          latestExecutor.exit_code === null ? '' : `, exit=${latestExecutor.exit_code}`
+        }`
+        : '',
+      latestExecutor && latestExecutor.stderr_preview ? `Executor stderr summary: ${latestExecutor.stderr_preview}` : '',
+      activeThread.name ? `Current active thread: ${activeThread.name}` : '',
+      ...(resolved.session.last_files || []).slice(0, 2).map(file => `Recent file: ${file}`),
+      ...getProjectTruthFiles(resolved).map(file => `Project truth layer: ${file}`)
     ]),
     findings_template: [
       'Observed symptom',
@@ -1174,7 +1189,7 @@ function buildForensicsOutput(resolved) {
       'Most likely branch',
       'Next recommended action'
     ],
-    next_step: steps[0] || '先固定问题描述和关键证据',
+    next_step: steps[0] || 'Pin down the problem statement and key evidence first',
     chosen_agent: choosePrimaryAgent('forensics', resolved),
     scheduler: buildSchedule('forensics', resolved)
   };
@@ -1185,9 +1200,9 @@ function buildNoteOutput(resolved) {
     target_docs: resolved.effective.note_targets || [],
     recordable_items: buildRecordableItems(resolved),
     excluded_items: [
-      '临时猜测',
-      '会话碎片',
-      'phase / planning 过程'
+      'Temporary guess',
+      'Session fragment',
+      'phase / planning process'
     ],
     chosen_agent: choosePrimaryAgent('note', resolved),
     scheduler: buildSchedule('note', resolved)

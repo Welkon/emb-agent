@@ -38,8 +38,8 @@ default_agents:
   - sys-reviewer
   - release-checker
 arch_review_triggers:
-  - 架构预审
-  - 系统预审
-  - 选型评审
-  - 原型转量产
+  - architecture preflight
+  - system preflight
+  - selection review
+  - prototype to production
   - architecture review

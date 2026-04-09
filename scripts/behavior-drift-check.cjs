@@ -10,22 +10,22 @@ const suites = [
   {
     id: 'behavior-regression',
     file: path.join(repoRoot, 'tests', 'behavior-regression.test.cjs'),
-    hint: '核心 next 路由契约可能漂移（health/plan/forensics/tool-first）。'
+    hint: 'Core next-routing contracts may have drifted (health/plan/forensics/tool-first).'
   },
   {
     id: 'context-hook',
     file: path.join(repoRoot, 'tests', 'context-hook.test.cjs'),
-    hint: 'context hook 的告警节流或严重度升级逻辑可能漂移。'
+    hint: 'Context-hook warning throttling or severity-escalation logic may have drifted.'
   },
   {
     id: 'session-start-hook',
     file: path.join(repoRoot, 'tests', 'session-start-hook.test.cjs'),
-    hint: 'session start 提醒链路可能漂移（handoff/task/workspace/update）。'
+    hint: 'Session-start reminder flow may have drifted (handoff/task/workspace/update).'
   },
   {
     id: 'plugin-governance',
     file: path.join(repoRoot, 'tests', 'plugin-governance.test.cjs'),
-    hint: '插件治理约束可能漂移（外部 registry schema / adapter 导出契约）。'
+    hint: 'Plugin-governance constraints may have drifted (external registry schema / adapter export contracts).'
   }
 ];
 

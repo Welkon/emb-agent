@@ -34,7 +34,7 @@ test('scan save appends scan snapshot to hardware logic doc', () => {
       '--question',
       'Need pin map confirmation from schematic',
       '--read',
-      'docs/PMS150G文档.md'
+      'docs/PMS150G-manual.md'
     ]);
 
     const content = fs.readFileSync(path.join(tempProject, 'docs', 'HARDWARE-LOGIC.md'), 'utf8');
@@ -44,11 +44,11 @@ test('scan save appends scan snapshot to hardware logic doc', () => {
     assert.match(content, /Mapped current firmware entry and truth sources/);
     assert.match(content, /main\.c is current entry reference/);
     assert.match(content, /Need pin map confirmation from schematic/);
-    assert.match(content, /docs\/PMS150G文档\.md/);
+    assert.match(content, /docs\/PMS150G-manual\.md/);
     assert.match(content, /profile=baremetal-8bit/);
     assert.match(hwTruth, /main\.c is current entry reference/);
     assert.match(hwTruth, /Need pin map confirmation from schematic/);
-    assert.match(hwTruth, /docs\/PMS150G文档\.md/);
+    assert.match(hwTruth, /docs\/PMS150G-manual\.md/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

@@ -399,29 +399,29 @@ function createToolSuggestionHelpers(deps) {
 
   function buildRecommendationReason(tool, bindingInfo, trust) {
     const trustSummary = trust
-      ? `可信度 ${trust.score}/100 (${trust.grade})`
+      ? `Trust ${trust.score}/100 (${trust.grade})`
       : '';
 
     if (tool.status === 'draft-adapter') {
       const base = bindingInfo.binding
-        ? '已生成 draft route 和 profile binding，但 route 里还没有真实公式实现。'
-        : '已生成 draft route，但当前还没有对应 binding；先补 device/family bindings。';
+        ? 'A draft route and profile binding have been generated, but the route still lacks a real formula implementation.'
+        : 'A draft route has been generated, but there is no matching binding yet; add device/family bindings first.';
       return trustSummary ? `${base} ${trustSummary}` : base;
     }
 
     if (tool.status !== 'ready') {
       const base = bindingInfo.binding
-        ? '已识别到 profile binding，但当前 runtime 还没有外部 adapter，先安装或同步 adapter 仓库。'
-        : '当前只有抽象工具规格；需要外部 adapter 才能真正执行该工具。';
+        ? 'A profile binding was identified, but runtime still has no external adapter; install or sync the adapter repository first.'
+        : 'Only the abstract tool spec exists right now; an external adapter is required to execute the tool.';
       return trustSummary ? `${base} ${trustSummary}` : base;
     }
 
     if (!bindingInfo.binding) {
-      const base = '外部 adapter 已存在，但当前 chip/device/family 还没有声明可执行 binding。';
+      const base = 'An external adapter exists, but the current chip/device/family still does not declare an executable binding.';
       return trustSummary ? `${base} ${trustSummary}` : base;
     }
 
-    const base = `已识别 ${bindingInfo.source} binding，可直接补齐缺失参数后执行。`;
+    const base = `${bindingInfo.source} binding has been identified and can be executed after filling in the missing parameters.`;
     return trustSummary ? `${base} ${trustSummary}` : base;
   }
 

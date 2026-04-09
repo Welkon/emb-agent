@@ -1,32 +1,32 @@
 goals:
-  - "完成 SC8F072 最小功能闭环，确认定时、PWM、比较器、ADC 四条主路径。"
+  - "Complete the minimum functional closure for SC8F072 and confirm the four main paths: timer, PWM, comparator, and ADC."
 
 features:
-  - "能够稳定输出目标 PWM 频率和占空比，并固定实际输出引脚。"
-  - "能够输出稳定系统节拍或中断周期（TMR0 或 TMR2）。"
-  - "能够完成至少一路 comparator 阈值判定并给出寄存器配置。"
-  - "能够把 ADC 码值与电压换算闭环到固定参考源。"
+  - "Can output the target PWM frequency and duty cycle stably and fix the actual output pin."
+  - "Can output a stable system tick or interrupt period (TMR0 or TMR2)."
+  - "Can complete at least one comparator threshold decision path and provide the register configuration."
+  - "Can close the loop between ADC code values and voltage conversion against a fixed reference-source."
 
 constraints:
-  - "TMR0 结果必须按软件重装载模型核算，不把它当硬件自动重装计时器。"
-  - "PWM0~PWM3 共用周期寄存器，跨通道调整不能破坏已工作的通道。"
-  - "comparator 阈值配置必须保留 RBIAS_H/RBIAS_L + LVDS 组合证据。"
-  - "ADC 换算必须固定 reference-source，不允许混用口径。"
+  - "TMR0 results must be evaluated using the software-reload model rather than treated as a hardware auto-reload timer."
+  - "PWM0~PWM3 share the period register, so cross-channel adjustments must not break already working channels."
+  - "Comparator threshold configuration must retain evidence for the RBIAS_H/RBIAS_L + LVDS combination."
+  - "ADC conversion must use a fixed reference-source; mixed conventions are not allowed."
 
 acceptance:
-  - "给出可执行的 timer/pwm/comparator/adc 工具结果并落到项目真值层。"
-  - "关键 pin mux 冲突已被识别并写入硬件逻辑文档。"
-  - "至少一条 ADC 电压换算链路与 bench 或预期值对齐。"
+  - "Provide executable timer/pwm/comparator/adc tool results and write them into the project truth layer."
+  - "Key pin-mux conflicts are identified and written into the hardware-logic document."
+  - "At least one ADC voltage-conversion path matches bench results or expected values."
 
 failure_policy:
-  - "当定时误差异常时，先核查时钟源、分频和重装载模型，再改业务逻辑。"
-  - "当 PWM 波形异常时，先核查输出组选择与共享周期寄存器，不直接改控制算法。"
-  - "当 ADC/comparator 与预期不符时，先核查参考源与阈值口径，不直接判为硬件故障。"
+  - "When timing error is abnormal, check clock source, prescaler, and reload model before changing application logic."
+  - "When PWM waveform behavior is abnormal, check output-group selection and shared period registers before changing control algorithms."
+  - "When ADC/comparator behavior does not match expectations, check reference sources and threshold conventions before calling it a hardware fault."
 
 unknowns:
-  - "系统最终主时钟与低功耗模式切换策略。"
-  - "最终 PWM 通道分配与功率级需求。"
-  - "ADC 关键采样通道和采样窗口时序。"
+  - "The final system main-clock and low-power mode switching strategy."
+  - "The final PWM channel allocation and power-stage requirements."
+  - "Critical ADC sampling channels and sampling-window timing."
 
 sources:
   - "docs/SC8F072-user-manual.pdf"

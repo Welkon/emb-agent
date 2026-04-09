@@ -17,7 +17,7 @@ function readMarkdownFiles(dir) {
 
 function extractFrontmatter(content, file) {
   const match = content.match(/^---\n([\s\S]*?)\n---\n/);
-  assert.ok(match, `${file} 缺少有效 frontmatter`);
+  assert.ok(match, `${file} is missing valid frontmatter`);
   return match[1];
 }
 
@@ -41,7 +41,7 @@ function extractList(frontmatter, key) {
 
 test('all agent markdown files require name description tools and color', () => {
   const files = readMarkdownFiles(agentsDir);
-  assert.ok(files.length > 0, 'agents/ 不能为空');
+  assert.ok(files.length > 0, 'agents/ cannot be empty');
 
   for (const file of files) {
     const fullPath = path.join(agentsDir, file);
@@ -51,16 +51,16 @@ test('all agent markdown files require name description tools and color', () => 
     const tools = extractScalar(frontmatter, 'tools');
     const color = extractScalar(frontmatter, 'color');
 
-    assert.ok(name, `${file} 缺少 name`);
-    assert.ok(description, `${file} 缺少 description`);
-    assert.ok(tools, `${file} 缺少 tools`);
-    assert.ok(color, `${file} 缺少 color`);
+    assert.ok(name, `${file} is missing name`);
+    assert.ok(description, `${file} is missing description`);
+    assert.ok(tools, `${file} is missing tools`);
+    assert.ok(color, `${file} is missing color`);
   }
 });
 
 test('all emb commands declare allowed-tools with at least one entry', () => {
   const files = readMarkdownFiles(commandsDir);
-  assert.ok(files.length > 0, 'commands/emb 不能为空');
+  assert.ok(files.length > 0, 'commands/emb cannot be empty');
 
   for (const file of files) {
     const fullPath = path.join(commandsDir, file);
@@ -69,8 +69,8 @@ test('all emb commands declare allowed-tools with at least one entry', () => {
     const description = extractScalar(frontmatter, 'description');
     const allowedTools = extractList(frontmatter, 'allowed-tools');
 
-    assert.ok(name, `${file} 缺少 name`);
-    assert.ok(description, `${file} 缺少 description`);
-    assert.ok(allowedTools.length > 0, `${file} 缺少 allowed-tools 条目`);
+    assert.ok(name, `${file} is missing name`);
+    assert.ok(description, `${file} is missing description`);
+    assert.ok(allowedTools.length > 0, `${file} is missing allowed-tools entries`);
   }
 });

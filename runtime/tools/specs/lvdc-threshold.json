@@ -3,7 +3,7 @@
   "kind": "calculator",
   "status": "abstract",
   "sample": false,
-  "description": "低压检测阈值、档位编码和状态位解读工具。emb-agent core 只保留抽象规格，不内置任何器件级 LVDC 实现。",
+  "description": "Low-voltage detection threshold, level encoding, and status-bit interpretation tool. emb-agent core keeps only the abstract spec and does not include any device-level LVDC implementation.",
   "inputs": [
     "target threshold voltage",
     "lvdc range and step",
@@ -20,8 +20,8 @@
   "device_profiles": [],
   "source_modules": [],
   "notes": [
-    "这类工具适合做离散阈值档位搜索，而不是模拟电源系统。",
-    "中断/唤醒支持与否必须由外部 adapter 明确说明。",
-    "厂商/芯片绑定不要进入 emb-agent core。"
+    "This kind of tool is suitable for searching discrete threshold levels rather than simulating a power system.",
+    "Interrupt / wake-up support must be explicitly documented by an external adapter.",
+    "Vendor/chip bindings must not enter emb-agent core."
   ]
 }

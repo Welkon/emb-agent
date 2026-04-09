@@ -1,71 +1,71 @@
 # emb-agent runtime
 
-这是安装到宿主配置目录下的 emb-agent 运行时本体。
-当前正式支持 `Codex` 与 `Claude Code`。
+This directory contains the installed emb-agent runtime that lives under the host configuration directory.
+Officially supported hosts are `Codex` and `Claude Code`.
 
-## 宿主约定
+## Host Conventions
 
 - `Codex`
-  - `runtime-home = ~/.codex`
-  - `host-config = config.toml`
+  `runtime-home = ~/.codex`
+  `host-config = config.toml`
 - `Claude Code`
-  - `runtime-home = ~/.claude`
-  - `host-config = settings.json`
+  `runtime-home = ~/.claude`
+  `host-config = settings.json`
 
-统一运行入口：
+Unified runtime entry:
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs
 ```
 
-统一脚本入口：
+Unified script entry:
 
 ```bash
 node <runtime-home>/emb-agent/scripts/init-project.cjs
 ```
 
-项目状态默认写到：
+Project state is stored by default at:
 
 ```text
 <runtime-home>/state/emb-agent/projects/
 ```
 
-## 目录职责
+## Directory Roles
 
 - `bin/`
-  主 CLI 入口。
+  Main CLI entry.
 - `hooks/`
-  宿主 hook 脚本，例如 `SessionStart` 和上下文卫生提醒。
+  Host hook scripts such as `SessionStart` and context-hygiene reminders.
 - `lib/`
-  runtime 内部库，包括 session、handoff、调度、dispatch、host/path 解析。
+  Internal runtime libraries, including session, handoff, scheduling, dispatch, and host/path resolution.
 - `scripts/`
-  runtime 辅助脚本，例如 `init-project`、`attach-project`、`ingest-doc`、`adapter-derive`。
+  Runtime helper scripts such as `init-project`, `attach-project`, `ingest-doc`, and `adapter-derive`.
 - `templates/`
-  固定输出模板。
+  Fixed output templates.
 - `skills/`
-  runtime 内置的非命令型 skill，例如 `using-emb-agent` 这类轻量路由 skill。
+  Built-in non-command skills such as the lightweight routing skill `using-emb-agent`.
 - `profiles/`
-  内置项目画像。
+  Built-in project profiles.
 - `packs/`
-  内置场景 pack。
+  Built-in scenario packs.
 - `tools/`
-  core 抽象工具 spec。
+  Core abstract tool specs.
 - `chips/`
-  core 抽象 chip registry。
+  Core abstract chip registry.
 - `extensions/`
-  可选扩展根目录；仅在 `adapter sync`、`adapter derive`、`template fill` 或首次写扩展 registry 时创建。
+  Optional extension root. It is created only when `adapter sync`, `adapter derive`, `template fill`, or the first extension-registry write is executed.
 - `state/default-session.json`
-  默认 session 模板。
+  Default session template.
 - `config.json`
-  runtime 默认配置。
+  Default runtime configuration.
 - `HOST.json`
-  安装时写入的宿主元数据，供运行时解析真实 host/path。
+  Host metadata written during installation and used to resolve the real host/path layout.
 - `VERSION`
-  已安装 runtime 版本。
+  Installed runtime version.
 
-## 最小维护命令
+## Minimum Maintenance Commands
 
-初始化或接入项目：
+Initialize or attach a project:
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs init
@@ -74,32 +74,32 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs next
 node <runtime-home>/emb-agent/bin/emb-agent.cjs dispatch next
 ```
 
-如果是外设公式、引脚或寄存器定位问题，优先看 `next` / `dispatch next` 里是否已经给出 `tool_recommendation` 或 `tool_execution`。
+For peripheral-formula, pin, or register-location problems, check whether `next` / `dispatch next` already provides `tool_recommendation` or `tool_execution`.
 
-如果 `health` / `next` / `adapter status` 已经带出 `adapter_health`、`quality_overview` 或 tool `trust`，先按 `recommended_action` 补 adapter 缺口，再决定是否把工具结果当成真值。
+If `health` / `next` / `adapter status` already exposes `adapter_health`, `quality_overview`, or tool `trust`, follow `recommended_action` first before treating tool output as ground truth.
 
-上下文收口：
+Close down context:
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs pause
 node <runtime-home>/emb-agent/bin/emb-agent.cjs resume
 ```
 
-查看运行时更新状态：
+Check runtime update state:
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs update
 ```
 
-查看 runtime 帮助：
+Show runtime help:
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 ```
 
-## 维护边界
+## Maintenance Boundaries
 
-- 这里是安装态 runtime，不是项目交付物。
-- 项目侧可变内容应写回仓库内的 `./.emb-agent/` 与 `./docs/`。
-- 宿主相关差异优先放进 `HOST.json + runtime-host.cjs`，不要重新散落写死 `~/.codex` 或 `~/.claude`。
-- 用户流程说明优先放主 [README](../README.md) 和安装后的 `emb-help`，这里不要再复制一整份用户手册。
+- This is installed runtime state, not a project deliverable.
+- Project-specific mutable content should be written back into `./.emb-agent/` and `./docs/` inside the repository.
+- Host-specific differences should live in `HOST.json + runtime-host.cjs` instead of scattered hard-coded references to `~/.codex` or `~/.claude`.
+- User-facing workflow guidance belongs in the main [README](../README.md) and the installed `emb-help` command, not in a duplicated runtime manual here.

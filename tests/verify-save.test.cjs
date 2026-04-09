@@ -9,6 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 
 test('verify save creates verification report and appends structured entry', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-verify-'));
@@ -26,6 +27,23 @@ test('verify save creates verification report and appends structured entry', () 
     fs.mkdirSync(path.join(tempProject, 'src'), { recursive: true });
     fs.writeFileSync(path.join(tempProject, 'src', 'power.c'), 'void power(void) {}\n', 'utf8');
     cli.main(['last-files', 'add', 'src/power.c']);
+    const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+    const statePaths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), tempProject, runtimeConfig);
+    const session = runtime.readJson(statePaths.sessionPath);
+    session.diagnostics.latest_executor = {
+      name: 'bench',
+      status: 'ok',
+      risk: 'high',
+      exit_code: 0,
+      duration_ms: 1800,
+      ran_at: '2026-04-09T11:00:00.000Z',
+      cwd: '.',
+      argv: ['node', 'scripts/bench-runner.cjs', '--case', 'wakeup'],
+      evidence_hint: ['docs/VERIFICATION.md'],
+      stdout_preview: 'bench pass wakeup path',
+      stderr_preview: ''
+    };
+    runtime.writeJson(statePaths.sessionPath, session);
     cli.main([
       'verify',
       'save',
@@ -54,6 +72,10 @@ test('verify save creates verification report and appends structured entry', () 
     assert.match(content, /Next command: plan/);
     assert.match(content, /Tool recommendation: -/);
     assert.match(content, /Adapter health: -/);
+    assert.match(content, /Latest executor: bench ok, exit=0, risk=high, duration=1800ms/);
+    assert.match(content, /Latest executor argv: node scripts\/bench-runner\.cjs --case wakeup/);
+    assert.match(content, /Latest executor evidence hint: docs\/VERIFICATION\.md/);
+    assert.match(content, /Latest executor stdout preview: bench pass wakeup path/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

@@ -1,75 +1,75 @@
 # {{PROJECT_NAME}} MCU Foundation Checklist
 
-> 目标：用最小成本把“看起来能跑”变成“有手册真值支撑的可维护实现”。
-> 原则：先手册，后工具，再实现（manual-first）。
-> 更新时间：{{DATE}}
+> Goal: turn “it seems to run” into a maintainable implementation backed by manual-grounded truth at minimal cost.
+> Principle: manuals first, tools second, implementation third (manual-first).
+> Last updated: {{DATE}}
 
-## 0. 资料入口
+## 0. Source Entry Points
 
-- MCU 主手册（User Manual）：
-- Datasheet（电气特性）：
-- 封装/引脚表：
-- 参考设计或官方例程：
-- 当前结论是否已写入 `.emb-agent/hw.yaml` / `.emb-agent/req.yaml`：
+- MCU User Manual:
+- Datasheet (electrical characteristics):
+- Package / pin table:
+- Reference design or official examples:
+- Have current conclusions been written into `.emb-agent/hw.yaml` / `.emb-agent/req.yaml`?
 
 ## 1. CPU
 
-- [ ] 架构/字长已确认（8-bit / 32-bit，指令集系列）
-- [ ] 中断入口与调用约束已确认（ISR 约束、栈使用风险）
-- [ ] 算力边界已确认（关键路径是否会超预算）
-- [ ] 与当前实现相关的关键寄存器已定位到手册章节
+- [ ] Architecture / word width confirmed (8-bit / 32-bit, ISA family)
+- [ ] Interrupt entry and calling constraints confirmed (ISR limits, stack-usage risk)
+- [ ] Compute budget boundaries confirmed (whether critical paths exceed budget)
+- [ ] Key registers relevant to the current implementation are located in the manual
 
-关键事实（写结论，不写猜测）：
-
-- 
-
-## 2. 时钟
-
-- [ ] 主时钟来源已确认（内部 RC / 外部晶振）
-- [ ] 分频链路已确认（系统时钟、外设时钟）
-- [ ] 关键外设时基已确认（Timer/PWM/UART/I2C 等）
-- [ ] 时序约束已确认（最小/最大周期、抖动容限）
-
-关键事实：
+Key facts (write conclusions, not guesses):
 
 - 
 
-## 3. 存储
+## 2. Clock
 
-- [ ] Flash/RAM 预算已确认
-- [ ] 中断栈与主循环/任务栈预算已确认
-- [ ] 持久化与升级空间（如需要）已确认
-- [ ] 边界策略已确认（越界、碎片、失败回退）
+- [ ] Primary clock source confirmed (internal RC / external crystal)
+- [ ] Clock division chain confirmed (system clock / peripheral clock)
+- [ ] Time bases for key peripherals confirmed (Timer/PWM/UART/I2C, etc.)
+- [ ] Timing constraints confirmed (min/max periods, jitter tolerance)
 
-关键事实：
-
-- 
-
-## 4. 引脚
-
-- [ ] 电源/复位/调试引脚已确认
-- [ ] 业务信号引脚映射已确认并落到 `hw.yaml`
-- [ ] 引脚复用冲突已排查（调试口/时钟口/外设口）
-- [ ] 电平域与上拉下拉策略已确认
-
-关键事实：
+Key facts:
 
 - 
 
-## 5. 中断
+## 3. Memory
 
-- [ ] 中断源已列全（外部、定时器、通信、比较器等）
-- [ ] 优先级策略已确认（谁可抢占谁）
-- [ ] ISR 仅保留最小动作，重活已下放
-- [ ] 主循环/任务与 ISR 共享状态保护策略已确认
+- [ ] Flash/RAM budget confirmed
+- [ ] Interrupt stack and main-loop/task stack budgets confirmed
+- [ ] Persistence and upgrade space confirmed (if needed)
+- [ ] Boundary strategy confirmed (overflow, fragmentation, failure fallback)
 
-关键事实：
+Key facts:
 
 - 
 
-## 6. 下一步（执行顺序）
+## 4. Pins
 
-1. 把以上关键事实落入 `.emb-agent/hw.yaml` / `.emb-agent/req.yaml`
-2. 对可计算项优先执行 `tool run ...`
-3. 对缺资料项优先 `ingest doc -> doc diff/apply`
-4. 再进入实现、调试与验证
+- [ ] Power / reset / debug pins confirmed
+- [ ] Application signal pin mapping confirmed and written into `hw.yaml`
+- [ ] Pin-mux conflicts checked (debug / clock / peripheral pins)
+- [ ] Voltage domains and pull-up/pull-down strategy confirmed
+
+Key facts:
+
+- 
+
+## 5. Interrupts
+
+- [ ] Interrupt sources listed completely (external / timer / communication / comparator, etc.)
+- [ ] Priority strategy confirmed (who can preempt whom)
+- [ ] ISR keeps only minimal actions; heavy work is delegated
+- [ ] Shared-state protection between main loop/tasks and ISR confirmed
+
+Key facts:
+
+- 
+
+## 6. Next Steps (Execution Order)
+
+1. Write the key facts above into `.emb-agent/hw.yaml` / `.emb-agent/req.yaml`
+2. Run `tool run ...` first for items that can be calculated
+3. For missing references, use `ingest doc -> doc diff/apply` first
+4. Then move on to implementation, debugging, and verification

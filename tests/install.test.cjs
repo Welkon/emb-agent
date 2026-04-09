@@ -132,13 +132,13 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(plan.scheduler.primary_agent, 'hw-scout');
     assert.equal(plan.agent_execution.primary_agent, 'emb-hw-scout');
     assert.equal(plan.agent_execution.mode, 'primary-recommended');
-    assert.ok(plan.steps.some(item => item.includes('最小 scan')));
+    assert.ok(plan.steps.some(item => item.includes('minimal scan')));
     assert.equal(scan.scheduler.primary_agent, 'hw-scout');
     assert.equal(scan.agent_execution.primary_agent, 'emb-hw-scout');
-    assert.ok(scan.next_reads.some(item => item.includes('硬件真值来源')));
+    assert.ok(scan.next_reads.some(item => item.includes('Hardware truth sources')));
     assert.equal(resume.summary.resume_source, 'handoff');
     assert.ok(resume.next_actions.some(item => item.includes('handoff')));
-    assert.ok(resume.next_actions.some(item => item.includes('建议命令')));
+    assert.ok(resume.next_actions.some(item => item.includes('Suggested command')));
     assert.equal(nextAfterPause.next.command, 'scan');
     assert.ok(nextAfterPause.handoff.next_action.includes('resume irq race first'));
 
@@ -146,11 +146,11 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['last-files', 'add', 'main.c']);
     installedCli.main(['prefs', 'set', 'truth_source_mode', 'code_first']);
     const codeFirstPlan = installedCli.buildActionOutput('plan');
-    assert.equal(codeFirstPlan.truth_sources[0], '当前最相关文件: main.c');
+    assert.equal(codeFirstPlan.truth_sources[0], 'Most relevant file: main.c');
 
     installedCli.main(['prefs', 'set', 'verification_mode', 'strict']);
     const strictPlan = installedCli.buildActionOutput('plan');
-    assert.ok(strictPlan.verification.some(item => item.includes('失败路径')));
+    assert.ok(strictPlan.verification.some(item => item.includes('failure paths')));
 
     installedCli.main(['risk', 'add', 'irq race']);
     const nextWithRisk = installedCli.buildNextContext();
@@ -163,7 +163,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['question', 'clear']);
     installedCli.main(['risk', 'clear']);
     installedCli.main(['prefs', 'reset']);
-    installedCli.main(['focus', 'set', '芯片选型与PoC转量产预审']);
+    installedCli.main(['focus', 'set', 'chip selection and PoC to production preflight']);
     const nextWithArchReview = installedCli.buildNextContext();
     assert.equal(nextWithArchReview.next.command, 'arch-review');
     assert.equal(nextWithArchReview.next.skill, '$emb-arch-review');
@@ -171,7 +171,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const archReviewContext = installedCli.buildArchReviewContext();
     assert.equal(archReviewContext.suggested_agent, 'emb-arch-reviewer');
     assert.equal(archReviewContext.recommended_template.name, 'architecture-review');
-    assert.ok(archReviewContext.trigger_patterns.includes('芯片选型'));
+    assert.ok(archReviewContext.trigger_patterns.includes('chip selection'));
     const tools = installedCli.toolCatalog.listToolSpecs(runtimeRoot);
     assert.ok(tools.some(item => item.name === 'timer-calc'));
     assert.ok(tools.some(item => item.name === 'pwm-calc'));
@@ -212,7 +212,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const nextAfterDo = installedCli.buildNextContext();
     assert.equal(nextAfterDo.next.command, 'verify');
     const verify = installedCli.buildActionOutput('verify');
-    assert.ok(verify.checklist.some(item => item.includes('异常输入')));
+    assert.ok(verify.checklist.some(item => item.includes('abnormal inputs')));
     assert.ok(verify.result_template.some(item => item.includes('UNTESTED')));
 
     installedCli.main([

@@ -1,640 +1,85 @@
-<div align="center">
-
 # emb-agent
 
-**一套面向嵌入式项目的轻量 agent 系统。**
+A lightweight agent framework for embedded projects.
 
-**解决嵌入式项目里的上下文膨胀、手册重复阅读、芯片知识散落、工具能力不可复用。**
+emb-agent is designed for firmware work where hardware truth, timing, register behavior, datasheets, and board constraints matter as much as code. The framework stays intentionally light: it uses truth files, short command flows, adapter-based chip extensions, and context handoff instead of forcing every task through a heavy planning system.
 
-```bash
-npx emb-agent --global
-```
+## Quick Start
 
-**支持安装到 `Codex` 与 `Claude Code`，也支持全局或当前项目本地安装。**
+Install emb-agent into your host runtime, initialize the current project, and then use `next` as the default entry point. For hardware-formula or register-triage problems, prefer `next`, `dispatch next`, or `orchestrate` so the runtime can expose `tool_recommendation` and `tool_execution`. When context grows heavy, use `pause -> clear -> resume`.
 
-[快速开始](#快速开始) · [工作原理](#工作原理) · [命令](#命令) · [配置](#配置) · [发布](./RELEASE.md)
+## Recommended Flow
 
-</div>
-
----
-
-## 我为什么做这个
-
-嵌入式项目和普通应用开发不一样。
-
-你面对的不是纯代码，而是：
-
-- 芯片资料
-- 引脚和电路连接
-- 时序约束
-- 外设公式
-- 中断与主循环行为
-- RTOS 任务关系
-- 量产前必须反复确认的硬件真值
-
-问题是，大多数 AI 开发流都不擅长这类工作。
-
-它们容易反复读整本手册，反复问同样的问题，或者把项目做成很厚的流程系统。对小 MCU、裸机、brownfield 工程，这会很快变成负担。
-
-`emb-agent` 的目标不是把流程做重，而是把复杂性放进系统里，把用户看到的入口尽量压轻：
-
-- 用 `init` 接入现有工程
-- 用 `health` 先判断当前状态是不是可信
-- 如果 `health.quickstart` 已出现，就按它给的最短闭环走，通常是 `adapter bootstrap -> next`
-- 用 `hw.yaml / req.yaml` 沉淀真值
-- 用 `next` 给出下一步
-- 对公式 / 外设 / 引脚 / 寄存器问题，优先让 `next -> dispatch/orchestrate` 给出 `tool_recommendation / tool_execution`
-- 用 `pause / resume` 解决 clear context
-- 用 adapter 承载芯片差异和计算工具
-
----
-
-## 适合谁
-
-适合这些项目：
-
-- 8 位 / 32 位 MCU 固件
-- 裸机 `main loop + ISR`
-- RTOS 工程
-- IoT / connected appliance
-- 已由厂商 IDE、CubeMX、SDK、历史仓库初始化过的 brownfield 工程
-
-适合这些人：
-
-- 不想每次都重新喂整本手册的人
-- 想把 MCU / board / timing / power / review 事实沉下来的人
-- 想要轻量化 agent 流程，而不是厚 planning 系统的人
-- 想把芯片工具能力做成可复用 adapter 的人
-
----
-
-## 快速开始
-
-要求：
-
-- Node.js `>= 18`
-
-全局安装：
-
-```bash
-npx emb-agent --global
-```
-
-显式安装到 Claude Code：
-
-```bash
-npx emb-agent --claude --global
-```
-
-本地安装：
-
-```bash
-npx emb-agent --local
-```
-
-自定义 runtime 配置目录：
-
-```bash
-npx emb-agent --global --config-dir /path/to/runtime-home
-```
-
-如果 npm 包暂时不可用，也可以直接从 Git 安装：
-
-```bash
-npx github:Welkon/emb-agent --global
-```
-
-验证安装：
-
-- 在安装后的运行时里调用 `emb-help`
-- 或直接运行 runtime CLI，例如：
-  `node <runtime-home>/emb-agent/bin/emb-agent.cjs help`
-  其中 `Codex -> ~/.codex`，`Claude Code -> ~/.claude`
-
-安装完成后：
-
-- runtime 本体在 `<runtime-home>/emb-agent/`
-- 会话状态在 `<runtime-home>/state/emb-agent/projects/`
-- `Codex -> ~/.codex`
-- `Claude Code -> ~/.claude`
-
-首次接入外部 adapters 的最短路径：
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs init
-# 或显式写入开发者身份与运行时
-node <runtime-home>/emb-agent/bin/emb-agent.cjs init --codex -u your-name
-
-# 先把当前项目的 MCU 真值写进 .emb-agent/hw.yaml
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter bootstrap
-```
-
-说明：
-
-- `adapter sync` 现在默认优先读取 `.emb-agent/hw.yaml`
-- 如果能识别出当前 `chip/device/family`，只会同步命中的最小 adapter 子集
-- 如果 `hw.yaml` 还没补全，才回退为全量同步
-- `adapter bootstrap` / `adapter sync` / `adapter status` 现在都会带一份 `quality` 视图，用来判断当前 adapter 是可信、可用还是仍停留在 draft
-
-### 保持更新
-
-需要更新时，直接重新安装：
-
-```bash
-npx emb-agent --global
-```
-
-当前运行时会在 `SessionStart` 后台检查新版本，并在检测到以下情况时给出提醒：
-
-- 有新版本可更新
-- hooks / runtime / skills 版本不一致，属于 `stale install`
-
-也可以显式查看：
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs update
-```
-
-### 第一次进入项目
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs init
-node <runtime-home>/emb-agent/bin/emb-agent.cjs health
-node <runtime-home>/emb-agent/bin/emb-agent.cjs next
-```
-
-如果需要把手册或 PDF 先转进项目缓存：
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
-```
-
-如果输出里已经带 `apply_ready`，直接执行它，再回到：
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs next
-```
-
-如果后续继续当前项目：
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs next
-```
-
-如果准备 clear context：
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs pause
-node <runtime-home>/emb-agent/bin/emb-agent.cjs resume
-```
-
----
-
-## 工作原理
-
-### 1. 接入项目
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs init
-```
-
-这一步会：
-
-- 创建 `.emb-agent/project.json`
-- 创建 `.emb-agent/.developer`（开发者身份标识）
-- 创建 `.emb-agent/hw.yaml`
-- 创建 `.emb-agent/req.yaml`
-- 创建项目级缓存目录
-- 按当前 profile / pack 创建 `docs/` 下的固定骨架文档
-- 为已有工程建立最小工作上下文
-- 自动把 `.emb-agent/.developer` 写入项目 `.gitignore`
-
-现在项目内长期资产统一放在可见目录 `./.emb-agent/`，典型包括：
-
-- `./.emb-agent/hw.yaml`
-- `./.emb-agent/req.yaml`
-- `./.emb-agent/workspace/`
-- `./.emb-agent/specs/`
-- `./.emb-agent/tasks/`
-- `./.emb-agent/threads/`
-- `./.emb-agent/cache/docs/`
-- `./.emb-agent/adapters/`
-
-默认 profile / pack 下，通常会创建：
-
-- `docs/HARDWARE-LOGIC.md`
-- `docs/DEBUG-NOTES.md`
-
-`init` 是唯一官方初始化入口。
-
----
-
-### 2. 沉淀真值
-
-嵌入式项目最重要的是“已经确认的事实”。
-
-`emb-agent` 把这层拆成两类：
-
-- `hw.yaml`
-  MCU、板级连接、引脚、外设、约束、unknowns
-- `req.yaml`
-  目标、功能、约束、验收、failure mode
-
-文档导入后，可以继续把稳定信息吸收到真值层，而不是每次重新读整本资料。
-
-常用入口：
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest hardware --truth "PWM 输出走 PA3" --source docs/xxx.md
-node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest requirements --constraint "上电 100ms 内完成初始化" --source docs/req.md
-node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU.pdf --provider mineru --kind datasheet --to hardware
-```
-
-如果 `ingest doc` 返回了 `apply_ready`，优先直接执行这条 CLI，再继续 `next`。
-
----
-
-### 3. 进入轻量主流程
-
-日常主线不是厚 planning，而是：
-
-1. `next`
-2. `scan`
-3. `plan`
-4. `do`
-5. `debug`
-6. `review`
-
-`next` 会根据当前项目状态、真值层、最近文件、风险和问题，给出最合适的下一步。
-
-如果当前问题更像定时器 / PWM / ADC / 比较器 / 引脚 / 寄存器公式定位，`next` 不只会建议 `scan`，还会带首选 `tool_recommendation`。这时再看 `dispatch next` 或 `orchestrate`：
-
-- 若 `tool_execution.status = ready`，先跑 `tool run ...`
-- 再继续 `scan` 的阅读、整合和落盘
-- 不要跳过工具草案直接空谈公式
-
-如果你只记一条链路，就记这个：
+If you are new to emb-agent, use this order first:
 
 1. `init`
-2. `ingest`
-3. `next`
-4. 按需进入 `scan / plan / do / debug / review`
-5. 上下文过重时 `pause -> clear -> resume`
-
----
-
-### 4. 用 workspace 固定长期工作面
-
-如果 `task` 是局部问题，`workspace` 就是当前主工作面。
-
-例如：
-
-- 电源域 bring-up
-- 某块板卡验证
-- 升级链路联调
-- 某个无线/传感器子系统
-
-常用入口：
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs workspace add "Power stage bring-up" --type board
-node <runtime-home>/emb-agent/bin/emb-agent.cjs workspace activate power-stage-bring-up
-node <runtime-home>/emb-agent/bin/emb-agent.cjs workspace refresh power-stage-bring-up
-node <runtime-home>/emb-agent/bin/emb-agent.cjs workspace link power-stage-bring-up task tm2-pwm-bringup
-node <runtime-home>/emb-agent/bin/emb-agent.cjs workspace show power-stage-bring-up
-```
-
-被激活后，`resume / manager / session hook` 都会自动带出当前 workspace。
-如果一个长期工作面下有多个 `task/spec/thread`，直接用 `workspace link` 显式挂进去，避免下次恢复时还得靠记忆重建关系。
-如果你已经围绕这个工作面持续干了一段时间，也可以直接执行一次 `workspace refresh`，把最近上下文自动沉进去。
-
----
-
-### 4. 控制上下文膨胀
-
-这是 `emb-agent` 的重点之一。
-
-它通过两层机制防止“会话越跑越重”：
-
-- 项目侧上下文卫生判断
-  基于最近文件、open questions、known risks、当前 focus
-- 运行时 hook 提醒
-  在 `PostToolUse` 时读取上下文指标，接近上限时提醒 `pause`
-
-当上下文变重时，系统会引导你：
-
-```text
-pause -> clear -> resume
-```
-
-如果已经有 handoff，则直接：
-
-```text
-clear -> resume
-```
-
----
-
-### 5. 用 adapter 扩展芯片能力
-
-`emb-agent` 的 core 故意保持抽象，不内置任何厂商绑定。
-
-core 提供的是：
-
-- 通用命令流
-- 状态和 handoff
-- 轻量调度
-- tool spec
-- chip/profile/pack 扩展入口
-
-具体芯片能力通过 adapter 提供，例如：
-
-- 定时器计算
-- PWM 计算
-- 比较器阈值计算
-- family / device 寄存器边界
-- chip profile
-- package / pin / mux 结构化资料
-
-常用入口：
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter bootstrap
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter source add vendor-pack --type git --location https://example.com/vendor-pack.git --branch main --subdir emb-agent
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter bootstrap vendor-pack
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter sync vendor-pack --chip sc8f072 --tool timer-calc --no-match-project
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --family vendor-family --device vendor-device --chip vendor-chip --tool timer-calc --package sop8 --pin-count 8
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --from-project
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter derive --from-doc <doc-id> --vendor Padauk
-node <runtime-home>/emb-agent/bin/emb-agent.cjs adapter generate --from-project --output-root /abs/path/to/emb-agent-adapters
-node <runtime-home>/emb-agent/bin/emb-agent.cjs tool list
-node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run timer-calc --family FAMILY_NAME --device DEVICE_NAME --timer TIMER_NAME --clock-source CLOCK_SOURCE --clock-hz 16000000 --prescaler 16 --interrupt-bit 10 --target-us 560
-node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run pwm-calc --family FAMILY_NAME --device DEVICE_NAME --output-pin PA3 --clock-source SYSCLK --clock-hz 16000000 --target-hz 3906.25 --target-duty 50
-node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run lpwmg-calc --family FAMILY_NAME --device DEVICE_NAME --channel LPWMG0 --output-pin PA0 --clock-source SYSCLK --clock-hz 1000000 --target-hz 10000 --target-duty 60
-node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run lvdc-threshold --family FAMILY_NAME --device DEVICE_NAME --target-v 4.5 --status-bit 1
-node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run charger-config --family FAMILY_NAME --device DEVICE_NAME --target-current-ma 300 --charge-indicator 0 --vcc-greater-than-vbat 1 --vcc-normal 1
-node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run adc-scale --family FAMILY_NAME --device DEVICE_NAME --channel PA0 --reference-source vdd --resolution 10 --sample-code 512
-node <runtime-home>/emb-agent/bin/emb-agent.cjs tool run comparator-threshold --family FAMILY_NAME --device DEVICE_NAME --positive-source PA0 --negative-source vref_ladder --vdd 5 --target-threshold-v 2.5
-```
-
-`adapter derive` 现在除了 profile 和 registry，还会自动起草 `adapters/routes/*.cjs`。这些 route 默认是 `draft-adapter`，用于承接 binding 草稿；其中 `timer-calc`、`pwm-calc`、`adc-scale` 和 `comparator-threshold` 已带首版通用实现，参数够时可以直接跑出候选结果。
-
-`adapter generate` 复用同一套生成引擎，但把输出根目录显式交给调用方。适配器贡献仓库可以直接把它指向仓库根目录，用同一套 AI 生成逻辑产出可提交的 adapter 草稿。
-
-自动发现链路现在会优先用 `hw.yaml` 的 `model/package` 去回退匹配 derive 生成的 chip slug，例如 `SC8F072 + SOP8 -> sc8f072sop8`，不需要你手工把 slug 写回 truth。
-
-### Adapter Trust
-
-adapter trust 不是只看 route 文件在不在，而是综合下面几类证据：
-
-- chip / device / family profile 是否齐全
-- `source_refs` / register summary / component refs 是否齐全
-- device / family binding 是否存在、是否仍是 draft
-- runtime route 当前是 `ready` 还是 `draft-adapter`
-
-当前 grade 分五档：
-
-- `trusted`: 证据链完整，可直接作为可信 adapter 使用
-- `usable`: 主路径已可跑，但仍建议继续补资料或封装细节
-- `partial`: 已有部分 binding / 实现，但还不够稳定
-- `draft`: 仍以起草为主，结果不能直接当真值
-- `missing`: 证据明显不足，先别把工具结果拿去决策
-
-几个命令的 trust 语义不同：
-
-- `adapter bootstrap` / `adapter sync`
-  如果当前会话已经能解析出 tool recommendations，会返回 `mode: session-aware` 的质量视图，这代表是在真实项目上下文里评估 trust
-- `adapter bootstrap` / `adapter sync`
-  如果当前还只有筛选结果、没有完整项目上下文，会返回 `mode: selection-only`，这只表示命中了哪些 chips/tools，不代表已经可执行
-- `adapter status`
-  顶层会返回 `quality_overview`，用于快速判断当前项目里最值得先补的 adapter 缺口
-- `adapter derive`
-  会返回 `trust` 摘要，但 derive 产物默认仍是 draft；优先看 `trust.primary.recommended_action` 决定下一步补 source、register summary、binding 还是真实实现
-
-判断原则很简单：只有 `grade` 至少达到 `usable`，并且 `executable=true`，才适合把工具结果当成当前项目的高可信输入。
-
----
-
-## 命令
-
-README 只保留命令分组，不展开每个子命令的长列表。完整命令请看：
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs help
-```
-
-### 核心工作流
-
-- `init`
-- `next`
-- `scan`
-- `plan`
-- `do`
-- `debug`
-- `review`
-- `arch-review`
-- `orchestrate`
-
-### 真值与文档
-
-- `ingest hardware`
-- `ingest requirements`
-- `ingest doc`
-- `doc list/show/diff`
-- `note`
-
-### 配置与画像
-
-- `project show/set`
-- `profile list/show/set`
-- `pack list/show/add/remove/clear`
-- `prefs show/set/reset`
-
-### adapter / tool / chip
-
-- `adapter status/source/sync/derive`
-- `tool list/show/run`
-- `tool family/device`
-- `chip list/show`
-
-### 会话与调度
-
-- `pause/show/clear`
-- `resume`
-- `dispatch show/next`
-- `dispatch next` 会在 scan 命中可执行工具时额外给出 `tool_execution`
-- `schedule show`
-- `orchestrate` 会在需要时切到 `inline-tool-first`
-- `template list/show/fill`
-- `focus`
-- `last-files`
-- `question`
-- `risk`
-
----
-
-## 配置
-
-### 运行时安装目录
-
-运行时结构在两种宿主下基本一致，只是宿主配置文件不同：
-
-```text
-<runtime-home>/
-├── skills/
-├── agents/
-├── state/
-│   └── emb-agent/
-├── emb-agent/
-│   ├── bin/
-│   ├── lib/
-│   ├── hooks/
-│   ├── templates/
-│   ├── profiles/
-│   ├── packs/
-│   ├── tools/
-│   ├── chips/
-│   ├── adapters/
-│   ├── extensions/           [optional, lazy-created]
-│   ├── config.json
-│   └── VERSION
-└── <host-config>
-```
-
-其中：
-
-- `emb-agent/`
-  放 runtime 本体
-- `state/emb-agent/projects/`
-  放 session、handoff、lock
-- `extensions/`
-  仅在 `adapter sync`、`adapter derive`、`template fill` 或首次写扩展 registry 时创建
-- `skills/`
-  安装命令 skill，以及内部 routing skill，例如 `using-emb-agent`
-- `agents/`
-  安装可复用 agent
-- `config.toml / settings.json`
-  由宿主 runtime 接管 hooks 或 agent 注册
-
-宿主映射：
-
-- `Codex -> <runtime-home>=~/.codex, <host-config>=config.toml`
-- `Claude Code -> <runtime-home>=~/.claude, <host-config>=settings.json`
-
-内部还有一层轻量 skill 路由：
-
-- `using-emb-agent`
-  自动把会话优先路由到 `init / ingest / tool / adapter / arch-review / review / debug / verify`
-- 这层只负责“先走哪条轻路径”，不引入 superpowers 式的重 planning 默认值
-
-### 项目目录
-
-项目里只保留轻量扩展和真值层：
-
-```text
-<repo>/
-├── docs/
-└── emb-agent/
-    ├── project.json
-    ├── hw.yaml
-    ├── req.yaml
-    ├── cache/
-    ├── adapters/
-    ├── extensions/           [optional, lazy-created]
-    ├── profiles/
-    └── packs/
-```
-
-说明：
-
-- `extensions/` 不再由 `init` 预创建
-- 首次执行 `adapter sync`、`adapter derive`、`template fill tool-family/device/chip-profile` 或首次写扩展 registry 时才会生成
-
-### profile 和 pack
-
-`profile` 描述项目运行画像，例如：
-
-- 裸机还是 RTOS
-- 并发模型
-- 资源优先级
-- review 轴
-
-`pack` 描述场景叠加，例如：
-
-- sensor-node
-- connected-appliance
-
-它们共同决定：
-
-- 搜索优先级
-- review 重点
-- notes 目标
-- 默认 agent 组合
-
-### State
-
-`state` 是安装态的轻量持久化层，不属于项目交付物。
-
-关键文件：
-
-- `runtime/state/default-session.json`
-  默认 session 模板
-- `<runtime-home>/state/emb-agent/projects/<project-key>.json`
-  项目 session
-- `<runtime-home>/state/emb-agent/projects/<project-key>.handoff.json`
-  `pause / resume` handoff
-
-`project-key` 按项目路径计算，所以同一个 runtime 可以并行记住多个仓库。
-
----
-
-## 文档解析
-
-当前 `ingest doc` 支持 `mineru` provider。
-
-推荐做法：
-
-- token 放环境变量或 `.env`
-- 文档先进入缓存，再选择性写回真值层
-- 小文档走轻量链路，大文档按阈值切 API
-
-示例：
-
-```bash
-export MINERU_API_KEY=<your-token>
-node <runtime-home>/emb-agent/bin/emb-agent.cjs ingest doc --file docs/MCU-datasheet.pdf --provider mineru --kind datasheet --to hardware
-```
-
----
-
-## 故障排除
-
-常见情况：
-
-- `next` 没法给出合理下一步
-  先补 `hw.yaml / req.yaml` 或先执行一次 `scan`
-- `tool run` 返回 `adapter-required`
-  当前还没同步到对应 adapter
-- `tool run` 能跑，但仍反复提示补 source / binding
-  这通常说明 route 已存在，但 trust 仍停留在 `partial` 或 `draft`；优先执行 `adapter status`，再按 `recommended_action` 补 `source_refs`、寄存器摘要、binding 或真实实现
-- clear context 后接不上
-  先检查是否执行过 `pause`，再执行 `resume`
-- SessionStart 提示 `stale install`
-  重新跑一次安装，让 hooks / runtime / skills 对齐
-
-### 卸载
-
-全局卸载：
-
-```bash
-npx emb-agent --global --uninstall
-```
-
-本地卸载：
-
-```bash
-npx emb-agent --local --uninstall
-```
-
----
+   Run once when a repository has not been prepared for emb-agent yet.
+1. `next`
+   Start here for almost every normal task. It tells you the most reasonable next move.
+1. `dispatch next` or `orchestrate`
+   Use these when you need structured routing, tool execution, or execution signals instead of a simple recommendation.
+1. `pause` -> clear context -> `resume`
+   Use this when the session is getting noisy, long, or fragmented.
+
+## When To Use Which Command
+
+- Use `next` when you do not want to think about command choice and just need the default next step.
+- Use `scan` when you need entry points, related files, hardware truth, or code locations before acting.
+- Use `plan` when the task is real but still small enough for a short micro-plan.
+- Use `do` when you already know the exact code or document change to make.
+- Use `debug` when the symptom is clear but the root cause is not.
+- Use `review` when you want a structural or design review instead of implementation.
+- Use `verify` when implementation is done and you need explicit checks, evidence, and closure.
+- Use `note` when conclusions should become durable project knowledge.
+- Use `ingest` when a datasheet, manual, PDF, or external note needs to become project truth.
+- Use `tool` when you already know you need a calculation or hardware helper tool.
+- Use `dispatch next` when `next` is not enough and you want a lightweight execution contract.
+- Use `orchestrate` when you want one merged answer that combines next-step guidance, dispatch, and context hygiene.
+- Use `manager` when you need project-level operational direction rather than just the next task step.
+- Use `executor` when you want to run an executor action or inspect the most recent execution result.
+- Use `health` when the runtime, truth files, adapters, or cache may be out of sync.
+- Use `pause` and `resume` when you need to preserve handoff state across context clears.
+- Use `spec`, `template`, `workspace`, or `task` when you are maintaining reusable project structure rather than solving a single task.
+
+## Common Examples
+
+- New repository or first-time setup:
+  `init` -> `next`
+- Unsure what to do next:
+  `next`
+- Need code entry points before editing:
+  `scan`
+- Need a small implementation change:
+  `do`
+- Need root-cause analysis:
+  `debug`
+- Need timer / PWM / ADC / comparator / pin / register help:
+  `next`, then `dispatch next` or `orchestrate` if a tool should run
+- Need to import a datasheet or manual:
+  `ingest`
+- Need a final check before closing work:
+  `verify`
+
+## Core Ideas
+
+- Keep project truth in `./.emb-agent/hw.yaml` and `./.emb-agent/req.yaml`.
+- Use `ingest` and document apply flows to convert raw manuals into durable facts.
+- Use adapters to hold chip-, family-, and device-specific formulas or register boundaries.
+- Use lightweight commands such as `scan`, `plan`, `do`, `debug`, `review`, and `verify` only when the problem actually needs them.
+- Let `manager`, `dispatch`, `orchestrate`, and `session-report` surface structured execution signals instead of relying on free-form text.
+
+## Runtime Layout
+
+The installed runtime lives under the host configuration directory. Project-local long-lived assets stay visible in the repository under `./.emb-agent/` and `./docs/`. Runtime state such as sessions, handoffs, and locks stays under the host runtime state directory.
+
+## Adapter Model
+
+emb-agent core stays abstract on purpose. The core defines command flow, session state, templates, and tool contracts. Vendor- or chip-specific formulas, bindings, and execution logic belong in external adapters. Trust is evaluated from the full evidence chain: profiles, bindings, register summaries, component references, runtime implementation state, and recent project context.
+
+## Command Reference
+
+See [commands/emb/help.md](./commands/emb/help.md) for the public command set.
+
+## Release Notes
+
+See [RELEASE.md](./RELEASE.md).

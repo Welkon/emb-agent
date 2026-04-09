@@ -104,19 +104,26 @@ function createForensicsCommandHelpers(deps) {
     );
     const git = probeGitStatus(projectRoot);
     const threadStats = countOpenThreads();
+    const latestExecutor =
+      session &&
+      session.diagnostics &&
+      session.diagnostics.latest_executor &&
+      session.diagnostics.latest_executor.name
+        ? session.diagnostics.latest_executor
+        : null;
     const findings = [];
 
     if (handoff) {
       findings.push({
         key: 'unconsumed_handoff',
         severity: 'high',
-        title: '存在未消费的 handoff',
+        title: 'Unconsumed handoff exists',
         evidence: [
           `handoff.next_action = ${handoff.next_action || '(empty)'}`,
           `handoff.focus = ${handoff.focus || '(empty)'}`,
           `resume_cli = ${contextHygiene.resume_cli}`
         ],
-        recommendation: '先执行 resume 把现场接回，再继续扩展问题空间。'
+        recommendation: 'Run resume first to restore the working state before expanding the problem space further.'
       });
     }
 
@@ -124,9 +131,9 @@ function createForensicsCommandHelpers(deps) {
       findings.push({
         key: 'open_questions',
         severity: 'medium',
-        title: '未决问题仍在堆积',
+        title: 'Open questions are still accumulating',
         evidence: (session.open_questions || []).slice(0, 4).map(item => `question: ${item}`),
-        recommendation: '优先收敛最早的未决问题，否则计划和执行都会漂。'
+        recommendation: 'Converge on the earliest open question first, or both planning and execution will drift.'
       });
     }
 
@@ -134,9 +141,9 @@ function createForensicsCommandHelpers(deps) {
       findings.push({
         key: 'known_risks',
         severity: 'medium',
-        title: '已知风险仍未闭环',
+        title: 'Known risks are still open',
         evidence: (session.known_risks || []).slice(0, 4).map(item => `risk: ${item}`),
-        recommendation: '先决定这些风险是转成 thread、进入 review，还是直接 bench 验证。'
+        recommendation: 'Decide first whether these risks should become threads, enter review, or go straight to bench verification.'
       });
     }
 
@@ -144,9 +151,26 @@ function createForensicsCommandHelpers(deps) {
       findings.push({
         key: 'lost_file_context',
         severity: 'medium',
-        title: '有最近动作，但缺少最近文件',
+        title: 'There are recent actions, but recent files are missing',
         evidence: [`last_command = ${session.last_command}`],
-        recommendation: '先补一次 scan 或 last-files add，避免后续推断脱离真实代码入口。'
+        recommendation: 'Add a scan or last-files add first so later reasoning stays anchored to the real code entry point.'
+      });
+    }
+
+    if (latestExecutor && ['failed', 'error'].includes(latestExecutor.status)) {
+      findings.push({
+        key: 'latest_executor_failed',
+        severity: latestExecutor.status === 'error' ? 'high' : 'medium',
+        title: 'The latest executor run failed',
+        evidence: [
+          `executor = ${latestExecutor.name}`,
+          `status = ${latestExecutor.status}`,
+          latestExecutor.exit_code === null ? '' : `exit_code = ${latestExecutor.exit_code}`,
+          latestExecutor.cwd ? `cwd = ${latestExecutor.cwd}` : '',
+          latestExecutor.stderr_preview ? `stderr = ${latestExecutor.stderr_preview}` : '',
+          ...((latestExecutor.evidence_hint || []).slice(0, 3).map(item => `evidence_hint = ${item}`))
+        ].filter(Boolean),
+        recommendation: 'Add evidence around the latest failed executor first, then decide whether to fix the script, fill inputs, or enter deeper forensics.'
       });
     }
 
@@ -162,9 +186,9 @@ function createForensicsCommandHelpers(deps) {
       findings.push({
         key: 'missing_truth_artifacts',
         severity: 'high',
-        title: '最小真值工件缺失',
+        title: 'Minimal truth artifacts are missing',
         evidence: missingArtifacts.map(item => `missing: ${item}`),
-        recommendation: '先补齐硬件/需求真值层，再让 agent 继续规划或执行。'
+        recommendation: 'Fill in the hardware/requirement truth layers first before letting agents continue planning or execution.'
       });
     }
 
@@ -172,7 +196,7 @@ function createForensicsCommandHelpers(deps) {
       findings.push({
         key: 'heavy_context',
         severity: contextHygiene.level === 'suggest-clearing' ? 'high' : 'low',
-        title: '当前上下文已经偏重',
+        title: 'Current context is already heavy',
         evidence: [
           `context_hygiene.level = ${contextHygiene.level}`,
           ...contextHygiene.reasons.slice(0, 4)
@@ -185,9 +209,9 @@ function createForensicsCommandHelpers(deps) {
       findings.push({
         key: 'dirty_worktree',
         severity: 'low',
-        title: '当前仓库存在未提交改动',
+        title: 'The current repository has uncommitted changes',
         evidence: git.lines.slice(0, 6),
-        recommendation: '确认这些改动是当前问题的一部分，还是需要先隔离。'
+        recommendation: 'Confirm whether these changes are part of the current problem or should be isolated first.'
       });
     }
 
@@ -195,12 +219,12 @@ function createForensicsCommandHelpers(deps) {
       findings.push({
         key: 'open_threads',
         severity: 'low',
-        title: '已有未关闭的轻量线程',
+        title: 'There are already open lightweight threads',
         evidence: [
           `open_threads = ${threadStats.open}`,
           `resolved_threads = ${threadStats.resolved}`
         ],
-        recommendation: '确认当前问题是否应该挂到已有 thread，而不是重复创建上下文。'
+        recommendation: 'Confirm whether the current problem should attach to an existing thread instead of creating duplicate context.'
       });
     }
 
@@ -208,9 +232,9 @@ function createForensicsCommandHelpers(deps) {
       findings.push({
         key: 'no_major_anomaly',
         severity: 'info',
-        title: '未发现明显结构异常',
-        evidence: ['session / handoff / truth artifacts 看起来完整'],
-        recommendation: '如果问题仍在，优先转入 debug 或 review，别继续堆上下文。'
+        title: 'No obvious structural anomaly was found',
+        evidence: ['session / handoff / truth artifacts appear complete'],
+        recommendation: 'If the problem persists, move to debug or review first instead of piling on more context.'
       });
     }
 
@@ -221,6 +245,7 @@ function createForensicsCommandHelpers(deps) {
       contextHygiene,
       git,
       threadStats,
+      latestExecutor,
       findings,
       problemText: problemText || ''
     };
@@ -249,6 +274,25 @@ function createForensicsCommandHelpers(deps) {
       '## Findings',
       ''
     ];
+
+    if (report.latestExecutor) {
+      lines.splice(lines.length - 2, 0,
+        '## Latest Executor',
+        '',
+        `- name: ${report.latestExecutor.name}`,
+        `- status: ${report.latestExecutor.status}`,
+        `- risk: ${report.latestExecutor.risk || '(empty)'}`,
+        `- exit_code: ${report.latestExecutor.exit_code === null ? '(none)' : report.latestExecutor.exit_code}`,
+        `- duration_ms: ${report.latestExecutor.duration_ms === null ? '(none)' : report.latestExecutor.duration_ms}`,
+        `- ran_at: ${report.latestExecutor.ran_at || '(empty)'}`,
+        `- cwd: ${report.latestExecutor.cwd || '(empty)'}`,
+        `- argv: ${(report.latestExecutor.argv || []).join(' ') || '(none)'}`,
+        `- evidence_hint: ${(report.latestExecutor.evidence_hint || []).join(', ') || '(none)'}`,
+        `- stdout_preview: ${report.latestExecutor.stdout_preview || '(empty)'}`,
+        `- stderr_preview: ${report.latestExecutor.stderr_preview || '(empty)'}`,
+        ''
+      );
+    }
 
     report.findings.forEach((item, index) => {
       lines.push(`### ${index + 1}. [${item.severity}] ${item.title}`);
@@ -342,6 +386,7 @@ function createForensicsCommandHelpers(deps) {
         path: linkedThread.path
       },
       context_hygiene: report.contextHygiene,
+      latest_executor: report.latestExecutor || null,
       findings: report.findings,
       git: report.git,
       thread_stats: report.threadStats

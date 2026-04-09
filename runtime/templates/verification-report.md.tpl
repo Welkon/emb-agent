@@ -9,9 +9,9 @@
 
 ## Checklist
 
-- 上电 / 复位 / 主入口
-- 关键寄存器 / 引脚 / 时序
-- 异常路径 / 边界条件
+- Power-up / reset / main entry
+- Critical registers / pins / timing
+- Failure paths / boundary conditions
 
 ## Results
 
@@ -22,11 +22,11 @@
 
 ## Evidence
 
-- 手册 / 摘要:
-- bench / 仿真:
-- 代码 / 提交:
+- Manual / summary:
+- bench / simulation:
+- Code / commit:
 
 ## Follow-up
 
-- 后续动作 1:
-- 后续动作 2:
+- Follow-up action 1:
+- Follow-up action 2:

@@ -48,6 +48,7 @@ function extractImplementedTopLevelCommands() {
     path.join(repoRoot, 'runtime', 'lib', 'command-groups.cjs'),
     path.join(repoRoot, 'runtime', 'lib', 'thread-commands.cjs'),
     path.join(repoRoot, 'runtime', 'lib', 'forensics-command.cjs'),
+    path.join(repoRoot, 'runtime', 'lib', 'executor-command.cjs'),
     path.join(repoRoot, 'runtime', 'lib', 'settings-command.cjs'),
     path.join(repoRoot, 'runtime', 'lib', 'session-report-command.cjs'),
     path.join(repoRoot, 'runtime', 'lib', 'manager-command.cjs'),
@@ -89,7 +90,7 @@ test('commands show keeps legacy attach alias accessible', async () => {
 
   assert.equal(shown.name, 'attach');
   assert.equal(shown.path, 'commands/emb/attach.md');
-  assert.match(shown.content, /兼容旧用法的别名/);
+  assert.match(shown.content, /legacy alias kept for compatibility/);
 });
 
 test('agents list and show resolve source-layout markdown files', async () => {
@@ -100,7 +101,7 @@ test('agents list and show resolve source-layout markdown files', async () => {
   assert.ok(listed.includes('emb-hw-scout'));
   assert.equal(shown.name, 'emb-hw-scout');
   assert.equal(shown.path, 'agents/emb-hw-scout.md');
-  assert.match(shown.content, /查硬件真值/);
+  assert.match(shown.content, /hardware truth/);
 });
 
 test('skills list and show resolve source-layout internal skills', async () => {
@@ -111,7 +112,7 @@ test('skills list and show resolve source-layout internal skills', async () => {
   assert.ok(listed.includes('using-emb-agent'));
   assert.equal(shown.name, 'using-emb-agent');
   assert.equal(shown.path, 'skills/using-emb-agent/SKILL.md');
-  assert.match(shown.content, /优先走最轻、最接近真值的路径/);
+  assert.match(shown.content, /lightest, closest-to-truth path/);
 });
 
 test('commands show resolves source-layout command markdown files', async () => {
@@ -119,7 +120,7 @@ test('commands show resolves source-layout command markdown files', async () => 
 
   assert.equal(shown.name, 'help');
   assert.equal(shown.path, 'commands/emb/help.md');
-  assert.match(shown.content, /唯一官方初始化入口/);
+  assert.match(shown.content, /official initialization flow/);
 });
 
 test('help markdown public commands stay in sync with commands list', async () => {

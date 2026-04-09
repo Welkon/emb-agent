@@ -3,7 +3,7 @@
   "kind": "calculator",
   "status": "abstract",
   "sample": false,
-  "description": "通用定时器周期、频率、初值和误差搜索工具。emb-agent core 只保留抽象规格，不内置任何厂商 family/device adapter。",
+  "description": "Generic timer period, frequency, initial-value, and error search tool. emb-agent core keeps only the abstract spec and does not include any vendor family/device adapters.",
   "inputs": [
     "clock frequency",
     "clock source",
@@ -22,8 +22,8 @@
   "device_profiles": [],
   "source_modules": [],
   "notes": [
-    "核心只定义输入输出和结果结构，具体公式应由外部 adapter 承担。",
-    "不直接生成最终代码，先统一工具协议和扩展点。",
-    "厂商/芯片相关实现应放在 emb-agent core 之外。"
+    "The core defines only the input/output and result structure; concrete formulas should be handled by external adapters.",
+    "Do not generate final code directly; unify the tool protocol and extension points first.",
+    "Vendor/chip-specific implementations should live outside emb-agent core."
   ]
 }

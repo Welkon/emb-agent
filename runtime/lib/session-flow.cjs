@@ -11,13 +11,9 @@ const FORENSICS_PATTERNS = [
   'repeat failure',
   'resume',
   'handoff',
-  '漂移',
-  '卡住',
-  '反复失败',
-  '重复失败',
-  '上下文漂移',
-  '恢复后',
-  'resume后'
+  'repeated failure',
+  'context drift',
+  'after resume'
 ];
 const HARDWARE_TOOL_PATTERNS = [
   'timer',
@@ -36,16 +32,16 @@ const HARDWARE_TOOL_PATTERNS = [
   'pinmux',
   'datasheet',
   'manual',
-  '引脚',
-  '寄存器',
-  '手册',
-  '定时器',
-  '比较器',
+  'pin',
+  'register',
+  'manual',
+  'timer',
+  'comparator',
   'pwm',
-  '波特率',
-  '时序',
-  '公式',
-  '外设'
+  'baud rate',
+  'timing',
+  'formula',
+  'peripheral'
 ];
 const REVIEW_PATTERNS = [
   'ota',
@@ -54,12 +50,12 @@ const REVIEW_PATTERNS = [
   'offline',
   'upgrade',
   'release',
-  '量产',
-  '回滚',
-  '重连',
-  '离线',
-  '升级',
-  '发布'
+  'mass production',
+  'rollback',
+  'reconnect',
+  'offline',
+  'upgrade',
+  'release'
 ];
 
 function createSessionFlowHelpers(deps) {
@@ -161,6 +157,12 @@ function createSessionFlowHelpers(deps) {
       session.diagnostics.latest_forensics
         ? session.diagnostics.latest_forensics
         : null;
+    const latestExecutor =
+      session &&
+      session.diagnostics &&
+      session.diagnostics.latest_executor
+        ? session.diagnostics.latest_executor
+        : null;
 
     return runtime.unique([
       session && session.focus ? session.focus : '',
@@ -169,7 +171,10 @@ function createSessionFlowHelpers(deps) {
       session && session.active_workspace && session.active_workspace.title ? session.active_workspace.title : '',
       session && session.active_thread && session.active_thread.title ? session.active_thread.title : '',
       session && session.active_task && session.active_task.title ? session.active_task.title : '',
-      latestForensics && latestForensics.problem ? latestForensics.problem : ''
+      latestForensics && latestForensics.problem ? latestForensics.problem : '',
+      latestExecutor && latestExecutor.status ? `executor ${latestExecutor.name || ''} ${latestExecutor.status}` : '',
+      latestExecutor && latestExecutor.stderr_preview ? latestExecutor.stderr_preview : '',
+      latestExecutor && latestExecutor.stdout_preview ? latestExecutor.stdout_preview : ''
     ]).filter(Boolean);
   }
 
@@ -264,10 +269,18 @@ function createSessionFlowHelpers(deps) {
       session.diagnostics && session.diagnostics.latest_forensics
         ? session.diagnostics.latest_forensics
         : null;
+    const latestExecutor =
+      session.diagnostics && session.diagnostics.latest_executor
+        ? session.diagnostics.latest_executor
+        : null;
     const hasForensicsSignal = hasPattern(texts, FORENSICS_PATTERNS);
 
     if ((session.last_command || '').startsWith('forensics')) {
       return false;
+    }
+
+    if (latestExecutor && ['failed', 'error'].includes(latestExecutor.status)) {
+      return true;
     }
 
     if (latestForensics && latestForensics.highest_severity === 'high' && session.active_thread && session.active_thread.name) {
@@ -340,7 +353,7 @@ function createSessionFlowHelpers(deps) {
         'Pre-Mortem'
       ],
       trigger_patterns: review.arch_review_triggers,
-      warning: '这是显式重型审查入口，只在选型、方案预审、PoC 转量产或失败预演场景使用'
+      warning: 'This is an explicit heavyweight review entry point. Use it only for selection reviews, solution preflight, PoC-to-production, or pre-mortem scenarios.'
     };
   }
 
@@ -359,16 +372,22 @@ function createSessionFlowHelpers(deps) {
       Boolean(handoff);
 
     if (shouldSuggestForensics(resolved)) {
+      const latestExecutor =
+        session.diagnostics && session.diagnostics.latest_executor
+          ? session.diagnostics.latest_executor
+          : null;
       return {
         command: 'forensics',
-        reason: '当前上下文带有漂移、恢复失败或重复失败信号，先做一次取证收敛问题空间'
+        reason: latestExecutor && ['failed', 'error'].includes(latestExecutor.status)
+          ? `Latest executor ${latestExecutor.name || 'unknown'} ${latestExecutor.status}; run forensics first to narrow the failure scene`
+          : 'Current context shows drift, resume failure, or repeated failure signals; run forensics first to narrow the problem space'
       };
     }
 
     if (openQuestions.length > 0 && !shouldSuggestScanTool(resolved)) {
       return {
         command: 'debug',
-        reason: `存在未决问题，先围绕 "${openQuestions[0]}" 收敛根因`
+        reason: `Open questions remain; narrow the root cause around "${openQuestions[0]}" first`
       };
     }
 
@@ -378,29 +397,29 @@ function createSessionFlowHelpers(deps) {
       return {
         command: 'scan',
         reason: firstTool
-          ? `当前更像硬件/公式/工具定位问题，先 scan 并评估 ${firstTool.name}`
-          : '当前更像硬件真值、寄存器、引脚或公式定位问题，先 scan 再决定是否进入 tool'
+          ? `This looks more like hardware/formula/tool triage; run scan and evaluate ${firstTool.name} first`
+          : 'This looks more like hardware truth, register, pin, or formula triage; run scan before deciding whether to enter tool'
       };
     }
 
     if ((session.last_command || '').trim() === 'do' && hasActiveContext) {
       return {
         command: 'verify',
-        reason: '刚完成 do，先把本轮实现收口到嵌入式验证清单和结果记录'
+        reason: 'A do step just finished; close this iteration with the embedded verification checklist and result record first'
       };
     }
 
     if (preferences.review_mode === 'always') {
       return {
         command: 'review',
-        reason: '当前偏好要求先做 review，再决定执行路径'
+        reason: 'Current preferences require review first before choosing the execution path'
       };
     }
 
     if (shouldSuggestArchReview(resolved)) {
       return {
         command: 'arch-review',
-        reason: '当前上下文带有选型或方案预审信号，先做一次系统级架构审查'
+        reason: 'Current context shows selection or solution preflight signals; run a system-level architecture review first'
       };
     }
 
@@ -409,8 +428,8 @@ function createSessionFlowHelpers(deps) {
         command: 'review',
         reason:
           preferences.review_mode === 'always'
-            ? '当前偏好要求先做 review，再决定执行路径'
-            : '当前 review 信号成立，先做结构性 review 再决定执行路径'
+            ? 'Current preferences require review first before choosing the execution path'
+            : 'A review signal is active; run a structural review before choosing the execution path'
       };
     }
 
@@ -419,28 +438,28 @@ function createSessionFlowHelpers(deps) {
         command: 'plan',
         reason:
           preferences.plan_mode === 'always'
-            ? '当前偏好要求先做 micro-plan 再执行'
-            : '当前已进入复杂任务信号，先做 micro-plan 再执行'
+            ? 'Current preferences require a micro-plan before execution'
+            : 'Current context has entered a complex-task signal; make a micro-plan before execution'
       };
     }
 
     if (!hasActiveContext) {
       return {
         command: 'scan',
-        reason: '当前还没有有效工作上下文，先做一次最小 scan'
+        reason: 'No effective working context exists yet; run a minimal scan first'
       };
     }
 
     if (lastFiles.length === 0) {
       return {
         command: 'scan',
-        reason: '当前没有最近文件记录，先补一次 scan 锁定真实改动点'
+        reason: 'There is no recent-file record yet; add a scan first to lock onto the real change point'
       };
     }
 
     return {
       command: 'do',
-      reason: '上下文已经足够，直接进入最小执行'
+      reason: 'Context is already sufficient; proceed with the minimal execution directly'
     };
   }
 
@@ -457,36 +476,36 @@ function createSessionFlowHelpers(deps) {
 
     if (lastFiles.length >= 5) {
       score += 2;
-      reasons.push(`最近文件已累计 ${lastFiles.length} 个，说明上下文跨度开始变大`);
+      reasons.push(`Recent files have reached ${lastFiles.length}, which means the context span is starting to widen`);
     } else if (lastFiles.length >= 3) {
       score += 1;
-      reasons.push(`最近文件已有 ${lastFiles.length} 个，继续深挖前最好先收口`);
+      reasons.push(`There are already ${lastFiles.length} recent files; close down the scope before digging deeper`);
     }
 
     if (openQuestions.length >= 2) {
       score += 2;
-      reasons.push(`当前还有 ${openQuestions.length} 个未决问题`);
+      reasons.push(`There are still ${openQuestions.length} open questions`);
     } else if (openQuestions.length === 1) {
       score += 1;
-      reasons.push('当前仍有未决问题挂起');
+      reasons.push('Open questions are still pending');
     }
 
     if (knownRisks.length >= 2) {
       score += 2;
-      reasons.push(`当前还有 ${knownRisks.length} 个已知风险待跟踪`);
+      reasons.push(`There are still ${knownRisks.length} known risks to track`);
     } else if (knownRisks.length === 1) {
       score += 1;
-      reasons.push('当前已有风险项挂起');
+      reasons.push('Risk items are already pending');
     }
 
     if (focus.trim() !== '' && heavyCommands.includes(command)) {
       score += 1;
-      reasons.push(`最近命令是 ${command}，且仍围绕 focus 深挖`);
+      reasons.push(`The latest command was ${command}, and the session is still digging around the focus`);
     }
 
     if (handoff) {
       score += 2;
-      reasons.push('已存在 pause handoff，可直接清空后 resume');
+      reasons.push('A pause handoff already exists; you can clear context and resume directly');
     }
 
     let level = 'stable';
@@ -496,15 +515,15 @@ function createSessionFlowHelpers(deps) {
       level = 'consider-clearing';
     }
 
-    let recommendation = '当前上下文还轻，不需要主动清除。';
+    let recommendation = 'Current context is still light; no proactive cleanup is needed.';
     if (level === 'consider-clearing') {
       recommendation = handoff
-        ? '上下文开始变重；如果准备切换任务或继续深挖，可以直接清除上下文，随后执行 resume 接回。'
-        : '上下文开始变重；如果准备切换任务或继续深挖，建议先执行 pause，再清除上下文，后续用 resume 接回。';
+        ? 'Context is getting heavier. If you are about to switch tasks or dig deeper, clear context directly and then resume.'
+        : 'Context is getting heavier. If you are about to switch tasks or dig deeper, pause first, then clear context, and resume afterward.';
     } else if (level === 'suggest-clearing') {
       recommendation = handoff
-        ? '当前上下文已变重，且已有 handoff；建议现在清除上下文，随后执行 resume 接回。'
-        : '当前上下文已变重，建议现在先执行 pause，然后清除上下文，后续用 resume 接回。';
+        ? 'Current context is already heavy and a handoff exists; clear context now and resume afterward.'
+        : 'Current context is already heavy; pause now, then clear context, and resume afterward.';
     }
 
     return {
@@ -543,16 +562,16 @@ function createSessionFlowHelpers(deps) {
 
     if (primary.executable) {
       return [
-        `adapter 可信度: ${primary.tool} ${primary.grade} (${primary.score}/100)`
+        `Adapter trust: ${primary.tool} ${primary.grade} (${primary.score}/100)`
       ];
     }
 
     return [
-      `adapter 可信度提醒: ${primary.tool} 目前为 ${primary.grade} (${primary.score}/100)`,
-      `先处理 adapter 缺口: ${primary.recommended_action}`,
+      `Adapter trust reminder: ${primary.tool} is currently ${primary.grade} (${primary.score}/100)`,
+      `Handle the adapter gap first: ${primary.recommended_action}`,
       primaryToolRecommendation && primaryToolRecommendation.cli_draft
-        ? `当前工具草案先用于校准，不要直接当真值: ${primaryToolRecommendation.cli_draft}`
-        : '当前工具输出先用于校准，不要直接当真值'
+        ? `Use the current tool draft for calibration first; do not treat it as ground truth yet: ${primaryToolRecommendation.cli_draft}`
+        : 'Use the current tool output for calibration first; do not treat it as ground truth yet'
     ];
   }
 
@@ -615,6 +634,10 @@ function createSessionFlowHelpers(deps) {
       session.diagnostics && session.diagnostics.latest_forensics
         ? session.diagnostics.latest_forensics
         : null;
+    const latestExecutor =
+      session.diagnostics && session.diagnostics.latest_executor
+        ? session.diagnostics.latest_executor
+        : null;
     const suggestedFlow = handoff && handoff.suggested_flow
       ? handoff.suggested_flow
       : suggestFlow(resolved);
@@ -626,35 +649,43 @@ function createSessionFlowHelpers(deps) {
       next,
       primary_tool_recommendation: primaryToolRecommendation,
       next_actions: runtime.unique([
-        handoff && handoff.next_action ? `按 handoff 恢复: ${handoff.next_action}` : '',
-        ...(handoff ? handoff.human_actions_pending.map(action => `需要人工动作: ${action}`) : []),
-        activeWorkspace ? `优先回到 workspace ${activeWorkspace.name}: ${activeWorkspace.title}` : '',
-        activeTask ? `优先恢复 task ${activeTask.name}: ${activeTask.title}` : '',
-        openThread ? `优先恢复 thread ${openThread.name}: ${openThread.title}` : '',
+        handoff && handoff.next_action ? `Resume from handoff: ${handoff.next_action}` : '',
+        ...(handoff ? handoff.human_actions_pending.map(action => `Manual action required: ${action}`) : []),
+        activeWorkspace ? `Return to workspace ${activeWorkspace.name} first: ${activeWorkspace.title}` : '',
+        activeTask ? `Resume task ${activeTask.name} first: ${activeTask.title}` : '',
+        openThread ? `Resume thread ${openThread.name} first: ${openThread.title}` : '',
         latestForensics && latestForensics.report_file
-          ? `最近一次 forensics: ${latestForensics.report_file} (${latestForensics.highest_severity || 'info'})`
+          ? `Latest forensics: ${latestForensics.report_file} (${latestForensics.highest_severity || 'info'})`
           : '',
-        primaryRegisterSource ? `优先重读寄存器摘要: ${primaryRegisterSource.path}` : '',
-        !primaryRegisterSource && primarySource ? `优先重读资料摘要: ${primarySource.path}` : '',
-        ...suggestedTools.slice(0, 2).map(tool => `可优先评估工具: ${tool.name} (${tool.status})`),
+        latestExecutor && latestExecutor.name
+          ? `Latest executor: ${latestExecutor.name} ${latestExecutor.status || 'unknown'}${
+            latestExecutor.exit_code === null ? '' : `, exit=${latestExecutor.exit_code}`
+          }`
+          : '',
+        latestExecutor && ['failed', 'error'].includes(latestExecutor.status)
+          ? `Start forensics around the failed executor first: ${latestExecutor.name}${latestExecutor.stderr_preview ? ` | ${latestExecutor.stderr_preview}` : ''}`
+          : '',
+        primaryRegisterSource ? `Re-read the register summary first: ${primaryRegisterSource.path}` : '',
+        !primaryRegisterSource && primarySource ? `Re-read the source summary first: ${primarySource.path}` : '',
+        ...suggestedTools.slice(0, 2).map(tool => `Tool to evaluate first: ${tool.name} (${tool.status})`),
         primaryToolRecommendation
-          ? `首选工具草案: ${primaryToolRecommendation.cli_draft}`
+          ? `Preferred tool draft: ${primaryToolRecommendation.cli_draft}`
           : '',
         primaryToolRecommendation && (primaryToolRecommendation.missing_inputs || []).length > 0
-          ? `工具待补参数: ${primaryToolRecommendation.missing_inputs.join(', ')}`
+          ? `Missing tool inputs: ${primaryToolRecommendation.missing_inputs.join(', ')}`
           : '',
-        focus ? `先围绕 focus "${focus}" 继续` : '',
-        lastFiles[0] ? `先重读 ${lastFiles[0]}` : '',
-        openQuestions[0] ? `优先确认问题: ${openQuestions[0]}` : '',
-        knownRisks[0] ? `复查风险: ${knownRisks[0]}` : '',
+        focus ? `Continue around focus "${focus}" first` : '',
+        lastFiles[0] ? `Re-read ${lastFiles[0]} first` : '',
+        openQuestions[0] ? `Confirm this question first: ${openQuestions[0]}` : '',
+        knownRisks[0] ? `Re-check this risk: ${knownRisks[0]}` : '',
         contextHygiene.level === 'consider-clearing'
-          ? `上下文提醒: ${contextHygiene.recommendation}`
+          ? `Context reminder: ${contextHygiene.recommendation}`
           : '',
         contextHygiene.level === 'suggest-clearing'
-          ? `上下文提醒: ${contextHygiene.recommendation}`
+          ? `Context reminder: ${contextHygiene.recommendation}`
           : '',
-        `建议流程: ${suggestedFlow}`,
-        `建议命令: ${next.command} (${next.reason})`
+        `Suggested flow: ${suggestedFlow}`,
+        `Suggested command: ${next.command} (${next.reason})`
       ])
     };
   }
@@ -712,7 +743,7 @@ function createSessionFlowHelpers(deps) {
         ? buildWorkspaceView(activeWorkspace)
         : null,
       thread: resolveActiveThread(resolved.session),
-      diagnostics: resolved.session.diagnostics || { latest_forensics: {} },
+      diagnostics: resolved.session.diagnostics || { latest_forensics: {}, latest_executor: {} },
       carry_over: {
         last_files: resolved.session.last_files || [],
         open_questions: resolved.session.open_questions || [],
@@ -735,7 +766,7 @@ function createSessionFlowHelpers(deps) {
     const nextCommand = gatedByHealth
       ? {
           command: 'health',
-          reason: '当前基础接入尚未闭环，先按 health 建议补齐硬件真值或 adapter 同步，再进入 scan',
+          reason: 'The base integration is not closed yet. Follow the health guidance to complete hardware truth or adapter sync before entering scan',
           health_next_commands: health && Array.isArray(health.next_commands) ? health.next_commands : [],
           health_quickstart: health && health.quickstart ? health.quickstart : null
         }
@@ -746,15 +777,15 @@ function createSessionFlowHelpers(deps) {
           ...(health && health.quickstart
             ? [
                 health.quickstart.followup
-                  ? `首次闭环: ${health.quickstart.followup}`
-                  : `首次闭环: ${(health.quickstart.steps || [])
+                  ? `First closure: ${health.quickstart.followup}`
+                  : `First closure: ${(health.quickstart.steps || [])
                       .map(step => step.cli || step.label)
                       .filter(Boolean)
                       .join(' -> ')}`
               ]
             : []),
           ...(health && Array.isArray(health.next_commands)
-            ? health.next_commands.map(item => `优先执行 health 建议: ${item.cli}`)
+            ? health.next_commands.map(item => `Run this health recommendation first: ${item.cli}`)
             : []),
           ...buildAdapterHealthHints(health, guidance.primary_tool_recommendation),
           ...guidance.next_actions
@@ -801,7 +832,7 @@ function createSessionFlowHelpers(deps) {
           }
         : null,
       thread: resolveActiveThread(resolved.session),
-      diagnostics: resolved.session.diagnostics || { latest_forensics: {} },
+      diagnostics: resolved.session.diagnostics || { latest_forensics: {}, latest_executor: {} },
       health: health
         ? {
             status: health.status,
@@ -834,12 +865,12 @@ function createSessionFlowHelpers(deps) {
       ? noteText.trim()
       : (
           suggestedFlow.includes('debug')
-            ? '先围绕未决问题执行 debug，再决定是否进入 do'
+            ? 'Run debug around the open questions first, then decide whether to enter do'
             : suggestedFlow.includes('plan')
-              ? '先执行 plan，锁定真值、约束、风险和步骤'
+              ? 'Run plan first to lock truth sources, constraints, risks, and steps'
               : suggestedFlow.includes('review')
-                ? '先执行 review，确认结构风险后再动手'
-                : '先执行 scan，再直接推进 do'
+                ? 'Run review first and confirm structural risks before changing anything'
+                : 'Run scan first, then proceed directly to do'
         );
 
     return {

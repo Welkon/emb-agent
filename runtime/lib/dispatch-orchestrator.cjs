@@ -17,6 +17,31 @@ function createDispatchHelpers(deps) {
     buildArchReviewDispatchContext
   } = deps;
 
+  function getDiagnostics(session) {
+    return session && session.diagnostics
+      ? session.diagnostics
+      : { latest_forensics: {}, latest_executor: {} };
+  }
+
+  function buildExecutorSignal(latestExecutor) {
+    const signal = latestExecutor && latestExecutor.name ? latestExecutor : null;
+    const failed = Boolean(signal && ['failed', 'error'].includes(signal.status));
+
+    return {
+      present: Boolean(signal),
+      name: signal ? signal.name : '',
+      status: signal ? signal.status || '' : '',
+      risk: signal ? signal.risk || '' : '',
+      exit_code: signal ? signal.exit_code : null,
+      failed,
+      requires_forensics: failed,
+      recommended_action: failed ? 'forensics' : '',
+      summary: signal
+        ? `${signal.name} ${signal.status || 'unknown'}${signal.exit_code === null ? '' : `, exit=${signal.exit_code}`}`
+        : ''
+    };
+  }
+
   function buildWorkspaceSnapshot(workspace) {
     if (!workspace || !workspace.name) {
       return null;
@@ -59,6 +84,8 @@ function createDispatchHelpers(deps) {
     if (action === 'next') {
       const next = buildNextContext();
       const resolvedAction = next.next.command;
+      const diagnostics = getDiagnostics(resolveSession().session);
+      const executorSignal = buildExecutorSignal(diagnostics.latest_executor);
 
       if (resolvedAction === 'arch-review') {
         const archDispatch = buildArchReviewDispatchContext();
@@ -74,6 +101,8 @@ function createDispatchHelpers(deps) {
           context_hygiene: next.context_hygiene,
           next_actions: next.next_actions,
           current: next.current,
+          diagnostics,
+          executor_signal: executorSignal,
           handoff: next.handoff,
           action_context: archDispatch.action_context
         };
@@ -96,6 +125,8 @@ function createDispatchHelpers(deps) {
         context_hygiene: next.context_hygiene,
         next_actions: next.next_actions,
         current: next.current,
+        diagnostics,
+        executor_signal: executorSignal,
         health: next.health || null,
         workspace: buildWorkspaceSnapshot(next.workspace),
         handoff: next.handoff,
@@ -114,6 +145,8 @@ function createDispatchHelpers(deps) {
     const output = buildActionOutput(action);
     const resolved = resolveSession();
     const workspace = buildWorkspaceSnapshot(resolved.session.active_workspace);
+    const diagnostics = getDiagnostics(resolved.session);
+    const executorSignal = buildExecutorSignal(diagnostics.latest_executor);
 
     return {
       source: 'action',
@@ -125,6 +158,8 @@ function createDispatchHelpers(deps) {
       dispatch_ready: Boolean(output.agent_execution && output.agent_execution.available),
       agent_execution: output.agent_execution || null,
       context_hygiene: output.context_hygiene || null,
+      diagnostics,
+      executor_signal: executorSignal,
       workspace,
       tool_execution: null,
       action_context: output
@@ -160,9 +195,9 @@ function createDispatchHelpers(deps) {
         id: 'restore-context',
         kind: 'context',
         required: false,
-        when: 'clear context 后或需要恢复当前项目上下文时',
+        when: 'after clearing context or when current project context needs to be restored',
         cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume']),
-        outcome: '恢复当前项目 session、handoff 和轻量工作上下文'
+        outcome: 'restore the current project session, handoff, and lightweight working context'
       }
     ];
 
@@ -172,8 +207,8 @@ function createDispatchHelpers(deps) {
         kind: 'tool',
         required: toolExecution.recommended,
         when: toolExecution.recommended
-          ? '当前 scan 已识别到可直接执行的硬件计算工具，先收敛寄存器/公式真值'
-          : '如需继续推进该工具，先补齐缺失依赖或 adapter',
+          ? 'the current scan has identified a directly executable hardware calculation tool, so converge register/formula ground truth first'
+          : 'if this tool should continue, fill in missing dependencies or adapters first',
         cli: toolExecution.cli,
         tool: toolExecution.tool,
         status: toolExecution.status,
@@ -186,8 +221,8 @@ function createDispatchHelpers(deps) {
         missing_inputs: toolExecution.missing_inputs || [],
         defaults_applied: toolExecution.defaults_applied || {},
         outcome: toolExecution.recommended
-          ? '先产出工具计算结果，再决定是否继续 scan / debug / do'
-          : '当前只输出工具草案和缺失输入，不直接执行'
+          ? 'produce the tool calculation result first, then decide whether to continue with scan / debug / do'
+          : 'only output the tool draft and missing inputs for now; do not execute directly'
       });
     }
 
@@ -196,9 +231,9 @@ function createDispatchHelpers(deps) {
         id: 'inline-action',
         kind: 'inline',
         required: true,
-        when: '当前动作不值得展开子 agent，或 inline 已足够',
+        when: 'the current action does not justify expanding sub-agents, or inline is already sufficient',
         cli: dispatch.cli,
-        outcome: '由当前主线程直接执行当前动作并产出 emb 标准结果'
+        outcome: 'let the current main thread execute the action directly and produce standard emb output'
       });
     } else {
       if (primary) {
@@ -208,8 +243,8 @@ function createDispatchHelpers(deps) {
           required: true,
           blocking: primary.blocking !== false,
           agent: primary.agent,
-          when: primary.when || '当前动作需要主 agent 时',
-          start_when: primary.start_when || '立即启动',
+          when: primary.when || 'when the current action needs the primary agent',
+          start_when: primary.start_when || 'Start immediately',
           preferred_cli: dispatch.skill,
           fallback: primary.spawn_fallback || null,
           outcome: primary.expected_output || []
@@ -223,8 +258,8 @@ function createDispatchHelpers(deps) {
           required: false,
           agents: supporting.map(item => item.agent),
           parallel_safe: contract.parallel_safe || [],
-          when: '主线程需要补侧证据且 agent 被标记为并行安全时',
-          start_rule: '不要让多个可写 agent 修改同一组文件',
+          when: 'when the main thread needs side evidence and the agent is marked as parallel-safe',
+          start_rule: 'Do not let multiple writable agents modify the same file set',
           outcome: supporting.map(item => ({
             agent: item.agent,
             expected_output: item.expected_output || []
@@ -237,11 +272,11 @@ function createDispatchHelpers(deps) {
       id: 'integrate',
       kind: 'integration',
       required: true,
-      owner: contract.integration_owner || '当前主线程',
-      when: '收到 inline 结果或子 agent 结果后',
+      owner: contract.integration_owner || 'Current main thread',
+      when: 'after receiving inline results or sub-agent results',
       outcome: [
-        '整合回 emb 标准输出，不直接拼接原始子 agent 回复',
-        '保留最终结论、落盘和验证责任'
+        'integrate back into standard emb output instead of concatenating raw sub-agent replies',
+        'retain ownership of final conclusions, persistence, and verification'
       ]
     });
 
@@ -250,7 +285,7 @@ function createDispatchHelpers(deps) {
         id: 'context-hygiene',
         kind: 'context',
         required: false,
-        when: '动作完成后上下文继续变重时',
+        when: 'when context continues to grow heavier after the action completes',
         recommendation: dispatch.context_hygiene.recommendation,
         clear_hint: dispatch.context_hygiene.clear_hint,
         pause_cli: dispatch.context_hygiene.pause_cli,
@@ -315,9 +350,11 @@ function createDispatchHelpers(deps) {
         tool_name: toolExecution ? toolExecution.tool : '',
         primary_agent: execution.primary_agent || '',
         supporting_agents: execution.supporting_agents || [],
-        wait_strategy: execution.wait_strategy || '主线程继续推进，只有在主路径被阻塞时才等待',
-        main_thread_owner: '当前主线程'
+        wait_strategy: execution.wait_strategy || 'the main thread keeps moving and waits only when the main path is blocked',
+        main_thread_owner: 'Current main thread'
       },
+      diagnostics: dispatch.diagnostics || getDiagnostics(resolved.session),
+      executor_signal: dispatch.executor_signal || buildExecutorSignal(getDiagnostics(resolved.session).latest_executor),
       orchestrator_steps: buildOrchestratorSteps(dispatch),
       context_hygiene: dispatch.context_hygiene || null,
       next_actions: dispatch.next_actions || guidance.next_actions,

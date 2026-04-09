@@ -21,25 +21,25 @@ signals:
     direction: "output"
     default_state: "low"
     confirmed: false
-    note: "SC8F072 的独立 10-bit PWM 输出组与 pin mux 强相关，需尽早固定输出脚。"
+    note: "SC8F072 independent 10-bit PWM output groups are tightly coupled to pin mux, so output pins must be fixed early."
   - name: "ADC_INPUT_MAIN"
     pin: "AN1/RA1"
     direction: "input"
     default_state: "analog"
     confirmed: false
-    note: "ADC 默认 12-bit；如切 10-bit，需要同步确认右对齐/左对齐解释口径。"
+    note: "ADC defaults to 12-bit. If switched to 10-bit, confirm the right-aligned / left-aligned interpretation at the same time."
   - name: "COMPARATOR_SENSE"
     pin: "CMP0N/RA2"
     direction: "input"
     default_state: "analog"
     confirmed: false
-    note: "比较器阈值依赖 RBIAS_H/RBIAS_L 与 LVDS 联合配置，不是单一寄存器位。"
+    note: "Comparator thresholds depend on combined RBIAS_H/RBIAS_L and LVDS configuration, not on a single register bit."
   - name: "TIMER_CAPTURE_OR_EXTCLK"
     pin: "T0CKI"
     direction: "input"
     default_state: "pull-low"
     confirmed: false
-    note: "若 TMR0 走外部时钟路径，需要同步确认 OPTION_REG.T0CS/T0SE/PSA。"
+    note: "If TMR0 uses an external clock path, confirm OPTION_REG.T0CS/T0SE/PSA together."
 
 peripherals:
   - name: "tmr0"
@@ -54,20 +54,20 @@ peripherals:
     usage: "analog sampling and code-voltage conversion"
 
 truths:
-  - "SC8F072 具备 TMR0/TMR2、独立 10-bit PWM、comparator 和 12-bit ADC。"
-  - "TMR0 无硬件自动重装载，当前时序应按中断中软件回写 TMR0 计算。"
-  - "10-bit PWM 中 PWM0~PWM3 共用周期寄存器，PWM4 使用独立周期寄存器。"
-  - "comparator-threshold 使用内部 VR 时，需要 RBIAS_H/RBIAS_L + LVDS 联合配置。"
-  - "ADC 支持 VDD 与内部 LDO 参考源，换算口径必须绑定参考源。"
+  - "SC8F072 provides TMR0/TMR2, independent 10-bit PWM, a comparator, and a 12-bit ADC."
+  - "TMR0 has no hardware auto-reload, so current timing should be calculated using software reload inside the interrupt."
+  - "In the 10-bit PWM block, PWM0~PWM3 share the period register while PWM4 uses an independent period register."
+  - "When comparator-threshold uses internal VR, RBIAS_H/RBIAS_L + LVDS must be configured together."
+  - "ADC supports VDD and internal LDO reference sources, and conversions must stay tied to the chosen reference source."
 
 constraints:
-  - "封装差异很大（SOT23-6/SOP8/MSOP10/SOP14/SOP16/QFN16），引脚表必须以实际封装为准。"
-  - "TMR0 外部时钟/边沿模式与分频配置受 OPTION_REG 联动约束。"
-  - "PWM 输出脚与 ADC/comparator 输入在部分封装上存在复用竞争。"
-  - "ADC 采样通道、参考源与目标电压换算口径必须在项目内固定。"
+  - "Package differences are large (SOT23-6/SOP8/MSOP10/SOP14/SOP16/QFN16), so the pin table must follow the actual package."
+  - "TMR0 external-clock / edge modes and prescaler configuration are coupled by OPTION_REG constraints."
+  - "PWM output pins and ADC/comparator inputs compete for muxing on some packages."
+  - "ADC sampling channels, reference sources, and target-voltage conversion conventions must be fixed within the project."
 
 unknowns:
-  - "最终量产封装型号和可用引脚范围。"
-  - "主时基走 TMR0 还是 TMR2。"
-  - "PWM 实际输出通道与功率级映射关系。"
-  - "ADC 参考源选择（VDD 或内部 LDO）。"
+  - "The final production package and usable pin range."
+  - "Whether the main timing base uses TMR0 or TMR2."
+  - "The mapping between actual PWM output channels and the power stage."
+  - "ADC reference-source choice (VDD or internal LDO)."

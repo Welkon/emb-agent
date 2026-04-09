@@ -22,7 +22,7 @@ test('context hygiene stays stable for light sessions and suggests clear after h
 
     const lightStatus = cli.buildStatus();
     assert.equal(lightStatus.context_hygiene.level, 'stable');
-    assert.match(lightStatus.context_hygiene.recommendation, /不需要主动清除/);
+    assert.match(lightStatus.context_hygiene.recommendation, /no proactive cleanup is needed/);
 
     for (let index = 1; index <= 5; index += 1) {
       const fileName = `src/f${index}.c`;
@@ -39,8 +39,8 @@ test('context hygiene stays stable for light sessions and suggests clear after h
 
     const heavyNext = cli.buildNextContext();
     assert.equal(heavyNext.context_hygiene.level, 'suggest-clearing');
-    assert.match(heavyNext.context_hygiene.recommendation, /先执行 pause/);
-    assert.ok(heavyNext.next_actions.some(item => item.includes('上下文提醒')));
+    assert.match(heavyNext.context_hygiene.recommendation, /pause now/);
+    assert.ok(heavyNext.next_actions.some(item => item.includes('Context reminder')));
 
     cli.main(['pause', 'capture heavy session before clear']);
 
@@ -48,7 +48,7 @@ test('context hygiene stays stable for light sessions and suggests clear after h
     assert.equal(resumed.context_hygiene.level, 'suggest-clearing');
     assert.equal(resumed.context_hygiene.handoff_ready, true);
     assert.equal(resumed.context_hygiene.clear_hint, 'clear -> resume');
-    assert.match(resumed.context_hygiene.recommendation, /已有 handoff/);
+    assert.match(resumed.context_hygiene.recommendation, /a handoff exists/);
 
     const plan = cli.buildActionOutput('plan');
     assert.equal(plan.context_hygiene.level, 'suggest-clearing');

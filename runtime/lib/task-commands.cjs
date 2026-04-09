@@ -160,11 +160,11 @@ function createTaskCommandHelpers(deps) {
     const baseEntries = [
       {
         path: runtime.getProjectAssetRelativePath('hw.yaml'),
-        reason: '硬件真值'
+        reason: 'Hardware truth'
       },
       {
         path: runtime.getProjectAssetRelativePath('req.yaml'),
-        reason: '需求真值'
+        reason: 'Requirement truth'
       }
     ];
 
@@ -172,11 +172,11 @@ function createTaskCommandHelpers(deps) {
       baseEntries.push(
         {
           path: 'docs/HARDWARE-LOGIC.md',
-          reason: '硬件逻辑记录'
+          reason: 'Hardware logic notes'
         },
         {
           path: 'docs/DEBUG-NOTES.md',
-          reason: '调试记录'
+          reason: 'Debug notes'
         }
       );
     }
@@ -184,28 +184,28 @@ function createTaskCommandHelpers(deps) {
     if (channel === 'debug') {
       baseEntries.push({
         path: 'docs/DEBUG-NOTES.md',
-        reason: '调试记录'
+        reason: 'Debug notes'
       });
     }
 
     if (session.active_thread && session.active_thread.path) {
       baseEntries.push({
         path: session.active_thread.path,
-        reason: '当前活跃 thread'
+        reason: 'Current active thread'
       });
     }
 
     if (session.active_workspace && session.active_workspace.path) {
       baseEntries.push({
         path: session.active_workspace.path,
-        reason: '当前活跃 workspace'
+        reason: 'Current active workspace'
       });
     }
 
     (session.last_files || []).forEach(item => {
       baseEntries.push({
         path: item,
-        reason: '最近相关文件'
+        reason: 'Recently related files'
       });
     });
 
@@ -372,19 +372,19 @@ function createTaskCommandHelpers(deps) {
       if (doc.markdown && (channel === 'implement' || channel === 'debug')) {
         entries.push({
           path: doc.markdown,
-          reason: `关联文档 markdown: ${doc.doc_id}`
+          reason: `Linked document markdown: ${doc.doc_id}`
         });
       }
       if (doc.hardware_facts && (channel === 'implement' || channel === 'check')) {
         entries.push({
           path: doc.hardware_facts,
-          reason: `关联文档硬件草稿: ${doc.doc_id}`
+          reason: `Linked hardware draft: ${doc.doc_id}`
         });
       }
       if (doc.requirements_facts && channel === 'check') {
         entries.push({
           path: doc.requirements_facts,
-          reason: `关联文档需求草稿: ${doc.doc_id}`
+          reason: `Linked requirement draft: ${doc.doc_id}`
         });
       }
     });

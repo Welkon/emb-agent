@@ -80,13 +80,13 @@ function buildUpdateLines() {
   triggerUpdateCheck(cache);
 
   if (staleInstall) {
-    lines.push(`检测到 stale install: hooks=${staleInstall.hook}, runtime=${staleInstall.installed}`);
-    lines.push('建议重新运行 emb-agent 安装，确保 hooks / runtime / skills 同步。');
+    lines.push(`Detected stale install: hooks=${staleInstall.hook}, runtime=${staleInstall.installed}`);
+    lines.push('Re-run emb-agent install to keep hooks / runtime / skills in sync.');
   }
 
   if (cache && cache.update_available && cache.latest) {
-    lines.push(`发现 emb-agent 新版本: ${cache.installed || 'unknown'} -> ${cache.latest}`);
-    lines.push('当前采用手动发布模式；需要时手动执行 release 检查并重新安装。');
+    lines.push(`Found a newer emb-agent version: ${cache.installed || 'unknown'} -> ${cache.latest}`);
+    lines.push('Manual release mode is active; run the release check and reinstall manually when needed.');
   }
 
   return lines;
@@ -120,16 +120,16 @@ function runHook(rawInput) {
       const reasons = [];
 
       if (!snapshot.refreshed_at) {
-        reasons.push('workspace 还没 refresh');
+        reasons.push('workspace has not been refreshed yet');
       }
       if ((carryOver.last_files || []).length > 0 && (snapshot.last_files || []).length === 0) {
-        reasons.push('最近文件还没沉到 workspace snapshot');
+        reasons.push('recent files have not been captured in the workspace snapshot');
       }
       if ((carryOver.open_questions || []).some(item => !(snapshot.open_questions || []).includes(item))) {
-        reasons.push('未决问题还没沉到 workspace snapshot');
+        reasons.push('open questions have not been captured in the workspace snapshot');
       }
       if ((carryOver.known_risks || []).some(item => !(snapshot.known_risks || []).includes(item))) {
-        reasons.push('已知风险还没沉到 workspace snapshot');
+        reasons.push('known risks have not been captured in the workspace snapshot');
       }
 
       return reasons.length > 0
@@ -141,13 +141,13 @@ function runHook(rawInput) {
     }
 
     if (resume.handoff) {
-      const nextAction = resume.handoff.next_action || '先执行 resume 恢复现场';
+      const nextAction = resume.handoff.next_action || 'run resume first to restore the working state';
       lines.unshift(
         '## Emb-Agent Session Reminder',
         '',
-        `发现未消费的 handoff，优先执行: ${resume.context_hygiene.resume_cli}`,
-        `下一步: ${nextAction}`,
-        `建议链路: ${resume.context_hygiene.clear_hint}`
+        `Found an unconsumed handoff. Run this first: ${resume.context_hygiene.resume_cli}`,
+        `Next step: ${nextAction}`,
+        `Suggested chain: ${resume.context_hygiene.clear_hint}`
       );
     }
 
@@ -160,11 +160,11 @@ function runHook(rawInput) {
       lines.unshift(
         '## Emb-Agent Session Reminder',
         '',
-        `当前活跃 task: ${resume.task.name} (${resume.task.title})`,
-        `状态: ${resume.task.status} / 类型: ${resume.task.type}`,
+        `Current active task: ${resume.task.name} (${resume.task.title})`,
+        `Status: ${resume.task.status} / Type: ${resume.task.type}`,
         implementFiles.length > 0
-          ? `建议先回读 task implement context: ${implementFiles.join(', ')}`
-          : '建议先执行 task context list <name>，确认当前 task 的局部上下文。'
+          ? `Re-read the task implement context first: ${implementFiles.join(', ')}`
+          : 'Run task context list <name> first to confirm the local context for the current task.'
       );
     }
 
@@ -173,15 +173,15 @@ function runHook(rawInput) {
       lines.unshift(
         '## Emb-Agent Session Reminder',
         '',
-        `当前活跃 workspace: ${resume.workspace.name} (${resume.workspace.title})`,
-        `类型: ${resume.workspace.type} / 状态: ${resume.workspace.status}`,
-        `建议先回读 workspace notes: ${resume.workspace.notes_path || resume.workspace.path}`,
+        `Current active workspace: ${resume.workspace.name} (${resume.workspace.title})`,
+        `Type: ${resume.workspace.type} / Status: ${resume.workspace.status}`,
+        `Re-read workspace notes first: ${resume.workspace.notes_path || resume.workspace.path}`,
         refreshHint
-          ? `建议先同步 workspace: ${refreshHint.cli}`
-          : 'workspace 已有 refresh 快照，可直接沿当前工作面继续'
+          ? `Refresh the workspace first: ${refreshHint.cli}`
+          : 'The workspace already has a refresh snapshot, so you can continue on the current work surface'
       );
       if (refreshHint) {
-        lines.splice(5, 0, `原因: ${refreshHint.reasons[0]}`);
+        lines.splice(5, 0, `Reason: ${refreshHint.reasons[0]}`);
       }
     }
 

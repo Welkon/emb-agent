@@ -350,8 +350,8 @@ function inferTools(peripherals, extraTextParts) {
     ['timer-calc', /\bTIMER(?:\d+)?\b|\bT16\b|\bTM2\b|\bTM3\b/i],
     ['pwm-calc', /\bPWM\b/i],
     ['lpwmg-calc', /\bLPWMG\b|\bLPG\dPWM\b/i],
-    ['lvdc-threshold', /\bLVDC\b|\bLVD\b|低压检测/i],
-    ['charger-config', /\bCHG\b|\bCHARG(?:E|ER|ING)\b|充电/i],
+    ['lvdc-threshold', /\bLVDC\b|\bLVD\b|low-voltage detection/i],
+    ['charger-config', /\bCHG\b|\bCHARG(?:E|ER|ING)\b|charging/i],
     ['adc-scale', /\bADC\b/i],
     ['comparator-threshold', /\bCOMPARATOR\b|\bCMP\b/i]
   ];
@@ -430,28 +430,28 @@ function signalHaystack(signal) {
 function inferSignalDescriptor(text) {
   const haystack = String(text || '');
 
-  if (/\bPWM\b|调光|占空比/i.test(haystack)) {
+  if (/\bPWM\b|dimming|duty cycle/i.test(haystack)) {
     return {
       name: 'PWM_OUT',
       usage: 'pwm-output',
       direction: 'output'
     };
   }
-  if (/\bADC\b|ANALOG|SENSE|采样|模拟/i.test(haystack)) {
+  if (/\bADC\b|ANALOG|SENSE|sampling|analog/i.test(haystack)) {
     return {
       name: 'ADC_IN',
       usage: 'adc-input',
       direction: 'input'
     };
   }
-  if (/\bCOMPARATOR\b|\bCMP\b|比较器/i.test(haystack)) {
+  if (/\bCOMPARATOR\b|\bCMP\b|comparator/i.test(haystack)) {
     return {
       name: 'CMP_IN',
       usage: 'comparator-input',
       direction: 'input'
     };
   }
-  if (/PROGRAM|烧录|编程|ICP|ICSP|DEBUG|SWD/i.test(haystack)) {
+  if (/PROGRAM|flashing|programming|ICP|ICSP|DEBUG|SWD/i.test(haystack)) {
     return {
       name: 'PROG',
       usage: 'programming',
@@ -668,8 +668,8 @@ function findSignal(signals, matcher) {
 
 function buildBindingNotes(baseNotes, evidence) {
   return runtime.unique([
-    '由 adapter derive 自动生成的 draft binding，仅供 agent/开发者继续补全。',
-    '当前只补安全可推断字段；具体公式、寄存器位宽、时钟源和边界仍需查手册确认。',
+    'Draft binding generated automatically by adapter derive for agents/developers to complete.',
+    'Only safe inferable fields are filled in now; formulas, register widths, clock sources, and boundaries still need manual confirmation.',
     ...(baseNotes || []),
     ...(evidence || [])
   ]);
@@ -702,8 +702,8 @@ function buildTimerBinding(toolName, config) {
       [],
       [
         timerName
-          ? `已从 truth/doc 识别计时器外设 ${timers.join(', ')}。`
-          : '未识别到具体计时器名，需要手工补充。'
+          ? `Timer peripherals ${timers.join(', ')} were identified from truth/doc sources.`
+          : 'No specific timer name was identified and must be filled in manually.'
       ]
     )
   };
@@ -733,8 +733,8 @@ function buildPwmBinding(toolName, config) {
     notes: buildBindingNotes(
       [],
       [
-        pwmName ? `已识别 PWM 能力 ${pwmName}。` : '仅识别到 PWM 关键词，具体 block 未确认。',
-        outputPin ? `已从项目 truth 识别默认 PWM 引脚 ${outputPin}。` : '默认 PWM 输出引脚未确认。'
+        pwmName ? `PWM capability ${pwmName} was identified.` : 'Only PWM keywords were identified; the exact block is still unconfirmed.',
+        outputPin ? `Default PWM pin ${outputPin} was identified from project truth.` : 'The default PWM output pin is unconfirmed.'
       ]
     )
   };
@@ -777,10 +777,10 @@ function buildLpwmgBinding(toolName, config) {
     notes: buildBindingNotes(
       [],
       [
-        lpwmgName ? `已识别 LPWMG 能力 ${lpwmgName}。` : '仅识别到 LPWMG 关键词，具体通道仍需手工确认。',
+        lpwmgName ? `LPWMG capability ${lpwmgName} was identified.` : 'Only LPWMG keywords were identified; the exact channel still needs manual confirmation.',
         defaultPin
-          ? `已从项目 truth 识别默认 LPWMG 输出候选 ${defaultPin}。`
-          : '默认 LPWMG 输出引脚未确认。'
+          ? `Default LPWMG output candidate ${defaultPin} was identified from project truth.`
+          : 'The default LPWMG output pin is unconfirmed.'
       ]
     )
   };
@@ -810,8 +810,8 @@ function buildAdcBinding(toolName, config) {
     notes: buildBindingNotes(
       [],
       [
-        adcName ? `已识别 ADC 能力 ${adcName}。` : '仅识别到 ADC 关键词，通道映射未确认。',
-        channelName ? `已从项目 truth 识别默认 ADC 通道候选 ${channelName}。` : '默认 ADC 通道未确认。'
+        adcName ? `ADC capability ${adcName} was identified.` : 'Only ADC keywords were identified; channel mapping is unconfirmed.',
+        channelName ? `Default ADC channel candidate ${channelName} was identified from project truth.` : 'The default ADC channel is unconfirmed.'
       ]
     )
   };
@@ -834,14 +834,14 @@ function buildLvdcBinding(toolName, config) {
     notes: buildBindingNotes(
       [],
       [
-        lvdcName ? `已识别低压检测能力 ${lvdcName}。` : '仅识别到 LVDC/LVD 关键词，具体寄存器字段仍需手工确认。'
+        lvdcName ? `Low-voltage detection capability ${lvdcName} was identified.` : 'Only LVDC/LVD keywords were identified; exact register fields still need manual confirmation.'
       ]
     )
   };
 }
 
 function buildChargerBinding(toolName, config) {
-  const charger = findPeripheral(config.peripherals, /\bCHG\b|\bCHARG(?:E|ER|ING)\b|充电/i);
+  const charger = findPeripheral(config.peripherals, /\bCHG\b|\bCHARG(?:E|ER|ING)\b|charging/i);
   const chargerName = charger ? String(charger.name) : 'Charger';
 
   return {
@@ -858,7 +858,7 @@ function buildChargerBinding(toolName, config) {
     notes: buildBindingNotes(
       [],
       [
-        chargerName ? `已识别充电能力 ${chargerName}。` : '仅识别到 CHG/充电关键词，电流档位与状态位仍需手工确认。'
+        chargerName ? `Charging capability ${chargerName} was identified.` : 'Only CHG/charging keywords were identified; current steps and status bits still need manual confirmation.'
       ]
     )
   };
@@ -887,10 +887,10 @@ function buildComparatorBinding(toolName, config) {
     notes: buildBindingNotes(
       [],
       [
-        cmpName ? `已识别比较器能力 ${cmpName}。` : '仅识别到比较器关键词，输入源未确认。',
+        cmpName ? `Comparator capability ${cmpName} was identified.` : 'Only comparator keywords were identified; input sources are unconfirmed.',
         comparatorSignals.length > 0
-          ? `已根据 truth/doc 提取比较器输入候选 ${comparatorSignals.map(item => item.pin || item.name).join(', ')}。`
-          : '比较器输入源仍需手工确认。'
+          ? `Comparator input candidates ${comparatorSignals.map(item => item.pin || item.name).join(', ')} were extracted from truth/doc sources.`
+          : 'Comparator input sources still need manual confirmation.'
       ]
     )
   };
@@ -1175,8 +1175,8 @@ function buildDraftAdapterRoute(toolName, config) {
     "          device: resolved.device || ''",
     '        },',
     '        notes: [',
-    "          '这是 adapter derive 生成的 draft route，当前只负责把 binding 草稿暴露给 agent/开发者。',",
-    "          '尚未找到对应 binding；请先补 device/family bindings，或重新执行 adapter derive。'",
+    "          'This draft route was generated by adapter derive and currently only exposes the binding draft to agents/developers.',",
+    "          'No matching binding has been found yet. Add device/family bindings first, or run adapter derive again.'",
     '        ]',
     '      };',
     '    }',
@@ -1204,12 +1204,12 @@ function buildDraftAdapterRoute(toolName, config) {
     '        notes: resolved.binding.notes || []',
     '      },',
     '      next_steps: [',
-    "        '根据 binding.algorithm 和 params 在这个 route 中补真实公式实现。',",
-    "        '实现完成后可去掉 module.exports.draft 标记，让调度把该工具视为 ready。'",
+    "        'Implement the real formula in this route according to binding.algorithm and params.',",
+    "        'After implementation is complete, remove the module.exports.draft marker so scheduling can treat the tool as ready.'",
     '      ],',
     '      notes: [',
-    "        '这是 adapter derive 生成的 draft route，不执行真实计算。',",
-    "        '它的作用是为 agent 提供稳定入口和 binding 草稿，而不是伪造结果。'",
+    "        'This is a draft route generated by adapter derive and does not execute real calculations.',",
+    "        'Its purpose is to provide agents with a stable entry point and binding draft, not to fabricate results.'",
     '      ]',
     '    };',
     '  }',
@@ -1229,8 +1229,8 @@ function buildFamilyProfile(config) {
       clock_sources: [],
       bindings: {},
       notes: [
-        '由 adapter derive 生成的 family 草稿。',
-        '如不同 device 仅参数不同，优先在 device bindings/params 里补齐。',
+        'Family draft generated by adapter derive.',
+        'If devices differ only by parameters, prefer filling them in via device bindings/params.',
         ...(config.inference_notes || [])
       ]
   };
@@ -1245,8 +1245,8 @@ function buildDeviceProfile(config) {
       supported_tools: config.tools.slice(),
       bindings: config.bindings || {},
       notes: [
-        '由 adapter derive 生成的 device 草稿。',
-        '已自动补 draft bindings；请根据手册、例程或已验证代码补真实算法参数。',
+        'Device draft generated by adapter derive.',
+        'Draft bindings were added automatically. Fill in real algorithm parameters from manuals, examples, or verified code.',
         ...(config.inference_notes || [])
       ]
   };
@@ -1266,8 +1266,8 @@ function buildChipPackages(config) {
       pins,
       notes: runtime.unique([
         pins.length > 0
-          ? '当前为按 truth/doc 自动起草的部分引脚草案，物理 pin number 仍需按 datasheet pin table 复核。'
-          : '建议后续按封装补充物理引脚表。'
+          ? 'This is a partially auto-drafted pin proposal from truth/doc sources. Physical pin numbers still need to be checked against the datasheet pin table.'
+          : 'Add the physical pin table later according to package type.'
       ])
     }
   ];
@@ -1296,8 +1296,8 @@ function buildChipProfile(config) {
     related_tools: config.tools.slice(),
     source_modules: [],
     notes: [
-      '由 adapter derive 生成的 chip 草稿。',
-      '建议把可复用能力放在 pins/packages，避免把引脚知识散落到 tool params。',
+      'Chip draft generated by adapter derive.',
+      'Put reusable capabilities into pins/packages to avoid scattering pin knowledge into tool params.',
       ...(config.inference_notes || [])
     ]
   };
@@ -1464,12 +1464,12 @@ function deriveProfiles(argv, options) {
     })),
     trust: trustReport,
     notes: [
-      '已生成 family/device/chip 草稿，并按可推断信息补了 device draft bindings。',
-      '当前生成结果仍是 draft adapter，不应把工具输出直接当成真值。',
+      'Family/device/chip drafts were generated, and device draft bindings were added from inferable information.',
+      'The generated result is still a draft adapter; do not treat tool output as ground truth yet.',
       trustReport && trustReport.primary
-        ? `优先处理 ${trustReport.primary.tool}: ${trustReport.primary.recommended_action} (${trustReport.primary.grade} ${trustReport.primary.score}/100)。`
-        : '下一步应结合手册、例程或已验证代码补齐 device bindings 细节与外部 adapter 实现。',
-      '下一步应结合手册、例程或已验证代码补齐 device bindings 细节与外部 adapter 实现。'
+        ? `Handle ${trustReport.primary.tool} first: ${trustReport.primary.recommended_action} (${trustReport.primary.grade} ${trustReport.primary.score}/100).`
+        : 'Next, fill in device-binding details and external adapter implementation from manuals, examples, or verified code.',
+      'Next, fill in device-binding details and external adapter implementation from manuals, examples, or verified code.'
     ]
   };
 }

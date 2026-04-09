@@ -196,7 +196,7 @@ function detectProjectInputs(projectRoot) {
     const lower = relPath.toLowerCase();
     const ext = path.extname(lower);
 
-    if (SCHEMATIC_EXTS.has(ext) || lower.includes('schematic') || lower.includes('电路')) {
+    if (SCHEMATIC_EXTS.has(ext) || lower.includes('schematic') || lower.includes('circuit')) {
       schematics.push(relPath);
       continue;
     }
@@ -308,7 +308,7 @@ function seedReqTruth(filePath, options) {
     '  ',
     options.goal ? [options.goal] : [],
     options.force,
-    ['明确当前项目的首个可交付目标']
+    ['Define the first deliverable target for the current project']
   );
   content = replaceListBlock(
     content,

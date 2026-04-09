@@ -8,6 +8,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 
 test('orchestrator defaults to next and stays inline for empty project context', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-next-'));
@@ -70,7 +71,7 @@ test('orchestrator exposes arch-review contract as primary-first flow', () => {
   try {
     process.chdir(tempProject);
     cli.main(['init']);
-    cli.main(['focus', 'set', '芯片选型与PoC转量产预审']);
+    cli.main(['focus', 'set', 'chip selection and PoC to production preflight']);
 
     const orchestrator = cli.buildOrchestratorContext('next');
 
@@ -121,7 +122,7 @@ test('orchestrator exposes tool-first step when scan has ready tool recommendati
   try {
     process.chdir(tempProject);
     cli.main(['init', '--mcu', 'vendor-chip']);
-    cli.main(['question', 'add', 'tm2 prescaler 和 pwm 公式怎么算']);
+    cli.main(['question', 'add', 'how should tm2 prescaler and pwm formulas be calculated']);
 
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
@@ -223,6 +224,49 @@ test('orchestrator exposes tool-first step when scan has ready tool recommendati
   }
 });
 
+test('orchestrator exposes structured executor signal when latest executor failed', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-executor-signal-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+    const statePaths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), tempProject, runtimeConfig);
+    const session = runtime.readJson(statePaths.sessionPath);
+    session.diagnostics.latest_executor = {
+      name: 'build',
+      status: 'failed',
+      risk: 'normal',
+      exit_code: 2,
+      duration_ms: 1500,
+      ran_at: '2026-04-09T12:40:00.000Z',
+      cwd: '.',
+      argv: ['make', '-C', 'firmware'],
+      evidence_hint: [],
+      stdout_preview: 'building',
+      stderr_preview: 'link failed'
+    };
+    runtime.writeJson(statePaths.sessionPath, session);
+
+    const orchestrator = cli.buildOrchestratorContext('next');
+
+    assert.equal(orchestrator.diagnostics.latest_executor.name, 'build');
+    assert.equal(orchestrator.executor_signal.present, true);
+    assert.equal(orchestrator.executor_signal.failed, true);
+    assert.equal(orchestrator.executor_signal.requires_forensics, true);
+    assert.equal(orchestrator.executor_signal.recommended_action, 'forensics');
+    assert.match(orchestrator.executor_signal.summary, /build failed, exit=2/);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('orchestrator keeps tool step non-required when adapter trust is not yet executable', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-tool-draft-'));
   const currentCwd = process.cwd();
@@ -234,7 +278,7 @@ test('orchestrator keeps tool step non-required when adapter trust is not yet ex
   try {
     process.chdir(tempProject);
     cli.main(['init', '--mcu', 'vendor-chip']);
-    cli.main(['question', 'add', 'tm2 prescaler 和 pwm 公式怎么算']);
+    cli.main(['question', 'add', 'how should tm2 prescaler and pwm formulas be calculated']);
 
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
@@ -328,7 +372,7 @@ test('orchestrator keeps tool step non-required when adapter trust is not yet ex
 
     assert.equal(next.health.adapter_health.primary.tool, 'timer-calc');
     assert.equal(next.health.adapter_health.primary.executable, false);
-    assert.ok(next.next_actions.some(item => item.includes('adapter 可信度提醒')));
+    assert.ok(next.next_actions.some(item => item.includes('Adapter trust reminder')));
     assert.ok(next.next_actions.some(item => item.includes('implement-adapter')));
 
     assert.equal(orchestrator.resolved_action, 'scan');

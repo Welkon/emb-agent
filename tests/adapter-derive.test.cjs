@@ -72,7 +72,7 @@ test('adapter derive creates extension registries and profile skeletons', () => 
     assert.equal(result.trust.primary.grade, 'draft');
     assert.equal(result.trust.primary.recommended_action, 'implement-adapter');
     assert.ok(result.notes.some(item => item.includes('draft adapter')));
-    assert.ok(result.notes.some(item => item.includes('不应把工具输出直接当成真值')));
+    assert.ok(result.notes.some(item => item.includes('do not treat tool output as ground truth')));
 
     const toolRegistry = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'), 'utf8')

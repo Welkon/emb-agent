@@ -30,7 +30,7 @@ test('session start hook only reminds when an unconsumed handoff exists', () => 
     cli.main(['pause', 'resume irq race first']);
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
     assert.match(reminder, /Emb-Agent Session Reminder/);
-    assert.match(reminder, /发现未消费的 handoff/);
+    assert.match(reminder, /Found an unconsumed handoff/);
     assert.match(reminder, /node ~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs resume/);
     assert.match(reminder, /resume irq race first/);
   } finally {
@@ -74,8 +74,8 @@ test('session start hook surfaces cached update and stale install notices', () =
     process.chdir(tempProject);
     cli.main(['init']);
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
-    assert.match(reminder, /发现 emb-agent 新版本: 0.2.0 -> 0.3.0/);
-    assert.match(reminder, /检测到 stale install/);
+    assert.match(reminder, /Found a newer emb-agent version: 0.2.0 -> 0.3.0/);
+    assert.match(reminder, /Detected stale install/);
   } finally {
     if (fs.existsSync(cachePath)) {
       fs.rmSync(cachePath, { force: true });
@@ -109,7 +109,7 @@ test('session start hook reminds active task context after clearable resume path
     cli.main(['task', 'activate', taskName]);
 
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
-    assert.match(reminder, /当前活跃 task:/);
+    assert.match(reminder, /Current active task:/);
     assert.match(reminder, /Investigate PMS150G comparator timing/);
     assert.match(reminder, /task implement context/);
     assert.match(reminder, /emb-agent\/hw\.yaml/);
@@ -140,7 +140,7 @@ test('session start hook reminds active workspace when no handoff or task is act
     cli.main(['workspace', 'activate', workspaceName]);
 
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
-    assert.match(reminder, /当前活跃 workspace:/);
+    assert.match(reminder, /Current active workspace:/);
     assert.match(reminder, /Power domain verification/);
     assert.match(reminder, /workspace notes/);
     assert.match(reminder, /emb-agent\/workspace\//);

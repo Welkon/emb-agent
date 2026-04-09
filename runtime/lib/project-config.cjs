@@ -55,7 +55,7 @@ function createProjectConfigHelpers(deps) {
     return {
       mode: 'selection-only',
       status: 'info',
-      summary: '同步已命中候选 adapter 文件，但当前项目上下文还不足以生成 trust 评分。',
+      summary: 'Matched candidate adapter files have been synced, but current project context is still insufficient to generate a trust score.',
       matched_chips: matched.chips || [],
       matched_tools: matched.tools || [],
       inferred_from_project: Boolean(selection.inferred_from_project),
@@ -559,6 +559,7 @@ function createProjectConfigHelpers(deps) {
         project_profile: resolved.session.project_profile,
         active_packs: resolved.session.active_packs,
         adapter_sources: [],
+        executors: {},
         preferences: getPreferences(resolved.session),
         integrations: {},
         arch_review: {}
@@ -653,8 +654,8 @@ function createProjectConfigHelpers(deps) {
       mode: 'selection-only',
       status: matched.length > 0 ? 'info' : 'warn',
       summary: matched.length > 0
-        ? '当前已有命中的 adapter 文件，但项目侧还不能形成完整 trust 评分。'
-        : '当前还没有足够的已命中 adapter 可供质量评估。',
+        ? 'Matched adapter files already exist, but the project side still cannot form a complete trust score.'
+        : 'There are still not enough matched adapters available for quality evaluation.',
       matched_tools: runtime.unique(matched)
     };
   }

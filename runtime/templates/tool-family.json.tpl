@@ -10,6 +10,6 @@
   "clock_sources": [],
   "bindings": {},
   "notes": [
-    "这个 family profile 属于项目或外部扩展，不属于 emb-agent core。"
+    "This family profile belongs to the project or an external extension, not emb-agent core."
   ]
 }

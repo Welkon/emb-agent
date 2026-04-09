@@ -320,6 +320,19 @@ function ensureOptionalString(value, label) {
   return value;
 }
 
+function ensureOptionalInteger(value, label) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const next = Number(value);
+  if (!Number.isInteger(next) || next < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+
+  return next;
+}
+
 function ensureStringArray(value, label) {
   if (!Array.isArray(value)) {
     throw new Error(`${label} must be an array`);
@@ -411,6 +424,10 @@ function normalizeDiagnostics(value) {
     !source.latest_forensics || typeof source.latest_forensics !== 'object' || Array.isArray(source.latest_forensics)
       ? {}
       : source.latest_forensics;
+  const latestExecutor =
+    !source.latest_executor || typeof source.latest_executor !== 'object' || Array.isArray(source.latest_executor)
+      ? {}
+      : source.latest_executor;
 
   return {
     latest_forensics: {
@@ -426,6 +443,28 @@ function normalizeDiagnostics(value) {
         'diagnostics.latest_forensics.highest_severity'
       ),
       generated_at: ensureOptionalString(latestForensics.generated_at, 'diagnostics.latest_forensics.generated_at')
+    },
+    latest_executor: {
+      name: ensureOptionalString(latestExecutor.name, 'diagnostics.latest_executor.name'),
+      status: ensureOptionalString(latestExecutor.status, 'diagnostics.latest_executor.status'),
+      risk: ensureOptionalString(latestExecutor.risk, 'diagnostics.latest_executor.risk'),
+      exit_code: ensureOptionalInteger(latestExecutor.exit_code, 'diagnostics.latest_executor.exit_code'),
+      duration_ms: ensureOptionalInteger(latestExecutor.duration_ms, 'diagnostics.latest_executor.duration_ms'),
+      ran_at: ensureOptionalString(latestExecutor.ran_at, 'diagnostics.latest_executor.ran_at'),
+      cwd: normalizeProjectRelativePath(ensureOptionalString(latestExecutor.cwd, 'diagnostics.latest_executor.cwd')),
+      argv: ensureStringArray(latestExecutor.argv || [], 'diagnostics.latest_executor.argv'),
+      evidence_hint: ensureStringArray(
+        latestExecutor.evidence_hint || [],
+        'diagnostics.latest_executor.evidence_hint'
+      ).map(normalizeProjectRelativePath),
+      stdout_preview: ensureOptionalString(
+        latestExecutor.stdout_preview,
+        'diagnostics.latest_executor.stdout_preview'
+      ),
+      stderr_preview: ensureOptionalString(
+        latestExecutor.stderr_preview,
+        'diagnostics.latest_executor.stderr_preview'
+      )
     }
   };
 }
@@ -613,6 +652,56 @@ function validateAdapterSources(config) {
   return normalized;
 }
 
+function validateExecutorEnv(config, label) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, label);
+
+  const normalized = {};
+  Object.entries(source).forEach(([key, value]) => {
+    const envKey = ensureString(key, `${label} key`);
+    normalized[envKey] = ensureString(String(value), `${label}.${envKey}`);
+  });
+
+  return normalized;
+}
+
+function validateExecutorConfig(name, config) {
+  const label = `executors.${name}`;
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, label);
+
+  const argv = ensureStringArray(source.argv || [], `${label}.argv`);
+  if (argv.length === 0) {
+    throw new Error(`${label}.argv must contain at least one command token`);
+  }
+
+  return {
+    description: ensureOptionalString(source.description, `${label}.description`),
+    argv,
+    cwd: ensureOptionalString(source.cwd, `${label}.cwd`),
+    env: validateExecutorEnv(source.env || {}, `${label}.env`),
+    allow_extra_args: ensureBoolean(source.allow_extra_args, `${label}.allow_extra_args`, false),
+    risk: ensureChoice(source.risk, `${label}.risk`, ['normal', 'high'], 'normal'),
+    evidence_hint: ensureStringArray(source.evidence_hint || [], `${label}.evidence_hint`)
+  };
+}
+
+function validateExecutors(config) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, 'executors');
+
+  const normalized = {};
+  Object.entries(source).forEach(([name, value]) => {
+    const executorName = ensureString(name, 'executors key');
+    if (!/^[a-z0-9][a-z0-9_-]{0,31}$/i.test(executorName)) {
+      throw new Error(`Invalid executor name: ${executorName}`);
+    }
+    normalized[executorName] = validateExecutorConfig(executorName, value);
+  });
+
+  return normalized;
+}
+
 function validateProjectConfig(config, runtimeConfig) {
   expectObject(config, 'Project config');
 
@@ -620,6 +709,7 @@ function validateProjectConfig(config, runtimeConfig) {
     project_profile: ensureOptionalString(config.project_profile, 'project_profile'),
     active_packs: ensureStringArray(config.active_packs || [], 'active_packs'),
     adapter_sources: validateAdapterSources(config.adapter_sources || []),
+    executors: validateExecutors(config.executors || {}),
     developer: validateDeveloperConfig(config.developer || {}),
     preferences: normalizePreferences(config.preferences || {}, runtimeConfig),
     integrations: validateIntegrations(config.integrations || {}),

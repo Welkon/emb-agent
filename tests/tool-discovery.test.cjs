@@ -154,9 +154,9 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
     assert.equal(next.next.tool_recommendation.tool, 'timer-calc');
     assert.equal(next.next.tool_recommendation.trust.grade, 'trusted');
     assert.match(next.next.tool_recommendation.cli_draft, /tool run timer-calc/);
-    assert.ok(next.next_actions.some(item => item.includes('优先重读寄存器摘要: .emb-agent/docs/sources/mcu/vendor-chip-registers.md')));
-    assert.ok(next.next_actions.some(item => item.includes('首选工具草案:')));
-    assert.ok(next.next_actions.some(item => item.includes('工具待补参数:')));
+    assert.ok(next.next_actions.some(item => item.includes('Re-read the register summary first: .emb-agent/docs/sources/mcu/vendor-chip-registers.md')));
+    assert.ok(next.next_actions.some(item => item.includes('Preferred tool draft:')));
+    assert.ok(next.next_actions.some(item => item.includes('Missing tool inputs:')));
     assert.equal(plan.recommended_sources[0].id, 'mcu/vendor-chip-registers');
     assert.equal(plan.suggested_tools[0].chip, 'vendor-chip');
     assert.equal(plan.tool_recommendations[0].binding_algorithm, 'vendor-timer16');

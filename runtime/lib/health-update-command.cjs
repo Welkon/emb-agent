@@ -137,18 +137,18 @@ function createHealthUpdateCommandHelpers(deps) {
     if (pendingDocApply && pendingDocApply.command) {
       return {
         stage: 'doc-apply-then-next',
-        summary: '先把最新文档解析结果落到真值文件，再执行 next',
+        summary: 'Write the latest document parsing result into truth files first, then run next',
         steps: [
           {
-            label: `应用文档 ${pendingDocApply.doc_id} 到 ${pendingDocApply.target}`,
+            label: `Apply document ${pendingDocApply.doc_id} to ${pendingDocApply.target}`,
             cli: pendingDocApply.command
           },
           {
-            label: '进入 emb-agent 推荐的下一步',
+            label: 'Enter the emb-agent recommended next step',
             cli: NEXT_CLI
           }
         ],
-        followup: `先执行: ${pendingDocApply.command} -> ${NEXT_CLI}`
+        followup: `Run first: ${pendingDocApply.command} -> ${NEXT_CLI}`
       };
     }
 
@@ -158,14 +158,14 @@ function createHealthUpdateCommandHelpers(deps) {
     if (bootstrap) {
       return {
         stage: 'bootstrap-then-next',
-        summary: '最短闭环已就绪：先 bootstrap，同步匹配 adapter；然后直接执行 next',
+        summary: 'The shortest closure path is ready: bootstrap first, sync matching adapters, then run next directly',
         steps: [
           {
-            label: bootstrap.summary || '执行 adapter bootstrap',
+            label: bootstrap.summary || 'Run adapter bootstrap',
             cli: bootstrap.cli || ''
           },
           {
-            label: '进入 emb-agent 推荐的下一步',
+            label: 'Enter the emb-agent recommended next step',
             cli: NEXT_CLI
           }
         ]
@@ -175,36 +175,36 @@ function createHealthUpdateCommandHelpers(deps) {
     if (derive) {
       return {
         stage: 'derive-then-next',
-        summary: '现有 adapter 还没覆盖当前硬件；先按最近文档起草 adapter，再执行 next',
+        summary: 'Existing adapters do not cover the current hardware yet. Draft an adapter from the latest document first, then run next',
         steps: [
           {
-            label: derive.summary || '执行 adapter derive',
+            label: derive.summary || 'Run adapter derive',
             cli: derive.cli || ''
           },
           {
-            label: '进入 emb-agent 推荐的下一步',
+            label: 'Enter the emb-agent recommended next step',
             cli: NEXT_CLI
           }
         ],
-        followup: `先执行: ${derive.cli} -> ${NEXT_CLI}`
+        followup: `Run first: ${derive.cli} -> ${NEXT_CLI}`
       };
     }
 
     if (!hardwareIdentity.model || !hardwareIdentity.package) {
       return {
         stage: 'fill-hardware-identity',
-        summary: '先补全 hw.yaml 的硬件身份；补完后即可走 bootstrap -> next 的最短闭环',
+        summary: 'Fill in the hardware identity in hw.yaml first; after that you can take the shortest bootstrap -> next closure path',
         steps: [
           {
-            label: `补全 ${runtime.getProjectAssetRelativePath('hw.yaml')} 的 vendor / model / package`,
+            label: `Fill in vendor / model / package in ${runtime.getProjectAssetRelativePath('hw.yaml')}`,
             cli: ''
           },
           {
-            label: '重新执行 health，确认可以进入最短闭环',
+            label: 'Run health again to confirm the shortest closure path is available',
             cli: HEALTH_CLI
           }
         ],
-        followup: `硬件真值补完后，直接执行: ${DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI} -> ${NEXT_CLI}`
+        followup: `After hardware truth is complete, run directly: ${DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI} -> ${NEXT_CLI}`
       };
     }
 
@@ -267,9 +267,9 @@ function createHealthUpdateCommandHelpers(deps) {
       createCheck(
         'project_root',
         fs.existsSync(projectRoot) ? 'pass' : 'fail',
-        fs.existsSync(projectRoot) ? '项目根目录可访问' : '项目根目录不存在',
+        fs.existsSync(projectRoot) ? 'Project root is accessible' : 'Project root does not exist',
         [projectRoot],
-        fs.existsSync(projectRoot) ? '' : '先确认当前 cwd 是否为项目根目录。'
+        fs.existsSync(projectRoot) ? '' : 'Confirm first that the current cwd is the project root.'
       )
     );
 
@@ -277,9 +277,9 @@ function createHealthUpdateCommandHelpers(deps) {
       createCheck(
         'emb_agent_dir',
         fs.existsSync(projectExtDir) ? 'pass' : 'fail',
-        fs.existsSync(projectExtDir) ? '.emb-agent 目录存在' : '.emb-agent 目录缺失',
+        fs.existsSync(projectExtDir) ? '.emb-agent directory exists' : '.emb-agent directory is missing',
         [path.relative(projectRoot, projectExtDir) || runtime.getProjectAssetRelativePath()],
-        fs.existsSync(projectExtDir) ? '' : '先执行 init，生成 .emb-agent 最小项目骨架。'
+        fs.existsSync(projectExtDir) ? '' : 'Run init first to generate the minimal .emb-agent project skeleton.'
       )
     );
 
@@ -287,9 +287,9 @@ function createHealthUpdateCommandHelpers(deps) {
       createCheck(
         'project_config_file',
         fs.existsSync(projectConfigPath) ? 'pass' : 'fail',
-        fs.existsSync(projectConfigPath) ? 'project.json 已存在' : 'project.json 缺失',
+        fs.existsSync(projectConfigPath) ? 'project.json exists' : 'project.json is missing',
         [path.relative(projectRoot, projectConfigPath)],
-        fs.existsSync(projectConfigPath) ? '' : `先执行 init，补齐 ${runtime.getProjectAssetRelativePath('project.json')}。`
+        fs.existsSync(projectConfigPath) ? '' : `Run init first to create ${runtime.getProjectAssetRelativePath('project.json')}.`
       )
     );
 
@@ -299,7 +299,7 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'project_config_valid',
           projectConfig ? 'pass' : 'fail',
-          projectConfig ? 'project.json 校验通过' : 'project.json 尚未初始化',
+          projectConfig ? 'project.json validation passed' : 'project.json is not initialized yet',
           projectConfig
             ? [
                 `profile=${projectConfig.project_profile || '(default)'}`,
@@ -307,7 +307,7 @@ function createHealthUpdateCommandHelpers(deps) {
                 `adapter_sources=${(projectConfig.adapter_sources || []).length}`
               ]
             : [path.relative(projectRoot, projectConfigPath)],
-          projectConfig ? '' : '先执行 init，写入最小项目配置。'
+          projectConfig ? '' : 'Run init first to write the minimal project configuration.'
         )
       );
     } catch (error) {
@@ -315,20 +315,20 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'project_config_valid',
           'fail',
-          'project.json 非法',
+          'project.json is invalid',
           [error.message],
-          `先修正 ${runtime.getProjectAssetRelativePath('project.json')}，再继续使用 emb-agent。`
+          `Fix ${runtime.getProjectAssetRelativePath('project.json')} before continuing to use emb-agent.`
         )
       );
     }
 
     [
-      ['hw_truth', hwPath, 'hw.yaml 已存在', 'hw.yaml 缺失', `先补齐 ${runtime.getProjectAssetRelativePath('hw.yaml')}，沉淀 MCU/引脚/约束真值。`],
-      ['req_truth', reqPath, 'req.yaml 已存在', 'req.yaml 缺失', `先补齐 ${runtime.getProjectAssetRelativePath('req.yaml')}，沉淀目标/功能/验收。`],
-      ['docs_dir', docsDir, 'docs 目录存在', 'docs 目录缺失', '先创建 docs 目录，便于后续文档导入与固定报告落盘。'],
-      ['doc_cache_dir', docCacheDir, '文档缓存目录存在', '文档缓存目录缺失', `重新执行 init，补齐 ${runtime.getProjectAssetRelativePath('cache', 'docs')}。`],
-      ['adapter_cache_dir', adapterCacheDir, 'adapter 缓存目录存在', 'adapter 缓存目录缺失', `重新执行 init，补齐 ${runtime.getProjectAssetRelativePath('cache', 'adapter-sources')}。`],
-      ['adapters_dir', adaptersDir, 'adapter 目录存在', 'adapter 目录缺失', `重新执行 init，补齐 ${runtime.getProjectAssetRelativePath('adapters')}。`]
+      ['hw_truth', hwPath, 'hw.yaml exists', 'hw.yaml is missing', `Complete ${runtime.getProjectAssetRelativePath('hw.yaml')} first to record MCU / pin / constraint ground truth.`],
+      ['req_truth', reqPath, 'req.yaml exists', 'req.yaml is missing', `Complete ${runtime.getProjectAssetRelativePath('req.yaml')} first to record goals / features / acceptance.`],
+      ['docs_dir', docsDir, 'docs directory exists', 'docs directory is missing', 'Create the docs directory first so later document ingestion and durable report persistence have a place to land.'],
+      ['doc_cache_dir', docCacheDir, 'Document cache directory exists', 'Document cache directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('cache', 'docs')}.`],
+      ['adapter_cache_dir', adapterCacheDir, 'Adapter cache directory exists', 'Adapter cache directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('cache', 'adapter-sources')}.`],
+      ['adapters_dir', adaptersDir, 'Adapter directory exists', 'Adapter directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('adapters')}.`]
     ].forEach(([key, targetPath, passSummary, failSummary, recommendation]) => {
       const exists = fs.existsSync(targetPath);
       checks.push(
@@ -350,7 +350,7 @@ function createHealthUpdateCommandHelpers(deps) {
           createCheck(
             'session_state',
             'pass',
-            'session 状态文件可读',
+            'Session state file is readable',
             [
               path.relative(projectRoot, statePaths.sessionPath),
               `last_command=${normalizedSession.last_command || '(empty)'}`,
@@ -364,9 +364,9 @@ function createHealthUpdateCommandHelpers(deps) {
           createCheck(
             'session_state',
             'fail',
-            'session 状态文件损坏',
+            'Session state file is corrupted',
             [error.message],
-            '删除损坏的 session state，或重新执行 init/resume 让 emb-agent 重建会话状态。'
+            'Delete the corrupted session state, or run init/resume again so emb-agent can rebuild session state.'
           )
         );
       }
@@ -375,15 +375,15 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'session_state',
           'warn',
-          '尚未发现 session 状态文件',
+          'No session state file has been found yet',
           [path.relative(projectRoot, statePaths.sessionPath)],
-          '执行一次 init、next 或 resume，让 emb-agent 建立项目会话状态。'
+          'Run init, next, or resume once so emb-agent can establish project session state.'
         )
       );
       pushNextCommand(
         nextCommands,
         'init',
-        '初始化或重建当前项目的 emb-agent 骨架',
+        'Initialize or rebuild the emb-agent skeleton for the current project',
         runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['init'])
       );
     }
@@ -395,19 +395,19 @@ function createHealthUpdateCommandHelpers(deps) {
           createCheck(
             'handoff_state',
             'warn',
-            '存在未消费的 handoff',
+            'An unconsumed handoff exists',
             [
               path.relative(projectRoot, statePaths.handoffPath),
               `next_action=${handoff.next_action || '(empty)'}`,
               `resume_cli=${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume'])}`
             ],
-            '如果这就是当前工作现场，优先执行 resume；否则先确认这份 handoff 是否过期。'
+            'If this is the current work state, run resume first; otherwise confirm whether this handoff is stale.'
           )
         );
         pushNextCommand(
           nextCommands,
           'resume',
-          '当前存在 handoff，优先接回上次上下文',
+          'A handoff exists; restore the previous context first',
           runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume'])
         );
       } catch (error) {
@@ -415,9 +415,9 @@ function createHealthUpdateCommandHelpers(deps) {
           createCheck(
             'handoff_state',
             'fail',
-            'handoff 状态文件损坏',
+            'Handoff state file is corrupted',
             [error.message],
-            '修正或清理损坏的 handoff 文件，避免 resume 接回错误上下文。'
+            'Fix or remove the corrupted handoff file so resume does not restore the wrong context.'
           )
         );
       }
@@ -426,7 +426,7 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'handoff_state',
           'info',
-          '当前没有 handoff',
+          'There is no handoff right now',
           [],
           ''
         )
@@ -442,7 +442,7 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'profile_resolution',
           'pass',
-          '当前 profile 可解析',
+          'Current profile is resolvable',
           [`profile=${desiredProfile}`],
           ''
         )
@@ -452,9 +452,9 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'profile_resolution',
           'fail',
-          '当前 profile 不可解析',
+          'Current profile is not resolvable',
           [error.message],
-          '修正 project.json 中的 profile，或补齐对应 profile.yaml。'
+          'Fix the profile in project.json or add the matching profile.yaml.'
         )
       );
     }
@@ -475,11 +475,11 @@ function createHealthUpdateCommandHelpers(deps) {
       createCheck(
         'pack_resolution',
         unresolvedPacks.length > 0 ? 'fail' : 'pass',
-        unresolvedPacks.length > 0 ? '存在不可解析的 packs' : '当前 packs 可解析',
+        unresolvedPacks.length > 0 ? 'There are unresolved packs' : 'Current packs are resolvable',
         unresolvedPacks.length > 0
           ? unresolvedPacks
           : [`packs=${desiredPacks.join(',') || '(none)'}`],
-        unresolvedPacks.length > 0 ? '修正 project.json 中的 packs，或补齐对应 pack.yaml。' : ''
+        unresolvedPacks.length > 0 ? 'Fix the packs in project.json or add the matching pack.yaml.' : ''
       )
     );
 
@@ -489,9 +489,9 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'hardware_identity',
           'warn',
-          'hw.yaml 尚未填入 MCU 型号',
+          'hw.yaml does not contain the MCU model yet',
           [hardwareIdentity.file],
-          '把 vendor/model/package 写进 hw.yaml，后续 tool 和 chip profile 才能自动发现。'
+          'Write vendor/model/package into hw.yaml so tools and chip profiles can be discovered automatically later.'
         )
       );
     } else {
@@ -500,7 +500,7 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'hardware_identity',
           chipProfile ? 'pass' : 'warn',
-          chipProfile ? 'MCU 型号已映射到 chip profile' : 'MCU 型号尚未映射到 chip profile',
+          chipProfile ? 'The MCU model is mapped to a chip profile' : 'The MCU model is not mapped to a chip profile yet',
           chipProfile
             ? [
                 `model=${hardwareIdentity.model}`,
@@ -508,7 +508,7 @@ function createHealthUpdateCommandHelpers(deps) {
                 `family=${chipProfile.family}`
               ]
             : [`model=${hardwareIdentity.model}`],
-          chipProfile ? '' : '补充 adapter/chip profile 后，tool 自动发现才能完全接上。'
+          chipProfile ? '' : 'Tool auto-discovery can fully connect only after the adapter/chip profile is added.'
         )
       );
     }
@@ -521,14 +521,14 @@ function createHealthUpdateCommandHelpers(deps) {
           'mineru_integration',
           mineru.mode === 'api' && !apiKeyConfigured ? 'warn' : 'pass',
           mineru.mode === 'api' && !apiKeyConfigured
-            ? 'MinerU API 模式已开启，但未发现可用 API Key'
-            : `MinerU 配置可用 (${mineru.mode})`,
+            ? 'MinerU API mode is enabled, but no usable API key was found'
+            : `MinerU configuration is available (${mineru.mode})`,
           [
             `mode=${mineru.mode}`,
             `api_key_env=${mineru.api_key_env || 'MINERU_API_KEY'}`
           ],
           mineru.mode === 'api' && !apiKeyConfigured
-            ? '在 .env 或宿主环境里提供 API Key，避免文档导入走到 API 模式时失败。'
+            ? 'Provide an API key in .env or the host environment so document ingestion does not fail in API mode.'
             : ''
         )
       );
@@ -543,19 +543,19 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'doc_apply_backlog',
           'warn',
-          `存在待应用文档：${pendingDocApply.doc_id}`,
+          `Pending document apply exists: ${pendingDocApply.doc_id}`,
           [
             pendingDocApply.title ? `title=${pendingDocApply.title}` : '',
             `to=${pendingDocApply.to}`,
             `target=${pendingDocApply.target}`
           ],
-          '先把已解析文档应用到 hw.yaml/req.yaml，再让 next 基于沉淀后的真值继续推进。'
+          'Apply parsed documents to hw.yaml/req.yaml first, then let next continue from the recorded truth.'
         )
       );
       pushNextCommand(
         nextCommands,
         'doc-apply',
-        `应用文档 ${pendingDocApply.doc_id} 到 ${pendingDocApply.target}`,
+        `Apply document ${pendingDocApply.doc_id} to ${pendingDocApply.target}`,
         pendingDocApply.command,
         'doc'
       );
@@ -578,20 +578,20 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'adapter_sources_registered',
           enabledSources.length > 0 ? 'pass' : 'warn',
-          enabledSources.length > 0 ? '已登记 adapter sources' : '尚未登记 adapter source',
+          enabledSources.length > 0 ? 'Adapter sources are registered' : 'No adapter source is registered yet',
           enabledSources.length > 0
             ? enabledSources.map(item => `source=${item.name}`)
             : [`${runtime.getProjectAssetRelativePath('project.json')} -> adapter_sources`],
           enabledSources.length > 0
             ? ''
-            : '先执行 adapter source add，把 emb-agent-adapters 或你的私有 source 登记进项目。'
+            : 'Run adapter source add first to register emb-agent-adapters or your private source into the project.'
         )
       );
       if (enabledSources.length === 0) {
         pushNextCommand(
           nextCommands,
           hardwareIdentity.model ? 'adapter-bootstrap' : 'adapter-source-add',
-          hardwareIdentity.model ? '登记默认 adapter 仓库并按当前项目匹配同步' : '登记默认 adapter 仓库',
+          hardwareIdentity.model ? 'Register the default adapter repository and sync it against the current project' : 'Register the default adapter repository',
           hardwareIdentity.model
             ? DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI
             : `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'source', 'add', 'default-pack'])} --type git --location https://github.com/Welkon/emb-agent-adapters.git`
@@ -603,10 +603,10 @@ function createHealthUpdateCommandHelpers(deps) {
           'adapter_sync_project',
           syncedProjectSources.length > 0 ? 'pass' : enabledSources.length > 0 ? 'warn' : 'info',
           syncedProjectSources.length > 0
-            ? 'adapter 已同步到项目目录'
+            ? 'Adapters have been synced into the project directory'
             : enabledSources.length > 0
-              ? 'adapter source 已登记，但尚未同步'
-              : '当前还没有可同步的 adapter source',
+              ? 'The adapter source is registered but not synced yet'
+              : 'There is no adapter source available to sync yet',
           syncedProjectSources.length > 0
             ? syncedProjectSources.map(item => `source=${item.name}, files=${item.targets.project.files_count}`)
             : enabledSources.length > 0
@@ -615,7 +615,7 @@ function createHealthUpdateCommandHelpers(deps) {
           syncedProjectSources.length > 0
             ? ''
             : enabledSources.length > 0
-              ? `执行 adapter sync ${enabledSources[0].name}，把匹配到的 adapter/profile 铺到项目里。`
+              ? `Run adapter sync ${enabledSources[0].name} to place matched adapters/profiles into the project.`
               : ''
         )
       );
@@ -623,7 +623,7 @@ function createHealthUpdateCommandHelpers(deps) {
         pushNextCommand(
           nextCommands,
           hardwareIdentity.model ? 'adapter-bootstrap' : 'adapter-sync',
-          hardwareIdentity.model ? '按当前项目匹配同步 adapter source' : '把已登记的 adapter source 同步到当前项目',
+          hardwareIdentity.model ? 'Sync the adapter source against the current project' : 'Sync the registered adapter source into the current project',
           hardwareIdentity.model
             ? runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'bootstrap', enabledSources[0].name])
             : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'sync', enabledSources[0].name])
@@ -636,10 +636,10 @@ function createHealthUpdateCommandHelpers(deps) {
             'adapter_match',
             matchedProjectSources.length > 0 ? 'pass' : syncedProjectSources.length > 0 ? 'warn' : 'info',
             matchedProjectSources.length > 0
-              ? '已发现与当前硬件匹配的 adapter 子集'
+              ? 'A subset of adapters matching the current hardware was found'
               : syncedProjectSources.length > 0
-                ? 'adapter 已同步，但还没有确认命中当前硬件'
-                : '等待 adapter source 完成同步后再检查匹配结果',
+                ? 'Adapters are synced, but a match for current hardware is not confirmed yet'
+                : 'Wait until adapter source sync completes before checking match results',
             matchedProjectSources.length > 0
               ? matchedProjectSources.map(item => {
                   const selection = item.targets.project.selection;
@@ -658,8 +658,8 @@ function createHealthUpdateCommandHelpers(deps) {
             matchedProjectSources.length > 0
               ? ''
               : syncedProjectSources.length > 0
-                ? '检查 hw.yaml 的 vendor/model/package 是否准确，或补齐对应的 family/device/chip profiles。'
-                : '先补 hw.yaml，再执行 adapter sync，让 emb-agent 自动挑出当前芯片需要的 adapters。'
+                ? 'Check whether vendor/model/package in hw.yaml is accurate, or add the corresponding family/device/chip profiles.'
+                : 'Fill in hw.yaml first, then run adapter sync so emb-agent can automatically select the adapters needed by the current chip.'
           )
         );
       }
@@ -675,19 +675,19 @@ function createHealthUpdateCommandHelpers(deps) {
           createCheck(
             'adapter_derive_candidate',
             'warn',
-            `最近硬件文档 ${latestHardwareDoc.doc_id} 可直接起草 adapter 草案`,
+            `The latest hardware document ${latestHardwareDoc.doc_id} can be used directly to draft an adapter`,
             [
               latestHardwareDoc.title ? `title=${latestHardwareDoc.title}` : '',
               latestHardwareDoc.source ? `source=${latestHardwareDoc.source}` : '',
               latestHardwareDoc.cached_at ? `cached_at=${latestHardwareDoc.cached_at}` : ''
             ],
-            '优先按最近硬件文档起草 adapter 草案，再执行 next；这样比手工猜 family/device/chip 更稳。'
+            'Draft an adapter from the latest hardware document first, then run next; this is safer than guessing family/device/chip manually.'
           )
         );
         pushNextCommand(
           nextCommands,
           'adapter-derive-from-doc',
-          `从文档 ${latestHardwareDoc.doc_id} 起草当前硬件的 adapter 草案`,
+          `Draft an adapter for current hardware from document ${latestHardwareDoc.doc_id}`,
           buildAdapterDeriveCli(latestHardwareDoc),
           'adapter'
         );
@@ -700,9 +700,9 @@ function createHealthUpdateCommandHelpers(deps) {
           createCheck(
             'open_questions',
             'warn',
-            '仍有未决问题挂起',
+            'Open questions are still pending',
             (normalizedSession.open_questions || []).slice(0, 4).map(item => `question=${item}`),
-            '优先收敛这些问题，否则 plan/do 会持续漂移。'
+            'Converge on these questions first, or plan/do will keep drifting.'
           )
         );
       }
@@ -712,9 +712,9 @@ function createHealthUpdateCommandHelpers(deps) {
           createCheck(
             'known_risks',
             'warn',
-            '仍有已知风险未闭环',
+            'Known risks are still open',
             (normalizedSession.known_risks || []).slice(0, 4).map(item => `risk=${item}`),
-            '决定这些风险要进入 review、thread 还是 bench 验证，不要长期挂空。'
+            'Decide whether these risks should enter review, thread, or bench verification instead of leaving them open indefinitely.'
           )
         );
       }
@@ -758,8 +758,8 @@ function createHealthUpdateCommandHelpers(deps) {
           'adapter_quality',
           adapterHealth.status,
           adapterHealth.primary && adapterHealth.primary.executable
-            ? `首选工具 ${adapterHealth.primary.tool} 已达到可执行可信度`
-            : `首选工具 ${adapterHealth.primary ? adapterHealth.primary.tool : '(none)'} 仍需补 adapter 证据链`,
+            ? `Preferred tool ${adapterHealth.primary.tool} has reached executable trust level`
+            : `Preferred tool ${adapterHealth.primary ? adapterHealth.primary.tool : '(none)'} still needs more adapter evidence`,
           adapterHealth.primary
             ? [
                 `tool=${adapterHealth.primary.tool}`,
@@ -769,7 +769,7 @@ function createHealthUpdateCommandHelpers(deps) {
               ]
             : [],
           adapterHealth.primary && !adapterHealth.primary.executable
-            ? `优先处理 ${adapterHealth.primary.recommended_action}，再把工具结果当真值使用。`
+            ? `Handle ${adapterHealth.primary.recommended_action} first before using tool results as ground truth.`
             : ''
         )
       );
@@ -779,15 +779,15 @@ function createHealthUpdateCommandHelpers(deps) {
           'binding_quality',
           adapterHealth.binding_ready_tools > 0 && adapterHealth.draft_binding_tools === 0 ? 'pass' : 'warn',
           adapterHealth.binding_ready_tools > 0
-            ? '已识别 tool binding'
-            : '当前还没有稳定的 tool binding',
+            ? 'Tool binding identified'
+            : 'There is no stable tool binding yet',
           [
             `binding_ready_tools=${adapterHealth.binding_ready_tools}`,
             `draft_binding_tools=${adapterHealth.draft_binding_tools}`
           ],
           adapterHealth.binding_ready_tools > 0 && adapterHealth.draft_binding_tools === 0
             ? ''
-            : '先补 device/family binding，避免 runtime route 存在但算法入口不稳定。'
+            : 'Add device/family binding first so the runtime route does not exist without a stable algorithm entry.'
         )
       );
 
@@ -796,8 +796,8 @@ function createHealthUpdateCommandHelpers(deps) {
           'register_summary_available',
           adapterHealth.register_summary_available ? 'pass' : 'warn',
           adapterHealth.register_summary_available
-            ? '已发现寄存器摘要资料'
-            : '当前还缺寄存器摘要资料',
+            ? 'Register summary sources found'
+            : 'Register summary sources are still missing',
           adapterHealth.register_summary_available
             ? recommendedSources
                 .filter(item => item.priority_group === 'register-summary')
@@ -806,7 +806,7 @@ function createHealthUpdateCommandHelpers(deps) {
             : [],
           adapterHealth.register_summary_available
             ? ''
-            : '补一份寄存器摘要到 source_refs，后续 timer/pwm/comparator 工具的可核查性会明显更稳。'
+            : 'Add a register summary to source_refs to make later timer/pwm/comparator tools much easier to verify.'
         )
       );
     }
@@ -816,8 +816,8 @@ function createHealthUpdateCommandHelpers(deps) {
         nextCommands,
         'tool-run-primary',
         primaryToolExecution.recommended
-          ? `运行首选工具：${primaryToolExecution.tool}`
-          : `准备首个工具草案：${primaryToolExecution.tool}`,
+          ? `Run preferred tool: ${primaryToolExecution.tool}`
+          : `Prepare the first tool draft: ${primaryToolExecution.tool}`,
         primaryToolExecution.cli,
         'tool'
       );
@@ -829,7 +829,7 @@ function createHealthUpdateCommandHelpers(deps) {
       pushNextCommand(
         nextCommands,
         'next',
-        '进入 emb-agent 推荐的下一步',
+        'Enter the emb-agent recommended next step',
         runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
       );
     }
@@ -875,16 +875,16 @@ function createHealthUpdateCommandHelpers(deps) {
 
     const recommendations = [];
     if (staleInstall) {
-      recommendations.push('重新运行 emb-agent 安装，先把 hooks / runtime / skills 版本对齐。');
+      recommendations.push('Re-run emb-agent install first to align hooks / runtime / skills versions.');
     }
     if (latestCache && latestCache.update_available && latestCache.latest) {
-      recommendations.push('检测到新版本；先看 release 说明，再重新安装 runtime。');
+      recommendations.push('A new version was detected. Read the release notes first, then reinstall runtime.');
     }
     if (trigger.triggered) {
-      recommendations.push('后台已触发版本检查；稍后再执行一次 update 查看最新结果。');
+      recommendations.push('A background version check has been triggered. Run update again later to see the latest result.');
     }
     if (recommendations.length === 0) {
-      recommendations.push('当前没有明确升级阻塞；若要确认最新版本，可执行 update check。');
+      recommendations.push('There is no explicit upgrade blocker right now. Run update check if you want to confirm the latest version.');
     }
 
     return {

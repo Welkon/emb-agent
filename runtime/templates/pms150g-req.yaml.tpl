@@ -1,31 +1,31 @@
 goals:
-  - "完成 PMS150G 的最小控制闭环，确认 Timer16、TM2 PWM 与 comparator 路径。"
+  - "Complete the minimum control-loop closure for PMS150G and confirm Timer16, TM2 PWM, and comparator paths."
 
 features:
-  - "能够稳定输出 PWM 波形并固定输出引脚。"
-  - "能够给出可复现的 Timer16 周期配置。"
-  - "能够给出 comparator 阈值配置并确认输入源映射。"
+  - "Can output a stable PWM waveform and fix the output pin."
+  - "Can produce a reproducible Timer16 period configuration."
+  - "Can provide comparator threshold configuration and confirm input-source mapping."
 
 constraints:
-  - "PMS150G 不支持 ADC，任何采样需求都必须改走外部方案或更换芯片。"
-  - "TM2 PWM 输出仅支持 PA3/PA4，比较器输入复用冲突要提前规避。"
-  - "bandgap 不用于 comparator 唤醒路径。"
-  - "在 OTP + 小 RAM 约束下，代码路径必须优先简单可控。"
+  - "PMS150G does not support ADC, so any sampling requirement must move to an external solution or a different chip."
+  - "TM2 PWM output supports only PA3/PA4, and comparator-input mux conflicts must be avoided early."
+  - "The bandgap is not used for comparator wake-up paths."
+  - "Under OTP + small RAM constraints, code paths must prioritize simplicity and control."
 
 acceptance:
-  - "timer/pwm/comparator 三条工具链可直接给出可执行配置候选。"
-  - "至少一条板级输出路径和一条 comparator 判定路径被确认。"
-  - "不支持 ADC 的边界已明确写入项目真值层与设计文档。"
+  - "The timer / pwm / comparator tool chains can directly provide executable configuration candidates."
+  - "At least one board-level output path and one comparator decision path are confirmed."
+  - "The no-ADC boundary is explicitly written into the project truth layer and design docs."
 
 failure_policy:
-  - "出现时序异常时先核查 Timer16 时钟源/分频/中断位，再改业务逻辑。"
-  - "出现波形异常时先核查 TM2 输出引脚映射和周期寄存器，再改控制参数。"
-  - "出现比较器异常时先核查输入源与参考档位，再改状态机。"
+  - "When timing anomalies appear, check the Timer16 clock source / prescaler / interrupt bits before changing application logic."
+  - "When waveform anomalies appear, check TM2 output-pin mapping and the period register before changing control parameters."
+  - "When comparator anomalies appear, check the input source and reference level before changing the state machine."
 
 unknowns:
-  - "最终 PWM 输出脚与负载拓扑映射。"
-  - "比较器是否参与唤醒，还是仅轮询。"
-  - "是否需要迁移到带 ADC 的器件以支撑后续功能。"
+  - "The final mapping between PWM output pin and load topology."
+  - "Whether the comparator participates in wake-up or is only polled."
+  - "Whether later features require migration to a part with ADC support."
 
 sources:
   - "docs/PMS150G-datasheet.pdf"
