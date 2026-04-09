@@ -18,6 +18,15 @@ function createTaskCommandHelpers(deps) {
   } = deps;
 
   const CONTEXT_CHANNELS = ['implement', 'check', 'debug'];
+  const TASK_STATUSES = ['planning', 'in_progress', 'review', 'completed', 'rejected'];
+  const TASK_DEV_TYPES = ['backend', 'frontend', 'fullstack', 'test', 'docs', 'embedded'];
+  const TASK_PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
+  const DEFAULT_TASK_PHASES = [
+    { phase: 1, action: 'implement' },
+    { phase: 2, action: 'check' },
+    { phase: 3, action: 'finish' },
+    { phase: 4, action: 'create-pr' }
+  ];
 
   function getTasksDir() {
     return path.join(getProjectExtDir(), 'tasks');
@@ -49,6 +58,76 @@ function createTaskCommandHelpers(deps) {
     }
 
     return next;
+  }
+
+  function normalizeTaskStatus(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      return 'planning';
+    }
+    if (normalized === 'open') {
+      return 'planning';
+    }
+    if (normalized === 'resolved') {
+      return 'completed';
+    }
+    if (TASK_STATUSES.includes(normalized)) {
+      return normalized;
+    }
+    if (normalized === 'in-progress') {
+      return 'in_progress';
+    }
+    if (normalized === 'in progress') {
+      return 'in_progress';
+    }
+    return 'planning';
+  }
+
+  function normalizeTaskDevType(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      return 'embedded';
+    }
+    if (!TASK_DEV_TYPES.includes(normalized)) {
+      throw new Error(`Unsupported task dev type: ${value}`);
+    }
+    return normalized;
+  }
+
+  function normalizeTaskPriority(value) {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) {
+      return 'P2';
+    }
+    if (!TASK_PRIORITIES.includes(normalized)) {
+      throw new Error(`Unsupported task priority: ${value}`);
+    }
+    return normalized;
+  }
+
+  function deriveCurrentPhase(status) {
+    const normalized = normalizeTaskStatus(status);
+    if (normalized === 'planning' || normalized === 'in_progress') {
+      return 1;
+    }
+    if (normalized === 'review') {
+      return 2;
+    }
+    return 4;
+  }
+
+  function buildTaskId(timestamp, slug) {
+    const date = String(timestamp || new Date().toISOString()).slice(5, 10);
+    return `${date.replace('-', '-')}-${slug}`;
+  }
+
+  function updateTaskTimestamps(manifest) {
+    const now = new Date().toISOString();
+    return {
+      ...manifest,
+      updatedAt: now,
+      updated_at: now
+    };
   }
 
   function getTaskDir(name) {
@@ -122,7 +201,17 @@ function createTaskCommandHelpers(deps) {
   function parseTaskAddArgs(rest) {
     const result = {
       type: 'implement',
-      summary: ''
+      summary: '',
+      description: '',
+      devType: 'embedded',
+      scope: '',
+      priority: 'P2',
+      creator: '',
+      assignee: '',
+      branch: '',
+      baseBranch: 'main',
+      worktreePath: '',
+      notes: ''
     };
     const summaryParts = [];
 
@@ -133,6 +222,56 @@ function createTaskCommandHelpers(deps) {
         index += 1;
         continue;
       }
+      if (token === '--description') {
+        result.description = rest[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--dev-type') {
+        result.devType = rest[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--scope') {
+        result.scope = rest[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--priority') {
+        result.priority = rest[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--creator') {
+        result.creator = rest[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--assignee') {
+        result.assignee = rest[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--branch') {
+        result.branch = rest[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--base-branch') {
+        result.baseBranch = rest[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--worktree-path') {
+        result.worktreePath = rest[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--note') {
+        result.notes = rest[index + 1] || '';
+        index += 1;
+        continue;
+      }
       summaryParts.push(token);
     }
 
@@ -140,6 +279,16 @@ function createTaskCommandHelpers(deps) {
     if (!result.summary) {
       throw new Error('Missing task summary');
     }
+    result.devType = normalizeTaskDevType(result.devType);
+    result.priority = normalizeTaskPriority(result.priority);
+    result.scope = normalizeTaskSlug(result.scope);
+    result.baseBranch = String(result.baseBranch || '').trim() || 'main';
+    result.branch = String(result.branch || '').trim();
+    result.creator = String(result.creator || '').trim();
+    result.assignee = String(result.assignee || '').trim();
+    result.description = String(result.description || '').trim();
+    result.worktreePath = String(result.worktreePath || '').trim();
+    result.notes = String(result.notes || '').trim();
     return result;
   }
 
@@ -394,14 +543,46 @@ function createTaskCommandHelpers(deps) {
 
   function buildTaskManifest(name, summary, type, session, bindings) {
     const now = new Date().toISOString();
+    const parsedSummary = typeof summary === 'object' && summary !== null ? summary : { summary };
+    const title = String(parsedSummary.summary || summary || '');
+    const projectConfig = getProjectConfig ? getProjectConfig() : {};
+    const projectDeveloper =
+      projectConfig && projectConfig.developer && typeof projectConfig.developer === 'object'
+        ? projectConfig.developer
+        : {};
+    const creator = parsedSummary.creator || projectDeveloper.name || '';
+    const assignee = parsedSummary.assignee || creator;
+    const references = runtime.unique(session.last_files || []);
+    const status = 'planning';
+    const slug = String(name || normalizeTaskSlug(title));
+
     return {
-      name,
-      title: summary,
-      status: 'OPEN',
+      id: buildTaskId(now, slug),
+      name: slug,
+      title,
+      description: parsedSummary.description || title,
+      status,
+      dev_type: parsedSummary.devType || 'embedded',
+      scope: parsedSummary.scope || '',
+      priority: parsedSummary.priority || 'P2',
+      creator,
+      assignee,
+      createdAt: now,
+      completedAt: null,
+      branch: parsedSummary.branch || '',
+      base_branch: parsedSummary.baseBranch || 'main',
+      worktree_path: parsedSummary.worktreePath || null,
+      current_phase: deriveCurrentPhase(status),
+      next_action: DEFAULT_TASK_PHASES.map(item => ({ ...item })),
+      commit: '',
+      pr_url: '',
+      subtasks: [],
+      relatedFiles: references.slice(),
+      notes: parsedSummary.notes || '',
       type,
-      goal: summary,
+      goal: title,
       focus: session.focus || '',
-      references: runtime.unique(session.last_files || []),
+      references,
       open_questions: runtime.unique(session.open_questions || []),
       known_risks: runtime.unique(session.known_risks || []),
       bindings: bindings || {
@@ -421,11 +602,12 @@ function createTaskCommandHelpers(deps) {
       context: Object.fromEntries(
         CONTEXT_CHANNELS.map(channel => [
           channel,
-          path.relative(resolveProjectRoot(), getTaskContextPath(name, channel))
+          path.relative(resolveProjectRoot(), getTaskContextPath(slug, channel))
         ])
       ),
       created_at: now,
-      updated_at: now
+      updated_at: now,
+      updatedAt: now
     };
   }
 
@@ -447,14 +629,40 @@ function createTaskCommandHelpers(deps) {
       context[channel] = readJsonl(getTaskContextPath(name, channel));
     });
 
+    const status = normalizeTaskStatus(manifest.status || 'planning');
+    const updatedAt = String(manifest.updatedAt || manifest.updated_at || manifest.createdAt || manifest.created_at || '');
+    const createdAt = String(manifest.createdAt || manifest.created_at || '');
+    const relatedFiles = Array.isArray(manifest.relatedFiles)
+      ? manifest.relatedFiles
+      : (Array.isArray(manifest.references) ? manifest.references : []);
+
     return {
       name: String(manifest.name || name),
       title: String(manifest.title || manifest.goal || name),
-      status: String(manifest.status || 'OPEN'),
+      id: String(manifest.id || buildTaskId(createdAt || new Date().toISOString(), String(manifest.name || name))),
+      description: String(manifest.description || manifest.goal || manifest.title || ''),
+      status,
+      dev_type: normalizeTaskDevType(manifest.dev_type || 'embedded'),
+      scope: String(manifest.scope || ''),
+      priority: normalizeTaskPriority(manifest.priority || 'P2'),
+      creator: String(manifest.creator || ''),
+      assignee: String(manifest.assignee || ''),
+      createdAt,
+      completedAt: manifest.completedAt === null ? null : String(manifest.completedAt || ''),
+      branch: String(manifest.branch || ''),
+      base_branch: String(manifest.base_branch || 'main'),
+      worktree_path: manifest.worktree_path ? String(manifest.worktree_path) : null,
+      current_phase: Number(manifest.current_phase || deriveCurrentPhase(status)),
+      next_action: Array.isArray(manifest.next_action) ? manifest.next_action : DEFAULT_TASK_PHASES.map(item => ({ ...item })),
+      commit: String(manifest.commit || ''),
+      pr_url: String(manifest.pr_url || ''),
+      subtasks: Array.isArray(manifest.subtasks) ? manifest.subtasks : [],
+      relatedFiles,
+      notes: String(manifest.notes || manifest.resolution_note || ''),
       type: String(manifest.type || 'implement'),
       goal: String(manifest.goal || manifest.title || ''),
       focus: String(manifest.focus || ''),
-      references: Array.isArray(manifest.references) ? manifest.references : [],
+      references: Array.isArray(manifest.references) ? manifest.references : relatedFiles,
       open_questions: Array.isArray(manifest.open_questions) ? manifest.open_questions : [],
       known_risks: Array.isArray(manifest.known_risks) ? manifest.known_risks : [],
       bindings: manifest.bindings || {
@@ -472,8 +680,8 @@ function createTaskCommandHelpers(deps) {
         tools: []
       },
       context_files: manifest.context || {},
-      created_at: String(manifest.created_at || ''),
-      updated_at: String(manifest.updated_at || ''),
+      created_at: String(manifest.created_at || createdAt),
+      updated_at: updatedAt,
       path: path.relative(process.cwd(), manifestPath),
       context
     };
@@ -484,7 +692,7 @@ function createTaskCommandHelpers(deps) {
     const tasks = fs.readdirSync(getTasksDir())
       .filter(name => fs.existsSync(getTaskManifestPath(name)))
       .map(name => readTask(name))
-      .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)));
+      .sort((left, right) => String(right.updated_at || right.updatedAt || '').localeCompare(String(left.updated_at || left.updatedAt || '')));
 
     return { tasks };
   }
@@ -494,7 +702,7 @@ function createTaskCommandHelpers(deps) {
     const session = loadSession();
     const name = buildUniqueTaskSlug(parsed.summary);
     const bindings = buildTaskBindings(parsed.summary);
-    const manifest = buildTaskManifest(name, parsed.summary, parsed.type, session, bindings);
+    const manifest = buildTaskManifest(name, parsed, parsed.type, session, bindings);
 
     writeTask(name, manifest);
     CONTEXT_CHANNELS.forEach(channel => {
@@ -528,9 +736,11 @@ function createTaskCommandHelpers(deps) {
   function activateTask(name) {
     const task = readTask(name);
     const manifest = runtime.readJson(getTaskManifestPath(name));
-    manifest.status = 'IN_PROGRESS';
-    manifest.updated_at = new Date().toISOString();
-    writeTask(name, manifest);
+    writeTask(name, updateTaskTimestamps({
+      ...manifest,
+      status: 'in_progress',
+      current_phase: 1
+    }));
 
     updateSession(current => {
       current.last_command = 'task activate';
@@ -544,9 +754,9 @@ function createTaskCommandHelpers(deps) {
       current.active_task = {
         name: task.name,
         title: task.title,
-        status: 'IN_PROGRESS',
+        status: 'in_progress',
         path: task.path,
-        updated_at: manifest.updated_at
+        updated_at: new Date().toISOString()
       };
     });
 
@@ -560,12 +770,14 @@ function createTaskCommandHelpers(deps) {
     const note = rest.join(' ').trim();
     const manifestPath = getTaskManifestPath(name);
     const manifest = runtime.readJson(manifestPath);
-    manifest.status = 'RESOLVED';
-    manifest.updated_at = new Date().toISOString();
-    if (note) {
-      manifest.resolution_note = note;
-    }
-    writeTask(name, manifest);
+    writeTask(name, updateTaskTimestamps({
+      ...manifest,
+      status: 'completed',
+      current_phase: 4,
+      completedAt: new Date().toISOString(),
+      notes: note || manifest.notes || '',
+      resolution_note: note || manifest.resolution_note || ''
+    }));
 
     updateSession(current => {
       current.last_command = 'task resolve';
@@ -626,8 +838,7 @@ function createTaskCommandHelpers(deps) {
     writeJsonl(contextPath, next);
 
     const manifest = runtime.readJson(getTaskManifestPath(parsed.name));
-    manifest.updated_at = new Date().toISOString();
-    writeTask(parsed.name, manifest);
+    writeTask(parsed.name, updateTaskTimestamps(manifest));
 
     updateSession(current => {
       current.last_command = 'task context add';

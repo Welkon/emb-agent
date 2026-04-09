@@ -14,6 +14,7 @@ allowed-tools:
 ## Purpose
 
 - Manage task-local context tied to a precise file set.
+- Persist task manifests under `.emb-agent/tasks/<name>/task.json` with status, owner, priority, branch context, and related files.
 
 ## Usage
 

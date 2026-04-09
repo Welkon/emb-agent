@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://emb-agent.dev/schemas/task.schema.json",
+  "title": "emb-agent task manifest",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "title",
+    "description",
+    "status",
+    "dev_type",
+    "scope",
+    "priority",
+    "creator",
+    "assignee",
+    "createdAt",
+    "completedAt",
+    "branch",
+    "base_branch",
+    "worktree_path",
+    "current_phase",
+    "next_action",
+    "commit",
+    "pr_url",
+    "subtasks",
+    "relatedFiles",
+    "notes"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^\\d{2}-\\d{2}-[a-z0-9-]+$"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planning", "in_progress", "review", "completed", "rejected"]
+    },
+    "dev_type": {
+      "type": "string",
+      "enum": ["backend", "frontend", "fullstack", "test", "docs", "embedded"]
+    },
+    "scope": {
+      "type": "string"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3"]
+    },
+    "creator": {
+      "type": "string"
+    },
+    "assignee": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completedAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "base_branch": {
+      "type": "string"
+    },
+    "worktree_path": {
+      "type": ["string", "null"]
+    },
+    "current_phase": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "next_action": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["phase", "action"],
+        "properties": {
+          "phase": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "commit": {
+      "type": "string"
+    },
+    "pr_url": {
+      "type": "string"
+    },
+    "subtasks": {
+      "type": "array",
+      "items": {}
+    },
+    "relatedFiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

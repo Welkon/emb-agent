@@ -123,5 +123,10 @@
     "source": "chip-profile.json.tpl",
     "description": "Project-level external chip profile template",
     "default_output": ".emb-agent/extensions/chips/profiles/{{SLUG}}.json"
+  },
+  "task-manifest": {
+    "source": "task.json.tpl",
+    "description": "Project task manifest template with lifecycle, ownership, and delivery metadata",
+    "default_output": ".emb-agent/tasks/{{SLUG}}/task.json"
   }
 }
