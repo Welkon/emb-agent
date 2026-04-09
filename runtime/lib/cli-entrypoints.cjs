@@ -481,20 +481,45 @@ function createCliEntryHelpers(deps) {
     };
   }
 
-  function usage() {
-    const text = [
+  function usage(options) {
+    const advanced = Boolean(options && options.advanced);
+    const coreLines = [
       'emb-agent usage:',
       'Global option: --brief outputs compact JSON (recommended for action commands such as next/plan/review/verify)',
-      '  help',
+      'Core workflow:',
       '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [--user <name>|-u <name>] [--force]',
       '  declare hardware [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
       '    [--signal <name> --pin <pin> --dir <direction> [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>]',
+      '  next',
+      '  ingest doc --file <path> [--provider mineru] [--kind datasheet] [--title <text>] [--pages <range>] [--language ch|en] [--ocr] [--force] [--to hardware|requirements]',
+      '  task add <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
+      '  task show <name>',
+      '  task activate <name>',
+      '  task resolve <name> [note]',
+      '',
+      'Useful follow-ups:',
+      '  scan',
+      '  plan',
+      '  do',
+      '  debug',
+      '  verify',
+      '  pause [note]',
+      '  resume',
+      '',
+      'Show the full command set:',
+      '  help advanced',
+      '  help --all',
+      '  --help --all'
+    ];
+
+    const advancedLines = [
+      'Advanced commands:',
+      '  help',
       '  ingest hardware [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
       '    [--signal <name> --pin <pin> --dir <direction> [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>]',
       '  ingest requirements [--goal <text>] [--feature <text>] [--constraint <text>] [--accept <text>] [--failure <text>] [--unknown <text>] [--source <path>]',
-      '  ingest doc --file <path> [--provider mineru] [--kind datasheet] [--title <text>] [--pages <range>] [--language ch|en] [--ocr] [--force] [--to hardware|requirements]',
       '  ingest apply doc <doc-id> --to hardware|requirements [--only field1,field2] [--force]',
       '  ingest apply doc <doc-id> --from-last-diff',
       '  ingest apply doc <doc-id> --preset <name>',
@@ -502,18 +527,11 @@ function createCliEntryHelpers(deps) {
       '  doc show <doc-id> [--preset <name>] [--apply-ready]',
       '  doc diff <doc-id> --to hardware|requirements [--only field1,field2] [--force] [--save-as <name>]',
       '  status',
-      '  next',
       '  health',
       '  update [check]',
-      '  pause [note]',
       '  pause show',
       '  pause clear',
-      '  resume',
       '  task list',
-      '  task add <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
-      '  task show <name>',
-      '  task activate <name>',
-      '  task resolve <name> [note]',
       '  task context list <name> [implement|check|debug|all]',
       '  task context add <name> <implement|check|debug> <path> [reason]',
       '  workspace list',
@@ -544,17 +562,11 @@ function createCliEntryHelpers(deps) {
       '  executor list',
       '  executor show <name>',
       '  executor run <name> [-- <args...>]',
-      '  scan',
       '  scan save <target> <summary> [--fact <text>] [--question <text>] [--read <text>]',
-      '  plan',
       '  plan save <summary> [--target <target>] [--risk <text>] [--step <text>] [--verify <text>]',
       '  arch-review',
-      '  do',
-      '  debug',
       '  review',
       '  review save <summary> [--scope <text>] [--finding <text>] [--check <text>]',
-      '  verify',
-      '  verify save <summary> [--target <target>] [--check <text>] [--result <text>] [--evidence <text>] [--followup <text>]',
       '  note',
       '  note add <target> <summary> [--kind <kind>] [--evidence <text>] [--unverified <text>]',
       '  dispatch show <action>',
@@ -619,9 +631,11 @@ function createCliEntryHelpers(deps) {
       '  risk remove <text>',
       '  risk clear',
       '  session show'
-    ].join('\n');
+    ];
 
-    process.stdout.write(text + '\n');
+    process.stdout.write(
+      [...coreLines, ...(advanced ? ['', ...advancedLines] : [])].join('\n') + '\n'
+    );
   }
 
   function runInitCommand(tokens, aliasUsed) {
