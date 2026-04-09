@@ -196,7 +196,7 @@ This split is deliberate:
 
 ## Command Guide
 
-### The commands most users need first
+### Core commands
 
 - `init`
   Initialize the current project and generate the truth-layer scaffold.
@@ -204,6 +204,15 @@ This split is deliberate:
   Write MCU, package, pin usage, and peripheral usage into hardware truth directly.
 - `next`
   Ask emb-agent for the default next step.
+- `ingest doc`
+  Pull hardware facts out of a PDF or manual when the answer is not known yet.
+- `task`
+  Track implementation work when the task is no longer one-shot.
+
+These are the only commands a new user usually needs at the start.
+
+### Workflow commands
+
 - `scan`
   Locate entry points, hardware truth, docs, and relevant files.
 - `plan`
@@ -214,8 +223,10 @@ This split is deliberate:
   Narrow down root causes.
 - `verify`
   Close work with checks and evidence.
+- `pause` / `resume`
+  Preserve context across long or interrupted sessions.
 
-### When to use document import
+### Advanced commands
 
 Use `ingest doc` when truth is still hidden in a PDF, manual, or external document:
 
@@ -224,6 +235,8 @@ Use `ingest doc` when truth is still hidden in a PDF, manual, or external docume
 ```
 
 Use `declare hardware` first when the engineer already knows the answer and just needs to write it down.
+
+Commands such as `adapter`, `dispatch`, `orchestrate`, `workspace`, `thread`, `spec`, `manager`, `settings`, and `executor` exist for advanced flows, but they are not part of the default onboarding path.
 
 ## FAQ
 

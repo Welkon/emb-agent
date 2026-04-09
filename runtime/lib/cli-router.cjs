@@ -38,8 +38,14 @@ function createCliRouter(deps) {
       printJson(outputModeHelpers.applyOutputMode(value, parsedOutputMode.brief));
     }
 
-    if (args.length === 0 || args[0] === 'help' || args[0] === '--help') {
+    if (args.length === 0) {
       usage();
+      process.exit(0);
+    }
+
+    if (args[0] === 'help' || args[0] === '--help') {
+      const advanced = args.includes('advanced') || args.includes('--all');
+      usage({ advanced });
       process.exit(0);
     }
 
