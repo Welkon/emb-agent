@@ -65,6 +65,21 @@ test('cli tool run emits adapter-required json when no adapter exists', async ()
   assert.equal(result.tool, 'timer-calc');
 });
 
+test('tool runtime attaches high-risk clarity template for risky flags', () => {
+  const result = toolRuntime.runTool(runtimeRoot, 'timer-calc', [
+    '--flash',
+    'main',
+    '--force'
+  ]);
+
+  assert.equal(result.status, 'adapter-required');
+  assert.ok(result.high_risk_clarity);
+  assert.equal(result.high_risk_clarity.enabled, true);
+  assert.equal(result.high_risk_clarity.requires_explicit_confirmation, true);
+  assert.ok(Array.isArray(result.high_risk_clarity.matched_signals));
+  assert.ok(result.high_risk_clarity.matched_signals.length > 0);
+});
+
 test('pwm-calc also requires external adapter by default', () => {
   const result = toolRuntime.runTool(runtimeRoot, 'pwm-calc', [
     '--family',

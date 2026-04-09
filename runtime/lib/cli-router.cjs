@@ -1,5 +1,7 @@
 'use strict';
 
+const outputModeHelpers = require('./output-mode.cjs');
+
 function createCliRouter(deps) {
   const {
     process,
@@ -29,7 +31,12 @@ function createCliRouter(deps) {
   } = deps;
 
   async function run(argv) {
-    const args = argv || process.argv.slice(2);
+    const parsedOutputMode = outputModeHelpers.parseOutputModeArgs(argv || process.argv.slice(2));
+    const args = parsedOutputMode.args;
+
+    function emitJson(value) {
+      printJson(outputModeHelpers.applyOutputMode(value, parsedOutputMode.brief));
+    }
 
     if (args.length === 0 || args[0] === 'help' || args[0] === '--help') {
       usage();
@@ -41,7 +48,7 @@ function createCliRouter(deps) {
     if (cmd === 'init') {
       const initialized = runInitCommand(args.slice(1), 'init');
       if (initialized) {
-        printJson(initialized);
+        emitJson(initialized);
       }
       return;
     }
@@ -50,18 +57,18 @@ function createCliRouter(deps) {
       const initialized = runInitCommand(args.slice(1), 'attach');
       if (initialized) {
         initialized.legacy_alias = true;
-        printJson(initialized);
+        emitJson(initialized);
       }
       return;
     }
 
     if (cmd === 'ingest') {
-      printJson(await runIngestCommand(subcmd, rest));
+      emitJson(await runIngestCommand(subcmd, rest));
       return;
     }
 
     if (cmd === 'status') {
-      printJson(buildStatus());
+      emitJson(buildStatus());
       return;
     }
 
@@ -71,12 +78,12 @@ function createCliRouter(deps) {
       });
       const context = buildNextContext();
       context.current.last_command = session.last_command || '';
-      printJson(context);
+      emitJson(context);
       return;
     }
 
     if (cmd === 'pause' && subcmd === 'show') {
-      printJson(loadHandoff());
+      emitJson(loadHandoff());
       return;
     }
 
@@ -86,7 +93,7 @@ function createCliRouter(deps) {
         current.last_command = 'pause clear';
         current.paused_at = '';
       });
-      printJson({
+      emitJson({
         cleared: true,
         handoff: null,
         session
@@ -102,7 +109,7 @@ function createCliRouter(deps) {
         current.last_command = 'pause';
         current.paused_at = handoff.timestamp;
       });
-      printJson({
+      emitJson({
         paused: true,
         handoff,
         session
@@ -118,61 +125,61 @@ function createCliRouter(deps) {
       const context = buildResumeContext();
       context.summary.last_command = session.last_command || '';
       context.summary.last_resumed_at = session.last_resumed_at || '';
-      printJson(context);
+      emitJson(context);
       return;
     }
 
     if (cmd === 'resolve') {
-      printJson(resolveSession());
+      emitJson(resolveSession());
       return;
     }
 
     if (cmd === 'config' && subcmd === 'show') {
-      printJson(RUNTIME_CONFIG);
+      emitJson(RUNTIME_CONFIG);
       return;
     }
 
     if (cmd === 'project' && subcmd === 'show') {
       const showArgs = parseProjectShowArgs(rest);
-      printJson(buildProjectShow(showArgs.effective, showArgs.field));
+      emitJson(buildProjectShow(showArgs.effective, showArgs.field));
       return;
     }
 
     if (cmd === 'project' && subcmd === 'set') {
       const setArgs = parseProjectSetArgs(rest);
-      printJson(setProjectConfigValue(setArgs.field, setArgs.value));
+      emitJson(setProjectConfigValue(setArgs.field, setArgs.value));
       return;
     }
 
     const stateCommandResult = handleCatalogAndStateCommands(cmd, subcmd, rest);
     if (stateCommandResult !== undefined) {
-      printJson(stateCommandResult);
+      emitJson(stateCommandResult);
       return;
     }
 
     const docCommandResult = handleDocCommands(cmd, subcmd, rest);
     if (docCommandResult !== undefined) {
-      printJson(docCommandResult);
+      emitJson(docCommandResult);
       return;
     }
 
     const actionCommandResult = handleActionCommands(cmd, subcmd, rest);
     if (actionCommandResult !== undefined) {
-      printJson(actionCommandResult);
+      emitJson(actionCommandResult);
       return;
     }
 
     const dispatchTemplateResult = handleDispatchAndTemplateCommands(cmd, subcmd, rest);
     if (dispatchTemplateResult !== undefined) {
       if (!dispatchTemplateResult.__side_effect_only) {
-        printJson(dispatchTemplateResult);
+        emitJson(dispatchTemplateResult);
       }
       return;
     }
 
     const adapterToolChipResult = handleAdapterToolChipCommands(cmd, subcmd, rest);
     if (adapterToolChipResult !== undefined) {
-      printJson(adapterToolChipResult);
+      emitJson(adapterToolChipResult);
       return;
     }
 

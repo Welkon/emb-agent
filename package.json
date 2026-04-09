@@ -37,6 +37,7 @@
   },
   "scripts": {
     "test": "node scripts/run-tests.cjs",
+    "bench:brief": "node benchmarks/brief-benchmark.cjs",
     "pack:dry-run": "npm pack --dry-run",
     "release:check": "node scripts/release-check.cjs"
   }
