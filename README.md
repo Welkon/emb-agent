@@ -1,5 +1,3 @@
-# emb-agent
-
 <p align="center">
   <strong>A hardware-first AI workflow for embedded firmware projects</strong><br/>
   <sub>Keep MCU truth, pin usage, peripherals, constraints, and verification visible in the repo.</sub>
@@ -9,11 +7,27 @@
   Codex • Claude Code • Brownfield MCU repos • Register-heavy debugging • Datasheet-grounded work
 </p>
 
+<p align="center">
+  <a href="./docs/quick-start.md">Quick Start</a> •
+  <a href="./docs/platforms.md">Platforms</a> •
+  <a href="./docs/scenarios.md">Scenarios</a> •
+  <a href="./docs/adapter-model.md">Adapter Model</a> •
+  <a href="./docs/task-model.md">Task Model</a> •
+  <a href="./commands/emb/help.md">Command Help</a>
+</p>
+
 emb-agent is a lightweight workflow layer for embedded development.
 
 It is built for the kind of firmware work that normal AI coding loops handle badly: MCU datasheets, pin mux conflicts, timer formulas, board constraints, peripheral ownership, register-level debugging, and long-running sessions where important hardware facts are easy to lose.
 
 Instead of treating firmware work like generic code generation, emb-agent keeps durable hardware truth in the project, gives the agent a small command flow, and makes it easy to move from "what chip is this?" to "which pin owns PWM output?" to "what should I do next?" without rebuilding context every session.
+
+## What's New
+
+- Direct hardware declaration with `declare hardware`, so known MCU/package/pin facts can be written immediately.
+- Install-time developer identity, reused automatically by `init`.
+- Richer task manifests with schema-backed `task.json` metadata.
+- Default help now stays focused on the shortest onboarding path, with advanced commands behind `help advanced`.
 
 ## Why emb-agent?
 
@@ -57,36 +71,17 @@ Examples below use:
 <runtime-cli>
 ```
 
-### 3. Initialize the project once
+### 3. Follow the default path
 
 ```bash
 <runtime-cli> init
-```
-
-This prepares the project with visible truth layers and starter docs:
-
-```text
-.emb-agent/
-├── project.json
-├── hw.yaml
-├── req.yaml
-├── cache/
-└── adapters/
-
-docs/
-├── MCU-FOUNDATION-CHECKLIST.md
-└── ...
-```
-
-### 4. Declare hardware truth directly
-
-If you already know the chip and package, lock them in immediately:
-
-```bash
 <runtime-cli> declare hardware --mcu SC8F072 --package SOP8
+<runtime-cli> next
 ```
 
-If you already know board signals and peripheral ownership:
+This is the shortest useful path for most projects.
+
+If the engineer already knows board signals and peripheral ownership:
 
 ```bash
 <runtime-cli> declare hardware \
@@ -94,15 +89,87 @@ If you already know board signals and peripheral ownership:
   --peripheral PWM --usage "warm dimming"
 ```
 
-This is the preferred path for professional embedded users who already know the target MCU, pin map, or intended peripheral allocation.
-
-### 5. Continue from the default command
+If the truth still lives in a PDF:
 
 ```bash
-<runtime-cli> next
+<runtime-cli> ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware
 ```
 
-When the task becomes timer-, PWM-, ADC-, comparator-, register-, or manual-heavy, move from `next` to `dispatch next` or `orchestrate`.
+More detailed setup instructions are in [docs/quick-start.md](./docs/quick-start.md).
+
+## Product Model
+
+The most important thing to understand about emb-agent is not the full command list. It is the object model.
+
+### 1. Truth
+
+Shared project truth lives in visible repo files:
+
+```text
+.emb-agent/
+├── hw.yaml
+├── req.yaml
+└── project.json
+```
+
+- `hw.yaml`
+  MCU, package, board signals, peripherals, constraints, and unknowns.
+- `req.yaml`
+  Goals, features, acceptance, and failure policy.
+- `project.json`
+  Project defaults, integrations, and workflow preferences.
+
+### 2. Tasks
+
+Longer work is captured under:
+
+```text
+.emb-agent/tasks/<task-name>/task.json
+```
+
+Tasks carry ownership, priority, branch context, related files, and lifecycle metadata. See [docs/task-model.md](./docs/task-model.md).
+
+### 3. Workspace
+
+emb-agent also supports longer-lived work surfaces such as workspaces, specs, and threads for larger projects or multi-step investigations. These are advanced layers, not required for onboarding.
+
+### 4. Runtime
+
+Host-specific runtime state stays outside the repo:
+
+- installed CLI
+- session state
+- handoff state
+- runtime config
+- runtime hooks
+
+This means the repo keeps durable shared truth, while the runtime keeps personal continuity.
+
+## Shared Vs Personal Layers
+
+This boundary is one of the biggest differences between emb-agent and generic prompt-driven workflows.
+
+### Shared project layer
+
+These should stay visible and reviewable in the repository:
+
+- `.emb-agent/hw.yaml`
+- `.emb-agent/req.yaml`
+- `.emb-agent/project.json`
+- `.emb-agent/tasks/`
+- generated project docs and checklists
+
+### Personal runtime layer
+
+These belong to the installed runtime, not the project repository:
+
+- session continuity
+- pause/resume handoffs
+- runtime install metadata
+- host integration state
+- developer identity defaults
+
+This makes it easier to keep project truth collaborative without losing personal continuity between sessions.
 
 ## Typical Flow
 
@@ -121,78 +188,55 @@ After that:
 - Use `verify` when implementation is done and you want explicit closure.
 - Use `pause` and `resume` when the session is getting noisy.
 
-## Use Cases
+## Scenarios
 
-### Lock chip and package identity before coding
+emb-agent works best when the user can quickly identify which real-world scenario they are in.
 
-If the repo already exists but hardware truth is incomplete:
+Examples:
 
-```bash
-<runtime-cli> init
-<runtime-cli> declare hardware --mcu PMS150G --package SOP8
-<runtime-cli> next
-```
+- Existing MCU repository, but hardware identity is not fully locked yet
+- Known pin map, no need for repeated questioning
+- Datasheet still holds the truth, so PDF import comes before implementation
+- Peripheral bring-up such as PWM / ADC / comparator / timer work
+- Long-running debug session that needs pause/resume and task tracking
 
-### Declare pin usage without waiting for repeated questions
+See [docs/scenarios.md](./docs/scenarios.md) for concrete flows.
 
-If the engineer already knows the mapping:
+## Starters And Templates
 
-```bash
-<runtime-cli> declare hardware \
-  --signal KEY_IN --pin PA4 --dir input \
-  --signal PWM_OUT --pin PA3 --dir output \
-  --peripheral PWM --usage "LED dimming"
-```
+emb-agent already includes reusable starters and templates for embedded work:
 
-### Import a datasheet and turn it into project truth
+- starter hardware truth for chips such as `SC8F072`, `PMS150G`, and `PMB180B`
+- requirement starters for those same chips
+- project-local chip/tool extension templates
+- task manifest template
 
-```bash
-<runtime-cli> ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware
-```
+These live under the runtime template system and are intended to make repeated embedded setup less manual over time.
 
-If the response includes an apply-ready diff, apply it first and then return to `next`.
+## Platforms
 
-### Continue a long-running debug session
+emb-agent currently supports the same workflow model across multiple AI runtimes:
 
-```bash
-<runtime-cli> pause "bench shows PWM glitch during wakeup"
-# clear context / switch session
-<runtime-cli> resume
-```
+- Codex
+- Claude Code
 
-## How It Works
+Platform-specific install and runtime-path details are documented in [docs/platforms.md](./docs/platforms.md).
 
-emb-agent keeps the core project memory in visible project files and keeps runtime-specific state in the installed host runtime.
+## Adapter Model
 
-Project-side assets:
+emb-agent core stays abstract on purpose.
 
-```text
-.emb-agent/
-├── hw.yaml          # MCU, package, board signals, peripherals, constraints, unknowns
-├── req.yaml         # goals, features, acceptance, failure policy
-├── project.json     # project defaults and preferences
-├── adapters/        # project-local adapter assets
-└── cache/           # doc and adapter-source cache
+The core owns:
 
-docs/
-├── MCU-FOUNDATION-CHECKLIST.md
-├── DEBUG-NOTES.md
-└── ...
-```
+- command flow
+- truth layers
+- session continuity
+- task/workspace structures
+- tool and chip contracts
 
-Host runtime assets:
+Vendor-, family-, and chip-specific formulas and routes belong in adapters.
 
-- installed CLI
-- session state
-- handoff state
-- runtime config
-- runtime hooks
-
-This split is deliberate:
-
-- project truth stays reviewable and visible in the repo
-- runtime state stays outside the repo
-- the workflow remains consistent across Codex and Claude Code
+See [docs/adapter-model.md](./docs/adapter-model.md) for the intended separation between core and adapter responsibilities.
 
 ## Command Guide
 
@@ -228,15 +272,9 @@ These are the only commands a new user usually needs at the start.
 
 ### Advanced commands
 
-Use `ingest doc` when truth is still hidden in a PDF, manual, or external document:
-
-```bash
-<runtime-cli> ingest doc --file <path> --provider mineru --kind datasheet --to hardware
-```
-
-Use `declare hardware` first when the engineer already knows the answer and just needs to write it down.
-
 Commands such as `adapter`, `dispatch`, `orchestrate`, `workspace`, `thread`, `spec`, `manager`, `settings`, and `executor` exist for advanced flows, but they are not part of the default onboarding path.
+
+See [commands/emb/help.md](./commands/emb/help.md) for the full public command set.
 
 ## FAQ
 
@@ -282,10 +320,6 @@ Use `ingest doc` when:
 - the truth still lives in a datasheet or manual
 - the pin mux or timing limits are still uncertain
 - you need evidence-backed extraction before implementation
-
-## Public Command Reference
-
-See [commands/emb/help.md](./commands/emb/help.md) for the full public command set.
 
 ## Release Notes
 
