@@ -429,8 +429,7 @@ function main(argv) {
       {
         ...result,
         next_steps: [
-          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['init']),
-          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['status']),
+          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['declare', 'hardware', '--mcu', '<name>', '--package', '<name>']),
           runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
         ]
       },

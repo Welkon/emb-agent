@@ -67,6 +67,19 @@ function createCliRouter(deps) {
       return;
     }
 
+    if (cmd === 'declare') {
+      if (!subcmd || subcmd === '--help') {
+        usage();
+        process.exitCode = subcmd ? 1 : 0;
+        return;
+      }
+      if (subcmd !== 'hardware') {
+        throw new Error(`Unknown declare domain: ${subcmd}`);
+      }
+      emitJson(await runIngestCommand('hardware', rest));
+      return;
+    }
+
     if (cmd === 'status') {
       emitJson(buildStatus());
       return;

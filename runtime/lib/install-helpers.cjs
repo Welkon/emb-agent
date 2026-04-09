@@ -939,11 +939,14 @@ function createInstallHelpers(deps) {
     }
 
     const runtimeDir = installRuntime(targetDir, target, args);
+    const installedRuntimeHost = runtimeHost.resolveRuntimeHost(runtimeDir);
     const commandCount = installCommandSkills(targetDir, target);
     const agentCount = installAgents(targetDir, target, args);
     const envExamplePath = path.join(args.local ? process.cwd() : targetDir, '.env.example');
     const envExampleCreated = installEnvExample(envExamplePath);
     const envHintLines = buildEnvHintLines(envExamplePath);
+    const initCommand = runtimeHost.buildCliCommand(installedRuntimeHost, ['init']);
+    const nextCommand = runtimeHost.buildCliCommand(installedRuntimeHost, ['next']);
 
     const lines = [
       `Installed emb-agent runtime for ${target.label} to: ${runtimeDir}`,
@@ -953,6 +956,9 @@ function createInstallHelpers(deps) {
       `Developer identity: ${args.developer} (${target.name})`,
       `${envExampleCreated ? 'Created' : 'Kept'} env example: ${envExamplePath}`,
       ...envHintLines,
+      'Next steps:',
+      `  In a project repo, run: ${initCommand}`,
+      `  Then continue with: ${nextCommand}`,
       `Restart ${target.restartLabel || target.label} to pick up new commands and agents.`
     ];
 

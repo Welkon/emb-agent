@@ -71,6 +71,9 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(stdout, /Created env example:/);
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
+    assert.match(stdout, /Next steps:/);
+    assert.match(stdout, /In a project repo, run: .* init/);
+    assert.match(stdout, /Then continue with: .* next/);
 
     process.chdir(tempProject);
     installedCli.main(['init']);

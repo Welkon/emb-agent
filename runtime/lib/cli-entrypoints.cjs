@@ -347,6 +347,30 @@ function createCliEntryHelpers(deps) {
     };
   }
 
+  function buildDeclareHardwareCommand(options) {
+    const config = options || {};
+    const parts = ['declare hardware'];
+
+    if (config.mcu) {
+      parts.push(`--mcu ${config.mcu}`);
+    }
+    if (config.package) {
+      parts.push(`--package ${config.package}`);
+    }
+    if (config.board) {
+      parts.push(`--board ${config.board}`);
+    }
+    if (config.target) {
+      parts.push(`--target ${config.target}`);
+    }
+
+    return parts.join(' ');
+  }
+
+  function buildDocIngestCommand(filePath) {
+    return `ingest doc --file ${filePath} --kind datasheet --to hardware`;
+  }
+
   function buildInitGuidance(projectRoot, context) {
     const initContext = context || {};
     const hardware = loadInitHardwareIdentity(projectRoot);
@@ -375,40 +399,50 @@ function createCliEntryHelpers(deps) {
       ? findChipProfileByModel(selectedHardware.model, selectedHardware.package)
       : null;
     const pinSummary = buildPinSummary(selectedChipProfile, selectedHardware && selectedHardware.package, !hardwareReady);
+    const firstUsablePin =
+      pinSummary && Array.isArray(pinSummary.usable_pins) && pinSummary.usable_pins.length > 0
+        ? pinSummary.usable_pins[0]
+        : null;
 
     if (!hardwareReady) {
       if (candidateHardware.length > 0) {
         const suggested = candidateHardware[0];
         nextSteps.push(
-          `Confirm the detected hardware identity with: init --mcu ${suggested.model}${suggested.package ? ` --package ${suggested.package}` : ''}`
+          `Declare the detected hardware identity with: ${buildDeclareHardwareCommand({
+            mcu: suggested.model,
+            package: suggested.package
+          })}`
         );
       } else {
-        nextSteps.push(`Confirm vendor / model / package in ${runtime.getProjectAssetRelativePath('hw.yaml')} or rerun init with --mcu/--package`);
+        nextSteps.push('Declare MCU/package first with: declare hardware --mcu <name> --package <name>');
       }
-    }
-
-    nextSteps.push('Run health');
-
-    if (sources.length === 0) {
-      if (hardwareReady) {
-        nextSteps.push('Run adapter bootstrap');
-        nextSteps.push('Run next after adapter bootstrap completes');
+      if (candidateDocs.length > 0) {
+        nextSteps.push(`After hardware confirmation, parse docs only if needed: ${buildDocIngestCommand(candidateDocs[0])}`);
+      }
+      if (sources.length === 0) {
+        nextSteps.push('Run adapter bootstrap after hardware identity is declared');
       } else {
-        nextSteps.push('Run adapter bootstrap after hw.yaml is filled in');
+        nextSteps.push(`Run adapter bootstrap ${sources[0].name} after hardware identity is declared`);
       }
-    } else if (hardwareReady) {
-      nextSteps.push(`Run adapter bootstrap ${sources[0].name}`);
-      nextSteps.push('Run next after adapter bootstrap completes');
+      nextSteps.push('Run next after hardware identity is declared');
     } else {
-      nextSteps.push(`Run adapter bootstrap ${sources[0].name} after hw.yaml is filled in`);
-    }
+      nextSteps.push(
+        firstUsablePin
+          ? `Declare board pins/peripherals with: declare hardware --signal SIGNAL_NAME --pin ${firstUsablePin.signal} --dir input|output`
+          : 'Declare board pins/peripherals with: declare hardware --signal SIGNAL_NAME --pin <pin> --dir input|output'
+      );
 
-    if (candidateDocs.length > 0) {
-      if (hardwareReady) {
-        nextSteps.push(`If docs still need to be parsed, run ingest doc --file ${candidateDocs[0]} --kind datasheet --to hardware`);
+      if (sources.length === 0) {
+        nextSteps.push('Run adapter bootstrap');
       } else {
-        nextSteps.push(`After hardware confirmation, parse docs only if needed: ingest doc --file ${candidateDocs[0]} --kind datasheet --to hardware`);
+        nextSteps.push(`Run adapter bootstrap ${sources[0].name}`);
       }
+
+      if (candidateDocs.length > 0) {
+        nextSteps.push(`If docs still need to be parsed, run ${buildDocIngestCommand(candidateDocs[0])}`);
+      }
+
+      nextSteps.push('Run next');
     }
 
     return {
@@ -440,7 +474,7 @@ function createCliEntryHelpers(deps) {
         requires_hardware_confirmation: candidateDocs.length > 0 && !hardwareReady,
         candidate_docs: candidateDocs,
         suggested_command: candidateDocs.length > 0
-          ? `ingest doc --file ${candidateDocs[0]} --kind datasheet --to hardware`
+          ? buildDocIngestCommand(candidateDocs[0])
           : ''
       },
       next_steps: nextSteps
@@ -453,6 +487,9 @@ function createCliEntryHelpers(deps) {
       'Global option: --brief outputs compact JSON (recommended for action commands such as next/plan/review/verify)',
       '  help',
       '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [--user <name>|-u <name>] [--force]',
+      '  declare hardware [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
+      '    [--signal <name> --pin <pin> --dir <direction> [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
+      '    [--peripheral <name> --usage <text>]',
       '  ingest hardware [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
       '    [--signal <name> --pin <pin> --dir <direction> [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>]',
