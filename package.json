@@ -37,6 +37,8 @@
   },
   "scripts": {
     "test": "node scripts/run-tests.cjs",
+    "test:behavior": "node scripts/behavior-drift-check.cjs",
+    "test:ci": "npm test && npm run test:behavior",
     "bench:brief": "node benchmarks/brief-benchmark.cjs",
     "pack:dry-run": "npm pack --dry-run",
     "release:check": "node scripts/release-check.cjs"
