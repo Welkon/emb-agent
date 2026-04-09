@@ -183,17 +183,44 @@ test('task commands create activate manage context and resolve lightweight tasks
     const threadName = threadList.threads[0].name;
     await cli.main(['thread', 'resume', threadName]);
 
-    const created = await captureCliJson(['task', 'add', 'Implement TM2 PWM adapter', '--type', 'implement']);
+    const created = await captureCliJson([
+      'task',
+      'add',
+      'Implement TM2 PWM adapter',
+      '--type',
+      'implement',
+      '--scope',
+      'pwm',
+      '--priority',
+      'P1',
+      '--assignee',
+      'welkon'
+    ]);
     const taskName = created.task.name;
     const taskDir = path.join(tempProject, '.emb-agent', 'tasks', taskName);
+    const manifest = JSON.parse(fs.readFileSync(path.join(taskDir, 'task.json'), 'utf8'));
 
     assert.equal(created.created, true);
     assert.equal(fs.existsSync(path.join(taskDir, 'task.json')), true);
     assert.equal(fs.existsSync(path.join(taskDir, 'implement.jsonl')), true);
     assert.equal(fs.existsSync(path.join(taskDir, 'check.jsonl')), true);
     assert.equal(fs.existsSync(path.join(taskDir, 'debug.jsonl')), true);
+    assert.match(manifest.id, /^\d{2}-\d{2}-implement-tm2-pwm-adapter/);
+    assert.equal(manifest.status, 'planning');
+    assert.equal(manifest.dev_type, 'embedded');
+    assert.equal(manifest.scope, 'pwm');
+    assert.equal(manifest.priority, 'P1');
+    assert.equal(manifest.assignee, 'welkon');
+    assert.equal(manifest.base_branch, 'main');
+    assert.equal(manifest.current_phase, 1);
+    assert.deepEqual(manifest.next_action.map(item => item.action), ['implement', 'check', 'finish', 'create-pr']);
+    assert.equal(Array.isArray(manifest.relatedFiles), true);
     assert.equal(created.task.bindings.hardware.identity.model, 'SC8F072');
     assert.equal(created.task.bindings.hardware.chip_profile.name, 'sc8f072sop8');
+    assert.equal(created.task.status, 'planning');
+    assert.equal(created.task.dev_type, 'embedded');
+    assert.equal(created.task.scope, 'pwm');
+    assert.equal(created.task.priority, 'P1');
     assert.ok(created.task.bindings.docs.some(item => item.doc_id));
     assert.ok(created.task.bindings.adapters.some(item => item.source === 'default-pack'));
     assert.ok(created.task.bindings.tools.some(item => item.tool === 'timer-calc'));
@@ -205,7 +232,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     const activated = await captureCliJson(['task', 'activate', taskName]);
     assert.equal(activated.activated, true);
     assert.equal(cli.loadSession().active_task.name, taskName);
-    assert.equal(cli.loadSession().active_task.status, 'IN_PROGRESS');
+    assert.equal(cli.loadSession().active_task.status, 'in_progress');
     assert.ok(cli.loadSession().last_files.some(item => item.includes('cache/docs/')));
 
     const updatedContext = await captureCliJson([
@@ -230,7 +257,8 @@ test('task commands create activate manage context and resolve lightweight tasks
 
     const resolved = await captureCliJson(['task', 'resolve', taskName, 'adapter merged']);
     assert.equal(resolved.resolved, true);
-    assert.equal(resolved.task.status, 'RESOLVED');
+    assert.equal(resolved.task.status, 'completed');
+    assert.equal(resolved.task.notes, 'adapter merged');
     assert.equal(cli.loadSession().active_task.name, '');
   } finally {
     process.chdir(currentCwd);

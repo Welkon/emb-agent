@@ -1,0 +1,29 @@
+{
+  "id": "{{TASK_ID_PREFIX}}-{{SLUG}}",
+  "name": "{{SLUG}}",
+  "title": "{{TITLE}}",
+  "description": "{{DESCRIPTION}}",
+  "status": "{{TASK_STATUS}}",
+  "dev_type": "{{DEV_TYPE}}",
+  "scope": "{{SCOPE}}",
+  "priority": "{{PRIORITY}}",
+  "creator": "{{CREATOR}}",
+  "assignee": "{{ASSIGNEE}}",
+  "createdAt": "{{DATE}}T00:00:00.000Z",
+  "completedAt": null,
+  "branch": "{{BRANCH}}",
+  "base_branch": "{{BASE_BRANCH}}",
+  "worktree_path": "{{WORKTREE_PATH}}",
+  "current_phase": 1,
+  "next_action": [
+    { "phase": 1, "action": "implement" },
+    { "phase": 2, "action": "check" },
+    { "phase": 3, "action": "finish" },
+    { "phase": 4, "action": "create-pr" }
+  ],
+  "commit": "{{COMMIT}}",
+  "pr_url": "{{PR_URL}}",
+  "subtasks": [],
+  "relatedFiles": [],
+  "notes": ""
+}

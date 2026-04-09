@@ -38,6 +38,18 @@ test('template list exposes PMB180B starter templates', async () => {
   assert.ok(listed.some(item => item.name === 'pms150g-hw-starter'));
   assert.ok(listed.some(item => item.name === 'pms150g-req-starter'));
   assert.ok(listed.some(item => item.name === 'power-charging'));
+  assert.ok(listed.some(item => item.name === 'task-manifest'));
+});
+
+test('template show previews task manifest template', async () => {
+  const stdout = await captureStdout(() => templateCli.showCommand('task-manifest'));
+  const shown = JSON.parse(stdout);
+
+  assert.equal(shown.name, 'task-manifest');
+  assert.equal(shown.default_output, '.emb-agent/tasks/{{SLUG}}/task.json');
+  assert.match(shown.preview, /"status": "planning"/);
+  assert.match(shown.preview, /"dev_type": "embedded"/);
+  assert.match(shown.preview, /"next_action": \[/);
 });
 
 test('template fill renders PMB180B starter hw truth', async () => {

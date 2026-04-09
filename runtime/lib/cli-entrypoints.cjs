@@ -510,7 +510,7 @@ function createCliEntryHelpers(deps) {
       '  pause clear',
       '  resume',
       '  task list',
-      '  task add <summary> [--type implement|debug|review|investigate]',
+      '  task add <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
       '  task show <name>',
       '  task activate <name>',
       '  task resolve <name> [note]',

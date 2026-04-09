@@ -14,6 +14,7 @@
     "runtime/config.json",
     "runtime/hooks",
     "runtime/lib",
+    "runtime/schemas",
     "runtime/packs",
     "runtime/profiles",
     "runtime/README.md",
