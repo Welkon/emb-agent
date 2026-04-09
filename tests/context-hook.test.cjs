@@ -69,3 +69,15 @@ test('context monitor prioritizes live context metrics and warns to pause', () =
     process.chdir(currentCwd);
   }
 });
+
+test('context monitor shouldEmit debounces same severity and allows escalation', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-debounce-'));
+
+  assert.equal(contextMonitor.shouldEmit(tempProject, 'warning'), true);
+
+  for (let index = 0; index < 4; index += 1) {
+    assert.equal(contextMonitor.shouldEmit(tempProject, 'warning'), false);
+  }
+
+  assert.equal(contextMonitor.shouldEmit(tempProject, 'critical'), true);
+});
