@@ -16,6 +16,16 @@ const suites = [
     id: 'context-hook',
     file: path.join(repoRoot, 'tests', 'context-hook.test.cjs'),
     hint: 'context hook 的告警节流或严重度升级逻辑可能漂移。'
+  },
+  {
+    id: 'session-start-hook',
+    file: path.join(repoRoot, 'tests', 'session-start-hook.test.cjs'),
+    hint: 'session start 提醒链路可能漂移（handoff/task/workspace/update）。'
+  },
+  {
+    id: 'plugin-governance',
+    file: path.join(repoRoot, 'tests', 'plugin-governance.test.cjs'),
+    hint: '插件治理约束可能漂移（外部 registry schema / adapter 导出契约）。'
   }
 ];
 

@@ -96,6 +96,7 @@ function main() {
   ensure(fs.existsSync(path.join(repoRoot, 'RELEASE.md')), 'RELEASE.md is required');
 
   run('run tests', process.execPath, ['scripts/run-tests.cjs']);
+  run('run behavior drift gate', process.execPath, ['scripts/behavior-drift-check.cjs']);
   runPackDryRunCheck();
 
   process.stdout.write('\n[release-check] emb-agent release check passed\n');
