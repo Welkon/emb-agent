@@ -33,27 +33,20 @@ function createHelper(customProcess, promptInstallerChoices) {
   });
 }
 
-test('interactive no-args install defaults to codex global on non-tty', async () => {
-  const writes = [];
+test('interactive no-args install rejects non-tty sessions without developer name', async () => {
   const fakeProcess = {
     cwd: () => repoRoot,
     env: {},
     stdin: { isTTY: false },
     stdout: {
       write(chunk) {
-        writes.push(String(chunk));
         return true;
       }
     }
   };
 
   const helper = createHelper(fakeProcess);
-  const args = await helper.resolveArgs([]);
-
-  assert.equal(args.runtime, 'codex');
-  assert.equal(args.global, true);
-  assert.equal(args.local, false);
-  assert.match(writes.join(''), /Non-interactive terminal detected/);
+  await assert.rejects(() => helper.resolveArgs([]), /Non-interactive install requires --developer <name>/);
 });
 
 test('interactive no-args install can resolve local codex choice through prompt hook', async () => {
@@ -72,7 +65,8 @@ test('interactive no-args install can resolve local codex choice through prompt 
     assert.deepEqual(targets.map(item => item.name), ['codex', 'claude']);
     return {
       runtime: 'codex',
-      location: 'local'
+      location: 'local',
+      developer: 'welkon'
     };
   });
 
@@ -81,4 +75,5 @@ test('interactive no-args install can resolve local codex choice through prompt 
   assert.equal(args.runtime, 'codex');
   assert.equal(args.global, false);
   assert.equal(args.local, true);
+  assert.equal(args.developer, 'welkon');
 });

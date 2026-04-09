@@ -679,6 +679,7 @@ const {
   fs,
   path,
   process,
+  ROOT,
   runtime,
   RUNTIME_CONFIG,
   resolveProjectRoot,
@@ -687,6 +688,7 @@ const {
   ensureSession,
   updateSession,
   attachProjectCli,
+  chipCatalog,
   ingestTruthCli,
   ingestDocCli
 });

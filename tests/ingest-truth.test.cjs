@@ -50,6 +50,76 @@ test('ingest hardware appends stable facts into hw truth file', () => {
   }
 });
 
+test('ingest hardware can write structured signals and peripherals into hw truth', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-ingest-signals-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main([
+      'ingest',
+      'hardware',
+      '--signal',
+      'PWM_OUT',
+      '--pin',
+      'PA3',
+      '--dir',
+      'output',
+      '--default-state',
+      'low',
+      '--note',
+      'TM2 PWM output',
+      '--confirmed',
+      'true',
+      '--peripheral',
+      'PWM',
+      '--usage',
+      'warm dimming',
+      '--peripheral',
+      'Timer2',
+      '--usage',
+      'period base'
+    ]);
+
+    cli.main([
+      'ingest',
+      'hardware',
+      '--signal',
+      'PWM_OUT',
+      '--note',
+      'TM2 PWM output on PA3',
+      '--peripheral',
+      'PWM',
+      '--usage',
+      'dimming output'
+    ]);
+
+    const content = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
+
+    assert.doesNotMatch(content, /INPUT_1/);
+    assert.doesNotMatch(content, /OUTPUT_1/);
+    assert.match(content, /- name: "PWM_OUT"/);
+    assert.match(content, /pin: "PA3"/);
+    assert.match(content, /direction: "output"/);
+    assert.match(content, /default_state: "low"/);
+    assert.match(content, /confirmed: true/);
+    assert.match(content, /note: "TM2 PWM output on PA3"/);
+    assert.match(content, /- name: "PWM"/);
+    assert.match(content, /usage: "dimming output"/);
+    assert.match(content, /- name: "Timer2"/);
+    assert.match(content, /usage: "period base"/);
+    assert.equal((content.match(/- name: "PWM_OUT"/g) || []).length, 1);
+    assert.equal((content.match(/- name: "PWM"/g) || []).length, 1);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('ingest requirements appends reusable requirement facts into req truth file', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-ingest-req-'));
   const currentCwd = process.cwd();

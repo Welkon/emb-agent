@@ -16,6 +16,7 @@ test('loadRuntimeConfig returns validated defaults', () => {
   assert.equal(config.session_version, 1);
   assert.equal(config.default_profile, 'baremetal-8bit');
   assert.deepEqual(config.default_packs, ['sensor-node']);
+  assert.deepEqual(config.developer, { name: '', runtime: '' });
   assert.deepEqual(config.default_preferences, {
     truth_source_mode: 'hardware_first',
     plan_mode: 'auto',

@@ -33,7 +33,7 @@ function usage() {
       'attach-project usage:',
       '  node scripts/attach-project.cjs',
       '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--pack <name> ...] [--runtime <codex|claude>|--codex|--claude] [-u <name>]',
-      '  node scripts/attach-project.cjs --mcu <name> [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [-u <name>] [--force]'
+      '  node scripts/attach-project.cjs --mcu <name> [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [-u <name>] [--force]'
     ].join('\n') + '\n'
   );
 }
@@ -48,6 +48,7 @@ function parseArgs(argv) {
     user: '',
     userSet: false,
     mcu: '',
+    package: '',
     board: '',
     target: '',
     goal: '',
@@ -116,6 +117,11 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (token === '--package') {
+      result.package = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
     if (token === '--board') {
       result.board = argv[index + 1] || '';
       index += 1;
@@ -153,6 +159,9 @@ function parseArgs(argv) {
   }
   if (argv.includes('--mcu') && !result.mcu) {
     throw new Error('Missing value after --mcu');
+  }
+  if (argv.includes('--package') && !result.package) {
+    throw new Error('Missing value after --package');
   }
   if (argv.includes('--board') && !result.board) {
     throw new Error('Missing value after --board');
@@ -284,6 +293,7 @@ function seedHwTruth(filePath, options) {
   let content = runtime.readText(filePath);
 
   content = replaceScalarLine(content, '  model: ', options.mcu, options.force);
+  content = replaceScalarLine(content, '  package: ', options.package, options.force);
   content = replaceScalarLine(content, '  name: ', options.board, options.force);
   content = replaceScalarLine(content, '  target: ', options.target, options.force);
   content = replaceListBlock(content, '  datasheet:', '    ', options.docs, options.force);
@@ -345,6 +355,7 @@ function attachProject(argv) {
 
   seedHwTruth(hwPath, {
     mcu: args.mcu,
+    package: args.package,
     board: args.board,
     target: args.target,
     docs: detected.docs,
