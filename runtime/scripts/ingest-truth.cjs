@@ -214,12 +214,12 @@ function ingestRequirements(projectRoot, args) {
   const filePath = ensureTemplateFile(projectRoot, 'req-truth');
   let content = runtime.readText(filePath);
 
-  content = appendListBlock(content, 'goals:', '  ', args.goals, ['明确当前项目的首个可交付目标']);
-  content = appendListBlock(content, 'features:', '  ', args.features, ['补齐当前最关键的板级行为或功能闭环']);
-  content = appendListBlock(content, 'constraints:', '  ', args.constraints, ['优先复用现有工程和硬件真值，不先扩架构']);
-  content = appendListBlock(content, 'acceptance:', '  ', args.acceptance, ['当前目标在板级或最小验证路径上可确认']);
-  content = appendListBlock(content, 'failure_policy:', '  ', args.failurePolicy, ['遇到未确认硬件或需求时先记录 unknown，不直接假设']);
-  content = appendListBlock(content, 'unknowns:', '  ', args.unknowns, ['客户或量产需求仍待确认']);
+  content = appendListBlock(content, 'goals:', '  ', args.goals, ['Define the first deliverable target for the current project']);
+  content = appendListBlock(content, 'features:', '  ', args.features, ['Complete the most critical board-level behavior or feature closure']);
+  content = appendListBlock(content, 'constraints:', '  ', args.constraints, ['Prefer reusing the existing codebase and hardware truth before expanding architecture']);
+  content = appendListBlock(content, 'acceptance:', '  ', args.acceptance, ['The current goal can be confirmed at board level or through a minimal verification path']);
+  content = appendListBlock(content, 'failure_policy:', '  ', args.failurePolicy, ['When hardware or requirements are unconfirmed, record an unknown first instead of guessing']);
+  content = appendListBlock(content, 'unknowns:', '  ', args.unknowns, ['Customer or production requirements still need confirmation']);
   content = appendListBlock(content, 'sources:', '  ', args.sources, ['']);
 
   fs.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`, 'utf8');

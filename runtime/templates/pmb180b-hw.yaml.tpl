@@ -21,25 +21,25 @@ signals:
     direction: "input"
     default_state: "unknown"
     confirmed: false
-    note: "5V 输入判定不能只看 CHG_TEMP.4，必须同时满足 CHG_TEMP.4 && CHG_TEMP.3。"
+    note: "5V input detection cannot rely on CHG_TEMP.4 alone; it must satisfy CHG_TEMP.4 && CHG_TEMP.3."
   - name: "BATTERY_NODE"
     pin: "VBAT"
     direction: "input"
     default_state: "battery"
     confirmed: false
-    note: "LVDC 与充电状态下内部检测通常比实际电池电压高约 0.15V。"
+    note: "Under LVDC and charging conditions, internal detection is usually about 0.15V higher than actual battery voltage."
   - name: "PWM_OR_LPWM_OUTPUT"
     pin: "PA0"
     direction: "output"
     default_state: "low"
     confirmed: false
-    note: "PA0 可作为 LPWMG0 输出候选；若走 TM2 PWM 则常见输出脚为 PA3/PA4。"
+    note: "PA0 can be used as an LPWMG0 output candidate; if TM2 PWM is used, the common output pins are PA3/PA4."
   - name: "WAKE_OR_INT_INPUT"
     pin: "PA4"
     direction: "input"
     default_state: "pull-high"
     confirmed: false
-    note: "PA4 既可能承担 comparator/TM2PWM，也可能承担 INT1，需尽早确认 pin mux。"
+    note: "PA4 may serve comparator/TM2PWM or INT1, so pin mux must be confirmed early."
 
 peripherals:
   - name: "timer16"
@@ -56,20 +56,20 @@ peripherals:
     usage: "comparator threshold and wakeup path"
 
 truths:
-  - "PMB180B 带 Timer16、TM2 PWM、LPWMG0/1/2、GPC comparator、LVDC 和 charger block。"
-  - "PMB180B 的 CHG_TEMP.1 按实测应解释为：高=充电中，低=充电完成；不要照抄旧资料。"
-  - "LPWMG0/1/2 共享 LPWMGCUBH/LPWMGCUBL 周期寄存器，不能把三个通道当成独立 PWM block。"
-  - "LVDC 不支持中断和唤醒，只能轮询状态位。"
-  - "当前手册未体现 ADC 资源，默认按无 ADC 处理。"
+  - "PMB180B includes Timer16, TM2 PWM, LPWMG0/1/2, a GPC comparator, LVDC, and a charger block."
+  - "Based on bench results, PMB180B CHG_TEMP.1 should be interpreted as high = charging, low = charge complete; do not copy old material blindly."
+  - "LPWMG0/1/2 share LPWMGCUBH/LPWMGCUBL period registers; the three channels cannot be treated as independent PWM blocks."
+  - "LVDC does not support interrupts or wake-up; it can only be polled via status bits."
+  - "The current manual does not show ADC resources, so treat the part as having no ADC by default."
 
 constraints:
-  - "封装必须尽早确认 ESOP8 还是 ESSOP10，因为可用 IO 与 LPWMG/comparator 输入集合不同。"
-  - "如果项目依赖充满判断，必须明确采用 CHG_TEMP.1 规则、V400_FG+持续时间规则，或两者并用。"
-  - "涉及欠压阈值或比较器阈值时，充电状态下要预留约 0.15V 的内部检测偏移。"
-  - "PA0/PA3/PA4/PA5/PA6 上的 PWM、LPWMG、比较器、INT 功能存在 pin mux 竞争。"
+  - "The package must be fixed early as ESOP8 or ESSOP10 because the available IO and LPWMG/comparator input sets differ."
+  - "If the project depends on charge-complete detection, explicitly choose the CHG_TEMP.1 rule, the V400_FG + duration rule, or both."
+  - "When undervoltage or comparator thresholds are involved, reserve about 0.15V of internal detection offset during charging."
+  - "PWM, LPWMG, comparator, and INT functions on PA0/PA3/PA4/PA5/PA6 compete for pin mux."
 
 unknowns:
-  - "最终封装版本是否为 ESOP8 或 ESSOP10。"
-  - "输出应该走 TM2 PWM 还是 LPWMG。"
-  - "充电电流目标档位与实际电池容量。"
-  - "项目采用的充满判定规则和持续时间下限。"
+  - "Whether the final package is ESOP8 or ESSOP10."
+  - "Whether output should use TM2 PWM or LPWMG."
+  - "The target charging-current step and the actual battery capacity."
+  - "The charge-complete rule and minimum duration used by the project."

@@ -34,6 +34,7 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.equal(projectConfig.project_profile, 'rtos-iot');
     assert.deepEqual(projectConfig.active_packs, ['connected-appliance']);
     assert.deepEqual(projectConfig.adapter_sources, []);
+    assert.deepEqual(projectConfig.executors, {});
     assert.deepEqual(projectConfig.developer, { name: '', runtime: '' });
     assert.equal(projectConfig.integrations.mineru.mode, 'auto');
     assert.equal(projectConfig.integrations.mineru.base_url, '');
@@ -160,7 +161,7 @@ test('init returns onboarding guidance for adapter setup', () => {
     assert.equal(result.onboarding.hardware_identity_present, false);
     assert.equal(result.onboarding.adapter_sources_registered, 0);
     assert.ok(result.next_steps.some(item => item.includes('.emb-agent/hw.yaml')));
-    assert.ok(result.next_steps.some(item => item.includes('填完 hw.yaml 后运行 adapter bootstrap')));
+    assert.ok(result.next_steps.some(item => item.includes('Run adapter bootstrap after hw.yaml is filled in')));
     assert.ok(result.next_steps.some(item => item.includes('health')));
   } finally {
     process.chdir(currentCwd);

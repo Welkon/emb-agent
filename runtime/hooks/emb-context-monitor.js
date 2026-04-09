@@ -111,14 +111,14 @@ function buildMetricsMessage(metrics, contextHygiene) {
     ? contextHygiene.clear_hint
     : 'pause -> clear -> resume';
   const reasons = contextHygiene && Array.isArray(contextHygiene.reasons) && contextHygiene.reasons.length > 0
-    ? ` 项目侧信号: ${contextHygiene.reasons.join('；')}。`
+    ? ` Project-side signals: ${contextHygiene.reasons.join('; ')}.`
     : '';
 
   if (isCritical) {
-    return `${prefix} 当前上下文窗口剩余约 ${Math.round(metrics.remaining)}%，已接近极限。先不要继续扩展问题空间；建议现在执行 ${pauseCli}，完成最小收口后走 ${resumeChain}。${reasons}`;
+    return `${prefix} About ${Math.round(metrics.remaining)}% of the context window remains and it is near the limit. Do not expand the problem space further. Run ${pauseCli} now, finish the smallest closure, then continue with ${resumeChain}.${reasons}`;
   }
 
-  return `${prefix} 当前上下文窗口剩余约 ${Math.round(metrics.remaining)}%，继续深挖前应准备收口。建议优先 pause，随后按 ${resumeChain} 接回。${reasons}`;
+  return `${prefix} About ${Math.round(metrics.remaining)}% of the context window remains. Prepare to close scope before digging deeper. Prefer pause first, then continue with ${resumeChain}.${reasons}`;
 }
 
 function buildSessionMessage(contextHygiene) {
@@ -130,10 +130,10 @@ function buildSessionMessage(contextHygiene) {
     ? 'EMB CONTEXT WARNING:'
     : 'EMB CONTEXT NOTICE:';
   const reasons = Array.isArray(contextHygiene.reasons) && contextHygiene.reasons.length > 0
-    ? ` 原因: ${contextHygiene.reasons.join('；')}。`
+    ? ` Reasons: ${contextHygiene.reasons.join('; ')}.`
     : '';
 
-  return `${prefix} ${contextHygiene.recommendation}${reasons} 建议链路: ${contextHygiene.clear_hint}.`;
+  return `${prefix} ${contextHygiene.recommendation}${reasons} Suggested chain: ${contextHygiene.clear_hint}.`;
 }
 
 function severityRank(level) {

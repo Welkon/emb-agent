@@ -80,7 +80,7 @@ test('baremetal sensor profile routes scan plan debug do to lightweight agents',
   assert.equal(scan.scheduler.primary_agent, 'hw-scout');
   assert.equal(scan.scheduler.agent_execution.primary_agent, 'emb-hw-scout');
   assert.equal(scan.scheduler.agent_execution.mode, 'inline-preferred');
-  assert.ok(scan.next_reads.some(item => item.includes('硬件真值来源')));
+  assert.ok(scan.next_reads.some(item => item.includes('Hardware truth sources')));
   assert.equal(plan.scheduler.primary_agent, 'hw-scout');
   assert.equal(plan.scheduler.agent_execution.mode, 'primary-recommended');
   assert.ok(plan.scheduler.agent_execution.calls.some(item => item.agent === 'emb-fw-doer'));
@@ -89,15 +89,15 @@ test('baremetal sensor profile routes scan plan debug do to lightweight agents',
   assert.equal(plan.scheduler.agent_execution.dispatch_contract.primary.spawn_fallback.fallback_agent_type, 'explorer');
   assert.match(plan.scheduler.agent_execution.dispatch_contract.primary.spawn_fallback.instructions_source_cli, /agents show emb-hw-scout/);
   assert.ok(plan.scheduler.agent_execution.dispatch_contract.primary.context_bundle.truth_sources.length > 0);
-  assert.ok(plan.constraints.some(item => item.includes('ISR 薄')));
-  assert.ok(plan.verification.some(item => item.includes('时序窗口')));
+  assert.ok(plan.constraints.some(item => item.includes('ISR thin')));
+  assert.ok(plan.verification.some(item => item.includes('timing windows')));
   assert.ok(debug.hypotheses.some(item => item.includes('ISR')));
   assert.equal(verify.scheduler.primary_agent, 'hw-scout');
-  assert.ok(verify.checklist.some(item => item.includes('寄存器')));
+  assert.ok(verify.checklist.some(item => item.includes('register')));
   assert.ok(verify.result_template.some(item => item.includes('PASS')));
   assert.equal(debug.scheduler.agent_execution.primary_agent, 'emb-bug-hunter');
   assert.equal(action.chosen_agent, 'fw-doer');
-  assert.ok(action.prerequisites.includes('先补一次最小 scan，确认真实改动点'));
+  assert.ok(action.prerequisites.includes('Add a minimal scan first to confirm the real change point'));
   assert.ok(action.scheduler.supporting_agents.includes('hw-scout'));
   assert.equal(action.scheduler.agent_execution.mode, 'inline-preferred');
 });
@@ -122,16 +122,16 @@ test('rtos connected profile routes review note to system and release aware outp
   assert.ok(plan.scheduler.agent_execution.dispatch_contract.parallel_safe.includes('emb-release-checker'));
   assert.equal(plan.goal, 'review ota and reconnect path');
   assert.ok(plan.risks.includes('rollback path not verified'));
-  assert.ok(plan.verification.some(item => item.includes('升级恢复')));
+  assert.ok(plan.verification.some(item => item.includes('upgrade recovery')));
   assert.equal(review.scheduler.primary_agent, 'sys-reviewer');
   assert.equal(review.scheduler.agent_execution.mode, 'parallel-recommended');
   assert.ok(review.scheduler.agent_execution.calls.some(item => item.agent === 'emb-release-checker'));
   assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.some(item => item.agent === 'emb-release-checker'));
   assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.some(item => item.spawn_fallback.fallback_agent_type === 'explorer'));
   assert.ok(review.review_agents.includes('release-checker'));
-  assert.ok(review.required_checks.some(item => item.includes('离线默认行为')));
+  assert.ok(review.required_checks.some(item => item.includes('offline defaults')));
   assert.equal(verify.scheduler.primary_agent, 'release-checker');
-  assert.ok(verify.checklist.some(item => item.includes('回滚链路')));
+  assert.ok(verify.checklist.some(item => item.includes('rollback paths')));
   assert.ok(verify.verification_focus.includes('connectivity-recovery'));
   assert.ok(note.target_docs.includes('docs/CONNECTIVITY.md'));
   assert.ok(note.target_docs.includes('docs/RELEASE-NOTES.md'));
@@ -151,8 +151,8 @@ test('preferences can switch truth source ordering and strict verification', () 
 
   const plan = scheduler.buildPlanOutput(resolved);
 
-  assert.equal(plan.truth_sources[0], '当前最相关文件: main.c');
-  assert.ok(plan.verification.some(item => item.includes('失败路径')));
+  assert.equal(plan.truth_sources[0], 'Most relevant file: main.c');
+  assert.ok(plan.verification.some(item => item.includes('failure paths')));
 });
 
 test('project truth files are preferred when present', () => {

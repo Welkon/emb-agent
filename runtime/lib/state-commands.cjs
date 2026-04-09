@@ -30,6 +30,7 @@ function createStateCommandHelpers(deps) {
     handleWorkspaceCommands,
     handleThreadCommands,
     handleForensicsCommands,
+    handleExecutorCommands,
     handleSettingsCommands,
     handleSessionReportCommands,
     handleManagerCommands
@@ -68,6 +69,13 @@ function createStateCommandHelpers(deps) {
       : undefined;
     if (forensicsResult !== undefined) {
       return forensicsResult;
+    }
+
+    const executorResult = handleExecutorCommands
+      ? handleExecutorCommands(cmd, subcmd, rest)
+      : undefined;
+    if (executorResult !== undefined) {
+      return executorResult;
     }
 
     const settingsResult = handleSettingsCommands

@@ -46,6 +46,7 @@ const settingsCommandHelpers = require(path.join(ROOT, 'lib', 'settings-command.
 const sessionReportCommandHelpers = require(path.join(ROOT, 'lib', 'session-report-command.cjs'));
 const managerCommandHelpers = require(path.join(ROOT, 'lib', 'manager-command.cjs'));
 const healthUpdateCommandHelpers = require(path.join(ROOT, 'lib', 'health-update-command.cjs'));
+const executorCommandHelpers = require(path.join(ROOT, 'lib', 'executor-command.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 
@@ -57,18 +58,18 @@ const REVIEW_AGENT_NAMES = [
 ];
 
 const DEFAULT_ARCH_REVIEW_PATTERNS = [
-  '芯片选型',
-  '器件选型',
-  'mcu选型',
-  'soc选型',
-  '方案预审',
-  '架构预审',
-  '系统预审',
-  '选型评审',
-  '尸检预演',
-  '立项评审',
-  '原型转量产',
-  'PoC转量产',
+  'chip selection',
+  'device selection',
+  'mcu selection',
+  'soc selection',
+  'solution preflight',
+  'architecture preflight',
+  'system preflight',
+  'selection review',
+  'pre-mortem',
+  'project kickoff review',
+  'prototype to production',
+  'PoC to production',
   'chip selection',
   'mcu selection',
   'soc selection',
@@ -487,6 +488,22 @@ const {
 });
 
 const {
+  listExecutors,
+  showExecutor,
+  runExecutor,
+  handleExecutorCommands
+} = executorCommandHelpers.createExecutorCommandHelpers({
+  path,
+  process,
+  childProcess,
+  runtime,
+  resolveProjectRoot,
+  getProjectConfig,
+  updateSession
+});
+
+const {
+  runSessionReport,
   handleSessionReportCommands
 } = sessionReportCommandHelpers.createSessionReportCommandHelpers({
   fs,
@@ -514,7 +531,8 @@ const {
   buildResumeContext,
   buildToolExecutionFromNext,
   buildSettingsView,
-  listThreads
+  listThreads,
+  listExecutors
 });
 
 const {
@@ -575,6 +593,7 @@ const {
   handleWorkspaceCommands,
   handleThreadCommands,
   handleForensicsCommands,
+  handleExecutorCommands,
   handleSettingsCommands,
   handleSessionReportCommands,
   handleManagerCommands
@@ -810,6 +829,9 @@ module.exports = {
   buildUpdateView,
   buildProjectShow,
   buildAdapterStatus,
+  listExecutors,
+  showExecutor,
+  runExecutor,
   setProjectConfigValue,
   addAdapterSource,
   removeAdapterSource,
@@ -826,6 +848,7 @@ module.exports = {
   buildResumeContext,
   buildArchReviewContext,
   buildReviewContext,
+  runSessionReport,
   adapterSources,
   adapterDeriveCli,
   toolCatalog,

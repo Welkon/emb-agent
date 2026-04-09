@@ -63,18 +63,18 @@ function gradeFromScore(score) {
 
 function buildGradeSummary(grade) {
   if (grade === 'trusted') {
-    return '证据链完整，可直接作为可信 adapter 使用。';
+    return 'The evidence chain is complete and this adapter can be used as trusted.';
   }
   if (grade === 'usable') {
-    return '主路径已可用，但仍建议继续补资料或封装细节。';
+    return 'The primary path is usable, but more references or packaging details are still recommended.';
   }
   if (grade === 'partial') {
-    return '有一部分 binding 和实现，但证据链还不够完整。';
+    return 'There is some binding and implementation, but the evidence chain is still incomplete.';
   }
   if (grade === 'draft') {
-    return '当前更适合继续起草，不应把结果当成最终真值。';
+    return 'This is still better treated as a draft and should not be taken as final ground truth.';
   }
-  return '当前几乎没有足够证据支撑该 adapter。';
+  return 'There is almost not enough evidence to support this adapter yet.';
 }
 
 function buildRecommendedAction(input) {
@@ -137,7 +137,7 @@ function evaluateToolRecommendationTrust(input) {
     score += 6;
     uniquePush(signals, 'chip-profile');
   } else {
-    uniquePush(gaps, '缺少 chip profile');
+    uniquePush(gaps, 'missing chip profile');
   }
 
   if (chipProfile && chipProfile.package) {
@@ -184,7 +184,7 @@ function evaluateToolRecommendationTrust(input) {
     score += 4;
     uniquePush(signals, 'source-refs');
   } else {
-    uniquePush(gaps, '缺少 source_refs');
+    uniquePush(gaps, 'missing source_refs');
   }
   if (deviceProfile && hasArrayItems(deviceProfile.source_refs)) {
     score += 2;
@@ -198,20 +198,20 @@ function evaluateToolRecommendationTrust(input) {
     score += 10;
     uniquePush(signals, 'register-summary');
   } else {
-    uniquePush(gaps, '缺少寄存器摘要');
+    uniquePush(gaps, 'missing register summary');
   }
   if (hasAnyComponentRef) {
     score += 2;
     uniquePush(signals, 'component-refs');
   } else {
-    uniquePush(gaps, '缺少器件/电路引用');
+    uniquePush(gaps, 'missing component/circuit references');
   }
 
   if (bindingInfo.binding) {
     score += 14;
     uniquePush(signals, 'binding');
   } else {
-    uniquePush(gaps, '缺少 tool binding');
+    uniquePush(gaps, 'missing tool binding');
   }
   if (bindingInfo.source === 'device') {
     score += 4;
@@ -224,11 +224,11 @@ function evaluateToolRecommendationTrust(input) {
     score += 6;
     uniquePush(signals, 'algorithm');
   } else if (bindingInfo.binding) {
-    uniquePush(gaps, 'binding 缺少 algorithm');
+    uniquePush(gaps, 'binding is missing algorithm');
   }
   if (bindingInfo.binding && bindingInfo.binding.draft === true) {
     score -= 16;
-    uniquePush(gaps, 'binding 仍是 draft');
+    uniquePush(gaps, 'binding is still draft');
   }
 
   if (toolStatus === 'ready') {
@@ -237,10 +237,10 @@ function evaluateToolRecommendationTrust(input) {
   } else if (toolStatus === 'draft-adapter') {
     score += 4;
     uniquePush(signals, 'runtime-draft-adapter');
-    uniquePush(gaps, 'runtime adapter 仍是 draft');
+    uniquePush(gaps, 'runtime adapter is still draft');
   } else {
     score -= 8;
-    uniquePush(gaps, '缺少可执行 runtime adapter');
+    uniquePush(gaps, 'missing executable runtime adapter');
   }
 
   if (implementation === 'external-adapter') {
@@ -299,7 +299,7 @@ function summarizeAdapterHealth(toolRecommendations, recommendedSources) {
       binding_ready_tools: 0,
       draft_binding_tools: 0,
       primary: null,
-      summary: '当前没有可评估的 adapter/tool recommendation。'
+      summary: 'There is no adapter/tool recommendation to evaluate yet.'
     };
   }
 
@@ -312,7 +312,7 @@ function summarizeAdapterHealth(toolRecommendations, recommendedSources) {
         executable: false,
         summary: buildGradeSummary('missing'),
         signals: [],
-        gaps: ['缺少 trust 信息'],
+        gaps: ['missing trust information'],
         recommended_action: 'review-profile'
       }
     }))
@@ -327,7 +327,7 @@ function summarizeAdapterHealth(toolRecommendations, recommendedSources) {
   const executableTools = ranked.filter(item => item.trust.executable).length;
   const bindingReadyTools = ranked.filter(item => item.binding_source && item.binding_source !== 'none').length;
   const draftBindingTools = ranked.filter(
-    item => item.trust.gaps && item.trust.gaps.some(gap => gap.includes('binding 仍是 draft'))
+    item => item.trust.gaps && item.trust.gaps.some(gap => gap.includes('binding is still draft'))
   ).length;
 
   return {

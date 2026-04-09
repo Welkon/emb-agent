@@ -32,7 +32,7 @@ test('note add appends structured entry to hardware doc', () => {
       '--kind',
       'hardware_truth',
       '--evidence',
-      'docs/PMS150G文档.md',
+      'docs/PMS150G-manual.md',
       '--unverified',
       'Need board-level probe confirmation'
     ]);
@@ -43,11 +43,11 @@ test('note add appends structured entry to hardware doc', () => {
     assert.match(content, /## Emb-Agent Notes/);
     assert.match(content, /PA5 is reserved for programming path/);
     assert.match(content, /hardware_truth/);
-    assert.match(content, /docs\/PMS150G文档\.md/);
+    assert.match(content, /docs\/PMS150G-manual\.md/);
     assert.match(content, /Need board-level probe confirmation/);
     assert.match(hwTruth, /PA5 is reserved for programming path/);
     assert.match(hwTruth, /Need board-level probe confirmation/);
-    assert.match(hwTruth, /docs\/PMS150G文档\.md/);
+    assert.match(hwTruth, /docs\/PMS150G-manual\.md/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

@@ -797,7 +797,21 @@ function createNoteReportHelpers(deps) {
     };
   }
 
-  function buildVerifyEntry(verifyOutput, verifyInput) {
+  function getLatestExecutorSummary(resolved) {
+    return resolved &&
+      resolved.session &&
+      resolved.session.diagnostics &&
+      resolved.session.diagnostics.latest_executor &&
+      resolved.session.diagnostics.latest_executor.name
+      ? resolved.session.diagnostics.latest_executor
+      : null;
+  }
+
+  function formatExecutorArgv(argv) {
+    return (argv || []).map(item => String(item)).join(' ').trim();
+  }
+
+  function buildVerifyEntry(verifyOutput, verifyInput, latestExecutor) {
     const timestamp = new Date().toISOString();
     const next = typeof buildNextContext === 'function' ? buildNextContext() : null;
     const toolRecommendation =
@@ -829,9 +843,26 @@ function createNoteReportHelpers(deps) {
       `- Adapter health: ${adapterHealth
         ? `${adapterHealth.tool} ${adapterHealth.grade} (${adapterHealth.score}/100), executable=${adapterHealth.executable ? 'yes' : 'no'}, action=${adapterHealth.recommended_action}`
         : '-'}`,
-      '- Checklist:'
+      `- Latest executor: ${latestExecutor
+        ? `${latestExecutor.name} ${latestExecutor.status}, exit=${latestExecutor.exit_code === null ? '-' : latestExecutor.exit_code}, risk=${latestExecutor.risk || '-'}, duration=${latestExecutor.duration_ms === null ? '-' : latestExecutor.duration_ms}ms`
+        : '-'}`
     ];
 
+    if (latestExecutor) {
+      lines.push(`- Latest executor cwd: ${latestExecutor.cwd || '-'}`);
+      lines.push(`- Latest executor argv: ${formatExecutorArgv(latestExecutor.argv) || '-'}`);
+      if ((latestExecutor.evidence_hint || []).length > 0) {
+        lines.push(`- Latest executor evidence hint: ${latestExecutor.evidence_hint.join(', ')}`);
+      }
+      if (latestExecutor.stdout_preview) {
+        lines.push(`- Latest executor stdout preview: ${latestExecutor.stdout_preview}`);
+      }
+      if (latestExecutor.stderr_preview) {
+        lines.push(`- Latest executor stderr preview: ${latestExecutor.stderr_preview}`);
+      }
+    }
+
+    lines.push('- Checklist:');
     for (const item of runtime.unique([...(verifyInput.checks || []), ...(verifyOutput.checklist || [])])) {
       lines.push(`  - ${item}`);
     }
@@ -880,12 +911,13 @@ function createNoteReportHelpers(deps) {
     const target = resolveKnownDocTarget(verifyInput.target || 'verify');
     const ensured = ensureNoteTargetDoc(target);
     const verifyOutput = scheduler.buildVerifyOutput(resolved);
+    const latestExecutor = getLatestExecutorSummary(resolved);
     const next = typeof buildNextContext === 'function' ? buildNextContext() : null;
     const content = runtime.readText(ensured.path);
     const nextContent = upsertSectionEntry(
       content,
       '## Emb-Agent Verifications',
-      buildVerifyEntry(verifyOutput, verifyInput)
+      buildVerifyEntry(verifyOutput, verifyInput, latestExecutor)
     );
 
     fs.writeFileSync(ensured.path, nextContent, 'utf8');
@@ -906,6 +938,7 @@ function createNoteReportHelpers(deps) {
       results: verifyInput.results,
       evidence: verifyInput.evidence,
       followups: verifyInput.followups,
+      latest_executor: latestExecutor,
       tool_recommendation:
         next && next.next && next.next.tool_recommendation
           ? next.next.tool_recommendation

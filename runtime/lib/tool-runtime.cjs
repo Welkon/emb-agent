@@ -131,20 +131,20 @@ function buildHighRiskClarity(toolName, signals) {
   return {
     enabled: true,
     category: 'irreversible-hardware-write',
-    warning: '检测到潜在擦写/烧录/熔丝类高风险操作，请使用清晰确认模板，不要省略关键检查。',
+    warning: 'A potentially destructive erase / flash / fuse operation was detected. Use a clear confirmation template and do not skip critical checks.',
     requires_explicit_confirmation: true,
     matched_signals: signals,
     confirmation_template: {
       action: `tool run ${toolName}`,
-      target: '<填写芯片/分区/寄存器目标>',
-      irreversible_impact: '<填写不可逆影响范围>',
+      target: '<fill in target chip / partition / register>',
+      irreversible_impact: '<fill in irreversible impact scope>',
       prechecks: [
-        '确认芯片型号、供电和连接器状态正确',
-        '确认备份/回读路径可用，且已保存当前状态',
-        '先执行 dry-run 或只读探测命令'
+        'Confirm the chip model, power state, and connector status are correct',
+        'Confirm backup / readback paths are available and current state has been saved',
+        'Run a dry-run or read-only probe command first'
       ],
-      execute_cli: '<填写最终执行命令>',
-      rollback_plan: '<填写失败后的恢复方案>'
+      execute_cli: '<fill in final execution command>',
+      rollback_plan: '<fill in recovery plan after failure>'
     }
   };
 }
@@ -227,9 +227,9 @@ function buildAdapterRequiredResult(rootDir, toolName, tokens) {
     },
     adapter_search_paths: searchPaths,
     notes: [
-      'emb-agent core 只提供抽象工具规格，不内置任何厂商 family/device/chip 绑定。',
-      '若要实际运行该工具，请在 runtime 或项目目录下提供外部 adapter。',
-      '建议把厂商/芯片相关公式、寄存器边界和证据源放到独立扩展，而不是放进 emb core。'
+      'emb-agent core only provides abstract tool specs and does not include any vendor family/device/chip bindings.',
+      'To run this tool for real, provide an external adapter under runtime or the project directory.',
+      'Vendor/chip-specific formulas, register boundaries, and evidence sources should live in separate extensions rather than emb core.'
     ]
   };
 }

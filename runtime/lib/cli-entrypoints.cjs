@@ -71,25 +71,25 @@ function createCliEntryHelpers(deps) {
     const hardwareReady = Boolean(hardware.model && hardware.package);
 
     if (!hardwareReady) {
-      nextSteps.push(`补全 ${runtime.getProjectAssetRelativePath('hw.yaml')} 里的 vendor / model / package`);
-      nextSteps.push('补完后直接执行: adapter bootstrap -> next');
+      nextSteps.push(`Fill in vendor / model / package in ${runtime.getProjectAssetRelativePath('hw.yaml')}`);
+      nextSteps.push('After that, run directly: adapter bootstrap -> next');
     }
 
-    nextSteps.push('运行 health');
+    nextSteps.push('Run health');
 
     if (sources.length === 0) {
       if (hardwareReady) {
-        nextSteps.push('运行 adapter bootstrap');
-        nextSteps.push('执行完 adapter bootstrap 后运行 next');
+        nextSteps.push('Run adapter bootstrap');
+        nextSteps.push('Run next after adapter bootstrap completes');
       } else {
-        nextSteps.push('填完 hw.yaml 后运行 adapter bootstrap');
+        nextSteps.push('Run adapter bootstrap after hw.yaml is filled in');
       }
     } else {
       if (hardwareReady) {
-        nextSteps.push(`运行 adapter bootstrap ${sources[0].name}`);
-        nextSteps.push('执行完 adapter bootstrap 后运行 next');
+        nextSteps.push(`Run adapter bootstrap ${sources[0].name}`);
+        nextSteps.push('Run next after adapter bootstrap completes');
       } else {
-        nextSteps.push(`填完 hw.yaml 后运行 adapter bootstrap ${sources[0].name}`);
+        nextSteps.push(`Run adapter bootstrap ${sources[0].name} after hw.yaml is filled in`);
       }
     }
 
@@ -104,7 +104,7 @@ function createCliEntryHelpers(deps) {
   function usage() {
     const text = [
       'emb-agent usage:',
-      'Global option: --brief 输出精简 JSON（建议用于 next/plan/review/verify 等动作命令）',
+      'Global option: --brief outputs compact JSON (recommended for action commands such as next/plan/review/verify)',
       '  help',
       '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [--user <name>|-u <name>] [--force]',
       '  ingest hardware [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
@@ -156,6 +156,9 @@ function createCliEntryHelpers(deps) {
       '  config show',
       '  project show [--effective] [--field <path>]',
       '  project set --field <path> --value <json-or-string>',
+      '  executor list',
+      '  executor show <name>',
+      '  executor run <name> [-- <args...>]',
       '  scan',
       '  scan save <target> <summary> [--fact <text>] [--question <text>] [--read <text>]',
       '  plan',

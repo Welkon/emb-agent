@@ -1,6 +1,6 @@
 ---
 name: emb-manager
-description: Show a lightweight single-terminal control view for the current embedded work, combining next action, settings, threads, handoff, and latest reports.
+description: Summarize the best next operational actions for the current project.
 allowed-tools:
   - Read
   - Bash
@@ -11,33 +11,11 @@ allowed-tools:
 
 # emb-manager
 
-你负责输出当前项目的轻量总控视图。
+## Purpose
 
-## 执行规则
+- Summarize the best next operational actions for the current project.
 
-1. 直接运行：
-   `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" manager`
-2. 输出中要重点关注：
-   - 当前 `next` 建议
-   - `health` 摘要与 `health.next_commands`
-   - 如果存在 `health.quickstart`，优先把它当成首次闭环入口
-   - 当前 `tool_execution` 摘要
-   - 如果存在活跃 `workspace`，要看它的 `link_counts / refreshed_at / snapshot`
-   - `context_hygiene`
-   - 是否存在 handoff
-   - open threads
-   - 当前 settings
-   - 最近的 forensics / session-report
-   - 推荐动作列表
-3. `manager` 只是只读总控，不要在里面做自动修改或重 workflow 循环。
+## Usage
 
-## 输出要求
-
-- 说明当前最推荐动作
-- 如果已有 handoff，优先提醒 `resume`
-- 如果最近一次 forensics 已挂到 open thread，优先提示恢复该 thread
-- 如果 `health.next_commands` 已经给出更具体的 CLI，优先于泛化的 `next`
-- 如果 `health.quickstart.steps[0].cli` 存在，优先提示这条 quickstart，再提示普通 `health.next_commands`
-- 如果 `tool_execution.recommended = true`，优先提示 tool，再提示通用 `next`
-- 如果活跃 `workspace` 还没 refresh，或当前 session 已经跑在它的 snapshot 前面，优先提示 `workspace refresh`
-- 如果没有明显阻塞，再按 `next` 给出最小推进方向
+- Run `$emb-manager` when this command matches the current problem.
+- Prefer the lightest command that keeps facts, evidence, and project truth aligned.

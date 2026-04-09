@@ -357,7 +357,7 @@ function normalizeMarkdownLines(markdown) {
 }
 
 function pickConstraintLines(lines) {
-  const pattern = /(?:must|shall|should not|do not|cannot|reserved|maximum|minim|timeout|latency|program|必须|禁止|不可|保留|编程|最大|最小|不得)/i;
+  const pattern = /(?:must|shall|should not|do not|cannot|reserved|maximum|minim|timeout|latency|program|must|forbidden|cannot|reserved|programming|maximum|minimum|must not)/i;
   return normalizeDraftList(
     lines
       .filter(line => pattern.test(line))
@@ -367,7 +367,7 @@ function pickConstraintLines(lines) {
 }
 
 function pickAcceptanceLines(lines) {
-  const pattern = /(?:verify|test|bench|cycle|pass|accept|确认|验证|测试|台架|循环)/i;
+  const pattern = /(?:verify|test|bench|cycle|pass|accept|confirm|verify|test|bench|cycle)/i;
   return normalizeDraftList(
     lines
       .filter(line => pattern.test(line))
@@ -482,7 +482,7 @@ function buildRequirementsDraftFacts(identity, args, markdown) {
   const acceptance = pickAcceptanceLines(lines);
   const featureLines = normalizeDraftList(
     lines
-      .filter(line => /(?:feature|support|mode|function|功能|支持|模式)/i.test(line))
+      .filter(line => /(?:feature|support|mode|function|feature|support|mode)/i.test(line))
       .filter(line => line.length <= 120)
       .slice(0, 6)
   );

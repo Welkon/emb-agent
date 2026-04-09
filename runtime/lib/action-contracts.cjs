@@ -56,7 +56,7 @@ function createActionContractHelpers(deps) {
             recommended: false,
             inline_ok: true,
             mode: 'inline-preferred',
-            reason: 'health 是只读自检动作，默认由当前主线程 inline 执行。',
+            reason: 'Health is a read-only self-check action and should run inline on the current main thread by default.',
             primary_agent: '',
             supporting_agents: [],
             dispatch_contract: null
@@ -92,7 +92,7 @@ function createActionContractHelpers(deps) {
         recommended: true,
         inline_ok: false,
         mode: 'primary-recommended',
-        reason: '显式架构预审应直接交给 emb-arch-reviewer 主导。',
+        reason: 'An explicit architecture preflight should be led directly by emb-arch-reviewer.',
         primary_agent: context.suggested_agent,
         supporting_agents: runtime.unique(context.review_agents || []),
         dispatch_contract: {
@@ -101,22 +101,22 @@ function createActionContractHelpers(deps) {
           primary_first: true,
           parallel_safe: runtime.unique(context.review_agents || []),
           do_not_parallelize: [
-            '不要把架构预审拆成多个相互竞争的可写 agent',
-            '不要跳过事实核对直接输出选型结论'
+            'Do not split architecture preflight into multiple competing writable agents',
+            'Do not skip fact checks and jump directly to a selection conclusion'
           ],
-          integration_owner: '当前主线程',
+          integration_owner: 'Current main thread',
           integration_steps: [
-            '先启动 emb-arch-reviewer 产出主审查结论',
-            '必要时再让 review agents 补硬件、结构或发布侧证据',
-            '最终由主线程整合成 architecture review 结论'
+            'Start emb-arch-reviewer first to produce the primary review conclusion',
+            'Let review agents add hardware, structural, or release-side evidence only when needed',
+            'Let the main thread integrate the final architecture review conclusion'
           ],
           primary: {
             agent: context.suggested_agent,
             role: 'primary',
             blocking: true,
-            purpose: '执行系统级架构预审、方案比较和 pre-mortem',
-            ownership: '负责主审查结论，不替代具体实现改动',
-            when: '显式进入 arch-review 时立即启动',
+            purpose: 'Execute system-level architecture preflight, option comparison, and pre-mortem',
+            ownership: 'Own the primary review conclusion and do not replace concrete implementation changes',
+            when: 'Start immediately when arch-review is explicitly entered',
             spawn_fallback: {
               supported: true,
               preferred_launch: context.suggested_agent,
@@ -128,14 +128,14 @@ function createActionContractHelpers(deps) {
                 ['agents', 'show', context.suggested_agent]
               ),
               prompt_contract: [
-                `先读取 ${context.suggested_agent} 的 agent 指令`,
-                '再结合 dispatch_contract 提供的上下文与输出要求执行',
-                '输出后由主线程整合成 architecture review'
+                `Read the agent instructions for ${context.suggested_agent} first`,
+                'Then execute with the context and output requirements provided by dispatch_contract',
+                'Let the main thread integrate the output into the architecture review'
               ]
             },
             expected_output: [
-              '给出三套方案、评价矩阵和 pre-mortem',
-              '区分已确认事实、工程推断和经验警告'
+              'Provide three options, an evaluation matrix, and a pre-mortem',
+              'Separate confirmed facts, engineering inference, and experience-based warnings'
             ],
             context_bundle: {
               trigger_patterns: context.trigger_patterns || [],
@@ -143,15 +143,15 @@ function createActionContractHelpers(deps) {
               review_axes: context.review_axes || [],
               note_targets: context.note_targets || []
             },
-            start_when: '立即启动'
+            start_when: 'Start immediately'
           },
           supporting: runtime.unique(context.review_agents || []).map(agent => ({
             agent,
             role: 'supporting',
             blocking: false,
-            purpose: '为架构预审补充结构、硬件或发布侧证据',
-            ownership: '只补侧证据，不覆盖主审查结论',
-            when: '主线程发现需要补侧证据时再启动',
+            purpose: 'Add structural, hardware, or release-side evidence for the architecture preflight',
+            ownership: 'Add side evidence only and do not override the primary review conclusion',
+            when: 'Start only when the main thread determines that side evidence is needed',
             spawn_fallback: {
               supported: true,
               preferred_launch: agent,
@@ -163,17 +163,17 @@ function createActionContractHelpers(deps) {
                 ['agents', 'show', agent]
               ),
               prompt_contract: [
-                `先读取 ${agent} 的 agent 指令`,
-                '再结合 dispatch_contract 提供的上下文与输出要求执行',
-                '输出后由主线程整合成 architecture review 侧证据'
+                `Read the agent instructions for ${agent} first`,
+                'Then execute with the context and output requirements provided by dispatch_contract',
+                'Let the main thread integrate the output as side evidence for the architecture review'
               ]
             },
-            expected_output: ['补充证据、约束或待验证风险'],
+            expected_output: ['Supplemental evidence, constraints, or risks awaiting verification'],
             context_bundle: {
               review_axes: context.review_axes || [],
               note_targets: context.note_targets || []
             },
-            start_when: '按需启动'
+            start_when: 'Start on demand'
           }))
         }
       },

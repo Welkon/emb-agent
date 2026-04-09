@@ -31,8 +31,8 @@ default_agents:
   - fw-doer
   - bug-hunter
 arch_review_triggers:
-  - 芯片选型
-  - 器件选型
-  - 方案预审
-  - PoC转量产
+  - chip selection
+  - device selection
+  - solution preflight
+  - PoC to production
   - pre-mortem

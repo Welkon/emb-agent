@@ -15,8 +15,8 @@ module.exports = {
         options
       },
       notes: [
-        '这是项目级外部 adapter 模板输出，请在这里实现真正的公式和寄存器提示。',
-        '不要把厂商/芯片绑定回写到 emb-agent core。'
+        'This is a project-level external adapter template output. Implement the real formulas and register guidance here.',
+        'Do not write vendor/chip bindings back into emb-agent core.'
       ]
     };
   }

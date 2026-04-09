@@ -5,53 +5,49 @@ description: Use when starting an embedded development conversation or when the 
 
 # using-emb-agent
 
-你在使用 emb-agent。
+You are using emb-agent.
 
-这不是 superpowers 那种重流程总控。这里的要求更简单:
+- Identify what class of problem this is first.
+- Prefer the lightest, closest-to-truth path first.
+- Do not promote work into heavy planning by default.
+- If a tool is already executable, run the tool before discussing implementation.
 
-- 先判断当前问题属于哪一类
-- 优先走最轻、最接近真值的路径
-- 不要默认把任务升级成厚 planning
-- 如果 tool 已经可执行，优先先跑 tool，再讨论实现
+## Routing Order
 
-## 路由顺序
+1. If the project is not initialized, start with `init`.
+2. If MCU truth, package, board wiring, or requirements are missing, fill in `hw.yaml / req.yaml` first.
+3. If the issue is mainly about registers, pin muxing, timing constraints, or threshold definitions, check whether manual-grounded truth already exists. If not, start with `ingest doc`.
+4. After `ingest doc`, prefer `doc diff/apply` so facts land in `hw.yaml / req.yaml` before implementation or calculation.
+5. If the issue is fundamentally a timer / PWM / ADC / comparator / LVDC / charging-parameter calculation, inspect `next.tool_recommendation` first.
+6. If `tool_execution.status = ready`, run `tool run ...` first.
+7. If a tool is missing inputs, fill `missing_inputs` instead of guessing an implementation.
+8. If adapters are missing, prefer `adapter bootstrap / sync / derive`.
+9. If the task is really about system-level risk, selection, or RTOS/IoT architecture pressure, use `arch-review` or `review`.
+10. Use lightweight `plan / debug / verify` only when the task is clearly complex, multi-step, or risk-heavy.
 
-1. 如果项目还没初始化，先走 `init`
-2. 如果缺 MCU 真值、封装、板级连接或需求，先补 `hw.yaml / req.yaml`
-3. 如果问题本质是寄存器、引脚复用、时序约束、阈值定义，先检查是否已有手册真值；没有就先走 `ingest doc`
-4. `ingest doc` 后优先走 `doc diff/apply`，把事实先落到 `hw.yaml / req.yaml`，再进入实现与计算
-5. 如果问题本质是定时器 / PWM / ADC / 比较器 / LVDC / 充电参数计算，先看 `next.tool_recommendation`
-6. 如果 `tool_execution.status = ready`，优先执行 `tool run ...`
-7. 如果 `tool` 缺输入，先补 `missing_inputs`，不要跳到拍脑袋实现
-8. 如果缺 adapter，优先走 `adapter bootstrap / sync / derive`
-9. 如果是复杂系统级风险、选型、RTOS/IoT 架构压力测试，再走 `arch-review` 或 `review`
-10. 只有在复杂实现、多步骤闭环、明显存在风险/问题时，才走轻量 `plan / debug / verify`
+## Default Principles
 
-## 默认原则
+- Truth comes before guesses.
+- Manual-grounded truth comes before habitual code assumptions.
+- Tool results come before empty discussion.
+- If adapter trust is weak, do not treat the result as direct ground truth.
+- Before clear-context risk becomes high, remind the user to run `pause`.
+- After clearing context, reconnect the main line through `resume`, workspace, task, spec, or thread first.
 
-- 真值优先于猜测
-- 手册真值优先于代码习惯性猜测
-- 工具结果优先于空谈
-- adapter trust 不够时，不把结果直接当真值
-- clear context 风险变高前，提醒用户执行 `pause`
-- clear context 之后，优先通过 `resume`、workspace、task、spec、thread 接回主线
+## Fast Mapping
 
-## 首选判断
+- Chip / package / pin / peripheral differences
+  Use `adapter`, `tool`, `ingest doc`.
+- Board bring-up, peripheral anomalies, or unexpected register behavior
+  Use `scan`, `debug`, `tool run`, `forensics`.
+- Long-lived work surfaces or cross-session topics
+  Use `workspace`, `task`, `thread`, `spec`.
+- Complex system review, selection, or production risk
+  Use `arch-review`, `review`.
 
-看到下面这些需求时，优先联想到对应入口：
+## Prohibitions
 
-- 芯片/封装/引脚/外设差异
-  `adapter`, `tool`, `ingest doc`
-- 板级 bring-up、外设异常、寄存器行为不符
-  `scan`, `debug`, `tool run`, `forensics`
-- 长期工作面或跨会话主题
-  `workspace`, `task`, `thread`, `spec`
-- 复杂系统评审、选型、量产风险
-  `arch-review`, `review`
-
-## 禁止事项
-
-- 不要因为“要严谨”就默认启动重 planning
-- 不要在明明可以先跑工具时，跳过 tool/adapters 直接空想
-- 不要忽略 `adapter_health`、`quality_overview`、`recommended_action`
-- 不要把 derive 生成的 draft adapter 输出直接当成最终真值
+- Do not start heavy planning just to appear rigorous.
+- Do not skip runnable tools and jump into speculation.
+- Do not ignore `adapter_health`, `quality_overview`, or `recommended_action`.
+- Do not treat a derived draft adapter as final ground truth.

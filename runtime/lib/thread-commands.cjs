@@ -56,15 +56,15 @@ function createThreadCommandHelpers(deps) {
     const now = new Date().toISOString();
     const references = (session.last_files || []).length > 0
       ? (session.last_files || []).map(item => `- ${item}`)
-      : ['- *(待补充相关文件、文档或 issue)*'];
+      : ['- *(Add related files, docs, or issues here)*'];
     const nextSteps = [];
 
     if (session.open_questions && session.open_questions.length > 0) {
-      nextSteps.push(`- 先回答未决问题：${session.open_questions[0]}`);
+      nextSteps.push(`- Answer the open question first: ${session.open_questions[0]}`);
     } else if (session.known_risks && session.known_risks.length > 0) {
-      nextSteps.push(`- 先收敛风险：${session.known_risks[0]}`);
+      nextSteps.push(`- Converge on the risk first: ${session.known_risks[0]}`);
     } else {
-      nextSteps.push('- 先补最小事实，再决定是否进入 scan / debug / review');
+      nextSteps.push('- Add the minimal facts first, then decide whether to enter scan / debug / review');
     }
 
     const contextLines = [
@@ -321,7 +321,7 @@ function createThreadCommandHelpers(deps) {
     content = appendThreadReference(content, details && details.report_file ? details.report_file : '');
     content = prependThreadNextStep(
       content,
-      details && details.primary_recommendation ? `先处理取证建议：${details.primary_recommendation}` : ''
+      details && details.primary_recommendation ? `Handle the forensics recommendation first: ${details.primary_recommendation}` : ''
     );
     writeThread(name, content);
 

@@ -8,6 +8,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 
 test('dispatch show returns direct action contract for plan', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-plan-'));
@@ -55,7 +56,7 @@ test('dispatch next follows next routing and returns debug contract when questio
     assert.equal(dispatch.skill, '$emb-debug');
     assert.equal(dispatch.agent_execution.primary_agent, 'emb-bug-hunter');
     assert.equal(dispatch.agent_execution.dispatch_contract.primary.spawn_fallback.fallback_agent_type, 'default');
-    assert.ok(dispatch.reason.includes('未决问题'));
+    assert.ok(dispatch.reason.includes('Open questions'));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -72,7 +73,7 @@ test('dispatch next returns arch-review contract when focus triggers architectur
   try {
     process.chdir(tempProject);
     cli.main(['init']);
-    cli.main(['focus', 'set', '芯片选型与PoC转量产预审']);
+    cli.main(['focus', 'set', 'chip selection and PoC to production preflight']);
 
     const dispatch = cli.buildDispatchContext('next');
 
@@ -97,7 +98,7 @@ test('dispatch next routes hardware formula questions to scan before debug', () 
   try {
     process.chdir(tempProject);
     cli.main(['init']);
-    cli.main(['question', 'add', 'tm2 prescaler 和 pwm 公式怎么算']);
+    cli.main(['question', 'add', 'how should tm2 prescaler and pwm formulas be calculated']);
 
     const dispatch = cli.buildDispatchContext('next');
 
@@ -121,7 +122,7 @@ test('dispatch next exposes direct tool execution when scan has ready recommenda
   try {
     process.chdir(tempProject);
     cli.main(['init', '--mcu', 'vendor-chip']);
-    cli.main(['question', 'add', 'tm2 prescaler 和 pwm 公式怎么算']);
+    cli.main(['question', 'add', 'how should tm2 prescaler and pwm formulas be calculated']);
 
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
@@ -267,7 +268,50 @@ test('dispatch next routes drift-style failures to forensics', () => {
     assert.equal(dispatch.resolved_action, 'forensics');
     assert.equal(dispatch.skill, '$emb-forensics');
     assert.equal(dispatch.agent_execution.primary_agent, 'emb-bug-hunter');
-    assert.ok(dispatch.reason.includes('取证'));
+    assert.ok(dispatch.reason.includes('forensics'));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('dispatch next exposes structured executor signal when latest executor failed', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-executor-signal-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+    const statePaths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), tempProject, runtimeConfig);
+    const session = runtime.readJson(statePaths.sessionPath);
+    session.diagnostics.latest_executor = {
+      name: 'bench',
+      status: 'failed',
+      risk: 'high',
+      exit_code: 5,
+      duration_ms: 1200,
+      ran_at: '2026-04-09T12:30:00.000Z',
+      cwd: '.',
+      argv: ['node', 'scripts/bench-runner.cjs'],
+      evidence_hint: ['docs/VERIFICATION.md'],
+      stdout_preview: 'bench start',
+      stderr_preview: 'timeout'
+    };
+    runtime.writeJson(statePaths.sessionPath, session);
+
+    const dispatch = cli.buildDispatchContext('next');
+
+    assert.equal(dispatch.diagnostics.latest_executor.name, 'bench');
+    assert.equal(dispatch.executor_signal.present, true);
+    assert.equal(dispatch.executor_signal.failed, true);
+    assert.equal(dispatch.executor_signal.requires_forensics, true);
+    assert.equal(dispatch.executor_signal.recommended_action, 'forensics');
+    assert.match(dispatch.executor_signal.summary, /bench failed, exit=5/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

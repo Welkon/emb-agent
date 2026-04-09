@@ -32,7 +32,7 @@ test('applyOutputMode builds brief next context payload', () => {
     },
     next: {
       command: 'plan',
-      reason: '复杂任务先收敛',
+      reason: 'complex tasks should converge first',
       cli: 'node runtime/bin/emb-agent.cjs plan',
       gated_by_health: false,
       tool_recommendation: {
@@ -43,7 +43,7 @@ test('applyOutputMode builds brief next context payload', () => {
     },
     context_hygiene: {
       level: 'consider-clearing',
-      recommendation: '建议先 pause',
+      recommendation: 'pause first',
       clear_hint: 'pause -> clear -> resume',
       handoff_ready: false
     },

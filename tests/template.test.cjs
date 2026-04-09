@@ -56,8 +56,8 @@ test('template fill renders PMB180B starter hw truth', async () => {
     assert.equal(result.template, 'pmb180b-hw-starter');
     assert.match(content, /model: "PMB180B"/);
     assert.match(content, /CHG_TEMP\.4 && CHG_TEMP\.3/);
-    assert.match(content, /LPWMG0\/1\/2 共享/);
-    assert.match(content, /当前手册未体现 ADC 资源/);
+    assert.match(content, /LPWMG0\/1\/2 share/);
+    assert.match(content, /The current manual does not show ADC resources/);
   } finally {
     process.chdir(currentCwd);
   }
@@ -80,7 +80,7 @@ test('template fill renders PMB180B starter requirement truth', async () => {
     assert.match(content, /PMB180B/);
     assert.match(content, /CHG_TEMP\.1/);
     assert.match(content, /0\.15V/);
-    assert.match(content, /TM2 PWM 还是 LPWMG/);
+    assert.match(content, /TM2 PWM or LPWMG/);
   } finally {
     process.chdir(currentCwd);
   }
@@ -103,7 +103,7 @@ test('template fill renders SC8F072 starter hw truth', async () => {
     assert.match(content, /model: "SC8F072"/);
     assert.match(content, /10-bit PWM/);
     assert.match(content, /RBIAS_H\/RBIAS_L \+ LVDS/);
-    assert.match(content, /TMR0 无硬件自动重装载/);
+    assert.match(content, /TMR0 has no hardware auto-reload/);
   } finally {
     process.chdir(currentCwd);
   }
@@ -124,7 +124,7 @@ test('template fill renders SC8F072 starter requirement truth', async () => {
 
     assert.equal(result.template, 'sc8f072-req-starter');
     assert.match(content, /SC8F072/);
-    assert.match(content, /PWM0~PWM3 共用周期寄存器/);
+    assert.match(content, /PWM0~PWM3 share the period register/);
     assert.match(content, /TMR0/);
     assert.match(content, /reference-source/);
   } finally {
@@ -148,7 +148,7 @@ test('template fill renders PMS150G starter hw truth', async () => {
     assert.equal(result.template, 'pms150g-hw-starter');
     assert.match(content, /model: "PMS150G"/);
     assert.match(content, /TM2 PWM/);
-    assert.match(content, /不提供 ADC/);
+    assert.match(content, /but no ADC/);
     assert.match(content, /PA5\/PRSTB/);
   } finally {
     process.chdir(currentCwd);
@@ -170,9 +170,9 @@ test('template fill renders PMS150G starter requirement truth', async () => {
 
     assert.equal(result.template, 'pms150g-req-starter');
     assert.match(content, /PMS150G/);
-    assert.match(content, /不支持 ADC/);
+    assert.match(content, /does not support ADC/);
     assert.match(content, /PA3\/PA4/);
-    assert.match(content, /OTP \+ 小 RAM/);
+    assert.match(content, /OTP \+ small RAM/);
   } finally {
     process.chdir(currentCwd);
   }

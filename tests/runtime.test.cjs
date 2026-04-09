@@ -85,6 +85,19 @@ test('normalizeSession fills metadata and trims arrays', () => {
       linked_thread: '',
       highest_severity: '',
       generated_at: ''
+    },
+    latest_executor: {
+      name: '',
+      status: '',
+      risk: '',
+      exit_code: null,
+      duration_ms: null,
+      ran_at: '',
+      cwd: '',
+      argv: [],
+      evidence_hint: [],
+      stdout_preview: '',
+      stderr_preview: ''
     }
   });
   assert.equal(session.last_command, '');
@@ -165,6 +178,19 @@ test('project config defaults can override runtime defaults', () => {
       {
         project_profile: 'rtos-iot',
         active_packs: ['connected-appliance'],
+        executors: {
+          build: {
+            description: 'firmware build',
+            argv: ['make', '-C', 'firmware'],
+            cwd: '.',
+            env: {
+              BUILD_MODE: 'release'
+            },
+            allow_extra_args: true,
+            risk: 'normal',
+            evidence_hint: ['docs/VERIFICATION.md']
+          }
+        },
         developer: {
           name: 'welkon',
           runtime: 'codex'
@@ -191,6 +217,9 @@ test('project config defaults can override runtime defaults', () => {
 
   assert.equal(projectConfig.project_profile, 'rtos-iot');
   assert.deepEqual(projectConfig.active_packs, ['connected-appliance']);
+  assert.deepEqual(projectConfig.executors.build.argv, ['make', '-C', 'firmware']);
+  assert.equal(projectConfig.executors.build.allow_extra_args, true);
+  assert.equal(projectConfig.executors.build.env.BUILD_MODE, 'release');
   assert.deepEqual(projectConfig.developer, { name: 'welkon', runtime: 'codex' });
   assert.deepEqual(projectConfig.arch_review.trigger_patterns, ['custom arch gate']);
   assert.equal(session.project_profile, 'rtos-iot');
@@ -202,6 +231,38 @@ test('project config defaults can override runtime defaults', () => {
     review_mode: 'always',
     verification_mode: 'strict'
   });
+});
+
+test('project config rejects malformed executors', () => {
+  const config = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        executors: {
+          flash: {
+            argv: []
+          }
+        }
+      },
+      config
+    ),
+    /executors\.flash\.argv/
+  );
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        executors: {
+          'bad name': {
+            argv: ['make']
+          }
+        }
+      },
+      config
+    ),
+    /Invalid executor name/
+  );
 });
 
 test('project config accepts mineru api mode settings', () => {

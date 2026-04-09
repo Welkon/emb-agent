@@ -17,8 +17,34 @@ function createManagerCommandHelpers(deps) {
     buildResumeContext,
     buildToolExecutionFromNext,
     buildSettingsView,
-    listThreads
+    listThreads,
+    listExecutors
   } = deps;
+
+  function getDiagnostics(session) {
+    return session && session.diagnostics
+      ? session.diagnostics
+      : { latest_forensics: {}, latest_executor: {} };
+  }
+
+  function buildExecutorSignal(latestExecutor) {
+    const signal = latestExecutor && latestExecutor.name ? latestExecutor : null;
+    const failed = Boolean(signal && ['failed', 'error'].includes(signal.status));
+
+    return {
+      present: Boolean(signal),
+      name: signal ? signal.name : '',
+      status: signal ? signal.status || '' : '',
+      risk: signal ? signal.risk || '' : '',
+      exit_code: signal ? signal.exit_code : null,
+      failed,
+      requires_forensics: failed,
+      recommended_action: failed ? 'forensics' : '',
+      summary: signal
+        ? `${signal.name} ${signal.status || 'unknown'}${signal.exit_code === null ? '' : `, exit=${signal.exit_code}`}`
+        : ''
+    };
+  }
 
   function buildWorkspaceRefreshAnalysis(workspace, session) {
     if (!workspace || !workspace.name) {
@@ -39,30 +65,30 @@ function createManagerCommandHelpers(deps) {
     const reasons = [];
 
     if (!snapshot.refreshed_at) {
-      reasons.push('workspace 还没有执行过 refresh');
+      reasons.push('workspace has not run refresh yet');
     }
     if ((session.last_files || []).length > 0 && (snapshot.last_files || []).length === 0) {
-      reasons.push('最近文件还没沉到 workspace snapshot');
+      reasons.push('recent files have not been captured in the workspace snapshot');
     }
     if ((session.open_questions || []).some(item => !(snapshot.open_questions || []).includes(item))) {
-      reasons.push('当前未决问题还没沉到 workspace snapshot');
+      reasons.push('current open questions have not been captured in the workspace snapshot');
     }
     if ((session.known_risks || []).some(item => !(snapshot.known_risks || []).includes(item))) {
-      reasons.push('当前已知风险还没沉到 workspace snapshot');
+      reasons.push('current known risks have not been captured in the workspace snapshot');
     }
     if (
       session.active_task &&
       session.active_task.name &&
       !(links.tasks || []).some(item => item.name === session.active_task.name)
     ) {
-      reasons.push(`active task ${session.active_task.name} 还没挂到 workspace`);
+      reasons.push(`active task ${session.active_task.name} is not linked to the workspace yet`);
     }
     if (
       session.active_thread &&
       session.active_thread.name &&
       !(links.threads || []).some(item => item.name === session.active_thread.name)
     ) {
-      reasons.push(`active thread ${session.active_thread.name} 还没挂到 workspace`);
+      reasons.push(`active thread ${session.active_thread.name} is not linked to the workspace yet`);
     }
 
     return {
@@ -106,6 +132,15 @@ function createManagerCommandHelpers(deps) {
     actions.push(action);
   }
 
+  function getLatestExecutor(session) {
+    return session &&
+      session.diagnostics &&
+      session.diagnostics.latest_executor &&
+      session.diagnostics.latest_executor.name
+      ? session.diagnostics.latest_executor
+      : null;
+  }
+
   function buildAdapterHealthAction(health, toolExecution) {
     const adapterHealth = health && health.adapter_health ? health.adapter_health : null;
     const primary = adapterHealth && adapterHealth.primary ? adapterHealth.primary : null;
@@ -135,18 +170,18 @@ function createManagerCommandHelpers(deps) {
     if (matchedCommand && matchedCommand.cli) {
       return {
         type: 'adapter-health',
-        label: `先修复 ${primary.tool} 可信度`,
+        label: `Fix trust for ${primary.tool} first`,
         cli: matchedCommand.cli,
-        reason: `${primary.summary} 当前等级 ${primary.grade}，建议先 ${primary.recommended_action}`
+        reason: `${primary.summary} Current grade is ${primary.grade}; recommended first action: ${primary.recommended_action}`
       };
     }
 
     if (toolExecution && toolExecution.cli) {
       return {
         type: 'adapter-health',
-        label: `先校准 ${toolExecution.tool} adapter`,
+        label: `Calibrate the ${toolExecution.tool} adapter first`,
         cli: toolExecution.cli,
-        reason: `${primary.summary} 当前等级 ${primary.grade}，不要把工具输出直接当真值`
+        reason: `${primary.summary} Current grade is ${primary.grade}; do not treat tool output as ground truth yet`
       };
     }
 
@@ -160,13 +195,14 @@ function createManagerCommandHelpers(deps) {
     const activeWorkspace = resume && resume.workspace ? resume.workspace : null;
     const workspaceRefresh = buildWorkspaceRefreshAnalysis(activeWorkspace, session || {});
     const adapterHealthAction = buildAdapterHealthAction(health, toolExecution);
+    const latestExecutor = getLatestExecutor(session);
 
     if (handoff) {
       pushAction(actions, {
         type: 'resume',
-        label: '优先恢复 handoff',
+        label: 'Resume the handoff first',
         cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume']),
-        reason: handoff.next_action || '存在未消费 handoff'
+        reason: handoff.next_action || 'An unconsumed handoff exists'
       });
     }
 
@@ -175,7 +211,7 @@ function createManagerCommandHelpers(deps) {
       if (openThread) {
         pushAction(actions, {
           type: 'thread',
-          label: `恢复 thread ${openThread.name}`,
+          label: `Resume thread ${openThread.name}`,
           cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['thread', 'resume', openThread.name]),
           reason: `${openThread.title}`
         });
@@ -186,17 +222,17 @@ function createManagerCommandHelpers(deps) {
       if (workspaceRefresh && workspaceRefresh.recommended) {
         pushAction(actions, {
           type: 'workspace-refresh',
-          label: `刷新 workspace ${activeWorkspace.name}`,
+          label: `Refresh workspace ${activeWorkspace.name}`,
           cli: workspaceRefresh.refresh_cli,
-          reason: workspaceRefresh.reasons[0] || '当前 workspace 需要同步最近上下文'
+          reason: workspaceRefresh.reasons[0] || 'the current workspace needs to sync recent context'
         });
       }
 
       pushAction(actions, {
         type: 'workspace',
-        label: `查看 workspace ${activeWorkspace.name}`,
+        label: `Inspect workspace ${activeWorkspace.name}`,
         cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['workspace', 'show', activeWorkspace.name]),
-        reason: activeWorkspace.title || '当前存在活跃 workspace'
+        reason: activeWorkspace.title || 'an active workspace exists'
       });
     }
 
@@ -207,18 +243,18 @@ function createManagerCommandHelpers(deps) {
     if (toolExecution && toolExecution.recommended) {
       pushAction(actions, {
         type: 'tool',
-        label: `执行 ${toolExecution.tool}`,
+        label: `Run ${toolExecution.tool}`,
         cli: toolExecution.cli,
-        reason: toolExecution.reason || '已生成首条工具执行草案'
+        reason: toolExecution.reason || 'the first tool execution draft is ready'
       });
     }
 
     if (quickstart && Array.isArray(quickstart.steps) && quickstart.steps[0] && quickstart.steps[0].cli) {
       pushAction(actions, {
         type: 'quickstart',
-        label: quickstart.summary || '执行首次闭环',
+        label: quickstart.summary || 'Run the first closure',
         cli: quickstart.steps[0].cli,
-        reason: quickstart.followup || '先跑最短接入步骤，再执行 next'
+        reason: quickstart.followup || 'run the shortest integration steps first, then execute next'
       });
     }
 
@@ -228,15 +264,29 @@ function createManagerCommandHelpers(deps) {
     healthCommands.forEach(item => {
       pushAction(actions, {
         type: 'health',
-        label: item.summary || '执行 health 建议',
+        label: item.summary || 'Run the health recommendation',
         cli: item.cli,
-        reason: item.summary || '来自 health 的可执行建议'
+        reason: item.summary || 'actionable recommendation from health'
       });
     });
 
+    if (latestExecutor && ['failed', 'error'].includes(latestExecutor.status)) {
+      pushAction(actions, {
+        type: 'forensics',
+        label: `Analyze the failed run of ${latestExecutor.name}`,
+        cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [
+          'forensics',
+          `Latest executor ${latestExecutor.name} ${latestExecutor.status}`
+        ]),
+        reason: `The latest executor was ${latestExecutor.name} with status ${latestExecutor.status}${
+          latestExecutor.exit_code === null ? '' : `，exit_code=${latestExecutor.exit_code}`
+        }`
+      });
+    }
+
     pushAction(actions, {
       type: 'next',
-      label: `执行 ${next.next.command}`,
+      label: `Run ${next.next.command}`,
       cli: next.next.cli,
       reason: next.next.reason
     });
@@ -244,26 +294,26 @@ function createManagerCommandHelpers(deps) {
     if (toolExecution && !toolExecution.recommended) {
       pushAction(actions, {
         type: 'tool',
-        label: `执行 ${toolExecution.tool}`,
+        label: `Run ${toolExecution.tool}`,
         cli: toolExecution.cli,
-        reason: toolExecution.reason || '已生成首条工具执行草案'
+        reason: toolExecution.reason || 'the first tool execution draft is ready'
       });
     }
 
     if ((resume.carry_over && resume.carry_over.open_questions || []).length > 0) {
       pushAction(actions, {
         type: 'forensics',
-        label: '先做一次 forensics',
+        label: 'Run forensics first',
         cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['forensics']),
-        reason: '当前有未决问题，且 manager 只看到摘要，先补证据化诊断更稳'
+        reason: 'Open questions exist and manager only sees the summary, so evidence-based diagnostics should come first'
       });
     }
 
     pushAction(actions, {
       type: 'session-report',
-      label: '输出 session report',
+      label: 'Output the session report',
       cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['session-report']),
-      reason: '在切上下文或结束本轮前做一次轻量会话收口'
+      reason: 'Do a lightweight session closure before switching context or ending this round'
     });
 
     return actions;
@@ -283,6 +333,9 @@ function createManagerCommandHelpers(deps) {
     const toolExecution = buildToolExecutionFromNext(next);
     const workspace = resume.workspace || null;
     const workspaceRefresh = buildWorkspaceRefreshAnalysis(workspace, session);
+    const executorCatalog = listExecutors ? listExecutors() : { executors: [] };
+    const diagnostics = getDiagnostics(session);
+    const executorSignal = buildExecutorSignal(diagnostics.latest_executor);
 
     return {
       mode: 'manager-lite',
@@ -340,7 +393,9 @@ function createManagerCommandHelpers(deps) {
         forensics: latestForensics,
         sessions: latestSessions
       },
-      diagnostics: session.diagnostics || { latest_forensics: {} },
+      diagnostics,
+      executor_signal: executorSignal,
+      executors: executorCatalog.executors || [],
       workspace: workspace
         ? {
             ...workspace,

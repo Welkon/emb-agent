@@ -9,6 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 
 function writeText(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -157,7 +158,7 @@ test('manager recommends workspace refresh when active workspace has not been re
 
     assert.equal(manager.workspace.name, 'power-lane');
     assert.equal(manager.workspace.refresh_recommendation.recommended, true);
-    assert.ok(manager.workspace.refresh_recommendation.reasons.some(item => item.includes('workspace 还没有执行过 refresh')));
+    assert.ok(manager.workspace.refresh_recommendation.reasons.some(item => item.includes('workspace has not run refresh yet')));
     const refreshIndex = manager.recommended_actions.findIndex(item => item.type === 'workspace-refresh');
     const workspaceIndex = manager.recommended_actions.findIndex(item => item.type === 'workspace');
     const nextIndex = manager.recommended_actions.findIndex(item => item.type === 'next');
@@ -200,6 +201,63 @@ test('manager surfaces health next commands before generic next action', () => {
     assert.ok(healthIndex >= 0);
     assert.ok(nextIndex >= 0);
     assert.ok(healthIndex < nextIndex);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('manager recommends forensics when latest executor failed', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-manager-executor-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+    const statePaths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), tempProject, runtimeConfig);
+    const session = runtime.readJson(statePaths.sessionPath);
+    session.diagnostics.latest_executor = {
+      name: 'build',
+      status: 'failed',
+      risk: 'normal',
+      exit_code: 2,
+      duration_ms: 1450,
+      ran_at: '2026-04-09T10:00:00.000Z',
+      cwd: '.',
+      argv: ['make', '-C', 'firmware'],
+      evidence_hint: ['docs/VERIFICATION.md'],
+      stdout_preview: 'building firmware',
+      stderr_preview: 'link failed'
+    };
+    runtime.writeJson(statePaths.sessionPath, session);
+
+    let stdout = '';
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+    cli.main(['manager']);
+    const manager = JSON.parse(stdout);
+
+    assert.equal(manager.diagnostics.latest_executor.name, 'build');
+    assert.equal(manager.diagnostics.latest_executor.status, 'failed');
+    assert.equal(manager.executor_signal.present, true);
+    assert.equal(manager.executor_signal.failed, true);
+    assert.equal(manager.executor_signal.requires_forensics, true);
+    assert.equal(manager.executor_signal.recommended_action, 'forensics');
+    assert.match(manager.executor_signal.summary, /build failed, exit=2/);
+    const forensicsIndex = manager.recommended_actions.findIndex(
+      item => item.type === 'forensics' && item.reason.includes('exit_code=2')
+    );
+    const nextIndex = manager.recommended_actions.findIndex(item => item.type === 'next');
+    assert.ok(forensicsIndex >= 0);
+    assert.ok(nextIndex >= 0);
+    assert.ok(forensicsIndex < nextIndex);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -252,7 +310,7 @@ test('manager view surfaces tool execution before generic next action when ready
   try {
     process.chdir(tempProject);
     cli.main(['init', '--mcu', 'vendor-chip']);
-    cli.main(['question', 'add', 'tm2 prescaler 和 pwm 公式怎么算']);
+    cli.main(['question', 'add', 'how should tm2 prescaler and pwm formulas be calculated']);
 
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });

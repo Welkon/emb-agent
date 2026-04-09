@@ -1,6 +1,6 @@
 ---
 name: emb-template
-description: List, preview, and fill emb-agent templates for embedded workflows.
+description: Inspect and fill built-in documentation or registry templates.
 allowed-tools:
   - Read
   - Write
@@ -13,29 +13,11 @@ allowed-tools:
 
 # emb-template
 
-你负责使用 emb-agent 的模板子系统。
+## Purpose
 
-## 执行规则
+- Inspect and fill built-in documentation or registry templates.
 
-1. 直接使用安装后的 runtime 模板系统：
-   - `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" template list`
-   - `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" template show <name>`
-   - `node "$HOME/.codex/emb-agent/bin/emb-agent.cjs" template fill <name> --field KEY=VALUE`
-2. 模板只服务嵌入式工作流，不生成厚 planning 工件。
+## Usage
 
-## 当前模板类型
-
-- `architecture-review`
-- `hardware-logic`
-- `debug-notes`
-- `review-report`
-- `connectivity`
-- `release-notes`
-- `profile`
-- `pack`
-
-## 输出要求
-
-- 说明用了哪个模板
-- 说明生成到了哪个路径
-- 若字段仍未补全，明确指出还需要哪些 `--field`
+- Run `$emb-template` when this command matches the current problem.
+- Prefer the lightest command that keeps facts, evidence, and project truth aligned.

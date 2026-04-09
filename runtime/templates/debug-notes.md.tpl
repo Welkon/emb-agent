@@ -8,23 +8,23 @@
 
 ## Symptom
 
-- 现象：
+- Symptom:
 
 ## Hypotheses
 
-- 假设 1：
-- 假设 2：
+- Hypothesis 1:
+- Hypothesis 2:
 
 ## Checks
 
-- 验证动作 1：
-- 验证动作 2：
+- Check 1:
+- Check 2:
 
 ## Results
 
-- 已确认：
-- 已排除：
+- Confirmed:
+- Ruled out:
 
 ## Next Step
 
-- 下一步：
+- Next step:

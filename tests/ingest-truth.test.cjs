@@ -32,7 +32,7 @@ test('ingest hardware appends stable facts into hw truth file', () => {
       '--unknown',
       'board pull-up value on KEY_IN',
       '--source',
-      'docs/PMS150G文档.md'
+      'docs/PMS150G-manual.md'
     ]);
 
     const content = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
@@ -42,7 +42,7 @@ test('ingest hardware appends stable facts into hw truth file', () => {
     assert.match(content, /PA5 reserved for programming/);
     assert.match(content, /ISR must stay thin/);
     assert.match(content, /board pull-up value on KEY_IN/);
-    assert.match(content, /docs\/PMS150G文档\.md/);
+    assert.match(content, /docs\/PMS150G-manual\.md/);
     assert.equal(status.last_files[0], '.emb-agent/hw.yaml');
   } finally {
     process.chdir(currentCwd);

@@ -48,6 +48,43 @@ function createSessionReportCommandHelpers(deps) {
     return stats;
   }
 
+  function getLatestExecutor(session) {
+    return session &&
+      session.diagnostics &&
+      session.diagnostics.latest_executor &&
+      session.diagnostics.latest_executor.name
+      ? session.diagnostics.latest_executor
+      : null;
+  }
+
+  function getLatestForensics(session) {
+    return session &&
+      session.diagnostics &&
+      session.diagnostics.latest_forensics &&
+      session.diagnostics.latest_forensics.report_file
+      ? session.diagnostics.latest_forensics
+      : null;
+  }
+
+  function buildExecutorSignal(latestExecutor) {
+    const signal = latestExecutor && latestExecutor.name ? latestExecutor : null;
+    const failed = Boolean(signal && ['failed', 'error'].includes(signal.status));
+
+    return {
+      present: Boolean(signal),
+      name: signal ? signal.name : '',
+      status: signal ? signal.status || '' : '',
+      risk: signal ? signal.risk || '' : '',
+      exit_code: signal ? signal.exit_code : null,
+      failed,
+      requires_forensics: failed,
+      recommended_action: failed ? 'forensics' : '',
+      summary: signal
+        ? `${signal.name} ${signal.status || 'unknown'}${signal.exit_code === null ? '' : `, exit=${signal.exit_code}`}`
+        : ''
+    };
+  }
+
   function buildSessionReport(summaryText) {
     const resolved = resolveSession();
     const handoff = loadHandoff();
@@ -66,6 +103,9 @@ function createSessionReportCommandHelpers(deps) {
       next.health.adapter_health
         ? next.health.adapter_health
         : null;
+    const latestExecutor = getLatestExecutor(resolved.session);
+    const latestForensics = getLatestForensics(resolved.session);
+    const executorSignal = buildExecutorSignal(latestExecutor);
 
     return {
       generated_at: new Date().toISOString(),
@@ -87,6 +127,11 @@ function createSessionReportCommandHelpers(deps) {
             context_notes: handoff.context_notes
           }
         : null,
+      diagnostics: {
+        latest_forensics: latestForensics,
+        latest_executor: latestExecutor
+      },
+      executor_signal: executorSignal,
       thread_stats: threadStats,
       tool_recommendation: toolRecommendation,
       adapter_health: adapterHealth,
@@ -157,6 +202,24 @@ function createSessionReportCommandHelpers(deps) {
       );
     }
     lines.push('');
+    lines.push('## Diagnostics');
+    lines.push('');
+    lines.push(`- latest_forensics: ${report.diagnostics.latest_forensics
+      ? `${report.diagnostics.latest_forensics.report_file} (${report.diagnostics.latest_forensics.highest_severity || 'info'})`
+      : '(none)'}`);
+    lines.push(`- latest_executor: ${report.diagnostics.latest_executor
+      ? `${report.diagnostics.latest_executor.name} ${report.diagnostics.latest_executor.status}, exit=${report.diagnostics.latest_executor.exit_code === null ? '-' : report.diagnostics.latest_executor.exit_code}, risk=${report.diagnostics.latest_executor.risk || '-'}`
+      : '(none)'}`);
+    if (report.diagnostics.latest_executor) {
+      lines.push(`- latest_executor_cwd: ${report.diagnostics.latest_executor.cwd || '(empty)'}`);
+      lines.push(`- latest_executor_argv: ${(report.diagnostics.latest_executor.argv || []).join(' ') || '(none)'}`);
+      lines.push(
+        `- latest_executor_evidence_hint: ${(report.diagnostics.latest_executor.evidence_hint || []).join(', ') || '(none)'}`
+      );
+      lines.push(`- latest_executor_stdout_preview: ${report.diagnostics.latest_executor.stdout_preview || '(empty)'}`);
+      lines.push(`- latest_executor_stderr_preview: ${report.diagnostics.latest_executor.stderr_preview || '(empty)'}`);
+    }
+    lines.push('');
     lines.push('## Guidance');
     lines.push('');
     lines.push(`- next_command: ${report.next.next.command}`);
@@ -206,6 +269,8 @@ function createSessionReportCommandHelpers(deps) {
       report_file: path.relative(process.cwd(), filePath),
       summary: report.summary,
       next: report.next.next,
+      diagnostics: report.diagnostics,
+      executor_signal: report.executor_signal,
       tool_recommendation: report.tool_recommendation,
       adapter_health: report.adapter_health,
       thread_stats: report.thread_stats,

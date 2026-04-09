@@ -363,8 +363,8 @@ function runGeneratedTimerAdapter(context, resolved, options) {
         options
       },
       notes: [
-        'draft route 已存在，但还没有匹配到 device/family binding。',
-        '请先补 bindings，或重新执行 adapter derive。'
+        'A draft route already exists, but no matching device/family binding was found.',
+        'Add bindings first, or run adapter derive again.'
       ]
     };
   }
@@ -385,8 +385,8 @@ function runGeneratedTimerAdapter(context, resolved, options) {
       },
       missing_inputs: ['timer'],
       notes: [
-        '当前 binding 缺少默认 timer 信息。',
-        '请在 device/family binding 里补 default_timer 或 timer_variants。'
+        'The current binding is missing default timer information.',
+        'Add default_timer or timer_variants in the device/family binding.'
       ]
     };
   }
@@ -407,7 +407,7 @@ function runGeneratedTimerAdapter(context, resolved, options) {
       },
       missing_inputs: ['clock-hz'],
       notes: [
-        'timer-calc 首版实现已可运行，但仍需要明确输入 clock-hz。'
+        'The first timer-calc implementation can run, but it still needs an explicit input clock-hz.'
       ]
     };
   }
@@ -428,7 +428,7 @@ function runGeneratedTimerAdapter(context, resolved, options) {
       },
       missing_inputs: ['target-us or target-hz'],
       notes: [
-        'timer-calc 首版实现已可运行，但仍需要目标周期或频率。'
+        'The first timer-calc implementation can run, but it still needs a target period or frequency.'
       ]
     };
   }
@@ -449,8 +449,8 @@ function runGeneratedTimerAdapter(context, resolved, options) {
         params: binding.params || {}
       },
       notes: [
-        '当前 binding 缺少可搜索的 prescalers / interrupt_bits / counter_bits。',
-        '请在 binding params 中补这些组合后再运行。'
+        'The current binding lacks searchable prescalers / interrupt_bits / counter_bits.',
+        'Add these combinations to binding params before running again.'
       ]
     };
   }
@@ -487,8 +487,8 @@ function runGeneratedTimerAdapter(context, resolved, options) {
     best_candidate: best,
     candidates: candidates.slice(0, 8),
     notes: [
-      '这是 timer-calc 的首版通用搜索实现，基于 binding params 中的 prescaler/bit 组合计算。',
-      '当前仍保留 draft route 标记；如果要量产使用，需继续补寄存器名、reload 写法和边界说明。'
+      'This is the first generic search implementation for timer-calc, based on prescaler/bit combinations in binding params.',
+      'The draft route marker is still present. For production use, add register names, reload style, and boundary notes.'
     ]
   };
 }
@@ -525,8 +525,8 @@ function runGeneratedPwmAdapter(context, resolved, options) {
         options
       },
       notes: [
-        'draft route 已存在，但还没有匹配到 device/family binding。',
-        '请先补 bindings，或重新执行 adapter derive。'
+        'A draft route already exists, but no matching device/family binding was found.',
+        'Add bindings first, or run adapter derive again.'
       ]
     };
   }
@@ -547,8 +547,8 @@ function runGeneratedPwmAdapter(context, resolved, options) {
       },
       missing_inputs: ['output-pin'],
       notes: [
-        '当前 binding 缺少默认 PWM 输出引脚信息。',
-        '请在 device/family binding 里补 default_output_pin 或 output_pins。'
+        'The current binding is missing default PWM output pin information.',
+        'Add default_output_pin or output_pins in the device/family binding.'
       ]
     };
   }
@@ -569,7 +569,7 @@ function runGeneratedPwmAdapter(context, resolved, options) {
       },
       missing_inputs: ['clock-hz'],
       notes: [
-        'pwm-calc 首版实现已可运行，但仍需要明确输入 clock-hz。'
+        'The first pwm-calc implementation can run, but it still needs an explicit input clock-hz.'
       ]
     };
   }
@@ -590,7 +590,7 @@ function runGeneratedPwmAdapter(context, resolved, options) {
       },
       missing_inputs: ['target-hz'],
       notes: [
-        'pwm-calc 首版实现已可运行，但仍需要目标 PWM 频率。'
+        'The first pwm-calc implementation can run, but it still needs a target PWM frequency.'
       ]
     };
   }
@@ -611,7 +611,7 @@ function runGeneratedPwmAdapter(context, resolved, options) {
       },
       missing_inputs: ['target-duty'],
       notes: [
-        'target-duty 必须是 0 到 100 之间的百分比。'
+        'target-duty must be a percentage between 0 and 100.'
       ]
     };
   }
@@ -632,8 +632,8 @@ function runGeneratedPwmAdapter(context, resolved, options) {
         params: binding.params || {}
       },
       notes: [
-        '当前 binding 缺少可搜索的 prescalers / counter_bits / period_bits。',
-        '请在 binding params 中补这些组合后再运行。'
+        'The current binding lacks searchable prescalers / counter_bits / period_bits.',
+        'Add these combinations to binding params before running again.'
       ]
     };
   }
@@ -671,8 +671,8 @@ function runGeneratedPwmAdapter(context, resolved, options) {
     best_candidate: best,
     candidates: candidates.slice(0, 8),
     notes: [
-      '这是 pwm-calc 的首版通用搜索实现，基于 binding params 中的 prescaler/period 组合计算。',
-      '当前仍保留 draft route 标记；如果要量产使用，需继续补 period 写法、寄存器边界和输出极性说明。'
+      'This is the first generic search implementation for pwm-calc, based on prescaler/period combinations in binding params.',
+      'The draft route marker is still present. For production use, add period encoding, register boundaries, and output polarity notes.'
     ]
   };
 }
@@ -710,8 +710,8 @@ function runGeneratedAdcAdapter(context, resolved, options) {
         options
       },
       notes: [
-        'draft route 已存在，但还没有匹配到 device/family binding。',
-        '请先补 bindings，或重新执行 adapter derive。'
+        'A draft route already exists, but no matching device/family binding was found.',
+        'Add bindings first, or run adapter derive again.'
       ]
     };
   }
@@ -732,8 +732,8 @@ function runGeneratedAdcAdapter(context, resolved, options) {
       },
       missing_inputs: ['channel'],
       notes: [
-        '当前 binding 缺少默认 ADC 通道信息。',
-        '请在 device/family binding 里补 default_channel 或 channels。'
+        'The current binding is missing default ADC channel information.',
+        'Add default_channel or channels in the device/family binding.'
       ]
     };
   }
@@ -754,7 +754,7 @@ function runGeneratedAdcAdapter(context, resolved, options) {
       },
       missing_inputs: ['reference-v'],
       notes: [
-        'adc-scale 首版实现已可运行，但仍需要明确参考电压或 fixed_voltage 参考源。'
+        'The first adc-scale implementation can run, but it still needs an explicit reference voltage or fixed_voltage source.'
       ]
     };
   }
@@ -775,7 +775,7 @@ function runGeneratedAdcAdapter(context, resolved, options) {
       },
       missing_inputs: ['resolution'],
       notes: [
-        'adc-scale 首版实现已可运行，但仍需要 ADC 分辨率。'
+        'The first adc-scale implementation can run, but it still needs ADC resolution.'
       ]
     };
   }
@@ -796,20 +796,20 @@ function runGeneratedAdcAdapter(context, resolved, options) {
       },
       missing_inputs: ['sample-code or target-voltage'],
       notes: [
-        'adc-scale 首版实现已可运行，但仍需要样本码或目标电压。'
+        'The first adc-scale implementation can run, but it still needs a sample code or target voltage.'
       ]
     };
   }
 
   const conversion = buildAdcConversion(referenceVoltage, resolution, sampleCode, targetVoltage);
   if (Number.isFinite(sampleCode) && (sampleCode < 0 || sampleCode > conversion.max_code)) {
-    notes.push('sample-code 超出当前 resolution 可表示范围，请检查分辨率或原始采样值。');
+    notes.push('sample-code exceeds the range representable by the current resolution. Check the resolution or raw sample value.');
   }
   if (Number.isFinite(targetVoltage) && targetVoltage > referenceVoltage) {
-    notes.push('target-voltage 高于参考电压，已按满量程裁剪 predicted_code。');
+    notes.push('target-voltage is above the reference voltage, so predicted_code was clipped to full scale.');
   }
   if (Number.isFinite(targetVoltage) && targetVoltage < 0) {
-    notes.push('target-voltage 小于 0V，已按 0 码处理 predicted_code。');
+    notes.push('target-voltage is below 0V, so predicted_code was clamped to code 0.');
   }
 
   return {
@@ -843,8 +843,8 @@ function runGeneratedAdcAdapter(context, resolved, options) {
     },
     conversion,
     notes: [
-      '这是 adc-scale 的首版通用换算实现，基于参考电压、分辨率和 sample/target 输入做标定。',
-      '当前仍保留 draft route 标记；如果要量产使用，需继续补采样时间、输入阻抗、参考源误差和校准边界。'
+      'This is the first generic conversion implementation for adc-scale, calibrated from reference voltage, resolution, and sample/target inputs.',
+      'The draft route marker is still present. For production use, add sampling time, input impedance, reference-source error, and calibration boundaries.'
     ].concat(notes)
   };
 }
@@ -882,8 +882,8 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
         options
       },
       notes: [
-        'draft route 已存在，但还没有匹配到 device/family binding。',
-        '请先补 bindings，或重新执行 adapter derive。'
+        'A draft route already exists, but no matching device/family binding was found.',
+        'Add bindings first, or run adapter derive again.'
       ]
     };
   }
@@ -904,8 +904,8 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
       },
       missing_inputs: ['positive-source'],
       notes: [
-        '当前 binding 缺少默认比较器正端输入源。',
-        '请在 device/family binding 里补 default_positive_source 或 positive_sources。'
+        'The current binding is missing a default comparator positive input source.',
+        'Add default_positive_source or positive_sources in the device/family binding.'
       ]
     };
   }
@@ -926,8 +926,8 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
       },
       missing_inputs: ['negative-source'],
       notes: [
-        '当前 binding 缺少默认比较器负端输入源。',
-        '请在 device/family binding 里补 default_negative_source 或 negative_sources。'
+        'The current binding is missing a default comparator negative input source.',
+        'Add default_negative_source or negative_sources in the device/family binding.'
       ]
     };
   }
@@ -948,7 +948,7 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
       },
       missing_inputs: ['vdd'],
       notes: [
-        'comparator-threshold 首版实现已可运行，但仍需要明确供电电压 vdd。'
+        'The first comparator-threshold implementation can run, but it still needs an explicit supply voltage vdd.'
       ]
     };
   }
@@ -969,7 +969,7 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
       },
       missing_inputs: ['target-threshold-v or target-ratio'],
       notes: [
-        'comparator-threshold 首版实现已可运行，但仍需要目标阈值或目标比例。'
+        'The first comparator-threshold implementation can run, but it still needs a target threshold or target ratio.'
       ]
     };
   }
@@ -1009,19 +1009,19 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
   }
 
   if (targetThreshold > vdd) {
-    notes.push('目标阈值高于 vdd，不可能由当前供电范围实现。');
+    notes.push('The target threshold is above vdd and cannot be achieved with the current supply range.');
   }
   if (targetThreshold < 0) {
-    notes.push('目标阈值小于 0V，不可能由当前比较器输入范围实现。');
+    notes.push('The target threshold is below 0V and cannot be achieved with the current comparator input range.');
   }
   if (!positiveFeasible && !negativeFeasible) {
-    notes.push('当前正负输入源都无法覆盖目标阈值，请补更准确的内部参考范围或改比较极性。');
+    notes.push('Neither the positive nor negative input sources can cover the target threshold. Add a more accurate internal reference range or change comparator polarity.');
   } else if (recommendedReferenceSide === 'negative') {
-    notes.push('建议把参考阈值放在负端，待测信号放正端。');
+    notes.push('Place the reference threshold on the negative input and the measured signal on the positive input.');
   } else if (recommendedReferenceSide === 'positive') {
-    notes.push('建议把参考阈值放在正端，待测信号放负端。');
+    notes.push('Place the reference threshold on the positive input and the measured signal on the negative input.');
   } else if (recommendedReferenceSide === 'either') {
-    notes.push('当前正负两侧都能覆盖目标阈值，需再结合输出极性和系统行为决定放置位置。');
+    notes.push('Both sides can cover the target threshold. Choose placement based on output polarity and system behavior.');
   }
 
   return {
@@ -1066,8 +1066,8 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
       recommended_reference_side: recommendedReferenceSide
     },
     notes: [
-      '这是 comparator-threshold 的首版通用可行性检查实现，基于输入源范围和目标阈值做判断。',
-      '当前仍保留 draft route 标记；如果要量产使用，需继续补迟滞、offset、输入共模范围和输出极性边界。'
+      'This is the first generic feasibility-check implementation for comparator-threshold, based on input-source ranges and the target threshold.',
+      'The draft route marker is still present. For production use, add hysteresis, offset, input common-mode range, and output polarity boundaries.'
     ].concat(notes)
   };
 }

@@ -3,7 +3,7 @@
   "kind": "calculator",
   "status": "abstract",
   "sample": false,
-  "description": "比较器正负输入、内部参考档位与外部电压范围辅助工具。emb-agent core 只保留抽象规格，不内置任何器件绑定。",
+  "description": "Comparator positive/negative input, internal reference range, and external-voltage range helper tool. emb-agent core keeps only the abstract spec and does not include device bindings.",
   "inputs": [
     "vdd",
     "positive input voltage or pin",
@@ -20,8 +20,8 @@
   "family_profiles": [],
   "source_modules": [],
   "notes": [
-    "必须同时输出电压范围检查，而不是只给理论阈值。",
-    "后续如果芯片支持迟滞、窗口比较器，再由外部 adapter 扩展。",
-    "厂商/芯片绑定不要进入 emb-agent core。"
+    "Voltage-range checks must be output together with the theoretical threshold.",
+    "If the chip later supports hysteresis or a window comparator, extend it in an external adapter.",
+    "Vendor/chip bindings must not enter emb-agent core."
   ]
 }

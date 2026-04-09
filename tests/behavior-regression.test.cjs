@@ -8,6 +8,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 
 function withTempProject(prefix, runner) {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -140,6 +141,38 @@ test('behavior regression sentinel: next routes drift to forensics', () => {
     assert.equal(orchestrator.resolved_action, 'forensics');
     assert.equal(orchestrator.workflow.strategy, 'primary-first');
     assert.equal(orchestrator.workflow.primary_agent, 'emb-bug-hunter');
+  });
+});
+
+test('behavior regression sentinel: next routes failed executor to forensics', () => {
+  withTempProject('emb-agent-behavior-executor-forensics-', tempProject => {
+    const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+    const statePaths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), tempProject, runtimeConfig);
+    const session = runtime.readJson(statePaths.sessionPath);
+    session.diagnostics.latest_executor = {
+      name: 'build',
+      status: 'failed',
+      risk: 'normal',
+      exit_code: 2,
+      duration_ms: 1400,
+      ran_at: '2026-04-09T12:10:00.000Z',
+      cwd: '.',
+      argv: ['make', '-C', 'firmware'],
+      evidence_hint: [],
+      stdout_preview: 'building',
+      stderr_preview: 'link failed'
+    };
+    runtime.writeJson(statePaths.sessionPath, session);
+
+    const orchestrator = cli.buildOrchestratorContext('next');
+
+    assert.equal(orchestrator.resolved_action, 'forensics');
+    assert.equal(orchestrator.workflow.strategy, 'primary-first');
+    assert.equal(orchestrator.workflow.primary_agent, 'emb-bug-hunter');
+    assert.equal(orchestrator.executor_signal.present, true);
+    assert.equal(orchestrator.executor_signal.failed, true);
+    assert.equal(orchestrator.executor_signal.requires_forensics, true);
+    assert.equal(orchestrator.executor_signal.recommended_action, 'forensics');
   });
 });
 

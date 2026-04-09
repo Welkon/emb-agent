@@ -1,32 +1,32 @@
 goals:
-  - "完成 PMB180B 最小可运行板级闭环，并确认充电、欠压和输出路径。"
+  - "Complete the minimum runnable board-level closure for PMB180B and confirm the charging, undervoltage, and output paths."
 
 features:
-  - "能够识别外部 5V 充电输入并稳定区分无输入 / 输入异常 / 输入正常。"
-  - "能够根据项目策略判断充电中、终止态和充满态。"
-  - "能够输出目标 PWM 或 LPWMG 波形，并记录最终使用的引脚与外设块。"
-  - "能够在欠压条件下给出稳定降级或关断行为。"
+  - "Can recognize an external 5V charging input and reliably distinguish no input / abnormal input / normal input."
+  - "Can determine charging, termination, and full-charge states according to project policy."
+  - "Can output the target PWM or LPWMG waveform and record the final pin and peripheral block used."
+  - "Can provide stable degraded behavior or shutdown under undervoltage conditions."
 
 constraints:
-  - "5V 输入存在判定必须使用 CHG_TEMP.4 && CHG_TEMP.3，而不是只看单个位。"
-  - "如果用 PMB180B 的 CHG_TEMP.1 做充满判断，必须按实测语义解释为高=充电中、低=充满。"
-  - "LVDC / comparator 在充电时的内部检测相对实际电池电压可能偏高约 0.15V。"
-  - "必须在项目早期固定封装、输出引脚和 pin mux 分配。"
+  - "5V presence detection must use CHG_TEMP.4 && CHG_TEMP.3 instead of a single bit."
+  - "If PMB180B CHG_TEMP.1 is used for charge-complete detection, interpret it from bench results as high = charging and low = full."
+  - "LVDC / comparator internal detection during charging may read about 0.15V higher than actual battery voltage."
+  - "The package, output pin, and pin-mux allocation must be fixed early in the project."
 
 acceptance:
-  - "能够明确给出当前采用的充电输入、充满判定和欠压处理规则。"
-  - "PWM 或 LPWMG 输出的目标频率、占空比和输出脚已被 bench 或代码配置确认。"
-  - "关键坑点已写回 hw.yaml / docs，而不是只存在对话里。"
+  - "Can state the current charging-input, charge-complete, and undervoltage-handling rules explicitly."
+  - "The target frequency, duty cycle, and output pin for PWM or LPWMG output are confirmed by bench results or code configuration."
+  - "Key pitfalls are written back into hw.yaml / docs instead of living only in conversation."
 
 failure_policy:
-  - "遇到 CHG_TEMP / V400_FG / LVDC 语义不一致时，以 bench 现象和已验证寄存器读数为准。"
-  - "当 pin mux、封装或输出块仍未确认时，不直接进入大面积代码实现。"
-  - "若文档与实测冲突，先把冲突沉淀到 DEBUG-NOTES 和 HARDWARE-LOGIC，再决定实现。"
+  - "When CHG_TEMP / V400_FG / LVDC semantics disagree, prefer bench observations and verified register reads."
+  - "Do not move into broad code implementation while pin mux, package, or output blocks remain unconfirmed."
+  - "If documentation conflicts with bench results, record the conflict in DEBUG-NOTES and HARDWARE-LOGIC before deciding implementation."
 
 unknowns:
-  - "最终输出是 TM2 PWM 还是 LPWMG。"
-  - "实际电池容量对应的充满持续时间下限。"
-  - "量产版本是否需要额外欠压保护、电流保护或关断策略。"
+  - "Whether final output uses TM2 PWM or LPWMG."
+  - "The minimum full-charge duration required by the actual battery capacity."
+  - "Whether the production version needs extra undervoltage protection, current protection, or shutdown policy."
 
 sources:
   - "docs/PMB180B-datasheet.pdf"

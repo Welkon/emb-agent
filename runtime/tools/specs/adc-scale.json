@@ -3,7 +3,7 @@
   "kind": "calculator",
   "status": "abstract",
   "sample": false,
-  "description": "ADC 参考电压、测量引脚和量化结果换算工具。emb-agent core 只保留抽象规格，不内置任何芯片级实现。",
+  "description": "ADC reference-voltage, measurement-pin, and quantized-result conversion tool. emb-agent core keeps only the abstract spec and does not include any chip-level implementation.",
   "inputs": [
     "reference voltage",
     "measurement pin or source",
@@ -19,7 +19,7 @@
   "family_profiles": [],
   "source_modules": [],
   "notes": [
-    "先做问题域建模，不急于做完整 ADC 配置器。",
-    "芯片参考源和公式边界应由外部 adapter 自行维护。"
+    "Model the problem domain first instead of rushing to build a full ADC configurator.",
+    "Chip-specific reference sources and formula boundaries should be maintained by external adapters."
   ]
 }
