@@ -120,6 +120,51 @@ test('ingest hardware can write structured signals and peripherals into hw truth
   }
 });
 
+test('declare hardware aliases ingest hardware for direct board truth updates', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-declare-hw-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main([
+      'declare',
+      'hardware',
+      '--mcu',
+      'SC8F072',
+      '--package',
+      'SOP8',
+      '--signal',
+      'PWM_OUT',
+      '--pin',
+      'PA3',
+      '--dir',
+      'output',
+      '--peripheral',
+      'PWM',
+      '--usage',
+      'dimming'
+    ]);
+
+    const content = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
+    const status = cli.buildStatus();
+
+    assert.match(content, /model: "SC8F072"/);
+    assert.match(content, /package: "SOP8"/);
+    assert.match(content, /- name: "PWM_OUT"/);
+    assert.match(content, /pin: "PA3"/);
+    assert.match(content, /- name: "PWM"/);
+    assert.match(content, /usage: "dimming"/);
+    assert.equal(status.last_files[0], '.emb-agent/hw.yaml');
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('ingest requirements appends reusable requirement facts into req truth file', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-ingest-req-'));
   const currentCwd = process.cwd();

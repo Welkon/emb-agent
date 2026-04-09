@@ -1,103 +1,278 @@
 # emb-agent
 
-A lightweight workflow for embedded firmware projects.
+<p align="center">
+  <strong>A hardware-first AI workflow for embedded firmware projects</strong><br/>
+  <sub>Keep MCU truth, pin usage, peripherals, constraints, and verification visible in the repo.</sub>
+</p>
 
-emb-agent helps AI-assisted firmware work stay grounded in hardware truth. It is built for projects where datasheets, registers, timing limits, pin mappings, board constraints, and verification matter as much as source code.
+<p align="center">
+  Codex • Claude Code • Brownfield MCU repos • Register-heavy debugging • Datasheet-grounded work
+</p>
 
-Instead of forcing every task into a heavy planning system, emb-agent keeps the workflow small. You store durable facts in project truth files, start from a short default command flow, and only reach for more specific commands when the task actually needs them.
+emb-agent is a lightweight workflow layer for embedded development.
 
-It fits the kind of work that usually becomes messy in normal AI coding loops: brownfield MCU repositories, vendor SDK projects, register-level debugging, peripheral formulas, hardware bring-up, and tasks that need context to survive across long sessions.
+It is built for the kind of firmware work that normal AI coding loops handle badly: MCU datasheets, pin mux conflicts, timer formulas, board constraints, peripheral ownership, register-level debugging, and long-running sessions where important hardware facts are easy to lose.
 
-## Why People Use It
+Instead of treating firmware work like generic code generation, emb-agent keeps durable hardware truth in the project, gives the agent a small command flow, and makes it easy to move from "what chip is this?" to "which pin owns PWM output?" to "what should I do next?" without rebuilding context every session.
 
-- Keep confirmed hardware and requirement facts in visible project files instead of repeating them in every session.
-- Start with one default command, `next`, instead of memorizing a large workflow up front.
-- Let formula-heavy or register-heavy tasks surface structured tool guidance when a calculation or adapter is available.
-- Preserve momentum across context resets with lightweight handoff commands instead of rebuilding context from scratch.
+## Why emb-agent?
+
+| Capability | What it changes |
+| --- | --- |
+| **Hardware truth in the repo** | Keep MCU model, package, signals, peripherals, constraints, and unknowns in `.emb-agent/hw.yaml` instead of repeating them in chat. |
+| **Direct hardware declaration** | Use `declare hardware` to write MCU, package, pins, and peripherals directly, instead of re-explaining the project every time. |
+| **Short default workflow** | Most users only need `init`, `declare hardware`, and `next` to start. |
+| **Document-to-truth flow** | Import datasheets or manuals with `ingest doc`, then land useful facts back into truth files. |
+| **Runtime-aware setup** | Install into Codex or Claude Code runtimes without changing the project-side structure. |
+| **Session continuity** | Keep handoffs, state, and visible project artifacts so the next session starts from reality, not from scratch. |
 
 ## Quick Start
 
-You do not need to learn every command on day one.
+### 1. Install emb-agent into your runtime
+
+For Codex:
+
+```bash
+npx emb-agent --codex --global --developer your-name
+```
+
+For Claude Code:
+
+```bash
+npx emb-agent --claude --global --developer your-name
+```
+
+`--developer` is required during install. The value is stored in runtime config and reused by `init`, so you do not have to re-enter your developer identity in every project.
+
+### 2. Use the installed runtime CLI inside a repo
+
+emb-agent installs a runtime CLI under your host runtime directory.
+
+- Codex default path: `node ~/.codex/emb-agent/bin/emb-agent.cjs`
+- Claude Code default path: `node ~/.claude/emb-agent/bin/emb-agent.cjs`
+
+Examples below use:
+
+```bash
+<runtime-cli>
+```
+
+### 3. Initialize the project once
+
+```bash
+<runtime-cli> init
+```
+
+This prepares the project with visible truth layers and starter docs:
+
+```text
+.emb-agent/
+├── project.json
+├── hw.yaml
+├── req.yaml
+├── cache/
+└── adapters/
+
+docs/
+├── MCU-FOUNDATION-CHECKLIST.md
+└── ...
+```
+
+### 4. Declare hardware truth directly
+
+If you already know the chip and package, lock them in immediately:
+
+```bash
+<runtime-cli> declare hardware --mcu SC8F072 --package SOP8
+```
+
+If you already know board signals and peripheral ownership:
+
+```bash
+<runtime-cli> declare hardware \
+  --signal PWM_OUT --pin PA3 --dir output \
+  --peripheral PWM --usage "warm dimming"
+```
+
+This is the preferred path for professional embedded users who already know the target MCU, pin map, or intended peripheral allocation.
+
+### 5. Continue from the default command
+
+```bash
+<runtime-cli> next
+```
+
+When the task becomes timer-, PWM-, ADC-, comparator-, register-, or manual-heavy, move from `next` to `dispatch next` or `orchestrate`.
+
+## Typical Flow
 
 For most projects, the shortest useful path is:
 
-1. Install emb-agent into your host runtime.
-1. Run `init` once in the project.
-1. Use `next` as the default entry point.
-1. If the task is formula-, peripheral-, or register-heavy, check `dispatch next` or `orchestrate` for structured tool guidance.
-1. If the session gets noisy, use `pause` -> clear context -> `resume`.
+```text
+install -> init -> declare hardware -> next
+```
 
-## Recommended Flow
+After that:
 
-If you are new to emb-agent, follow this order before reaching for specialized commands:
+- Use `scan` when you need code entry points or hardware-related files.
+- Use `plan` when the task needs a small execution plan.
+- Use `do` when you already know the exact change to apply.
+- Use `debug` when the symptom is clear but the root cause is not.
+- Use `verify` when implementation is done and you want explicit closure.
+- Use `pause` and `resume` when the session is getting noisy.
 
-1. `init`
-   Run once when a repository has not been prepared for emb-agent yet.
-1. `next`
-   Start here for almost every normal task. If you only remember one command, remember this one.
-1. `dispatch next` or `orchestrate`
-   Use these when you need structured routing, tool execution, or execution signals instead of a simple recommendation.
-1. `pause` -> clear context -> `resume`
-   Use this when the session is getting noisy, long, or fragmented.
+## Use Cases
 
-## When To Use Which Command
+### Lock chip and package identity before coding
 
-- Use `next` when you want the default next step and do not want to choose a command yourself.
-- Use `scan` when you first need entry points, related files, hardware truth, or code locations.
-- Use `plan` when the task needs a small execution plan before you touch code or docs.
-- Use `do` when you already know the exact change to make and just want to apply it.
-- Use `debug` when the symptom is visible but the root cause is still unclear.
-- Use `review` when you want design or structure feedback rather than implementation.
-- Use `verify` when the work is done and you want explicit checks, evidence, and closure.
-- Use `note` when a conclusion should become durable project knowledge.
-- Use `ingest` when a datasheet, manual, PDF, or external note should be turned into project truth.
-- Use `tool` when you already know you need a calculation or hardware helper tool.
-- Use `dispatch next` when `next` is not enough and you want a lightweight execution contract.
-- Use `orchestrate` when you want next-step guidance, dispatch, and context hygiene merged into one answer.
-- Use `manager` when you need project-level operational direction instead of only the next task step.
-- Use `executor` when you want to run an executor action or inspect the latest execution result.
-- Use `health` when adapters, truth files, runtime state, or cache may be out of sync.
-- Use `pause` and `resume` when you need to preserve handoff state across context clears.
-- Use `spec`, `template`, `workspace`, or `task` when you are maintaining reusable project structure rather than solving a single task.
+If the repo already exists but hardware truth is incomplete:
 
-## Common Examples
+```bash
+<runtime-cli> init
+<runtime-cli> declare hardware --mcu PMS150G --package SOP8
+<runtime-cli> next
+```
 
-- New repository or first-time setup:
-  `init` -> `next`
-- Unsure what to do next:
-  `next`
-- Need code entry points before editing:
-  `scan`
-- Need a small implementation change:
-  `do`
-- Need root-cause analysis:
-  `debug`
-- Need timer / PWM / ADC / comparator / pin / register help:
-  `next`, then `dispatch next` or `orchestrate` if a tool should run
-- Need to import a datasheet or manual:
-  `ingest`
-- Need a final check before closing work:
-  `verify`
+### Declare pin usage without waiting for repeated questions
 
-## Core Ideas
+If the engineer already knows the mapping:
 
-- Keep project truth in `./.emb-agent/hw.yaml` and `./.emb-agent/req.yaml`.
-- Use `ingest` and document apply flows to convert raw manuals into durable facts.
-- Use adapters to hold chip-, family-, and device-specific formulas or register boundaries.
-- Use lightweight commands such as `scan`, `plan`, `do`, `debug`, `review`, and `verify` only when the problem actually needs them.
-- Let `manager`, `dispatch`, `orchestrate`, and `session-report` surface structured execution signals instead of relying on free-form text.
+```bash
+<runtime-cli> declare hardware \
+  --signal KEY_IN --pin PA4 --dir input \
+  --signal PWM_OUT --pin PA3 --dir output \
+  --peripheral PWM --usage "LED dimming"
+```
 
-## Runtime Layout
+### Import a datasheet and turn it into project truth
 
-The installed runtime lives under the host configuration directory. Project-local long-lived assets stay visible in the repository under `./.emb-agent/` and `./docs/`. Runtime state such as sessions, handoffs, and locks stays under the host runtime state directory.
+```bash
+<runtime-cli> ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware
+```
 
-## Adapter Model
+If the response includes an apply-ready diff, apply it first and then return to `next`.
 
-emb-agent core stays abstract on purpose. The core defines command flow, session state, templates, and tool contracts. Vendor- or chip-specific formulas, bindings, and execution logic belong in external adapters. Trust is evaluated from the full evidence chain: profiles, bindings, register summaries, component references, runtime implementation state, and recent project context.
+### Continue a long-running debug session
 
-## Command Reference
+```bash
+<runtime-cli> pause "bench shows PWM glitch during wakeup"
+# clear context / switch session
+<runtime-cli> resume
+```
 
-See [commands/emb/help.md](./commands/emb/help.md) for the public command set.
+## How It Works
+
+emb-agent keeps the core project memory in visible project files and keeps runtime-specific state in the installed host runtime.
+
+Project-side assets:
+
+```text
+.emb-agent/
+├── hw.yaml          # MCU, package, board signals, peripherals, constraints, unknowns
+├── req.yaml         # goals, features, acceptance, failure policy
+├── project.json     # project defaults and preferences
+├── adapters/        # project-local adapter assets
+└── cache/           # doc and adapter-source cache
+
+docs/
+├── MCU-FOUNDATION-CHECKLIST.md
+├── DEBUG-NOTES.md
+└── ...
+```
+
+Host runtime assets:
+
+- installed CLI
+- session state
+- handoff state
+- runtime config
+- runtime hooks
+
+This split is deliberate:
+
+- project truth stays reviewable and visible in the repo
+- runtime state stays outside the repo
+- the workflow remains consistent across Codex and Claude Code
+
+## Command Guide
+
+### The commands most users need first
+
+- `init`
+  Initialize the current project and generate the truth-layer scaffold.
+- `declare hardware`
+  Write MCU, package, pin usage, and peripheral usage into hardware truth directly.
+- `next`
+  Ask emb-agent for the default next step.
+- `scan`
+  Locate entry points, hardware truth, docs, and relevant files.
+- `plan`
+  Build a short task plan.
+- `do`
+  Apply a focused implementation or doc change.
+- `debug`
+  Narrow down root causes.
+- `verify`
+  Close work with checks and evidence.
+
+### When to use document import
+
+Use `ingest doc` when truth is still hidden in a PDF, manual, or external document:
+
+```bash
+<runtime-cli> ingest doc --file <path> --provider mineru --kind datasheet --to hardware
+```
+
+Use `declare hardware` first when the engineer already knows the answer and just needs to write it down.
+
+## FAQ
+
+### Is this a build / flash / debug orchestrator?
+
+Not yet.
+
+emb-agent is currently strongest at hardware truth management, session flow, command guidance, doc ingestion, and adapter-oriented tool routing. It does not try to pretend all vendor build, flash, and debug chains are the same.
+
+### Why not keep everything in one giant instruction file?
+
+Because embedded projects usually need different kinds of truth:
+
+- durable hardware facts
+- evolving requirements
+- current session state
+- runtime-specific integration
+
+emb-agent separates those layers so the agent does not have to rediscover them every time.
+
+### Do I have to answer "what project is this?" over and over?
+
+No.
+
+That is exactly what `init`, `declare hardware`, `hw.yaml`, `req.yaml`, and runtime developer identity are meant to avoid.
+
+### What if I already know the pin map?
+
+Then skip the conversational loop and write it directly with `declare hardware`.
+
+That is the intended path for experienced embedded engineers.
+
+### When should I use `declare hardware` vs `ingest doc`?
+
+Use `declare hardware` when:
+
+- you already know the MCU or package
+- you already know which pin owns which signal
+- you already know which peripheral block is being used
+
+Use `ingest doc` when:
+
+- the truth still lives in a datasheet or manual
+- the pin mux or timing limits are still uncertain
+- you need evidence-backed extraction before implementation
+
+## Public Command Reference
+
+See [commands/emb/help.md](./commands/emb/help.md) for the full public command set.
 
 ## Release Notes
 

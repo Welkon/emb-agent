@@ -160,9 +160,9 @@ test('init returns onboarding guidance for adapter setup', () => {
     assert.equal(result.initialized, true);
     assert.equal(result.onboarding.hardware_identity_present, false);
     assert.equal(result.onboarding.adapter_sources_registered, 0);
-    assert.ok(result.next_steps.some(item => item.includes('.emb-agent/hw.yaml')));
-    assert.ok(result.next_steps.some(item => item.includes('Run adapter bootstrap after hw.yaml is filled in')));
-    assert.ok(result.next_steps.some(item => item.includes('health')));
+    assert.ok(result.next_steps.some(item => item.includes('declare hardware --mcu <name> --package <name>')));
+    assert.ok(result.next_steps.some(item => item.includes('Run adapter bootstrap after hardware identity is declared')));
+    assert.ok(result.next_steps.some(item => item.includes('Run next after hardware identity is declared')));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -197,7 +197,7 @@ test('init scans existing project inputs and suggests hardware confirmation befo
     assert.equal(result.onboarding.doc_parse_suggestion.suggested, true);
     assert.equal(result.onboarding.doc_parse_suggestion.requires_hardware_confirmation, true);
     assert.ok(result.onboarding.doc_parse_suggestion.candidate_docs.includes('docs/PMS150G.pdf'));
-    assert.ok(result.next_steps.some(item => item.includes('init --mcu PMS150G --package SOP8')));
+    assert.ok(result.next_steps.some(item => item.includes('declare hardware --mcu PMS150G --package SOP8')));
     assert.ok(result.next_steps.some(item => item.includes('ingest doc --file docs/PMS150G.pdf')));
   } finally {
     process.chdir(currentCwd);
@@ -268,6 +268,8 @@ test('init can show pin summary from confirmed chip profile without parsing docs
     assert.ok(result.onboarding.pin_summary.usable_pins.some(item => item.signal === 'PA3'));
     assert.ok(result.onboarding.pin_summary.reserved_pins.some(item => item.signal === 'VDD'));
     assert.equal(result.onboarding.doc_parse_suggestion.suggested, false);
+    assert.ok(result.next_steps.some(item => item.includes('declare hardware --signal SIGNAL_NAME --pin PA3 --dir input|output')));
+    assert.ok(result.next_steps.some(item => item.includes('Run next')));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

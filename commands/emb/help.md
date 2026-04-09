@@ -20,6 +20,7 @@ Output the emb-agent command reference below and nothing else.
   The examples below use `<runtime-cli> = node <runtime-home>/emb-agent/bin/emb-agent.cjs`.
 - First time in a project:
   `<runtime-cli> init`
+  `<runtime-cli> declare hardware --mcu <name> --package <name>`
   `<runtime-cli> next`
 - Continuing work in the same project:
   `<runtime-cli> next`
