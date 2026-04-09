@@ -41,6 +41,7 @@ function createInstallHelpers(deps) {
         '  emb-agent --codex --global',
         '  emb-agent --runtime claude --local',
         '  emb-agent --runtime codex --local',
+        '  emb-agent --global --developer <name>',
         '  emb-agent --global --config-dir <path>',
         '  emb-agent --local --uninstall',
         '  emb-agent                  Launch interactive installer',
@@ -50,6 +51,7 @@ function createInstallHelpers(deps) {
         '  --claude                Install for Claude Code explicitly',
         '  --codex                 Install for Codex explicitly (default)',
         '  --runtime <name>        Select runtime target (codex, claude; others reserved)',
+        '  --developer <name>      Required developer name to seed new projects',
         '  --global                Install to runtime config home',
         '  --local                 Install to current project runtime dir',
         '  --config-dir <path>     Override target runtime directory',
@@ -79,6 +81,7 @@ function createInstallHelpers(deps) {
       global: false,
       local: false,
       runtime: '',
+      developer: '',
       configDir: '',
       uninstall: false,
       force: false,
@@ -124,6 +127,11 @@ function createInstallHelpers(deps) {
         index += 1;
         continue;
       }
+      if (token === '--developer') {
+        result.developer = (argv[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
       if (token === '--uninstall' || token === '-u') {
         result.uninstall = true;
         continue;
@@ -143,6 +151,9 @@ function createInstallHelpers(deps) {
     if (argv.includes('--config-dir') && !result.configDir) {
       throw new Error('Missing path after --config-dir');
     }
+    if (argv.includes('--developer') && !result.developer) {
+      throw new Error('Missing name after --developer');
+    }
     if (result.global && result.local) {
       throw new Error('Use either --global or --local, not both');
     }
@@ -151,6 +162,9 @@ function createInstallHelpers(deps) {
     }
     if (!result.runtime) {
       result.runtime = 'codex';
+    }
+    if (!result.uninstall && !result.help && !result.developer) {
+      throw new Error('Developer name is required during install. Pass --developer <name>.');
     }
 
     return result;
@@ -182,6 +196,16 @@ function createInstallHelpers(deps) {
       `  2) Local  (./${target.localDirName})`,
       '',
       'Choice [1]: '
+    ].join('\n');
+  }
+
+  function buildInteractiveDeveloperPrompt() {
+    return [
+      '',
+      'Enter the developer name to seed new projects.',
+      'This value is required and will be reused by init.',
+      '',
+      'Developer name: '
     ].join('\n');
   }
 
@@ -218,27 +242,23 @@ function createInstallHelpers(deps) {
     }
 
     if (!process.stdin || !process.stdin.isTTY) {
-      process.stdout.write('Non-interactive terminal detected, defaulting to Codex global install.\n');
-      return {
-        global: true,
-        local: false,
-        runtime: 'codex',
-        configDir: '',
-        uninstall: false,
-        force: false,
-        help: false
-      };
+      throw new Error('Non-interactive install requires --developer <name>.');
     }
 
     if (typeof promptInstallerChoices === 'function') {
       const prompted = await promptInstallerChoices(targets);
       const runtime = String(prompted && prompted.runtime ? prompted.runtime : targets[0].name).trim().toLowerCase();
       const location = String(prompted && prompted.location ? prompted.location : 'global').trim().toLowerCase();
+      const developer = String(prompted && prompted.developer ? prompted.developer : '').trim();
+      if (!developer) {
+        throw new Error('Interactive install requires developer name.');
+      }
 
       return {
         global: location !== 'local',
         local: location === 'local',
         runtime,
+        developer,
         configDir: '',
         uninstall: false,
         force: false,
@@ -255,11 +275,16 @@ function createInstallHelpers(deps) {
 
     const locationAnswer = await promptLine(buildInteractiveLocationPrompt(target));
     const isLocal = String(locationAnswer || '1').trim() === '2';
+    const developer = await promptLine(buildInteractiveDeveloperPrompt());
+    if (!developer) {
+      throw new Error('Developer name is required during install.');
+    }
 
     return {
       global: !isLocal,
       local: isLocal,
       runtime: target.name,
+      developer,
       configDir: '',
       uninstall: false,
       force: false,
@@ -796,6 +821,13 @@ function createInstallHelpers(deps) {
     copyDir(path.join(runtimeSrc, 'chips'), runtimeChipsDir);
     copyDir(path.join(runtimeSrc, 'state'), path.join(runtimeDir, 'state'));
     fs.copyFileSync(path.join(runtimeSrc, 'config.json'), path.join(runtimeDir, 'config.json'));
+    const runtimeConfigPath = path.join(runtimeDir, 'config.json');
+    const runtimeConfig = readJsonObject(runtimeConfigPath);
+    runtimeConfig.developer = {
+      name: String((args && args.developer) || '').trim(),
+      runtime: target.name
+    };
+    writeJsonObject(runtimeConfigPath, runtimeConfig);
     fs.writeFileSync(
       path.join(runtimeDir, 'HOST.json'),
       JSON.stringify(runtimeHost.createInstallHostMetadata(targetDir, target, args), null, 2) + '\n',
@@ -918,6 +950,7 @@ function createInstallHelpers(deps) {
       `Installed ${commandCount} ${target.skillLabel || `${target.label} skills`} under: ${path.join(targetDir, target.skillsDirName || 'skills')}`,
       `Installed ${agentCount} ${target.agentLabel || `${target.label} agents`} under: ${path.join(targetDir, target.agentsDirName || 'agents')}`,
       `Updated ${target.label} config: ${path.join(targetDir, target.configFileName || 'config.toml')}`,
+      `Developer identity: ${args.developer} (${target.name})`,
       `${envExampleCreated ? 'Created' : 'Kept'} env example: ${envExamplePath}`,
       ...envHintLines,
       `Restart ${target.restartLabel || target.label} to pick up new commands and agents.`

@@ -1,21 +1,40 @@
 # emb-agent
 
-A lightweight agent framework for embedded projects.
+A lightweight workflow for embedded firmware projects.
 
-emb-agent is designed for firmware work where hardware truth, timing, register behavior, datasheets, and board constraints matter as much as code. The framework stays intentionally light: it uses truth files, short command flows, adapter-based chip extensions, and context handoff instead of forcing every task through a heavy planning system.
+emb-agent helps AI-assisted firmware work stay grounded in hardware truth. It is built for projects where datasheets, registers, timing limits, pin mappings, board constraints, and verification matter as much as source code.
+
+Instead of forcing every task into a heavy planning system, emb-agent keeps the workflow small. You store durable facts in project truth files, start from a short default command flow, and only reach for more specific commands when the task actually needs them.
+
+It fits the kind of work that usually becomes messy in normal AI coding loops: brownfield MCU repositories, vendor SDK projects, register-level debugging, peripheral formulas, hardware bring-up, and tasks that need context to survive across long sessions.
+
+## Why People Use It
+
+- Keep confirmed hardware and requirement facts in visible project files instead of repeating them in every session.
+- Start with one default command, `next`, instead of memorizing a large workflow up front.
+- Let formula-heavy or register-heavy tasks surface structured tool guidance when a calculation or adapter is available.
+- Preserve momentum across context resets with lightweight handoff commands instead of rebuilding context from scratch.
 
 ## Quick Start
 
-Install emb-agent into your host runtime, initialize the current project, and then use `next` as the default entry point. For hardware-formula or register-triage problems, prefer `next`, `dispatch next`, or `orchestrate` so the runtime can expose `tool_recommendation` and `tool_execution`. When context grows heavy, use `pause -> clear -> resume`.
+You do not need to learn every command on day one.
+
+For most projects, the shortest useful path is:
+
+1. Install emb-agent into your host runtime.
+1. Run `init` once in the project.
+1. Use `next` as the default entry point.
+1. If the task is formula-, peripheral-, or register-heavy, check `dispatch next` or `orchestrate` for structured tool guidance.
+1. If the session gets noisy, use `pause` -> clear context -> `resume`.
 
 ## Recommended Flow
 
-If you are new to emb-agent, use this order first:
+If you are new to emb-agent, follow this order before reaching for specialized commands:
 
 1. `init`
    Run once when a repository has not been prepared for emb-agent yet.
 1. `next`
-   Start here for almost every normal task. It tells you the most reasonable next move.
+   Start here for almost every normal task. If you only remember one command, remember this one.
 1. `dispatch next` or `orchestrate`
    Use these when you need structured routing, tool execution, or execution signals instead of a simple recommendation.
 1. `pause` -> clear context -> `resume`
@@ -23,21 +42,21 @@ If you are new to emb-agent, use this order first:
 
 ## When To Use Which Command
 
-- Use `next` when you do not want to think about command choice and just need the default next step.
-- Use `scan` when you need entry points, related files, hardware truth, or code locations before acting.
-- Use `plan` when the task is real but still small enough for a short micro-plan.
-- Use `do` when you already know the exact code or document change to make.
-- Use `debug` when the symptom is clear but the root cause is not.
-- Use `review` when you want a structural or design review instead of implementation.
-- Use `verify` when implementation is done and you need explicit checks, evidence, and closure.
-- Use `note` when conclusions should become durable project knowledge.
-- Use `ingest` when a datasheet, manual, PDF, or external note needs to become project truth.
+- Use `next` when you want the default next step and do not want to choose a command yourself.
+- Use `scan` when you first need entry points, related files, hardware truth, or code locations.
+- Use `plan` when the task needs a small execution plan before you touch code or docs.
+- Use `do` when you already know the exact change to make and just want to apply it.
+- Use `debug` when the symptom is visible but the root cause is still unclear.
+- Use `review` when you want design or structure feedback rather than implementation.
+- Use `verify` when the work is done and you want explicit checks, evidence, and closure.
+- Use `note` when a conclusion should become durable project knowledge.
+- Use `ingest` when a datasheet, manual, PDF, or external note should be turned into project truth.
 - Use `tool` when you already know you need a calculation or hardware helper tool.
 - Use `dispatch next` when `next` is not enough and you want a lightweight execution contract.
-- Use `orchestrate` when you want one merged answer that combines next-step guidance, dispatch, and context hygiene.
-- Use `manager` when you need project-level operational direction rather than just the next task step.
-- Use `executor` when you want to run an executor action or inspect the most recent execution result.
-- Use `health` when the runtime, truth files, adapters, or cache may be out of sync.
+- Use `orchestrate` when you want next-step guidance, dispatch, and context hygiene merged into one answer.
+- Use `manager` when you need project-level operational direction instead of only the next task step.
+- Use `executor` when you want to run an executor action or inspect the latest execution result.
+- Use `health` when adapters, truth files, runtime state, or cache may be out of sync.
 - Use `pause` and `resume` when you need to preserve handoff state across context clears.
 - Use `spec`, `template`, `workspace`, or `task` when you are maintaining reusable project structure rather than solving a single task.
 

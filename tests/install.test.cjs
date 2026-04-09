@@ -23,7 +23,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
 
   try {
     process.chdir(repoRoot);
-    await installer.main(['--codex', '--global', '--config-dir', tempHome]);
+    await installer.main(['--codex', '--global', '--config-dir', tempHome, '--developer', 'welkon']);
 
     const runtimeRoot = path.join(tempHome, 'emb-agent');
     const cliPath = path.join(runtimeRoot, 'bin', 'emb-agent.cjs');
@@ -91,6 +91,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
     assert.equal(configData.session_version, 1);
     assert.equal(configData.default_preferences.truth_source_mode, 'hardware_first');
+    assert.deepEqual(configData.developer, { name: 'welkon', runtime: 'codex' });
     assert.equal(hostMetadata.name, 'codex');
     assert.equal(resolvedHost.name, 'codex');
     assert.equal(resolvedHost.stateRoot, path.join(tempHome, 'state', 'emb-agent'));
@@ -297,6 +298,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
 
     process.chdir(configuredProject);
     installedCli.main(['init']);
+    const inheritedProjectConfig = JSON.parse(fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8'));
+    assert.deepEqual(inheritedProjectConfig.developer, { name: 'welkon', runtime: 'codex' });
     installedCli.main(['project', 'set', '--field', 'preferences.truth_source_mode', '--value', 'code_first']);
     installedCli.main(['project', 'set', '--field', 'preferences.plan_mode', '--value', 'always']);
     const configuredStatus = installedCli.buildStatus();
@@ -378,7 +381,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
 
 test('installer rejects declared but unsupported runtime targets', () => {
   return assert.rejects(
-    () => installer.main(['--runtime', 'cursor', '--global', '--config-dir', '/tmp/emb-agent-cursor']),
+    () => installer.main(['--runtime', 'cursor', '--global', '--config-dir', '/tmp/emb-agent-cursor', '--developer', 'welkon']),
     /Runtime target "cursor" is not supported yet/
   );
 });
@@ -394,7 +397,7 @@ test('installer lays down claude skills agents and settings hooks', async () => 
   };
 
   try {
-    await installer.main(['--claude', '--global', '--config-dir', tempHome]);
+    await installer.main(['--claude', '--global', '--config-dir', tempHome, '--developer', 'felix']);
 
     const runtimeRoot = path.join(tempHome, 'emb-agent');
     const settingsPath = path.join(tempHome, 'settings.json');

@@ -169,6 +169,111 @@ test('init returns onboarding guidance for adapter setup', () => {
   }
 });
 
+test('init scans existing project inputs and suggests hardware confirmation before doc parse', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-detect-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  try {
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, 'docs', 'PMS150G.pdf'), 'PMS150G SOP8 datasheet\n', 'utf8');
+    fs.writeFileSync(path.join(tempProject, 'main.c'), '/* target: PMS150G */\n', 'utf8');
+
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+    const result = JSON.parse(stdout);
+
+    assert.equal(result.initialized, true);
+    assert.equal(result.onboarding.existing_project_detected, true);
+    assert.equal(result.onboarding.hardware_confirmation_required, true);
+    assert.equal(result.onboarding.hardware_candidates[0].model, 'PMS150G');
+    assert.equal(result.onboarding.hardware_candidates[0].package, 'SOP8');
+    assert.equal(result.onboarding.doc_parse_suggestion.suggested, true);
+    assert.equal(result.onboarding.doc_parse_suggestion.requires_hardware_confirmation, true);
+    assert.ok(result.onboarding.doc_parse_suggestion.candidate_docs.includes('docs/PMS150G.pdf'));
+    assert.ok(result.next_steps.some(item => item.includes('init --mcu PMS150G --package SOP8')));
+    assert.ok(result.next_steps.some(item => item.includes('ingest doc --file docs/PMS150G.pdf')));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('init can show pin summary from confirmed chip profile without parsing docs', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-pins-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  try {
+    const projectEmbDir = path.join(tempProject, '.emb-agent');
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({ devices: ['vendor-chip'] }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'sop8',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        summary: {},
+        capabilities: ['pwm'],
+        packages: [
+          {
+            name: 'sop8',
+            pin_count: 8,
+            pins: [
+              { number: 1, signal: 'VDD', default_function: 'power', notes: [] },
+              { number: 2, signal: 'PA3', label: 'PWM_OUT', default_function: 'pwm-output', mux: ['TM2PWM'], notes: [] },
+              { number: 3, signal: 'PA4', label: 'KEY_IN', default_function: 'gpio-input', mux: ['INT0'], notes: [] }
+            ],
+            notes: []
+          }
+        ],
+        docs: [],
+        related_tools: ['pwm-calc'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init', '--mcu', 'vendor-chip', '--package', 'sop8']);
+    const result = JSON.parse(stdout);
+
+    assert.equal(result.initialized, true);
+    assert.equal(result.onboarding.hardware_confirmation_required, false);
+    assert.equal(result.onboarding.chip_profile.name, 'vendor-chip');
+    assert.equal(result.onboarding.pin_summary.package, 'sop8');
+    assert.ok(result.onboarding.pin_summary.usable_pins.some(item => item.signal === 'PA3'));
+    assert.ok(result.onboarding.pin_summary.reserved_pins.some(item => item.signal === 'VDD'));
+    assert.equal(result.onboarding.doc_parse_suggestion.suggested, false);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('init accepts runtime and developer identity flags and persists updates', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-developer-'));
   const currentCwd = process.cwd();

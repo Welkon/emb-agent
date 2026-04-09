@@ -230,8 +230,8 @@ function buildProjectConfig(args) {
       adapter_sources: [],
       executors: {},
       developer: {
-        name: args.user || '',
-        runtime: args.runtime || ''
+        name: args.user || (RUNTIME_CONFIG.developer && RUNTIME_CONFIG.developer.name) || '',
+        runtime: args.runtime || (RUNTIME_CONFIG.developer && RUNTIME_CONFIG.developer.runtime) || ''
       },
       preferences: RUNTIME_CONFIG.default_preferences,
       arch_review: {

@@ -749,6 +749,7 @@ function validateRuntimeConfig(config) {
     session_version: Number(config.session_version || 1),
     default_profile: ensureString(config.default_profile || 'baremetal-8bit', 'default_profile'),
     default_packs: ensureStringArray(config.default_packs || [], 'default_packs'),
+    developer: validateDeveloperConfig(config.developer || {}),
     default_preferences: normalizePreferences(config.default_preferences || {}, {
       default_preferences: DEFAULT_PREFERENCES
     }),
