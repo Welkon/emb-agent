@@ -104,6 +104,7 @@ function createCliEntryHelpers(deps) {
   function usage() {
     const text = [
       'emb-agent usage:',
+      'Global option: --brief 输出精简 JSON（建议用于 next/plan/review/verify 等动作命令）',
       '  help',
       '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [--user <name>|-u <name>] [--force]',
       '  ingest hardware [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
