@@ -11,7 +11,6 @@ function createInstallHelpers(deps) {
     installTargets,
     runtimeHost,
     commandsSrc,
-    internalSkillsSrc,
     agentsSrc,
     runtimeSrc,
     runtimeHooksSrc,
@@ -20,7 +19,6 @@ function createInstallHelpers(deps) {
 
   const MANAGED_MARKER_START = '# EMB-AGENT managed start';
   const MANAGED_MARKER_END = '# EMB-AGENT managed end';
-  const SKILL_PREFIX = 'emb-';
   const AGENT_PREFIX = 'emb-';
   const TEXT_FILE_EXTENSIONS = new Set(['.cjs', '.js', '.json', '.md', '.txt', '.tpl', '.yaml', '.yml']);
   const SANDBOX_BY_AGENT = {
@@ -418,76 +416,12 @@ function createInstallHelpers(deps) {
     return text.replace(/\s+/g, ' ').trim();
   }
 
-  function listManagedCommandFiles() {
-    return fs
-      .readdirSync(commandsSrc)
-      .filter(name => name.endsWith('.md'))
-      .map(name => `${SKILL_PREFIX}${name.replace(/\.md$/, '')}`)
-      .sort();
-  }
-
-  function listManagedInternalSkillDirs() {
-    if (!internalSkillsSrc || !fs.existsSync(internalSkillsSrc)) {
-      return [];
-    }
-
-    return fs
-      .readdirSync(internalSkillsSrc, { withFileTypes: true })
-      .filter(entry => entry.isDirectory() && fs.existsSync(path.join(internalSkillsSrc, entry.name, 'SKILL.md')))
-      .map(entry => entry.name)
-      .sort();
-  }
-
-  function listManagedSkillDirs() {
-    return [...new Set([...listManagedCommandFiles(), ...listManagedInternalSkillDirs()])].sort();
-  }
-
   function listManagedAgentFiles() {
     return fs
       .readdirSync(agentsSrc)
       .filter(name => name.startsWith(AGENT_PREFIX) && name.endsWith('.md'))
       .map(name => name.replace(/\.md$/, ''))
       .sort();
-  }
-
-  function installCommandSkills(targetDir, target) {
-    const skillsDir = path.join(targetDir, target.skillsDirName || 'skills');
-    ensureDir(skillsDir);
-
-    for (const skillName of listManagedSkillDirs()) {
-      removeDirIfExists(path.join(skillsDir, skillName));
-    }
-
-    const commandFiles = fs.readdirSync(commandsSrc).filter(name => name.endsWith('.md'));
-    let installedCount = 0;
-    for (const file of commandFiles) {
-      const skillName = `${SKILL_PREFIX}${file.replace(/\.md$/, '')}`;
-      const skillDir = path.join(skillsDir, skillName);
-      ensureDir(skillDir);
-
-      const raw = fs.readFileSync(path.join(commandsSrc, file), 'utf8');
-      const content = replaceInstallPaths(raw, targetDir, target);
-      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), content);
-      installedCount += 1;
-    }
-
-    if (internalSkillsSrc && fs.existsSync(internalSkillsSrc)) {
-      const skillDirs = fs
-        .readdirSync(internalSkillsSrc, { withFileTypes: true })
-        .filter(entry => entry.isDirectory() && fs.existsSync(path.join(internalSkillsSrc, entry.name, 'SKILL.md')));
-
-      for (const entry of skillDirs) {
-        copyDirWithReplacement(
-          path.join(internalSkillsSrc, entry.name),
-          path.join(skillsDir, entry.name),
-          targetDir,
-          target
-        );
-        installedCount += 1;
-      }
-    }
-
-    return installedCount;
   }
 
   function generateAgentToml(agentName, content) {
@@ -791,7 +725,6 @@ function createInstallHelpers(deps) {
     const runtimeToolsDir = path.join(runtimeDir, 'tools');
     const runtimeChipsDir = path.join(runtimeDir, 'chips');
     const runtimeHooksDir = path.join(runtimeDir, 'hooks');
-    const runtimeSkillsDir = path.join(runtimeDir, 'skills');
 
     if (fs.existsSync(runtimeDir)) {
       removeDirIfExists(runtimeDir);
@@ -812,9 +745,6 @@ function createInstallHelpers(deps) {
     copyDirWithReplacement(path.join(runtimeSrc, 'lib'), path.join(runtimeDir, 'lib'), targetDir, target);
     copyDirWithReplacement(path.join(runtimeSrc, 'scripts'), path.join(runtimeDir, 'scripts'), targetDir, target);
     copyDirWithReplacement(path.join(runtimeSrc, 'templates'), path.join(runtimeDir, 'templates'), targetDir, target);
-    if (internalSkillsSrc && fs.existsSync(internalSkillsSrc)) {
-      copyDirWithReplacement(internalSkillsSrc, runtimeSkillsDir, targetDir, target);
-    }
     copyDir(path.join(runtimeSrc, 'profiles'), path.join(runtimeDir, 'profiles'));
     copyDir(path.join(runtimeSrc, 'packs'), path.join(runtimeDir, 'packs'));
     copyDir(path.join(runtimeSrc, 'tools'), runtimeToolsDir);
@@ -883,12 +813,7 @@ function createInstallHelpers(deps) {
   }
 
   function uninstall(targetDir, target) {
-    const skillsDir = path.join(targetDir, target.skillsDirName || 'skills');
     const agentsDir = path.join(targetDir, target.agentsDirName || 'agents');
-
-    for (const skillName of listManagedSkillDirs()) {
-      removeDirIfExists(path.join(skillsDir, skillName));
-    }
 
     for (const agentName of listManagedAgentFiles()) {
       const extension = target.agentMode === 'markdown' ? '.md' : '.toml';
@@ -940,26 +865,21 @@ function createInstallHelpers(deps) {
 
     const runtimeDir = installRuntime(targetDir, target, args);
     const installedRuntimeHost = runtimeHost.resolveRuntimeHost(runtimeDir);
-    const commandCount = installCommandSkills(targetDir, target);
     const agentCount = installAgents(targetDir, target, args);
     const envExamplePath = path.join(args.local ? process.cwd() : targetDir, '.env.example');
     const envExampleCreated = installEnvExample(envExamplePath);
     const envHintLines = buildEnvHintLines(envExamplePath);
-    const initCommand = runtimeHost.buildCliCommand(installedRuntimeHost, ['init']);
-    const nextCommand = runtimeHost.buildCliCommand(installedRuntimeHost, ['next']);
-
     const lines = [
       `Installed emb-agent runtime for ${target.label} to: ${runtimeDir}`,
-      `Installed ${commandCount} ${target.skillLabel || `${target.label} skills`} under: ${path.join(targetDir, target.skillsDirName || 'skills')}`,
       `Installed ${agentCount} ${target.agentLabel || `${target.label} agents`} under: ${path.join(targetDir, target.agentsDirName || 'agents')}`,
       `Updated ${target.label} config: ${path.join(targetDir, target.configFileName || 'config.toml')}`,
       `Developer identity: ${args.developer} (${target.name})`,
       `${envExampleCreated ? 'Created' : 'Kept'} env example: ${envExamplePath}`,
       ...envHintLines,
       'Next steps:',
-      `  In a project repo, run: ${initCommand}`,
-      `  Then continue with: ${nextCommand}`,
-      `Restart ${target.restartLabel || target.label} to pick up new commands and agents.`
+      `  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`,
+      `  In a project repo, open a ${target.label} session and run: init`,
+      '  Then continue with: next'
     ];
 
     process.stdout.write(lines.join('\n') + '\n');
@@ -978,7 +898,6 @@ function createInstallHelpers(deps) {
     getTargetDir,
     installRuntime,
     installEnvExample,
-    installCommandSkills,
     installAgents,
     uninstall,
     main

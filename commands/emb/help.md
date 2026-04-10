@@ -13,17 +13,23 @@ Output the emb-agent help summary below and nothing else.
 
 ## Default Flow
 
-- Runtime path convention:
-  `Codex -> ~/.codex/emb-agent/bin/emb-agent.cjs`
-  `Claude Code -> ~/.claude/emb-agent/bin/emb-agent.cjs`
-  `runtime-home -> Codex: ~/.codex, Claude Code: ~/.claude`
-  The examples below use `<runtime-cli> = node <runtime-home>/emb-agent/bin/emb-agent.cjs`.
+- Runtime integration:
+  Run these as Codex or Claude Code session commands.
+  Runtime invocation details are handled by the host integration.
 - First time in a project:
-  `<runtime-cli> init`
-  `<runtime-cli> declare hardware --mcu <name> --package <name>`
-  `<runtime-cli> next`
+  `init`
+  `declare hardware --mcu <name> --package <name>`
+  `next`
 - Continuing work:
-  `<runtime-cli> next`
+  `next`
+  `next run` (optional one-step mode: directly enter the recommended stage)
+- Process direction:
+  `scan` before editing when entry/truth is not explicit
+  `plan` when scope or risk is not obvious
+  `do/debug` for execution
+  `review/verify` for closure
+  If project `quality_gates.required_executors` is configured, keep `verify` active until required `executor run <name>` checks pass
+  If project `quality_gates.required_signoffs` is configured, the engineer closes them with `verify confirm <name>` or `verify reject <name>`
 
 ## Core Commands
 
@@ -32,7 +38,7 @@ Output the emb-agent help summary below and nothing else.
 - `$emb-ingest`
   Import external documents or write new facts into project truth.
 - `$emb-next`
-  Recommend the default next step for the current session.
+  Recommend the default next step for the current session. Use `next run` when you want to enter that step directly.
 - `$emb-task`
   Manage task-local execution context once work becomes multi-step.
 
@@ -57,8 +63,8 @@ Output the emb-agent help summary below and nothing else.
 
 - If the engineer already knows the chip, package, pin map, or peripheral usage, prefer `declare hardware` first.
 - If the truth still lives in a PDF or manual, use:
-  `<runtime-cli> ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
-- If the response already includes `apply_ready`, run it first and then return to `<runtime-cli> next`.
+  `ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
+- If the response already includes `apply_ready`, run it first and then return to `next`.
 
 ## Advanced Help
 

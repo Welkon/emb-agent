@@ -1,6 +1,7 @@
 'use strict';
 
 const runtimeHostHelpers = require('./runtime-host.cjs');
+const permissionGateHelpers = require('./permission-gates.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
@@ -67,13 +68,18 @@ function createActionContractHelpers(deps) {
       throw new Error(`Unsupported action: ${action}`);
     }
 
-    return enrichWithToolSuggestions({
+    const enriched = enrichWithToolSuggestions({
       ...output,
       agent_execution: output.scheduler && output.scheduler.agent_execution
         ? output.scheduler.agent_execution
         : scheduler.buildAgentExecution(action, resolved),
       context_hygiene: buildContextHygiene(resolved, handoff, action)
     }, resolved);
+
+    return {
+      ...enriched,
+      permission_gates: permissionGateHelpers.buildPermissionGates(enriched)
+    };
   }
 
   function buildArchReviewDispatchContext() {
@@ -83,7 +89,6 @@ function createActionContractHelpers(deps) {
       requested_action: 'arch-review',
       resolved_action: 'arch-review',
       reason: context.warning,
-      skill: '$emb-arch-review',
       cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['arch-review']),
       dispatch_ready: true,
       agent_execution: {
@@ -178,7 +183,8 @@ function createActionContractHelpers(deps) {
         }
       },
       context_hygiene: context.context_hygiene || null,
-      action_context: context
+      action_context: context,
+      permission_gates: []
     };
   }
 

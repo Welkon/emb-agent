@@ -102,6 +102,50 @@ test('project state store initializes session and persists session/handoff updat
   assert.equal(handoff.next_action, 'resume timer drift');
   assert.deepEqual(handoff.last_files, ['main.c']);
 
+  store.saveContextSummary({
+    version: '1.0',
+    generated_at: new Date().toISOString(),
+    source: 'pause',
+    focus: 'timer drift',
+    profile: 'baremetal-8bit',
+    packs: ['sensor-node'],
+    last_command: 'pause',
+    suggested_flow: 'scan -> debug',
+    next_action: 'resume timer drift',
+    context_notes: 'capture timer drift before bench retest',
+    last_files: ['main.c'],
+    open_questions: ['why drift grows'],
+    known_risks: ['divider restore may fail'],
+    active_task: {
+      name: 'timer-drift',
+      title: 'Investigate timer drift',
+      status: 'active',
+      path: '.emb-agent/tasks/timer-drift.json'
+    },
+    diagnostics: {
+      latest_forensics: {
+        report_file: '.emb-agent/reports/forensics/drift.md',
+        highest_severity: 'high',
+        problem: 'timer drift grows after resume'
+      },
+      latest_executor: {
+        name: 'bench',
+        status: 'failed',
+        risk: 'high',
+        exit_code: 7,
+        stderr_preview: 'device handshake timeout',
+        stdout_preview: 'resume bench started'
+      }
+    }
+  });
+
+  const contextSummary = store.loadContextSummary();
+  assert.equal(contextSummary.next_action, 'resume timer drift');
+  assert.equal(contextSummary.active_task.name, 'timer-drift');
+  assert.equal(contextSummary.diagnostics.latest_executor.name, 'bench');
+
   store.clearHandoff();
   assert.equal(store.loadHandoff(), null);
+  store.clearContextSummary();
+  assert.equal(store.loadContextSummary(), null);
 });

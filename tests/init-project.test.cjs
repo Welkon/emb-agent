@@ -35,6 +35,8 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.deepEqual(projectConfig.active_packs, ['connected-appliance']);
     assert.deepEqual(projectConfig.adapter_sources, []);
     assert.deepEqual(projectConfig.executors, {});
+    assert.deepEqual(projectConfig.quality_gates.required_executors, []);
+    assert.deepEqual(projectConfig.quality_gates.required_signoffs, []);
     assert.deepEqual(projectConfig.developer, { name: '', runtime: '' });
     assert.equal(projectConfig.integrations.mineru.mode, 'auto');
     assert.equal(projectConfig.integrations.mineru.base_url, '');
@@ -50,6 +52,14 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.developer')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.current-task')), true);
+    assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'README.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', 'archive')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workspace')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'CONNECTIVITY.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'RELEASE-NOTES.md')), true);
@@ -133,6 +143,11 @@ test('init preserves existing docs files without force', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.current-task')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workspace')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), true);
   } finally {
@@ -192,12 +207,12 @@ test('init scans existing project inputs and suggests hardware confirmation befo
     assert.equal(result.initialized, true);
     assert.equal(result.onboarding.existing_project_detected, true);
     assert.equal(result.onboarding.hardware_confirmation_required, true);
-    assert.equal(result.onboarding.hardware_candidates[0].model, 'PMS150G');
-    assert.equal(result.onboarding.hardware_candidates[0].package, 'SOP8');
+    assert.deepEqual(result.onboarding.hardware_candidates, []);
+    assert.equal(result.onboarding.selected_identity, null);
     assert.equal(result.onboarding.doc_parse_suggestion.suggested, true);
     assert.equal(result.onboarding.doc_parse_suggestion.requires_hardware_confirmation, true);
     assert.ok(result.onboarding.doc_parse_suggestion.candidate_docs.includes('docs/PMS150G.pdf'));
-    assert.ok(result.next_steps.some(item => item.includes('declare hardware --mcu PMS150G --package SOP8')));
+    assert.ok(result.next_steps.some(item => item.includes('declare hardware --mcu <name> --package <name>')));
     assert.ok(result.next_steps.some(item => item.includes('ingest doc --file docs/PMS150G.pdf')));
   } finally {
     process.chdir(currentCwd);
@@ -268,7 +283,7 @@ test('init can show pin summary from confirmed chip profile without parsing docs
     assert.ok(result.onboarding.pin_summary.usable_pins.some(item => item.signal === 'PA3'));
     assert.ok(result.onboarding.pin_summary.reserved_pins.some(item => item.signal === 'VDD'));
     assert.equal(result.onboarding.doc_parse_suggestion.suggested, false);
-    assert.ok(result.next_steps.some(item => item.includes('declare hardware --signal SIGNAL_NAME --pin PA3 --dir input|output')));
+    assert.ok(result.next_steps.some(item => item.includes('declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin')));
     assert.ok(result.next_steps.some(item => item.includes('Run next')));
   } finally {
     process.chdir(currentCwd);

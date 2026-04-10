@@ -29,9 +29,10 @@ function createCommandGroupHelpers(deps) {
     saveScanReport,
     savePlanReport,
     saveReviewReport,
+    confirmVerifySignoff,
+    rejectVerifySignoff,
     saveVerifyReport,
     addNoteEntry,
-    runTemplateScript,
     ingestDocCli
   } = deps;
 
@@ -155,6 +156,14 @@ function createCommandGroupHelpers(deps) {
       return saveVerifyReport(rest);
     }
 
+    if (cmd === 'verify' && subcmd === 'confirm') {
+      return confirmVerifySignoff(rest);
+    }
+
+    if (cmd === 'verify' && subcmd === 'reject') {
+      return rejectVerifySignoff(rest);
+    }
+
     if (cmd === 'verify') {
       updateSession(current => {
         current.last_command = 'verify';
@@ -180,7 +189,7 @@ function createCommandGroupHelpers(deps) {
     return undefined;
   }
 
-  function handleDispatchAndTemplateCommands(cmd, subcmd, rest) {
+  function handleDispatchCommands(cmd, subcmd, rest) {
     if (cmd === 'schedule' && subcmd === 'show') {
       if (!rest[0]) throw new Error('Missing action name');
       return scheduler.buildSchedule(rest[0], resolveSession());
@@ -204,25 +213,8 @@ function createCommandGroupHelpers(deps) {
       return buildOrchestratorContext(rest[0]);
     }
 
-    if (cmd === 'orchestrate' && ['scan', 'plan', 'do', 'debug', 'review', 'verify', 'forensics', 'note', 'arch-review'].includes(subcmd)) {
+    if (cmd === 'orchestrate' && ['scan', 'plan', 'do', 'debug', 'review', 'verify', 'note', 'arch-review'].includes(subcmd)) {
       return buildOrchestratorContext(subcmd);
-    }
-
-    if (cmd === 'template' && subcmd === 'list') {
-      runTemplateScript(['list']);
-      return { __side_effect_only: true };
-    }
-
-    if (cmd === 'template' && subcmd === 'show') {
-      if (!rest[0]) throw new Error('Missing template name');
-      runTemplateScript(['show', rest[0]]);
-      return { __side_effect_only: true };
-    }
-
-    if (cmd === 'template' && subcmd === 'fill') {
-      if (!rest[0]) throw new Error('Missing template name');
-      runTemplateScript(['fill', rest[0], ...rest.slice(1)]);
-      return { __side_effect_only: true };
     }
 
     return undefined;
@@ -327,7 +319,7 @@ function createCommandGroupHelpers(deps) {
   return {
     handleDocCommands,
     handleActionCommands,
-    handleDispatchAndTemplateCommands,
+    handleDispatchCommands,
     handleAdapterToolChipCommands
   };
 }

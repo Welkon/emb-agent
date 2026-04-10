@@ -7,6 +7,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
+const chipCatalog = require(path.join(ROOT, 'lib', 'chip-catalog.cjs'));
 const templateCli = require(path.join(ROOT, 'scripts', 'template.cjs'));
 const attachProject = require(path.join(ROOT, 'scripts', 'attach-project.cjs'));
 
@@ -16,7 +17,7 @@ function usage() {
       'ingest-truth usage:',
       '  node scripts/ingest-truth.cjs hardware [--mcu <name>] [--board <name>] [--target <name>]',
       '    [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
-      '    [--signal <name> --pin <pin> --dir <direction> [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
+      '    [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>] [--force]',
       '  node scripts/ingest-truth.cjs requirements [--goal <text>] [--feature <text>] [--constraint <text>]',
       '    [--accept <text>] [--failure <text>] [--unknown <text>] [--source <path>] [--force]'
@@ -40,6 +41,7 @@ function parseArgs(argv) {
     domain: argv[0] || '',
     project: '',
     force: false,
+    autoPin: false,
     mcu: '',
     package: '',
     board: '',
@@ -235,6 +237,10 @@ function parseArgs(argv) {
       result.force = true;
       continue;
     }
+    if (token === '--auto-pin') {
+      result.autoPin = true;
+      continue;
+    }
 
     throw new Error(`Unknown argument: ${token}`);
   }
@@ -321,6 +327,147 @@ function parseScalar(raw) {
     return value.slice(1, -1);
   }
   return value;
+}
+
+function readScalarLine(content, prefix) {
+  const line = String(content || '')
+    .split(/\r?\n/)
+    .find(item => item.startsWith(prefix));
+
+  if (!line) {
+    return '';
+  }
+
+  const value = line.slice(prefix.length).trim();
+  const parsed = parseScalar(value);
+  return typeof parsed === 'string' ? parsed.trim() : String(parsed || '').trim();
+}
+
+function normalizeHardwareSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function compactHardwareSlug(value) {
+  return normalizeHardwareSlug(value).replace(/-/g, '');
+}
+
+function findChipProfileByModel(model, packageName) {
+  const normalizedModel = String(model || '').trim();
+  const normalizedPackage = String(packageName || '').trim();
+  if (!normalizedModel) {
+    return null;
+  }
+
+  const candidates = runtime.unique([
+    normalizedModel,
+    compactHardwareSlug(normalizedModel),
+    normalizedPackage ? compactHardwareSlug(`${normalizedModel}${normalizedPackage}`) : '',
+    normalizedPackage ? compactHardwareSlug(`${normalizedModel}-${normalizedPackage}`) : ''
+  ].filter(Boolean));
+
+  for (const candidate of candidates) {
+    try {
+      return chipCatalog.loadChip(ROOT, candidate);
+    } catch {
+      // try fallback candidate names
+    }
+  }
+
+  const matched = chipCatalog
+    .listChips(ROOT)
+    .find(item => {
+      const itemName = String(item.name || '').toLowerCase();
+      return candidates.some(candidate => itemName === String(candidate).toLowerCase());
+    });
+
+  if (!matched) {
+    return null;
+  }
+
+  return chipCatalog.loadChip(ROOT, matched.name);
+}
+
+function resolveChipPackageEntry(chipProfile, packageName) {
+  if (!chipProfile) {
+    return null;
+  }
+
+  const normalizedPackage = normalizeHardwareSlug(packageName || chipProfile.package || '');
+  const entries = Array.isArray(chipProfile.packages) ? chipProfile.packages : [];
+
+  return (
+    entries.find(item => normalizeHardwareSlug(item && item.name) === normalizedPackage) ||
+    entries[0] ||
+    null
+  );
+}
+
+function buildAutoPinCandidates(chipProfile, packageName) {
+  const packageEntry = resolveChipPackageEntry(chipProfile, packageName);
+  if (!packageEntry || !Array.isArray(packageEntry.pins) || packageEntry.pins.length === 0) {
+    return [];
+  }
+
+  const reservedPattern = /\b(vdd|vss|gnd|vcc|avdd|avss|reset|nreset|rst|program|programming|icsp)\b/i;
+  return packageEntry.pins
+    .filter(pin => {
+      const notes = Array.isArray(pin.notes) ? pin.notes : [];
+      return !(
+        reservedPattern.test(pin.signal || '') ||
+        reservedPattern.test(pin.default_function || '') ||
+        notes.some(note => reservedPattern.test(note))
+      );
+    })
+    .map(pin => String(pin.signal || '').trim())
+    .filter(Boolean);
+}
+
+function assignAutoPins(incomingSignals, existingSignals, chipProfile, packageName) {
+  const candidates = buildAutoPinCandidates(chipProfile, packageName);
+  if (candidates.length === 0) {
+    return incomingSignals;
+  }
+
+  const usedPins = new Set(
+    runtime
+      .unique([
+        ...(existingSignals || []).map(item => String((item && item.pin) || '').trim().toUpperCase()),
+        ...(incomingSignals || []).map(item => String((item && item.pin) || '').trim().toUpperCase())
+      ])
+      .filter(Boolean)
+  );
+  let cursor = 0;
+
+  return (incomingSignals || []).map(item => {
+    const normalized = normalizeSignalEntry(item);
+    if (normalized.pin) {
+      usedPins.add(normalized.pin.toUpperCase());
+      return normalized;
+    }
+
+    while (cursor < candidates.length && usedPins.has(String(candidates[cursor]).toUpperCase())) {
+      cursor += 1;
+    }
+    if (cursor >= candidates.length) {
+      return normalized;
+    }
+
+    const selectedPin = String(candidates[cursor] || '').trim();
+    cursor += 1;
+    if (!selectedPin) {
+      return normalized;
+    }
+    usedPins.add(selectedPin.toUpperCase());
+
+    return {
+      ...normalized,
+      pin: selectedPin
+    };
+  });
 }
 
 function parseYamlObjectLine(line, prefix) {
@@ -530,9 +677,18 @@ function renderPeripheralEntry(entry, itemIndent) {
 function ingestHardware(projectRoot, args) {
   const filePath = ensureTemplateFile(projectRoot, 'hw-truth');
   let content = runtime.readText(filePath);
+  const existingSignals = readObjectList(content, 'signals:', '  ');
+  const existingModel = readScalarLine(content, '  model: ');
+  const existingPackage = readScalarLine(content, '  package: ');
+  const model = String(args.mcu || existingModel || '').trim();
+  const packageName = String(args.package || existingPackage || '').trim();
+  const chipProfile = args.autoPin ? findChipProfileByModel(model, packageName) : null;
+  const incomingSignals = args.autoPin
+    ? assignAutoPins(args.signals || [], existingSignals, chipProfile, packageName)
+    : (args.signals || []);
   const nextSignals = mergeSignalEntries(
-    readObjectList(content, 'signals:', '  '),
-    args.signals || []
+    existingSignals,
+    incomingSignals
   );
   const nextPeripherals = mergePeripheralEntries(
     readObjectList(content, 'peripherals:', '  '),

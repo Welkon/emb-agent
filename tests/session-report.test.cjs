@@ -26,9 +26,6 @@ test('session-report writes lightweight session report with next guidance', asyn
     await cli.main(['focus', 'set', 'capture bring-up summary']);
     await cli.main(['question', 'add', 'is pwm divider restored after sleep']);
     await cli.main(['risk', 'add', 'resume path may skip timer reload']);
-    await cli.main(['workspace', 'add', 'Bring-up lane', '--type', 'flow']);
-    await cli.main(['workspace', 'activate', 'bring-up-lane']);
-    await cli.main(['thread', 'add', 'Track PWM divider restore issue']);
     await cli.main(['session-report', 'capture current bring-up handoff']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
@@ -38,14 +35,11 @@ test('session-report writes lightweight session report with next guidance', asyn
     const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
     assert.match(content, /# Emb-Agent Session Report/);
     assert.match(content, /capture current bring-up handoff/);
-    assert.match(content, /Bring-up lane/);
     assert.match(content, /is pwm divider restored after sleep/);
     assert.match(content, /resume path may skip timer reload/);
-    assert.match(content, /active_workspace: bring-up-lane \(Bring-up lane\)/);
-    assert.match(content, /## Workspace/);
-    assert.match(content, /- name: bring-up-lane/);
-    assert.match(content, /next_command: forensics/);
-    assert.match(content, /open: 1/);
+    assert.match(content, /next_command: review/);
+    assert.doesNotMatch(content, /## Workspace/);
+    assert.doesNotMatch(content, /## Threads/);
     assert.equal(cli.loadSession().last_command, 'session-report');
   } finally {
     process.chdir(currentCwd);
@@ -168,7 +162,7 @@ test('session-report records tool recommendation when scan tool is ready', async
   }
 });
 
-test('session-report records latest executor summary and routes failed executor to forensics', async () => {
+test('session-report records latest executor summary and routes failed executor to review', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-executor-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -210,12 +204,12 @@ test('session-report records latest executor summary and routes failed executor 
     assert.match(content, /latest_executor: bench failed, exit=7, risk=high/);
     assert.match(content, /latest_executor_argv: node scripts\/bench-runner\.cjs --case resume/);
     assert.match(content, /latest_executor_stderr_preview: device handshake timeout/);
-    assert.match(content, /next_command: forensics/);
+    assert.match(content, /next_command: review/);
     assert.match(content, /Latest executor: bench failed/);
     assert.equal(reportResult.executor_signal.present, true);
     assert.equal(reportResult.executor_signal.failed, true);
     assert.equal(reportResult.executor_signal.requires_forensics, true);
-    assert.equal(reportResult.executor_signal.recommended_action, 'forensics');
+    assert.equal(reportResult.executor_signal.recommended_action, 'review');
     assert.match(reportResult.executor_signal.summary, /bench failed, exit=7/);
   } finally {
     process.chdir(currentCwd);

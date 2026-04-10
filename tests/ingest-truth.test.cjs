@@ -120,6 +120,89 @@ test('ingest hardware can write structured signals and peripherals into hw truth
   }
 });
 
+test('declare hardware can auto-assign pins from chip profile', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-declare-auto-pin-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main(['--project', tempProject]);
+    const profileRoot = path.join(tempProject, '.emb-agent', 'extensions', 'chips');
+    fs.mkdirSync(path.join(profileRoot, 'profiles'), { recursive: true });
+    fs.writeFileSync(
+      path.join(profileRoot, 'registry.json'),
+      JSON.stringify({ devices: ['vendor-chip'] }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(profileRoot, 'profiles', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'sop8',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        summary: {},
+        capabilities: ['pwm'],
+        packages: [
+          {
+            name: 'sop8',
+            pin_count: 8,
+            pins: [
+              { number: 1, signal: 'VDD', default_function: 'power', notes: [] },
+              { number: 2, signal: 'PA3', label: 'PWM_OUT', default_function: 'pwm-output', mux: ['TM2PWM'], notes: [] },
+              { number: 3, signal: 'PA4', label: 'KEY_IN', default_function: 'gpio-input', mux: ['INT0'], notes: [] }
+            ],
+            notes: []
+          }
+        ],
+        docs: [],
+        related_tools: ['pwm-calc'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    process.chdir(tempProject);
+    cli.main([
+      'declare',
+      'hardware',
+      '--mcu',
+      'vendor-chip',
+      '--package',
+      'sop8',
+      '--signal',
+      'PWM_OUT',
+      '--dir',
+      'output',
+      '--confirmed',
+      'true',
+      '--signal',
+      'KEY_IN',
+      '--dir',
+      'input',
+      '--auto-pin'
+    ]);
+
+    const content = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
+
+    assert.match(content, /- name: "PWM_OUT"/);
+    assert.match(content, /pin: "PA3"/);
+    assert.match(content, /- name: "KEY_IN"/);
+    assert.match(content, /pin: "PA4"/);
+    assert.match(content, /confirmed: true/);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('declare hardware aliases ingest hardware for direct board truth updates', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-declare-hw-'));
   const currentCwd = process.cwd();

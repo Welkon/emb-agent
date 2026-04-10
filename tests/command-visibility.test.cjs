@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
@@ -78,17 +79,6 @@ test('agents list and show resolve source-layout markdown files', async () => {
   assert.match(shown.content, /hardware truth/);
 });
 
-test('skills list and show resolve source-layout internal skills', async () => {
-  const listed = await captureCliJson(['skills', 'list']);
-  const shown = await captureCliJson(['skills', 'show', 'using-emb-agent']);
-
-  assert.ok(Array.isArray(listed));
-  assert.ok(listed.includes('using-emb-agent'));
-  assert.equal(shown.name, 'using-emb-agent');
-  assert.equal(shown.path, 'skills/using-emb-agent/SKILL.md');
-  assert.match(shown.content, /lightest, closest-to-truth path/);
-});
-
 test('commands show resolves source-layout command markdown files', async () => {
   const shown = await captureCliJson(['commands', 'show', 'help']);
 
@@ -105,7 +95,46 @@ test('help markdown stays focused on core workflow commands', async () => {
   assert.match(content, /\$emb-next/);
   assert.match(content, /\$emb-task/);
   assert.doesNotMatch(content, /\$emb-orchestrate/);
+  assert.doesNotMatch(content, /emb-agent\.cjs/);
+  assert.doesNotMatch(content, /<runtime-cli>/);
   assert.match(content, /help advanced/);
+});
+
+test('next run resolves and enters the recommended stage directly', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-next-run-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['question', 'add', 'why irq misses']);
+
+    const next = await captureCliJson(['next']);
+    const run = await captureCliJson(['next', 'run']);
+
+    assert.equal(next.next.command, 'debug');
+    assert.equal(next.workflow_stage.name, 'execution');
+    assert.equal(next.workflow_stage.primary_command, 'debug');
+    assert.equal(run.source, 'next');
+    assert.equal(run.requested_action, 'next');
+    assert.equal(run.resolved_action, 'debug');
+    assert.equal(run.workflow_stage.name, 'execution');
+    assert.equal(run.workflow_stage.primary_command, 'debug');
+    assert.equal(run.current.last_command, 'next run');
+
+    await cli.main(['question', 'clear']);
+    await cli.main(['focus', 'set', 'close loop after irq fix']);
+    await cli.main(['do']);
+    const runAfterDo = await captureCliJson(['next', 'run']);
+    assert.equal(runAfterDo.resolved_action, 'verify');
+    assert.equal(runAfterDo.workflow_stage.name, 'closure');
+  } finally {
+    process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
+  }
 });
 
 test('default help stays concise and advanced help exposes the full surface', async () => {
@@ -115,13 +144,20 @@ test('default help stays concise and advanced help exposes the full surface', as
 
   assert.match(compact, /Core workflow:/);
   assert.match(compact, /declare hardware/);
+  assert.match(compact, /next \[run\]/);
   assert.match(compact, /help advanced/);
   assert.doesNotMatch(compact, /adapter source add/);
   assert.doesNotMatch(compact, /workspace link/);
+  assert.doesNotMatch(compact, /thread /);
+  assert.doesNotMatch(compact, /spec /);
+  assert.doesNotMatch(compact, /skills list/);
 
   assert.match(advanced, /Advanced commands:/);
   assert.match(advanced, /adapter source add/);
-  assert.match(advanced, /workspace link/);
+  assert.doesNotMatch(advanced, /workspace link/);
+  assert.doesNotMatch(advanced, /thread /);
+  assert.doesNotMatch(advanced, /spec /);
+  assert.doesNotMatch(advanced, /skills list/);
   assert.match(advanced, /commands list/);
   assert.equal(advanced, allFlag);
 });

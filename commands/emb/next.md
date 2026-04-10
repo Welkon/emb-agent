@@ -19,3 +19,4 @@ allowed-tools:
 
 - Run `$emb-next` when this command matches the current problem.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
+- For lower decision overhead in runtime CLI, use `next run` to enter the recommended stage directly.

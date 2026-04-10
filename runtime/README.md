@@ -42,8 +42,6 @@ Project state is stored by default at:
   Runtime helper scripts such as `init-project`, `attach-project`, `ingest-doc`, and `adapter-derive`.
 - `templates/`
   Fixed output templates.
-- `skills/`
-  Built-in non-command skills such as the lightweight routing skill `using-emb-agent`.
 - `profiles/`
   Built-in project profiles.
 - `packs/`
@@ -53,11 +51,11 @@ Project state is stored by default at:
 - `chips/`
   Core abstract chip registry.
 - `extensions/`
-  Optional extension root. It is created only when `adapter sync`, `adapter derive`, `template fill`, or the first extension-registry write is executed.
+  Optional extension root. It is created only when `adapter sync`, `adapter derive`, or the first extension-registry write is executed.
 - `state/default-session.json`
-  Default session template.
+  Default session seed state.
 - `config.json`
-  Default runtime configuration.
+  Runtime configuration.
 - `HOST.json`
   Host metadata written during installation and used to resolve the real host/path layout.
 - `VERSION`
@@ -102,4 +100,4 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 - This is installed runtime state, not a project deliverable.
 - Project-specific mutable content should be written back into `./.emb-agent/` and `./docs/` inside the repository.
 - Host-specific differences should live in `HOST.json + runtime-host.cjs` instead of scattered hard-coded references to `~/.codex` or `~/.claude`.
-- User-facing workflow guidance belongs in the main [README](../README.md) and the installed `emb-help` command, not in a duplicated runtime manual here.
+- User-facing workflow guidance belongs in the main [README](../README.md) and runtime help output, not in a duplicated runtime manual here.

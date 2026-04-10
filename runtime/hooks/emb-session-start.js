@@ -81,7 +81,7 @@ function buildUpdateLines() {
 
   if (staleInstall) {
     lines.push(`Detected stale install: hooks=${staleInstall.hook}, runtime=${staleInstall.installed}`);
-    lines.push('Re-run emb-agent install to keep hooks / runtime / skills in sync.');
+    lines.push('Re-run emb-agent install to keep hooks / runtime / agents in sync.');
   }
 
   if (cache && cache.update_available && cache.latest) {
@@ -105,40 +105,6 @@ function runHook(rawInput) {
     process.chdir(projectRoot);
     const resume = cli.buildResumeContext();
     const lines = buildUpdateLines();
-
-    function buildWorkspaceRefreshHint(workspace, carryOver) {
-      if (!workspace || !workspace.name) {
-        return null;
-      }
-
-      const snapshot = workspace.snapshot || {
-        last_files: [],
-        open_questions: [],
-        known_risks: [],
-        refreshed_at: ''
-      };
-      const reasons = [];
-
-      if (!snapshot.refreshed_at) {
-        reasons.push('workspace has not been refreshed yet');
-      }
-      if ((carryOver.last_files || []).length > 0 && (snapshot.last_files || []).length === 0) {
-        reasons.push('recent files have not been captured in the workspace snapshot');
-      }
-      if ((carryOver.open_questions || []).some(item => !(snapshot.open_questions || []).includes(item))) {
-        reasons.push('open questions have not been captured in the workspace snapshot');
-      }
-      if ((carryOver.known_risks || []).some(item => !(snapshot.known_risks || []).includes(item))) {
-        reasons.push('known risks have not been captured in the workspace snapshot');
-      }
-
-      return reasons.length > 0
-        ? {
-            reasons,
-            cli: `node ${RUNTIME_HOST.runtimeRoot}/bin/emb-agent.cjs workspace refresh ${workspace.name}`
-          }
-        : null;
-    }
 
     if (resume.handoff) {
       const nextAction = resume.handoff.next_action || 'run resume first to restore the working state';
@@ -166,23 +132,6 @@ function runHook(rawInput) {
           ? `Re-read the task implement context first: ${implementFiles.join(', ')}`
           : 'Run task context list <name> first to confirm the local context for the current task.'
       );
-    }
-
-    if (!resume.handoff && !resume.task && resume.workspace) {
-      const refreshHint = buildWorkspaceRefreshHint(resume.workspace, resume.carry_over || {});
-      lines.unshift(
-        '## Emb-Agent Session Reminder',
-        '',
-        `Current active workspace: ${resume.workspace.name} (${resume.workspace.title})`,
-        `Type: ${resume.workspace.type} / Status: ${resume.workspace.status}`,
-        `Re-read workspace notes first: ${resume.workspace.notes_path || resume.workspace.path}`,
-        refreshHint
-          ? `Refresh the workspace first: ${refreshHint.cli}`
-          : 'The workspace already has a refresh snapshot, so you can continue on the current work surface'
-      );
-      if (refreshHint) {
-        lines.splice(5, 0, `Reason: ${refreshHint.reasons[0]}`);
-      }
     }
 
     if (lines.length === 0) {

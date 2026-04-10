@@ -78,6 +78,9 @@ test('tool runtime attaches high-risk clarity template for risky flags', () => {
   assert.equal(result.high_risk_clarity.requires_explicit_confirmation, true);
   assert.ok(Array.isArray(result.high_risk_clarity.matched_signals));
   assert.ok(result.high_risk_clarity.matched_signals.length > 0);
+  assert.ok(Array.isArray(result.permission_gates));
+  assert.equal(result.permission_gates[0].kind, 'explicit-confirmation');
+  assert.equal(result.permission_gates[0].state, 'pending');
 });
 
 test('pwm-calc also requires external adapter by default', () => {

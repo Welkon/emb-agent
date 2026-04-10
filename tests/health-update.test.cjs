@@ -174,7 +174,7 @@ test('update reports stale install and cached newer version', () => {
     assert.equal(report.stale_install.hook, '0.0.1');
     assert.equal(report.check.triggered, false);
     assert.equal(report.check.reason, 'skip-env');
-    assert.ok(report.recommendations.some(item => item.includes('hooks / runtime / skills')));
+    assert.ok(report.recommendations.some(item => item.includes('hooks / runtime / agents')));
     assert.equal(cli.loadSession().last_command, 'update');
   } finally {
     if (fs.existsSync(cachePath)) {

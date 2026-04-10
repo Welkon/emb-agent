@@ -144,9 +144,20 @@ function createExecutorCommandHelpers(deps) {
 
     updateSession(current => {
       current.last_command = `executor run ${resolved.name}`;
+      const diagnostics = current.diagnostics || {};
+      const history =
+        diagnostics.executor_history &&
+        typeof diagnostics.executor_history === 'object' &&
+        !Array.isArray(diagnostics.executor_history)
+          ? diagnostics.executor_history
+          : {};
       current.diagnostics = {
-        ...(current.diagnostics || {}),
-        latest_executor: latestExecutor
+        ...diagnostics,
+        latest_executor: latestExecutor,
+        executor_history: {
+          ...history,
+          [resolved.name]: latestExecutor
+        }
       };
     });
 

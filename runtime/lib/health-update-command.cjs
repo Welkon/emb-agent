@@ -875,7 +875,7 @@ function createHealthUpdateCommandHelpers(deps) {
 
     const recommendations = [];
     if (staleInstall) {
-      recommendations.push('Re-run emb-agent install first to align hooks / runtime / skills versions.');
+      recommendations.push('Re-run emb-agent install first to align hooks / runtime / agents versions.');
     }
     if (latestCache && latestCache.update_available && latestCache.latest) {
       recommendations.push('A new version was detected. Read the release notes first, then reinstall runtime.');

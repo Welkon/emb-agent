@@ -26,7 +26,7 @@ The current schema is published in:
 
 - `runtime/schemas/task.schema.json`
 
-The default template is published in:
+The default scaffold source is published in:
 
 - `runtime/templates/task.json.tpl`
 

@@ -8,6 +8,7 @@
 </p>
 
 <p align="center">
+  <a href="./docs/README.md">Docs</a> •
   <a href="./docs/quick-start.md">Quick Start</a> •
   <a href="./docs/platforms.md">Platforms</a> •
   <a href="./docs/scenarios.md">Scenarios</a> •
@@ -35,7 +36,7 @@ Instead of treating firmware work like generic code generation, emb-agent keeps 
 | --- | --- |
 | **Hardware truth in the repo** | Keep MCU model, package, signals, peripherals, constraints, and unknowns in `.emb-agent/hw.yaml` instead of repeating them in chat. |
 | **Direct hardware declaration** | Use `declare hardware` to write MCU, package, pins, and peripherals directly, instead of re-explaining the project every time. |
-| **Short default workflow** | Most users only need `init`, `declare hardware`, and `next` to start. |
+| **Short default workflow** | Most users only need `init`, `declare hardware`, and `next` to start, then follow `scan/plan/do/debug/review/verify` as needed. |
 | **Document-to-truth flow** | Import datasheets or manuals with `ingest doc`, then land useful facts back into truth files. |
 | **Runtime-aware setup** | Install into Codex or Claude Code runtimes without changing the project-side structure. |
 | **Session continuity** | Keep handoffs, state, and visible project artifacts so the next session starts from reality, not from scratch. |
@@ -58,44 +59,13 @@ npx emb-agent --claude --global --developer your-name
 
 `--developer` is required during install. The value is stored in runtime config and reused by `init`, so you do not have to re-enter your developer identity in every project.
 
-### 2. Use the installed runtime CLI inside a repo
+### 2. Use emb-agent inside the session
 
-emb-agent installs a runtime CLI under your host runtime directory.
+You do not need to run any internal CLI path yourself.
 
-- Codex default path: `node ~/.codex/emb-agent/bin/emb-agent.cjs`
-- Claude Code default path: `node ~/.claude/emb-agent/bin/emb-agent.cjs`
+After install, open the project in Codex or Claude Code and use emb-agent directly in the session. The host integration handles runtime invocation for you.
 
-Examples below use:
-
-```bash
-<runtime-cli>
-```
-
-### 3. Follow the default path
-
-```bash
-<runtime-cli> init
-<runtime-cli> declare hardware --mcu SC8F072 --package SOP8
-<runtime-cli> next
-```
-
-This is the shortest useful path for most projects.
-
-If the engineer already knows board signals and peripheral ownership:
-
-```bash
-<runtime-cli> declare hardware \
-  --signal PWM_OUT --pin PA3 --dir output \
-  --peripheral PWM --usage "warm dimming"
-```
-
-If the truth still lives in a PDF:
-
-```bash
-<runtime-cli> ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware
-```
-
-More detailed setup instructions are in [docs/quick-start.md](./docs/quick-start.md).
+The shortest onboarding path and session command flow are documented in [docs/quick-start.md](./docs/quick-start.md) and [commands/emb/help.md](./commands/emb/help.md).
 
 ## Product Model
 
@@ -129,11 +99,7 @@ Longer work is captured under:
 
 Tasks carry ownership, priority, branch context, related files, and lifecycle metadata. See [docs/task-model.md](./docs/task-model.md).
 
-### 3. Workspace
-
-emb-agent also supports longer-lived work surfaces such as workspaces, specs, and threads for larger projects or multi-step investigations. These are advanced layers, not required for onboarding.
-
-### 4. Runtime
+### 3. Runtime
 
 Host-specific runtime state stays outside the repo:
 
@@ -171,23 +137,6 @@ These belong to the installed runtime, not the project repository:
 
 This makes it easier to keep project truth collaborative without losing personal continuity between sessions.
 
-## Typical Flow
-
-For most projects, the shortest useful path is:
-
-```text
-install -> init -> declare hardware -> next
-```
-
-After that:
-
-- Use `scan` when you need code entry points or hardware-related files.
-- Use `plan` when the task needs a small execution plan.
-- Use `do` when you already know the exact change to apply.
-- Use `debug` when the symptom is clear but the root cause is not.
-- Use `verify` when implementation is done and you want explicit closure.
-- Use `pause` and `resume` when the session is getting noisy.
-
 ## Scenarios
 
 emb-agent works best when the user can quickly identify which real-world scenario they are in.
@@ -202,16 +151,16 @@ Examples:
 
 See [docs/scenarios.md](./docs/scenarios.md) for concrete flows.
 
-## Starters And Templates
+## Starters
 
-emb-agent already includes reusable starters and templates for embedded work:
+emb-agent already includes reusable starters for embedded work:
 
 - starter hardware truth for chips such as `SC8F072`, `PMS150G`, and `PMB180B`
 - requirement starters for those same chips
-- project-local chip/tool extension templates
-- task manifest template
+- project-local chip/tool extension scaffolds
+- task manifest scaffold
 
-These live under the runtime template system and are intended to make repeated embedded setup less manual over time.
+These live under the runtime scaffolding layer and are intended to make repeated embedded setup less manual over time.
 
 ## Platforms
 
@@ -231,50 +180,16 @@ The core owns:
 - command flow
 - truth layers
 - session continuity
-- task/workspace structures
+- task structures
 - tool and chip contracts
 
 Vendor-, family-, and chip-specific formulas and routes belong in adapters.
 
 See [docs/adapter-model.md](./docs/adapter-model.md) for the intended separation between core and adapter responsibilities.
 
-## Command Guide
+## Command Reference
 
-### Core commands
-
-- `init`
-  Initialize the current project and generate the truth-layer scaffold.
-- `declare hardware`
-  Write MCU, package, pin usage, and peripheral usage into hardware truth directly.
-- `next`
-  Ask emb-agent for the default next step.
-- `ingest doc`
-  Pull hardware facts out of a PDF or manual when the answer is not known yet.
-- `task`
-  Track implementation work when the task is no longer one-shot.
-
-These are the only commands a new user usually needs at the start.
-
-### Workflow commands
-
-- `scan`
-  Locate entry points, hardware truth, docs, and relevant files.
-- `plan`
-  Build a short task plan.
-- `do`
-  Apply a focused implementation or doc change.
-- `debug`
-  Narrow down root causes.
-- `verify`
-  Close work with checks and evidence.
-- `pause` / `resume`
-  Preserve context across long or interrupted sessions.
-
-### Advanced commands
-
-Commands such as `adapter`, `dispatch`, `orchestrate`, `workspace`, `thread`, `spec`, `manager`, `settings`, and `executor` exist for advanced flows, but they are not part of the default onboarding path.
-
-See [commands/emb/help.md](./commands/emb/help.md) for the full public command set.
+README stays human-facing. Command behavior and agent-oriented execution guidance live in [commands/emb/help.md](./commands/emb/help.md) and runtime help output (`help`, `help advanced`).
 
 ## FAQ
 

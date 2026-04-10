@@ -1,5 +1,7 @@
 'use strict';
 
+const qualityGateHelpers = require('./quality-gates.cjs');
+
 function createNoteReportHelpers(deps) {
   const {
     fs,
@@ -14,7 +16,6 @@ function createNoteReportHelpers(deps) {
     resolveProjectRoot,
     resolveSession,
     buildNextContext,
-    getTemplateConfig,
     updateSession
   } = deps;
 
@@ -131,7 +132,7 @@ function createNoteReportHelpers(deps) {
       return { created: false, path: absolutePath, template: '' };
     }
 
-    const templates = getTemplateConfig();
+    const templates = templateCli.loadTemplates();
     const templateEntry = Object.entries(templates).find(([, meta]) => meta.default_output === targetPath);
 
     if (templateEntry) {
@@ -584,6 +585,77 @@ function createNoteReportHelpers(deps) {
     };
   }
 
+  function parseVerifySignoffArgs(tokens) {
+    const name = String(tokens[0] || '').trim();
+    if (!name) {
+      throw new Error('Missing signoff name');
+    }
+
+    return {
+      name,
+      note: tokens.slice(1).join(' ').trim()
+    };
+  }
+
+  function ensureKnownRequiredSignoff(resolved, name) {
+    const requiredSignoffs = qualityGateHelpers.getRequiredSignoffs(resolved ? resolved.project_config : null);
+    if (requiredSignoffs.length > 0 && !requiredSignoffs.includes(name)) {
+      throw new Error(`Unknown required signoff: ${name}`);
+    }
+  }
+
+  function updateHumanSignoff(name, status, note) {
+    const resolved = resolveSession();
+    ensureKnownRequiredSignoff(resolved, name);
+    const timestamp = new Date().toISOString();
+
+    const session = updateSession(current => {
+      const diagnostics = current.diagnostics || {};
+      const humanSignoffs =
+        diagnostics.human_signoffs &&
+        typeof diagnostics.human_signoffs === 'object' &&
+        !Array.isArray(diagnostics.human_signoffs)
+          ? diagnostics.human_signoffs
+          : {};
+
+      current.last_command = `verify ${status === 'confirmed' ? 'confirm' : 'reject'} ${name}`;
+      current.diagnostics = {
+        ...diagnostics,
+        human_signoffs: {
+          ...humanSignoffs,
+          [name]: {
+            name,
+            status,
+            confirmed_at: timestamp,
+            note: note || ''
+          }
+        }
+      };
+    });
+    const qualityGates = qualityGateHelpers.evaluateQualityGates(
+      resolved ? resolved.project_config : null,
+      session.diagnostics || {}
+    );
+
+    return {
+      signoff: name,
+      status,
+      confirmed_at: timestamp,
+      note: note || '',
+      quality_gates: qualityGates
+    };
+  }
+
+  function confirmVerifySignoff(tokens) {
+    const input = parseVerifySignoffArgs(tokens);
+    return updateHumanSignoff(input.name, 'confirmed', input.note);
+  }
+
+  function rejectVerifySignoff(tokens) {
+    const input = parseVerifySignoffArgs(tokens);
+    return updateHumanSignoff(input.name, 'rejected', input.note);
+  }
+
   function buildScanEntry(scanOutput, scanInput) {
     const timestamp = new Date().toISOString();
     const lines = [
@@ -862,6 +934,28 @@ function createNoteReportHelpers(deps) {
       }
     }
 
+    if (verifyOutput.quality_gates) {
+      lines.push(`- Quality gates: ${verifyOutput.quality_gates.gate_status || '-'}`);
+      if (verifyOutput.quality_gates.status_summary) {
+        lines.push(`- Quality gate summary: ${verifyOutput.quality_gates.status_summary}`);
+      }
+      if ((verifyOutput.quality_gates.required_executors || []).length > 0) {
+        lines.push(`- Required executors: ${(verifyOutput.quality_gates.required_executors || []).join(', ')}`);
+      }
+      if ((verifyOutput.quality_gates.required_signoffs || []).length > 0) {
+        lines.push(`- Required signoffs: ${(verifyOutput.quality_gates.required_signoffs || []).join(', ')}`);
+      }
+      if ((verifyOutput.quality_gates.confirmed_signoffs || []).length > 0) {
+        lines.push(`- Confirmed signoffs: ${(verifyOutput.quality_gates.confirmed_signoffs || []).join(', ')}`);
+      }
+      if ((verifyOutput.quality_gates.pending_signoffs || []).length > 0) {
+        lines.push(`- Pending signoffs: ${(verifyOutput.quality_gates.pending_signoffs || []).join(', ')}`);
+      }
+      if ((verifyOutput.quality_gates.rejected_signoffs || []).length > 0) {
+        lines.push(`- Rejected signoffs: ${(verifyOutput.quality_gates.rejected_signoffs || []).join(', ')}`);
+      }
+    }
+
     lines.push('- Checklist:');
     for (const item of runtime.unique([...(verifyInput.checks || []), ...(verifyOutput.checklist || [])])) {
       lines.push(`  - ${item}`);
@@ -1029,7 +1123,10 @@ function createNoteReportHelpers(deps) {
     syncRequirementsFromPlan,
     savePlanReport,
     parseVerifySaveArgs,
+    parseVerifySignoffArgs,
     buildVerifyEntry,
+    confirmVerifySignoff,
+    rejectVerifySignoff,
     saveVerifyReport,
     addNoteEntry
   };
