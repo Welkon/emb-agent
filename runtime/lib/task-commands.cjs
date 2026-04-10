@@ -142,6 +142,15 @@ function createTaskCommandHelpers(deps) {
     return path.join(getTaskDir(name), `${channel}.jsonl`);
   }
 
+  function getCurrentTaskPointerPath() {
+    return path.join(getProjectExtDir(), '.current-task');
+  }
+
+  function syncCurrentTaskPointer(name) {
+    const normalized = String(name || '').trim();
+    fs.writeFileSync(getCurrentTaskPointerPath(), normalized ? `${normalized}\n` : '', 'utf8');
+  }
+
   function ensureContextChannel(channel) {
     if (!CONTEXT_CHANNELS.includes(channel)) {
       throw new Error(`Unknown task context channel: ${channel}`);
@@ -334,20 +343,6 @@ function createTaskCommandHelpers(deps) {
       baseEntries.push({
         path: 'docs/DEBUG-NOTES.md',
         reason: 'Debug notes'
-      });
-    }
-
-    if (session.active_thread && session.active_thread.path) {
-      baseEntries.push({
-        path: session.active_thread.path,
-        reason: 'Current active thread'
-      });
-    }
-
-    if (session.active_workspace && session.active_workspace.path) {
-      baseEntries.push({
-        path: session.active_workspace.path,
-        reason: 'Current active workspace'
       });
     }
 
@@ -759,6 +754,7 @@ function createTaskCommandHelpers(deps) {
         updated_at: new Date().toISOString()
       };
     });
+    syncCurrentTaskPointer(task.name);
 
     return {
       activated: true,
@@ -770,6 +766,8 @@ function createTaskCommandHelpers(deps) {
     const note = rest.join(' ').trim();
     const manifestPath = getTaskManifestPath(name);
     const manifest = runtime.readJson(manifestPath);
+    const session = loadSession();
+    const shouldClearActiveTask = Boolean(session.active_task && session.active_task.name === name);
     writeTask(name, updateTaskTimestamps({
       ...manifest,
       status: 'completed',
@@ -791,6 +789,9 @@ function createTaskCommandHelpers(deps) {
         };
       }
     });
+    if (shouldClearActiveTask) {
+      syncCurrentTaskPointer('');
+    }
 
     return {
       resolved: true,

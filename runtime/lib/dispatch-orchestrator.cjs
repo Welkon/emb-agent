@@ -1,6 +1,7 @@
 'use strict';
 
 const runtimeHostHelpers = require('./runtime-host.cjs');
+const permissionGateHelpers = require('./permission-gates.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
@@ -20,7 +21,7 @@ function createDispatchHelpers(deps) {
   function getDiagnostics(session) {
     return session && session.diagnostics
       ? session.diagnostics
-      : { latest_forensics: {}, latest_executor: {} };
+      : { latest_forensics: {}, latest_executor: {}, executor_history: {}, human_signoffs: {} };
   }
 
   function buildExecutorSignal(latestExecutor) {
@@ -35,42 +36,10 @@ function createDispatchHelpers(deps) {
       exit_code: signal ? signal.exit_code : null,
       failed,
       requires_forensics: failed,
-      recommended_action: failed ? 'forensics' : '',
+      recommended_action: failed ? 'review' : '',
       summary: signal
         ? `${signal.name} ${signal.status || 'unknown'}${signal.exit_code === null ? '' : `, exit=${signal.exit_code}`}`
         : ''
-    };
-  }
-
-  function buildWorkspaceSnapshot(workspace) {
-    if (!workspace || !workspace.name) {
-      return null;
-    }
-
-    return {
-      name: workspace.name || '',
-      title: workspace.title || '',
-      type: workspace.type || '',
-      status: workspace.status || '',
-      path: workspace.path || '',
-      notes_path: workspace.notes_path || workspace.path || '',
-      manifest_path: workspace.manifest_path || '',
-      snapshot: workspace.snapshot || {
-        last_files: [],
-        open_questions: [],
-        known_risks: [],
-        refreshed_at: ''
-      },
-      links: workspace.links || {
-        tasks: [],
-        specs: [],
-        threads: []
-      },
-      link_counts: workspace.link_counts || {
-        tasks: Array.isArray(workspace.links && workspace.links.tasks) ? workspace.links.tasks.length : 0,
-        specs: Array.isArray(workspace.links && workspace.links.specs) ? workspace.links.specs.length : 0,
-        threads: Array.isArray(workspace.links && workspace.links.threads) ? workspace.links.threads.length : 0
-      }
     };
   }
 
@@ -94,15 +63,16 @@ function createDispatchHelpers(deps) {
           requested_action: 'next',
           resolved_action: resolvedAction,
           reason: next.next.reason,
-          skill: archDispatch.skill,
           cli: archDispatch.cli,
           dispatch_ready: archDispatch.dispatch_ready,
           agent_execution: archDispatch.agent_execution,
+          workflow_stage: next.workflow_stage || null,
           context_hygiene: next.context_hygiene,
           next_actions: next.next_actions,
           current: next.current,
           diagnostics,
           executor_signal: executorSignal,
+          permission_gates: archDispatch.permission_gates || [],
           handoff: next.handoff,
           action_context: archDispatch.action_context
         };
@@ -118,17 +88,17 @@ function createDispatchHelpers(deps) {
         requested_action: 'next',
         resolved_action: resolvedAction,
         reason: next.next.reason,
-        skill: next.next.skill,
         cli: next.next.cli,
         dispatch_ready: Boolean(output.agent_execution && output.agent_execution.available),
         agent_execution: output.agent_execution || null,
+        workflow_stage: next.workflow_stage || null,
         context_hygiene: next.context_hygiene,
         next_actions: next.next_actions,
         current: next.current,
         diagnostics,
         executor_signal: executorSignal,
         health: next.health || null,
-        workspace: buildWorkspaceSnapshot(next.workspace),
+        permission_gates: next.permission_gates || output.permission_gates || [],
         handoff: next.handoff,
         tool_execution: toolExecution,
         action_context: output
@@ -144,7 +114,6 @@ function createDispatchHelpers(deps) {
 
     const output = buildActionOutput(action);
     const resolved = resolveSession();
-    const workspace = buildWorkspaceSnapshot(resolved.session.active_workspace);
     const diagnostics = getDiagnostics(resolved.session);
     const executorSignal = buildExecutorSignal(diagnostics.latest_executor);
 
@@ -153,14 +122,13 @@ function createDispatchHelpers(deps) {
       requested_action: action,
       resolved_action: action,
       reason: `direct dispatch for ${action}`,
-      skill: `$emb-${action}`,
       cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [action]),
       dispatch_ready: Boolean(output.agent_execution && output.agent_execution.available),
       agent_execution: output.agent_execution || null,
       context_hygiene: output.context_hygiene || null,
       diagnostics,
       executor_signal: executorSignal,
-      workspace,
+      permission_gates: output.permission_gates || [],
       tool_execution: null,
       action_context: output
     };
@@ -245,7 +213,7 @@ function createDispatchHelpers(deps) {
           agent: primary.agent,
           when: primary.when || 'when the current action needs the primary agent',
           start_when: primary.start_when || 'Start immediately',
-          preferred_cli: dispatch.skill,
+          preferred_cli: dispatch.cli,
           fallback: primary.spawn_fallback || null,
           outcome: primary.expected_output || []
         });
@@ -317,8 +285,7 @@ function createDispatchHelpers(deps) {
           resume_source: handoff ? 'handoff' : 'session',
           last_files: resolved.session.last_files || [],
           open_questions: resolved.session.open_questions || [],
-          known_risks: resolved.session.known_risks || [],
-          active_workspace: buildWorkspaceSnapshot(resolved.session.active_workspace)
+          known_risks: resolved.session.known_risks || []
         };
 
     return enrichWithToolSuggestions({
@@ -328,7 +295,6 @@ function createDispatchHelpers(deps) {
       resolved_action: dispatch.resolved_action,
       reason: dispatch.reason,
       current,
-      workspace: dispatch.workspace || buildWorkspaceSnapshot(resolved.session.active_workspace),
       handoff: dispatch.handoff || (handoff
         ? {
             next_action: handoff.next_action,
@@ -342,7 +308,6 @@ function createDispatchHelpers(deps) {
         style: 'action-based',
         orchestration_weight: 'light',
         suggested_flow: guidance.suggested_flow,
-        next_skill: dispatch.skill,
         next_cli: dispatch.cli,
         strategy: toolExecution && toolExecution.recommended ? 'inline-tool-first' : strategy,
         tool_first: Boolean(toolExecution && toolExecution.recommended),
@@ -355,6 +320,7 @@ function createDispatchHelpers(deps) {
       },
       diagnostics: dispatch.diagnostics || getDiagnostics(resolved.session),
       executor_signal: dispatch.executor_signal || buildExecutorSignal(getDiagnostics(resolved.session).latest_executor),
+      permission_gates: dispatch.permission_gates || permissionGateHelpers.buildPermissionGates(dispatch.action_context || {}),
       orchestrator_steps: buildOrchestratorSteps(dispatch),
       context_hygiene: dispatch.context_hygiene || null,
       next_actions: dispatch.next_actions || guidance.next_actions,

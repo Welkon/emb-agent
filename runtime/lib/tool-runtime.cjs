@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const runtime = require('./runtime.cjs');
 const toolCatalog = require('./tool-catalog.cjs');
+const permissionGateHelpers = require('./permission-gates.cjs');
 
 const HIGH_RISK_KEYWORDS = [
   'flash',
@@ -164,9 +165,25 @@ function attachHighRiskClarity(result, toolName, tokens) {
     return result;
   }
 
-  return {
+  const next = {
     ...result,
     high_risk_clarity: buildHighRiskClarity(toolName, signals)
+  };
+
+  return {
+    ...next,
+    permission_gates: permissionGateHelpers.buildPermissionGates(next)
+  };
+}
+
+function attachPermissionGates(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return result;
+  }
+
+  return {
+    ...result,
+    permission_gates: permissionGateHelpers.buildPermissionGates(result)
   };
 }
 
@@ -256,7 +273,7 @@ function runTool(rootDir, toolName, tokens) {
     parseLongOptions
   });
 
-  return attachHighRiskClarity(result, name, tokenList);
+  return attachPermissionGates(attachHighRiskClarity(result, name, tokenList));
 }
 
 module.exports = {

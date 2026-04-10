@@ -178,11 +178,6 @@ test('task commands create activate manage context and resolve lightweight tasks
         }
       }
     );
-    await cli.main(['thread', 'add', 'Track TM2 PWM edge cases']);
-    const threadList = await captureCliJson(['thread', 'list']);
-    const threadName = threadList.threads[0].name;
-    await cli.main(['thread', 'resume', threadName]);
-
     const created = await captureCliJson([
       'task',
       'add',
@@ -226,13 +221,16 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.ok(created.task.bindings.tools.some(item => item.tool === 'timer-calc'));
     assert.ok(created.task.context.implement.some(item => item.path === '.emb-agent/hw.yaml'));
     assert.ok(created.task.context.implement.some(item => item.path === 'docs/HARDWARE-LOGIC.md'));
-    assert.ok(created.task.context.implement.some(item => item.path.includes('threads/')));
     assert.ok(created.task.context.implement.some(item => item.path.includes('cache/docs/')));
 
     const activated = await captureCliJson(['task', 'activate', taskName]);
     assert.equal(activated.activated, true);
     assert.equal(cli.loadSession().active_task.name, taskName);
     assert.equal(cli.loadSession().active_task.status, 'in_progress');
+    assert.equal(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8').trim(),
+      taskName
+    );
     assert.ok(cli.loadSession().last_files.some(item => item.includes('cache/docs/')));
 
     const updatedContext = await captureCliJson([
@@ -260,6 +258,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(resolved.task.status, 'completed');
     assert.equal(resolved.task.notes, 'adapter merged');
     assert.equal(cli.loadSession().active_task.name, '');
+    assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
   } finally {
     process.chdir(currentCwd);
   }

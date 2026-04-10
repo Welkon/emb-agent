@@ -95,6 +95,7 @@ test('baremetal sensor profile routes scan plan debug do to lightweight agents',
   assert.equal(verify.scheduler.primary_agent, 'hw-scout');
   assert.ok(verify.checklist.some(item => item.includes('register')));
   assert.ok(verify.result_template.some(item => item.includes('PASS')));
+  assert.equal(verify.quality_gates.gate_status, 'not-configured');
   assert.equal(debug.scheduler.agent_execution.primary_agent, 'emb-bug-hunter');
   assert.equal(action.chosen_agent, 'fw-doer');
   assert.ok(action.prerequisites.includes('Add a minimal scan first to confirm the real change point'));
@@ -133,9 +134,65 @@ test('rtos connected profile routes review note to system and release aware outp
   assert.equal(verify.scheduler.primary_agent, 'release-checker');
   assert.ok(verify.checklist.some(item => item.includes('rollback paths')));
   assert.ok(verify.verification_focus.includes('connectivity-recovery'));
+  assert.equal(verify.quality_gates.gate_status, 'not-configured');
   assert.ok(note.target_docs.includes('docs/CONNECTIVITY.md'));
   assert.ok(note.target_docs.includes('docs/RELEASE-NOTES.md'));
   assert.equal(note.chosen_agent, 'fw-doer');
+});
+
+test('verify output summarizes configured quality gates', () => {
+  const resolved = buildResolved('baremetal-8bit', ['sensor-node'], {
+    diagnostics: {
+      latest_executor: {
+        name: 'bench',
+        status: 'failed',
+        exit_code: 2
+      },
+      executor_history: {
+        build: {
+          name: 'build',
+          status: 'ok',
+          exit_code: 0
+        },
+        bench: {
+          name: 'bench',
+          status: 'failed',
+          exit_code: 2
+        }
+      }
+    }
+  });
+
+  resolved.project_config = {
+    quality_gates: {
+      required_executors: ['build', 'bench', 'flash'],
+      required_signoffs: ['board-bench', 'thermal-check']
+    }
+  };
+  resolved.session.diagnostics.human_signoffs = {
+    'board-bench': {
+      name: 'board-bench',
+      status: 'confirmed',
+      confirmed_at: '2026-04-09T10:00:00.000Z',
+      note: 'engineer confirmed on board'
+    }
+  };
+
+  const verify = scheduler.buildVerifyOutput(resolved);
+
+  assert.equal(verify.quality_gates.gate_status, 'failed');
+  assert.match(verify.quality_gates.status_summary, /Executor gates failed: bench/);
+  assert.deepEqual(verify.quality_gates.passed_gates, ['build']);
+  assert.deepEqual(verify.quality_gates.failed_gates, ['bench']);
+  assert.deepEqual(verify.quality_gates.pending_gates, ['flash']);
+  assert.deepEqual(verify.quality_gates.confirmed_signoffs, ['board-bench']);
+  assert.deepEqual(verify.quality_gates.pending_signoffs, ['thermal-check']);
+  assert.ok(verify.quality_gates.recommended_runs.includes('executor run bench'));
+  assert.ok(verify.quality_gates.recommended_runs.includes('executor run flash'));
+  assert.ok(verify.quality_gates.recommended_signoffs.includes('verify confirm thermal-check'));
+  assert.ok(verify.checklist.some(item => item.includes('Quality gate executor "build"')));
+  assert.ok(verify.checklist.some(item => item.includes('Human signoff "board-bench"')));
+  assert.match(verify.closure_status, /Executor gates failed: bench/);
 });
 
 test('preferences can switch truth source ordering and strict verification', () => {

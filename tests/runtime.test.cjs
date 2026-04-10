@@ -57,21 +57,6 @@ test('normalizeSession fills metadata and trims arrays', () => {
   assert.equal(session.last_files.length, 12);
   assert.deepEqual(session.open_questions, ['q1']);
   assert.deepEqual(session.known_risks, ['r1']);
-  assert.deepEqual(session.active_workspace, {
-    name: '',
-    title: '',
-    type: '',
-    status: '',
-    path: '',
-    updated_at: ''
-  });
-  assert.deepEqual(session.active_thread, {
-    name: '',
-    title: '',
-    status: '',
-    path: '',
-    updated_at: ''
-  });
   assert.deepEqual(session.active_task, {
     name: '',
     title: '',
@@ -83,7 +68,6 @@ test('normalizeSession fills metadata and trims arrays', () => {
     latest_forensics: {
       report_file: '',
       problem: '',
-      linked_thread: '',
       highest_severity: '',
       generated_at: ''
     },
@@ -99,7 +83,9 @@ test('normalizeSession fills metadata and trims arrays', () => {
       evidence_hint: [],
       stdout_preview: '',
       stderr_preview: ''
-    }
+    },
+    executor_history: {},
+    human_signoffs: {}
   });
   assert.equal(session.last_command, '');
   assert.equal(session.paused_at, '');
@@ -163,8 +149,7 @@ test('project layout migrates legacy emb-agent directory into .emb-agent', () =>
   assert.equal(fs.existsSync(path.join(currentDir, 'project.json')), true);
   assert.equal(fs.existsSync(path.join(currentDir, 'hw.yaml')), true);
   assert.equal(fs.existsSync(path.join(currentDir, 'cache', 'docs')), true);
-  assert.equal(fs.existsSync(path.join(currentDir, 'specs')), true);
-  assert.equal(fs.existsSync(path.join(currentDir, 'workspace')), true);
+  assert.equal(fs.existsSync(path.join(currentDir, 'tasks')), true);
   assert.equal(fs.existsSync(legacyDir), false);
 });
 
@@ -191,6 +176,10 @@ test('project config defaults can override runtime defaults', () => {
             risk: 'normal',
             evidence_hint: ['docs/VERIFICATION.md']
           }
+        },
+        quality_gates: {
+          required_executors: ['build', 'bench', 'build'],
+          required_signoffs: ['board-bench', 'thermal-check', 'board-bench']
         },
         developer: {
           name: 'welkon',
@@ -221,6 +210,8 @@ test('project config defaults can override runtime defaults', () => {
   assert.deepEqual(projectConfig.executors.build.argv, ['make', '-C', 'firmware']);
   assert.equal(projectConfig.executors.build.allow_extra_args, true);
   assert.equal(projectConfig.executors.build.env.BUILD_MODE, 'release');
+  assert.deepEqual(projectConfig.quality_gates.required_executors, ['build', 'bench']);
+  assert.deepEqual(projectConfig.quality_gates.required_signoffs, ['board-bench', 'thermal-check']);
   assert.deepEqual(projectConfig.developer, { name: 'welkon', runtime: 'codex' });
   assert.deepEqual(projectConfig.arch_review.trigger_patterns, ['custom arch gate']);
   assert.equal(session.project_profile, 'rtos-iot');
@@ -263,6 +254,30 @@ test('project config rejects malformed executors', () => {
       config
     ),
     /Invalid executor name/
+  );
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        quality_gates: {
+          required_executors: 'build'
+        }
+      },
+      config
+    ),
+    /quality_gates\.required_executors/
+  );
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        quality_gates: {
+          required_signoffs: 'board-bench'
+        }
+      },
+      config
+    ),
+    /quality_gates\.required_signoffs/
   );
 });
 
@@ -361,12 +376,7 @@ test('project config accepts mineru auto mode settings', () => {
   assert.equal(projectConfig.integrations.mineru.auto_api_file_size_kb, 2048);
 });
 
-test('validators reject malformed template/profile/pack data', () => {
-  assert.throws(
-    () => runtime.validateTemplateConfig({ broken: { description: 'x' } }),
-    /source/
-  );
-
+test('validators reject malformed profile/pack data', () => {
   assert.throws(
     () => runtime.validateProfile('broken', { name: 'broken', runtime_model: 'x' }),
     /concurrency_model/
@@ -383,6 +393,7 @@ test('project state paths and handoff validator support lightweight handoff', ()
   const paths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), '/tmp/example-proj', config);
 
   assert.ok(paths.handoffPath.endsWith('.handoff.json'));
+  assert.ok(paths.contextSummaryPath.endsWith('.context-summary.json'));
 
   const handoff = runtime.validateHandoff(
     {
@@ -399,4 +410,36 @@ test('project state paths and handoff validator support lightweight handoff', ()
   assert.equal(handoff.status, 'paused');
   assert.deepEqual(handoff.packs, ['sensor-node']);
   assert.deepEqual(handoff.last_files, ['main.c']);
+
+  const contextSummary = runtime.validateContextSummary(
+    {
+      version: '1.0',
+      generated_at: '2026-04-09T12:00:00.000Z',
+      source: 'pause',
+      profile: 'baremetal-8bit',
+      packs: ['sensor-node'],
+      next_action: 'resume timer drift',
+      last_files: ['main.c'],
+      open_questions: ['q1'],
+      known_risks: ['r1'],
+      active_task: {
+        name: 'timer-drift',
+        title: 'Investigate timer drift',
+        status: 'active',
+        path: '.emb-agent/tasks/timer-drift.json'
+      },
+      diagnostics: {
+        latest_executor: {
+          name: 'bench',
+          status: 'failed',
+          exit_code: 7
+        }
+      }
+    },
+    config
+  );
+
+  assert.equal(contextSummary.source, 'pause');
+  assert.equal(contextSummary.active_task.name, 'timer-drift');
+  assert.equal(contextSummary.diagnostics.latest_executor.exit_code, 7);
 });

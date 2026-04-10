@@ -128,6 +128,8 @@ test('executor commands list show and run project-defined entrypoints', async ()
     assert.deepEqual(savedSession.diagnostics.latest_executor.evidence_hint, ['docs/VERIFICATION.md']);
     assert.equal(savedSession.diagnostics.latest_executor.cwd, '.');
     assert.equal(savedSession.diagnostics.latest_executor.stderr_preview, '');
+    assert.equal(savedSession.diagnostics.executor_history.bench.name, 'bench');
+    assert.equal(savedSession.diagnostics.executor_history.bench.status, 'ok');
 
     const payload = JSON.parse(runResult.stdout);
     assert.equal(payload.command, process.execPath);

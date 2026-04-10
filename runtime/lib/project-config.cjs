@@ -560,6 +560,10 @@ function createProjectConfigHelpers(deps) {
         active_packs: resolved.session.active_packs,
         adapter_sources: [],
         executors: {},
+        quality_gates: {
+          required_executors: [],
+          required_signoffs: []
+        },
         preferences: getPreferences(resolved.session),
         integrations: {},
         arch_review: {}

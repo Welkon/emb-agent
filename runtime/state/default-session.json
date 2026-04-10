@@ -14,21 +14,6 @@
   "last_files": [],
   "open_questions": [],
   "known_risks": [],
-  "active_workspace": {
-    "name": "",
-    "title": "",
-    "type": "",
-    "status": "",
-    "path": "",
-    "updated_at": ""
-  },
-  "active_thread": {
-    "name": "",
-    "title": "",
-    "status": "",
-    "path": "",
-    "updated_at": ""
-  },
   "active_task": {
     "name": "",
     "title": "",
@@ -40,7 +25,6 @@
     "latest_forensics": {
       "report_file": "",
       "problem": "",
-      "linked_thread": "",
       "highest_severity": "",
       "generated_at": ""
     }

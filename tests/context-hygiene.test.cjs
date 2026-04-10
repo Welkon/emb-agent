@@ -49,10 +49,25 @@ test('context hygiene stays stable for light sessions and suggests clear after h
     assert.equal(resumed.context_hygiene.handoff_ready, true);
     assert.equal(resumed.context_hygiene.clear_hint, 'clear -> resume');
     assert.match(resumed.context_hygiene.recommendation, /a handoff exists/);
+    assert.equal(resumed.memory_summary.source, 'pause');
+    assert.equal(resumed.memory_summary.next_action, 'capture heavy session before clear');
+    assert.equal(resumed.memory_summary.last_files.length, 5);
+    assert.equal(resumed.memory_summary.open_questions[0], 'timer reload margin enough?');
+
+    const status = cli.buildStatus();
+    assert.equal(status.memory_summary.source, 'pause');
+    assert.equal(status.memory_summary.known_risks[0], 'wakeup edge may race with debounce');
+
+    const paused = cli.buildNextContext();
+    assert.equal(paused.memory_summary.source, 'pause');
+    assert.ok(paused.next_actions.some(item => item.includes('Compact summary')));
 
     const plan = cli.buildActionOutput('plan');
     assert.equal(plan.context_hygiene.level, 'suggest-clearing');
     assert.equal(plan.context_hygiene.resume_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs resume');
+
+    cli.main(['pause', 'clear']);
+    assert.equal(cli.buildResumeContext().memory_summary, null);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

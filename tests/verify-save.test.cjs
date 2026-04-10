@@ -24,6 +24,14 @@ test('verify save creates verification report and appends structured entry', () 
     process.chdir(tempProject);
     cli.main(['init']);
     cli.main(['focus', 'set', 'validate wakeup and low-voltage behavior']);
+    cli.main([
+      'project',
+      'set',
+      '--field',
+      'quality_gates.required_signoffs',
+      '--value',
+      JSON.stringify(['board-bench'])
+    ]);
     fs.mkdirSync(path.join(tempProject, 'src'), { recursive: true });
     fs.writeFileSync(path.join(tempProject, 'src', 'power.c'), 'void power(void) {}\n', 'utf8');
     cli.main(['last-files', 'add', 'src/power.c']);
@@ -42,6 +50,14 @@ test('verify save creates verification report and appends structured entry', () 
       evidence_hint: ['docs/VERIFICATION.md'],
       stdout_preview: 'bench pass wakeup path',
       stderr_preview: ''
+    };
+    session.diagnostics.human_signoffs = {
+      'board-bench': {
+        name: 'board-bench',
+        status: 'confirmed',
+        confirmed_at: '2026-04-09T11:05:00.000Z',
+        note: 'engineer confirmed on real board'
+      }
     };
     runtime.writeJson(statePaths.sessionPath, session);
     cli.main([
@@ -76,6 +92,10 @@ test('verify save creates verification report and appends structured entry', () 
     assert.match(content, /Latest executor argv: node scripts\/bench-runner\.cjs --case wakeup/);
     assert.match(content, /Latest executor evidence hint: docs\/VERIFICATION\.md/);
     assert.match(content, /Latest executor stdout preview: bench pass wakeup path/);
+    assert.match(content, /Quality gates: pending|Quality gates: pass/);
+    assert.match(content, /Quality gate summary:/);
+    assert.match(content, /Required signoffs: board-bench/);
+    assert.match(content, /Confirmed signoffs: board-bench/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

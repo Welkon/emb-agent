@@ -10,11 +10,8 @@ const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const runtimeHostHelpers = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
-const TEMPLATES_DIR = path.join(ROOT, 'templates');
+const { TEMPLATE_CONFIG, TEMPLATES_DIR } = require(path.join(ROOT, 'lib', 'template-registry.cjs'));
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
-const TEMPLATE_CONFIG = runtime.validateTemplateConfig(
-  runtime.readJson(path.join(TEMPLATES_DIR, 'config.json'))
-);
 
 function usage() {
   process.stdout.write(
@@ -155,7 +152,7 @@ function buildTemplateContext(projectRoot, projectConfig) {
     TARGET_NAME: '',
     PROFILE: projectConfig.project_profile,
     PACKS: projectConfig.active_packs.join(','),
-    VERSION: '',
+    VERSION: String(RUNTIME_CONFIG.session_version || 1),
     SLUG: 'new-item',
     RUNTIME_MODEL: 'main_loop_plus_isr',
     CONCURRENCY_MODEL: 'interrupt_shared_state',
@@ -229,6 +226,10 @@ function buildProjectConfig(args) {
       active_packs,
       adapter_sources: [],
       executors: {},
+      quality_gates: {
+        required_executors: [],
+        required_signoffs: []
+      },
       developer: {
         name: args.user || (RUNTIME_CONFIG.developer && RUNTIME_CONFIG.developer.name) || '',
         runtime: args.runtime || (RUNTIME_CONFIG.developer && RUNTIME_CONFIG.developer.runtime) || ''
@@ -324,6 +325,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   const projectConfigDir = runtime.initProjectLayout(projectRoot);
   const projectConfigPath = path.join(projectConfigDir, 'project.json');
   const developerPath = path.join(projectConfigDir, '.developer');
+  const currentTaskPath = path.join(projectConfigDir, '.current-task');
   const initOptions = options || {};
   const shouldUpdateDeveloper = Boolean(initOptions.userSet || initOptions.runtimeSet);
 
@@ -389,6 +391,18 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
 
   ensureGitignoreRule(projectRoot, runtime.getProjectAssetRelativePath('.developer'));
 
+  const currentTaskExisted = fs.existsSync(currentTaskPath);
+  if (!currentTaskExisted || force) {
+    fs.writeFileSync(currentTaskPath, '', 'utf8');
+    if (currentTaskExisted) {
+      updated.push(path.relative(projectRoot, currentTaskPath));
+    } else {
+      created.push(path.relative(projectRoot, currentTaskPath));
+    }
+  } else {
+    reused.push(path.relative(projectRoot, currentTaskPath));
+  }
+
   const context = buildTemplateContext(projectRoot, effectiveProjectConfig);
   const docsPlan = buildDocsPlan(effectiveProjectConfig);
   const truthPlan = buildTruthPlan();
@@ -444,6 +458,7 @@ module.exports = {
   buildTruthPlan,
   buildProjectConfig,
   buildTemplateContext,
+  applyTemplate,
   scaffoldProject,
   main,
   parseArgs

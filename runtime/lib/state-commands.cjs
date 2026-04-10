@@ -10,14 +10,12 @@ function createStateCommandHelpers(deps) {
     PACKS_DIR,
     AGENTS_DIR,
     COMMANDS_DIR,
-    SKILLS_DIR,
     RUNTIME_CONFIG,
     getProjectProfilesDir,
     getProjectPacksDir,
     loadProfile,
     loadPack,
     loadMarkdown,
-    loadSkill,
     loadSession,
     updateSession,
     getPreferences,
@@ -25,15 +23,10 @@ function createStateCommandHelpers(deps) {
     requireRestText,
     requirePreferenceKey,
     handleHealthUpdateCommands,
-    handleSpecCommands,
     handleTaskCommands,
-    handleWorkspaceCommands,
-    handleThreadCommands,
-    handleForensicsCommands,
     handleExecutorCommands,
     handleSettingsCommands,
-    handleSessionReportCommands,
-    handleManagerCommands
+    handleSessionReportCommands
   } = deps;
 
   function handleCatalogAndStateCommands(cmd, subcmd, rest) {
@@ -44,31 +37,9 @@ function createStateCommandHelpers(deps) {
       return healthUpdateResult;
     }
 
-    const specResult = handleSpecCommands ? handleSpecCommands(cmd, subcmd, rest) : undefined;
-    if (specResult !== undefined) {
-      return specResult;
-    }
-
     const taskResult = handleTaskCommands ? handleTaskCommands(cmd, subcmd, rest) : undefined;
     if (taskResult !== undefined) {
       return taskResult;
-    }
-
-    const workspaceResult = handleWorkspaceCommands ? handleWorkspaceCommands(cmd, subcmd, rest) : undefined;
-    if (workspaceResult !== undefined) {
-      return workspaceResult;
-    }
-
-    const threadResult = handleThreadCommands ? handleThreadCommands(cmd, subcmd, rest) : undefined;
-    if (threadResult !== undefined) {
-      return threadResult;
-    }
-
-    const forensicsResult = handleForensicsCommands
-      ? handleForensicsCommands(cmd, subcmd, rest)
-      : undefined;
-    if (forensicsResult !== undefined) {
-      return forensicsResult;
     }
 
     const executorResult = handleExecutorCommands
@@ -90,13 +61,6 @@ function createStateCommandHelpers(deps) {
       : undefined;
     if (sessionReportResult !== undefined) {
       return sessionReportResult;
-    }
-
-    const managerResult = handleManagerCommands
-      ? handleManagerCommands(cmd, subcmd, rest)
-      : undefined;
-    if (managerResult !== undefined) {
-      return managerResult;
     }
 
     if (cmd === 'session' && subcmd === 'show') {
@@ -121,23 +85,6 @@ function createStateCommandHelpers(deps) {
     if (cmd === 'commands' && subcmd === 'show') {
       if (!rest[0]) throw new Error('Missing command name');
       return loadMarkdown(COMMANDS_DIR, rest[0], 'Command');
-    }
-
-    if (cmd === 'skills' && subcmd === 'list') {
-      if (!fs.existsSync(SKILLS_DIR)) {
-        return [];
-      }
-
-      return fs
-        .readdirSync(SKILLS_DIR, { withFileTypes: true })
-        .filter(entry => entry.isDirectory() && fs.existsSync(path.join(SKILLS_DIR, entry.name, 'SKILL.md')))
-        .map(entry => entry.name)
-        .sort();
-    }
-
-    if (cmd === 'skills' && subcmd === 'show') {
-      if (!rest[0]) throw new Error('Missing skill name');
-      return loadSkill(rest[0]);
     }
 
     if (cmd === 'profile' && subcmd === 'list') {

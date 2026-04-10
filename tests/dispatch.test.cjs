@@ -26,7 +26,7 @@ test('dispatch show returns direct action contract for plan', () => {
     assert.equal(dispatch.source, 'action');
     assert.equal(dispatch.requested_action, 'plan');
     assert.equal(dispatch.resolved_action, 'plan');
-    assert.equal(dispatch.skill, '$emb-plan');
+    assert.match(dispatch.cli, / plan$/);
     assert.equal(dispatch.agent_execution.primary_agent, 'emb-hw-scout');
     assert.equal(dispatch.agent_execution.dispatch_contract.primary.agent, 'emb-hw-scout');
     assert.equal(dispatch.agent_execution.dispatch_contract.primary.spawn_fallback.fallback_agent_type, 'explorer');
@@ -53,7 +53,9 @@ test('dispatch next follows next routing and returns debug contract when questio
     assert.equal(dispatch.source, 'next');
     assert.equal(dispatch.requested_action, 'next');
     assert.equal(dispatch.resolved_action, 'debug');
-    assert.equal(dispatch.skill, '$emb-debug');
+    assert.match(dispatch.cli, / debug$/);
+    assert.equal(dispatch.workflow_stage.name, 'execution');
+    assert.equal(dispatch.workflow_stage.primary_command, 'debug');
     assert.equal(dispatch.agent_execution.primary_agent, 'emb-bug-hunter');
     assert.equal(dispatch.agent_execution.dispatch_contract.primary.spawn_fallback.fallback_agent_type, 'default');
     assert.ok(dispatch.reason.includes('Open questions'));
@@ -78,7 +80,9 @@ test('dispatch next returns arch-review contract when focus triggers architectur
     const dispatch = cli.buildDispatchContext('next');
 
     assert.equal(dispatch.resolved_action, 'arch-review');
-    assert.equal(dispatch.skill, '$emb-arch-review');
+    assert.match(dispatch.cli, / arch-review$/);
+    assert.equal(dispatch.workflow_stage.name, 'planning');
+    assert.equal(dispatch.workflow_stage.primary_command, 'arch-review');
     assert.equal(dispatch.agent_execution.primary_agent, 'emb-arch-reviewer');
     assert.equal(dispatch.agent_execution.dispatch_contract.auto_invoke_when_recommended, true);
     assert.equal(dispatch.agent_execution.dispatch_contract.primary.spawn_fallback.fallback_agent_type, 'default');
@@ -103,7 +107,7 @@ test('dispatch next routes hardware formula questions to scan before debug', () 
     const dispatch = cli.buildDispatchContext('next');
 
     assert.equal(dispatch.resolved_action, 'scan');
-    assert.equal(dispatch.skill, '$emb-scan');
+    assert.match(dispatch.cli, / scan$/);
     assert.ok(dispatch.reason.includes('scan'));
   } finally {
     process.chdir(currentCwd);
@@ -226,8 +230,8 @@ test('dispatch next exposes direct tool execution when scan has ready recommenda
   }
 });
 
-test('dispatch next surfaces active workspace context when workspace is activated', () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-workspace-'));
+test('dispatch next keeps current context focused on session carry-over', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-session-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
 
@@ -236,23 +240,20 @@ test('dispatch next surfaces active workspace context when workspace is activate
   try {
     process.chdir(tempProject);
     cli.main(['init']);
-    cli.main(['workspace', 'add', 'Power rail validation', '--type', 'board']);
-    cli.main(['workspace', 'activate', 'power-rail-validation']);
     cli.main(['question', 'add', 'why irq misses']);
 
     const dispatch = cli.buildDispatchContext('next');
 
-    assert.equal(dispatch.workspace.name, 'power-rail-validation');
-    assert.equal(dispatch.workspace.type, 'board');
-    assert.match(dispatch.workspace.notes_path, /\.emb-agent\/workspace\/power-rail-validation\/notes\.md$/);
+    assert.equal(dispatch.current.open_questions[0], 'why irq misses');
+    assert.equal(dispatch.workspace, undefined);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }
 });
 
-test('dispatch next routes drift-style failures to forensics', () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-forensics-'));
+test('dispatch next routes drift-style failures to review', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-review-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
 
@@ -265,10 +266,10 @@ test('dispatch next routes drift-style failures to forensics', () => {
 
     const dispatch = cli.buildDispatchContext('next');
 
-    assert.equal(dispatch.resolved_action, 'forensics');
-    assert.equal(dispatch.skill, '$emb-forensics');
-    assert.equal(dispatch.agent_execution.primary_agent, 'emb-bug-hunter');
-    assert.ok(dispatch.reason.includes('forensics'));
+    assert.equal(dispatch.resolved_action, 'review');
+    assert.match(dispatch.cli, / review$/);
+    assert.equal(dispatch.agent_execution.primary_agent, 'emb-hw-scout');
+    assert.ok(dispatch.reason.includes('review'));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -310,7 +311,7 @@ test('dispatch next exposes structured executor signal when latest executor fail
     assert.equal(dispatch.executor_signal.present, true);
     assert.equal(dispatch.executor_signal.failed, true);
     assert.equal(dispatch.executor_signal.requires_forensics, true);
-    assert.equal(dispatch.executor_signal.recommended_action, 'forensics');
+    assert.equal(dispatch.executor_signal.recommended_action, 'review');
     assert.match(dispatch.executor_signal.summary, /bench failed, exit=5/);
   } finally {
     process.chdir(currentCwd);

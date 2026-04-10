@@ -6,8 +6,6 @@ const path = require('path');
 const readline = require('readline');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const COMMANDS_SRC = path.join(REPO_ROOT, 'commands', 'emb');
-const INTERNAL_SKILLS_SRC = path.join(REPO_ROOT, 'skills');
 const AGENTS_SRC = path.join(REPO_ROOT, 'agents');
 const RUNTIME_SRC = path.join(REPO_ROOT, 'runtime');
 const RUNTIME_HOOKS_SRC = path.join(RUNTIME_SRC, 'hooks');
@@ -31,7 +29,6 @@ const {
   getTargetDir,
   installRuntime,
   installEnvExample,
-  installCommandSkills,
   installAgents,
   uninstall,
   main
@@ -47,8 +44,7 @@ const {
     process
   }),
   runtimeHost,
-  commandsSrc: COMMANDS_SRC,
-  internalSkillsSrc: INTERNAL_SKILLS_SRC,
+  commandsSrc: path.join(REPO_ROOT, 'commands', 'emb'),
   agentsSrc: AGENTS_SRC,
   runtimeSrc: RUNTIME_SRC,
   runtimeHooksSrc: RUNTIME_HOOKS_SRC,
@@ -69,7 +65,6 @@ module.exports = {
   main,
   installRuntime,
   installEnvExample,
-  installCommandSkills,
   installAgents,
   uninstall
 };

@@ -101,11 +101,34 @@ function createProjectStateStoreHelpers(deps) {
     runtime.writeJson(paths.handoffPath, runtime.validateHandoff(handoff, RUNTIME_CONFIG));
   }
 
+  function loadContextSummary() {
+    const paths = getProjectStatePaths();
+    runtime.ensureProjectStateStorage(paths);
+    if (!fs.existsSync(paths.contextSummaryPath)) {
+      return null;
+    }
+    return runtime.validateContextSummary(runtime.readJson(paths.contextSummaryPath), RUNTIME_CONFIG);
+  }
+
+  function saveContextSummary(summary) {
+    const paths = getProjectStatePaths();
+    runtime.ensureProjectStateStorage(paths);
+    runtime.writeJson(paths.contextSummaryPath, runtime.validateContextSummary(summary, RUNTIME_CONFIG));
+  }
+
   function clearHandoff() {
     const paths = getProjectStatePaths();
     runtime.ensureProjectStateStorage(paths);
     if (fs.existsSync(paths.handoffPath)) {
       fs.unlinkSync(paths.handoffPath);
+    }
+  }
+
+  function clearContextSummary() {
+    const paths = getProjectStatePaths();
+    runtime.ensureProjectStateStorage(paths);
+    if (fs.existsSync(paths.contextSummaryPath)) {
+      fs.unlinkSync(paths.contextSummaryPath);
     }
   }
 
@@ -124,7 +147,10 @@ function createProjectStateStoreHelpers(deps) {
     saveSession,
     loadHandoff,
     saveHandoff,
+    loadContextSummary,
+    saveContextSummary,
     clearHandoff,
+    clearContextSummary,
     updateSession,
     withProjectLock
   };

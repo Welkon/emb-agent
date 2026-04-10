@@ -12,10 +12,14 @@ function createCliRouter(deps) {
     buildStatus,
     updateSession,
     buildNextContext,
+    buildDispatchContext,
     loadHandoff,
     clearHandoff,
+    clearContextSummary,
     buildPausePayload,
+    buildPauseContextSummary,
     saveHandoff,
+    saveContextSummary,
     buildResumeContext,
     resolveSession,
     RUNTIME_CONFIG,
@@ -26,7 +30,7 @@ function createCliRouter(deps) {
     handleCatalogAndStateCommands,
     handleDocCommands,
     handleActionCommands,
-    handleDispatchAndTemplateCommands,
+    handleDispatchCommands,
     handleAdapterToolChipCommands
   } = deps;
 
@@ -92,10 +96,33 @@ function createCliRouter(deps) {
     }
 
     if (cmd === 'next') {
+      if (subcmd === 'run') {
+        const dispatch = buildDispatchContext('next');
+        const session = updateSession(current => {
+          current.last_command = 'next run';
+        });
+        if (dispatch && dispatch.current) {
+          dispatch.current.last_command = session.last_command || '';
+        }
+        emitJson(dispatch);
+        return;
+      }
+
+      if (subcmd === '--help') {
+        usage();
+        return;
+      }
+
+      if (subcmd) {
+        usage();
+        process.exitCode = 1;
+        return;
+      }
+
+      const context = buildNextContext();
       const session = updateSession(current => {
         current.last_command = 'next';
       });
-      const context = buildNextContext();
       context.current.last_command = session.last_command || '';
       emitJson(context);
       return;
@@ -108,6 +135,7 @@ function createCliRouter(deps) {
 
     if (cmd === 'pause' && subcmd === 'clear') {
       clearHandoff();
+      clearContextSummary();
       const session = updateSession(current => {
         current.last_command = 'pause clear';
         current.paused_at = '';
@@ -115,6 +143,7 @@ function createCliRouter(deps) {
       emitJson({
         cleared: true,
         handoff: null,
+        memory_summary: null,
         session
       });
       return;
@@ -122,8 +151,17 @@ function createCliRouter(deps) {
 
     if (cmd === 'pause') {
       const noteText = [subcmd, ...rest].filter(Boolean).join(' ').trim();
-      const handoff = buildPausePayload(noteText);
+      const pausedContext = buildPauseContextSummary
+        ? buildPauseContextSummary(noteText)
+        : {
+            handoff: buildPausePayload(noteText),
+            summary: null
+          };
+      const handoff = pausedContext.handoff;
       saveHandoff(handoff);
+      if (pausedContext.summary) {
+        saveContextSummary(pausedContext.summary);
+      }
       const session = updateSession(current => {
         current.last_command = 'pause';
         current.paused_at = handoff.timestamp;
@@ -131,6 +169,7 @@ function createCliRouter(deps) {
       emitJson({
         paused: true,
         handoff,
+        memory_summary: pausedContext.summary,
         session
       });
       return;
@@ -188,10 +227,10 @@ function createCliRouter(deps) {
       return;
     }
 
-    const dispatchTemplateResult = handleDispatchAndTemplateCommands(cmd, subcmd, rest);
-    if (dispatchTemplateResult !== undefined) {
-      if (!dispatchTemplateResult.__side_effect_only) {
-        emitJson(dispatchTemplateResult);
+    const dispatchResult = handleDispatchCommands(cmd, subcmd, rest);
+    if (dispatchResult !== undefined) {
+      if (!dispatchResult.__side_effect_only) {
+        emitJson(dispatchResult);
       }
       return;
     }

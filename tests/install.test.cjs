@@ -29,17 +29,6 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const cliPath = path.join(runtimeRoot, 'bin', 'emb-agent.cjs');
     const installedCli = require(cliPath);
 
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-arch-review', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-adapter', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-dispatch', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-orchestrate', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-tool', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-thread', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-forensics', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-settings', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-session-report', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-manager', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'using-emb-agent', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.toml')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'config.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
@@ -52,7 +41,6 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'VERSION')), true);
-    assert.equal(fs.existsSync(path.join(runtimeRoot, 'skills', 'using-emb-agent', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'tools', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'chips', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'adapters')), true);
@@ -72,8 +60,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
     assert.match(stdout, /Next steps:/);
-    assert.match(stdout, /In a project repo, run: .* init/);
-    assert.match(stdout, /Then continue with: .* next/);
+    assert.match(stdout, /open a Codex session and run: init/);
+    assert.match(stdout, /Then continue with: next/);
 
     process.chdir(tempProject);
     installedCli.main(['init']);
@@ -103,6 +91,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const nextBeforeContext = installedCli.buildNextContext();
     assert.equal(nextBeforeContext.next.command, 'health');
     assert.equal(nextBeforeContext.next.gated_by_health, true);
+    assert.equal(nextBeforeContext.workflow_stage.name, 'health-gate');
+    assert.equal(nextBeforeContext.workflow_stage.primary_command, 'health');
     assert.ok(Array.isArray(nextBeforeContext.next.health_next_commands));
     assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes('adapter source add default-pack')));
     assert.equal(nextBeforeContext.health.quickstart.stage, 'fill-hardware-identity');
@@ -110,7 +100,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const orchestratorBeforeContext = installedCli.buildOrchestratorContext('next');
     assert.equal(orchestratorBeforeContext.workflow.strategy, 'inline');
     assert.equal(orchestratorBeforeContext.resolved_action, 'health');
-    assert.equal(orchestratorBeforeContext.workflow.next_skill, '$emb-health');
+    assert.match(orchestratorBeforeContext.workflow.next_cli, / health$/);
 
     installedCli.main(['prefs', 'set', 'plan_mode', 'always']);
     const nextWithForcedPlan = installedCli.buildNextContext();
@@ -141,10 +131,13 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(scan.agent_execution.primary_agent, 'emb-hw-scout');
     assert.ok(scan.next_reads.some(item => item.includes('Hardware truth sources')));
     assert.equal(resume.summary.resume_source, 'handoff');
+    assert.equal(resume.memory_summary.source, 'pause');
+    assert.ok(resume.memory_summary.next_action.includes('resume irq race first'));
     assert.ok(resume.next_actions.some(item => item.includes('handoff')));
     assert.ok(resume.next_actions.some(item => item.includes('Suggested command')));
     assert.equal(nextAfterPause.next.command, 'scan');
     assert.ok(nextAfterPause.handoff.next_action.includes('resume irq race first'));
+    assert.equal(nextAfterPause.memory_summary.source, 'pause');
 
     fs.writeFileSync(path.join(tempProject, 'main.c'), 'void main(void) {}\n', 'utf8');
     installedCli.main(['last-files', 'add', 'main.c']);
@@ -163,6 +156,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['question', 'add', 'why irq misses']);
     const nextWithQuestion = installedCli.buildNextContext();
     assert.equal(nextWithQuestion.next.command, 'debug');
+    assert.equal(nextWithQuestion.workflow_stage.name, 'execution');
 
     installedCli.main(['question', 'clear']);
     installedCli.main(['risk', 'clear']);
@@ -170,7 +164,6 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['focus', 'set', 'chip selection and PoC to production preflight']);
     const nextWithArchReview = installedCli.buildNextContext();
     assert.equal(nextWithArchReview.next.command, 'arch-review');
-    assert.equal(nextWithArchReview.next.skill, '$emb-arch-review');
     assert.match(nextWithArchReview.next.cli, /arch-review$/);
     const archReviewContext = installedCli.buildArchReviewContext();
     assert.equal(archReviewContext.suggested_agent, 'emb-arch-reviewer');
@@ -389,7 +382,7 @@ test('installer rejects declared but unsupported runtime targets', () => {
   );
 });
 
-test('installer lays down claude skills agents and settings hooks', async () => {
+test('installer lays down claude agents and settings hooks', async () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-claude-home-'));
   const originalWrite = process.stdout.write;
   let stdout = '';
@@ -409,7 +402,6 @@ test('installer lays down claude skills agents and settings hooks', async () => 
     const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
     const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
 
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-help', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.md')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
@@ -419,11 +411,6 @@ test('installer lays down claude skills agents and settings hooks', async () => 
     assert.ok(Array.isArray(settings.hooks.PostToolUse));
     assert.match(JSON.stringify(settings.hooks.SessionStart), /emb-session-start\.js/);
     assert.match(JSON.stringify(settings.hooks.PostToolUse), /emb-context-monitor\.js/);
-    assert.ok(
-      fs.readFileSync(path.join(tempHome, 'skills', 'emb-help', 'SKILL.md'), 'utf8').includes(
-        `${runtimeRoot.replace(/\\/g, '/')}/bin/emb-agent.cjs`
-      )
-    );
     const sessionFlowContent = fs.readFileSync(path.join(runtimeRoot, 'lib', 'session-flow.cjs'), 'utf8');
     assert.doesNotMatch(sessionFlowContent, /~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs/);
     assert.doesNotMatch(sessionFlowContent, /~\/\.claude\/emb-agent\/bin\/emb-agent\.cjs/);

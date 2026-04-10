@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const runtime = require('./runtime.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
+const qualityGateHelpers = require('./quality-gates.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
@@ -731,7 +732,7 @@ function buildSuggestedSteps(action, resolved) {
   }
 
   if (action === 'forensics') {
-    steps.push('Pin down the current problem statement, latest thread, and latest forensics summary first');
+    steps.push('Pin down the current problem statement, latest forensics summary, and concrete evidence first');
     steps.push('Converge only the most critical evidence; do not jump straight to a fix');
     steps.push('Clarify whether the next step should return to debug, review, or do');
   }
@@ -1129,6 +1130,16 @@ function buildReviewOutput(resolved) {
 function buildVerifyOutput(resolved) {
   const context = buildContext(resolved);
   const steps = buildSuggestedSteps('verify', resolved);
+  const qualityGates = qualityGateHelpers.evaluateQualityGates(
+    resolved ? resolved.project_config : null,
+    resolved && resolved.session ? resolved.session.diagnostics : {}
+  );
+  const qualityGateChecklist = qualityGates.enabled
+    ? runtime.unique([
+        ...qualityGates.required_executors.map(name => `Quality gate executor "${name}" must be green before closure`),
+        ...qualityGates.required_signoffs.map(name => `Human signoff "${name}" must be confirmed before closure`)
+      ])
+    : [];
 
   return {
     scope: {
@@ -1139,11 +1150,16 @@ function buildVerifyOutput(resolved) {
       concurrency_model: resolved.profile.concurrency_model,
       last_files: resolved.session.last_files || []
     },
-    checklist: buildVerificationChecklist(resolved),
+    checklist: runtime.unique([
+      ...qualityGateChecklist,
+      ...buildVerificationChecklist(resolved)
+    ]),
     evidence_targets: buildVerificationEvidenceTargets(resolved),
     result_template: buildVerificationResultTemplate(),
     next_step: steps[0] || 'List this round\'s verification targets first',
     scheduler: buildSchedule('verify', resolved),
+    quality_gates: qualityGates,
+    closure_status: qualityGates.status_summary || (qualityGates.enabled ? qualityGates.gate_status : ''),
     verification_focus: runtime.unique([
       context.isBaremetal ? 'board-behavior' : 'system-behavior',
       context.isConnected ? 'connectivity-recovery' : '',
@@ -1160,7 +1176,6 @@ function buildForensicsOutput(resolved) {
   const latestExecutor = resolved.session.diagnostics && resolved.session.diagnostics.latest_executor
     ? resolved.session.diagnostics.latest_executor
     : {};
-  const activeThread = resolved.session.active_thread || {};
   const steps = buildSuggestedSteps('forensics', resolved);
 
   return {
@@ -1179,7 +1194,6 @@ function buildForensicsOutput(resolved) {
         }`
         : '',
       latestExecutor && latestExecutor.stderr_preview ? `Executor stderr summary: ${latestExecutor.stderr_preview}` : '',
-      activeThread.name ? `Current active thread: ${activeThread.name}` : '',
       ...(resolved.session.last_files || []).slice(0, 2).map(file => `Recent file: ${file}`),
       ...getProjectTruthFiles(resolved).map(file => `Project truth layer: ${file}`)
     ]),

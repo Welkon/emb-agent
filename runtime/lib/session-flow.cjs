@@ -1,6 +1,8 @@
 'use strict';
 
 const runtimeHostHelpers = require('./runtime-host.cjs');
+const permissionGateHelpers = require('./permission-gates.cjs');
+const qualityGateHelpers = require('./quality-gates.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 const FORENSICS_PATTERNS = [
@@ -67,44 +69,10 @@ function createSessionFlowHelpers(deps) {
     getHealthReport,
     getProjectConfig,
     loadHandoff,
+    loadContextSummary,
     enrichWithToolSuggestions,
-    listThreads,
-    listWorkspaces,
-    getActiveTask,
-    getActiveWorkspace
+    getActiveTask
   } = deps;
-
-  function buildWorkspaceView(workspace) {
-    if (!workspace || !workspace.name) {
-      return null;
-    }
-
-    return {
-      name: workspace.name,
-      title: workspace.title,
-      type: workspace.type,
-      status: workspace.status,
-      path: workspace.path,
-      notes_path: workspace.notes_path || workspace.path,
-      manifest_path: workspace.manifest_path || '',
-      snapshot: workspace.snapshot || {
-        last_files: [],
-        open_questions: [],
-        known_risks: [],
-        refreshed_at: ''
-      },
-      links: workspace.links || {
-        tasks: [],
-        specs: [],
-        threads: []
-      },
-      link_counts: workspace.link_counts || {
-        tasks: Array.isArray(workspace.links && workspace.links.tasks) ? workspace.links.tasks.length : 0,
-        specs: Array.isArray(workspace.links && workspace.links.specs) ? workspace.links.specs.length : 0,
-        threads: Array.isArray(workspace.links && workspace.links.threads) ? workspace.links.threads.length : 0
-      }
-    };
-  }
 
   function shouldGateNextWithHealth(resolved, handoff, nextCommand, healthReport) {
     if (!healthReport || nextCommand !== 'scan' || handoff) {
@@ -168,8 +136,6 @@ function createSessionFlowHelpers(deps) {
       session && session.focus ? session.focus : '',
       ...((session && session.open_questions) || []),
       ...((session && session.known_risks) || []),
-      session && session.active_workspace && session.active_workspace.title ? session.active_workspace.title : '',
-      session && session.active_thread && session.active_thread.title ? session.active_thread.title : '',
       session && session.active_task && session.active_task.title ? session.active_task.title : '',
       latestForensics && latestForensics.problem ? latestForensics.problem : '',
       latestExecutor && latestExecutor.status ? `executor ${latestExecutor.name || ''} ${latestExecutor.status}` : '',
@@ -182,45 +148,6 @@ function createSessionFlowHelpers(deps) {
     return texts.some(text =>
       patterns.some(pattern => String(text).toLowerCase().includes(String(pattern).toLowerCase()))
     );
-  }
-
-  function resolveActiveThread(session) {
-    const stored = session && session.active_thread ? session.active_thread : null;
-    if (stored && stored.name) {
-      return stored;
-    }
-
-    const threads = listThreads ? listThreads() : { threads: [] };
-    const openThread = (threads.threads || []).find(item => item.status !== 'RESOLVED');
-    return openThread
-      ? {
-          name: openThread.name,
-          title: openThread.title,
-          status: openThread.status,
-          path: openThread.path,
-          updated_at: openThread.updated_at
-        }
-      : null;
-  }
-
-  function resolveActiveWorkspace(session) {
-    const stored = session && session.active_workspace ? session.active_workspace : null;
-    if (stored && stored.name) {
-      return stored;
-    }
-
-    const workspaces = listWorkspaces ? listWorkspaces() : { workspaces: [] };
-    const activeWorkspace = (workspaces.workspaces || []).find(item => item.status === 'ACTIVE');
-    return activeWorkspace
-      ? {
-          name: activeWorkspace.name,
-          title: activeWorkspace.title,
-          type: activeWorkspace.type,
-          status: activeWorkspace.status,
-          path: activeWorkspace.path,
-          updated_at: activeWorkspace.updated_at
-        }
-      : null;
   }
 
   function shouldSuggestPlan(resolved) {
@@ -275,7 +202,7 @@ function createSessionFlowHelpers(deps) {
         : null;
     const hasForensicsSignal = hasPattern(texts, FORENSICS_PATTERNS);
 
-    if ((session.last_command || '').startsWith('forensics')) {
+    if ((session.last_command || '').startsWith('review')) {
       return false;
     }
 
@@ -283,11 +210,17 @@ function createSessionFlowHelpers(deps) {
       return true;
     }
 
-    if (latestForensics && latestForensics.highest_severity === 'high' && session.active_thread && session.active_thread.name) {
+    if (latestForensics && latestForensics.highest_severity === 'high') {
       return true;
     }
 
     return hasForensicsSignal;
+  }
+
+  function getQualityGateSummary(resolved) {
+    const diagnostics = resolved && resolved.session ? resolved.session.diagnostics : {};
+    const projectConfig = resolved ? resolved.project_config : null;
+    return qualityGateHelpers.evaluateQualityGates(projectConfig, diagnostics);
   }
 
   function shouldSuggestScanTool(resolved) {
@@ -370,6 +303,34 @@ function createSessionFlowHelpers(deps) {
       openQuestions.length > 0 ||
       knownRisks.length > 0 ||
       Boolean(handoff);
+    const qualityGates = getQualityGateSummary(resolved);
+    const hasQualityGateBlock =
+      qualityGates.enabled &&
+      qualityGates.gate_status !== 'pass' &&
+      (
+        (session.last_command || '').trim() === 'do' ||
+        (session.last_command || '').trim() === 'verify' ||
+        (session.last_command || '').startsWith('verify ') ||
+        (session.last_command || '').startsWith('executor run')
+      );
+
+    if (hasQualityGateBlock) {
+      const blockingItems = runtime.unique([
+        ...qualityGates.failed_gates,
+        ...qualityGates.pending_gates,
+        ...qualityGates.rejected_signoffs,
+        ...qualityGates.pending_signoffs
+      ]);
+      return {
+        command: 'verify',
+        reason: qualityGates.blocking_summary ||
+          (
+            qualityGates.gate_status === 'failed'
+              ? `Quality gates failed (${blockingItems.join(', ')}); close executor checks or human signoffs before leaving verify`
+              : `Quality gates are pending (${blockingItems.join(', ')}); run executor checks or confirm human signoffs before leaving verify`
+          )
+      };
+    }
 
     if (shouldSuggestForensics(resolved)) {
       const latestExecutor =
@@ -377,10 +338,10 @@ function createSessionFlowHelpers(deps) {
           ? session.diagnostics.latest_executor
           : null;
       return {
-        command: 'forensics',
+        command: 'review',
         reason: latestExecutor && ['failed', 'error'].includes(latestExecutor.status)
-          ? `Latest executor ${latestExecutor.name || 'unknown'} ${latestExecutor.status}; run forensics first to narrow the failure scene`
-          : 'Current context shows drift, resume failure, or repeated failure signals; run forensics first to narrow the problem space'
+          ? `Latest executor ${latestExecutor.name || 'unknown'} ${latestExecutor.status}; run review first to narrow the failure scene`
+          : 'Current context shows drift, resume failure, or repeated failure signals; run review first to narrow the problem space'
       };
     }
 
@@ -615,15 +576,88 @@ function createSessionFlowHelpers(deps) {
     return 'scan -> do -> verify';
   }
 
-  function buildGuidance(resolved, handoff) {
+  function buildMemorySummaryArtifact(resolved, handoff, source) {
+    const session = resolved.session;
+    const activeTask = getActiveTask ? getActiveTask() : null;
+    const diagnostics = session.diagnostics || {};
+    const latestForensics = diagnostics.latest_forensics || {};
+    const latestExecutor = diagnostics.latest_executor || {};
+
+    return {
+      version: '1.0',
+      generated_at: new Date().toISOString(),
+      source: source || '',
+      focus: session.focus || '',
+      profile: resolved.profile.name,
+      packs: session.active_packs || [],
+      last_command: session.last_command || '',
+      suggested_flow: handoff && handoff.suggested_flow ? handoff.suggested_flow : suggestFlow(resolved),
+      next_action: handoff && handoff.next_action ? handoff.next_action : '',
+      context_notes: handoff && handoff.context_notes ? handoff.context_notes : '',
+      last_files: session.last_files || [],
+      open_questions: session.open_questions || [],
+      known_risks: session.known_risks || [],
+      active_task: activeTask
+        ? {
+            name: activeTask.name,
+            title: activeTask.title,
+            status: activeTask.status,
+            path: activeTask.path
+          }
+        : {
+            name: '',
+            title: '',
+            status: '',
+            path: ''
+          },
+      diagnostics: {
+        latest_forensics: {
+          report_file: latestForensics.report_file || '',
+          highest_severity: latestForensics.highest_severity || '',
+          problem: latestForensics.problem || ''
+        },
+        latest_executor: {
+          name: latestExecutor.name || '',
+          status: latestExecutor.status || '',
+          risk: latestExecutor.risk || '',
+          exit_code: latestExecutor.exit_code === undefined ? null : latestExecutor.exit_code,
+          stderr_preview: latestExecutor.stderr_preview || '',
+          stdout_preview: latestExecutor.stdout_preview || ''
+        }
+      }
+    };
+  }
+
+  function buildMemorySummaryView(memorySummary) {
+    if (!memorySummary) {
+      return null;
+    }
+
+    return {
+      generated_at: memorySummary.generated_at || '',
+      source: memorySummary.source || '',
+      focus: memorySummary.focus || '',
+      profile: memorySummary.profile || '',
+      last_command: memorySummary.last_command || '',
+      suggested_flow: memorySummary.suggested_flow || '',
+      next_action: memorySummary.next_action || '',
+      context_notes: memorySummary.context_notes || '',
+      packs: memorySummary.packs || [],
+      last_files: memorySummary.last_files || [],
+      open_questions: memorySummary.open_questions || [],
+      known_risks: memorySummary.known_risks || [],
+      active_task: memorySummary.active_task || { name: '', title: '', status: '', path: '' },
+      diagnostics: memorySummary.diagnostics || { latest_forensics: {}, latest_executor: {} }
+    };
+  }
+
+  function buildGuidance(resolved, handoff, memorySummary) {
     const session = resolved.session;
     const focus = session.focus || '';
     const openQuestions = session.open_questions || [];
     const knownRisks = session.known_risks || [];
     const lastFiles = session.last_files || [];
-    const openThread = resolveActiveThread(session);
     const activeTask = getActiveTask ? getActiveTask() : null;
-    const activeWorkspace = getActiveWorkspace ? getActiveWorkspace() : resolveActiveWorkspace(session);
     const recommendedSources = (resolved.effective && resolved.effective.recommended_sources) || [];
     const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
     const toolRecommendations = (resolved.effective && resolved.effective.tool_recommendations) || [];
@@ -638,33 +672,79 @@ function createSessionFlowHelpers(deps) {
       session.diagnostics && session.diagnostics.latest_executor
         ? session.diagnostics.latest_executor
         : null;
+    const qualityGates = getQualityGateSummary(resolved);
     const suggestedFlow = handoff && handoff.suggested_flow
       ? handoff.suggested_flow
       : suggestFlow(resolved);
     const next = buildNextCommand(resolved, handoff);
     const contextHygiene = buildContextHygiene(resolved, handoff, next.command);
+    const summaryTask =
+      memorySummary &&
+      memorySummary.active_task &&
+      memorySummary.active_task.name
+        ? memorySummary.active_task
+        : activeTask;
+    const summaryLatestForensics =
+      memorySummary &&
+      memorySummary.diagnostics &&
+      memorySummary.diagnostics.latest_forensics &&
+      memorySummary.diagnostics.latest_forensics.report_file
+        ? memorySummary.diagnostics.latest_forensics
+        : latestForensics;
+    const summaryLatestExecutor =
+      memorySummary &&
+      memorySummary.diagnostics &&
+      memorySummary.diagnostics.latest_executor &&
+      memorySummary.diagnostics.latest_executor.name
+        ? memorySummary.diagnostics.latest_executor
+        : latestExecutor;
+    const summaryLastFiles =
+      memorySummary && Array.isArray(memorySummary.last_files) && memorySummary.last_files.length > 0
+        ? memorySummary.last_files
+        : lastFiles;
+    const summaryOpenQuestions =
+      memorySummary && Array.isArray(memorySummary.open_questions) && memorySummary.open_questions.length > 0
+        ? memorySummary.open_questions
+        : openQuestions;
+    const summaryKnownRisks =
+      memorySummary && Array.isArray(memorySummary.known_risks) && memorySummary.known_risks.length > 0
+        ? memorySummary.known_risks
+        : knownRisks;
 
     return {
       suggested_flow: suggestedFlow,
       next,
       primary_tool_recommendation: primaryToolRecommendation,
       next_actions: runtime.unique([
+        memorySummary && memorySummary.generated_at
+          ? `Compact summary captured: ${memorySummary.generated_at}`
+          : '',
+        memorySummary && memorySummary.next_action
+          ? `Resume from compact summary: ${memorySummary.next_action}`
+          : '',
         handoff && handoff.next_action ? `Resume from handoff: ${handoff.next_action}` : '',
         ...(handoff ? handoff.human_actions_pending.map(action => `Manual action required: ${action}`) : []),
-        activeWorkspace ? `Return to workspace ${activeWorkspace.name} first: ${activeWorkspace.title}` : '',
-        activeTask ? `Resume task ${activeTask.name} first: ${activeTask.title}` : '',
-        openThread ? `Resume thread ${openThread.name} first: ${openThread.title}` : '',
-        latestForensics && latestForensics.report_file
-          ? `Latest forensics: ${latestForensics.report_file} (${latestForensics.highest_severity || 'info'})`
+        summaryTask ? `Resume task ${summaryTask.name} first: ${summaryTask.title}` : '',
+        summaryLatestForensics && summaryLatestForensics.report_file
+          ? `Latest forensics: ${summaryLatestForensics.report_file} (${summaryLatestForensics.highest_severity || 'info'})`
           : '',
-        latestExecutor && latestExecutor.name
-          ? `Latest executor: ${latestExecutor.name} ${latestExecutor.status || 'unknown'}${
-            latestExecutor.exit_code === null ? '' : `, exit=${latestExecutor.exit_code}`
+        summaryLatestExecutor && summaryLatestExecutor.name
+          ? `Latest executor: ${summaryLatestExecutor.name} ${summaryLatestExecutor.status || 'unknown'}${
+            summaryLatestExecutor.exit_code === null ? '' : `, exit=${summaryLatestExecutor.exit_code}`
           }`
           : '',
-        latestExecutor && ['failed', 'error'].includes(latestExecutor.status)
-          ? `Start forensics around the failed executor first: ${latestExecutor.name}${latestExecutor.stderr_preview ? ` | ${latestExecutor.stderr_preview}` : ''}`
+        summaryLatestExecutor && ['failed', 'error'].includes(summaryLatestExecutor.status)
+          ? `Start review around the failed executor first: ${summaryLatestExecutor.name}${summaryLatestExecutor.stderr_preview ? ` | ${summaryLatestExecutor.stderr_preview}` : ''}`
           : '',
+        qualityGates.enabled
+          ? `Quality gate status: ${qualityGates.status_summary || qualityGates.gate_status}`
+          : '',
+        qualityGates.blocking_summary && qualityGates.blocking_summary !== qualityGates.status_summary
+          ? `Blocking gate: ${qualityGates.blocking_summary}`
+          : '',
+        ...qualityGates.recommended_runs.map(item => `Run quality gate first: ${item}`),
+        ...qualityGates.recommended_signoffs.map(item => `Confirm human gate first: ${item}`),
+        ...qualityGates.rejected_signoffs.map(item => `Human signoff rejected: ${item}`),
         primaryRegisterSource ? `Re-read the register summary first: ${primaryRegisterSource.path}` : '',
         !primaryRegisterSource && primarySource ? `Re-read the source summary first: ${primarySource.path}` : '',
         ...suggestedTools.slice(0, 2).map(tool => `Tool to evaluate first: ${tool.name} (${tool.status})`),
@@ -675,9 +755,9 @@ function createSessionFlowHelpers(deps) {
           ? `Missing tool inputs: ${primaryToolRecommendation.missing_inputs.join(', ')}`
           : '',
         focus ? `Continue around focus "${focus}" first` : '',
-        lastFiles[0] ? `Re-read ${lastFiles[0]} first` : '',
-        openQuestions[0] ? `Confirm this question first: ${openQuestions[0]}` : '',
-        knownRisks[0] ? `Re-check this risk: ${knownRisks[0]}` : '',
+        summaryLastFiles[0] ? `Re-read ${summaryLastFiles[0]} first` : '',
+        summaryOpenQuestions[0] ? `Confirm this question first: ${summaryOpenQuestions[0]}` : '',
+        summaryKnownRisks[0] ? `Re-check this risk: ${summaryKnownRisks[0]}` : '',
         contextHygiene.level === 'consider-clearing'
           ? `Context reminder: ${contextHygiene.recommendation}`
           : '',
@@ -690,13 +770,60 @@ function createSessionFlowHelpers(deps) {
     };
   }
 
+  function buildWorkflowStage(nextCommand) {
+    const command = String(nextCommand && nextCommand.command ? nextCommand.command : '').trim();
+
+    if (command === 'health') {
+      return {
+        name: 'health-gate',
+        why: 'Base hardware truth or adapter health is not closed yet; complete health closure first',
+        exit_criteria: 'Health next commands are closed and the next command is no longer health',
+        primary_command: 'health'
+      };
+    }
+
+    if (command === 'scan') {
+      return {
+        name: 'triage',
+        why: 'Entry point, truth source, or failure scene is not narrow enough yet',
+        exit_criteria: 'The real change point and evidence source are explicit',
+        primary_command: command
+      };
+    }
+
+    if (['plan', 'arch-review'].includes(command)) {
+      return {
+        name: 'planning',
+        why: 'Current work has complexity or architecture risk and needs a preflight plan',
+        exit_criteria: 'Execution scope, constraints, and checks are explicit',
+        primary_command: command
+      };
+    }
+
+    if (['review', 'verify'].includes(command)) {
+      return {
+        name: 'closure',
+        why: 'Current iteration should be closed with review evidence and verification',
+        exit_criteria: 'Required checks are captured and no blocking risk remains',
+        primary_command: command
+      };
+    }
+
+    return {
+      name: 'execution',
+      why: 'Context is already converged enough for direct implementation or root-cause narrowing',
+      exit_criteria: 'Implementation change or debug result is produced with evidence',
+      primary_command: command || 'do'
+    };
+  }
+
   function buildResumeContext() {
     const resolved = resolveSession();
     const handoff = loadHandoff();
-    const guidance = buildGuidance(resolved, handoff);
+    const memorySummary = loadContextSummary ? loadContextSummary() : null;
+    const guidance = buildGuidance(resolved, handoff, memorySummary);
     const contextHygiene = buildContextHygiene(resolved, handoff, 'resume');
     const activeTask = getActiveTask ? getActiveTask() : null;
-    const activeWorkspace = getActiveWorkspace ? getActiveWorkspace() : resolveActiveWorkspace(resolved.session);
 
     return enrichWithToolSuggestions({
       summary: {
@@ -739,11 +866,8 @@ function createSessionFlowHelpers(deps) {
             context: activeTask.context
           }
         : null,
-      workspace: activeWorkspace
-        ? buildWorkspaceView(activeWorkspace)
-        : null,
-      thread: resolveActiveThread(resolved.session),
-      diagnostics: resolved.session.diagnostics || { latest_forensics: {}, latest_executor: {} },
+      diagnostics: resolved.session.diagnostics || { latest_forensics: {}, latest_executor: {}, executor_history: {}, human_signoffs: {} },
+      memory_summary: buildMemorySummaryView(memorySummary),
       carry_over: {
         last_files: resolved.session.last_files || [],
         open_questions: resolved.session.open_questions || [],
@@ -758,10 +882,10 @@ function createSessionFlowHelpers(deps) {
   function buildNextContext() {
     const resolved = resolveSession();
     const handoff = loadHandoff();
-    const guidance = buildGuidance(resolved, handoff);
+    const memorySummary = loadContextSummary ? loadContextSummary() : null;
+    const guidance = buildGuidance(resolved, handoff, memorySummary);
     const health = getHealthReport ? getHealthReport() : null;
     const activeTask = getActiveTask ? getActiveTask() : null;
-    const activeWorkspace = getActiveWorkspace ? getActiveWorkspace() : resolveActiveWorkspace(resolved.session);
     const gatedByHealth = shouldGateNextWithHealth(resolved, handoff, guidance.next.command, health);
     const nextCommand = gatedByHealth
       ? {
@@ -794,6 +918,11 @@ function createSessionFlowHelpers(deps) {
           ...buildAdapterHealthHints(health, guidance.primary_tool_recommendation),
           ...guidance.next_actions
         ]);
+    const workflowStage = buildWorkflowStage(nextCommand);
+    const qualityGates = getQualityGateSummary(resolved);
+    const permissionGates = permissionGateHelpers.buildPermissionGates({
+      quality_gates: qualityGates
+    });
 
     return enrichWithToolSuggestions({
       current: {
@@ -820,9 +949,6 @@ function createSessionFlowHelpers(deps) {
             context_files: activeTask.context_files
           }
         : null,
-      workspace: activeWorkspace
-        ? buildWorkspaceView(activeWorkspace)
-        : null,
       handoff: handoff
         ? {
             next_action: handoff.next_action,
@@ -831,8 +957,10 @@ function createSessionFlowHelpers(deps) {
             timestamp: handoff.timestamp
           }
         : null,
-      thread: resolveActiveThread(resolved.session),
-      diagnostics: resolved.session.diagnostics || { latest_forensics: {}, latest_executor: {} },
+      diagnostics: resolved.session.diagnostics || { latest_forensics: {}, latest_executor: {}, executor_history: {}, human_signoffs: {} },
+      memory_summary: buildMemorySummaryView(memorySummary),
+      quality_gates: qualityGates,
+      permission_gates: permissionGates,
       health: health
         ? {
             status: health.status,
@@ -845,13 +973,13 @@ function createSessionFlowHelpers(deps) {
       next: {
         command: nextCommand.command,
         reason: nextCommand.reason,
-        skill: `$emb-${nextCommand.command}`,
         cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [nextCommand.command]),
         gated_by_health: gatedByHealth,
         health_next_commands: nextCommand.health_next_commands || [],
         health_quickstart: nextCommand.health_quickstart || null,
         tool_recommendation: guidance.primary_tool_recommendation
       },
+      workflow_stage: workflowStage,
       context_hygiene: contextHygiene,
       next_actions: nextActions
     }, resolved);
@@ -891,13 +1019,26 @@ function createSessionFlowHelpers(deps) {
     };
   }
 
+  function buildPauseContextSummary(noteText) {
+    const resolved = resolveSession();
+    const handoff = buildPausePayload(noteText);
+    return {
+      handoff,
+      summary: buildMemorySummaryArtifact(resolved, handoff, 'pause')
+    };
+  }
+
   function buildStatus() {
     const resolved = resolveSession();
     const projectConfig = getProjectConfig();
     const handoff = loadHandoff();
+    const memorySummary = loadContextSummary ? loadContextSummary() : null;
     const contextHygiene = buildContextHygiene(resolved, handoff, 'status');
     const activeTask = getActiveTask ? getActiveTask() : null;
-    const activeWorkspace = getActiveWorkspace ? getActiveWorkspace() : resolveActiveWorkspace(resolved.session);
+    const qualityGates = getQualityGateSummary(resolved);
+    const permissionGates = permissionGateHelpers.buildPermissionGates({
+      quality_gates: qualityGates
+    });
 
     return enrichWithToolSuggestions({
       session_version: resolved.session.session_version,
@@ -916,9 +1057,9 @@ function createSessionFlowHelpers(deps) {
       open_questions: resolved.session.open_questions,
       known_risks: resolved.session.known_risks,
       last_files: resolved.session.last_files,
-      active_workspace: activeWorkspace
-        ? buildWorkspaceView(activeWorkspace)
-        : null,
+      memory_summary: buildMemorySummaryView(memorySummary),
+      quality_gates: qualityGates,
+      permission_gates: permissionGates,
       active_task: activeTask
         ? {
             name: activeTask.name,
@@ -949,7 +1090,8 @@ function createSessionFlowHelpers(deps) {
     shouldSuggestPlan,
     shouldSuggestReview,
     suggestFlow,
-    buildPausePayload
+    buildPausePayload,
+    buildPauseContextSummary
   };
 }
 

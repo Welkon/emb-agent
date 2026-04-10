@@ -1,267 +1,186 @@
 #!/usr/bin/env node
 
+'use strict';
+
+const fs = require('fs');
 const path = require('path');
+const process = require('process');
 
 const ROOT = path.resolve(__dirname, '..');
-const TEMPLATES_DIR = path.join(ROOT, 'templates');
-const CONFIG_PATH = path.join(TEMPLATES_DIR, 'config.json');
-const fs = require('fs');
-const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
-const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
+const { TEMPLATE_CONFIG, TEMPLATES_DIR } = require(path.join(ROOT, 'lib', 'template-registry.cjs'));
+const { applyTemplate } = require(path.join(ROOT, 'scripts', 'init-project.cjs'));
 
-function usage() {
-  process.stdout.write(
-    [
-      'template usage:',
-      '  node scripts/template.cjs list',
-      '  node scripts/template.cjs show <name>',
-      '  node scripts/template.cjs fill <name> [--output <path>] [--field KEY=VALUE] [--force]'
-    ].join('\n') + '\n'
-  );
-}
-
-function loadProjectSession(cwd) {
-  const paths = runtime.getProjectStatePaths(ROOT, cwd, RUNTIME_CONFIG);
-  runtime.ensureProjectStateStorage(paths);
-  const projectConfig = runtime.loadProjectConfig(cwd, RUNTIME_CONFIG);
-  const sessionPath = paths.sessionPath;
-  if (fs.existsSync(sessionPath)) {
-    return runtime.normalizeSession(runtime.readJson(sessionPath), paths, RUNTIME_CONFIG, projectConfig);
-  }
-  return runtime.loadDefaultSession(ROOT, paths, RUNTIME_CONFIG, projectConfig);
-}
-
-function parseArgs(argv) {
-  const result = {
-    cmd: argv[0] || '',
-    name: argv[1] || '',
-    output: '',
-    force: false,
-    fields: {}
-  };
-
-  for (let index = 2; index < argv.length; index += 1) {
-    const token = argv[index];
-
-    if (token === '--output') {
-      result.output = argv[index + 1] || '';
-      index += 1;
-      continue;
-    }
-
-    if (token === '--field') {
-      const pair = argv[index + 1] || '';
-      index += 1;
-      const separator = pair.indexOf('=');
-      if (separator === -1) {
-        throw new Error(`Invalid --field: ${pair}`);
-      }
-      const key = pair.slice(0, separator).trim();
-      const value = pair.slice(separator + 1).trim();
-      result.fields[key] = value;
-      continue;
-    }
-
-    if (token === '--force') {
-      result.force = true;
-      continue;
-    }
-
-    throw new Error(`Unknown argument: ${token}`);
-  }
-
-  return result;
+function slugify(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'template';
 }
 
 function loadTemplates() {
-  return runtime.validateTemplateConfig(runtime.readJson(CONFIG_PATH));
+  return TEMPLATE_CONFIG;
 }
 
-function buildContext(extraFields) {
-  const cwd = process.cwd();
-  const context = {
-    DATE: new Date().toISOString().slice(0, 10),
-    TASK_ID_PREFIX: new Date().toISOString().slice(5, 10),
-    PROJECT_NAME: path.basename(cwd),
-    BOARD_NAME: '',
-    MCU_NAME: '',
-    TARGET_NAME: '',
-    PROFILE: '',
-    PACKS: '',
-    VERSION: '',
-    SLUG: 'new-item',
-    TOOL_NAME: 'timer-calc',
-    FAMILY_NAME: 'vendor-family',
-    DEVICE_NAME: 'vendor-device',
-    CHIP_NAME: 'vendor-chip',
-    ADAPTER_NAME: 'vendor-tool-adapter',
-    RUNTIME_MODEL: 'main_loop_plus_isr',
-    CONCURRENCY_MODEL: 'interrupt_shared_state',
-    RESOURCE_1: 'rom',
-    RESOURCE_2: 'ram',
-    SEARCH_1: 'hardware_truth',
-    SEARCH_2: 'entry_points',
-    GUARDRAIL_1: 'thin_isr',
-    GUARDRAIL_2: 'prefer_direct_state',
-    AXIS_1: 'timing_path',
-    AXIS_2: 'shared_state',
-    NOTE_TARGET_1: 'docs/DEBUG-NOTES.md',
-    NOTE_TARGET_2: 'docs/HARDWARE-LOGIC.md',
-    AGENT_1: 'hw-scout',
-    AGENT_2: 'fw-doer',
-    FOCUS_1: 'timing',
-    FOCUS_2: 'signal_integrity',
-    SIGNAL_1: 'INPUT_1',
-    PIN_1: 'PA0',
-    DIR_1: 'input',
-    STATE_1: 'pull-high',
-    NOTE_1: '',
-    SIGNAL_2: 'OUTPUT_1',
-    PIN_2: 'PA1',
-    DIR_2: 'output',
-    STATE_2: 'low',
-    NOTE_2: '',
-    TITLE: 'New task title',
-    DESCRIPTION: 'Describe the task outcome and boundaries',
-    TASK_STATUS: 'planning',
-    DEV_TYPE: 'embedded',
-    SCOPE: 'core',
-    PRIORITY: 'P2',
-    CREATOR: '',
-    ASSIGNEE: '',
-    BASE_BRANCH: 'main',
-    BRANCH: '',
-    WORKTREE_PATH: '',
-    COMMIT: '',
-    PR_URL: '',
-    GOAL_1: 'Define the first deliverable target for the current project',
-    FEATURE_1: 'Complete the most critical board-level behavior or feature closure',
-    REQ_CONSTRAINT_1: 'Prefer reusing the existing codebase and hardware truth before expanding architecture',
-    ACCEPTANCE_1: 'The current goal can be confirmed at board level or through a minimal verification path',
-    FAILURE_POLICY_1: 'When hardware or requirements are unconfirmed, record an unknown first instead of guessing',
-    REQ_UNKNOWN_1: 'Customer or production requirements still need confirmation'
-  };
-
-  try {
-    const session = loadProjectSession(cwd);
-      context.PROFILE = session.project_profile || RUNTIME_CONFIG.default_profile;
-      context.PACKS = Array.isArray(session.active_packs) ? session.active_packs.join(',') : '';
-  } catch {
-    // ignore invalid session
+function getTemplateMeta(name) {
+  const meta = TEMPLATE_CONFIG[name];
+  if (!meta) {
+    throw new Error(`unknown template: ${name}`);
   }
+  return meta;
+}
 
+function readTemplateSource(name) {
+  const meta = getTemplateMeta(name);
+  const sourcePath = path.join(TEMPLATES_DIR, meta.source);
   return {
-    ...context,
+    ...meta,
+    name,
+    sourcePath,
+    content: fs.readFileSync(sourcePath, 'utf8')
+  };
+}
+
+function buildContext(extraFields = {}, projectRootArg = process.cwd()) {
+  const projectRoot = path.resolve(projectRootArg || process.cwd());
+  const projectName = extraFields.PROJECT_NAME || path.basename(projectRoot);
+  const slug = extraFields.SLUG || extraFields.PROJECT_SLUG || slugify(projectName);
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    DATE: today,
+    ISO_DATE: today,
+    PROJECT_ROOT: projectRoot,
+    PROJECT_NAME: projectName,
+    PROJECT_SLUG: slugify(projectName),
+    SLUG: slug,
+    USER: extraFields.USER || process.env.USER || process.env.USERNAME || '',
+    BOARD_NAME: extraFields.BOARD_NAME || '',
+    MCU_NAME: extraFields.MCU_NAME || '',
+    RUNTIME: extraFields.RUNTIME || '',
+    PROFILE_NAME: extraFields.PROFILE_NAME || slug,
+    PACK_NAME: extraFields.PACK_NAME || slug,
+    TOOL_NAME: extraFields.TOOL_NAME || slug,
+    CHIP_NAME: extraFields.CHIP_NAME || slug,
+    TASK_NAME: extraFields.TASK_NAME || slug,
     ...extraFields
   };
 }
 
-function applyTemplate(content, context) {
-  return content.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_, key) => {
-    return Object.prototype.hasOwnProperty.call(context, key) ? String(context[key]) : '';
-  });
-}
-
-function resolveOutputPath(templateMeta, context, outputArg) {
-  const output = outputArg || templateMeta.default_output || '';
-  if (!output) {
-    throw new Error('Template output path not configured');
+function resolveOutputPath(meta, outputArg, context, projectRoot) {
+  const outputTemplate = outputArg || meta.default_output;
+  if (!outputTemplate) {
+    throw new Error(`template ${meta.name || 'unknown'} does not define a default output`);
   }
-
-  const rendered = applyTemplate(output, context);
-  return path.resolve(process.cwd(), rendered);
+  return path.resolve(projectRoot, applyTemplate(outputTemplate, context));
 }
 
 function listCommand() {
-  const templates = loadTemplates();
-  const result = Object.entries(templates)
-    .map(([name, meta]) => ({
-      name,
-      description: meta.description,
-      default_output: meta.default_output || ''
-    }))
-    .sort((left, right) => left.name.localeCompare(right.name));
-
-  process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  return Object.entries(TEMPLATE_CONFIG)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, meta]) => ({ name, ...meta }));
 }
 
 function showCommand(name) {
-  if (!name) throw new Error('Missing template name');
-  const templates = loadTemplates();
-  const meta = templates[name];
-  if (!meta) throw new Error(`Template not found: ${name}`);
-
-  const sourcePath = path.join(TEMPLATES_DIR, meta.source);
-  const context = buildContext({});
-  const content = applyTemplate(runtime.readText(sourcePath), context);
-
-  process.stdout.write(JSON.stringify({
-    name,
-    source: meta.source,
-    description: meta.description,
-    default_output: meta.default_output || '',
-    preview: content
-  }, null, 2) + '\n');
+  return readTemplateSource(name);
 }
 
-function fillCommand(name, outputArg, extraFields, force) {
-  if (!name) throw new Error('Missing template name');
-  const templates = loadTemplates();
-  const meta = templates[name];
-  if (!meta) throw new Error(`Template not found: ${name}`);
-
-  const context = buildContext(extraFields);
-  const sourcePath = path.join(TEMPLATES_DIR, meta.source);
-  const outputPath = resolveOutputPath(meta, context, outputArg);
-  const content = applyTemplate(runtime.readText(sourcePath), context);
-
+function fillCommand(name, outputArg = '', extraFields = {}, force = false) {
+  const template = readTemplateSource(name);
+  const projectRoot = process.cwd();
+  const context = buildContext(extraFields, projectRoot);
+  const outputPath = resolveOutputPath(template, outputArg, context, projectRoot);
   if (fs.existsSync(outputPath) && !force) {
-    throw new Error(`Output already exists: ${outputPath}`);
+    throw new Error(`output already exists: ${path.relative(projectRoot, outputPath)}`);
   }
-
-  runtime.ensureDir(path.dirname(outputPath));
-  fs.writeFileSync(outputPath, content, 'utf8');
-
-  process.stdout.write(JSON.stringify({
-    created: path.relative(process.cwd(), outputPath),
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, applyTemplate(template.content, context), 'utf8');
+  return {
+    created: path.relative(projectRoot, outputPath),
     template: name
-  }, null, 2) + '\n');
+  };
 }
 
-function runTemplateCli(argv) {
-  const args = parseArgs(argv || process.argv.slice(2));
+function parseFillArgs(args) {
+  const result = {
+    name: '',
+    output: '',
+    force: false,
+    fields: {}
+  };
+  let outputSet = false;
+  for (const arg of args) {
+    if (arg === '--force') {
+      result.force = true;
+      continue;
+    }
+    if (!result.name) {
+      result.name = arg;
+      continue;
+    }
+    if (!outputSet && !arg.includes('=')) {
+      result.output = arg;
+      outputSet = true;
+      continue;
+    }
+    const separator = arg.indexOf('=');
+    if (separator === -1) {
+      throw new Error(`invalid field assignment: ${arg}`);
+    }
+    const key = arg.slice(0, separator).trim();
+    const value = arg.slice(separator + 1);
+    if (!key) {
+      throw new Error(`invalid field assignment: ${arg}`);
+    }
+    result.fields[key] = value;
+  }
+  if (!result.name) {
+    throw new Error('template name is required');
+  }
+  return result;
+}
 
-  if (!args.cmd || args.cmd === '--help' || args.cmd === 'help') {
-    usage();
+function runTemplateCli(argv = process.argv.slice(2)) {
+  const [command, ...rest] = argv;
+  if (!command || command === '--help' || command === '-h') {
+    process.stdout.write(
+      [
+        'template usage:',
+        '  node scripts/template.cjs list',
+        '  node scripts/template.cjs show <name>',
+        '  node scripts/template.cjs fill <name> [output] [--force] [KEY=VALUE ...]'
+      ].join('\n') + '\n'
+    );
     return;
   }
-
-  if (args.cmd === 'list') {
-    listCommand();
+  if (command === 'list') {
+    process.stdout.write(JSON.stringify(listCommand(), null, 2) + '\n');
     return;
   }
-
-  if (args.cmd === 'show') {
-    showCommand(args.name);
+  if (command === 'show') {
+    if (!rest[0]) {
+      throw new Error('template name is required');
+    }
+    const template = showCommand(rest[0]);
+    process.stdout.write(JSON.stringify(template, null, 2) + '\n');
     return;
   }
-
-  if (args.cmd === 'fill') {
-    fillCommand(args.name, args.output, args.fields, args.force);
+  if (command === 'fill') {
+    const parsed = parseFillArgs(rest);
+    const result = fillCommand(parsed.name, parsed.output, parsed.fields, parsed.force);
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     return;
   }
-
-  throw new Error(`Unknown template command: ${args.cmd}`);
+  throw new Error(`unknown template command: ${command}`);
 }
 
 module.exports = {
-  applyTemplate,
-  buildContext,
-  loadTemplates,
-  runTemplateCli,
   listCommand,
   showCommand,
-  fillCommand
+  fillCommand,
+  buildContext,
+  applyTemplate,
+  loadTemplates,
+  runTemplateCli
 };
 
 if (require.main === module) {
@@ -269,6 +188,6 @@ if (require.main === module) {
     runTemplateCli(process.argv.slice(2));
   } catch (error) {
     process.stderr.write(`template error: ${error.message}\n`);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

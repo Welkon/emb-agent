@@ -135,41 +135,8 @@ function createCliEntryHelpers(deps) {
     return match ? match[1].toUpperCase() : '';
   }
 
-  function loadStarterHardwareHints() {
-    const templatesDir = path.join(ROOT, 'templates');
-    if (!fs.existsSync(templatesDir)) {
-      return [];
-    }
-
-    return fs.readdirSync(templatesDir)
-      .filter(file => file.endsWith('-hw.yaml.tpl') && file !== 'hw.yaml.tpl')
-      .map(file => {
-        const content = runtime.readText(path.join(templatesDir, file));
-        const model = parseScalar(content, 'model');
-        if (!model) {
-          return null;
-        }
-        return {
-          model,
-          package: normalizePackageName(parseScalar(content, 'package') || ''),
-          vendor: parseScalar(content, 'vendor') || '',
-          source: 'starter-template',
-          hint: file
-        };
-      })
-      .filter(Boolean);
-  }
-
   function loadKnownHardwareHints() {
     const byKey = new Map();
-    const starterHints = loadStarterHardwareHints();
-
-    starterHints.forEach(item => {
-      const key = `${String(item.model).toLowerCase()}::${String(item.package || '').toLowerCase()}::starter`;
-      if (!byKey.has(key)) {
-        byKey.set(key, item);
-      }
-    });
 
     let listed = [];
     try {
@@ -428,8 +395,8 @@ function createCliEntryHelpers(deps) {
     } else {
       nextSteps.push(
         firstUsablePin
-          ? `Declare board pins/peripherals with: declare hardware --signal SIGNAL_NAME --pin ${firstUsablePin.signal} --dir input|output`
-          : 'Declare board pins/peripherals with: declare hardware --signal SIGNAL_NAME --pin <pin> --dir input|output'
+          ? `Declare board pins/peripherals with agent-selected pins (first candidate ${firstUsablePin.signal}): declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin`
+          : 'Declare board pins/peripherals with agent-selected pins: declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin'
       );
 
       if (sources.length === 0) {
@@ -489,9 +456,9 @@ function createCliEntryHelpers(deps) {
       'Core workflow:',
       '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [--user <name>|-u <name>] [--force]',
       '  declare hardware [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
-      '    [--signal <name> --pin <pin> --dir <direction> [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
+      '    [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>]',
-      '  next',
+      '  next [run]',
       '  ingest doc --file <path> [--provider mineru] [--kind datasheet] [--title <text>] [--pages <range>] [--language ch|en] [--ocr] [--force] [--to hardware|requirements]',
       '  task add <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
       '  task show <name>',
@@ -517,7 +484,7 @@ function createCliEntryHelpers(deps) {
       'Advanced commands:',
       '  help',
       '  ingest hardware [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
-      '    [--signal <name> --pin <pin> --dir <direction> [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
+      '    [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>]',
       '  ingest requirements [--goal <text>] [--feature <text>] [--constraint <text>] [--accept <text>] [--failure <text>] [--unknown <text>] [--source <path>]',
       '  ingest apply doc <doc-id> --to hardware|requirements [--only field1,field2] [--force]',
@@ -534,27 +501,10 @@ function createCliEntryHelpers(deps) {
       '  task list',
       '  task context list <name> [implement|check|debug|all]',
       '  task context add <name> <implement|check|debug> <path> [reason]',
-      '  workspace list',
-      '  workspace add <summary> [--type subsystem|board|flow|domain]',
-      '  workspace show <name>',
-      '  workspace activate <name>',
-      '  workspace refresh <name>',
-      '  workspace link <workspace> <task|spec|thread> <name>',
-      '  workspace unlink <workspace> <task|spec|thread> <name>',
-      '  spec list',
-      '  spec add <summary> [--type feature|hardware|workflow|interface]',
-      '  spec show <name>',
-      '  thread list',
-      '  thread add <summary>',
-      '  thread show <name>',
-      '  thread resume <name>',
-      '  thread resolve <name> [note]',
-      '  forensics [problem description]',
       '  settings show',
       '  settings set <key> <value>',
       '  settings reset',
       '  session-report [summary]',
-      '  manager',
       '  resolve',
       '  config show',
       '  project show [--effective] [--field <path>]',
@@ -567,6 +517,8 @@ function createCliEntryHelpers(deps) {
       '  arch-review',
       '  review',
       '  review save <summary> [--scope <text>] [--finding <text>] [--check <text>]',
+      '  verify confirm <name> [note]',
+      '  verify reject <name> [note]',
       '  note',
       '  note add <target> <summary> [--kind <kind>] [--evidence <text>] [--unverified <text>]',
       '  dispatch show <action>',
@@ -574,9 +526,6 @@ function createCliEntryHelpers(deps) {
       '  schedule show <action>',
       '  orchestrate [next]',
       '  orchestrate show <action>',
-      '  template list',
-      '  template show <name>',
-      '  template fill <name> [--output <path>] [--field KEY=VALUE] [--force]',
       '  review context',
       '  review axes',
       '  note targets',
@@ -603,8 +552,6 @@ function createCliEntryHelpers(deps) {
       '  agents show <name>',
       '  commands list',
       '  commands show <name>',
-      '  skills list',
-      '  skills show <name>',
       '  profile list',
       '  profile show <name>',
       '  profile set <name>',

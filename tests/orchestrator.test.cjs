@@ -27,7 +27,7 @@ test('orchestrator defaults to next and stays inline for empty project context',
     assert.equal(orchestrator.source, 'next');
     assert.equal(orchestrator.resolved_action, 'health');
     assert.equal(orchestrator.workflow.strategy, 'inline');
-    assert.equal(orchestrator.workflow.next_skill, '$emb-health');
+    assert.match(orchestrator.workflow.next_cli, / health$/);
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'inline-action'));
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'integrate'));
   } finally {
@@ -86,8 +86,8 @@ test('orchestrator exposes arch-review contract as primary-first flow', () => {
   }
 });
 
-test('orchestrator routes drift-style failures to forensics contract', () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-forensics-'));
+test('orchestrator routes drift-style failures to review contract', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-review-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
 
@@ -100,10 +100,10 @@ test('orchestrator routes drift-style failures to forensics contract', () => {
 
     const orchestrator = cli.buildOrchestratorContext('next');
 
-    assert.equal(orchestrator.resolved_action, 'forensics');
-    assert.equal(orchestrator.workflow.strategy, 'primary-first');
-    assert.equal(orchestrator.workflow.primary_agent, 'emb-bug-hunter');
-    assert.equal(orchestrator.dispatch_contract.primary.agent, 'emb-bug-hunter');
+    assert.equal(orchestrator.resolved_action, 'review');
+    assert.equal(orchestrator.workflow.strategy, 'primary-plus-parallel');
+    assert.equal(orchestrator.workflow.primary_agent, 'emb-hw-scout');
+    assert.equal(orchestrator.dispatch_contract.primary.agent, 'emb-hw-scout');
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'launch-primary'));
   } finally {
     process.chdir(currentCwd);
@@ -259,7 +259,7 @@ test('orchestrator exposes structured executor signal when latest executor faile
     assert.equal(orchestrator.executor_signal.present, true);
     assert.equal(orchestrator.executor_signal.failed, true);
     assert.equal(orchestrator.executor_signal.requires_forensics, true);
-    assert.equal(orchestrator.executor_signal.recommended_action, 'forensics');
+    assert.equal(orchestrator.executor_signal.recommended_action, 'review');
     assert.match(orchestrator.executor_signal.summary, /build failed, exit=2/);
   } finally {
     process.chdir(currentCwd);
@@ -389,8 +389,8 @@ test('orchestrator keeps tool step non-required when adapter trust is not yet ex
   }
 });
 
-test('orchestrator surfaces active workspace in current context', () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-workspace-'));
+test('orchestrator surfaces current session carry-over without workspace view', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-session-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
 
@@ -399,14 +399,12 @@ test('orchestrator surfaces active workspace in current context', () => {
   try {
     process.chdir(tempProject);
     cli.main(['init']);
-    cli.main(['workspace', 'add', 'Upgrade flow bring-up', '--type', 'flow']);
-    cli.main(['workspace', 'activate', 'upgrade-flow-bring-up']);
     cli.main(['risk', 'add', 'irq race']);
 
     const orchestrator = cli.buildOrchestratorContext('next');
 
-    assert.equal(orchestrator.workspace.name, 'upgrade-flow-bring-up');
-    assert.equal(orchestrator.workspace.type, 'flow');
+    assert.equal(orchestrator.current.known_risks[0], 'irq race');
+    assert.equal(orchestrator.workspace, undefined);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

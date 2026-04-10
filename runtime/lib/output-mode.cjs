@@ -1,5 +1,7 @@
 'use strict';
 
+const permissionGateHelpers = require('./permission-gates.cjs');
+
 function isObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -26,6 +28,45 @@ function summarizeContextHygiene(value) {
     recommendation: value.recommendation || '',
     clear_hint: value.clear_hint || '',
     handoff_ready: Boolean(value.handoff_ready)
+  });
+}
+
+function summarizeMemorySummary(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const activeTask = isObject(value.active_task) ? value.active_task : {};
+  const diagnostics = isObject(value.diagnostics) ? value.diagnostics : {};
+  const latestForensics = isObject(diagnostics.latest_forensics) ? diagnostics.latest_forensics : {};
+  const latestExecutor = isObject(diagnostics.latest_executor) ? diagnostics.latest_executor : {};
+
+  return compactObject({
+    generated_at: value.generated_at || '',
+    source: value.source || '',
+    focus: value.focus || '',
+    last_command: value.last_command || '',
+    suggested_flow: value.suggested_flow || '',
+    next_action: value.next_action || '',
+    last_files: truncateList(value.last_files, 4),
+    open_questions: truncateList(value.open_questions, 3),
+    known_risks: truncateList(value.known_risks, 3),
+    active_task: compactObject({
+      name: activeTask.name || '',
+      title: activeTask.title || '',
+      status: activeTask.status || ''
+    }),
+    diagnostics: compactObject({
+      latest_forensics: compactObject({
+        report_file: latestForensics.report_file || '',
+        highest_severity: latestForensics.highest_severity || ''
+      }),
+      latest_executor: compactObject({
+        name: latestExecutor.name || '',
+        status: latestExecutor.status || '',
+        risk: latestExecutor.risk || ''
+      })
+    })
   });
 }
 
@@ -79,6 +120,57 @@ function summarizeHealth(value) {
           steps: truncateList(value.quickstart.steps, 3)
         })
       : null
+  });
+}
+
+function summarizeWorkflowStage(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    name: value.name || '',
+    why: value.why || '',
+    exit_criteria: value.exit_criteria || '',
+    primary_command: value.primary_command || ''
+  });
+}
+
+function summarizeQualityGates(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    gate_status: value.gate_status || '',
+    status_summary: value.status_summary || '',
+    blocking_summary: value.blocking_summary || '',
+    required_executors: truncateList(value.required_executors, 6),
+    required_signoffs: truncateList(value.required_signoffs, 6),
+    pending_gates: truncateList(value.pending_gates, 6),
+    failed_gates: truncateList(value.failed_gates, 6),
+    pending_signoffs: truncateList(value.pending_signoffs, 6),
+    rejected_signoffs: truncateList(value.rejected_signoffs, 6),
+    recommended_runs: truncateList(value.recommended_runs, 6),
+    recommended_signoffs: truncateList(value.recommended_signoffs, 6)
+  });
+}
+
+function summarizePermissionGates(value) {
+  const summary = permissionGateHelpers.summarizePermissionGates(value);
+  if (!summary || summary.total === 0) {
+    return null;
+  }
+
+  return compactObject({
+    status: summary.status || '',
+    total: Number.isFinite(summary.total) ? summary.total : undefined,
+    blocked: Number.isFinite(summary.blocked) ? summary.blocked : undefined,
+    pending: Number.isFinite(summary.pending) ? summary.pending : undefined,
+    passed: Number.isFinite(summary.passed) ? summary.passed : undefined,
+    kinds: truncateList(summary.kinds, 4),
+    commands: truncateList(summary.commands, 4),
+    summaries: truncateList(summary.summaries, 3)
   });
 }
 
@@ -136,7 +228,11 @@ function buildBriefNextContext(value) {
       cli: next.cli || '',
       gated_by_health: Boolean(next.gated_by_health)
     }),
+    workflow_stage: summarizeWorkflowStage(value.workflow_stage),
+    quality_gates: summarizeQualityGates(value.quality_gates),
+    permission_gates: summarizePermissionGates(value.permission_gates),
     tool_recommendation: summarizeToolRecommendation(next.tool_recommendation || value.tool_recommendation),
+    memory_summary: summarizeMemorySummary(value.memory_summary),
     context_hygiene: summarizeContextHygiene(value.context_hygiene),
     next_actions: truncateList(value.next_actions, 5),
     health: summarizeHealth(value.health)
@@ -170,21 +266,8 @@ function buildBriefResumeContext(value) {
           status: value.task.status || ''
         })
       : null,
-    workspace: isObject(value.workspace)
-      ? compactObject({
-          name: value.workspace.name || '',
-          title: value.workspace.title || '',
-          status: value.workspace.status || ''
-        })
-      : null,
-    thread: isObject(value.thread)
-      ? compactObject({
-          name: value.thread.name || '',
-          title: value.thread.title || '',
-          status: value.thread.status || ''
-        })
-      : null,
     tool_recommendation: summarizeToolRecommendation(value.tool_recommendation),
+    memory_summary: summarizeMemorySummary(value.memory_summary),
     context_hygiene: summarizeContextHygiene(value.context_hygiene),
     next_actions: truncateList(value.next_actions, 5)
   });
@@ -276,6 +359,8 @@ function buildBriefVerifyOutput(value) {
     checklist: truncateList(value.checklist, 6),
     evidence_targets: truncateList(value.evidence_targets, 5),
     next_step: value.next_step || '',
+    quality_gates: summarizeQualityGates(value.quality_gates),
+    permission_gates: summarizePermissionGates(value.permission_gates),
     verification_focus: truncateList(value.verification_focus, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
@@ -326,16 +411,15 @@ function buildBriefDispatchOrchestrateOutput(value) {
     requested_action: value.requested_action || '',
     resolved_action: value.resolved_action || '',
     reason: value.reason || '',
-    skill: value.skill || '',
     cli: value.cli || '',
     dispatch_ready: value.dispatch_ready === undefined ? undefined : Boolean(value.dispatch_ready),
     workflow: isObject(value.workflow)
       ? compactObject({
-          strategy: value.workflow.strategy || '',
-          next_skill: value.workflow.next_skill || '',
+        strategy: value.workflow.strategy || '',
           next_cli: value.workflow.next_cli || ''
         })
       : null,
+    permission_gates: summarizePermissionGates(value.permission_gates),
     tool_execution: isObject(value.tool_execution)
       ? compactObject({
           status: value.tool_execution.status || '',
@@ -343,6 +427,7 @@ function buildBriefDispatchOrchestrateOutput(value) {
           cli: value.tool_execution.cli || ''
         })
       : null,
+    workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     context_hygiene: summarizeContextHygiene(value.context_hygiene)
   });
 }
@@ -357,7 +442,29 @@ function buildBriefStatusOutput(value) {
     open_questions: truncateList(value.open_questions, 4),
     known_risks: truncateList(value.known_risks, 4),
     last_files: truncateList(value.last_files, 5),
+    memory_summary: summarizeMemorySummary(value.memory_summary),
+    permission_gates: summarizePermissionGates(value.permission_gates),
     context_hygiene: summarizeContextHygiene(value.context_hygiene)
+  });
+}
+
+function buildBriefToolOutput(value) {
+  return compactObject({
+    output_mode: 'brief',
+    tool: value.tool || '',
+    status: value.status || '',
+    implementation: value.implementation || '',
+    permission_gates: summarizePermissionGates(value.permission_gates),
+    high_risk_clarity: isObject(value.high_risk_clarity)
+      ? compactObject({
+          enabled: value.high_risk_clarity.enabled === undefined ? undefined : Boolean(value.high_risk_clarity.enabled),
+          category: value.high_risk_clarity.category || '',
+          requires_explicit_confirmation: value.high_risk_clarity.requires_explicit_confirmation === undefined
+            ? undefined
+            : Boolean(value.high_risk_clarity.requires_explicit_confirmation),
+          matched_signals: truncateList(value.high_risk_clarity.matched_signals, 4)
+        })
+      : null
   });
 }
 
@@ -418,6 +525,10 @@ function applyBriefMode(value) {
     return buildBriefStatusOutput(value);
   }
 
+  if (Object.prototype.hasOwnProperty.call(value, 'tool') && Object.prototype.hasOwnProperty.call(value, 'status') && Object.prototype.hasOwnProperty.call(value, 'implementation')) {
+    return buildBriefToolOutput(value);
+  }
+
   if (isObject(value.scheduler)) {
     return compactObject({
       output_mode: 'brief',
@@ -475,6 +586,7 @@ module.exports = {
   summarizeScheduler,
   summarizeToolRecommendation,
   summarizeHealth,
+  summarizePermissionGates,
   compactObject,
   truncateList,
   unique

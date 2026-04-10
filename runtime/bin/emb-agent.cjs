@@ -12,8 +12,7 @@ const PROFILES_DIR = path.join(ROOT, 'profiles');
 const PACKS_DIR = path.join(ROOT, 'packs');
 const AGENTS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'agents') : path.join(ROOT, 'agents');
 const COMMANDS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'commands', 'emb') : path.join(ROOT, 'commands');
-const SKILLS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'skills') : path.join(ROOT, 'skills');
-const TEMPLATES_DIR = path.join(ROOT, 'templates');
+const { TEMPLATES_DIR } = require(path.join(ROOT, 'lib', 'template-registry.cjs'));
 const templateCli = require(path.join(ROOT, 'scripts', 'template.cjs'));
 const adapterDeriveCli = require(path.join(ROOT, 'scripts', 'adapter-derive.cjs'));
 const attachProjectCli = require(path.join(ROOT, 'scripts', 'attach-project.cjs'));
@@ -36,15 +35,10 @@ const actionContractHelpers = require(path.join(ROOT, 'lib', 'action-contracts.c
 const commandGroupHelpers = require(path.join(ROOT, 'lib', 'command-groups.cjs'));
 const cliEntryHelpers = require(path.join(ROOT, 'lib', 'cli-entrypoints.cjs'));
 const cliRouterHelpers = require(path.join(ROOT, 'lib', 'cli-router.cjs'));
-const threadCommandHelpers = require(path.join(ROOT, 'lib', 'thread-commands.cjs'));
 const taskCommandHelpers = require(path.join(ROOT, 'lib', 'task-commands.cjs'));
-const workspaceCommandHelpers = require(path.join(ROOT, 'lib', 'workspace-commands.cjs'));
-const specCommandHelpers = require(path.join(ROOT, 'lib', 'spec-commands.cjs'));
-const forensicsCommandHelpers = require(path.join(ROOT, 'lib', 'forensics-command.cjs'));
 const projectStateStoreHelpers = require(path.join(ROOT, 'lib', 'project-state-store.cjs'));
 const settingsCommandHelpers = require(path.join(ROOT, 'lib', 'settings-command.cjs'));
 const sessionReportCommandHelpers = require(path.join(ROOT, 'lib', 'session-report-command.cjs'));
-const managerCommandHelpers = require(path.join(ROOT, 'lib', 'manager-command.cjs'));
 const healthUpdateCommandHelpers = require(path.join(ROOT, 'lib', 'health-update-command.cjs'));
 const executorCommandHelpers = require(path.join(ROOT, 'lib', 'executor-command.cjs'));
 
@@ -122,6 +116,9 @@ const {
   loadHandoff,
   saveHandoff,
   clearHandoff,
+  loadContextSummary,
+  saveContextSummary,
+  clearContextSummary,
   updateSession
 } = projectStateStoreHelpers.createProjectStateStoreHelpers({
   fs,
@@ -167,19 +164,6 @@ function loadMarkdown(dirPath, name, kind) {
   const filePath = path.join(dirPath, `${name}.md`);
   if (!fs.existsSync(filePath)) {
     throw new Error(`${kind} not found: ${name}`);
-  }
-
-  return {
-    name,
-    path: path.relative(process.cwd(), filePath),
-    content: runtime.readText(filePath)
-  };
-}
-
-function loadSkill(name) {
-  const filePath = path.join(SKILLS_DIR, name, 'SKILL.md');
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Skill not found: ${name}`);
   }
 
   return {
@@ -338,15 +322,6 @@ function resolveSession() {
 }
 
 const {
-  handleSpecCommands
-} = specCommandHelpers.createSpecCommandHelpers({
-  fs,
-  path,
-  runtime,
-  getProjectExtDir
-});
-
-const {
   getActiveTask,
   handleTaskCommands
 } = taskCommandHelpers.createTaskCommandHelpers({
@@ -366,34 +341,6 @@ const {
 });
 
 const {
-  listWorkspaces,
-  getActiveWorkspace,
-  handleWorkspaceCommands
-} = workspaceCommandHelpers.createWorkspaceCommandHelpers({
-  fs,
-  path,
-  runtime,
-  getProjectExtDir,
-  loadSession,
-  updateSession
-});
-
-const {
-  listThreads,
-  upsertForensicsThread,
-  handleThreadCommands
-} = threadCommandHelpers.createThreadCommandHelpers({
-  fs,
-  path,
-  runtime,
-  resolveProjectRoot,
-  getProjectExtDir,
-  loadSession,
-  updateSession,
-  requireRestText
-});
-
-const {
   getPreferences,
   buildStatus,
   buildReviewContext,
@@ -407,7 +354,8 @@ const {
   shouldSuggestPlan,
   shouldSuggestReview,
   suggestFlow,
-  buildPausePayload
+  buildPausePayload,
+  buildPauseContextSummary
 } = sessionFlowHelpers.createSessionFlowHelpers({
   runtime,
   RUNTIME_CONFIG,
@@ -416,11 +364,9 @@ const {
   getHealthReport: () => buildHealthReport(),
   getProjectConfig,
   loadHandoff,
+  loadContextSummary,
   enrichWithToolSuggestions,
-  listThreads,
-  listWorkspaces,
-  getActiveTask,
-  getActiveWorkspace
+  getActiveTask
 });
 
 const {
@@ -455,23 +401,6 @@ const {
   initProjectLayout,
   updateSession,
   getPreferences
-});
-
-const {
-  handleForensicsCommands
-} = forensicsCommandHelpers.createForensicsCommandHelpers({
-  fs,
-  path,
-  childProcess,
-  runtime,
-  resolveProjectRoot,
-  getProjectExtDir,
-  loadSession,
-  loadHandoff,
-  resolveSession,
-  buildContextHygiene,
-  upsertForensicsThread,
-  updateSession
 });
 
 const {
@@ -518,24 +447,6 @@ const {
 });
 
 const {
-  handleManagerCommands
-} = managerCommandHelpers.createManagerCommandHelpers({
-  fs,
-  path,
-  runtime,
-  getProjectExtDir,
-  loadSession,
-  loadHandoff,
-  getHealthReport: () => buildHealthReport(),
-  buildNextContext,
-  buildResumeContext,
-  buildToolExecutionFromNext,
-  buildSettingsView,
-  listThreads,
-  listExecutors
-});
-
-const {
   buildHealthReport,
   buildUpdateView,
   handleHealthUpdateCommands
@@ -573,14 +484,12 @@ const {
   PACKS_DIR,
   AGENTS_DIR,
   COMMANDS_DIR,
-  SKILLS_DIR,
   RUNTIME_CONFIG,
   getProjectProfilesDir,
   getProjectPacksDir,
   loadProfile,
   loadPack,
   loadMarkdown,
-  loadSkill,
   loadSession,
   updateSession,
   getPreferences,
@@ -588,23 +497,14 @@ const {
   requireRestText,
   requirePreferenceKey,
   handleHealthUpdateCommands,
-  handleSpecCommands,
   handleTaskCommands,
-  handleWorkspaceCommands,
-  handleThreadCommands,
-  handleForensicsCommands,
   handleExecutorCommands,
   handleSettingsCommands,
-  handleSessionReportCommands,
-  handleManagerCommands
+  handleSessionReportCommands
 });
 
 function printJson(value) {
   process.stdout.write(JSON.stringify(value, null, 2) + '\n');
-}
-
-function runTemplateScript(args) {
-  templateCli.runTemplateCli(args);
 }
 
 function runAdapterDerive(args) {
@@ -619,12 +519,6 @@ function runAdapterGenerate(args) {
     runtimeRoot: ROOT,
     projectRoot: resolveProjectRoot()
   });
-}
-
-function getTemplateConfig() {
-  return runtime.validateTemplateConfig(
-    runtime.readJson(path.join(TEMPLATES_DIR, 'config.json'))
-  );
 }
 
 const {
@@ -651,7 +545,10 @@ const {
   syncRequirementsFromPlan,
   savePlanReport,
   parseVerifySaveArgs,
+  parseVerifySignoffArgs,
   buildVerifyEntry,
+  confirmVerifySignoff,
+  rejectVerifySignoff,
   saveVerifyReport,
   addNoteEntry
 } = noteReportHelpers.createNoteReportHelpers({
@@ -667,7 +564,6 @@ const {
   resolveProjectRoot,
   resolveSession,
   buildNextContext,
-  getTemplateConfig,
   updateSession
 });
 
@@ -743,7 +639,7 @@ const {
 const {
   handleDocCommands,
   handleActionCommands,
-  handleDispatchAndTemplateCommands,
+  handleDispatchCommands,
   handleAdapterToolChipCommands
 } = commandGroupHelpers.createCommandGroupHelpers({
   runtime,
@@ -771,11 +667,12 @@ const {
   runAdapterDerive,
   runAdapterGenerate,
   saveScanReport,
-  savePlanReport,
-  saveReviewReport,
-  saveVerifyReport,
-  addNoteEntry,
-  runTemplateScript,
+    savePlanReport,
+    saveReviewReport,
+    confirmVerifySignoff,
+    rejectVerifySignoff,
+    saveVerifyReport,
+    addNoteEntry,
   ingestDocCli
 });
 
@@ -790,10 +687,14 @@ const {
   buildStatus,
   updateSession,
   buildNextContext,
+  buildDispatchContext,
   loadHandoff,
   clearHandoff,
+  clearContextSummary,
   buildPausePayload,
+  buildPauseContextSummary,
   saveHandoff,
+  saveContextSummary,
   buildResumeContext,
   resolveSession,
   RUNTIME_CONFIG,
@@ -804,7 +705,7 @@ const {
   handleCatalogAndStateCommands,
   handleDocCommands,
   handleActionCommands,
-  handleDispatchAndTemplateCommands,
+  handleDispatchCommands,
   handleAdapterToolChipCommands
 });
 
@@ -862,7 +763,6 @@ module.exports = {
   shouldSuggestArchReview,
   shouldSuggestPlan,
   shouldSuggestReview,
-  listWorkspaces,
   scheduler
 };
 

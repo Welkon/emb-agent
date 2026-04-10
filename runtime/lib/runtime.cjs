@@ -120,6 +120,33 @@ function getLegacyProjectExtDir(projectRoot) {
   return path.join(path.resolve(projectRoot), LEGACY_PROJECT_EXT_DIR_NAME);
 }
 
+function looksLikeLegacyProjectExtDir(legacyDir) {
+  if (!fs.existsSync(legacyDir) || !fs.statSync(legacyDir).isDirectory()) {
+    return false;
+  }
+
+  const entries = new Set(fs.readdirSync(legacyDir));
+  const sourceRepoMarkers = ['runtime', 'tests', 'commands', 'agents', 'skills', 'bin'];
+  if (sourceRepoMarkers.some(name => entries.has(name))) {
+    return false;
+  }
+
+  const legacyStateMarkers = [
+    'hw.yaml',
+    'req.yaml',
+    'project.json',
+    'cache',
+    'tasks',
+    'reports',
+    'profiles',
+    'packs',
+    'adapters',
+    'extensions'
+  ];
+
+  return legacyStateMarkers.some(name => entries.has(name));
+}
+
 function getProjectExtDir(projectRoot) {
   return migrateLegacyProjectExtDir(projectRoot);
 }
@@ -156,7 +183,7 @@ function migrateLegacyProjectExtDir(projectRoot) {
   const currentDir = buildProjectExtDir(projectRoot);
   const legacyDir = getLegacyProjectExtDir(projectRoot);
 
-  if (!fs.existsSync(legacyDir)) {
+  if (!looksLikeLegacyProjectExtDir(legacyDir)) {
     return currentDir;
   }
 
@@ -204,15 +231,13 @@ function initProjectLayout(projectRoot) {
   ensureDir(path.join(projectExtDir, 'cache', 'docs'));
   ensureDir(path.join(projectExtDir, 'cache', 'adapter-sources'));
   ensureDir(path.join(projectExtDir, 'tasks'));
-  ensureDir(path.join(projectExtDir, 'threads'));
   ensureDir(path.join(projectExtDir, 'reports'));
   ensureDir(path.join(projectExtDir, 'reports', 'forensics'));
   ensureDir(path.join(projectExtDir, 'reports', 'sessions'));
   ensureDir(path.join(projectExtDir, 'profiles'));
   ensureDir(path.join(projectExtDir, 'packs'));
   ensureDir(path.join(projectExtDir, 'adapters'));
-  ensureDir(path.join(projectExtDir, 'specs'));
-  ensureDir(path.join(projectExtDir, 'workspace'));
+  ensureDir(path.join(projectExtDir, 'tasks', 'archive'));
   ensureDir(path.join(path.resolve(projectRoot), 'docs'));
 
   return projectExtDir;
@@ -356,26 +381,6 @@ function ensureBoolean(value, label, fallback) {
   return value;
 }
 
-function normalizeActiveThread(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {
-      name: '',
-      title: '',
-      status: '',
-      path: '',
-      updated_at: ''
-    };
-  }
-
-  return {
-    name: ensureOptionalString(value.name, 'active_thread.name'),
-    title: ensureOptionalString(value.title, 'active_thread.title'),
-    status: ensureOptionalString(value.status, 'active_thread.status'),
-    path: normalizeProjectRelativePath(ensureOptionalString(value.path, 'active_thread.path')),
-    updated_at: ensureOptionalString(value.updated_at, 'active_thread.updated_at')
-  };
-}
-
 function normalizeActiveTask(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {
@@ -396,38 +401,86 @@ function normalizeActiveTask(value) {
   };
 }
 
-function normalizeActiveWorkspace(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {
-      name: '',
-      title: '',
-      type: '',
-      status: '',
-      path: '',
-      updated_at: ''
-    };
-  }
-
-  return {
-    name: ensureOptionalString(value.name, 'active_workspace.name'),
-    title: ensureOptionalString(value.title, 'active_workspace.title'),
-    type: ensureOptionalString(value.type, 'active_workspace.type'),
-    status: ensureOptionalString(value.status, 'active_workspace.status'),
-    path: normalizeProjectRelativePath(ensureOptionalString(value.path, 'active_workspace.path')),
-    updated_at: ensureOptionalString(value.updated_at, 'active_workspace.updated_at')
-  };
-}
-
 function normalizeDiagnostics(value) {
   const source = (!value || typeof value !== 'object' || Array.isArray(value)) ? {} : value;
   const latestForensics =
     !source.latest_forensics || typeof source.latest_forensics !== 'object' || Array.isArray(source.latest_forensics)
       ? {}
       : source.latest_forensics;
-  const latestExecutor =
+  const latestExecutorSource =
     !source.latest_executor || typeof source.latest_executor !== 'object' || Array.isArray(source.latest_executor)
       ? {}
       : source.latest_executor;
+  const executorHistorySource =
+    !source.executor_history || typeof source.executor_history !== 'object' || Array.isArray(source.executor_history)
+      ? {}
+      : source.executor_history;
+  const humanSignoffsSource =
+    !source.human_signoffs || typeof source.human_signoffs !== 'object' || Array.isArray(source.human_signoffs)
+      ? {}
+      : source.human_signoffs;
+
+  function normalizeExecutorDiagnostic(entry, label, fallbackName) {
+    const safeEntry = !entry || typeof entry !== 'object' || Array.isArray(entry) ? {} : entry;
+    return {
+      name: ensureOptionalString(safeEntry.name, `${label}.name`) || fallbackName || '',
+      status: ensureOptionalString(safeEntry.status, `${label}.status`),
+      risk: ensureOptionalString(safeEntry.risk, `${label}.risk`),
+      exit_code: ensureOptionalInteger(safeEntry.exit_code, `${label}.exit_code`),
+      duration_ms: ensureOptionalInteger(safeEntry.duration_ms, `${label}.duration_ms`),
+      ran_at: ensureOptionalString(safeEntry.ran_at, `${label}.ran_at`),
+      cwd: normalizeProjectRelativePath(ensureOptionalString(safeEntry.cwd, `${label}.cwd`)),
+      argv: ensureStringArray(safeEntry.argv || [], `${label}.argv`),
+      evidence_hint: ensureStringArray(
+        safeEntry.evidence_hint || [],
+        `${label}.evidence_hint`
+      ).map(normalizeProjectRelativePath),
+      stdout_preview: ensureOptionalString(
+        safeEntry.stdout_preview,
+        `${label}.stdout_preview`
+      ),
+      stderr_preview: ensureOptionalString(
+        safeEntry.stderr_preview,
+        `${label}.stderr_preview`
+      )
+    };
+  }
+
+  const executorHistory = {};
+  Object.entries(executorHistorySource).forEach(([name, entry]) => {
+    const normalizedName = ensureOptionalString(name, 'diagnostics.executor_history key');
+    if (!normalizedName) {
+      return;
+    }
+    executorHistory[normalizedName] = normalizeExecutorDiagnostic(
+      entry,
+      `diagnostics.executor_history.${normalizedName}`,
+      normalizedName
+    );
+  });
+  const humanSignoffs = {};
+  Object.entries(humanSignoffsSource).forEach(([name, entry]) => {
+    const normalizedName = ensureOptionalString(name, 'diagnostics.human_signoffs key');
+    const safeEntry = !entry || typeof entry !== 'object' || Array.isArray(entry) ? {} : entry;
+    if (!normalizedName) {
+      return;
+    }
+    humanSignoffs[normalizedName] = {
+      name: normalizedName,
+      status: ensureOptionalString(
+        safeEntry.status,
+        `diagnostics.human_signoffs.${normalizedName}.status`
+      ),
+      confirmed_at: ensureOptionalString(
+        safeEntry.confirmed_at,
+        `diagnostics.human_signoffs.${normalizedName}.confirmed_at`
+      ),
+      note: ensureOptionalString(
+        safeEntry.note,
+        `diagnostics.human_signoffs.${normalizedName}.note`
+      )
+    };
+  });
 
   return {
     latest_forensics: {
@@ -435,37 +488,15 @@ function normalizeDiagnostics(value) {
         ensureOptionalString(latestForensics.report_file, 'diagnostics.latest_forensics.report_file')
       ),
       problem: ensureOptionalString(latestForensics.problem, 'diagnostics.latest_forensics.problem'),
-      linked_thread: normalizeProjectRelativePath(
-        ensureOptionalString(latestForensics.linked_thread, 'diagnostics.latest_forensics.linked_thread')
-      ),
       highest_severity: ensureOptionalString(
         latestForensics.highest_severity,
         'diagnostics.latest_forensics.highest_severity'
       ),
       generated_at: ensureOptionalString(latestForensics.generated_at, 'diagnostics.latest_forensics.generated_at')
     },
-    latest_executor: {
-      name: ensureOptionalString(latestExecutor.name, 'diagnostics.latest_executor.name'),
-      status: ensureOptionalString(latestExecutor.status, 'diagnostics.latest_executor.status'),
-      risk: ensureOptionalString(latestExecutor.risk, 'diagnostics.latest_executor.risk'),
-      exit_code: ensureOptionalInteger(latestExecutor.exit_code, 'diagnostics.latest_executor.exit_code'),
-      duration_ms: ensureOptionalInteger(latestExecutor.duration_ms, 'diagnostics.latest_executor.duration_ms'),
-      ran_at: ensureOptionalString(latestExecutor.ran_at, 'diagnostics.latest_executor.ran_at'),
-      cwd: normalizeProjectRelativePath(ensureOptionalString(latestExecutor.cwd, 'diagnostics.latest_executor.cwd')),
-      argv: ensureStringArray(latestExecutor.argv || [], 'diagnostics.latest_executor.argv'),
-      evidence_hint: ensureStringArray(
-        latestExecutor.evidence_hint || [],
-        'diagnostics.latest_executor.evidence_hint'
-      ).map(normalizeProjectRelativePath),
-      stdout_preview: ensureOptionalString(
-        latestExecutor.stdout_preview,
-        'diagnostics.latest_executor.stdout_preview'
-      ),
-      stderr_preview: ensureOptionalString(
-        latestExecutor.stderr_preview,
-        'diagnostics.latest_executor.stderr_preview'
-      )
-    }
+    latest_executor: normalizeExecutorDiagnostic(latestExecutorSource, 'diagnostics.latest_executor', ''),
+    executor_history: executorHistory,
+    human_signoffs: humanSignoffs
   };
 }
 
@@ -702,6 +733,20 @@ function validateExecutors(config) {
   return normalized;
 }
 
+function validateQualityGates(config) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, 'quality_gates');
+
+  return {
+    required_executors: unique(
+      ensureStringArray(source.required_executors || [], 'quality_gates.required_executors').map(item => item.trim())
+    ),
+    required_signoffs: unique(
+      ensureStringArray(source.required_signoffs || [], 'quality_gates.required_signoffs').map(item => item.trim())
+    )
+  };
+}
+
 function validateProjectConfig(config, runtimeConfig) {
   expectObject(config, 'Project config');
 
@@ -710,6 +755,7 @@ function validateProjectConfig(config, runtimeConfig) {
     active_packs: ensureStringArray(config.active_packs || [], 'active_packs'),
     adapter_sources: validateAdapterSources(config.adapter_sources || []),
     executors: validateExecutors(config.executors || {}),
+    quality_gates: validateQualityGates(config.quality_gates || {}),
     developer: validateDeveloperConfig(config.developer || {}),
     preferences: normalizePreferences(config.preferences || {}, runtimeConfig),
     integrations: validateIntegrations(config.integrations || {}),
@@ -789,22 +835,6 @@ function loadRuntimeConfig(rootDir) {
   return validateRuntimeConfig(readJson(path.join(rootDir, 'config.json')));
 }
 
-function validateTemplateConfig(config) {
-  expectObject(config, 'Template config');
-  const normalized = {};
-
-  for (const [name, meta] of Object.entries(config)) {
-    expectObject(meta, `Template ${name}`);
-    normalized[name] = {
-      source: ensureString(meta.source, `Template ${name} source`),
-      description: ensureString(meta.description, `Template ${name} description`),
-      default_output: ensureOptionalString(meta.default_output, `Template ${name} default_output`)
-    };
-  }
-
-  return normalized;
-}
-
 function validateProfile(name, profile) {
   expectObject(profile, `Profile ${name}`);
   return {
@@ -855,6 +885,7 @@ function getProjectStatePaths(rootDir, cwd, runtimeConfig) {
     legacyStateDir,
     sessionPath: path.join(stateDir, `${projectKey}.json`),
     handoffPath: path.join(stateDir, `${projectKey}.handoff.json`),
+    contextSummaryPath: path.join(stateDir, `${projectKey}.context-summary.json`),
     lockPath: path.join(stateDir, `${projectKey}.lock`),
     legacySessionPath: path.join(legacyStateDir, `${projectKey}.json`),
     legacyHandoffPath: path.join(legacyStateDir, `${projectKey}.handoff.json`),
@@ -927,8 +958,6 @@ function normalizeSession(session, paths, runtimeConfig, projectConfig) {
     .slice(0, defaults.max_last_files);
   next.open_questions = ensureStringArray(next.open_questions || [], 'open_questions');
   next.known_risks = ensureStringArray(next.known_risks || [], 'known_risks');
-  next.active_workspace = normalizeActiveWorkspace(next.active_workspace || {});
-  next.active_thread = normalizeActiveThread(next.active_thread || {});
   next.active_task = normalizeActiveTask(next.active_task || {});
   next.diagnostics = normalizeDiagnostics(next.diagnostics || {});
   next.last_command = ensureOptionalString(next.last_command, 'last_command');
@@ -1013,6 +1042,92 @@ function validateHandoff(handoff, runtimeConfig) {
   };
 }
 
+function validateContextSummary(summary, runtimeConfig) {
+  expectObject(summary, 'Context summary');
+
+  const activeTaskSource =
+    summary.active_task && typeof summary.active_task === 'object' && !Array.isArray(summary.active_task)
+      ? summary.active_task
+      : {};
+  const diagnosticsSource =
+    summary.diagnostics && typeof summary.diagnostics === 'object' && !Array.isArray(summary.diagnostics)
+      ? summary.diagnostics
+      : {};
+  const latestForensicsSource =
+    diagnosticsSource.latest_forensics &&
+    typeof diagnosticsSource.latest_forensics === 'object' &&
+    !Array.isArray(diagnosticsSource.latest_forensics)
+      ? diagnosticsSource.latest_forensics
+      : {};
+  const latestExecutorSource =
+    diagnosticsSource.latest_executor &&
+    typeof diagnosticsSource.latest_executor === 'object' &&
+    !Array.isArray(diagnosticsSource.latest_executor)
+      ? diagnosticsSource.latest_executor
+      : {};
+
+  return {
+    version: ensureString(summary.version || '1.0', 'context_summary.version'),
+    generated_at: ensureOptionalString(summary.generated_at, 'context_summary.generated_at'),
+    source: ensureOptionalString(summary.source, 'context_summary.source'),
+    focus: ensureOptionalString(summary.focus, 'context_summary.focus'),
+    profile: ensureOptionalString(summary.profile, 'context_summary.profile'),
+    packs: ensureStringArray(summary.packs || [], 'context_summary.packs'),
+    last_command: ensureOptionalString(summary.last_command, 'context_summary.last_command'),
+    suggested_flow: ensureOptionalString(summary.suggested_flow, 'context_summary.suggested_flow'),
+    next_action: ensureOptionalString(summary.next_action, 'context_summary.next_action'),
+    context_notes: ensureOptionalString(summary.context_notes, 'context_summary.context_notes'),
+    last_files: ensureStringArray(summary.last_files || [], 'context_summary.last_files')
+      .map(normalizeProjectRelativePath)
+      .slice(0, runtimeConfig.max_last_files),
+    open_questions: ensureStringArray(summary.open_questions || [], 'context_summary.open_questions'),
+    known_risks: ensureStringArray(summary.known_risks || [], 'context_summary.known_risks'),
+    active_task: {
+      name: ensureOptionalString(activeTaskSource.name, 'context_summary.active_task.name'),
+      title: ensureOptionalString(activeTaskSource.title, 'context_summary.active_task.title'),
+      status: ensureOptionalString(activeTaskSource.status, 'context_summary.active_task.status'),
+      path: normalizeProjectRelativePath(
+        ensureOptionalString(activeTaskSource.path, 'context_summary.active_task.path')
+      )
+    },
+    diagnostics: {
+      latest_forensics: {
+        report_file: normalizeProjectRelativePath(
+          ensureOptionalString(
+            latestForensicsSource.report_file,
+            'context_summary.diagnostics.latest_forensics.report_file'
+          )
+        ),
+        highest_severity: ensureOptionalString(
+          latestForensicsSource.highest_severity,
+          'context_summary.diagnostics.latest_forensics.highest_severity'
+        ),
+        problem: ensureOptionalString(
+          latestForensicsSource.problem,
+          'context_summary.diagnostics.latest_forensics.problem'
+        )
+      },
+      latest_executor: {
+        name: ensureOptionalString(latestExecutorSource.name, 'context_summary.diagnostics.latest_executor.name'),
+        status: ensureOptionalString(latestExecutorSource.status, 'context_summary.diagnostics.latest_executor.status'),
+        risk: ensureOptionalString(latestExecutorSource.risk, 'context_summary.diagnostics.latest_executor.risk'),
+        exit_code: ensureOptionalInteger(
+          latestExecutorSource.exit_code,
+          'context_summary.diagnostics.latest_executor.exit_code'
+        ),
+        stderr_preview: ensureOptionalString(
+          latestExecutorSource.stderr_preview,
+          'context_summary.diagnostics.latest_executor.stderr_preview'
+        ),
+        stdout_preview: ensureOptionalString(
+          latestExecutorSource.stdout_preview,
+          'context_summary.diagnostics.latest_executor.stdout_preview'
+        )
+      }
+    }
+  };
+}
+
 module.exports = {
   cleanupStaleLock,
   ensureDir,
@@ -1041,11 +1156,12 @@ module.exports = {
   unique,
   validateAdapterSource,
   validateAdapterSources,
+  validateContextSummary,
   validateDeveloperConfig,
   validateHandoff,
   validatePack,
   validateProfile,
   validateProjectConfig,
-  validateTemplateConfig,
+  validateQualityGates,
   writeJson
 };

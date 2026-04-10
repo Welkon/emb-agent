@@ -28,26 +28,6 @@ function createSessionReportCommandHelpers(deps) {
       .replace('T', '-');
   }
 
-  function countThreadStats() {
-    const threadsDir = path.join(getProjectExtDir(), 'threads');
-    if (!fs.existsSync(threadsDir)) {
-      return { total: 0, open: 0, resolved: 0 };
-    }
-
-    const stats = { total: 0, open: 0, resolved: 0 };
-    for (const file of fs.readdirSync(threadsDir).filter(name => name.endsWith('.md'))) {
-      stats.total += 1;
-      const content = runtime.readText(path.join(threadsDir, file));
-      if (/## Status\s+RESOLVED/m.test(content)) {
-        stats.resolved += 1;
-      } else {
-        stats.open += 1;
-      }
-    }
-
-    return stats;
-  }
-
   function getLatestExecutor(session) {
     return session &&
       session.diagnostics &&
@@ -78,7 +58,7 @@ function createSessionReportCommandHelpers(deps) {
       exit_code: signal ? signal.exit_code : null,
       failed,
       requires_forensics: failed,
-      recommended_action: failed ? 'forensics' : '',
+      recommended_action: failed ? 'review' : '',
       summary: signal
         ? `${signal.name} ${signal.status || 'unknown'}${signal.exit_code === null ? '' : `, exit=${signal.exit_code}`}`
         : ''
@@ -90,7 +70,6 @@ function createSessionReportCommandHelpers(deps) {
     const handoff = loadHandoff();
     const next = buildNextContext();
     const resume = buildResumeContext();
-    const threadStats = countThreadStats();
     const toolRecommendation =
       next &&
       next.next &&
@@ -119,7 +98,6 @@ function createSessionReportCommandHelpers(deps) {
       last_files: resolved.session.last_files || [],
       open_questions: resolved.session.open_questions || [],
       known_risks: resolved.session.known_risks || [],
-      workspace: resume.workspace || next.workspace || null,
       handoff: handoff
         ? {
             timestamp: handoff.timestamp,
@@ -132,7 +110,6 @@ function createSessionReportCommandHelpers(deps) {
         latest_executor: latestExecutor
       },
       executor_signal: executorSignal,
-      thread_stats: threadStats,
       tool_recommendation: toolRecommendation,
       adapter_health: adapterHealth,
       next,
@@ -157,7 +134,6 @@ function createSessionReportCommandHelpers(deps) {
       `- last_files: ${report.last_files.join(', ') || '(none)'}`,
       `- open_questions: ${report.open_questions.join(' | ') || '(none)'}`,
       `- known_risks: ${report.known_risks.join(' | ') || '(none)'}`,
-      `- active_workspace: ${report.workspace ? `${report.workspace.name} (${report.workspace.title})` : '(none)'}`,
       '',
       '## Preferences',
       '',
@@ -177,30 +153,6 @@ function createSessionReportCommandHelpers(deps) {
       lines.push(`- context_notes: ${report.handoff.context_notes || ''}`);
     }
 
-    lines.push('');
-    lines.push('## Threads');
-    lines.push('');
-    lines.push(`- total: ${report.thread_stats.total}`);
-    lines.push(`- open: ${report.thread_stats.open}`);
-    lines.push(`- resolved: ${report.thread_stats.resolved}`);
-    lines.push('');
-    lines.push('## Workspace');
-    lines.push('');
-    lines.push(`- present: ${report.workspace ? 'yes' : 'no'}`);
-    if (report.workspace) {
-      lines.push(`- name: ${report.workspace.name || ''}`);
-      lines.push(`- title: ${report.workspace.title || ''}`);
-      lines.push(`- type: ${report.workspace.type || ''}`);
-      lines.push(`- status: ${report.workspace.status || ''}`);
-      lines.push(`- notes_path: ${report.workspace.notes_path || report.workspace.path || ''}`);
-      lines.push(`- refreshed_at: ${(report.workspace.snapshot && report.workspace.snapshot.refreshed_at) || ''}`);
-      lines.push(
-        `- link_counts: tasks=${((report.workspace.link_counts || {}).tasks || 0)}, specs=${((report.workspace.link_counts || {}).specs || 0)}, threads=${((report.workspace.link_counts || {}).threads || 0)}`
-      );
-      lines.push(
-        `- snapshot_counts: files=${((report.workspace.snapshot && report.workspace.snapshot.last_files) || []).length}, questions=${((report.workspace.snapshot && report.workspace.snapshot.open_questions) || []).length}, risks=${((report.workspace.snapshot && report.workspace.snapshot.known_risks) || []).length}`
-      );
-    }
     lines.push('');
     lines.push('## Diagnostics');
     lines.push('');
@@ -273,7 +225,6 @@ function createSessionReportCommandHelpers(deps) {
       executor_signal: report.executor_signal,
       tool_recommendation: report.tool_recommendation,
       adapter_health: report.adapter_health,
-      thread_stats: report.thread_stats,
       handoff_present: Boolean(report.handoff)
     };
   }

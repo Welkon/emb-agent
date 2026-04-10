@@ -66,6 +66,12 @@ Flow:
 declare hardware -> next -> scan/plan/do/debug
 ```
 
+Directionally, keep the same staged path:
+
+```text
+declare hardware -> next -> scan/plan/do/debug -> review -> verify
+```
+
 Typical pattern:
 
 - record the relevant signals and peripheral ownership first
