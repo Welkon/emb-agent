@@ -26,7 +26,20 @@ function createStateCommandHelpers(deps) {
     handleTaskCommands,
     handleExecutorCommands,
     handleSettingsCommands,
-    handleSessionReportCommands
+    handleSessionReportCommands,
+    listSkills,
+    loadSkill,
+    runSkill,
+    loadInstructionLayers,
+    listAutoMemory,
+    loadMemoryEntry,
+    rememberMemory,
+    extractMemory,
+    auditMemory,
+    promoteMemory,
+    parseMemoryRememberArgs,
+    parseMemoryExtractArgs,
+    parseMemoryPromoteArgs
   } = deps;
 
   function handleCatalogAndStateCommands(cmd, subcmd, rest) {
@@ -65,6 +78,71 @@ function createStateCommandHelpers(deps) {
 
     if (cmd === 'session' && subcmd === 'show') {
       return loadSession();
+    }
+
+    if (cmd === 'skills' && subcmd === 'list') {
+      updateSession(current => {
+        current.last_command = 'skills list';
+      });
+      return listSkills();
+    }
+
+    if (cmd === 'skills' && subcmd === 'show') {
+      if (!rest[0]) throw new Error('Missing skill name');
+      updateSession(current => {
+        current.last_command = 'skills show';
+      });
+      return loadSkill(rest[0]);
+    }
+
+    if (cmd === 'skills' && subcmd === 'run') {
+      updateSession(current => {
+        current.last_command = 'skills run';
+      });
+      return runSkill(rest);
+    }
+
+    if (cmd === 'memory' && subcmd === 'stack') {
+      updateSession(current => {
+        current.last_command = 'memory stack';
+      });
+      return loadInstructionLayers();
+    }
+
+    if (cmd === 'memory' && subcmd === 'list') {
+      updateSession(current => {
+        current.last_command = 'memory list';
+      });
+      return listAutoMemory();
+    }
+
+    if (cmd === 'memory' && subcmd === 'show') {
+      if (!rest[0]) throw new Error('Missing memory entry name');
+      updateSession(current => {
+        current.last_command = 'memory show';
+      });
+      return loadMemoryEntry(rest[0]);
+    }
+
+    if (cmd === 'memory' && subcmd === 'remember') {
+      return rememberMemory(parseMemoryRememberArgs(rest));
+    }
+
+    if (cmd === 'memory' && subcmd === 'extract') {
+      const parsed = parseMemoryExtractArgs(rest);
+      return extractMemory(parsed.note, parsed.explicit_confirmation);
+    }
+
+    if (cmd === 'memory' && subcmd === 'audit') {
+      updateSession(current => {
+        current.last_command = 'memory audit';
+      });
+      return auditMemory();
+    }
+
+    if (cmd === 'memory' && subcmd === 'promote') {
+      const parsed = parseMemoryPromoteArgs(rest);
+      return promoteMemory(parsed.name, parsed.target, parsed.explicit_confirmation);
     }
 
     if (cmd === 'agents' && subcmd === 'list') {

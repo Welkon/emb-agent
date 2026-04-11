@@ -8,7 +8,8 @@
     "truth_source_mode": "hardware_first",
     "plan_mode": "auto",
     "review_mode": "auto",
-    "verification_mode": "lean"
+    "verification_mode": "lean",
+    "orchestration_mode": "auto"
   },
   "focus": "",
   "last_files": [],

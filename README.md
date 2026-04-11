@@ -29,6 +29,9 @@ Instead of treating firmware work like generic code generation, emb-agent keeps 
 - Install-time developer identity, reused automatically by `init`.
 - Richer task manifests with schema-backed `task.json` metadata.
 - Default help now stays focused on the shortest onboarding path, with advanced commands behind `help advanced`.
+- Built-in skill discovery with lazy loading, so reusable workflow skills stay cataloged without loading every body into every session.
+- Layered instruction memory plus durable auto-memory extraction, so cross-session conclusions can be reviewed and promoted instead of getting trapped in chat history.
+- Real multi-agent delegation patterns through the host bridge, with `coordinator`, `fork`, and `swarm` execution shapes instead of a single placeholder contract.
 
 ## Why emb-agent?
 
@@ -40,6 +43,9 @@ Instead of treating firmware work like generic code generation, emb-agent keeps 
 | **Document-to-truth flow** | Import datasheets or manuals with `ingest doc`, then land useful facts back into truth files. |
 | **Runtime-aware setup** | Install into Codex or Claude Code runtimes without changing the project-side structure. |
 | **Session continuity** | Keep handoffs, state, and visible project artifacts so the next session starts from reality, not from scratch. |
+| **Lazy skill catalog** | Discover reusable skills with `skills list/show/run` without paying to load every skill body up front. |
+| **Layered memory** | Stack organization, user, project, and local memory, then promote durable findings intentionally instead of burying them in prompts. |
+| **Real delegation modes** | Use `dispatch run` / `orchestrate run` with host bridge support and steer the execution shape with `orchestration_mode=coordinator|fork|swarm`. |
 
 ## Quick Start
 
@@ -111,6 +117,17 @@ Host-specific runtime state stays outside the repo:
 
 This means the repo keeps durable shared truth, while the runtime keeps personal continuity.
 
+### 4. Skills and memory
+
+emb-agent also ships reusable runtime-side guidance:
+
+- `skills/`
+  Reusable workflows that can be listed, inspected, and executed on demand.
+- `memory/`
+  Built-in instruction-memory layers that combine with user, project, and local memory.
+
+These resources are runtime-facing. They support the session, but they do not replace visible project truth in `.emb-agent/`.
+
 ## Shared Vs Personal Layers
 
 This boundary is one of the biggest differences between emb-agent and generic prompt-driven workflows.
@@ -131,6 +148,8 @@ These belong to the installed runtime, not the project repository:
 
 - session continuity
 - pause/resume handoffs
+- layered instruction memory
+- durable auto-memory entries
 - runtime install metadata
 - host integration state
 - developer identity defaults
@@ -189,7 +208,7 @@ See [docs/adapter-model.md](./docs/adapter-model.md) for the intended separation
 
 ## Command Reference
 
-README stays human-facing. Command behavior and agent-oriented execution guidance live in [commands/emb/help.md](./commands/emb/help.md) and runtime help output (`help`, `help advanced`).
+README stays human-facing. Command behavior and agent-oriented execution guidance live in [commands/emb/help.md](./commands/emb/help.md), [commands/emb/skills.md](./commands/emb/skills.md), [commands/emb/memory.md](./commands/emb/memory.md), and runtime help output (`help`, `help advanced`).
 
 ## FAQ
 

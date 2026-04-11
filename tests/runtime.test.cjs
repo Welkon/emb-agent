@@ -21,7 +21,8 @@ test('loadRuntimeConfig returns validated defaults', () => {
     truth_source_mode: 'hardware_first',
     plan_mode: 'auto',
     review_mode: 'auto',
-    verification_mode: 'lean'
+    verification_mode: 'lean',
+    orchestration_mode: 'auto'
   });
   assert.equal(config.project_state_dir, '../state/emb-agent/projects');
   assert.equal(config.legacy_project_state_dir, 'state/projects');
@@ -52,7 +53,8 @@ test('normalizeSession fills metadata and trims arrays', () => {
     truth_source_mode: 'hardware_first',
     plan_mode: 'auto',
     review_mode: 'auto',
-    verification_mode: 'lean'
+    verification_mode: 'lean',
+    orchestration_mode: 'auto'
   });
   assert.equal(session.last_files.length, 12);
   assert.deepEqual(session.open_questions, ['q1']);
@@ -233,7 +235,8 @@ test('project config defaults can override runtime defaults', () => {
           truth_source_mode: 'code_first',
           plan_mode: 'always',
           review_mode: 'always',
-          verification_mode: 'strict'
+          verification_mode: 'strict',
+          orchestration_mode: 'swarm'
         },
         arch_review: {
           trigger_patterns: ['custom arch gate']
@@ -273,7 +276,8 @@ test('project config defaults can override runtime defaults', () => {
     truth_source_mode: 'code_first',
     plan_mode: 'always',
     review_mode: 'always',
-    verification_mode: 'strict'
+    verification_mode: 'strict',
+    orchestration_mode: 'swarm'
   });
 });
 

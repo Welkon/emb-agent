@@ -212,7 +212,8 @@ test('preferences can switch truth source ordering and strict verification', () 
       truth_source_mode: 'code_first',
       plan_mode: 'auto',
       review_mode: 'auto',
-      verification_mode: 'strict'
+      verification_mode: 'strict',
+      orchestration_mode: 'auto'
     }
   });
 
@@ -220,6 +221,39 @@ test('preferences can switch truth source ordering and strict verification', () 
 
   assert.equal(plan.truth_sources[0], 'Most relevant file: main.c');
   assert.ok(plan.verification.some(item => item.includes('failure paths')));
+});
+
+test('preferences can switch delegation pattern to fork or swarm', () => {
+  const forkResolved = buildResolved('baremetal-8bit', ['sensor-node'], {
+    preferences: {
+      truth_source_mode: 'hardware_first',
+      plan_mode: 'auto',
+      review_mode: 'auto',
+      verification_mode: 'lean',
+      orchestration_mode: 'fork'
+    }
+  });
+  const swarmResolved = buildResolved('rtos-iot', ['connected-appliance'], {
+    preferences: {
+      truth_source_mode: 'hardware_first',
+      plan_mode: 'auto',
+      review_mode: 'auto',
+      verification_mode: 'lean',
+      orchestration_mode: 'swarm'
+    }
+  });
+
+  const forkPlan = scheduler.buildPlanOutput(forkResolved);
+  const swarmReview = scheduler.buildReviewOutput(swarmResolved);
+
+  assert.equal(forkPlan.scheduler.agent_execution.dispatch_contract.delegation_pattern, 'fork');
+  assert.equal(forkPlan.scheduler.agent_execution.dispatch_contract.primary.context_mode, 'fork-inherit');
+  assert.equal(forkPlan.scheduler.agent_execution.dispatch_contract.synthesis_required, false);
+
+  assert.equal(swarmReview.scheduler.agent_execution.dispatch_contract.delegation_pattern, 'swarm');
+  assert.equal(swarmReview.scheduler.agent_execution.dispatch_contract.primary.role, 'peer-lead');
+  assert.ok(swarmReview.scheduler.agent_execution.dispatch_contract.supporting.every(item => item.role === 'peer'));
+  assert.equal(swarmReview.scheduler.agent_execution.dispatch_contract.synthesis_required, false);
 });
 
 test('project truth files are preferred when present', () => {

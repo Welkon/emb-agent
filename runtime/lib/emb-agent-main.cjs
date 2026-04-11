@@ -12,6 +12,8 @@ const PROFILES_DIR = path.join(ROOT, 'profiles');
 const PACKS_DIR = path.join(ROOT, 'packs');
 const AGENTS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'agents') : path.join(ROOT, 'agents');
 const COMMANDS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'commands', 'emb') : path.join(ROOT, 'commands');
+const SKILLS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'skills') : path.join(ROOT, 'skills');
+const MEMORY_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'memory') : path.join(ROOT, 'memory');
 const { TEMPLATES_DIR } = require(path.join(ROOT, 'lib', 'template-registry.cjs'));
 const templateCli = require(path.join(ROOT, 'scripts', 'template.cjs'));
 const adapterDeriveCli = require(path.join(ROOT, 'scripts', 'adapter-derive.cjs'));
@@ -43,6 +45,8 @@ const sessionReportCommandHelpers = require(path.join(ROOT, 'lib', 'session-repo
 const healthUpdateCommandHelpers = require(path.join(ROOT, 'lib', 'health-update-command.cjs'));
 const executorCommandHelpers = require(path.join(ROOT, 'lib', 'executor-command.cjs'));
 const subAgentRuntimeHelpers = require(path.join(ROOT, 'lib', 'sub-agent-runtime.cjs'));
+const skillRuntimeHelpers = require(path.join(ROOT, 'lib', 'skill-runtime.cjs'));
+const memoryRuntimeHelpers = require(path.join(ROOT, 'lib', 'memory-runtime.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 
@@ -109,6 +113,10 @@ function readDefaultSession(paths) {
 
 function initProjectLayout() {
   return runtime.initProjectLayout(resolveProjectRoot());
+}
+
+function getRuntimeHost() {
+  return runtimeHost.resolveRuntimeHost(ROOT);
 }
 
 const {
@@ -462,7 +470,7 @@ const {
   path,
   process,
   childProcess,
-  runtimeHost: () => runtimeHost.resolveRuntimeHost(ROOT),
+  runtimeHost: getRuntimeHost,
   runtime,
   resolveSession,
   loadMarkdown,
@@ -495,8 +503,50 @@ const {
   ingestDocCli,
   adapterSources,
   rootDir: ROOT,
-  getRuntimeHost: () => runtimeHost.resolveRuntimeHost(ROOT),
+  getRuntimeHost,
   updateSession
+});
+
+const {
+  listSkills,
+  loadSkill,
+  runSkill
+} = skillRuntimeHelpers.createSkillRuntimeHelpers({
+  childProcess,
+  fs,
+  path,
+  process,
+  runtime,
+  runtimeHost: getRuntimeHost,
+  resolveProjectRoot,
+  getProjectExtDir,
+  builtInSkillsDir: SKILLS_DIR,
+  builtInDisplayRoot: SOURCE_LAYOUT ? SOURCE_ROOT : ROOT
+});
+
+const {
+  loadInstructionLayers,
+  listAutoMemory,
+  loadMemoryEntry,
+  rememberMemory,
+  extractMemory,
+  auditMemory,
+  promoteMemory,
+  parseMemoryRememberArgs,
+  parseMemoryExtractArgs,
+  parseMemoryPromoteArgs,
+  maybeAutoExtractOnPause
+} = memoryRuntimeHelpers.createMemoryRuntimeHelpers({
+  fs,
+  path,
+  runtime,
+  runtimeHost: getRuntimeHost,
+  resolveProjectRoot,
+  getProjectExtDir,
+  resolveSession,
+  updateSession,
+  builtInMemoryDir: MEMORY_DIR,
+  builtInDisplayRoot: SOURCE_LAYOUT ? SOURCE_ROOT : ROOT
 });
 
 const {
@@ -526,7 +576,20 @@ const {
   handleTaskCommands,
   handleExecutorCommands,
   handleSettingsCommands,
-  handleSessionReportCommands
+  handleSessionReportCommands,
+  listSkills,
+  loadSkill,
+  runSkill,
+  loadInstructionLayers,
+  listAutoMemory,
+  loadMemoryEntry,
+  rememberMemory,
+  extractMemory,
+  auditMemory,
+  promoteMemory,
+  parseMemoryRememberArgs,
+  parseMemoryExtractArgs,
+  parseMemoryPromoteArgs
 });
 
 function printJson(value) {
@@ -793,6 +856,7 @@ const {
   clearContextSummary,
   buildPausePayload,
   buildPauseContextSummary,
+  maybeAutoExtractOnPause,
   buildCompressContextSummary,
   saveHandoff,
   saveContextSummary,
@@ -855,6 +919,16 @@ module.exports = {
   buildArchReviewContext,
   buildReviewContext,
   runSessionReport,
+  listSkills,
+  loadSkill,
+  runSkill,
+  loadInstructionLayers,
+  listAutoMemory,
+  loadMemoryEntry,
+  rememberMemory,
+  extractMemory,
+  auditMemory,
+  promoteMemory,
   runSubAgentBridge,
   collectSubAgentBridgeJobs,
   adapterSources,
