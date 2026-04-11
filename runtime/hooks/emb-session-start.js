@@ -6,12 +6,18 @@
 const fs = require('fs');
 const path = require('path');
 const childProcess = require('child_process');
+const hookDispatchHelpers = require('../lib/hook-dispatch.cjs');
+const hookTrustHelpers = require('../lib/hook-trust.cjs');
 const runtimeHostHelpers = require('../lib/runtime-host.cjs');
 const updateCheckHelpers = require('../lib/update-check.cjs');
 
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const HOOK_VERSION = '{{EMB_VERSION}}';
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
+const hookDispatch = hookDispatchHelpers.createHookDispatchHelpers({
+  path,
+  process
+});
 
 function getRuntimeRoot() {
   return RUNTIME_HOST.runtimeRoot;
@@ -93,16 +99,8 @@ function buildUpdateLines() {
 }
 
 function runHook(rawInput) {
-  const data = typeof rawInput === 'string'
-    ? (rawInput.trim() ? JSON.parse(rawInput) : {})
-    : (rawInput || {});
-  const cwd = data.cwd || process.cwd();
-  const projectRoot = path.resolve(cwd);
-  const cli = require(path.join(__dirname, '..', 'bin', 'emb-agent.cjs'));
-  const previousCwd = process.cwd();
-
-  try {
-    process.chdir(projectRoot);
+  return hookDispatch.runHookWithProjectContext(rawInput, ({ data }) => {
+    const cli = require(path.join(__dirname, '..', 'bin', 'emb-agent.cjs'));
     const resume = cli.buildResumeContext();
     const lines = buildUpdateLines();
 
@@ -144,33 +142,11 @@ function runHook(rawInput) {
 
     lines.push('');
     return lines.join('\n');
-  } finally {
-    process.chdir(previousCwd);
-  }
+  });
 }
 
-let input = '';
-
 if (require.main === module) {
-  const stdinTimeout = setTimeout(() => process.exit(0), 5000);
-
-  process.stdin.setEncoding('utf8');
-  process.stdin.on('data', chunk => {
-    input += chunk;
-  });
-
-  process.stdin.on('end', () => {
-    clearTimeout(stdinTimeout);
-
-    try {
-      const output = runHook(input);
-      if (output) {
-        process.stdout.write(output);
-      }
-    } catch {
-      process.exit(0);
-    }
-  });
+  hookDispatch.runHookCli(runHook);
 }
 
 module.exports = {
@@ -181,6 +157,8 @@ module.exports = {
   isUpdateCacheStale,
   readInstalledVersion,
   readUpdateCache,
+  hookDispatch,
+  hookTrustHelpers,
   runHook,
   triggerUpdateCheck
 };

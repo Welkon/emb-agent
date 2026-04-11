@@ -20,6 +20,7 @@ Output the emb-agent help summary below and nothing else.
   `init`
   `declare hardware --mcu <name> --package <name>`
   `next`
+  If hooks or bootstrap seem blocked unexpectedly, run `health` first to inspect workspace trust and truth readiness.
 - Continuing work:
   `next`
   `next run` (optional one-step mode: directly enter the recommended stage)

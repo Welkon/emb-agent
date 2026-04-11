@@ -1,6 +1,9 @@
 'use strict';
 
 function getUpdateCachePath(path, stateRoot) {
+  if (process.env.EMB_AGENT_UPDATE_CACHE_PATH) {
+    return path.resolve(process.env.EMB_AGENT_UPDATE_CACHE_PATH);
+  }
   return path.join(stateRoot, 'cache', 'update-check.json');
 }
 

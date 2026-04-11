@@ -40,6 +40,8 @@ test('context hygiene stays stable for light sessions and suggests clear after h
     const heavyNext = cli.buildNextContext();
     assert.equal(heavyNext.context_hygiene.level, 'suggest-clearing');
     assert.match(heavyNext.context_hygiene.recommendation, /pause now/);
+    assert.equal(heavyNext.context_hygiene.compress_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress');
+    assert.ok(heavyNext.next_actions.some(item => item.includes('Capture a compact snapshot before clearing')));
     assert.ok(heavyNext.next_actions.some(item => item.includes('Context reminder')));
 
     cli.main(['pause', 'capture heavy session before clear']);
@@ -68,6 +70,49 @@ test('context hygiene stays stable for light sessions and suggests clear after h
 
     cli.main(['pause', 'clear']);
     assert.equal(cli.buildResumeContext().memory_summary, null);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('context compress stores a labeled snapshot with recovery pointers', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-context-compress-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    for (let index = 1; index <= 4; index += 1) {
+      const fileName = `src/c${index}.c`;
+      fs.mkdirSync(path.dirname(fileName), { recursive: true });
+      fs.writeFileSync(fileName, `// c${index}\n`, 'utf8');
+      cli.main(['last-files', 'add', fileName]);
+    }
+
+    cli.main(['focus', 'set', 'irq recovery after context clear']);
+    cli.main(['question', 'add', 'which wake edge is stale?']);
+    cli.main(['risk', 'add', 'irq acknowledge may reorder after sleep']);
+
+    cli.main(['context', 'compress', 'resume irq recovery after clear']);
+
+    const status = cli.buildStatus();
+    assert.equal(status.memory_summary.source, 'compress');
+    assert.equal(status.memory_summary.next_action, 'resume irq recovery after clear');
+    assert.match(status.memory_summary.snapshot_label, /Point-in-time compress snapshot captured at/);
+    assert.match(status.memory_summary.stale_note, /will not auto-update/);
+    assert.ok(status.memory_summary.recovery_pointers.some(item => item.includes('status')));
+    assert.ok(status.memory_summary.recovery_pointers.some(item => item.includes('dispatch next')));
+
+    const resumed = cli.buildResumeContext();
+    assert.equal(resumed.memory_summary.source, 'compress');
+
+    cli.main(['context', 'clear']);
+    assert.equal(cli.buildStatus().memory_summary, null);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

@@ -27,6 +27,34 @@
       "problem": "",
       "highest_severity": "",
       "generated_at": ""
+    },
+    "delegation_runtime": {
+      "pattern": "",
+      "strategy": "",
+      "requested_action": "",
+      "resolved_action": "",
+      "phases": [],
+      "launch_requests": [],
+      "jobs": [],
+      "worker_results": [],
+      "synthesis": {
+        "required": false,
+        "status": "",
+        "owner": "",
+        "rule": "",
+        "happens_after": [],
+        "happens_before": [],
+        "output_requirements": []
+      },
+      "integration": {
+        "owner": "",
+        "status": "",
+        "entered_via": "",
+        "execution_kind": "",
+        "execution_cli": "",
+        "steps": []
+      },
+      "updated_at": ""
     }
   }
 }

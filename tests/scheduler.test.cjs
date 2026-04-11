@@ -85,7 +85,14 @@ test('baremetal sensor profile routes scan plan debug do to lightweight agents',
   assert.equal(plan.scheduler.agent_execution.mode, 'primary-recommended');
   assert.ok(plan.scheduler.agent_execution.calls.some(item => item.agent === 'emb-fw-doer'));
   assert.equal(plan.scheduler.agent_execution.dispatch_contract.auto_invoke_when_recommended, true);
+  assert.equal(plan.scheduler.agent_execution.dispatch_contract.delegation_pattern, 'coordinator');
+  assert.equal(plan.scheduler.agent_execution.dispatch_contract.pattern_constraints.max_depth, 1);
+  assert.equal(plan.scheduler.agent_execution.dispatch_contract.pattern_constraints.workers_may_delegate, false);
+  assert.equal(plan.scheduler.agent_execution.dispatch_contract.synthesis_required, true);
+  assert.equal(plan.scheduler.agent_execution.dispatch_contract.synthesis_contract.rule, 'Synthesize, do not delegate understanding');
   assert.equal(plan.scheduler.agent_execution.dispatch_contract.primary.agent, 'emb-hw-scout');
+  assert.equal(plan.scheduler.agent_execution.dispatch_contract.primary.context_mode, 'fresh-self-contained');
+  assert.equal(plan.scheduler.agent_execution.dispatch_contract.primary.tool_scope.allows_delegate, false);
   assert.equal(plan.scheduler.agent_execution.dispatch_contract.primary.spawn_fallback.fallback_agent_type, 'explorer');
   assert.match(plan.scheduler.agent_execution.dispatch_contract.primary.spawn_fallback.instructions_source_cli, /agents show emb-hw-scout/);
   assert.ok(plan.scheduler.agent_execution.dispatch_contract.primary.context_bundle.truth_sources.length > 0);
@@ -121,6 +128,8 @@ test('rtos connected profile routes review note to system and release aware outp
   assert.ok(plan.scheduler.agent_execution.supporting_agents.includes('emb-release-checker'));
   assert.equal(plan.scheduler.agent_execution.dispatch_contract.primary_first, false);
   assert.ok(plan.scheduler.agent_execution.dispatch_contract.parallel_safe.includes('emb-release-checker'));
+  assert.equal(plan.scheduler.agent_execution.dispatch_contract.delegation_pattern, 'coordinator');
+  assert.ok(plan.scheduler.agent_execution.dispatch_contract.phases.some(item => item.id === 'synthesis'));
   assert.equal(plan.goal, 'review ota and reconnect path');
   assert.ok(plan.risks.includes('rollback path not verified'));
   assert.ok(plan.verification.some(item => item.includes('upgrade recovery')));
@@ -128,6 +137,7 @@ test('rtos connected profile routes review note to system and release aware outp
   assert.equal(review.scheduler.agent_execution.mode, 'parallel-recommended');
   assert.ok(review.scheduler.agent_execution.calls.some(item => item.agent === 'emb-release-checker'));
   assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.some(item => item.agent === 'emb-release-checker'));
+  assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.every(item => item.tool_scope.allows_delegate === false));
   assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.some(item => item.spawn_fallback.fallback_agent_type === 'explorer'));
   assert.ok(review.review_agents.includes('release-checker'));
   assert.ok(review.required_checks.some(item => item.includes('offline defaults')));

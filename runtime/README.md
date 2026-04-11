@@ -95,6 +95,22 @@ Show runtime help:
 node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 ```
 
+## Host Sub-Agent Bridge
+
+`dispatch run` and `orchestrate run` now emit and persist a coordinator-style delegation runtime under session diagnostics.
+
+If the host wants emb-agent to actually launch sub-agents, configure a bridge command that accepts a JSON payload on `stdin` and returns a JSON worker result on `stdout`:
+
+```bash
+export EMB_AGENT_SUBAGENT_BRIDGE_CMD='node /path/to/host-subagent-bridge.cjs'
+```
+
+Bridge contract:
+
+- Input: one JSON payload containing session summary, dispatch contract, worker envelope, and a self-contained worker prompt.
+- Output: one JSON payload containing `status` and `worker_result`.
+- Fallback: if no bridge is configured, emb-agent keeps the launch request and marks synthesis as `blocked-no-host-bridge` instead of pretending delegation already happened.
+
 ## Maintenance Boundaries
 
 - This is installed runtime state, not a project deliverable.

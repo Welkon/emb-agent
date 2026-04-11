@@ -115,10 +115,14 @@ test('executor commands list show and run project-defined entrypoints', async ()
       }
     });
 
-    const runResult = helpers.runExecutor('bench', ['--', '--case', 'pwm']);
+    const runResult = helpers.runExecutor('bench', ['--confirm', '--', '--case', 'pwm']);
     assert.equal(runResult.executor, 'bench');
     assert.equal(runResult.status, 'ok');
     assert.equal(runResult.risk, 'high');
+    assert.equal(runResult.permission_decision.decision, 'allow');
+    assert.equal(runResult.permission_decision.reason_code, 'explicit-confirmed');
+    assert.ok(Array.isArray(runResult.permission_gates));
+    assert.equal(runResult.permission_gates[0].kind, 'explicit-confirmation');
     assert.deepEqual(runResult.extra_args, ['--case', 'pwm']);
     assert.equal(typeof runResult.ran_at, 'string');
     assert.equal(savedSession.last_command, 'executor run bench');
@@ -137,6 +141,76 @@ test('executor commands list show and run project-defined entrypoints', async ()
     assert.deepEqual(payload.args, ['scripts/bench-runner.cjs', '--case', 'pwm']);
     assert.equal(payload.env, 'smoke');
     assert.match(savedSession.diagnostics.latest_executor.stdout_preview, /"command"/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('executor run requires explicit confirmation for high-risk entries', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-executor-confirm-'));
+  const currentCwd = process.cwd();
+  let spawnCalls = 0;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main([
+      'project',
+      'set',
+      '--field',
+      'executors.flash',
+      '--value',
+      JSON.stringify({
+        description: 'flash chip',
+        argv: [process.execPath, '-e', "process.stdout.write('flashed')"],
+        risk: 'high'
+      })
+    ]);
+
+    const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+    const helpers = executorCommandHelpers.createExecutorCommandHelpers({
+      path,
+      process,
+      childProcess: {
+        spawnSync() {
+          spawnCalls += 1;
+          return {
+            status: 0,
+            signal: null,
+            stdout: 'flashed',
+            stderr: '',
+            error: null
+          };
+        }
+      },
+      runtime,
+      resolveProjectRoot: () => tempProject,
+      getProjectConfig: () => runtime.loadProjectConfig(tempProject, runtimeConfig),
+      updateSession(mutator) {
+        const session = { last_command: '', diagnostics: {} };
+        mutator(session);
+        return session;
+      }
+    });
+
+    const blocked = helpers.runExecutor('flash', []);
+    assert.equal(blocked.status, 'permission-pending');
+    assert.ok(blocked.high_risk_clarity);
+    assert.equal(blocked.high_risk_clarity.enabled, true);
+    assert.equal(blocked.permission_decision.decision, 'ask');
+    assert.equal(blocked.permission_decision.reason_code, 'high-risk-confirmation');
+    assert.ok(Array.isArray(blocked.permission_gates));
+    assert.equal(blocked.permission_gates[0].kind, 'explicit-confirmation');
+    assert.equal(blocked.permission_gates[0].state, 'pending');
+    assert.equal(spawnCalls, 0);
+
+    const allowed = helpers.runExecutor('flash', ['--confirm']);
+    assert.equal(allowed.status, 'ok');
+    assert.equal(allowed.permission_decision.decision, 'allow');
+    assert.equal(allowed.permission_decision.reason_code, 'explicit-confirmed');
+    assert.ok(Array.isArray(allowed.permission_gates));
+    assert.equal(allowed.permission_gates[0].kind, 'explicit-confirmation');
+    assert.equal(spawnCalls, 1);
   } finally {
     process.chdir(currentCwd);
   }
@@ -165,6 +239,74 @@ test('executor run rejects extra args when executor is fixed-argv only', async (
       () => cli.main(['executor', 'run', 'build', '--', '--release']),
       /does not allow extra args/
     );
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('executor run honors project permission deny rules before spawning', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-executor-deny-'));
+  const currentCwd = process.cwd();
+  let spawnCalls = 0;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main([
+      'project',
+      'set',
+      '--field',
+      'executors.build',
+      '--value',
+      JSON.stringify({
+        description: 'build firmware',
+        argv: [process.execPath, '-e', "process.stdout.write('ok')"]
+      })
+    ]);
+    await cli.main([
+      'project',
+      'set',
+      '--confirm',
+      '--field',
+      'permissions.executors.deny',
+      '--value',
+      JSON.stringify(['build'])
+    ]);
+
+    const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+    const helpers = executorCommandHelpers.createExecutorCommandHelpers({
+      path,
+      process,
+      childProcess: {
+        spawnSync() {
+          spawnCalls += 1;
+          return {
+            status: 0,
+            signal: null,
+            stdout: 'ok',
+            stderr: '',
+            error: null
+          };
+        }
+      },
+      runtime,
+      resolveProjectRoot: () => tempProject,
+      getProjectConfig: () => runtime.loadProjectConfig(tempProject, runtimeConfig),
+      updateSession(mutator) {
+        const session = { last_command: '', diagnostics: {} };
+        mutator(session);
+        return session;
+      }
+    });
+
+    const denied = helpers.runExecutor('build', []);
+    assert.equal(denied.status, 'permission-denied');
+    assert.equal(denied.permission_decision.decision, 'deny');
+    assert.equal(denied.permission_decision.reason_code, 'policy-deny');
+    assert.ok(Array.isArray(denied.permission_gates));
+    assert.equal(denied.permission_gates[0].kind, 'permission-rule');
+    assert.equal(denied.permission_gates[0].state, 'blocked');
+    assert.equal(spawnCalls, 0);
   } finally {
     process.chdir(currentCwd);
   }

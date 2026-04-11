@@ -88,9 +88,11 @@ test('health reports warn for incomplete hardware identity and fail for missing 
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
+  const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
   let stdout = '';
 
   try {
+    process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = 'mock://ok';
     process.chdir(tempProject);
     process.stdout.write = chunk => {
       stdout += String(chunk);
@@ -103,12 +105,18 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     let report = JSON.parse(stdout);
 
     assert.equal(report.command, 'health');
+    assert.equal(report.runtime_host, 'codex');
     assert.equal(report.status, 'warn');
     assert.ok(report.checks.some(item => item.key === 'project_config_valid' && item.status === 'pass'));
+    assert.ok(report.checks.some(item => item.key === 'subagent_bridge' && item.status === 'pass'));
+    assert.equal(report.subagent_bridge.mode, 'mock');
     assert.ok(report.checks.some(item => item.key === 'hardware_identity' && item.status === 'warn'));
     assert.ok(Array.isArray(report.next_commands));
     assert.ok(report.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
     assert.equal(report.quickstart.stage, 'fill-hardware-identity');
+    assert.equal(report.bootstrap.current_stage, 'hardware-truth');
+    assert.equal(report.bootstrap.next_stage.status, 'manual');
+    assert.ok(report.bootstrap.stages.some(item => item.id === 'init-project' && item.status === 'completed'));
     assert.ok(report.quickstart.followup.includes('adapter bootstrap'));
     assert.equal(cli.loadSession().last_command, 'health');
 
@@ -121,6 +129,59 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.ok(report.checks.some(item => item.key === 'req_truth' && item.status === 'fail'));
     assert.ok(report.recommendations.some(item => item.includes('req.yaml')));
   } finally {
+    if (originalBridgeCmd === undefined) {
+      delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    } else {
+      process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('health and bootstrap expose workspace trust as an explicit bootstrap boundary', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-trust-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const previousWorkspaceTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  let stdout = '';
+
+  try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '0';
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+
+    stdout = '';
+    cli.main(['health']);
+    let report = JSON.parse(stdout);
+
+    assert.equal(report.workspace_trust.trusted, false);
+    assert.equal(report.workspace_trust.source, 'env');
+    assert.equal(report.checks.find(item => item.key === 'workspace_trust').status, 'warn');
+    assert.equal(report.bootstrap.current_stage, 'workspace-trust');
+    assert.equal(report.bootstrap.next_stage.status, 'manual');
+    assert.equal(report.quickstart.stage, 'establish-workspace-trust');
+    assert.ok(report.recommendations.some(item => item.includes('workspace trust')));
+
+    stdout = '';
+    await cli.main(['bootstrap']);
+    report = JSON.parse(stdout);
+
+    assert.equal(report.current_stage, 'workspace-trust');
+    assert.equal(report.next_stage.id, 'workspace-trust');
+    assert.equal(report.next_stage.status, 'manual');
+    assert.ok(report.stages.some(item => item.id === 'workspace-trust' && item.status === 'manual'));
+  } finally {
+    if (previousWorkspaceTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousWorkspaceTrust;
+    }
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }
@@ -130,14 +191,16 @@ test('update reports stale install and cached newer version', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-update-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
-  const cachePath = sessionStartHook.getUpdateCachePath();
   const previousSkip = process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
   const previousHookVersion = process.env.EMB_AGENT_FORCE_HOOK_VERSION;
+  const previousCachePath = process.env.EMB_AGENT_UPDATE_CACHE_PATH;
+  const cachePath = path.join(tempProject, '.cache', 'update-check.json');
   let stdout = '';
 
   try {
     process.env.EMB_AGENT_SKIP_UPDATE_CHECK = '1';
     process.env.EMB_AGENT_FORCE_HOOK_VERSION = '0.0.1';
+    process.env.EMB_AGENT_UPDATE_CACHE_PATH = cachePath;
     fs.mkdirSync(path.dirname(cachePath), { recursive: true });
     fs.writeFileSync(
       cachePath,
@@ -190,6 +253,11 @@ test('update reports stale install and cached newer version', () => {
     } else {
       process.env.EMB_AGENT_FORCE_HOOK_VERSION = previousHookVersion;
     }
+    if (previousCachePath === undefined) {
+      delete process.env.EMB_AGENT_UPDATE_CACHE_PATH;
+    } else {
+      process.env.EMB_AGENT_UPDATE_CACHE_PATH = previousCachePath;
+    }
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }
@@ -224,8 +292,24 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'info');
     assert.ok(report.next_commands.some(item => item.cli.includes('adapter bootstrap')));
     assert.equal(report.quickstart.stage, 'bootstrap-then-next');
+    assert.equal(report.bootstrap.current_stage, 'adapter-bootstrap');
+    assert.ok(report.bootstrap.next_stage.cli.includes('adapter bootstrap'));
     assert.ok(report.quickstart.steps[0].cli.includes('adapter bootstrap'));
     assert.ok(report.quickstart.steps[1].cli.endsWith(' next'));
+
+    stdout = '';
+    await cli.main(['bootstrap']);
+    let bootstrapView = JSON.parse(stdout);
+    assert.equal(bootstrapView.command, 'bootstrap');
+    assert.equal(bootstrapView.current_stage, 'adapter-bootstrap');
+    assert.ok(bootstrapView.stages.some(item => item.id === 'next-step'));
+
+    stdout = '';
+    await cli.main(['bootstrap', 'run']);
+    let bootstrapRun = JSON.parse(stdout);
+    assert.equal(bootstrapRun.executed, false);
+    assert.equal(bootstrapRun.stage.id, 'adapter-bootstrap');
+    assert.equal(bootstrapRun.reason, 'network-bootstrap-required');
 
     stdout = '';
     cli.main(['adapter', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
@@ -238,7 +322,19 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.ok(report.next_commands.some(item => item.cli.includes('adapter bootstrap default-pack')));
 
     stdout = '';
-    cli.main(['adapter', 'sync', 'default-pack']);
+    await cli.main(['bootstrap', 'run']);
+    bootstrapRun = JSON.parse(stdout);
+    assert.equal(bootstrapRun.executed, true);
+    assert.equal(bootstrapRun.stage.id, 'adapter-bootstrap');
+    assert.equal(bootstrapRun.result.sync.status, 'synced');
+    assert.equal(bootstrapRun.bootstrap_after.current_stage, 'next-step');
+
+    stdout = '';
+    await cli.main(['bootstrap', 'run']);
+    bootstrapRun = JSON.parse(stdout);
+    assert.equal(bootstrapRun.executed, true);
+    assert.equal(bootstrapRun.stage.id, 'next-step');
+    assert.equal(bootstrapRun.result.requested_action, 'next');
 
     stdout = '';
     cli.main(['health']);
@@ -273,6 +369,11 @@ test('health surfaces pending doc apply as quickstart before generic next', asyn
     };
 
     cli.main(['init']);
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      'mcu:\n  vendor: "SCMCU"\n  model: "SC8F072"\n  package: "SOP8"\n',
+      'utf8'
+    );
     fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
     fs.writeFileSync(path.join(tempProject, 'docs', 'PMS150G.pdf'), 'fake pdf content', 'utf8');
 
@@ -307,8 +408,17 @@ test('health surfaces pending doc apply as quickstart before generic next', asyn
     assert.equal(report.checks.find(item => item.key === 'doc_apply_backlog').status, 'warn');
     assert.ok(report.next_commands.some(item => item.key === 'doc-apply'));
     assert.equal(report.quickstart.stage, 'doc-apply-then-next');
+    assert.equal(report.bootstrap.current_stage, 'doc-truth-sync');
     assert.ok(report.quickstart.steps[0].cli.includes('ingest apply doc'));
     assert.ok(report.quickstart.steps[1].cli.endsWith(' next'));
+
+    stdout = '';
+    await cli.main(['bootstrap', 'run']);
+    const bootstrapRun = JSON.parse(stdout);
+    assert.equal(bootstrapRun.executed, true);
+    assert.equal(bootstrapRun.stage.id, 'doc-truth-sync');
+    assert.equal(Boolean(bootstrapRun.result.applied), true);
+    assert.equal(bootstrapRun.bootstrap_after.current_stage, 'adapter-bootstrap');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -370,6 +480,7 @@ test('health routes from applied hardware doc to adapter derive when synced adap
     assert.ok(report.next_commands.some(item => item.key === 'adapter-derive-from-doc'));
     assert.ok(report.next_commands.some(item => item.cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`)));
     assert.equal(report.quickstart.stage, 'derive-then-next');
+    assert.equal(report.bootstrap.current_stage, 'adapter-derive');
     assert.ok(report.quickstart.steps[0].cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`));
   } finally {
     process.chdir(currentCwd);

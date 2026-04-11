@@ -4,6 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+const DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS = 15000;
+
 const DEFAULT_HOSTS = {
   codex: {
     name: 'codex',
@@ -18,6 +20,89 @@ const DEFAULT_HOSTS = {
     configFileName: 'settings.json'
   }
 };
+
+function splitCommandWords(command) {
+  const input = String(command || '').trim();
+  if (!input) {
+    return [];
+  }
+
+  const parts = [];
+  let current = '';
+  let quote = '';
+  let escape = false;
+
+  for (const char of input) {
+    if (escape) {
+      current += char;
+      escape = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escape = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = '';
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === '\'') {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/u.test(char)) {
+      if (current) {
+        parts.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current) {
+    parts.push(current);
+  }
+
+  return parts;
+}
+
+function resolveSubagentBridge(metadata) {
+  const envCommand = String(process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD || '').trim();
+  const metadataBridge =
+    metadata && metadata.subagent_bridge && typeof metadata.subagent_bridge === 'object' && !Array.isArray(metadata.subagent_bridge)
+      ? metadata.subagent_bridge
+      : {};
+  const command = envCommand || String(metadataBridge.command || '').trim();
+  const timeoutSource = envCommand
+    ? process.env.EMB_AGENT_SUBAGENT_BRIDGE_TIMEOUT_MS
+    : metadataBridge.timeout_ms;
+  const timeoutMs = Number(timeoutSource || DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS);
+
+  const mode = !command
+    ? 'disabled'
+    : command.startsWith('mock://')
+      ? 'mock'
+      : 'stdio-json';
+
+  return {
+    available: Boolean(command),
+    mode,
+    command,
+    command_argv: mode === 'stdio-json' ? splitCommandWords(command) : [],
+    timeout_ms: Number.isInteger(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
+    source: envCommand ? 'env' : (command ? 'host-metadata' : 'none')
+  };
+}
 
 function normalizeHostName(name) {
   const normalized = String(name || '').trim().toLowerCase();
@@ -120,7 +205,8 @@ function resolveRuntimeHost(runtimeRoot) {
     cliDisplayPath,
     cliCommand: `node ${quoteShellPath(cliDisplayPath)}`,
     hostMetadataPath: getHostMetadataPath(resolvedRoot),
-    sourceLayout
+    sourceLayout,
+    subagentBridge: resolveSubagentBridge(metadata)
   };
 }
 
@@ -139,7 +225,7 @@ function buildCliCommand(runtimeHost, args) {
 }
 
 function createInstallHostMetadata(targetDir, target, args) {
-  return {
+  const metadata = {
     name: target.name,
     label: target.label,
     config_file_name: target.configFileName || '',
@@ -147,16 +233,33 @@ function createInstallHostMetadata(targetDir, target, args) {
     target_dir: path.resolve(targetDir).replace(/\\/g, '/'),
     runtime_dir_name: target.runtimeDirName || 'emb-agent'
   };
+
+  const subagentBridgeCommand = String((args && args.subagentBridgeCmd) || '').trim();
+  const subagentBridgeTimeoutMs = Number(args && args.subagentBridgeTimeoutMs);
+
+  if (subagentBridgeCommand) {
+    metadata.subagent_bridge = {
+      command: subagentBridgeCommand,
+      timeout_ms: Number.isInteger(subagentBridgeTimeoutMs) && subagentBridgeTimeoutMs > 0
+        ? subagentBridgeTimeoutMs
+        : DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS
+    };
+  }
+
+  return metadata;
 }
 
 module.exports = {
+  DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
   buildCliCommand,
   createInstallHostMetadata,
   getHostMetadataPath,
   getHostDefaults,
   isSourceRuntimeLayout,
   readHostMetadata,
+  resolveSubagentBridge,
   resolveRuntimeHost,
   resolveRuntimeHostFromModuleDir,
+  splitCommandWords,
   shortenHomePath
 };

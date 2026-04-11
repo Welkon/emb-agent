@@ -81,3 +81,28 @@ test('context monitor shouldEmit debounces same severity and allows escalation',
 
   assert.equal(contextMonitor.shouldEmit(tempProject, 'critical'), true);
 });
+
+test('context monitor skips all output when workspace trust is not established', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-untrusted-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    const output = contextMonitor.runHook({
+      cwd: tempProject,
+      event: 'PostToolUse',
+      workspace: {
+        trusted: false
+      },
+      context_window: {
+        remaining_percentage: 18
+      }
+    });
+
+    assert.equal(output, '');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});

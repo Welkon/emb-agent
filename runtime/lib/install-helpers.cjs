@@ -21,6 +21,8 @@ function createInstallHelpers(deps) {
   const MANAGED_MARKER_END = '# EMB-AGENT managed end';
   const AGENT_PREFIX = 'emb-';
   const TEXT_FILE_EXTENSIONS = new Set(['.cjs', '.js', '.json', '.md', '.txt', '.tpl', '.yaml', '.yml']);
+  const DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS =
+    Number(runtimeHost && runtimeHost.DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS) || 15000;
   const SANDBOX_BY_AGENT = {
     'emb-fw-doer': 'workspace-write',
     'emb-bug-hunter': 'workspace-write',
@@ -53,6 +55,10 @@ function createInstallHelpers(deps) {
         '  --global                Install to runtime config home',
         '  --local                 Install to current project runtime dir',
         '  --config-dir <path>     Override target runtime directory',
+        '  --subagent-bridge-cmd <command>',
+        '                          Configure host sub-agent bridge command',
+        '  --subagent-bridge-timeout-ms <ms>',
+        '                          Set host sub-agent bridge timeout in milliseconds',
         '  --uninstall             Remove emb-agent managed files from the target',
         '  --force                 Overwrite existing emb-agent runtime',
         '  --help                  Show this help'
@@ -74,6 +80,20 @@ function createInstallHelpers(deps) {
       });
   }
 
+  function parsePositiveInteger(rawValue, flagName) {
+    const input = String(rawValue || '').trim();
+    if (!input) {
+      throw new Error(`Missing value after ${flagName}`);
+    }
+
+    const parsed = Number.parseInt(input, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`${flagName} expects a positive integer`);
+    }
+
+    return parsed;
+  }
+
   function parseArgs(argv) {
     const result = {
       global: false,
@@ -81,6 +101,8 @@ function createInstallHelpers(deps) {
       runtime: '',
       developer: '',
       configDir: '',
+      subagentBridgeCmd: '',
+      subagentBridgeTimeoutMs: DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
       uninstall: false,
       force: false,
       help: false
@@ -143,6 +165,16 @@ function createInstallHelpers(deps) {
         index += 1;
         continue;
       }
+      if (token === '--subagent-bridge-cmd') {
+        result.subagentBridgeCmd = String(argv[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
+      if (token === '--subagent-bridge-timeout-ms') {
+        result.subagentBridgeTimeoutMs = parsePositiveInteger(argv[index + 1], '--subagent-bridge-timeout-ms');
+        index += 1;
+        continue;
+      }
       throw new Error(`Unknown argument: ${token}`);
     }
 
@@ -151,6 +183,12 @@ function createInstallHelpers(deps) {
     }
     if (argv.includes('--developer') && !result.developer) {
       throw new Error('Missing name after --developer');
+    }
+    if (argv.includes('--subagent-bridge-cmd') && !result.subagentBridgeCmd) {
+      throw new Error('Missing command after --subagent-bridge-cmd');
+    }
+    if (argv.includes('--subagent-bridge-timeout-ms') && !result.subagentBridgeCmd) {
+      throw new Error('--subagent-bridge-timeout-ms requires --subagent-bridge-cmd');
     }
     if (result.global && result.local) {
       throw new Error('Use either --global or --local, not both');
@@ -248,8 +286,14 @@ function createInstallHelpers(deps) {
       const runtime = String(prompted && prompted.runtime ? prompted.runtime : targets[0].name).trim().toLowerCase();
       const location = String(prompted && prompted.location ? prompted.location : 'global').trim().toLowerCase();
       const developer = String(prompted && prompted.developer ? prompted.developer : '').trim();
+      const subagentBridgeCmd = String(prompted && prompted.subagentBridgeCmd ? prompted.subagentBridgeCmd : '').trim();
+      const subagentBridgeTimeoutProvided =
+        prompted && prompted.subagentBridgeTimeoutMs !== undefined && prompted.subagentBridgeTimeoutMs !== null;
       if (!developer) {
         throw new Error('Interactive install requires developer name.');
+      }
+      if (!subagentBridgeCmd && subagentBridgeTimeoutProvided) {
+        throw new Error('Interactive sub-agent bridge timeout requires a bridge command.');
       }
 
       return {
@@ -258,6 +302,11 @@ function createInstallHelpers(deps) {
         runtime,
         developer,
         configDir: '',
+        subagentBridgeCmd,
+        subagentBridgeTimeoutMs:
+          subagentBridgeTimeoutProvided
+            ? parsePositiveInteger(prompted.subagentBridgeTimeoutMs, 'subagentBridgeTimeoutMs')
+            : DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
         uninstall: false,
         force: false,
         help: false
@@ -284,6 +333,8 @@ function createInstallHelpers(deps) {
       runtime: target.name,
       developer,
       configDir: '',
+      subagentBridgeCmd: '',
+      subagentBridgeTimeoutMs: DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
       uninstall: false,
       force: false,
       help: false
@@ -874,8 +925,12 @@ function createInstallHelpers(deps) {
       `Installed ${agentCount} ${target.agentLabel || `${target.label} agents`} under: ${path.join(targetDir, target.agentsDirName || 'agents')}`,
       `Updated ${target.label} config: ${path.join(targetDir, target.configFileName || 'config.toml')}`,
       `Developer identity: ${args.developer} (${target.name})`,
+      ...(args.subagentBridgeCmd
+        ? [`Sub-agent bridge: ${args.subagentBridgeCmd} (timeout: ${args.subagentBridgeTimeoutMs} ms)`]
+        : []),
       `${envExampleCreated ? 'Created' : 'Kept'} env example: ${envExamplePath}`,
       ...envHintLines,
+      'Trust hint: workspace trust now gates startup hooks and bootstrap visibility; leave it to the host by default, or use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.',
       'Next steps:',
       `  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`,
       `  In a project repo, open a ${target.label} session and run: init`,

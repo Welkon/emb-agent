@@ -10,14 +10,19 @@ function createCliRouter(deps) {
     runInitCommand,
     runIngestCommand,
     buildStatus,
+    buildBootstrapReport,
     updateSession,
     buildNextContext,
     buildDispatchContext,
+    executeDispatchCommand,
+    executeOrchestratorCommand,
     loadHandoff,
+    loadContextSummary,
     clearHandoff,
     clearContextSummary,
     buildPausePayload,
     buildPauseContextSummary,
+    buildCompressContextSummary,
     saveHandoff,
     saveContextSummary,
     buildResumeContext,
@@ -54,6 +59,68 @@ function createCliRouter(deps) {
     }
 
     const [cmd, subcmd, ...rest] = args;
+
+    function isDefaultRemoteAdapterBootstrapStage(stage) {
+      return Boolean(
+        stage &&
+          Array.isArray(stage.argv) &&
+          stage.argv[0] === 'adapter' &&
+          stage.argv[1] === 'bootstrap' &&
+          stage.argv.length === 2
+      );
+    }
+
+    function parseBootstrapRunOptions(tokens) {
+      const options = {
+        confirm: false
+      };
+      const extras = Array.isArray(tokens) ? tokens : [];
+
+      extras.forEach(token => {
+        if (token === '--confirm') {
+          options.confirm = true;
+          return;
+        }
+
+        throw new Error(`Unknown bootstrap run option: ${token}`);
+      });
+
+      return options;
+    }
+
+    function applyBootstrapRunOptions(stage, options) {
+      const nextStage = stage && typeof stage === 'object' && !Array.isArray(stage)
+        ? {
+            ...stage,
+            argv: Array.isArray(stage.argv) ? [...stage.argv] : []
+          }
+        : stage;
+      const settings = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+
+      if (!nextStage || !Array.isArray(nextStage.argv) || nextStage.argv.length === 0) {
+        return nextStage;
+      }
+
+      if (settings.confirm && !nextStage.argv.includes('--confirm')) {
+        nextStage.argv.push('--confirm');
+      }
+
+      return nextStage;
+    }
+
+    function buildBootstrapRunResponse(stage, result) {
+      const payload = result && typeof result === 'object' && !Array.isArray(result) ? result : {};
+      const blocked =
+        payload.status === 'permission-pending' || payload.status === 'permission-denied';
+
+      return {
+        executed: !blocked,
+        ...(blocked ? { reason: payload.status } : {}),
+        stage,
+        result: payload,
+        bootstrap_after: buildBootstrapReport()
+      };
+    }
 
     if (cmd === 'init') {
       const initialized = runInitCommand(args.slice(1), 'init');
@@ -95,16 +162,112 @@ function createCliRouter(deps) {
       return;
     }
 
+    if (cmd === 'bootstrap') {
+      if (!subcmd || subcmd === 'show') {
+        updateSession(current => {
+          current.last_command = 'bootstrap';
+        });
+        emitJson(buildBootstrapReport());
+        return;
+      }
+
+      if (subcmd === 'run') {
+        const bootstrap = buildBootstrapReport();
+        const runOptions = parseBootstrapRunOptions(rest);
+        const stage = applyBootstrapRunOptions(bootstrap.next_stage || null, runOptions);
+
+        if (!stage) {
+          emitJson({
+            executed: false,
+            reason: 'bootstrap-complete',
+            bootstrap
+          });
+          return;
+        }
+
+        if (stage.manual || !Array.isArray(stage.argv) || stage.argv.length === 0) {
+          emitJson({
+            executed: false,
+            reason: stage.manual ? 'manual-stage' : 'no-executable-stage',
+            stage,
+            bootstrap
+          });
+          return;
+        }
+
+        if (isDefaultRemoteAdapterBootstrapStage(stage)) {
+          emitJson({
+            executed: false,
+            reason: 'network-bootstrap-required',
+            summary: 'Default adapter bootstrap requires an explicit source or manual network-enabled execution',
+            stage,
+            bootstrap
+          });
+          return;
+        }
+
+        if (stage.argv[0] === 'init') {
+          const initialized = runInitCommand(stage.argv.slice(1), 'init');
+          emitJson(buildBootstrapRunResponse(stage, initialized));
+          return;
+        }
+
+        if (stage.argv[0] === 'ingest' && stage.argv[1] === 'apply') {
+          const applied = await runIngestCommand('apply', stage.argv.slice(2));
+          emitJson(buildBootstrapRunResponse(stage, applied));
+          return;
+        }
+
+        if (stage.argv[0] === 'adapter' || stage.argv[0] === 'tool') {
+          const result = handleAdapterToolChipCommands(stage.argv[0], stage.argv[1], stage.argv.slice(2));
+          emitJson(buildBootstrapRunResponse(stage, result));
+          return;
+        }
+
+        if (stage.argv[0] === 'next') {
+          emitJson({
+            executed: true,
+            stage,
+            result: executeDispatchCommand('next', { entered_via: 'bootstrap run' }),
+            bootstrap_after: buildBootstrapReport()
+          });
+          return;
+        }
+
+        if (stage.argv[0] === 'resume') {
+          const session = updateSession(current => {
+            current.last_command = 'resume';
+            current.last_resumed_at = new Date().toISOString();
+          });
+          const context = buildResumeContext();
+          context.summary.last_command = session.last_command || '';
+          context.summary.last_resumed_at = session.last_resumed_at || '';
+          emitJson({
+            executed: true,
+            stage,
+            result: context,
+            bootstrap_after: buildBootstrapReport()
+          });
+          return;
+        }
+
+        emitJson({
+          executed: false,
+          reason: 'unsupported-stage-runner',
+          stage,
+          bootstrap
+        });
+        return;
+      }
+
+      usage();
+      process.exitCode = 1;
+      return;
+    }
+
     if (cmd === 'next') {
       if (subcmd === 'run') {
-        const dispatch = buildDispatchContext('next');
-        const session = updateSession(current => {
-          current.last_command = 'next run';
-        });
-        if (dispatch && dispatch.current) {
-          dispatch.current.last_command = session.last_command || '';
-        }
-        emitJson(dispatch);
+        emitJson(executeDispatchCommand('next', { entered_via: 'next run' }));
         return;
       }
 
@@ -130,6 +293,39 @@ function createCliRouter(deps) {
 
     if (cmd === 'pause' && subcmd === 'show') {
       emitJson(loadHandoff());
+      return;
+    }
+
+    if (cmd === 'context' && subcmd === 'show') {
+      emitJson(loadContextSummary());
+      return;
+    }
+
+    if (cmd === 'context' && subcmd === 'clear') {
+      clearContextSummary();
+      const session = updateSession(current => {
+        current.last_command = 'context clear';
+      });
+      emitJson({
+        cleared: true,
+        memory_summary: null,
+        session
+      });
+      return;
+    }
+
+    if (cmd === 'context' && subcmd === 'compress') {
+      const noteText = rest.join(' ').trim();
+      const summary = buildCompressContextSummary(noteText);
+      saveContextSummary(summary);
+      const session = updateSession(current => {
+        current.last_command = 'context compress';
+      });
+      emitJson({
+        compressed: true,
+        memory_summary: summary,
+        session
+      });
       return;
     }
 
@@ -205,7 +401,9 @@ function createCliRouter(deps) {
 
     if (cmd === 'project' && subcmd === 'set') {
       const setArgs = parseProjectSetArgs(rest);
-      emitJson(setProjectConfigValue(setArgs.field, setArgs.value));
+      emitJson(setProjectConfigValue(setArgs.field, setArgs.value, {
+        explicit_confirmation: setArgs.explicit_confirmation
+      }));
       return;
     }
 

@@ -9,7 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
-async function captureCliText(args) {
+async function captureCliText(args, cliImpl = cli) {
   const originalWrite = process.stdout.write;
   let stdout = '';
 
@@ -19,7 +19,7 @@ async function captureCliText(args) {
   };
 
   try {
-    await cli.main(args);
+    await cliImpl.main(args);
   } finally {
     process.stdout.write = originalWrite;
   }
@@ -27,7 +27,7 @@ async function captureCliText(args) {
   return stdout;
 }
 
-async function captureCliJson(args) {
+async function captureCliJson(args, cliImpl = cli) {
   const originalWrite = process.stdout.write;
   let stdout = '';
 
@@ -37,7 +37,7 @@ async function captureCliJson(args) {
   };
 
   try {
-    await cli.main(args);
+    await cliImpl.main(args);
   } finally {
     process.stdout.write = originalWrite;
   }
@@ -123,7 +123,10 @@ test('next run resolves and enters the recommended stage directly', async () => 
     assert.equal(run.resolved_action, 'debug');
     assert.equal(run.workflow_stage.name, 'execution');
     assert.equal(run.workflow_stage.primary_command, 'debug');
-    assert.equal(run.current.last_command, 'next run');
+    assert.equal(run.execution.kind, 'action');
+    assert.equal(run.execution.entered_via, 'next run');
+    assert.ok(Array.isArray(run.hypotheses));
+    assert.ok(Array.isArray(run.checks));
 
     await cli.main(['question', 'clear']);
     await cli.main(['focus', 'set', 'close loop after irq fix']);
@@ -131,6 +134,62 @@ test('next run resolves and enters the recommended stage directly', async () => 
     const runAfterDo = await captureCliJson(['next', 'run']);
     assert.equal(runAfterDo.resolved_action, 'verify');
     assert.equal(runAfterDo.workflow_stage.name, 'closure');
+    assert.equal(runAfterDo.execution.kind, 'action');
+    assert.ok(Array.isArray(runAfterDo.checklist));
+  } finally {
+    process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
+  }
+});
+
+test('dispatch run executes the resolved action instead of returning only the contract', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-run-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['question', 'add', 'why irq misses']);
+
+    const run = await captureCliJson(['dispatch', 'run', 'next']);
+
+    assert.equal(run.source, 'next');
+    assert.equal(run.requested_action, 'next');
+    assert.equal(run.resolved_action, 'debug');
+    assert.equal(run.execution.kind, 'action');
+    assert.equal(run.execution.entered_via, 'dispatch run next');
+    assert.ok(Array.isArray(run.hypotheses));
+    assert.ok(Array.isArray(run.checks));
+  } finally {
+    process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
+  }
+});
+
+test('orchestrate run preserves orchestration metadata while executing the target', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-run-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const run = await captureCliJson(['orchestrate', 'run']);
+
+    assert.equal(run.mode, 'lightweight-action-orchestrator');
+    assert.equal(run.source, 'next');
+    assert.equal(run.resolved_action, 'health');
+    assert.equal(run.execution.kind, 'action');
+    assert.equal(run.execution.entered_via, 'orchestrate run next');
+    assert.equal(run.workflow.strategy, 'inline');
+    assert.ok(Array.isArray(run.checks));
+    assert.ok(Array.isArray(run.orchestrator_steps));
   } finally {
     process.stdout.write = originalWrite;
     process.chdir(currentCwd);
@@ -145,6 +204,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(compact, /Core workflow:/);
   assert.match(compact, /declare hardware/);
   assert.match(compact, /next \[run\]/);
+  assert.match(compact, /bootstrap \[run \[--confirm\]\]/);
   assert.match(compact, /help advanced/);
   assert.doesNotMatch(compact, /adapter source add/);
   assert.doesNotMatch(compact, /workspace link/);
@@ -154,10 +214,27 @@ test('default help stays concise and advanced help exposes the full surface', as
 
   assert.match(advanced, /Advanced commands:/);
   assert.match(advanced, /adapter source add/);
+  assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
+  assert.match(advanced, /context compress \[note\]/);
   assert.doesNotMatch(advanced, /workspace link/);
   assert.doesNotMatch(advanced, /thread /);
   assert.doesNotMatch(advanced, /spec /);
   assert.doesNotMatch(advanced, /skills list/);
   assert.match(advanced, /commands list/);
   assert.equal(advanced, allFlag);
+});
+
+test('help fast path does not eagerly load emb-agent-main', async () => {
+  const cliPath = path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs');
+  const mainPath = path.join(repoRoot, 'runtime', 'lib', 'emb-agent-main.cjs');
+
+  delete require.cache[require.resolve(cliPath)];
+  delete require.cache[require.resolve(mainPath)];
+
+  const freshCli = require(cliPath);
+  assert.equal(require.cache[require.resolve(mainPath)], undefined);
+
+  await captureCliText(['help'], freshCli);
+
+  assert.equal(require.cache[require.resolve(mainPath)], undefined);
 });

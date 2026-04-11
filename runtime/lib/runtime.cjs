@@ -419,6 +419,10 @@ function normalizeDiagnostics(value) {
     !source.human_signoffs || typeof source.human_signoffs !== 'object' || Array.isArray(source.human_signoffs)
       ? {}
       : source.human_signoffs;
+  const delegationRuntimeSource =
+    !source.delegation_runtime || typeof source.delegation_runtime !== 'object' || Array.isArray(source.delegation_runtime)
+      ? {}
+      : source.delegation_runtime;
 
   function normalizeExecutorDiagnostic(entry, label, fallbackName) {
     const safeEntry = !entry || typeof entry !== 'object' || Array.isArray(entry) ? {} : entry;
@@ -482,6 +486,164 @@ function normalizeDiagnostics(value) {
     };
   });
 
+  function normalizeToolScope(value, label) {
+    const safeValue = !value || typeof value !== 'object' || Array.isArray(value) ? {} : value;
+    return {
+      role_profile: ensureOptionalString(safeValue.role_profile, `${label}.role_profile`),
+      allows_write: ensureBoolean(safeValue.allows_write, `${label}.allows_write`, false),
+      allows_delegate: ensureBoolean(safeValue.allows_delegate, `${label}.allows_delegate`, false),
+      allows_background_work: ensureBoolean(
+        safeValue.allows_background_work,
+        `${label}.allows_background_work`,
+        false
+      ),
+      preferred_tools: ensureStringArray(safeValue.preferred_tools || [], `${label}.preferred_tools`),
+      disallowed_tools: ensureStringArray(safeValue.disallowed_tools || [], `${label}.disallowed_tools`)
+    };
+  }
+
+  function normalizeDelegationPhase(entry, label) {
+    const safeEntry = !entry || typeof entry !== 'object' || Array.isArray(entry) ? {} : entry;
+    return {
+      id: ensureOptionalString(safeEntry.id, `${label}.id`),
+      owner: ensureOptionalString(safeEntry.owner, `${label}.owner`),
+      objective: ensureOptionalString(safeEntry.objective, `${label}.objective`),
+      completion_signal: ensureOptionalString(safeEntry.completion_signal, `${label}.completion_signal`)
+    };
+  }
+
+  function normalizeLaunchRequest(entry, label) {
+    const safeEntry = !entry || typeof entry !== 'object' || Array.isArray(entry) ? {} : entry;
+    return {
+      agent: ensureOptionalString(safeEntry.agent, `${label}.agent`),
+      role: ensureOptionalString(safeEntry.role, `${label}.role`),
+      phase: ensureOptionalString(safeEntry.phase, `${label}.phase`),
+      status: ensureOptionalString(safeEntry.status, `${label}.status`),
+      blocking: ensureBoolean(safeEntry.blocking, `${label}.blocking`, false),
+      context_mode: ensureOptionalString(safeEntry.context_mode, `${label}.context_mode`),
+      purpose: ensureOptionalString(safeEntry.purpose, `${label}.purpose`),
+      ownership: ensureOptionalString(safeEntry.ownership, `${label}.ownership`),
+      start_when: ensureOptionalString(safeEntry.start_when, `${label}.start_when`),
+      continue_vs_spawn: ensureOptionalString(safeEntry.continue_vs_spawn, `${label}.continue_vs_spawn`),
+      continue_vs_spawn_reason: ensureOptionalString(
+        safeEntry.continue_vs_spawn_reason,
+        `${label}.continue_vs_spawn_reason`
+      ),
+      fresh_context_required: ensureBoolean(
+        safeEntry.fresh_context_required,
+        `${label}.fresh_context_required`,
+        false
+      ),
+      expected_output: ensureStringArray(safeEntry.expected_output || [], `${label}.expected_output`),
+      tool_scope: normalizeToolScope(safeEntry.tool_scope, `${label}.tool_scope`)
+    };
+  }
+
+  function normalizeWorkerResult(entry, label) {
+    const safeEntry = !entry || typeof entry !== 'object' || Array.isArray(entry) ? {} : entry;
+    return {
+      agent: ensureOptionalString(safeEntry.agent, `${label}.agent`),
+      phase: ensureOptionalString(safeEntry.phase, `${label}.phase`),
+      status: ensureOptionalString(safeEntry.status, `${label}.status`),
+      summary: ensureOptionalString(safeEntry.summary, `${label}.summary`),
+      output_kind: ensureOptionalString(safeEntry.output_kind, `${label}.output_kind`),
+      fresh_context: ensureBoolean(safeEntry.fresh_context, `${label}.fresh_context`, false),
+      updated_at: ensureOptionalString(safeEntry.updated_at, `${label}.updated_at`)
+    };
+  }
+
+  function normalizeDelegationJob(entry, label) {
+    const safeEntry = !entry || typeof entry !== 'object' || Array.isArray(entry) ? {} : entry;
+    return {
+      id: ensureOptionalString(safeEntry.id, `${label}.id`),
+      agent: ensureOptionalString(safeEntry.agent, `${label}.agent`),
+      phase: ensureOptionalString(safeEntry.phase, `${label}.phase`),
+      status: ensureOptionalString(safeEntry.status, `${label}.status`),
+      fresh_context: ensureBoolean(safeEntry.fresh_context, `${label}.fresh_context`, false),
+      launched_at: ensureOptionalString(safeEntry.launched_at, `${label}.launched_at`),
+      updated_at: ensureOptionalString(safeEntry.updated_at, `${label}.updated_at`),
+      job_file: ensureOptionalString(safeEntry.job_file, `${label}.job_file`)
+    };
+  }
+
+  function normalizeSynthesisArtifact(value, label) {
+    const safeValue = !value || typeof value !== 'object' || Array.isArray(value) ? {} : value;
+    return {
+      required: ensureBoolean(safeValue.required, `${label}.required`, false),
+      status: ensureOptionalString(safeValue.status, `${label}.status`),
+      owner: ensureOptionalString(safeValue.owner, `${label}.owner`),
+      rule: ensureOptionalString(safeValue.rule, `${label}.rule`),
+      happens_after: ensureStringArray(safeValue.happens_after || [], `${label}.happens_after`),
+      happens_before: ensureStringArray(safeValue.happens_before || [], `${label}.happens_before`),
+      output_requirements: ensureStringArray(
+        safeValue.output_requirements || [],
+        `${label}.output_requirements`
+      )
+    };
+  }
+
+  function normalizeIntegrationArtifact(value, label) {
+    const safeValue = !value || typeof value !== 'object' || Array.isArray(value) ? {} : value;
+    return {
+      owner: ensureOptionalString(safeValue.owner, `${label}.owner`),
+      status: ensureOptionalString(safeValue.status, `${label}.status`),
+      entered_via: ensureOptionalString(safeValue.entered_via, `${label}.entered_via`),
+      execution_kind: ensureOptionalString(safeValue.execution_kind, `${label}.execution_kind`),
+      execution_cli: ensureOptionalString(safeValue.execution_cli, `${label}.execution_cli`),
+      steps: ensureStringArray(safeValue.steps || [], `${label}.steps`)
+    };
+  }
+
+  function normalizeObjectArray(value, label, normalizer) {
+    const list = Array.isArray(value) ? value : [];
+    return list.map((entry, index) => normalizer(entry, `${label}.${index}`));
+  }
+
+  const delegationRuntime = {
+    pattern: ensureOptionalString(delegationRuntimeSource.pattern, 'diagnostics.delegation_runtime.pattern'),
+    strategy: ensureOptionalString(delegationRuntimeSource.strategy, 'diagnostics.delegation_runtime.strategy'),
+    requested_action: ensureOptionalString(
+      delegationRuntimeSource.requested_action,
+      'diagnostics.delegation_runtime.requested_action'
+    ),
+    resolved_action: ensureOptionalString(
+      delegationRuntimeSource.resolved_action,
+      'diagnostics.delegation_runtime.resolved_action'
+    ),
+    phases: normalizeObjectArray(
+      delegationRuntimeSource.phases,
+      'diagnostics.delegation_runtime.phases',
+      normalizeDelegationPhase
+    ),
+    launch_requests: normalizeObjectArray(
+      delegationRuntimeSource.launch_requests,
+      'diagnostics.delegation_runtime.launch_requests',
+      normalizeLaunchRequest
+    ),
+    jobs: normalizeObjectArray(
+      delegationRuntimeSource.jobs,
+      'diagnostics.delegation_runtime.jobs',
+      normalizeDelegationJob
+    ),
+    worker_results: normalizeObjectArray(
+      delegationRuntimeSource.worker_results,
+      'diagnostics.delegation_runtime.worker_results',
+      normalizeWorkerResult
+    ),
+    synthesis: normalizeSynthesisArtifact(
+      delegationRuntimeSource.synthesis,
+      'diagnostics.delegation_runtime.synthesis'
+    ),
+    integration: normalizeIntegrationArtifact(
+      delegationRuntimeSource.integration,
+      'diagnostics.delegation_runtime.integration'
+    ),
+    updated_at: ensureOptionalString(
+      delegationRuntimeSource.updated_at,
+      'diagnostics.delegation_runtime.updated_at'
+    )
+  };
+
   return {
     latest_forensics: {
       report_file: normalizeProjectRelativePath(
@@ -496,7 +658,8 @@ function normalizeDiagnostics(value) {
     },
     latest_executor: normalizeExecutorDiagnostic(latestExecutorSource, 'diagnostics.latest_executor', ''),
     executor_history: executorHistory,
-    human_signoffs: humanSignoffs
+    human_signoffs: humanSignoffs,
+    delegation_runtime: delegationRuntime
   };
 }
 
@@ -747,6 +910,34 @@ function validateQualityGates(config) {
   };
 }
 
+function validatePermissionRuleBucket(config, label) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, label);
+
+  return {
+    allow: unique(ensureStringArray(source.allow || [], `${label}.allow`).map(item => item.trim())),
+    ask: unique(ensureStringArray(source.ask || [], `${label}.ask`).map(item => item.trim())),
+    deny: unique(ensureStringArray(source.deny || [], `${label}.deny`).map(item => item.trim()))
+  };
+}
+
+function validatePermissionsConfig(config) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, 'permissions');
+
+  return {
+    default_policy: ensureChoice(source.default_policy, 'permissions.default_policy', ['allow', 'ask', 'deny'], 'allow'),
+    require_confirmation_for_high_risk: ensureBoolean(
+      source.require_confirmation_for_high_risk,
+      'permissions.require_confirmation_for_high_risk',
+      true
+    ),
+    tools: validatePermissionRuleBucket(source.tools || {}, 'permissions.tools'),
+    executors: validatePermissionRuleBucket(source.executors || {}, 'permissions.executors'),
+    writes: validatePermissionRuleBucket(source.writes || {}, 'permissions.writes')
+  };
+}
+
 function validateProjectConfig(config, runtimeConfig) {
   expectObject(config, 'Project config');
 
@@ -756,6 +947,7 @@ function validateProjectConfig(config, runtimeConfig) {
     adapter_sources: validateAdapterSources(config.adapter_sources || []),
     executors: validateExecutors(config.executors || {}),
     quality_gates: validateQualityGates(config.quality_gates || {}),
+    permissions: validatePermissionsConfig(config.permissions || {}),
     developer: validateDeveloperConfig(config.developer || {}),
     preferences: normalizePreferences(config.preferences || {}, runtimeConfig),
     integrations: validateIntegrations(config.integrations || {}),
@@ -1069,7 +1261,11 @@ function validateContextSummary(summary, runtimeConfig) {
   return {
     version: ensureString(summary.version || '1.0', 'context_summary.version'),
     generated_at: ensureOptionalString(summary.generated_at, 'context_summary.generated_at'),
+    captured_at: ensureOptionalString(summary.captured_at, 'context_summary.captured_at'),
     source: ensureOptionalString(summary.source, 'context_summary.source'),
+    snapshot_label: ensureOptionalString(summary.snapshot_label, 'context_summary.snapshot_label'),
+    stale_note: ensureOptionalString(summary.stale_note, 'context_summary.stale_note'),
+    recovery_pointers: ensureStringArray(summary.recovery_pointers || [], 'context_summary.recovery_pointers'),
     focus: ensureOptionalString(summary.focus, 'context_summary.focus'),
     profile: ensureOptionalString(summary.profile, 'context_summary.profile'),
     packs: ensureStringArray(summary.packs || [], 'context_summary.packs'),

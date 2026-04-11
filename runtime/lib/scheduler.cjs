@@ -394,10 +394,64 @@ function buildAgentCall(action, agentName, role, context) {
     agent: toInstalledAgentName(agentName),
     role,
     blocking,
+    delegation_phase:
+      role === 'primary'
+        ? (action === 'do' ? 'implement' : 'research')
+        : (action === 'verify' ? 'verify' : 'support'),
+    context_mode: 'fresh-self-contained',
+    tool_scope: buildAgentToolScope(action, agentName, role),
     purpose: AGENT_PURPOSES[agentName] || `Support the ${action} action`,
     ownership: AGENT_OWNERSHIP[agentName] || 'Handle only the assigned output surface and do not revert other agents\' work',
     when,
     spawn_fallback: buildSpawnFallback(agentName, role)
+  };
+}
+
+function buildAgentToolScope(action, agentName, role) {
+  const base = {
+    allows_write: false,
+    allows_delegate: false,
+    allows_background_work: false,
+    preferred_tools: ['read', 'search', 'inspect'],
+    disallowed_tools: ['spawn', 'orchestration-state-write']
+  };
+
+  if (agentName === 'fw-doer') {
+    return {
+      ...base,
+      allows_write: true,
+      preferred_tools: ['read', 'search', 'inspect', 'edit', 'verify-local'],
+      role_profile: 'implementation'
+    };
+  }
+
+  if (action === 'verify') {
+    return {
+      ...base,
+      preferred_tools: ['read', 'search', 'inspect', 'verify-local'],
+      role_profile: 'verification'
+    };
+  }
+
+  if (action === 'review' || agentName === 'sys-reviewer' || agentName === 'release-checker' || agentName === 'arch-reviewer') {
+    return {
+      ...base,
+      preferred_tools: ['read', 'search', 'inspect', 'diff'],
+      role_profile: 'review'
+    };
+  }
+
+  if (agentName === 'bug-hunter') {
+    return {
+      ...base,
+      preferred_tools: ['read', 'search', 'inspect', 'trace'],
+      role_profile: 'debug'
+    };
+  }
+
+  return {
+    ...base,
+    role_profile: role === 'primary' ? 'research' : 'support'
   };
 }
 
@@ -489,9 +543,43 @@ function buildDispatchContract(action, resolved, primaryAgent, supportingAgents,
       ? 'Can start in parallel with the main thread'
       : 'Start only when the main thread finds a side issue'
   }));
+  const coordinatorPhases = [
+    {
+      id: 'research',
+      owner: primary ? primary.agent : 'Current main thread',
+      objective: `Gather the minimum truth and evidence required for ${action}`,
+      completion_signal: 'facts, constraints, and unresolved risks are explicit'
+    },
+    {
+      id: 'synthesis',
+      owner: 'Current main thread',
+      objective: 'Read worker outputs and compose a self-contained specification before any downstream writable or closure step',
+      completion_signal: 'the next worker could act without seeing any prior conversation'
+    },
+    {
+      id: action === 'do' ? 'implementation' : action === 'verify' ? 'verification' : 'execution',
+      owner: action === 'do' && primary ? primary.agent : 'Current main thread',
+      objective: `Execute the main ${action} step against the synthesized specification`,
+      completion_signal: `the standard ${action} output shape is available`
+    },
+    {
+      id: 'integration',
+      owner: 'Current main thread',
+      objective: 'Integrate results, preserve durable conclusions, and decide the next step',
+      completion_signal: 'final emb output and persistence decisions are explicit'
+    }
+  ];
 
   return {
     launch_via: 'installed-emb-agent',
+    delegation_pattern: 'coordinator',
+    pattern_constraints: {
+      allowed_patterns: ['coordinator'],
+      disallowed_patterns: ['fork', 'swarm'],
+      max_depth: 1,
+      workers_may_delegate: false,
+      verification_requires_fresh_context: true
+    },
     auto_invoke_when_recommended: recommended,
     primary_first: mode !== 'parallel-recommended',
     parallel_safe: runtime.unique([
@@ -499,12 +587,26 @@ function buildDispatchContract(action, resolved, primaryAgent, supportingAgents,
         .filter(item => !item.blocking)
         .map(item => item.agent)
     ]),
+    phases: coordinatorPhases,
+    synthesis_required: true,
+    synthesis_contract: {
+      owner: 'Current main thread',
+      happens_after: ['research'],
+      happens_before: action === 'do' ? ['implementation', 'integration'] : ['execution', 'integration'],
+      rule: 'Synthesize, do not delegate understanding',
+      output_requirements: [
+        'Write a self-contained specification with exact files, constraints, and success criteria',
+        'Do not forward raw worker findings directly to implementation or verification workers'
+      ]
+    },
     do_not_parallelize: [
       'Do not let multiple writable agents modify the same file set',
-      'Do not overbuild orchestration for a small task'
+      'Do not overbuild orchestration for a small task',
+      'Do not let workers spawn other workers or recurse into deeper orchestration layers'
     ],
     integration_owner: 'Current main thread',
     integration_steps: runtime.unique([
+      'Read research outputs fully before composing the next worker specification',
       'Keep the main thread moving; do not sit idle waiting for every sub-agent',
       'Wait for a critical sub-agent only when the main path is blocked',
       `Integrate sub-agent results back into the standard output shape for ${action}`

@@ -7,6 +7,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const hookDispatchHelpers = require('../lib/hook-dispatch.cjs');
+const hookTrustHelpers = require('../lib/hook-trust.cjs');
 const runtimeHostHelpers = require('../lib/runtime-host.cjs');
 
 const DEBOUNCE_CALLS = 5;
@@ -14,6 +16,10 @@ const WARNING_REMAINING_PERCENT = 35;
 const CRITICAL_REMAINING_PERCENT = 25;
 const METRICS_STALE_MS = 60 * 1000;
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
+const hookDispatch = hookDispatchHelpers.createHookDispatchHelpers({
+  path,
+  process
+});
 
 function getWarnPath(projectRoot) {
   const key = crypto.createHash('sha1').update(projectRoot).digest('hex');
@@ -175,18 +181,9 @@ function shouldEmit(projectRoot, level) {
   return true;
 }
 
-let input = '';
 function runHook(rawInput) {
-  const data = typeof rawInput === 'string'
-    ? (rawInput.trim() ? JSON.parse(rawInput) : {})
-    : (rawInput || {});
-  const cwd = data.cwd || process.cwd();
-  const projectRoot = path.resolve(cwd);
-  const cli = require(path.join(__dirname, '..', 'bin', 'emb-agent.cjs'));
-  const previousCwd = process.cwd();
-
-  try {
-    process.chdir(projectRoot);
+  return hookDispatch.runHookWithProjectContext(rawInput, ({ data, projectRoot }) => {
+    const cli = require(path.join(__dirname, '..', 'bin', 'emb-agent.cjs'));
     const status = cli.buildStatus();
     const contextHygiene = status.context_hygiene;
     const liveMetrics = parseContextMetrics(data);
@@ -216,39 +213,21 @@ function runHook(rawInput) {
         additionalContext: message
       }
     });
-  } finally {
-    process.chdir(previousCwd);
-  }
+  });
 }
 
 if (require.main === module) {
-  const stdinTimeout = setTimeout(() => process.exit(0), 5000);
-
-  process.stdin.setEncoding('utf8');
-  process.stdin.on('data', chunk => {
-    input += chunk;
-  });
-
-  process.stdin.on('end', () => {
-    clearTimeout(stdinTimeout);
-
-    try {
-      const output = runHook(input);
-      if (output) {
-        process.stdout.write(output);
-      }
-    } catch {
-      process.exit(0);
-    }
-  });
+  hookDispatch.runHookCli(runHook);
 }
 
 module.exports = {
   buildMetricsMessage,
   buildSessionMessage,
   getBridgePath,
+  hookDispatch,
   parseContextMetrics,
   readBridge,
+  hookTrustHelpers,
   runHook,
   shouldEmit,
   writeBridge
