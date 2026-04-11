@@ -282,8 +282,10 @@ test('bootstrap run surfaces permission ask and supports --confirm for gated ada
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-write-bootstrap-'));
   const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-write-bootstrap-source-'));
   const currentCwd = process.cwd();
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
 
   try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     createPathAdapterSource(tempSource);
     process.chdir(tempProject);
     await cli.main(['init']);
@@ -325,6 +327,11 @@ test('bootstrap run surfaces permission ask and supports --confirm for gated ada
     assert.equal(allowed.result.sync.status, 'synced');
     assert.equal(allowed.bootstrap_after.current_stage, 'next-step');
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     process.chdir(currentCwd);
   }
 });

@@ -448,21 +448,6 @@ const {
 });
 
 const {
-  runSessionReport,
-  handleSessionReportCommands
-} = sessionReportCommandHelpers.createSessionReportCommandHelpers({
-  fs,
-  path,
-  runtime,
-  resolveSession,
-  loadHandoff,
-  buildNextContext,
-  buildResumeContext,
-  getProjectExtDir,
-  updateSession
-});
-
-const {
   runSubAgentBridge,
   collectSubAgentBridgeJobs
 } = subAgentRuntimeHelpers.createSubAgentRuntimeHelpers({
@@ -535,7 +520,8 @@ const {
   parseMemoryRememberArgs,
   parseMemoryExtractArgs,
   parseMemoryPromoteArgs,
-  maybeAutoExtractOnPause
+  maybeAutoExtractOnPause,
+  maybeAutoExtractOnSessionReport
 } = memoryRuntimeHelpers.createMemoryRuntimeHelpers({
   fs,
   path,
@@ -547,6 +533,22 @@ const {
   updateSession,
   builtInMemoryDir: MEMORY_DIR,
   builtInDisplayRoot: SOURCE_LAYOUT ? SOURCE_ROOT : ROOT
+});
+
+const {
+  runSessionReport,
+  handleSessionReportCommands
+} = sessionReportCommandHelpers.createSessionReportCommandHelpers({
+  fs,
+  path,
+  runtime,
+  resolveSession,
+  loadHandoff,
+  buildNextContext,
+  buildResumeContext,
+  getProjectExtDir,
+  updateSession,
+  maybeAutoExtractOnSessionReport
 });
 
 const {

@@ -273,43 +273,37 @@ test('applyOutputMode keeps workspace trust in brief health/bootstrap outputs', 
 test('applyOutputMode builds brief bootstrap output', () => {
   const output = outputMode.applyOutputMode({
     command: 'bootstrap',
-    status: 'ready',
-    summary: 'Bootstrap matching adapters first',
-    current_stage: 'adapter-bootstrap',
+    status: 'manual',
+    summary: 'Grant workspace trust first',
+    current_stage: 'workspace-trust',
     workspace_trust: {
-      trusted: true,
+      trusted: false,
       explicit: false,
       source: 'default',
-      signal: 'assumed-trusted',
-      summary: 'No explicit workspace trust signal was provided; runtime assumes trusted by default'
+      signal: 'untrusted-no-signal',
+      summary: 'No explicit workspace trust signal was provided; runtime treats the workspace as untrusted by default'
     },
     next_stage: {
-      id: 'adapter-bootstrap',
-      status: 'ready',
-      label: 'Bootstrap matching adapters',
-      cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter bootstrap default-pack'
+      id: 'workspace-trust',
+      status: 'manual',
+      label: 'Establish workspace trust',
+      cli: ''
     },
     stages: [
       { id: 'init-project', status: 'completed', label: 'Initialize emb-agent project skeleton' },
-      { id: 'hardware-truth', status: 'completed', label: 'Record hardware identity' },
       {
-        id: 'adapter-bootstrap',
-        status: 'ready',
-        label: 'Bootstrap matching adapters',
-        cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter bootstrap default-pack'
+        id: 'workspace-trust',
+        status: 'manual',
+        label: 'Establish workspace trust'
       }
     ],
     quickstart: {
-      stage: 'bootstrap-then-next',
-      followup: 'Run first: node ~/.codex/emb-agent/bin/emb-agent.cjs adapter bootstrap default-pack -> node ~/.codex/emb-agent/bin/emb-agent.cjs next',
+      stage: 'establish-workspace-trust',
+      followup: 'Grant workspace trust in the host/runtime first, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
       steps: [
         {
-          label: 'Bootstrap matching adapters',
-          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter bootstrap default-pack'
-        },
-        {
-          label: 'Enter the emb-agent recommended next step',
-          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs next'
+          label: 'Establish workspace trust',
+          cli: ''
         }
       ]
     }
@@ -317,9 +311,9 @@ test('applyOutputMode builds brief bootstrap output', () => {
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.command, 'bootstrap');
-  assert.equal(output.current_stage, 'adapter-bootstrap');
-  assert.equal(output.workspace_trust.trusted, true);
-  assert.equal(output.next_stage.id, 'adapter-bootstrap');
-  assert.equal(output.stages.length, 3);
-  assert.equal(output.quickstart.stage, 'bootstrap-then-next');
+  assert.equal(output.current_stage, 'workspace-trust');
+  assert.equal(output.workspace_trust.trusted, false);
+  assert.equal(output.next_stage.id, 'workspace-trust');
+  assert.equal(output.stages.length, 2);
+  assert.equal(output.quickstart.stage, 'establish-workspace-trust');
 });

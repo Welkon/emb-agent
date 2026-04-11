@@ -14,6 +14,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-proj-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
   const bridgeCommand = 'node /tmp/emb-subagent-bridge.cjs --stdio-json';
   let stdout = '';
 
@@ -23,6 +24,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
   };
 
   try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     process.chdir(repoRoot);
     await installer.main([
       '--codex',
@@ -394,6 +396,11 @@ test('installer lays down config/lib and runtime commands work', async () => {
     console.error(error);
     throw error;
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }

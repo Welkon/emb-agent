@@ -13,8 +13,10 @@ const contextMonitor = require(path.join(repoRoot, 'runtime', 'hooks', 'emb-cont
 test('context monitor hook emits only when session context is heavy', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-'));
   const currentCwd = process.cwd();
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
 
   try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     process.chdir(tempProject);
     cli.main(['init']);
 
@@ -40,6 +42,11 @@ test('context monitor hook emits only when session context is heavy', () => {
     assert.match(payload.hookSpecificOutput.additionalContext, /EMB CONTEXT WARNING|EMB CONTEXT NOTICE/);
     assert.match(payload.hookSpecificOutput.additionalContext, /pause -> clear -> resume/);
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     process.chdir(currentCwd);
   }
 });
@@ -47,8 +54,10 @@ test('context monitor hook emits only when session context is heavy', () => {
 test('context monitor prioritizes live context metrics and warns to pause', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-metrics-'));
   const currentCwd = process.cwd();
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
 
   try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     process.chdir(tempProject);
     cli.main(['init']);
 
@@ -66,6 +75,11 @@ test('context monitor prioritizes live context metrics and warns to pause', () =
     assert.match(payload.hookSpecificOutput.additionalContext, /pause/);
     assert.match(payload.hookSpecificOutput.additionalContext, /clear -> resume|pause -> clear -> resume/);
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     process.chdir(currentCwd);
   }
 });

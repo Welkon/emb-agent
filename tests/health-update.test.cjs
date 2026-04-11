@@ -89,10 +89,12 @@ test('health reports warn for incomplete hardware identity and fail for missing 
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
   const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
   let stdout = '';
 
   try {
     process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = 'mock://ok';
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     process.chdir(tempProject);
     process.stdout.write = chunk => {
       stdout += String(chunk);
@@ -129,6 +131,11 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.ok(report.checks.some(item => item.key === 'req_truth' && item.status === 'fail'));
     assert.ok(report.recommendations.some(item => item.includes('req.yaml')));
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     if (originalBridgeCmd === undefined) {
       delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
     } else {
@@ -268,9 +275,11 @@ test('health reports adapter registration and sync readiness', async () => {
   const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-adapter-source-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
   let stdout = '';
 
   try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     createHealthAdapterSource(tempSource);
     process.chdir(tempProject);
     process.stdout.write = chunk => {
@@ -350,6 +359,11 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.ok(report.recommendations.every(item => !item.includes('adapter sync default-pack')));
     assert.ok(report.next_commands.some(item => item.cli.includes('tool run timer-calc')));
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }
@@ -359,9 +373,11 @@ test('health surfaces pending doc apply as quickstart before generic next', asyn
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-doc-apply-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
   let stdout = '';
 
   try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     process.chdir(tempProject);
     process.stdout.write = chunk => {
       stdout += String(chunk);
@@ -420,6 +436,11 @@ test('health surfaces pending doc apply as quickstart before generic next', asyn
     assert.equal(Boolean(bootstrapRun.result.applied), true);
     assert.equal(bootstrapRun.bootstrap_after.current_stage, 'adapter-bootstrap');
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }
@@ -430,9 +451,11 @@ test('health routes from applied hardware doc to adapter derive when synced adap
   const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-derive-source-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
   let stdout = '';
 
   try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     createHealthAdapterSource(tempSource);
     process.chdir(tempProject);
     process.stdout.write = chunk => {
@@ -483,6 +506,11 @@ test('health routes from applied hardware doc to adapter derive when synced adap
     assert.equal(report.bootstrap.current_stage, 'adapter-derive');
     assert.ok(report.quickstart.steps[0].cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`));
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }
