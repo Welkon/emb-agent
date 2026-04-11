@@ -27,6 +27,7 @@ function summarizeContextHygiene(value) {
     level: value.level || '',
     recommendation: value.recommendation || '',
     clear_hint: value.clear_hint || '',
+    compress_cli: value.compress_cli || '',
     handoff_ready: Boolean(value.handoff_ready)
   });
 }
@@ -43,7 +44,11 @@ function summarizeMemorySummary(value) {
 
   return compactObject({
     generated_at: value.generated_at || '',
+    captured_at: value.captured_at || '',
     source: value.source || '',
+    snapshot_label: value.snapshot_label || '',
+    stale_note: value.stale_note || '',
+    recovery_pointers: truncateList(value.recovery_pointers, 4),
     focus: value.focus || '',
     last_command: value.last_command || '',
     suggested_flow: value.suggested_flow || '',
@@ -120,6 +125,72 @@ function summarizeHealth(value) {
           steps: truncateList(value.quickstart.steps, 3)
         })
       : null
+  });
+}
+
+function summarizeSubagentBridge(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    available: value.available === undefined ? undefined : Boolean(value.available),
+    invoked: value.invoked === undefined ? undefined : Boolean(value.invoked),
+    mode: value.mode || '',
+    source: value.source || '',
+    status: value.status || ''
+  });
+}
+
+function summarizeWorkspaceTrust(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    trusted: value.trusted === undefined ? undefined : Boolean(value.trusted),
+    explicit: value.explicit === undefined ? undefined : Boolean(value.explicit),
+    source: value.source || '',
+    signal: value.signal || '',
+    summary: value.summary || ''
+  });
+}
+
+function summarizeDelegationRuntime(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const synthesis = isObject(value.synthesis) ? value.synthesis : {};
+  const integration = isObject(value.integration) ? value.integration : {};
+  return compactObject({
+    pattern: value.pattern || '',
+    strategy: value.strategy || '',
+    requested_action: value.requested_action || '',
+    resolved_action: value.resolved_action || '',
+    phases: truncateList(toArray(value.phases).map(item => item && item.id ? item.id : ''), 6),
+    launch_requests: truncateList(
+      toArray(value.launch_requests).map(item => item && item.agent ? item.agent : ''),
+      4
+    ),
+    jobs: truncateList(
+      toArray(value.jobs).map(item => item && item.agent ? `${item.agent}:${item.status || ''}` : ''),
+      4
+    ),
+    worker_results: truncateList(
+      toArray(value.worker_results).map(item => item && item.agent ? `${item.agent}:${item.status || ''}` : ''),
+      4
+    ),
+    synthesis: compactObject({
+      required: synthesis.required === undefined ? undefined : Boolean(synthesis.required),
+      status: synthesis.status || '',
+      owner: synthesis.owner || ''
+    }),
+    integration: compactObject({
+      status: integration.status || '',
+      owner: integration.owner || '',
+      execution_kind: integration.execution_kind || ''
+    })
   });
 }
 
@@ -263,7 +334,8 @@ function buildBriefResumeContext(value) {
       ? compactObject({
           name: value.task.name || '',
           title: value.task.title || '',
-          status: value.task.status || ''
+          status: value.task.status || '',
+          worktree_path: value.task.worktree_path || ''
         })
       : null,
     tool_recommendation: summarizeToolRecommendation(value.tool_recommendation),
@@ -392,12 +464,47 @@ function buildBriefHealthOutput(value) {
   return compactObject({
     output_mode: 'brief',
     status: value.status || '',
+    runtime_host: value.runtime_host || '',
     summary: isObject(value.summary) ? value.summary : null,
     checks: truncateList(value.checks, 5),
     recommendations: truncateList(value.recommendations, 5),
     next_commands: truncateList(value.next_commands, 4),
+    workspace_trust: summarizeWorkspaceTrust(value.workspace_trust),
+    subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
     quickstart: isObject(value.quickstart)
       ? compactObject({
+          followup: value.quickstart.followup || '',
+          steps: truncateList(value.quickstart.steps, 3)
+        })
+      : null
+  });
+}
+
+function buildBriefBootstrapOutput(value) {
+  const nextStage = isObject(value.next_stage) ? value.next_stage : {};
+
+  return compactObject({
+    output_mode: 'brief',
+    command: value.command || 'bootstrap',
+    status: value.status || '',
+    summary: value.summary || '',
+    current_stage: value.current_stage || '',
+    workspace_trust: summarizeWorkspaceTrust(value.workspace_trust),
+    next_stage: compactObject({
+      id: nextStage.id || '',
+      status: nextStage.status || '',
+      label: nextStage.label || '',
+      cli: nextStage.cli || ''
+    }),
+    stages: truncateList(value.stages, 5).map(stage => compactObject({
+      id: stage.id || '',
+      status: stage.status || '',
+      label: stage.label || '',
+      cli: stage.cli || ''
+    })),
+    quickstart: isObject(value.quickstart)
+      ? compactObject({
+          stage: value.quickstart.stage || '',
           followup: value.quickstart.followup || '',
           steps: truncateList(value.quickstart.steps, 3)
         })
@@ -427,6 +534,8 @@ function buildBriefDispatchOrchestrateOutput(value) {
           cli: value.tool_execution.cli || ''
         })
       : null,
+    subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
+    delegation_runtime: summarizeDelegationRuntime(value.delegation_runtime),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     context_hygiene: summarizeContextHygiene(value.context_hygiene)
   });
@@ -442,6 +551,9 @@ function buildBriefStatusOutput(value) {
     open_questions: truncateList(value.open_questions, 4),
     known_risks: truncateList(value.known_risks, 4),
     last_files: truncateList(value.last_files, 5),
+    runtime_host: value.runtime_host || '',
+    subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
+    delegation_runtime: summarizeDelegationRuntime(value.delegation_runtime),
     memory_summary: summarizeMemorySummary(value.memory_summary),
     permission_gates: summarizePermissionGates(value.permission_gates),
     context_hygiene: summarizeContextHygiene(value.context_hygiene)
@@ -519,6 +631,10 @@ function applyBriefMode(value) {
 
   if (Object.prototype.hasOwnProperty.call(value, 'requested_action') && Object.prototype.hasOwnProperty.call(value, 'resolved_action')) {
     return buildBriefDispatchOrchestrateOutput(value);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'current_stage') && Array.isArray(value.stages) && Object.prototype.hasOwnProperty.call(value, 'quickstart')) {
+    return buildBriefBootstrapOutput(value);
   }
 
   if (Object.prototype.hasOwnProperty.call(value, 'session_version') && Object.prototype.hasOwnProperty.call(value, 'project_root') && Object.prototype.hasOwnProperty.call(value, 'context_hygiene')) {

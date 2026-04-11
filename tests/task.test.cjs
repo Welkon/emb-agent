@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const childProcess = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -16,6 +17,25 @@ function writeText(filePath, content) {
 
 function writeJson(filePath, value) {
   writeText(filePath, JSON.stringify(value, null, 2) + '\n');
+}
+
+function initGitRepo(rootDir) {
+  childProcess.execFileSync('git', ['init'], {
+    cwd: rootDir,
+    stdio: 'ignore'
+  });
+  childProcess.execFileSync('git', ['add', '.'], {
+    cwd: rootDir,
+    stdio: 'ignore'
+  });
+  childProcess.execFileSync(
+    'git',
+    ['-c', 'user.name=emb-agent', '-c', 'user.email=emb-agent@example.com', 'commit', '-m', 'init'],
+    {
+      cwd: rootDir,
+      stdio: 'ignore'
+    }
+  );
 }
 
 function createAdapterSource(rootDir) {
@@ -225,6 +245,10 @@ test('task commands create activate manage context and resolve lightweight tasks
 
     const activated = await captureCliJson(['task', 'activate', taskName]);
     assert.equal(activated.activated, true);
+    assert.equal(activated.workspace.mode, 'copy');
+    assert.equal(fs.existsSync(activated.workspace.path), true);
+    assert.equal(activated.task.worktree_path, activated.workspace.path);
+    assert.equal(fs.existsSync(path.join(activated.workspace.path, 'docs', 'SC8F072.pdf')), true);
     assert.equal(cli.loadSession().active_task.name, taskName);
     assert.equal(cli.loadSession().active_task.status, 'in_progress');
     assert.equal(
@@ -251,14 +275,45 @@ test('task commands create activate manage context and resolve lightweight tasks
 
     const resume = await captureCliJson(['resume']);
     assert.equal(resume.task.name, taskName);
+    assert.equal(resume.task.worktree_path, activated.workspace.path);
     assert.ok(resume.task.context.implement.some(item => item.path === 'src/timer.c'));
 
     const resolved = await captureCliJson(['task', 'resolve', taskName, 'adapter merged']);
     assert.equal(resolved.resolved, true);
+    assert.equal(resolved.workspace_cleanup.cleaned, true);
     assert.equal(resolved.task.status, 'completed');
+    assert.equal(resolved.task.worktree_path, null);
     assert.equal(resolved.task.notes, 'adapter merged');
+    assert.equal(fs.existsSync(activated.workspace.path), false);
     assert.equal(cli.loadSession().active_task.name, '');
     assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task activate creates a real git worktree when the project is a git repository', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-git-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    writeText(path.join(tempProject, 'src', 'main.c'), '// main\n');
+    await cli.main(['init']);
+    initGitRepo(tempProject);
+
+    const created = await captureCliJson(['task', 'add', 'Investigate irq race']);
+    const taskName = created.task.name;
+
+    const activated = await captureCliJson(['task', 'activate', taskName]);
+    assert.equal(activated.workspace.mode, 'git-worktree');
+    assert.equal(fs.existsSync(activated.workspace.path), true);
+    assert.equal(fs.existsSync(path.join(activated.workspace.path, '.git')), true);
+    assert.equal(activated.task.worktree_path, activated.workspace.path);
+
+    const resolved = await captureCliJson(['task', 'resolve', taskName, 'done']);
+    assert.equal(resolved.workspace_cleanup.cleaned, true);
+    assert.equal(fs.existsSync(activated.workspace.path), false);
   } finally {
     process.chdir(currentCwd);
   }

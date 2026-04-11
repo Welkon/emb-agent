@@ -187,6 +187,35 @@ function attachPermissionGates(result) {
   };
 }
 
+function stripPermissionControlTokens(tokens) {
+  const input = Array.isArray(tokens) ? tokens : [];
+  const filtered = [];
+  let explicitConfirmation = false;
+
+  for (const token of input) {
+    if (token === '--confirm') {
+      explicitConfirmation = true;
+      continue;
+    }
+    filtered.push(token);
+  }
+
+  return {
+    explicit_confirmation: explicitConfirmation,
+    tokens: filtered
+  };
+}
+
+function loadProjectPermissionConfig(rootDir) {
+  try {
+    const runtimeConfig = runtime.loadRuntimeConfig(rootDir);
+    const projectConfig = runtime.loadProjectConfig(process.cwd(), runtimeConfig);
+    return projectConfig && projectConfig.permissions ? projectConfig.permissions : {};
+  } catch {
+    return {};
+  }
+}
+
 function resolveAdapterCandidates(rootDir, toolName) {
   const projectExtDir = runtime.getProjectExtDir(process.cwd());
   const names = [
@@ -253,14 +282,43 @@ function buildAdapterRequiredResult(rootDir, toolName, tokens) {
 
 function runTool(rootDir, toolName, tokens) {
   const name = ensureString(toolName, 'tool name');
-  const tokenList = Array.isArray(tokens) ? tokens : [];
+  const control = stripPermissionControlTokens(tokens);
+  const tokenList = control.tokens;
+  const highRiskResult = attachHighRiskClarity({}, name, tokenList);
+  const highRiskClarity = highRiskResult && highRiskResult.high_risk_clarity ? highRiskResult.high_risk_clarity : null;
+  const permissionDecision = permissionGateHelpers.evaluateExecutionPermission({
+    action_kind: 'tool',
+    action_name: name,
+    risk: highRiskClarity ? 'high' : 'normal',
+    explicit_confirmation: control.explicit_confirmation,
+    permissions: loadProjectPermissionConfig(rootDir)
+  });
+
+  if (permissionDecision.decision !== 'allow') {
+    return permissionGateHelpers.applyPermissionDecision(
+      attachHighRiskClarity({
+        tool: name,
+        status: 'permission-pending',
+        implementation: 'permission-gated',
+        inputs: {
+          raw_tokens: tokenList,
+          options: safeParseLongOptions(tokenList)
+        }
+      }, name, tokenList),
+      permissionDecision
+    );
+  }
+
   const loaded = loadExternalAdapter(rootDir, name);
 
   if (!loaded) {
-    return attachHighRiskClarity(
-      buildAdapterRequiredResult(rootDir, name, tokenList),
-      name,
-      tokenList
+    return permissionGateHelpers.applyPermissionDecision(
+      attachHighRiskClarity(
+        buildAdapterRequiredResult(rootDir, name, tokenList),
+        name,
+        tokenList
+      ),
+      permissionDecision
     );
   }
 
@@ -273,7 +331,10 @@ function runTool(rootDir, toolName, tokens) {
     parseLongOptions
   });
 
-  return attachPermissionGates(attachHighRiskClarity(result, name, tokenList));
+  return permissionGateHelpers.applyPermissionDecision(
+    attachPermissionGates(attachHighRiskClarity(result, name, tokenList)),
+    permissionDecision
+  );
 }
 
 module.exports = {

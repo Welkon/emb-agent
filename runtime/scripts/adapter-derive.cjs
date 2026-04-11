@@ -17,7 +17,7 @@ function usage() {
       '  node scripts/adapter-derive.cjs --family <slug> --device <slug> --chip <slug>',
       '    [--from-project] [--from-doc <doc-id>]',
       '    [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>]',
-      '    [--pin-count <n>] [--architecture <text>] [--runtime-model <name>]',
+      '    [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--confirm]',
       '    [--target project|runtime] [--output-root <path>] [--project <path>] [--force]'
     ].join('\n') + '\n'
   );
@@ -46,6 +46,7 @@ function parseArgs(argv) {
     outputRoot: '',
     projectRoot: '',
     force: false,
+    explicit_confirmation: false,
     fromProject: false,
     fromDoc: '',
     tools: []
@@ -134,6 +135,10 @@ function parseArgs(argv) {
     }
     if (token === '--force') {
       result.force = true;
+      continue;
+    }
+    if (token === '--confirm') {
+      result.explicit_confirmation = true;
       continue;
     }
 

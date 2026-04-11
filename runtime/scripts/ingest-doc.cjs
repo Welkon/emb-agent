@@ -10,6 +10,7 @@ const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const runtimeHostHelpers = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
 const docCache = require(path.join(ROOT, 'lib', 'doc-cache.cjs'));
 const mineruProvider = require(path.join(ROOT, 'lib', 'doc-providers', 'mineru.cjs'));
+const permissionGateHelpers = require(path.join(ROOT, 'lib', 'permission-gates.cjs'));
 const ingestTruthCli = require(path.join(ROOT, 'scripts', 'ingest-truth.cjs'));
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
 
@@ -22,10 +23,10 @@ function usage() {
       '  node scripts/ingest-doc.cjs --file <path> [--provider mineru] [--kind datasheet]',
       '    [--title <text>] [--pages <range>] [--language ch|en] [--ocr] [--force]',
       '    [--to hardware|requirements]',
-      '  node scripts/ingest-doc.cjs apply doc <doc-id> --to hardware|requirements [--only field1,field2] [--force]',
+      '  node scripts/ingest-doc.cjs apply doc <doc-id> [--confirm] --to hardware|requirements [--only field1,field2] [--force]',
       '  node scripts/ingest-doc.cjs apply doc <doc-id> --from-last-diff',
       '  node scripts/ingest-doc.cjs apply doc <doc-id> --preset <name>',
-      '  node scripts/ingest-doc.cjs doc diff <doc-id> --to hardware|requirements [--only field1,field2] [--force] [--save-as <name>]'
+      '  node scripts/ingest-doc.cjs doc diff [--confirm] <doc-id> --to hardware|requirements [--only field1,field2] [--force] [--save-as <name>]'
     ].join('\n') + '\n'
   );
 }
@@ -125,38 +126,51 @@ function parseArgs(argv) {
 
 function parseApplyArgs(argv, options) {
   const config = options || {};
+  const list = Array.isArray(argv) ? argv : [];
+  const filtered = [];
+  let explicitConfirmation = false;
+
+  for (const token of list) {
+    if (token === '--confirm') {
+      explicitConfirmation = true;
+      continue;
+    }
+    filtered.push(token);
+  }
+
   const result = {
-    entity: argv[0] || '',
-    docId: argv[1] || '',
+    entity: filtered[0] || '',
+    docId: filtered[1] || '',
     to: '',
     only: [],
     project: '',
     force: false,
+    explicit_confirmation: explicitConfirmation,
     fromLastDiff: false,
     preset: '',
     saveAs: '',
     help: false
   };
 
-  for (let index = 2; index < argv.length; index += 1) {
-    const token = argv[index];
+  for (let index = 2; index < filtered.length; index += 1) {
+    const token = filtered[index];
 
     if (token === '--help' || token === '-h') {
       result.help = true;
       continue;
     }
     if (token === '--project') {
-      result.project = argv[index + 1] || '';
+      result.project = filtered[index + 1] || '';
       index += 1;
       continue;
     }
     if (token === '--to') {
-      result.to = argv[index + 1] || '';
+      result.to = filtered[index + 1] || '';
       index += 1;
       continue;
     }
     if (token === '--only') {
-      result.only = String(argv[index + 1] || '')
+      result.only = String(filtered[index + 1] || '')
         .split(',')
         .map(item => item.trim())
         .filter(Boolean);
@@ -168,12 +182,12 @@ function parseApplyArgs(argv, options) {
       continue;
     }
     if (token === '--preset') {
-      result.preset = argv[index + 1] || '';
+      result.preset = filtered[index + 1] || '';
       index += 1;
       continue;
     }
     if (token === '--save-as') {
-      result.saveAs = argv[index + 1] || '';
+      result.saveAs = filtered[index + 1] || '';
       index += 1;
       continue;
     }
@@ -1313,6 +1327,19 @@ function applyRequirementsDraft(projectRoot, draft, force, fields) {
   });
 }
 
+function applyDocPermission(result, projectConfig, actionName, explicitConfirmation) {
+  const base = result && typeof result === 'object' && !Array.isArray(result) ? result : {};
+  const permissionDecision = permissionGateHelpers.evaluateExecutionPermission({
+    action_kind: 'write',
+    action_name: actionName,
+    risk: 'normal',
+    explicit_confirmation: explicitConfirmation === true,
+    permissions: (projectConfig && projectConfig.permissions) || {}
+  });
+
+  return permissionGateHelpers.applyPermissionDecision(base, permissionDecision);
+}
+
 async function applyDoc(argv, options) {
   const args = parseApplyArgs(argv || []);
   if (args.help) {
@@ -1324,6 +1351,7 @@ async function applyDoc(argv, options) {
   if (!fs.existsSync(projectRoot) || !fs.statSync(projectRoot).isDirectory()) {
     throw new Error(`Project root not found: ${projectRoot}`);
   }
+  const projectConfig = runtime.loadProjectConfig(projectRoot, runtimeConfig);
 
   const entry = docCache.getCachedEntry(projectRoot, args.docId);
   if (!entry) {
@@ -1336,9 +1364,28 @@ async function applyDoc(argv, options) {
       : runtime.getProjectAssetRelativePath('req.yaml');
   const draft = loadDraftFacts(projectRoot, entry, resolvedApply.to);
   const selectedFields = resolvedApply.only;
+  const actionName = resolvedApply.to === 'hardware' ? 'doc-apply-hardware' : 'doc-apply-requirements';
+  const blocked = applyDocPermission({
+    domain: `doc-${resolvedApply.to}`,
+    status: 'permission-pending',
+    applied_from: args.docId,
+    provider: entry.provider,
+    source: entry.source,
+    draft: draft.path,
+    target: truthFile,
+    only: selectedFields,
+    from_last_diff: resolvedApply.fromLastDiff,
+    from_preset: resolvedApply.fromPreset,
+    replayed_diff: resolvedApply.replayedDiff,
+    replayed_preset: resolvedApply.replayedPreset
+  }, projectConfig, actionName, args.explicit_confirmation);
+
+  if (blocked.permission_decision && blocked.permission_decision.decision !== 'allow') {
+    return blocked;
+  }
 
   if (shouldSkipApply(entry, resolvedApply.to, selectedFields, resolvedApply.force)) {
-    return {
+    return applyDocPermission({
       domain: `doc-${resolvedApply.to}`,
       skipped: true,
       reason: 'already_applied',
@@ -1359,7 +1406,7 @@ async function applyDoc(argv, options) {
         entry.artifacts && entry.artifacts.markdown,
         entry.artifacts && entry.artifacts.metadata
       ])
-    };
+    }, projectConfig, actionName, args.explicit_confirmation);
   }
 
   const applied =
@@ -1375,7 +1422,7 @@ async function applyDoc(argv, options) {
     truthFile
   );
 
-  return {
+  return applyDocPermission({
     domain: `doc-${resolvedApply.to}`,
     applied_from: args.docId,
     provider: entry.provider,
@@ -1395,7 +1442,7 @@ async function applyDoc(argv, options) {
       entry.artifacts && entry.artifacts.markdown,
       entry.artifacts && entry.artifacts.metadata
     ])
-  };
+  }, projectConfig, actionName, args.explicit_confirmation);
 }
 
 function main(argv) {

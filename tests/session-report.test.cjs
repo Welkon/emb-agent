@@ -216,3 +216,44 @@ test('session-report records latest executor summary and routes failed executor 
     process.stdout.write = originalWrite;
   }
 });
+
+test('session-report includes delegation runtime summary from latest orchestrated run', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-delegation-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = 'mock://ok';
+    await cli.main(['init']);
+    await cli.main(['risk', 'add', 'irq race']);
+    await cli.main(['orchestrate', 'run', 'next']);
+    await cli.main(['session-report', 'capture delegation runtime']);
+
+    const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
+    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
+    assert.equal(reports.length, 1);
+
+    const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
+    assert.match(content, /delegation_pattern: coordinator/);
+    assert.match(content, /delegation_strategy: primary-first/);
+    assert.match(content, /delegation_action: next -> plan/);
+    assert.match(content, /delegation_phases: research -> synthesis -> execution -> integration/);
+    assert.match(content, /delegation_launches: emb-hw-scout:research:spawn-fresh/);
+    assert.match(content, /delegation_synthesis: ready, owner=Current main thread/);
+    assert.match(content, /delegation_worker_results: emb-hw-scout:research:ok/);
+    assert.match(content, /delegation_integration: completed-inline, owner=Current main thread, kind=action/);
+  } finally {
+    if (originalBridgeCmd === undefined) {
+      delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    } else {
+      process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});

@@ -10,6 +10,24 @@ const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 
+async function captureCliJson(args) {
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    await cli.main(args);
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+
+  return JSON.parse(stdout);
+}
+
 test('orchestrator defaults to next and stays inline for empty project context', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-next-'));
   const currentCwd = process.cwd();
@@ -53,7 +71,10 @@ test('orchestrator upgrades to primary-first when plan is recommended', () => {
     assert.equal(orchestrator.resolved_action, 'plan');
     assert.equal(orchestrator.workflow.strategy, 'primary-first');
     assert.equal(orchestrator.workflow.primary_agent, 'emb-hw-scout');
+    assert.equal(orchestrator.dispatch_contract.delegation_pattern, 'coordinator');
+    assert.equal(orchestrator.dispatch_contract.synthesis_required, true);
     assert.equal(orchestrator.dispatch_contract.primary.agent, 'emb-hw-scout');
+    assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'synthesize'));
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'launch-primary'));
   } finally {
     process.chdir(currentCwd);
@@ -78,7 +99,9 @@ test('orchestrator exposes arch-review contract as primary-first flow', () => {
     assert.equal(orchestrator.resolved_action, 'arch-review');
     assert.equal(orchestrator.workflow.strategy, 'primary-first');
     assert.equal(orchestrator.workflow.primary_agent, 'emb-arch-reviewer');
+    assert.equal(orchestrator.dispatch_contract.delegation_pattern, 'coordinator');
     assert.equal(orchestrator.dispatch_contract.primary.agent, 'emb-arch-reviewer');
+    assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'synthesize'));
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'launch-primary'));
   } finally {
     process.chdir(currentCwd);
@@ -264,6 +287,111 @@ test('orchestrator exposes structured executor signal when latest executor faile
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
+  }
+});
+
+test('orchestrate run exposes delegation runtime synthesis and integration artifacts', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-runtime-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['risk', 'add', 'irq race']);
+
+    const run = await captureCliJson(['orchestrate', 'run', 'next']);
+    const session = cli.loadSession();
+    const delegationRuntime = session.diagnostics.delegation_runtime;
+
+    assert.equal(run.delegation_runtime.pattern, 'coordinator');
+    assert.equal(run.delegation_runtime.strategy, 'primary-first');
+    assert.equal(run.delegation_runtime.requested_action, 'next');
+    assert.equal(run.delegation_runtime.resolved_action, 'plan');
+    assert.equal(run.delegation_runtime.synthesis.required, true);
+    assert.equal(run.delegation_runtime.synthesis.status, 'blocked-no-host-bridge');
+    assert.match(run.delegation_runtime.synthesis.rule, /Synthesize, do not delegate understanding/);
+    assert.equal(run.delegation_runtime.integration.status, 'completed-inline');
+    assert.equal(run.delegation_runtime.integration.execution_kind, 'action');
+    assert.ok(run.delegation_runtime.launch_requests.some(item => item.agent === 'emb-hw-scout'));
+    assert.equal(delegationRuntime.pattern, 'coordinator');
+    assert.equal(delegationRuntime.strategy, 'primary-first');
+    assert.equal(delegationRuntime.integration.entered_via, 'orchestrate run next');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('orchestrate run invokes configured host sub-agent bridge and keeps worker results visible', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-worker-'));
+  const currentCwd = process.cwd();
+  const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+
+  try {
+    process.chdir(tempProject);
+    process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = 'mock://ok';
+    await cli.main(['init']);
+    await cli.main(['risk', 'add', 'irq race']);
+
+    const run = await captureCliJson(['orchestrate', 'run', 'next']);
+    const session = cli.loadSession();
+    const delegationRuntime = session.diagnostics.delegation_runtime;
+
+    assert.equal(run.subagent_bridge.status, 'ok');
+    assert.equal(run.worker_results.length, 1);
+    assert.equal(run.worker_results[0].agent, 'emb-hw-scout');
+    assert.equal(run.delegation_runtime.synthesis.status, 'ready');
+    assert.equal(delegationRuntime.worker_results.length, 1);
+    assert.equal(delegationRuntime.worker_results[0].status, 'ok');
+  } finally {
+    if (originalBridgeCmd === undefined) {
+      delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    } else {
+      process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
+  }
+});
+
+test('orchestrate launch keeps orchestration metadata while async jobs are collected later', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-launch-'));
+  const currentCwd = process.cwd();
+  const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+  const delayedBridge = `${process.execPath} ${path.join(repoRoot, 'tests', 'fixtures', 'delayed-subagent-bridge.cjs')} --delay-ms 200`;
+
+  try {
+    process.chdir(tempProject);
+    process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = delayedBridge;
+    await cli.main(['init']);
+    await cli.main(['risk', 'add', 'irq race']);
+
+    const launch = await captureCliJson(['orchestrate', 'launch', 'next']);
+
+    assert.equal(launch.mode, 'lightweight-action-orchestrator');
+    assert.equal(launch.execution.kind, 'delegation-launch');
+    assert.equal(launch.subagent_bridge.status, 'launched');
+    assert.equal(launch.workflow.strategy, 'primary-first');
+    assert.equal(launch.delegation_runtime.pattern, 'coordinator');
+    assert.equal(launch.delegation_runtime.jobs.length, 1);
+    assert.equal(launch.delegation_runtime.synthesis.status, 'running');
+
+    await new Promise(resolve => setTimeout(resolve, 450));
+
+    const collected = await captureCliJson(['orchestrate', 'collect']);
+    const session = cli.loadSession();
+
+    assert.equal(collected.collected, true);
+    assert.equal(collected.delegation_runtime.jobs[0].status, 'completed');
+    assert.equal(collected.delegation_runtime.worker_results.length, 1);
+    assert.equal(collected.delegation_runtime.synthesis.status, 'ready');
+    assert.equal(session.diagnostics.delegation_runtime.jobs[0].status, 'completed');
+    assert.equal(session.diagnostics.delegation_runtime.worker_results[0].status, 'ok');
+  } finally {
+    if (originalBridgeCmd === undefined) {
+      delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    } else {
+      process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
   }
 });
 

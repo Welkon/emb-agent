@@ -102,15 +102,62 @@ function createActionContractHelpers(deps) {
         supporting_agents: runtime.unique(context.review_agents || []),
         dispatch_contract: {
           launch_via: 'installed-emb-agent',
+          delegation_pattern: 'coordinator',
+          pattern_constraints: {
+            allowed_patterns: ['coordinator'],
+            disallowed_patterns: ['fork', 'swarm'],
+            max_depth: 1,
+            workers_may_delegate: false,
+            verification_requires_fresh_context: true
+          },
           auto_invoke_when_recommended: true,
           primary_first: true,
           parallel_safe: runtime.unique(context.review_agents || []),
+          phases: [
+            {
+              id: 'research',
+              owner: context.suggested_agent,
+              objective: 'Gather architecture options, constraints, and pre-mortem evidence',
+              completion_signal: 'tradeoffs and risks are explicit'
+            },
+            {
+              id: 'synthesis',
+              owner: 'Current main thread',
+              objective: 'Compose a self-contained architecture decision brief before any downstream conclusion',
+              completion_signal: 'the next consumer can decide without seeing prior conversation'
+            },
+            {
+              id: 'execution',
+              owner: context.suggested_agent,
+              objective: 'Produce the primary architecture review conclusion against the synthesized brief',
+              completion_signal: 'evaluation matrix and pre-mortem are explicit'
+            },
+            {
+              id: 'integration',
+              owner: 'Current main thread',
+              objective: 'Integrate the review conclusion and decide the next project action',
+              completion_signal: 'final architecture review output is explicit'
+            }
+          ],
+          synthesis_required: true,
+          synthesis_contract: {
+            owner: 'Current main thread',
+            happens_after: ['research'],
+            happens_before: ['execution', 'integration'],
+            rule: 'Synthesize, do not delegate understanding',
+            output_requirements: [
+              'Write a self-contained architecture brief with options, constraints, and success criteria',
+              'Do not forward raw evidence directly to downstream workers as if it were already synthesized'
+            ]
+          },
           do_not_parallelize: [
             'Do not split architecture preflight into multiple competing writable agents',
-            'Do not skip fact checks and jump directly to a selection conclusion'
+            'Do not skip fact checks and jump directly to a selection conclusion',
+            'Do not let workers spawn other workers or recurse into deeper orchestration layers'
           ],
           integration_owner: 'Current main thread',
           integration_steps: [
+            'Read research outputs fully before composing the next worker specification',
             'Start emb-arch-reviewer first to produce the primary review conclusion',
             'Let review agents add hardware, structural, or release-side evidence only when needed',
             'Let the main thread integrate the final architecture review conclusion'
@@ -119,6 +166,16 @@ function createActionContractHelpers(deps) {
             agent: context.suggested_agent,
             role: 'primary',
             blocking: true,
+            delegation_phase: 'research',
+            context_mode: 'fresh-self-contained',
+            tool_scope: {
+              role_profile: 'review',
+              allows_write: false,
+              allows_delegate: false,
+              allows_background_work: false,
+              preferred_tools: ['read', 'search', 'inspect', 'diff'],
+              disallowed_tools: ['spawn', 'orchestration-state-write']
+            },
             purpose: 'Execute system-level architecture preflight, option comparison, and pre-mortem',
             ownership: 'Own the primary review conclusion and do not replace concrete implementation changes',
             when: 'Start immediately when arch-review is explicitly entered',
@@ -154,6 +211,16 @@ function createActionContractHelpers(deps) {
             agent,
             role: 'supporting',
             blocking: false,
+            delegation_phase: 'support',
+            context_mode: 'fresh-self-contained',
+            tool_scope: {
+              role_profile: 'review',
+              allows_write: false,
+              allows_delegate: false,
+              allows_background_work: false,
+              preferred_tools: ['read', 'search', 'inspect', 'diff'],
+              disallowed_tools: ['spawn', 'orchestration-state-write']
+            },
             purpose: 'Add structural, hardware, or release-side evidence for the architecture preflight',
             ownership: 'Add side evidence only and do not override the primary review conclusion',
             when: 'Start only when the main thread determines that side evidence is needed',

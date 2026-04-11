@@ -85,7 +85,35 @@ test('normalizeSession fills metadata and trims arrays', () => {
       stderr_preview: ''
     },
     executor_history: {},
-    human_signoffs: {}
+    human_signoffs: {},
+    delegation_runtime: {
+      pattern: '',
+      strategy: '',
+      requested_action: '',
+      resolved_action: '',
+      phases: [],
+      launch_requests: [],
+      jobs: [],
+      worker_results: [],
+      synthesis: {
+        required: false,
+        status: '',
+        owner: '',
+        rule: '',
+        happens_after: [],
+        happens_before: [],
+        output_requirements: []
+      },
+      integration: {
+        owner: '',
+        status: '',
+        entered_via: '',
+        execution_kind: '',
+        execution_cli: '',
+        steps: []
+      },
+      updated_at: ''
+    }
   });
   assert.equal(session.last_command, '');
   assert.equal(session.paused_at, '');
@@ -181,6 +209,22 @@ test('project config defaults can override runtime defaults', () => {
           required_executors: ['build', 'bench', 'build'],
           required_signoffs: ['board-bench', 'thermal-check', 'board-bench']
         },
+        permissions: {
+          default_policy: 'ask',
+          require_confirmation_for_high_risk: false,
+          tools: {
+            ask: ['timer-calc', 'timer-calc'],
+            deny: ['flash-calc']
+          },
+          executors: {
+            allow: ['build'],
+            deny: ['flash']
+          },
+          writes: {
+            ask: ['doc-apply-hardware', 'doc-apply-hardware'],
+            deny: ['project-set']
+          }
+        },
         developer: {
           name: 'welkon',
           runtime: 'codex'
@@ -212,6 +256,14 @@ test('project config defaults can override runtime defaults', () => {
   assert.equal(projectConfig.executors.build.env.BUILD_MODE, 'release');
   assert.deepEqual(projectConfig.quality_gates.required_executors, ['build', 'bench']);
   assert.deepEqual(projectConfig.quality_gates.required_signoffs, ['board-bench', 'thermal-check']);
+  assert.equal(projectConfig.permissions.default_policy, 'ask');
+  assert.equal(projectConfig.permissions.require_confirmation_for_high_risk, false);
+  assert.deepEqual(projectConfig.permissions.tools.ask, ['timer-calc']);
+  assert.deepEqual(projectConfig.permissions.tools.deny, ['flash-calc']);
+  assert.deepEqual(projectConfig.permissions.executors.allow, ['build']);
+  assert.deepEqual(projectConfig.permissions.executors.deny, ['flash']);
+  assert.deepEqual(projectConfig.permissions.writes.ask, ['doc-apply-hardware']);
+  assert.deepEqual(projectConfig.permissions.writes.deny, ['project-set']);
   assert.deepEqual(projectConfig.developer, { name: 'welkon', runtime: 'codex' });
   assert.deepEqual(projectConfig.arch_review.trigger_patterns, ['custom arch gate']);
   assert.equal(session.project_profile, 'rtos-iot');
@@ -278,6 +330,46 @@ test('project config rejects malformed executors', () => {
       config
     ),
     /quality_gates\.required_signoffs/
+  );
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        permissions: {
+          default_policy: 'prompt'
+        }
+      },
+      config
+    ),
+    /permissions\.default_policy/
+  );
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        permissions: {
+          tools: {
+            ask: 'timer-calc'
+          }
+        }
+      },
+      config
+    ),
+    /permissions\.tools\.ask/
+  );
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        permissions: {
+          writes: {
+            deny: 'project-set'
+          }
+        }
+      },
+      config
+    ),
+    /permissions\.writes\.deny/
   );
 });
 
@@ -440,6 +532,10 @@ test('project state paths and handoff validator support lightweight handoff', ()
   );
 
   assert.equal(contextSummary.source, 'pause');
+  assert.equal(contextSummary.captured_at, '');
+  assert.equal(contextSummary.snapshot_label, '');
+  assert.equal(contextSummary.stale_note, '');
+  assert.deepEqual(contextSummary.recovery_pointers, []);
   assert.equal(contextSummary.active_task.name, 'timer-drift');
   assert.equal(contextSummary.diagnostics.latest_executor.exit_code, 7);
 });

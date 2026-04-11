@@ -1,6 +1,7 @@
 'use strict';
 
 const adapterQualityHelpers = require('./adapter-quality.cjs');
+const permissionGateHelpers = require('./permission-gates.cjs');
 
 function createProjectConfigHelpers(deps) {
   const {
@@ -19,6 +20,25 @@ function createProjectConfigHelpers(deps) {
   const DEFAULT_ADAPTER_SOURCE_NAME = 'default-pack';
   const DEFAULT_ADAPTER_SOURCE_TYPE = 'git';
   const DEFAULT_ADAPTER_SOURCE_LOCATION = 'https://github.com/Welkon/emb-agent-adapters.git';
+
+  function stripPermissionControlTokens(tokens) {
+    const list = Array.isArray(tokens) ? tokens : [];
+    const filtered = [];
+    let explicitConfirmation = false;
+
+    for (const token of list) {
+      if (token === '--confirm') {
+        explicitConfirmation = true;
+        continue;
+      }
+      filtered.push(token);
+    }
+
+    return {
+      tokens: filtered,
+      explicit_confirmation: explicitConfirmation
+    };
+  }
 
   function buildAdapterSyncQuality(syncResult) {
     let resolved = null;
@@ -119,11 +139,17 @@ function createProjectConfigHelpers(deps) {
   function parseProjectSetArgs(tokens) {
     const result = {
       field: '',
-      value: ''
+      value: '',
+      explicit_confirmation: false
     };
 
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index];
+
+      if (token === '--confirm') {
+        result.explicit_confirmation = true;
+        continue;
+      }
 
       if (token === '--field') {
         result.field = tokens[index + 1] || '';
@@ -157,19 +183,22 @@ function createProjectConfigHelpers(deps) {
   }
 
   function parseAdapterSourceAddArgs(tokens) {
+    const control = stripPermissionControlTokens(tokens);
+    const argv = control.tokens;
     const result = {
       type: '',
       location: '',
       branch: '',
       subdir: '',
-      enabled: true
+      enabled: true,
+      explicit_confirmation: control.explicit_confirmation
     };
 
-    for (let index = 0; index < tokens.length; index += 1) {
-      const token = tokens[index];
+    for (let index = 0; index < argv.length; index += 1) {
+      const token = argv[index];
 
       if (token === '--type') {
-        result.type = tokens[index + 1] || '';
+        result.type = argv[index + 1] || '';
         index += 1;
         if (!result.type) {
           throw new Error('Missing value after --type');
@@ -178,7 +207,7 @@ function createProjectConfigHelpers(deps) {
       }
 
       if (token === '--location') {
-        result.location = tokens[index + 1] || '';
+        result.location = argv[index + 1] || '';
         index += 1;
         if (!result.location) {
           throw new Error('Missing value after --location');
@@ -187,7 +216,7 @@ function createProjectConfigHelpers(deps) {
       }
 
       if (token === '--branch') {
-        result.branch = tokens[index + 1] || '';
+        result.branch = argv[index + 1] || '';
         index += 1;
         if (!result.branch) {
           throw new Error('Missing value after --branch');
@@ -196,7 +225,7 @@ function createProjectConfigHelpers(deps) {
       }
 
       if (token === '--subdir') {
-        result.subdir = tokens[index + 1] || '';
+        result.subdir = argv[index + 1] || '';
         index += 1;
         if (!result.subdir) {
           throw new Error('Missing value after --subdir');
@@ -223,6 +252,8 @@ function createProjectConfigHelpers(deps) {
   }
 
   function parseAdapterSyncArgs(tokens) {
+    const control = stripPermissionControlTokens(tokens);
+    const argv = control.tokens;
     const result = {
       all: false,
       target: 'project',
@@ -231,7 +262,8 @@ function createProjectConfigHelpers(deps) {
       tools: [],
       families: [],
       devices: [],
-      chips: []
+      chips: [],
+      explicit_confirmation: control.explicit_confirmation
     };
 
     const pushListValues = (target, raw, label) => {
@@ -251,8 +283,8 @@ function createProjectConfigHelpers(deps) {
       });
     };
 
-    for (let index = 0; index < tokens.length; index += 1) {
-      const token = tokens[index];
+    for (let index = 0; index < argv.length; index += 1) {
+      const token = argv[index];
 
       if (token === '--all') {
         result.all = true;
@@ -260,7 +292,7 @@ function createProjectConfigHelpers(deps) {
       }
 
       if (token === '--to') {
-        result.target = tokens[index + 1] || '';
+        result.target = argv[index + 1] || '';
         index += 1;
         if (!result.target) {
           throw new Error('Missing value after --to');
@@ -284,25 +316,25 @@ function createProjectConfigHelpers(deps) {
       }
 
       if (token === '--tool') {
-        pushListValues(result.tools, tokens[index + 1], '--tool');
+        pushListValues(result.tools, argv[index + 1], '--tool');
         index += 1;
         continue;
       }
 
       if (token === '--family') {
-        pushListValues(result.families, tokens[index + 1], '--family');
+        pushListValues(result.families, argv[index + 1], '--family');
         index += 1;
         continue;
       }
 
       if (token === '--device') {
-        pushListValues(result.devices, tokens[index + 1], '--device');
+        pushListValues(result.devices, argv[index + 1], '--device');
         index += 1;
         continue;
       }
 
       if (token === '--chip') {
-        pushListValues(result.chips, tokens[index + 1], '--chip');
+        pushListValues(result.chips, argv[index + 1], '--chip');
         index += 1;
         continue;
       }
@@ -314,8 +346,11 @@ function createProjectConfigHelpers(deps) {
   }
 
   function parseAdapterBootstrapArgs(tokens, fallbackName) {
+    const control = stripPermissionControlTokens(tokens);
+    const argv = control.tokens;
     const result = {
       name: String(fallbackName || '').trim() || DEFAULT_ADAPTER_SOURCE_NAME,
+      explicit_confirmation: control.explicit_confirmation,
       source_config_provided: false,
       source: {
         type: '',
@@ -352,11 +387,11 @@ function createProjectConfigHelpers(deps) {
       });
     };
 
-    for (let index = 0; index < tokens.length; index += 1) {
-      const token = tokens[index];
+    for (let index = 0; index < argv.length; index += 1) {
+      const token = argv[index];
 
       if (token === '--type') {
-        result.source.type = tokens[index + 1] || '';
+        result.source.type = argv[index + 1] || '';
         index += 1;
         if (!result.source.type) {
           throw new Error('Missing value after --type');
@@ -366,7 +401,7 @@ function createProjectConfigHelpers(deps) {
       }
 
       if (token === '--location') {
-        result.source.location = tokens[index + 1] || '';
+        result.source.location = argv[index + 1] || '';
         index += 1;
         if (!result.source.location) {
           throw new Error('Missing value after --location');
@@ -376,7 +411,7 @@ function createProjectConfigHelpers(deps) {
       }
 
       if (token === '--branch') {
-        result.source.branch = tokens[index + 1] || '';
+        result.source.branch = argv[index + 1] || '';
         index += 1;
         if (!result.source.branch) {
           throw new Error('Missing value after --branch');
@@ -386,7 +421,7 @@ function createProjectConfigHelpers(deps) {
       }
 
       if (token === '--subdir') {
-        result.source.subdir = tokens[index + 1] || '';
+        result.source.subdir = argv[index + 1] || '';
         index += 1;
         if (!result.source.subdir) {
           throw new Error('Missing value after --subdir');
@@ -402,7 +437,7 @@ function createProjectConfigHelpers(deps) {
       }
 
       if (token === '--to') {
-        result.sync.target = tokens[index + 1] || '';
+        result.sync.target = argv[index + 1] || '';
         index += 1;
         if (!result.sync.target) {
           throw new Error('Missing value after --to');
@@ -426,25 +461,25 @@ function createProjectConfigHelpers(deps) {
       }
 
       if (token === '--tool') {
-        pushListValues(result.sync.tools, tokens[index + 1] || '', '--tool');
+        pushListValues(result.sync.tools, argv[index + 1] || '', '--tool');
         index += 1;
         continue;
       }
 
       if (token === '--family') {
-        pushListValues(result.sync.families, tokens[index + 1] || '', '--family');
+        pushListValues(result.sync.families, argv[index + 1] || '', '--family');
         index += 1;
         continue;
       }
 
       if (token === '--device') {
-        pushListValues(result.sync.devices, tokens[index + 1] || '', '--device');
+        pushListValues(result.sync.devices, argv[index + 1] || '', '--device');
         index += 1;
         continue;
       }
 
       if (token === '--chip') {
-        pushListValues(result.sync.chips, tokens[index + 1] || '', '--chip');
+        pushListValues(result.sync.chips, argv[index + 1] || '', '--chip');
         index += 1;
         continue;
       }
@@ -564,6 +599,25 @@ function createProjectConfigHelpers(deps) {
           required_executors: [],
           required_signoffs: []
         },
+        permissions: {
+          default_policy: 'allow',
+          require_confirmation_for_high_risk: true,
+          tools: {
+            allow: [],
+            ask: [],
+            deny: []
+          },
+          executors: {
+            allow: [],
+            ask: [],
+            deny: []
+          },
+          writes: {
+            allow: [],
+            ask: [],
+            deny: []
+          }
+        },
         preferences: getPreferences(resolved.session),
         integrations: {},
         arch_review: {}
@@ -597,20 +651,95 @@ function createProjectConfigHelpers(deps) {
     };
   }
 
-  function setProjectConfigValue(fieldPath, rawValue) {
+  function buildProjectSetHighRiskClarity(fieldPath) {
+    const field = String(fieldPath || '').trim();
+    if (!field.startsWith('permissions.')) {
+      return null;
+    }
+
+    return {
+      enabled: true,
+      category: 'project-permission-write',
+      warning: 'This write updates the project permission policy and can change future execution behavior.',
+      requires_explicit_confirmation: true,
+      matched_signals: [`field:${field}`],
+      confirmation_template: {
+        action: `project set --field ${field}`,
+        target: '<fill in the exact project policy path being changed>',
+        irreversible_impact: '<fill in how this changes tool / executor / write access>',
+        prechecks: [
+          'Confirm this policy change is intended for the current project only',
+          'Confirm deny / ask / allow precedence still matches the intended safety posture',
+          'Confirm existing automation will continue to work under the new rule'
+        ],
+        execute_cli: `<fill in final project set --field ${field} --value ... command>`,
+        rollback_plan: '<fill in how to revert the policy if it blocks the wrong path>'
+      }
+    };
+  }
+
+  function buildProjectWritePermissionContext(actionName, explicitConfirmation, options) {
+    const settings =
+      options && typeof options === 'object' && !Array.isArray(options)
+        ? options
+        : {};
+    const highRiskClarity = settings.high_risk_clarity || null;
+    return {
+      high_risk_clarity: highRiskClarity,
+      permission_decision: permissionGateHelpers.evaluateExecutionPermission({
+        action_kind: 'write',
+        action_name: actionName,
+        risk: settings.risk || (highRiskClarity ? 'high' : 'normal'),
+        explicit_confirmation: explicitConfirmation === true,
+        permissions: (getProjectConfig() && getProjectConfig().permissions) || {}
+      })
+    };
+  }
+
+  function applyProjectWritePermission(result, permissionContext) {
+    const base = result && typeof result === 'object' && !Array.isArray(result) ? result : {};
+    const context =
+      permissionContext && typeof permissionContext === 'object' && !Array.isArray(permissionContext)
+        ? permissionContext
+        : {};
+    const enriched = context.high_risk_clarity
+      ? {
+          ...base,
+          high_risk_clarity: context.high_risk_clarity
+        }
+      : base;
+
+    return permissionGateHelpers.applyPermissionDecision(enriched, context.permission_decision || null);
+  }
+
+  function setProjectConfigValue(fieldPath, rawValue, options) {
+    const settings = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+    const parsedValue = parseProjectValue(rawValue);
+    const permissionContext = buildProjectWritePermissionContext('project-set', settings.explicit_confirmation, {
+      high_risk_clarity: buildProjectSetHighRiskClarity(fieldPath)
+    });
+    const blocked = applyProjectWritePermission({
+      field: fieldPath,
+      value: parsedValue
+    }, permissionContext);
+
+    if (blocked.permission_decision && blocked.permission_decision.decision !== 'allow') {
+      return blocked;
+    }
+
     const nextConfig = JSON.parse(JSON.stringify(buildProjectConfigSeed()));
 
-    assignNestedField(nextConfig, fieldPath, parseProjectValue(rawValue));
+    assignNestedField(nextConfig, fieldPath, parsedValue);
     const validated = runtime.validateProjectConfig(nextConfig, RUNTIME_CONFIG);
     const saved = writeProjectConfig(validated);
 
-    return {
+    return applyProjectWritePermission({
       path: saved.path,
       field: fieldPath,
       value: selectNestedField(validated, fieldPath),
       config: validated,
       session: saved.session
-    };
+    }, permissionContext);
   }
 
   function buildAdapterStatusQuality(projectConfig) {
@@ -697,18 +826,31 @@ function createProjectConfigHelpers(deps) {
     };
   }
 
-  function addAdapterSource(name, tokens) {
-    const sourceName = String(name || '').trim();
+  function parseNamedAdapterActionArgs(name, tokens, label) {
+    const control = stripPermissionControlTokens([name, ...(Array.isArray(tokens) ? tokens : [])]);
+    const sourceName = String(control.tokens[0] || '').trim();
+
     if (!sourceName) {
-      throw new Error('Missing source name');
+      throw new Error(`Missing ${label}`);
     }
 
-    const parsed = parseAdapterSourceAddArgs(tokens);
+    return {
+      name: sourceName,
+      tokens: control.tokens.slice(1),
+      explicit_confirmation: control.explicit_confirmation
+    };
+  }
+
+  function addAdapterSourceInternal(sourceName, parsed) {
     const nextConfig = JSON.parse(JSON.stringify(buildProjectConfigSeed()));
     const nextSource = runtime.validateAdapterSource(
       {
         name: sourceName,
-        ...parsed
+        type: parsed.type,
+        location: parsed.location,
+        branch: parsed.branch,
+        subdir: parsed.subdir,
+        enabled: parsed.enabled
       },
       0
     );
@@ -733,12 +875,40 @@ function createProjectConfigHelpers(deps) {
     };
   }
 
-  function removeAdapterSource(name) {
+  function addAdapterSource(name, tokens) {
     const sourceName = String(name || '').trim();
     if (!sourceName) {
       throw new Error('Missing source name');
     }
 
+    const parsed = parseAdapterSourceAddArgs(tokens);
+    const permissionContext = buildProjectWritePermissionContext(
+      'adapter-source-add',
+      parsed.explicit_confirmation
+    );
+    const blocked = applyProjectWritePermission({
+      action: 'pending',
+      source: {
+        name: sourceName,
+        type: parsed.type,
+        location: parsed.location,
+        branch: parsed.branch,
+        subdir: parsed.subdir,
+        enabled: parsed.enabled
+      }
+    }, permissionContext);
+
+    if (blocked.permission_decision && blocked.permission_decision.decision !== 'allow') {
+      return blocked;
+    }
+
+    return applyProjectWritePermission(
+      addAdapterSourceInternal(sourceName, parsed),
+      permissionContext
+    );
+  }
+
+  function removeAdapterSourceInternal(sourceName) {
     const nextConfig = JSON.parse(JSON.stringify(buildProjectConfigSeed()));
     const sources = nextConfig.adapter_sources || [];
     const existing = sources.find(item => item.name === sourceName);
@@ -764,7 +934,31 @@ function createProjectConfigHelpers(deps) {
     };
   }
 
-  function syncNamedAdapterSource(name, options) {
+  function removeAdapterSource(name, tokens) {
+    const parsed = parseNamedAdapterActionArgs(name, tokens, 'source name');
+    const permissionContext = buildProjectWritePermissionContext(
+      'adapter-source-remove',
+      parsed.explicit_confirmation
+    );
+    const sourceName = parsed.name;
+    const projectConfig = buildProjectConfigSeed();
+    const existing = (projectConfig.adapter_sources || []).find(item => item.name === sourceName);
+    const blocked = applyProjectWritePermission({
+      action: 'pending',
+      source: existing || { name: sourceName }
+    }, permissionContext);
+
+    if (blocked.permission_decision && blocked.permission_decision.decision !== 'allow') {
+      return blocked;
+    }
+
+    return applyProjectWritePermission(
+      removeAdapterSourceInternal(sourceName),
+      permissionContext
+    );
+  }
+
+  function syncNamedAdapterSourceInternal(name, options) {
     const sourceName = String(name || '').trim();
     if (!sourceName) {
       throw new Error('Missing source name');
@@ -785,7 +979,37 @@ function createProjectConfigHelpers(deps) {
     };
   }
 
-  function syncAllAdapterSources(options) {
+  function syncNamedAdapterSource(name, options) {
+    const settings = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+    const actionName = settings.target === 'runtime' ? 'adapter-sync-runtime' : 'adapter-sync-project';
+    const permissionContext = buildProjectWritePermissionContext(
+      actionName,
+      settings.explicit_confirmation
+    );
+    const blocked = applyProjectWritePermission({
+      source: String(name || '').trim(),
+      target: settings.target || 'project',
+      sync: {
+        force: settings.force === true,
+        match_project: settings.match_project !== false,
+        tools: settings.tools || [],
+        families: settings.families || [],
+        devices: settings.devices || [],
+        chips: settings.chips || []
+      }
+    }, permissionContext);
+
+    if (blocked.permission_decision && blocked.permission_decision.decision !== 'allow') {
+      return blocked;
+    }
+
+    return applyProjectWritePermission(
+      syncNamedAdapterSourceInternal(name, settings),
+      permissionContext
+    );
+  }
+
+  function syncAllAdapterSourcesInternal(options) {
     initProjectLayout();
     const projectConfig = buildProjectConfigSeed();
 
@@ -804,9 +1028,67 @@ function createProjectConfigHelpers(deps) {
     };
   }
 
+  function syncAllAdapterSources(options) {
+    const settings = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+    const actionName = settings.target === 'runtime' ? 'adapter-sync-all-runtime' : 'adapter-sync-all-project';
+    const permissionContext = buildProjectWritePermissionContext(
+      actionName,
+      settings.explicit_confirmation
+    );
+    const blocked = applyProjectWritePermission({
+      target: settings.target || 'project',
+      sync: {
+        force: settings.force === true,
+        match_project: settings.match_project !== false,
+        tools: settings.tools || [],
+        families: settings.families || [],
+        devices: settings.devices || [],
+        chips: settings.chips || []
+      }
+    }, permissionContext);
+
+    if (blocked.permission_decision && blocked.permission_decision.decision !== 'allow') {
+      return blocked;
+    }
+
+    return applyProjectWritePermission(
+      syncAllAdapterSourcesInternal(settings),
+      permissionContext
+    );
+  }
+
   function bootstrapAdapterSource(name, tokens) {
     const sourceName = String(name || '').trim();
     const parsed = parseAdapterBootstrapArgs(tokens || [], sourceName);
+    const actionName = parsed.sync.target === 'runtime' ? 'adapter-bootstrap-runtime' : 'adapter-bootstrap-project';
+    const permissionContext = buildProjectWritePermissionContext(
+      actionName,
+      parsed.explicit_confirmation
+    );
+    const blocked = applyProjectWritePermission({
+      action: 'pending',
+      source: {
+        name: parsed.name,
+        type: parsed.source.type,
+        location: parsed.source.location,
+        branch: parsed.source.branch,
+        subdir: parsed.source.subdir,
+        enabled: parsed.source.enabled
+      },
+      sync: {
+        target: parsed.sync.target || 'project',
+        force: parsed.sync.force === true,
+        match_project: parsed.sync.match_project !== false,
+        tools: parsed.sync.tools || [],
+        families: parsed.sync.families || [],
+        devices: parsed.sync.devices || [],
+        chips: parsed.sync.chips || []
+      }
+    }, permissionContext);
+
+    if (blocked.permission_decision && blocked.permission_decision.decision !== 'allow') {
+      return blocked;
+    }
 
     initProjectLayout();
     const projectConfig = buildProjectConfigSeed();
@@ -829,15 +1111,15 @@ function createProjectConfigHelpers(deps) {
         addTokens.push('--disabled');
       }
 
-      sourceResult = addAdapterSource(parsed.name, addTokens);
+      sourceResult = addAdapterSourceInternal(parsed.name, parseAdapterSourceAddArgs(addTokens));
     }
 
-    return {
+    return applyProjectWritePermission({
       action: 'bootstrapped',
       source_action: sourceResult ? sourceResult.action : 'existing',
       source: sourceResult ? sourceResult.source : existing,
-      sync: syncNamedAdapterSource(parsed.name, parsed.sync)
-    };
+      sync: syncNamedAdapterSourceInternal(parsed.name, parsed.sync)
+    }, permissionContext);
   }
 
   return {

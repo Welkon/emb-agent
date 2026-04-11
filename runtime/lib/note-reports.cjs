@@ -1,5 +1,6 @@
 'use strict';
 
+const permissionGateHelpers = require('./permission-gates.cjs');
 const qualityGateHelpers = require('./quality-gates.cjs');
 
 function createNoteReportHelpers(deps) {
@@ -19,20 +20,57 @@ function createNoteReportHelpers(deps) {
     updateSession
   } = deps;
 
+  function stripPermissionControlTokens(tokens) {
+    const list = Array.isArray(tokens) ? tokens : [];
+    const filtered = [];
+    let explicitConfirmation = false;
+
+    for (const token of list) {
+      if (token === '--confirm') {
+        explicitConfirmation = true;
+        continue;
+      }
+      filtered.push(token);
+    }
+
+    return {
+      tokens: filtered,
+      explicit_confirmation: explicitConfirmation
+    };
+  }
+
+  function applyWritePermission(result, actionName, explicitConfirmation) {
+    const resolved = resolveSession();
+    const permission = permissionGateHelpers.evaluateExecutionPermission({
+      action_kind: 'write',
+      action_name: actionName,
+      risk: 'normal',
+      explicit_confirmation: explicitConfirmation === true,
+      permissions: (resolved && resolved.project_config && resolved.project_config.permissions) || {}
+    });
+
+    return {
+      permission,
+      result: permissionGateHelpers.applyPermissionDecision(result, permission)
+    };
+  }
+
   function parseNoteAddArgs(tokens) {
+    const control = stripPermissionControlTokens(tokens);
+    const argv = control.tokens;
     const result = {
-      target: tokens[0] || '',
+      target: argv[0] || '',
       summaryParts: [],
       evidence: [],
       unverified: [],
       kind: ''
     };
 
-    for (let index = 1; index < tokens.length; index += 1) {
-      const token = tokens[index];
+    for (let index = 1; index < argv.length; index += 1) {
+      const token = argv[index];
 
       if (token === '--evidence') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --evidence');
         result.evidence.push(value);
         index += 1;
@@ -40,7 +78,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--unverified') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --unverified');
         result.unverified.push(value);
         index += 1;
@@ -48,7 +86,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--kind') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --kind');
         result.kind = value;
         index += 1;
@@ -67,7 +105,8 @@ function createNoteReportHelpers(deps) {
       summary: result.summaryParts.join(' ').trim(),
       evidence: result.evidence,
       unverified: result.unverified,
-      kind: result.kind.trim()
+      kind: result.kind.trim(),
+      explicit_confirmation: control.explicit_confirmation
     };
   }
 
@@ -188,6 +227,8 @@ function createNoteReportHelpers(deps) {
   }
 
   function parseReviewSaveArgs(tokens) {
+    const control = stripPermissionControlTokens(tokens);
+    const argv = control.tokens;
     const result = {
       summaryParts: [],
       findings: [],
@@ -195,11 +236,11 @@ function createNoteReportHelpers(deps) {
       scope: ''
     };
 
-    for (let index = 0; index < tokens.length; index += 1) {
-      const token = tokens[index];
+    for (let index = 0; index < argv.length; index += 1) {
+      const token = argv[index];
 
       if (token === '--finding') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --finding');
         result.findings.push(value);
         index += 1;
@@ -207,7 +248,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--check') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --check');
         result.checks.push(value);
         index += 1;
@@ -215,7 +256,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--scope') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --scope');
         result.scope = value;
         index += 1;
@@ -229,7 +270,8 @@ function createNoteReportHelpers(deps) {
       summary: result.summaryParts.join(' ').trim(),
       findings: result.findings,
       checks: result.checks,
-      scope: result.scope.trim()
+      scope: result.scope.trim(),
+      explicit_confirmation: control.explicit_confirmation
     };
   }
 
@@ -385,8 +427,22 @@ function createNoteReportHelpers(deps) {
       throw new Error('Missing review summary');
     }
 
-    const resolved = resolveSession();
     const target = 'docs/REVIEW-REPORT.md';
+    const permissionCheck = applyWritePermission({
+      target,
+      created: false,
+      template: '',
+      summary: reviewInput.summary,
+      findings: reviewInput.findings,
+      checks: reviewInput.checks,
+      scope: reviewInput.scope || ''
+    }, 'review-save', reviewInput.explicit_confirmation);
+
+    if (permissionCheck.permission.decision !== 'allow') {
+      return permissionCheck.result;
+    }
+
+    const resolved = resolveSession();
     const ensured = ensureNoteTargetDoc(target);
     const content = runtime.readText(ensured.path);
     const nextContent = upsertSectionEntry(
@@ -404,7 +460,7 @@ function createNoteReportHelpers(deps) {
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
 
-    return {
+    return permissionGateHelpers.applyPermissionDecision({
       target,
       created: ensured.created,
       template: ensured.template,
@@ -412,23 +468,25 @@ function createNoteReportHelpers(deps) {
       findings: reviewInput.findings,
       checks: reviewInput.checks,
       scope: reviewInput.scope || ''
-    };
+    }, permissionCheck.permission);
   }
 
   function parseScanSaveArgs(tokens) {
+    const control = stripPermissionControlTokens(tokens);
+    const argv = control.tokens;
     const result = {
-      target: tokens[0] || '',
+      target: argv[0] || '',
       summaryParts: [],
       facts: [],
       questions: [],
       reads: []
     };
 
-    for (let index = 1; index < tokens.length; index += 1) {
-      const token = tokens[index];
+    for (let index = 1; index < argv.length; index += 1) {
+      const token = argv[index];
 
       if (token === '--fact') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --fact');
         result.facts.push(value);
         index += 1;
@@ -436,7 +494,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--question') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --question');
         result.questions.push(value);
         index += 1;
@@ -444,7 +502,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--read') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --read');
         result.reads.push(value);
         index += 1;
@@ -459,11 +517,14 @@ function createNoteReportHelpers(deps) {
       summary: result.summaryParts.join(' ').trim(),
       facts: result.facts,
       questions: result.questions,
-      reads: result.reads
+      reads: result.reads,
+      explicit_confirmation: control.explicit_confirmation
     };
   }
 
   function parsePlanSaveArgs(tokens) {
+    const control = stripPermissionControlTokens(tokens);
+    const argv = control.tokens;
     const result = {
       target: '',
       summaryParts: [],
@@ -472,11 +533,11 @@ function createNoteReportHelpers(deps) {
       verification: []
     };
 
-    for (let index = 0; index < tokens.length; index += 1) {
-      const token = tokens[index];
+    for (let index = 0; index < argv.length; index += 1) {
+      const token = argv[index];
 
       if (token === '--target') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --target');
         result.target = value;
         index += 1;
@@ -484,7 +545,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--risk') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --risk');
         result.risks.push(value);
         index += 1;
@@ -492,7 +553,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--step') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --step');
         result.steps.push(value);
         index += 1;
@@ -500,7 +561,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--verify') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --verify');
         result.verification.push(value);
         index += 1;
@@ -515,11 +576,14 @@ function createNoteReportHelpers(deps) {
       summary: result.summaryParts.join(' ').trim(),
       risks: result.risks,
       steps: result.steps,
-      verification: result.verification
+      verification: result.verification,
+      explicit_confirmation: control.explicit_confirmation
     };
   }
 
   function parseVerifySaveArgs(tokens) {
+    const control = stripPermissionControlTokens(tokens);
+    const argv = control.tokens;
     const result = {
       target: '',
       summaryParts: [],
@@ -529,11 +593,11 @@ function createNoteReportHelpers(deps) {
       followups: []
     };
 
-    for (let index = 0; index < tokens.length; index += 1) {
-      const token = tokens[index];
+    for (let index = 0; index < argv.length; index += 1) {
+      const token = argv[index];
 
       if (token === '--target') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --target');
         result.target = value;
         index += 1;
@@ -541,7 +605,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--check') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --check');
         result.checks.push(value);
         index += 1;
@@ -549,7 +613,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--result') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --result');
         result.results.push(value);
         index += 1;
@@ -557,7 +621,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--evidence') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --evidence');
         result.evidence.push(value);
         index += 1;
@@ -565,7 +629,7 @@ function createNoteReportHelpers(deps) {
       }
 
       if (token === '--followup') {
-        const value = tokens[index + 1] || '';
+        const value = argv[index + 1] || '';
         if (!value) throw new Error('Missing value after --followup');
         result.followups.push(value);
         index += 1;
@@ -581,19 +645,33 @@ function createNoteReportHelpers(deps) {
       checks: result.checks,
       results: result.results,
       evidence: result.evidence,
-      followups: result.followups
+      followups: result.followups,
+      explicit_confirmation: control.explicit_confirmation
     };
   }
 
   function parseVerifySignoffArgs(tokens) {
-    const name = String(tokens[0] || '').trim();
+    const list = Array.isArray(tokens) ? tokens : [];
+    const filtered = [];
+    let explicitConfirmation = false;
+
+    for (const token of list) {
+      if (token === '--confirm') {
+        explicitConfirmation = true;
+        continue;
+      }
+      filtered.push(token);
+    }
+
+    const name = String(filtered[0] || '').trim();
     if (!name) {
       throw new Error('Missing signoff name');
     }
 
     return {
       name,
-      note: tokens.slice(1).join(' ').trim()
+      note: filtered.slice(1).join(' ').trim(),
+      explicit_confirmation: explicitConfirmation
     };
   }
 
@@ -648,12 +726,60 @@ function createNoteReportHelpers(deps) {
 
   function confirmVerifySignoff(tokens) {
     const input = parseVerifySignoffArgs(tokens);
-    return updateHumanSignoff(input.name, 'confirmed', input.note);
+    const permission = permissionGateHelpers.evaluateExecutionPermission({
+      action_kind: 'write',
+      action_name: 'verify-confirm',
+      risk: 'normal',
+      explicit_confirmation: input.explicit_confirmation,
+      permissions: (resolveSession() && resolveSession().project_config && resolveSession().project_config.permissions) || {}
+    });
+
+    if (permission.decision !== 'allow') {
+      return permissionGateHelpers.applyPermissionDecision({
+        signoff: input.name,
+        status: 'permission-pending',
+        note: input.note || '',
+        confirmed_at: '',
+        quality_gates: qualityGateHelpers.evaluateQualityGates(
+          resolveSession().project_config || null,
+          (resolveSession().session && resolveSession().session.diagnostics) || {}
+        )
+      }, permission);
+    }
+
+    return permissionGateHelpers.applyPermissionDecision(
+      updateHumanSignoff(input.name, 'confirmed', input.note),
+      permission
+    );
   }
 
   function rejectVerifySignoff(tokens) {
     const input = parseVerifySignoffArgs(tokens);
-    return updateHumanSignoff(input.name, 'rejected', input.note);
+    const permission = permissionGateHelpers.evaluateExecutionPermission({
+      action_kind: 'write',
+      action_name: 'verify-reject',
+      risk: 'normal',
+      explicit_confirmation: input.explicit_confirmation,
+      permissions: (resolveSession() && resolveSession().project_config && resolveSession().project_config.permissions) || {}
+    });
+
+    if (permission.decision !== 'allow') {
+      return permissionGateHelpers.applyPermissionDecision({
+        signoff: input.name,
+        status: 'permission-pending',
+        note: input.note || '',
+        confirmed_at: '',
+        quality_gates: qualityGateHelpers.evaluateQualityGates(
+          resolveSession().project_config || null,
+          (resolveSession().session && resolveSession().session.diagnostics) || {}
+        )
+      }, permission);
+    }
+
+    return permissionGateHelpers.applyPermissionDecision(
+      updateHumanSignoff(input.name, 'rejected', input.note),
+      permission
+    );
   }
 
   function buildScanEntry(scanOutput, scanInput) {
@@ -777,8 +903,23 @@ function createNoteReportHelpers(deps) {
       throw new Error('Missing scan summary');
     }
 
-    const resolved = resolveSession();
     const target = resolveKnownDocTarget(scanInput.target);
+    const permissionCheck = applyWritePermission({
+      target,
+      created: false,
+      template: '',
+      summary: scanInput.summary,
+      facts: scanInput.facts,
+      questions: scanInput.questions,
+      reads: scanInput.reads,
+      synced_truth: false
+    }, 'scan-save', scanInput.explicit_confirmation);
+
+    if (permissionCheck.permission.decision !== 'allow') {
+      return permissionCheck.result;
+    }
+
+    const resolved = resolveSession();
     const ensured = ensureNoteTargetDoc(target);
     const scanOutput = scheduler.buildScanOutput(resolved);
     const content = runtime.readText(ensured.path);
@@ -798,7 +939,7 @@ function createNoteReportHelpers(deps) {
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
 
-    return {
+    return permissionGateHelpers.applyPermissionDecision({
       target,
       created: ensured.created,
       template: ensured.template,
@@ -807,7 +948,7 @@ function createNoteReportHelpers(deps) {
       questions: scanInput.questions,
       reads: scanInput.reads,
       synced_truth: syncedTruth
-    };
+    }, permissionCheck.permission);
   }
 
   function syncRequirementsFromPlan(planInput) {
@@ -836,8 +977,23 @@ function createNoteReportHelpers(deps) {
       throw new Error('Missing plan summary');
     }
 
-    const resolved = resolveSession();
     const target = resolveKnownDocTarget(planInput.target || 'debug');
+    const permissionCheck = applyWritePermission({
+      target,
+      created: false,
+      template: '',
+      summary: planInput.summary,
+      risks: planInput.risks,
+      steps: planInput.steps,
+      verification: planInput.verification,
+      synced_requirements: false
+    }, 'plan-save', planInput.explicit_confirmation);
+
+    if (permissionCheck.permission.decision !== 'allow') {
+      return permissionCheck.result;
+    }
+
+    const resolved = resolveSession();
     const ensured = ensureNoteTargetDoc(target);
     const planOutput = scheduler.buildPlanOutput(resolved);
     const content = runtime.readText(ensured.path);
@@ -857,7 +1013,7 @@ function createNoteReportHelpers(deps) {
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
 
-    return {
+    return permissionGateHelpers.applyPermissionDecision({
       target,
       created: ensured.created,
       template: ensured.template,
@@ -866,7 +1022,7 @@ function createNoteReportHelpers(deps) {
       steps: planInput.steps,
       verification: planInput.verification,
       synced_requirements: syncedReq
-    };
+    }, permissionCheck.permission);
   }
 
   function getLatestExecutorSummary(resolved) {
@@ -1001,8 +1157,26 @@ function createNoteReportHelpers(deps) {
       throw new Error('Missing verify summary');
     }
 
-    const resolved = resolveSession();
     const target = resolveKnownDocTarget(verifyInput.target || 'verify');
+    const permissionCheck = applyWritePermission({
+      target,
+      created: false,
+      template: '',
+      summary: verifyInput.summary,
+      checks: verifyInput.checks,
+      results: verifyInput.results,
+      evidence: verifyInput.evidence,
+      followups: verifyInput.followups,
+      latest_executor: null,
+      tool_recommendation: null,
+      adapter_health: null
+    }, 'verify-save', verifyInput.explicit_confirmation);
+
+    if (permissionCheck.permission.decision !== 'allow') {
+      return permissionCheck.result;
+    }
+
+    const resolved = resolveSession();
     const ensured = ensureNoteTargetDoc(target);
     const verifyOutput = scheduler.buildVerifyOutput(resolved);
     const latestExecutor = getLatestExecutorSummary(resolved);
@@ -1023,7 +1197,7 @@ function createNoteReportHelpers(deps) {
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
 
-    return {
+    return permissionGateHelpers.applyPermissionDecision({
       target,
       created: ensured.created,
       template: ensured.template,
@@ -1041,7 +1215,7 @@ function createNoteReportHelpers(deps) {
         next && next.health && next.health.adapter_health
           ? next.health.adapter_health
           : null
-    };
+    }, permissionCheck.permission);
   }
 
   function addNoteEntry(tokens) {
@@ -1053,6 +1227,21 @@ function createNoteReportHelpers(deps) {
 
     const resolved = resolveSession();
     const target = resolveNoteTarget(resolved, noteInput.target);
+    const permissionCheck = applyWritePermission({
+      target,
+      created: false,
+      template: '',
+      kind: noteInput.kind || '',
+      summary: noteInput.summary,
+      evidence: noteInput.evidence,
+      unverified: noteInput.unverified,
+      synced_truth: false
+    }, 'note-add', noteInput.explicit_confirmation);
+
+    if (permissionCheck.permission.decision !== 'allow') {
+      return permissionCheck.result;
+    }
+
     const ensured = ensureNoteTargetDoc(target);
     const content = runtime.readText(ensured.path);
     const nextContent = upsertSectionEntry(
@@ -1087,7 +1276,7 @@ function createNoteReportHelpers(deps) {
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
 
-    return {
+    return permissionGateHelpers.applyPermissionDecision({
       target,
       created: ensured.created,
       template: ensured.template,
@@ -1096,7 +1285,7 @@ function createNoteReportHelpers(deps) {
       evidence: noteInput.evidence,
       unverified: noteInput.unverified,
       synced_truth: syncedTruth
-    };
+    }, permissionCheck.permission);
   }
 
   return {

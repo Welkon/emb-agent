@@ -1,5 +1,7 @@
 'use strict';
 
+const permissionGateHelpers = require('./permission-gates.cjs');
+
 function createExecutorCommandHelpers(deps) {
   const {
     path,
@@ -91,6 +93,25 @@ function createExecutorCommandHelpers(deps) {
     return list.slice(separatorIndex + 1);
   }
 
+  function resolveControlFlags(tokens) {
+    const list = Array.isArray(tokens) ? tokens.slice() : [];
+    const separatorIndex = list.indexOf('--');
+    const controlTokens = separatorIndex === -1 ? list : list.slice(0, separatorIndex);
+    const explicitConfirmation = controlTokens.includes('--confirm');
+
+    if (separatorIndex === -1) {
+      return {
+        explicit_confirmation: explicitConfirmation,
+        tokens: controlTokens.filter(token => token !== '--confirm')
+      };
+    }
+
+    return {
+      explicit_confirmation: explicitConfirmation,
+      tokens: controlTokens.filter(token => token !== '--confirm').concat(list.slice(separatorIndex))
+    };
+  }
+
   function buildPreview(text) {
     return String(text || '')
       .replace(/\s+/g, ' ')
@@ -116,12 +137,95 @@ function createExecutorCommandHelpers(deps) {
     };
   }
 
+  function buildHighRiskClarity(resolved) {
+    if (!resolved || !resolved.config || resolved.config.risk !== 'high') {
+      return null;
+    }
+
+    return {
+      enabled: true,
+      category: 'project-defined-executor',
+      warning: `Executor ${resolved.name} is marked high risk and requires explicit confirmation before it can run.`,
+      requires_explicit_confirmation: true,
+      matched_signals: [`executor:${resolved.name}`, 'risk:high'],
+      confirmation_template: {
+        action: `executor run ${resolved.name}`,
+        target: '<fill in target board / binary / device>',
+        irreversible_impact: '<fill in possible destructive impact>',
+        prechecks: [
+          'Confirm the selected executor matches the intended hardware action',
+          'Confirm the target path, board state, and required backups are ready',
+          'Run the non-destructive verification executor first when available'
+        ],
+        execute_cli: `<fill in final executor run ${resolved.name} command>`,
+        rollback_plan: '<fill in recovery steps if execution fails>'
+      }
+    };
+  }
+
+  function attachHighRiskClarity(result, resolved) {
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+      return result;
+    }
+
+    if (result.high_risk_clarity) {
+      return result;
+    }
+
+    const highRiskClarity = buildHighRiskClarity(resolved);
+    if (!highRiskClarity) {
+      return result;
+    }
+
+    const next = {
+      ...result,
+      high_risk_clarity: highRiskClarity
+    };
+
+    return {
+      ...next,
+      permission_gates: permissionGateHelpers.buildPermissionGates(next)
+    };
+  }
+
   function runExecutor(name, tokens) {
     const resolved = getExecutor(name);
-    const extraArgs = resolveExtraArgs(tokens);
+    const control = resolveControlFlags(tokens);
+    const extraArgs = resolveExtraArgs(control.tokens);
+    const highRiskClarity = buildHighRiskClarity(resolved);
+    const permissionDecision = permissionGateHelpers.evaluateExecutionPermission({
+      action_kind: 'executor',
+      action_name: resolved.name,
+      risk: highRiskClarity ? 'high' : 'normal',
+      explicit_confirmation: control.explicit_confirmation,
+      permissions: (getProjectConfig() && getProjectConfig().permissions) || {}
+    });
 
     if (extraArgs.length > 0 && resolved.config.allow_extra_args !== true) {
       throw new Error(`Executor ${resolved.name} does not allow extra args`);
+    }
+
+    if (permissionDecision.decision !== 'allow') {
+      return permissionGateHelpers.applyPermissionDecision(
+        attachHighRiskClarity({
+          executor: resolved.name,
+          status: 'permission-pending',
+          description: resolved.config.description || '',
+          argv: resolved.config.argv || [],
+          cwd: resolved.config.cwd || '.',
+          risk: resolved.config.risk || 'normal',
+          evidence_hint: resolved.config.evidence_hint || [],
+          extra_args: extraArgs,
+          exit_code: null,
+          signal: '',
+          stdout: '',
+          stderr: '',
+          duration_ms: 0,
+          ran_at: '',
+          error: ''
+        }, resolved),
+        permissionDecision
+      );
     }
 
     const projectRoot = resolveProjectRoot();
@@ -161,23 +265,26 @@ function createExecutorCommandHelpers(deps) {
       };
     });
 
-    return {
-      executor: resolved.name,
-      status: latestExecutor.status,
-      description: resolved.config.description || '',
-      argv,
-      cwd: latestExecutor.cwd,
-      risk: latestExecutor.risk,
-      evidence_hint: latestExecutor.evidence_hint,
-      extra_args: extraArgs,
-      exit_code: latestExecutor.exit_code,
-      signal: result.signal || '',
-      stdout: result.stdout || '',
-      stderr: result.stderr || '',
-      duration_ms: latestExecutor.duration_ms,
-      ran_at: latestExecutor.ran_at,
-      error: result.error ? result.error.message : ''
-    };
+    return permissionGateHelpers.applyPermissionDecision(
+      attachHighRiskClarity({
+        executor: resolved.name,
+        status: latestExecutor.status,
+        description: resolved.config.description || '',
+        argv,
+        cwd: latestExecutor.cwd,
+        risk: latestExecutor.risk,
+        evidence_hint: latestExecutor.evidence_hint,
+        extra_args: extraArgs,
+        exit_code: latestExecutor.exit_code,
+        signal: result.signal || '',
+        stdout: result.stdout || '',
+        stderr: result.stderr || '',
+        duration_ms: latestExecutor.duration_ms,
+        ran_at: latestExecutor.ran_at,
+        error: result.error ? result.error.message : ''
+      }, resolved),
+      permissionDecision
+    );
   }
 
   function handleExecutorCommands(cmd, subcmd, rest) {

@@ -14,6 +14,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-proj-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
+  const bridgeCommand = 'node /tmp/emb-subagent-bridge.cjs --stdio-json';
   let stdout = '';
 
   process.stdout.write = chunk => {
@@ -23,7 +24,18 @@ test('installer lays down config/lib and runtime commands work', async () => {
 
   try {
     process.chdir(repoRoot);
-    await installer.main(['--codex', '--global', '--config-dir', tempHome, '--developer', 'welkon']);
+    await installer.main([
+      '--codex',
+      '--global',
+      '--config-dir',
+      tempHome,
+      '--developer',
+      'welkon',
+      '--subagent-bridge-cmd',
+      bridgeCommand,
+      '--subagent-bridge-timeout-ms',
+      '25000'
+    ]);
 
     const runtimeRoot = path.join(tempHome, 'emb-agent');
     const cliPath = path.join(runtimeRoot, 'bin', 'emb-agent.cjs');
@@ -59,6 +71,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(stdout, /Created env example:/);
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
+    assert.match(stdout, /Trust hint: workspace trust now gates startup hooks and bootstrap visibility/);
+    assert.match(stdout, /Sub-agent bridge: node \/tmp\/emb-subagent-bridge\.cjs --stdio-json \(timeout: 25000 ms\)/);
     assert.match(stdout, /Next steps:/);
     assert.match(stdout, /open a Codex session and run: init/);
     assert.match(stdout, /Then continue with: next/);
@@ -84,9 +98,19 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(configData.default_preferences.truth_source_mode, 'hardware_first');
     assert.deepEqual(configData.developer, { name: 'welkon', runtime: 'codex' });
     assert.equal(hostMetadata.name, 'codex');
+    assert.deepEqual(hostMetadata.subagent_bridge, {
+      command: bridgeCommand,
+      timeout_ms: 25000
+    });
     assert.equal(resolvedHost.name, 'codex');
     assert.equal(resolvedHost.stateRoot, path.join(tempHome, 'state', 'emb-agent'));
     assert.match(resolvedHost.cliCommand, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.equal(resolvedHost.subagentBridge.available, true);
+    assert.equal(resolvedHost.subagentBridge.mode, 'stdio-json');
+    assert.equal(resolvedHost.subagentBridge.source, 'host-metadata');
+    assert.equal(resolvedHost.subagentBridge.command, bridgeCommand);
+    assert.equal(resolvedHost.subagentBridge.timeout_ms, 25000);
+    assert.deepEqual(resolvedHost.subagentBridge.command_argv, ['node', '/tmp/emb-subagent-bridge.cjs', '--stdio-json']);
 
     const nextBeforeContext = installedCli.buildNextContext();
     assert.equal(nextBeforeContext.next.command, 'health');
@@ -415,9 +439,13 @@ test('installer lays down claude agents and settings hooks', async () => {
     assert.doesNotMatch(sessionFlowContent, /~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs/);
     assert.doesNotMatch(sessionFlowContent, /~\/\.claude\/emb-agent\/bin\/emb-agent\.cjs/);
     assert.equal(hostMetadata.name, 'claude');
+    assert.equal(hostMetadata.subagent_bridge, undefined);
     assert.equal(resolvedHost.name, 'claude');
     assert.equal(resolvedHost.stateRoot, path.join(tempHome, 'state', 'emb-agent'));
     assert.match(resolvedHost.cliCommand, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.equal(resolvedHost.subagentBridge.available, false);
+    assert.equal(resolvedHost.subagentBridge.mode, 'disabled');
+    assert.equal(resolvedHost.subagentBridge.source, 'none');
     assert.match(stdout, /Updated Claude Code config:/);
   } finally {
     process.stdout.write = originalWrite;

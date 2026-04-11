@@ -8,6 +8,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const chipCatalog = require(path.join(ROOT, 'lib', 'chip-catalog.cjs'));
+const permissionGateHelpers = require(path.join(ROOT, 'lib', 'permission-gates.cjs'));
 const templateCli = require(path.join(ROOT, 'scripts', 'template.cjs'));
 const attachProject = require(path.join(ROOT, 'scripts', 'attach-project.cjs'));
 
@@ -15,11 +16,11 @@ function usage() {
   process.stdout.write(
     [
       'ingest-truth usage:',
-      '  node scripts/ingest-truth.cjs hardware [--mcu <name>] [--board <name>] [--target <name>]',
+      '  node scripts/ingest-truth.cjs hardware [--confirm] [--mcu <name>] [--board <name>] [--target <name>]',
       '    [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
       '    [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>] [--force]',
-      '  node scripts/ingest-truth.cjs requirements [--goal <text>] [--feature <text>] [--constraint <text>]',
+      '  node scripts/ingest-truth.cjs requirements [--confirm] [--goal <text>] [--feature <text>] [--constraint <text>]',
       '    [--accept <text>] [--failure <text>] [--unknown <text>] [--source <path>] [--force]'
     ].join('\n') + '\n'
   );
@@ -56,6 +57,7 @@ function parseArgs(argv) {
     features: [],
     acceptance: [],
     failurePolicy: [],
+    explicit_confirmation: false,
     help: false
   };
 
@@ -69,6 +71,10 @@ function parseArgs(argv) {
     if (token === '--project') {
       result.project = argv[index + 1] || '';
       index += 1;
+      continue;
+    }
+    if (token === '--confirm') {
+      result.explicit_confirmation = true;
       continue;
     }
     if (token === '--mcu') {
@@ -751,6 +757,19 @@ function ingestRequirements(projectRoot, args) {
   };
 }
 
+function applyIngestTruthPermission(result, projectConfig, actionName, explicitConfirmation) {
+  const base = result && typeof result === 'object' && !Array.isArray(result) ? result : {};
+  const permissionDecision = permissionGateHelpers.evaluateExecutionPermission({
+    action_kind: 'write',
+    action_name: actionName,
+    risk: 'normal',
+    explicit_confirmation: explicitConfirmation === true,
+    permissions: (projectConfig && projectConfig.permissions) || {}
+  });
+
+  return permissionGateHelpers.applyPermissionDecision(base, permissionDecision);
+}
+
 function ingestTruth(argv) {
   const args = parseArgs(argv || []);
   if (args.help) {
@@ -761,12 +780,56 @@ function ingestTruth(argv) {
   if (!fs.existsSync(projectRoot) || !fs.statSync(projectRoot).isDirectory()) {
     throw new Error(`Project root not found: ${projectRoot}`);
   }
+  const runtimeConfig = runtime.loadRuntimeConfig(ROOT);
+  const projectConfig = runtime.loadProjectConfig(projectRoot, runtimeConfig);
+  const actionName = args.domain === 'hardware' ? 'ingest-hardware' : 'ingest-requirements';
+  const target = args.domain === 'hardware'
+    ? runtime.getProjectAssetRelativePath('hw.yaml')
+    : runtime.getProjectAssetRelativePath('req.yaml');
+  const blocked = applyIngestTruthPermission({
+    domain: args.domain,
+    target,
+    status: 'permission-pending',
+    updated:
+      args.domain === 'hardware'
+        ? {
+            truths: args.truths,
+            constraints: args.constraints,
+            unknowns: args.unknowns,
+            sources: args.sources,
+            signals: args.signals,
+            peripherals: args.peripherals
+          }
+        : {
+            goals: args.goals,
+            features: args.features,
+            constraints: args.constraints,
+            acceptance: args.acceptance,
+            failure_policy: args.failurePolicy,
+            unknowns: args.unknowns,
+            sources: args.sources
+          }
+  }, projectConfig, actionName, args.explicit_confirmation);
 
-  if (args.domain === 'hardware') {
-    return ingestHardware(projectRoot, args);
+  if (blocked.permission_decision && blocked.permission_decision.decision !== 'allow') {
+    return blocked;
   }
 
-  return ingestRequirements(projectRoot, args);
+  if (args.domain === 'hardware') {
+    return applyIngestTruthPermission(
+      ingestHardware(projectRoot, args),
+      projectConfig,
+      actionName,
+      args.explicit_confirmation
+    );
+  }
+
+  return applyIngestTruthPermission(
+    ingestRequirements(projectRoot, args),
+    projectConfig,
+    actionName,
+    args.explicit_confirmation
+  );
 }
 
 function main(argv) {

@@ -1,5 +1,7 @@
 'use strict';
 
+const permissionGateHelpers = require('./permission-gates.cjs');
+
 function createSessionReportCommandHelpers(deps) {
   const {
     fs,
@@ -12,6 +14,43 @@ function createSessionReportCommandHelpers(deps) {
     getProjectExtDir,
     updateSession
   } = deps;
+
+  function stripPermissionControlTokens(tokens) {
+    const list = Array.isArray(tokens) ? tokens : [];
+    const filtered = [];
+    let explicitConfirmation = false;
+
+    for (const token of list) {
+      if (token === '--confirm') {
+        explicitConfirmation = true;
+        continue;
+      }
+      filtered.push(token);
+    }
+
+    return {
+      tokens: filtered,
+      explicit_confirmation: explicitConfirmation
+    };
+  }
+
+  function applySessionReportPermission(result, explicitConfirmation) {
+    const permission = permissionGateHelpers.evaluateExecutionPermission({
+      action_kind: 'write',
+      action_name: 'session-report-save',
+      risk: 'normal',
+      explicit_confirmation: explicitConfirmation === true,
+      permissions:
+        (resolveSession() &&
+          resolveSession().project_config &&
+          resolveSession().project_config.permissions) || {}
+    });
+
+    return {
+      permission,
+      result: permissionGateHelpers.applyPermissionDecision(result, permission)
+    };
+  }
 
   function getSessionReportsDir() {
     return path.join(getProjectExtDir(), 'reports', 'sessions');
@@ -43,6 +82,16 @@ function createSessionReportCommandHelpers(deps) {
       session.diagnostics.latest_forensics &&
       session.diagnostics.latest_forensics.report_file
       ? session.diagnostics.latest_forensics
+      : null;
+  }
+
+  function getDelegationRuntime(session) {
+    return session &&
+      session.diagnostics &&
+      session.diagnostics.delegation_runtime &&
+      typeof session.diagnostics.delegation_runtime === 'object' &&
+      !Array.isArray(session.diagnostics.delegation_runtime)
+      ? session.diagnostics.delegation_runtime
       : null;
   }
 
@@ -84,6 +133,7 @@ function createSessionReportCommandHelpers(deps) {
         : null;
     const latestExecutor = getLatestExecutor(resolved.session);
     const latestForensics = getLatestForensics(resolved.session);
+    const delegationRuntime = getDelegationRuntime(resolved.session);
     const executorSignal = buildExecutorSignal(latestExecutor);
 
     return {
@@ -107,7 +157,8 @@ function createSessionReportCommandHelpers(deps) {
         : null,
       diagnostics: {
         latest_forensics: latestForensics,
-        latest_executor: latestExecutor
+        latest_executor: latestExecutor,
+        delegation_runtime: delegationRuntime
       },
       executor_signal: executorSignal,
       tool_recommendation: toolRecommendation,
@@ -171,6 +222,44 @@ function createSessionReportCommandHelpers(deps) {
       lines.push(`- latest_executor_stdout_preview: ${report.diagnostics.latest_executor.stdout_preview || '(empty)'}`);
       lines.push(`- latest_executor_stderr_preview: ${report.diagnostics.latest_executor.stderr_preview || '(empty)'}`);
     }
+    lines.push(`- delegation_pattern: ${report.diagnostics.delegation_runtime
+      ? report.diagnostics.delegation_runtime.pattern || '(none)'
+      : '(none)'}`);
+    if (report.diagnostics.delegation_runtime) {
+      lines.push(`- delegation_strategy: ${report.diagnostics.delegation_runtime.strategy || '(empty)'}`);
+      lines.push(
+        `- delegation_action: ${(report.diagnostics.delegation_runtime.requested_action || '(empty)')} -> ${(report.diagnostics.delegation_runtime.resolved_action || '(empty)')}`
+      );
+      lines.push(
+        `- delegation_phases: ${(report.diagnostics.delegation_runtime.phases || []).map(item => item.id).join(' -> ') || '(none)'}`
+      );
+      lines.push(
+        `- delegation_launches: ${(report.diagnostics.delegation_runtime.launch_requests || [])
+          .map(item => `${item.agent || '(agent)'}:${item.phase || 'phase'}:${item.continue_vs_spawn || 'decision'}`)
+          .join(' | ') || '(none)'}`
+      );
+      lines.push(
+        `- delegation_jobs: ${(report.diagnostics.delegation_runtime.jobs || [])
+          .map(item => `${item.agent || '(agent)'}:${item.phase || 'phase'}:${item.status || 'status'}`)
+          .join(' | ') || '(none)'}`
+      );
+      lines.push(
+        `- delegation_synthesis: ${report.diagnostics.delegation_runtime.synthesis
+          ? `${report.diagnostics.delegation_runtime.synthesis.status || '-'}, owner=${report.diagnostics.delegation_runtime.synthesis.owner || '-'}`
+          : '(none)'}`
+      );
+      lines.push(
+        `- delegation_worker_results: ${(report.diagnostics.delegation_runtime.worker_results || [])
+          .map(item => `${item.agent || '(agent)'}:${item.phase || 'phase'}:${item.status || 'status'}`)
+          .join(' | ') || '(none)'}`
+      );
+      lines.push(
+        `- delegation_integration: ${report.diagnostics.delegation_runtime.integration
+          ? `${report.diagnostics.delegation_runtime.integration.status || '-'}, owner=${report.diagnostics.delegation_runtime.integration.owner || '-'}, kind=${report.diagnostics.delegation_runtime.integration.execution_kind || '-'}`
+          : '(none)'}`
+      );
+      lines.push(`- delegation_updated_at: ${report.diagnostics.delegation_runtime.updated_at || '(empty)'}`);
+    }
     lines.push('');
     lines.push('## Guidance');
     lines.push('');
@@ -204,7 +293,22 @@ function createSessionReportCommandHelpers(deps) {
     return lines.join('\n');
   }
 
-  function runSessionReport(summaryText) {
+  function runSessionReport(summaryText, options) {
+    const explicitConfirmation =
+      options && typeof options === 'object' && !Array.isArray(options)
+        ? options.explicit_confirmation === true
+        : false;
+    const blocked = applySessionReportPermission({
+      generated: false,
+      report_file: '',
+      summary: summaryText || '',
+      handoff_present: false
+    }, explicitConfirmation);
+
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
     ensureSessionReportsDir();
     const report = buildSessionReport(summaryText);
     const fileName = `report-${buildTimestampSlug(report.generated_at)}.md`;
@@ -216,17 +320,18 @@ function createSessionReportCommandHelpers(deps) {
       current.last_command = 'session-report';
     });
 
-    return {
+    return permissionGateHelpers.applyPermissionDecision({
       generated: true,
       report_file: path.relative(process.cwd(), filePath),
       summary: report.summary,
       next: report.next.next,
       diagnostics: report.diagnostics,
+      delegation_runtime: report.diagnostics.delegation_runtime,
       executor_signal: report.executor_signal,
       tool_recommendation: report.tool_recommendation,
       adapter_health: report.adapter_health,
       handoff_present: Boolean(report.handoff)
-    };
+    }, blocked.permission);
   }
 
   function handleSessionReportCommands(cmd, subcmd, rest) {
@@ -234,8 +339,11 @@ function createSessionReportCommandHelpers(deps) {
       return undefined;
     }
 
-    const summaryText = [subcmd, ...rest].filter(Boolean).join(' ').trim();
-    return runSessionReport(summaryText);
+    const parsed = stripPermissionControlTokens([subcmd, ...rest].filter(Boolean));
+    const summaryText = parsed.tokens.join(' ').trim();
+    return runSessionReport(summaryText, {
+      explicit_confirmation: parsed.explicit_confirmation
+    });
   }
 
   return {

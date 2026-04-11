@@ -1,7 +1,12 @@
 'use strict';
 
+const os = require('os');
+
+const permissionGateHelpers = require('./permission-gates.cjs');
+
 function createTaskCommandHelpers(deps) {
   const {
+    childProcess,
     fs,
     path,
     runtime,
@@ -27,6 +32,40 @@ function createTaskCommandHelpers(deps) {
     { phase: 3, action: 'finish' },
     { phase: 4, action: 'create-pr' }
   ];
+
+  function stripPermissionControlTokens(tokens) {
+    const list = Array.isArray(tokens) ? tokens : [];
+    const filtered = [];
+    let explicitConfirmation = false;
+
+    for (const token of list) {
+      if (token === '--confirm') {
+        explicitConfirmation = true;
+        continue;
+      }
+      filtered.push(token);
+    }
+
+    return {
+      tokens: filtered,
+      explicit_confirmation: explicitConfirmation
+    };
+  }
+
+  function applyTaskWritePermission(result, actionName, explicitConfirmation) {
+    const permission = permissionGateHelpers.evaluateExecutionPermission({
+      action_kind: 'write',
+      action_name: actionName,
+      risk: 'normal',
+      explicit_confirmation: explicitConfirmation === true,
+      permissions: (getProjectConfig() && getProjectConfig().permissions) || {}
+    });
+
+    return {
+      permission,
+      result: permissionGateHelpers.applyPermissionDecision(result, permission)
+    };
+  }
 
   function getTasksDir() {
     return path.join(getProjectExtDir(), 'tasks');
@@ -134,6 +173,14 @@ function createTaskCommandHelpers(deps) {
     return path.join(getTasksDir(), name);
   }
 
+  function getManagedTaskWorkspaceRoot() {
+    return path.join(os.tmpdir(), 'emb-agent-task-worktrees', runtime.getProjectKey(resolveProjectRoot()));
+  }
+
+  function getDefaultTaskWorkspacePath(name) {
+    return path.join(getManagedTaskWorkspaceRoot(), name);
+  }
+
   function getTaskManifestPath(name) {
     return path.join(getTaskDir(name), 'task.json');
   }
@@ -208,6 +255,8 @@ function createTaskCommandHelpers(deps) {
   }
 
   function parseTaskAddArgs(rest) {
+    const control = stripPermissionControlTokens(rest);
+    const tokens = control.tokens;
     const result = {
       type: 'implement',
       summary: '',
@@ -224,60 +273,60 @@ function createTaskCommandHelpers(deps) {
     };
     const summaryParts = [];
 
-    for (let index = 0; index < rest.length; index += 1) {
-      const token = rest[index];
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
       if (token === '--type') {
-        result.type = rest[index + 1] || '';
+        result.type = tokens[index + 1] || '';
         index += 1;
         continue;
       }
       if (token === '--description') {
-        result.description = rest[index + 1] || '';
+        result.description = tokens[index + 1] || '';
         index += 1;
         continue;
       }
       if (token === '--dev-type') {
-        result.devType = rest[index + 1] || '';
+        result.devType = tokens[index + 1] || '';
         index += 1;
         continue;
       }
       if (token === '--scope') {
-        result.scope = rest[index + 1] || '';
+        result.scope = tokens[index + 1] || '';
         index += 1;
         continue;
       }
       if (token === '--priority') {
-        result.priority = rest[index + 1] || '';
+        result.priority = tokens[index + 1] || '';
         index += 1;
         continue;
       }
       if (token === '--creator') {
-        result.creator = rest[index + 1] || '';
+        result.creator = tokens[index + 1] || '';
         index += 1;
         continue;
       }
       if (token === '--assignee') {
-        result.assignee = rest[index + 1] || '';
+        result.assignee = tokens[index + 1] || '';
         index += 1;
         continue;
       }
       if (token === '--branch') {
-        result.branch = rest[index + 1] || '';
+        result.branch = tokens[index + 1] || '';
         index += 1;
         continue;
       }
       if (token === '--base-branch') {
-        result.baseBranch = rest[index + 1] || '';
+        result.baseBranch = tokens[index + 1] || '';
         index += 1;
         continue;
       }
       if (token === '--worktree-path') {
-        result.worktreePath = rest[index + 1] || '';
+        result.worktreePath = tokens[index + 1] || '';
         index += 1;
         continue;
       }
       if (token === '--note') {
-        result.notes = rest[index + 1] || '';
+        result.notes = tokens[index + 1] || '';
         index += 1;
         continue;
       }
@@ -298,19 +347,39 @@ function createTaskCommandHelpers(deps) {
     result.description = String(result.description || '').trim();
     result.worktreePath = String(result.worktreePath || '').trim();
     result.notes = String(result.notes || '').trim();
+    result.explicit_confirmation = control.explicit_confirmation;
     return result;
   }
 
   function parseTaskContextArgs(rest) {
-    if (!rest[0]) throw new Error('Missing task name');
-    if (!rest[1]) throw new Error('Missing context channel');
-    if (!rest[2]) throw new Error('Missing context path');
+    const control = stripPermissionControlTokens(rest);
+    const tokens = control.tokens;
+    if (!tokens[0]) throw new Error('Missing task name');
+    if (!tokens[1]) throw new Error('Missing context channel');
+    if (!tokens[2]) throw new Error('Missing context path');
 
     return {
-      name: rest[0],
-      channel: ensureContextChannel(rest[1]),
-      targetPath: runtime.normalizeProjectRelativePath(rest[2]),
-      reason: rest.slice(3).join(' ').trim() || 'Added manually'
+      name: tokens[0],
+      channel: ensureContextChannel(tokens[1]),
+      targetPath: runtime.normalizeProjectRelativePath(tokens[2]),
+      reason: tokens.slice(3).join(' ').trim() || 'Added manually',
+      explicit_confirmation: control.explicit_confirmation
+    };
+  }
+
+  function parseNamedTaskWriteArgs(rest, commandLabel) {
+    const control = stripPermissionControlTokens(rest);
+    const tokens = control.tokens;
+    const name = String(tokens[0] || '').trim();
+
+    if (!name) {
+      throw new Error(`Missing task name${commandLabel ? ` for ${commandLabel}` : ''}`);
+    }
+
+    return {
+      name,
+      rest: tokens.slice(1),
+      explicit_confirmation: control.explicit_confirmation
     };
   }
 
@@ -612,6 +681,200 @@ function createTaskCommandHelpers(deps) {
     runtime.writeJson(getTaskManifestPath(name), manifest);
   }
 
+  function runGit(args, cwd, label) {
+    try {
+      return childProcess.execFileSync('git', args, {
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+    } catch (error) {
+      const detail = error && error.stderr ? String(error.stderr).trim() : error.message;
+      throw new Error(`${label} failed: ${detail}`);
+    }
+  }
+
+  function hasGitRoot(projectRoot) {
+    return fs.existsSync(path.join(projectRoot, '.git'));
+  }
+
+  function resolveTaskWorkspacePath(task) {
+    const configuredPath = String(task && task.worktree_path ? task.worktree_path : '').trim();
+    if (configuredPath) {
+      return path.isAbsolute(configuredPath)
+        ? configuredPath
+        : path.resolve(resolveProjectRoot(), configuredPath);
+    }
+    return getDefaultTaskWorkspacePath(task.name);
+  }
+
+  function isManagedTaskWorkspace(targetPath) {
+    const root = getManagedTaskWorkspaceRoot();
+    const relative = path.relative(root, targetPath);
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  }
+
+  function removePathIfManaged(targetPath) {
+    if (!targetPath || !fs.existsSync(targetPath)) {
+      return;
+    }
+    if (!isManagedTaskWorkspace(targetPath)) {
+      throw new Error(`Refusing to remove unmanaged task workspace: ${targetPath}`);
+    }
+    fs.rmSync(targetPath, { recursive: true, force: true });
+  }
+
+  function resolveGitBaseRef(task) {
+    const projectRoot = resolveProjectRoot();
+    const candidate = String(task.base_branch || '').trim();
+
+    if (candidate) {
+      try {
+        runGit(['rev-parse', '--verify', candidate], projectRoot, `git rev-parse for ${candidate}`);
+        return candidate;
+      } catch {
+        // fall through to HEAD
+      }
+    }
+
+    return 'HEAD';
+  }
+
+  function copyProjectTree(sourceRoot, targetRoot) {
+    const skipTopLevel = new Set(['.git', '.emb-agent']);
+
+    function copyRecursive(currentSource, currentTarget, depth) {
+      runtime.ensureDir(currentTarget);
+
+      fs.readdirSync(currentSource, { withFileTypes: true }).forEach(entry => {
+        if (depth === 0 && skipTopLevel.has(entry.name)) {
+          return;
+        }
+
+        const sourcePath = path.join(currentSource, entry.name);
+        const targetPath = path.join(currentTarget, entry.name);
+
+        if (entry.isDirectory()) {
+          copyRecursive(sourcePath, targetPath, depth + 1);
+          return;
+        }
+
+        if (entry.isSymbolicLink()) {
+          const linkTarget = fs.readlinkSync(sourcePath);
+          fs.symlinkSync(linkTarget, targetPath);
+          return;
+        }
+
+        if (entry.isFile()) {
+          runtime.ensureDir(path.dirname(targetPath));
+          fs.copyFileSync(sourcePath, targetPath);
+        }
+      });
+    }
+
+    copyRecursive(sourceRoot, targetRoot, 0);
+  }
+
+  function ensureTaskWorkspace(task) {
+    const projectRoot = resolveProjectRoot();
+    const targetPath = resolveTaskWorkspacePath(task);
+    const created = !fs.existsSync(targetPath);
+
+    if (!created) {
+      return {
+        mode: hasGitRoot(projectRoot) ? 'git-worktree' : 'copy',
+        created: false,
+        path: targetPath
+      };
+    }
+
+    runtime.ensureDir(path.dirname(targetPath));
+
+    if (hasGitRoot(projectRoot)) {
+      const baseRef = resolveGitBaseRef(task);
+      const branchName = String(task.branch || '').trim();
+
+      if (branchName) {
+        let branchExists = false;
+        try {
+          runGit(['rev-parse', '--verify', `refs/heads/${branchName}`], projectRoot, `git branch lookup for ${branchName}`);
+          branchExists = true;
+        } catch {
+          branchExists = false;
+        }
+
+        runGit(
+          branchExists
+            ? ['worktree', 'add', targetPath, branchName]
+            : ['worktree', 'add', '-b', branchName, targetPath, baseRef],
+          projectRoot,
+          `git worktree add for task ${task.name}`
+        );
+      } else {
+        runGit(
+          ['worktree', 'add', '--detach', targetPath, baseRef],
+          projectRoot,
+          `git worktree add for task ${task.name}`
+        );
+      }
+
+      return {
+        mode: 'git-worktree',
+        created: true,
+        path: targetPath
+      };
+    }
+
+    copyProjectTree(projectRoot, targetPath);
+    return {
+      mode: 'copy',
+      created: true,
+      path: targetPath
+    };
+  }
+
+  function cleanupTaskWorkspace(task) {
+    const targetPath = resolveTaskWorkspacePath(task);
+    if (!targetPath || !fs.existsSync(targetPath)) {
+      return {
+        cleaned: false,
+        path: targetPath
+      };
+    }
+
+    if (hasGitRoot(resolveProjectRoot())) {
+      try {
+        runGit(['worktree', 'remove', '--force', targetPath], resolveProjectRoot(), `git worktree remove for task ${task.name}`);
+        return {
+          cleaned: true,
+          path: targetPath
+        };
+      } catch (error) {
+        if (!isManagedTaskWorkspace(targetPath)) {
+          return {
+            cleaned: false,
+            path: targetPath,
+            error: error.message
+          };
+        }
+      }
+    }
+
+    try {
+      removePathIfManaged(targetPath);
+      return {
+        cleaned: true,
+        path: targetPath
+      };
+    } catch (error) {
+      return {
+        cleaned: false,
+        path: targetPath,
+        error: error.message
+      };
+    }
+  }
+
   function readTask(name) {
     const manifestPath = getTaskManifestPath(name);
     if (!fs.existsSync(manifestPath)) {
@@ -694,9 +957,28 @@ function createTaskCommandHelpers(deps) {
 
   function createTask(rest) {
     const parsed = parseTaskAddArgs(rest);
+    const previewBindings = buildTaskBindings(parsed.summary);
+    const blocked = applyTaskWritePermission({
+      created: false,
+      task: {
+        title: parsed.summary,
+        status: 'planning',
+        dev_type: parsed.devType,
+        scope: parsed.scope,
+        priority: parsed.priority,
+        assignee: parsed.assignee || parsed.creator || '',
+        type: parsed.type,
+        bindings: previewBindings
+      }
+    }, 'task-add', parsed.explicit_confirmation);
+
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
     const session = loadSession();
     const name = buildUniqueTaskSlug(parsed.summary);
-    const bindings = buildTaskBindings(parsed.summary);
+    const bindings = previewBindings;
     const manifest = buildTaskManifest(name, parsed, parsed.type, session, bindings);
 
     writeTask(name, manifest);
@@ -714,10 +996,10 @@ function createTaskCommandHelpers(deps) {
       current.last_command = 'task add';
     });
 
-    return {
+    return permissionGateHelpers.applyPermissionDecision({
       created: true,
       task: readTask(name)
-    };
+    }, blocked.permission);
   }
 
   function showTask(name) {
@@ -728,13 +1010,29 @@ function createTaskCommandHelpers(deps) {
     return { task };
   }
 
-  function activateTask(name) {
-    const task = readTask(name);
-    const manifest = runtime.readJson(getTaskManifestPath(name));
-    writeTask(name, updateTaskTimestamps({
+  function activateTask(rest) {
+    const input = parseNamedTaskWriteArgs(rest, 'task activate');
+    const task = readTask(input.name);
+    const blocked = applyTaskWritePermission({
+      activated: false,
+      task: {
+        name: task.name,
+        title: task.title,
+        status: task.status
+      }
+    }, 'task-activate', input.explicit_confirmation);
+
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    const workspace = ensureTaskWorkspace(task);
+    const manifest = runtime.readJson(getTaskManifestPath(input.name));
+    writeTask(input.name, updateTaskTimestamps({
       ...manifest,
       status: 'in_progress',
-      current_phase: 1
+      current_phase: 1,
+      worktree_path: workspace.path
     }));
 
     updateSession(current => {
@@ -756,30 +1054,49 @@ function createTaskCommandHelpers(deps) {
     });
     syncCurrentTaskPointer(task.name);
 
-    return {
+    return permissionGateHelpers.applyPermissionDecision({
       activated: true,
-      task: readTask(name)
-    };
+      task: readTask(input.name),
+      workspace
+    }, blocked.permission);
   }
 
-  function resolveTask(name, rest) {
-    const note = rest.join(' ').trim();
-    const manifestPath = getTaskManifestPath(name);
+  function resolveTask(rest) {
+    const input = parseNamedTaskWriteArgs(rest, 'task resolve');
+    const note = input.rest.join(' ').trim();
+    const task = readTask(input.name);
+    const blocked = applyTaskWritePermission({
+      resolved: false,
+      task: {
+        name: task.name,
+        title: task.title,
+        status: task.status,
+        notes: note
+      }
+    }, 'task-resolve', input.explicit_confirmation);
+
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    const workspaceCleanup = cleanupTaskWorkspace(task);
+    const manifestPath = getTaskManifestPath(input.name);
     const manifest = runtime.readJson(manifestPath);
     const session = loadSession();
-    const shouldClearActiveTask = Boolean(session.active_task && session.active_task.name === name);
-    writeTask(name, updateTaskTimestamps({
+    const shouldClearActiveTask = Boolean(session.active_task && session.active_task.name === input.name);
+    writeTask(input.name, updateTaskTimestamps({
       ...manifest,
       status: 'completed',
       current_phase: 4,
       completedAt: new Date().toISOString(),
+      worktree_path: null,
       notes: note || manifest.notes || '',
       resolution_note: note || manifest.resolution_note || ''
     }));
 
     updateSession(current => {
       current.last_command = 'task resolve';
-      if (current.active_task && current.active_task.name === name) {
+      if (current.active_task && current.active_task.name === input.name) {
         current.active_task = {
           name: '',
           title: '',
@@ -793,10 +1110,11 @@ function createTaskCommandHelpers(deps) {
       syncCurrentTaskPointer('');
     }
 
-    return {
+    return permissionGateHelpers.applyPermissionDecision({
       resolved: true,
-      task: readTask(name)
-    };
+      task: readTask(input.name),
+      workspace_cleanup: workspaceCleanup
+    }, blocked.permission);
   }
 
   function listTaskContext(name, channel) {
@@ -827,6 +1145,27 @@ function createTaskCommandHelpers(deps) {
   function addTaskContext(rest) {
     const parsed = parseTaskContextArgs(rest);
     const task = readTask(parsed.name);
+    const blocked = applyTaskWritePermission({
+      updated: false,
+      task: {
+        name: task.name,
+        title: task.title,
+        status: task.status
+      },
+      channel: parsed.channel,
+      entries: [
+        {
+          kind: 'file',
+          path: parsed.targetPath,
+          reason: parsed.reason
+        }
+      ]
+    }, 'task-context-add', parsed.explicit_confirmation);
+
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
     const contextPath = getTaskContextPath(parsed.name, parsed.channel);
     const existing = readJsonl(contextPath);
     const fullPath = path.join(resolveProjectRoot(), parsed.targetPath);
@@ -845,7 +1184,7 @@ function createTaskCommandHelpers(deps) {
       current.last_command = 'task context add';
     });
 
-    return {
+    return permissionGateHelpers.applyPermissionDecision({
       updated: true,
       task: {
         name: task.name,
@@ -854,7 +1193,7 @@ function createTaskCommandHelpers(deps) {
       },
       channel: parsed.channel,
       entries: next
-    };
+    }, blocked.permission);
   }
 
   function getActiveTask() {
@@ -889,13 +1228,11 @@ function createTaskCommandHelpers(deps) {
     }
 
     if (subcmd === 'activate') {
-      if (!rest[0]) throw new Error('Missing task name');
-      return activateTask(rest[0]);
+      return activateTask(rest);
     }
 
     if (subcmd === 'resolve') {
-      if (!rest[0]) throw new Error('Missing task name');
-      return resolveTask(rest[0], rest.slice(1));
+      return resolveTask(rest);
     }
 
     if (subcmd === 'context' && (rest[0] === 'list' || rest[0] === 'show')) {

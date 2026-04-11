@@ -65,22 +65,41 @@ test('cli tool run emits adapter-required json when no adapter exists', async ()
   assert.equal(result.tool, 'timer-calc');
 });
 
-test('tool runtime attaches high-risk clarity template for risky flags', () => {
+test('tool runtime blocks high-risk execution until explicit confirmation is provided', () => {
   const result = toolRuntime.runTool(runtimeRoot, 'timer-calc', [
     '--flash',
     'main',
     '--force'
   ]);
 
-  assert.equal(result.status, 'adapter-required');
+  assert.equal(result.status, 'permission-pending');
   assert.ok(result.high_risk_clarity);
   assert.equal(result.high_risk_clarity.enabled, true);
   assert.equal(result.high_risk_clarity.requires_explicit_confirmation, true);
   assert.ok(Array.isArray(result.high_risk_clarity.matched_signals));
   assert.ok(result.high_risk_clarity.matched_signals.length > 0);
+  assert.ok(result.permission_decision);
+  assert.equal(result.permission_decision.decision, 'ask');
+  assert.equal(result.permission_decision.reason_code, 'high-risk-confirmation');
   assert.ok(Array.isArray(result.permission_gates));
   assert.equal(result.permission_gates[0].kind, 'explicit-confirmation');
   assert.equal(result.permission_gates[0].state, 'pending');
+});
+
+test('tool runtime allows confirmed high-risk execution to continue to normal resolution', () => {
+  const result = toolRuntime.runTool(runtimeRoot, 'timer-calc', [
+    '--confirm',
+    '--flash',
+    'main',
+    '--force'
+  ]);
+
+  assert.equal(result.status, 'adapter-required');
+  assert.ok(result.permission_decision);
+  assert.equal(result.permission_decision.decision, 'allow');
+  assert.equal(result.permission_decision.reason_code, 'explicit-confirmed');
+  assert.ok(Array.isArray(result.permission_gates));
+  assert.equal(result.permission_gates[0].kind, 'explicit-confirmation');
 });
 
 test('pwm-calc also requires external adapter by default', () => {
@@ -166,6 +185,36 @@ test('tool runtime loads project external adapter when available', () => {
     assert.equal(result.options.family, 'vendor-family');
     assert.equal(result.options.device, 'vendor-device');
     assert.equal(result.options.timer, 'tm16');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('tool runtime honors project permission deny rules before adapter execution', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-tool-runtime-deny-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main([
+      'project',
+      'set',
+      '--confirm',
+      '--field',
+      'permissions.tools.deny',
+      '--value',
+      JSON.stringify(['timer-calc'])
+    ]);
+
+    const result = toolRuntime.runTool(runtimeRoot, 'timer-calc', ['--target-us', '560']);
+    assert.equal(result.status, 'permission-denied');
+    assert.ok(result.permission_decision);
+    assert.equal(result.permission_decision.decision, 'deny');
+    assert.equal(result.permission_decision.reason_code, 'policy-deny');
+    assert.ok(Array.isArray(result.permission_gates));
+    assert.equal(result.permission_gates[0].kind, 'permission-rule');
+    assert.equal(result.permission_gates[0].state, 'blocked');
   } finally {
     process.chdir(currentCwd);
   }

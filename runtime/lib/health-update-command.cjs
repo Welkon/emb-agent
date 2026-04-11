@@ -1,6 +1,7 @@
 'use strict';
 
 const adapterQualityHelpers = require('./adapter-quality.cjs');
+const hookTrustHelpers = require('./hook-trust.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const updateCheckHelpers = require('./update-check.cjs');
 
@@ -32,6 +33,7 @@ function createHealthUpdateCommandHelpers(deps) {
     ingestDocCli,
     adapterSources,
     rootDir,
+    getRuntimeHost,
     updateSession
   } = deps;
 
@@ -97,7 +99,7 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
-  function pushNextCommand(target, key, summary, cli, kind) {
+  function pushNextCommand(target, key, summary, cli, kind, meta) {
     if (!cli) {
       return;
     }
@@ -110,7 +112,8 @@ function createHealthUpdateCommandHelpers(deps) {
       key,
       kind: kind || 'command',
       summary,
-      cli
+      cli,
+      ...(meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {})
     });
   }
 
@@ -132,83 +135,239 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
-  function buildQuickstartHint(hardwareIdentity, nextCommands, pendingDocApply) {
+  function createBootstrapStage(id, status, label, options) {
+    const config = options && typeof options === 'object' ? options : {};
+    return {
+      id,
+      status,
+      label,
+      summary: config.summary || '',
+      cli: config.cli || '',
+      kind: config.kind || '',
+      argv: Array.isArray(config.argv) ? config.argv : [],
+      manual: status === 'manual',
+      blocking: ['ready', 'manual'].includes(status),
+      evidence: Array.isArray(config.evidence) ? config.evidence.filter(Boolean) : []
+    };
+  }
+
+  function buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks) {
     const commands = Array.isArray(nextCommands) ? nextCommands : [];
-    if (pendingDocApply && pendingDocApply.command) {
-      return {
-        stage: 'doc-apply-then-next',
-        summary: 'Write the latest document parsing result into truth files first, then run next',
-        steps: [
+    const allChecks = Array.isArray(checks) ? checks : [];
+    const findCommand = (...keys) => commands.find(item => keys.includes(item.key));
+    const findCheck = key => allChecks.find(item => item.key === key) || null;
+    const initReady = [
+      'emb_agent_dir',
+      'project_config_file',
+      'project_config_valid',
+      'hw_truth',
+      'req_truth',
+      'docs_dir',
+      'doc_cache_dir',
+      'adapter_cache_dir',
+      'adapters_dir'
+    ].every(key => {
+      const check = findCheck(key);
+      return check && check.status === 'pass';
+    });
+    const trustReady = !workspaceTrust || workspaceTrust.trusted !== false;
+    const hardwareReady = Boolean(hardwareIdentity.model && hardwareIdentity.package);
+    const docApply = pendingDocApply && pendingDocApply.command
+      ? {
+          ...pendingDocApply,
+          kind: 'doc',
+          cli: pendingDocApply.command,
+          argv: pendingDocApply.argv || []
+        }
+      : null;
+    const bootstrap = findCommand('adapter-bootstrap', 'adapter-sync');
+    const derive = findCommand('adapter-derive-from-doc');
+    const next = findCommand('next');
+    const stages = [];
+
+    stages.push(
+      createBootstrapStage(
+        'init-project',
+        initReady ? 'completed' : 'ready',
+        'Initialize emb-agent project skeleton',
+        {
+          summary: initReady
+            ? 'Project skeleton and base caches already exist'
+            : 'Create or rebuild .emb-agent skeleton before later bootstrap stages',
+          cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['init']),
+          kind: 'command',
+          argv: ['init'],
+          evidence: [runtime.getProjectAssetRelativePath()]
+        }
+      )
+    );
+
+    stages.push(
+      createBootstrapStage(
+        'workspace-trust',
+        !initReady ? 'pending' : trustReady ? 'completed' : 'manual',
+        'Establish workspace trust',
+        {
+          summary: trustReady
+            ? (workspaceTrust && workspaceTrust.summary)
+              ? workspaceTrust.summary
+              : 'Workspace trust is established for trust-gated startup flows'
+            : 'Grant workspace trust first so hooks and trust-gated startup flows can activate safely',
+          evidence: workspaceTrust
+            ? [
+                workspaceTrust.source ? `source=${workspaceTrust.source}` : '',
+                workspaceTrust.signal ? `signal=${workspaceTrust.signal}` : ''
+              ]
+            : []
+        }
+      )
+    );
+
+    stages.push(
+      createBootstrapStage(
+        'hardware-truth',
+        !initReady || !trustReady ? 'pending' : hardwareReady ? 'completed' : 'manual',
+        'Record hardware identity',
+        {
+          summary: hardwareReady
+            ? `Hardware identity is recorded as ${hardwareIdentity.model}/${hardwareIdentity.package}`
+            : `Fill vendor / model / package in ${runtime.getProjectAssetRelativePath('hw.yaml')} first`,
+          evidence: [runtime.getProjectAssetRelativePath('hw.yaml')]
+        }
+      )
+    );
+
+    stages.push(
+      createBootstrapStage(
+        'doc-truth-sync',
+        !initReady || !trustReady || !hardwareReady ? 'pending' : docApply ? 'ready' : 'completed',
+        'Apply pending document truth',
+        {
+          summary: docApply
+            ? `Pending parsed document ${docApply.doc_id} should be written into truth files first`
+            : 'No pending document apply backlog remains',
+          cli: docApply ? docApply.cli : '',
+          kind: docApply ? docApply.kind : '',
+          argv: docApply ? docApply.argv : [],
+          evidence: docApply ? [docApply.target, docApply.doc_id] : []
+        }
+      )
+    );
+
+    if (bootstrap || derive) {
+      const command = bootstrap || derive;
+      stages.push(
+        createBootstrapStage(
+          bootstrap ? 'adapter-bootstrap' : 'adapter-derive',
+          !initReady || !trustReady || !hardwareReady || Boolean(docApply) ? 'pending' : 'ready',
+          bootstrap ? 'Bootstrap matching adapters' : 'Derive adapter from hardware document',
           {
-            label: `Apply document ${pendingDocApply.doc_id} to ${pendingDocApply.target}`,
-            cli: pendingDocApply.command
-          },
-          {
-            label: 'Enter the emb-agent recommended next step',
-            cli: NEXT_CLI
+            summary: command.summary || '',
+            cli: command.cli || '',
+            kind: command.kind || '',
+            argv: command.argv || [],
+            evidence: [command.key || '']
           }
-        ],
-        followup: `Run first: ${pendingDocApply.command} -> ${NEXT_CLI}`
-      };
+        )
+      );
+    } else {
+      stages.push(
+        createBootstrapStage(
+          'adapter-bootstrap',
+          !initReady || !trustReady || !hardwareReady || Boolean(docApply) ? 'pending' : 'completed',
+          'Bootstrap matching adapters',
+          {
+            summary: 'Adapter registration and matching bootstrap are already closed'
+          }
+        )
+      );
     }
 
-    const bootstrap = commands.find(item => item.key === 'adapter-bootstrap');
-    const derive = commands.find(item => item.key === 'adapter-derive-from-doc');
+    const hasBlockingStage = stages.some(item => ['ready', 'manual'].includes(item.status));
+    stages.push(
+      createBootstrapStage(
+        'next-step',
+        hasBlockingStage ? 'pending' : 'ready',
+        'Enter the recommended next stage',
+        {
+          summary: hasBlockingStage
+            ? 'Finish earlier bootstrap stages first, then enter next'
+            : 'Bootstrap prerequisites are closed; continue with next',
+          cli: next ? next.cli : NEXT_CLI,
+          kind: 'command',
+          argv: ['next']
+        }
+      )
+    );
 
-    if (bootstrap) {
-      return {
-        stage: 'bootstrap-then-next',
-        summary: 'The shortest closure path is ready: bootstrap first, sync matching adapters, then run next directly',
-        steps: [
-          {
-            label: bootstrap.summary || 'Run adapter bootstrap',
-            cli: bootstrap.cli || ''
-          },
-          {
-            label: 'Enter the emb-agent recommended next step',
-            cli: NEXT_CLI
-          }
-        ]
-      };
-    }
+    const nextStage = stages.find(item => ['ready', 'manual'].includes(item.status)) || null;
+    const quickstartStage = nextStage
+      ? nextStage.id === 'hardware-truth'
+        ? 'fill-hardware-identity'
+        : nextStage.id === 'workspace-trust'
+          ? 'establish-workspace-trust'
+        : nextStage.id === 'doc-truth-sync'
+          ? 'doc-apply-then-next'
+          : nextStage.id === 'adapter-derive'
+            ? 'derive-then-next'
+            : nextStage.id === 'adapter-bootstrap'
+              ? 'bootstrap-then-next'
+              : 'next'
+      : 'next';
+    const quickstartSteps = [
+      ...(nextStage
+        ? [
+            {
+              label: nextStage.label,
+              cli: nextStage.cli || ''
+            }
+          ]
+        : []),
+      ...(nextStage && nextStage.id !== 'next-step'
+        ? [
+            {
+              label: 'Enter the emb-agent recommended next step',
+              cli: NEXT_CLI
+            }
+          ]
+        : [])
+    ];
 
-    if (derive) {
-      return {
-        stage: 'derive-then-next',
-        summary: 'Existing adapters do not cover the current hardware yet. Draft an adapter from the latest document first, then run next',
-        steps: [
-          {
-            label: derive.summary || 'Run adapter derive',
-            cli: derive.cli || ''
-          },
-          {
-            label: 'Enter the emb-agent recommended next step',
-            cli: NEXT_CLI
-          }
-        ],
-        followup: `Run first: ${derive.cli} -> ${NEXT_CLI}`
-      };
-    }
+    return {
+      command: 'bootstrap',
+      project_root: projectRoot,
+      runtime_host: RUNTIME_HOST.name,
+      status: nextStage ? (nextStage.status === 'manual' ? 'manual' : 'ready') : 'complete',
+      summary: nextStage
+        ? nextStage.summary || nextStage.label
+        : 'Bootstrap prerequisites are already closed',
+      current_stage: nextStage ? nextStage.id : '',
+      next_stage: nextStage,
+      stages,
+      quickstart: {
+        stage: quickstartStage,
+        summary: nextStage
+          ? nextStage.summary || nextStage.label
+          : 'Bootstrap prerequisites are already closed; run next directly',
+        steps: quickstartSteps,
+        followup:
+          nextStage && nextStage.cli
+            ? nextStage.id === 'next-step'
+            ? `Run first: ${nextStage.cli}`
+            : `Run first: ${nextStage.cli} -> ${NEXT_CLI}`
+            : nextStage && nextStage.id === 'workspace-trust'
+              ? `Grant workspace trust in the host/runtime first, then rerun: ${HEALTH_CLI}`
+            : nextStage && nextStage.id === 'hardware-truth'
+              ? `After hardware truth is complete, run directly: ${DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI} -> ${NEXT_CLI}`
+              : `Run first: ${NEXT_CLI}`
+      },
+      workspace_trust: workspaceTrust || null
+    };
+  }
 
-    if (!hardwareIdentity.model || !hardwareIdentity.package) {
-      return {
-        stage: 'fill-hardware-identity',
-        summary: 'Fill in the hardware identity in hw.yaml first; after that you can take the shortest bootstrap -> next closure path',
-        steps: [
-          {
-            label: `Fill in vendor / model / package in ${runtime.getProjectAssetRelativePath('hw.yaml')}`,
-            cli: ''
-          },
-          {
-            label: 'Run health again to confirm the shortest closure path is available',
-            cli: HEALTH_CLI
-          }
-        ],
-        followup: `After hardware truth is complete, run directly: ${DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI} -> ${NEXT_CLI}`
-      };
-    }
-
-    return null;
+  function buildQuickstartHint(workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, projectRoot) {
+    const bootstrap = buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks);
+    return bootstrap.quickstart;
   }
 
   function findLatestHardwareDoc(projectRoot, pendingDocApply) {
@@ -246,6 +405,7 @@ function createHealthUpdateCommandHelpers(deps) {
   }
 
   function buildHealthReport() {
+    const runtimeHost = typeof getRuntimeHost === 'function' ? getRuntimeHost() : RUNTIME_HOST;
     const projectRoot = resolveProjectRoot();
     const projectExtDir = getProjectExtDir();
     const projectConfigPath = path.join(projectExtDir, 'project.json');
@@ -262,6 +422,11 @@ function createHealthUpdateCommandHelpers(deps) {
     let normalizedSession = null;
     let rawSession = null;
     let handoff = null;
+    const workspaceTrust = hookTrustHelpers.resolveWorkspaceTrust(null, process.env);
+
+    const subagentBridge = runtimeHost && runtimeHost.subagentBridge
+      ? runtimeHost.subagentBridge
+      : { available: false, mode: 'disabled', source: 'none', status: 'disabled' };
 
     checks.push(
       createCheck(
@@ -280,6 +445,39 @@ function createHealthUpdateCommandHelpers(deps) {
         fs.existsSync(projectExtDir) ? '.emb-agent directory exists' : '.emb-agent directory is missing',
         [path.relative(projectRoot, projectExtDir) || runtime.getProjectAssetRelativePath()],
         fs.existsSync(projectExtDir) ? '' : 'Run init first to generate the minimal .emb-agent project skeleton.'
+      )
+    );
+
+    checks.push(
+      createCheck(
+        'subagent_bridge',
+        subagentBridge.available ? 'pass' : 'info',
+        subagentBridge.available
+          ? `Host sub-agent bridge is configured (${subagentBridge.mode})`
+          : 'Host sub-agent bridge is not configured',
+        [
+          `runtime_host=${runtimeHost.name || RUNTIME_HOST.name}`,
+          `source=${subagentBridge.source || 'none'}`,
+          `mode=${subagentBridge.mode || 'disabled'}`
+        ],
+        subagentBridge.available
+          ? ''
+          : 'Configure EMB_AGENT_SUBAGENT_BRIDGE_CMD if you want dispatch/orchestrate to launch host sub-agents automatically.'
+      )
+    );
+
+    checks.push(
+      createCheck(
+        'workspace_trust',
+        workspaceTrust.trusted ? 'pass' : 'warn',
+        workspaceTrust.summary,
+        [
+          `source=${workspaceTrust.source || 'default'}`,
+          `signal=${workspaceTrust.signal || (workspaceTrust.trusted ? 'trusted' : 'untrusted')}`
+        ],
+        workspaceTrust.trusted
+          ? ''
+          : 'Grant workspace trust first so startup hooks and trust-gated runtime helpers can activate safely.'
       )
     );
 
@@ -384,7 +582,11 @@ function createHealthUpdateCommandHelpers(deps) {
         nextCommands,
         'init',
         'Initialize or rebuild the emb-agent skeleton for the current project',
-        runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['init'])
+        runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['init']),
+        'command',
+        {
+          argv: ['init']
+        }
       );
     }
 
@@ -408,7 +610,11 @@ function createHealthUpdateCommandHelpers(deps) {
           nextCommands,
           'resume',
           'A handoff exists; restore the previous context first',
-          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume'])
+          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume']),
+          'command',
+          {
+            argv: ['resume']
+          }
         );
       } catch (error) {
         checks.push(
@@ -557,7 +763,10 @@ function createHealthUpdateCommandHelpers(deps) {
         'doc-apply',
         `Apply document ${pendingDocApply.doc_id} to ${pendingDocApply.target}`,
         pendingDocApply.command,
-        'doc'
+        'doc',
+        {
+          argv: pendingDocApply.argv || []
+        }
       );
     }
 
@@ -594,7 +803,13 @@ function createHealthUpdateCommandHelpers(deps) {
           hardwareIdentity.model ? 'Register the default adapter repository and sync it against the current project' : 'Register the default adapter repository',
           hardwareIdentity.model
             ? DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI
-            : `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'source', 'add', 'default-pack'])} --type git --location https://github.com/Welkon/emb-agent-adapters.git`
+            : `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'source', 'add', 'default-pack'])} --type git --location https://github.com/Welkon/emb-agent-adapters.git`,
+          'adapter',
+          {
+            argv: hardwareIdentity.model
+              ? ['adapter', 'bootstrap']
+              : ['adapter', 'source', 'add', 'default-pack', '--type', 'git', '--location', 'https://github.com/Welkon/emb-agent-adapters.git']
+          }
         );
       }
 
@@ -626,7 +841,13 @@ function createHealthUpdateCommandHelpers(deps) {
           hardwareIdentity.model ? 'Sync the adapter source against the current project' : 'Sync the registered adapter source into the current project',
           hardwareIdentity.model
             ? runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'bootstrap', enabledSources[0].name])
-            : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'sync', enabledSources[0].name])
+            : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'sync', enabledSources[0].name]),
+          'adapter',
+          {
+            argv: hardwareIdentity.model
+              ? ['adapter', 'bootstrap', enabledSources[0].name]
+              : ['adapter', 'sync', enabledSources[0].name]
+          }
         );
       }
 
@@ -689,7 +910,10 @@ function createHealthUpdateCommandHelpers(deps) {
           'adapter-derive-from-doc',
           `Draft an adapter for current hardware from document ${latestHardwareDoc.doc_id}`,
           buildAdapterDeriveCli(latestHardwareDoc),
-          'adapter'
+          'adapter',
+          {
+            argv: ['adapter', 'derive', '--from-project', '--from-doc', latestHardwareDoc.doc_id]
+          }
         );
       }
     }
@@ -819,7 +1043,10 @@ function createHealthUpdateCommandHelpers(deps) {
           ? `Run preferred tool: ${primaryToolExecution.tool}`
           : `Prepare the first tool draft: ${primaryToolExecution.tool}`,
         primaryToolExecution.cli,
-        'tool'
+        'tool',
+        {
+          argv: ['tool', 'run', primaryToolExecution.tool]
+        }
       );
     }
 
@@ -830,20 +1057,29 @@ function createHealthUpdateCommandHelpers(deps) {
         nextCommands,
         'next',
         'Enter the emb-agent recommended next step',
-        runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
+        runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next']),
+        'command',
+        {
+          argv: ['next']
+        }
       );
     }
+
+    const bootstrap = buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks);
 
     return {
       command: 'health',
       project_root: projectRoot,
-      runtime_host: RUNTIME_HOST.name,
+      runtime_host: runtimeHost.name || RUNTIME_HOST.name,
       status: summary.status,
       summary: summary.counts,
       checks,
+      workspace_trust: workspaceTrust,
+      subagent_bridge: subagentBridge,
       adapter_health: adapterHealth,
       next_commands: nextCommands,
-      quickstart: buildQuickstartHint(hardwareIdentity, nextCommands, pendingDocApply),
+      quickstart: buildQuickstartHint(workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, projectRoot),
+      bootstrap,
       recommendations: runtime.unique(
         checks
           .filter(item => item.status === 'fail' || item.status === 'warn')
@@ -928,6 +1164,20 @@ function createHealthUpdateCommandHelpers(deps) {
       return buildHealthReport();
     }
 
+    if (cmd === 'bootstrap') {
+      if (subcmd && subcmd !== 'show') {
+        throw new Error(`Unknown bootstrap subcommand: ${subcmd}`);
+      }
+      if (rest && rest.length > 0) {
+        throw new Error('bootstrap does not accept positional arguments');
+      }
+
+      updateSession(current => {
+        current.last_command = 'bootstrap';
+      });
+      return buildHealthReport().bootstrap;
+    }
+
     if (cmd === 'update') {
       if (subcmd && subcmd !== 'show' && subcmd !== 'check') {
         throw new Error(`Unknown update subcommand: ${subcmd}`);
@@ -947,6 +1197,7 @@ function createHealthUpdateCommandHelpers(deps) {
 
   return {
     buildHealthReport,
+    buildBootstrapReport: () => buildHealthReport().bootstrap,
     buildUpdateView,
     handleHealthUpdateCommands,
     readHookVersion

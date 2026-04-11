@@ -234,6 +234,28 @@ function createDispatchHelpers(deps) {
           }))
         });
       }
+
+      if (contract.synthesis_required) {
+        steps.push({
+          id: 'synthesize',
+          kind: 'synthesis',
+          required: true,
+          owner: contract.synthesis_contract && contract.synthesis_contract.owner
+            ? contract.synthesis_contract.owner
+            : 'Current main thread',
+          when: 'after research-style worker outputs arrive and before any downstream writable or closure step continues',
+          rule: contract.synthesis_contract && contract.synthesis_contract.rule
+            ? contract.synthesis_contract.rule
+            : 'Synthesize, do not delegate understanding',
+          outcome:
+            contract.synthesis_contract && Array.isArray(contract.synthesis_contract.output_requirements)
+              ? contract.synthesis_contract.output_requirements
+              : [
+                  'compose a self-contained specification for the next worker or inline step',
+                  'do not forward raw findings as if they were already integrated'
+                ]
+        });
+      }
     }
 
     steps.push({

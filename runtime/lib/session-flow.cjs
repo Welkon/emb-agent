@@ -65,6 +65,7 @@ function createSessionFlowHelpers(deps) {
     runtime,
     RUNTIME_CONFIG,
     DEFAULT_ARCH_REVIEW_PATTERNS,
+    getRuntimeHost,
     resolveSession,
     getHealthReport,
     getProjectConfig,
@@ -492,6 +493,7 @@ function createSessionFlowHelpers(deps) {
       reasons,
       recommendation,
       pause_cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['pause']),
+      compress_cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['context', 'compress']),
       resume_cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume']),
       clear_hint: handoff ? 'clear -> resume' : 'pause -> clear -> resume',
       handoff_ready: Boolean(handoff)
@@ -576,17 +578,32 @@ function createSessionFlowHelpers(deps) {
     return 'scan -> do -> verify';
   }
 
+  function buildMemorySummaryRecoveryPointers() {
+    return runtime.unique([
+      `Refresh live session status: ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['status'])}`,
+      `Inspect merged live session: ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resolve'])}`,
+      `Reload carry-over guidance: ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume'])}`,
+      `Recompute the next action from live state: ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['dispatch', 'next'])}`
+    ]);
+  }
+
   function buildMemorySummaryArtifact(resolved, handoff, source) {
     const session = resolved.session;
     const activeTask = getActiveTask ? getActiveTask() : null;
     const diagnostics = session.diagnostics || {};
     const latestForensics = diagnostics.latest_forensics || {};
     const latestExecutor = diagnostics.latest_executor || {};
+    const capturedAt = new Date().toISOString();
+    const summarySource = source || 'session';
 
     return {
       version: '1.0',
-      generated_at: new Date().toISOString(),
-      source: source || '',
+      generated_at: capturedAt,
+      captured_at: capturedAt,
+      source: summarySource,
+      snapshot_label: `Point-in-time ${summarySource} snapshot captured at ${capturedAt}`,
+      stale_note: 'This compact snapshot is static and will not auto-update; rerun a recovery pointer to refresh live state.',
+      recovery_pointers: buildMemorySummaryRecoveryPointers(),
       focus: session.focus || '',
       profile: resolved.profile.name,
       packs: session.active_packs || [],
@@ -635,7 +652,11 @@ function createSessionFlowHelpers(deps) {
 
     return {
       generated_at: memorySummary.generated_at || '',
+      captured_at: memorySummary.captured_at || '',
       source: memorySummary.source || '',
+      snapshot_label: memorySummary.snapshot_label || '',
+      stale_note: memorySummary.stale_note || '',
+      recovery_pointers: memorySummary.recovery_pointers || [],
       focus: memorySummary.focus || '',
       profile: memorySummary.profile || '',
       last_command: memorySummary.last_command || '',
@@ -718,6 +739,9 @@ function createSessionFlowHelpers(deps) {
       next_actions: runtime.unique([
         memorySummary && memorySummary.generated_at
           ? `Compact summary captured: ${memorySummary.generated_at}`
+          : '',
+        !memorySummary && ['consider-clearing', 'suggest-clearing'].includes(contextHygiene.level)
+          ? `Capture a compact snapshot before clearing: ${contextHygiene.compress_cli}`
           : '',
         memorySummary && memorySummary.next_action
           ? `Resume from compact summary: ${memorySummary.next_action}`
@@ -862,6 +886,7 @@ function createSessionFlowHelpers(deps) {
             status: activeTask.status,
             type: activeTask.type,
             path: activeTask.path,
+            worktree_path: activeTask.worktree_path,
             context_files: activeTask.context_files,
             context: activeTask.context
           }
@@ -946,6 +971,7 @@ function createSessionFlowHelpers(deps) {
             status: activeTask.status,
             type: activeTask.type,
             path: activeTask.path,
+            worktree_path: activeTask.worktree_path,
             context_files: activeTask.context_files
           }
         : null,
@@ -1028,8 +1054,15 @@ function createSessionFlowHelpers(deps) {
     };
   }
 
+  function buildCompressContextSummary(noteText) {
+    const resolved = resolveSession();
+    const snapshotSeed = buildPausePayload(noteText);
+    return buildMemorySummaryArtifact(resolved, snapshotSeed, 'compress');
+  }
+
   function buildStatus() {
     const resolved = resolveSession();
+    const runtimeHost = typeof getRuntimeHost === 'function' ? getRuntimeHost() : { name: '', subagentBridge: {} };
     const projectConfig = getProjectConfig();
     const handoff = loadHandoff();
     const memorySummary = loadContextSummary ? loadContextSummary() : null;
@@ -1042,6 +1075,7 @@ function createSessionFlowHelpers(deps) {
 
     return enrichWithToolSuggestions({
       session_version: resolved.session.session_version,
+      runtime_host: runtimeHost.name || '',
       project_root: resolved.session.project_root,
       project_name: resolved.session.project_name,
       project_profile: resolved.session.project_profile,
@@ -1057,6 +1091,11 @@ function createSessionFlowHelpers(deps) {
       open_questions: resolved.session.open_questions,
       known_risks: resolved.session.known_risks,
       last_files: resolved.session.last_files,
+      subagent_bridge: runtimeHost.subagentBridge || null,
+      delegation_runtime:
+        resolved.session && resolved.session.diagnostics && resolved.session.diagnostics.delegation_runtime
+          ? resolved.session.diagnostics.delegation_runtime
+          : null,
       memory_summary: buildMemorySummaryView(memorySummary),
       quality_gates: qualityGates,
       permission_gates: permissionGates,
@@ -1067,6 +1106,7 @@ function createSessionFlowHelpers(deps) {
             status: activeTask.status,
             type: activeTask.type,
             path: activeTask.path,
+            worktree_path: activeTask.worktree_path,
             context_files: activeTask.context_files
           }
         : null,
@@ -1091,7 +1131,8 @@ function createSessionFlowHelpers(deps) {
     shouldSuggestReview,
     suggestFlow,
     buildPausePayload,
-    buildPauseContextSummary
+    buildPauseContextSummary,
+    buildCompressContextSummary
   };
 }
 

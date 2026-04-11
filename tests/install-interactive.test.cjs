@@ -9,6 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const installHelpersModule = require(path.join(repoRoot, 'runtime', 'lib', 'install-helpers.cjs'));
 const installTargetsModule = require(path.join(repoRoot, 'runtime', 'lib', 'install-targets.cjs'));
+const runtimeHost = require(path.join(repoRoot, 'runtime', 'lib', 'runtime-host.cjs'));
 
 function createHelper(customProcess, promptInstallerChoices) {
   const runtimeSrc = path.join(repoRoot, 'runtime');
@@ -25,6 +26,7 @@ function createHelper(customProcess, promptInstallerChoices) {
       path,
       process: customProcess
     }),
+    runtimeHost,
     commandsSrc: path.join(repoRoot, 'commands', 'emb'),
     agentsSrc: path.join(repoRoot, 'agents'),
     runtimeSrc,
@@ -76,4 +78,53 @@ test('interactive no-args install can resolve local codex choice through prompt 
   assert.equal(args.global, false);
   assert.equal(args.local, true);
   assert.equal(args.developer, 'welkon');
+  assert.equal(args.subagentBridgeCmd, '');
+  assert.equal(args.subagentBridgeTimeoutMs, runtimeHost.DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS);
+});
+
+test('parseArgs accepts sub-agent bridge command and timeout', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+  const args = helper.parseArgs([
+    '--global',
+    '--developer',
+    'welkon',
+    '--subagent-bridge-cmd',
+    'node /tmp/mock-bridge.cjs --stdio-json',
+    '--subagent-bridge-timeout-ms',
+    '21000'
+  ]);
+
+  assert.equal(args.subagentBridgeCmd, 'node /tmp/mock-bridge.cjs --stdio-json');
+  assert.equal(args.subagentBridgeTimeoutMs, 21000);
+});
+
+test('parseArgs rejects sub-agent bridge timeout without command', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+
+  assert.throws(
+    () => helper.parseArgs(['--global', '--developer', 'welkon', '--subagent-bridge-timeout-ms', '21000']),
+    /--subagent-bridge-timeout-ms requires --subagent-bridge-cmd/
+  );
 });

@@ -258,6 +258,7 @@ function createToolSuggestionHelpers(deps) {
     addUniqueMissing(missing, 'target-us or target-hz');
 
     return {
+      argv: parts.slice(),
       cli_draft: finalizeDraft(parts),
       missing_inputs: missing,
       defaults_applied: {
@@ -292,6 +293,7 @@ function createToolSuggestionHelpers(deps) {
     addUniqueMissing(missing, 'target-hz');
 
     return {
+      argv: parts.slice(),
       cli_draft: finalizeDraft(parts),
       missing_inputs: missing,
       defaults_applied: {
@@ -324,6 +326,7 @@ function createToolSuggestionHelpers(deps) {
     addUniqueMissing(missing, 'target-threshold-v or target-ratio');
 
     return {
+      argv: parts.slice(),
       cli_draft: finalizeDraft(parts),
       missing_inputs: missing,
       defaults_applied: {
@@ -358,6 +361,7 @@ function createToolSuggestionHelpers(deps) {
     addUniqueMissing(missing, 'sample-code or target-voltage');
 
     return {
+      argv: parts.slice(),
       cli_draft: finalizeDraft(parts),
       missing_inputs: missing,
       defaults_applied: {
@@ -374,6 +378,7 @@ function createToolSuggestionHelpers(deps) {
     addIdentityArgs(parts, chipProfile, deviceProfile, familyProfile);
 
     return {
+      argv: parts.slice(),
       cli_draft: finalizeDraft(parts),
       missing_inputs: missing,
       defaults_applied: {}
@@ -448,6 +453,7 @@ function createToolSuggestionHelpers(deps) {
         Boolean(recommendation.trust && recommendation.trust.executable),
       tool: recommendation.tool,
       status: recommendation.status,
+      argv: Array.isArray(recommendation.argv) ? recommendation.argv.slice() : [],
       cli: recommendation.cli_draft,
       reason: recommendation.reason || '',
       missing_inputs: recommendation.missing_inputs || [],
@@ -540,6 +546,7 @@ function createToolSuggestionHelpers(deps) {
           : '',
         trust,
         reason: buildRecommendationReason(tool, bindingInfo, trust),
+        argv: draft.argv,
         cli_draft: draft.cli_draft,
         missing_inputs: draft.missing_inputs,
         defaults_applied: draft.defaults_applied

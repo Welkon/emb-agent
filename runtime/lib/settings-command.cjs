@@ -4,6 +4,7 @@ function createSettingsCommandHelpers(deps) {
   const {
     runtime,
     RUNTIME_CONFIG,
+    getRuntimeHost,
     loadSession,
     updateSession,
     loadProfile,
@@ -18,12 +19,18 @@ function createSettingsCommandHelpers(deps) {
   function buildSettingsView() {
     const session = loadSession();
     const defaults = buildDefaults();
+    const runtimeHost = typeof getRuntimeHost === 'function' ? getRuntimeHost() : { name: '', label: '', subagentBridge: {} };
 
     return {
       settings: {
         profile: session.project_profile,
         packs: session.active_packs || [],
         preferences: runtime.normalizePreferences(session.preferences || {}, defaults)
+      },
+      host: {
+        runtime_host: runtimeHost.name || '',
+        runtime_label: runtimeHost.label || '',
+        subagent_bridge: runtimeHost.subagentBridge || null
       },
       defaults: {
         profile: defaults.default_profile,
