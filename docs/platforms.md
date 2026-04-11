@@ -12,6 +12,18 @@ Install:
 npx emb-agent --codex --global --developer your-name
 ```
 
+Manual feature gate:
+
+As of Codex CLI `v0.116.0` on `2026-03-24`, hooks remain experimental and require manual enablement in `~/.codex/config.toml`:
+
+```toml
+[features]
+multi_agent = true
+codex_hooks = true
+```
+
+emb-agent intentionally does not add these flags for the user. If Codex later ships hooks as a default stable feature, this step may become unnecessary.
+
 Default runtime CLI path:
 
 ```bash

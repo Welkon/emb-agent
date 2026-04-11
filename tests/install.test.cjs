@@ -42,6 +42,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const runtimeRoot = path.join(tempHome, 'emb-agent');
     const cliPath = path.join(runtimeRoot, 'bin', 'emb-agent.cjs');
     const installedCli = require(cliPath);
+    const installedCommandFiles = fs.readdirSync(path.join(runtimeRoot, 'commands')).filter(name => name.endsWith('.md')).sort();
+    const internalCommandDocs = fs.readdirSync(path.join(runtimeRoot, 'command-docs')).filter(name => name.endsWith('.md')).sort();
 
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.toml')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'config.json')), true);
@@ -55,6 +57,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'VERSION')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'command-docs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'tools', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'chips', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'adapters')), true);
@@ -62,6 +65,16 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'scheduler.cjs')), true);
     assert.equal(fs.existsSync(cliPath), true);
     assert.equal(fs.existsSync(path.join(tempHome, '.env.example')), true);
+    assert.equal(installedCommandFiles.length, 13);
+    assert.ok(installedCommandFiles.includes('help.md'));
+    assert.ok(installedCommandFiles.includes('init.md'));
+    assert.ok(installedCommandFiles.includes('verify.md'));
+    assert.ok(!installedCommandFiles.includes('workflow.md'));
+    assert.ok(!installedCommandFiles.includes('adapter.md'));
+    assert.ok(!installedCommandFiles.includes('init-project.md'));
+    assert.ok(internalCommandDocs.includes('workflow.md'));
+    assert.ok(internalCommandDocs.includes('adapter.md'));
+    assert.ok(internalCommandDocs.includes('init-project.md'));
     assert.match(fs.readFileSync(path.join(tempHome, '.env.example'), 'utf8'), /MINERU_API_KEY=/);
     const codexConfig = fs.readFileSync(path.join(tempHome, 'config.toml'), 'utf8');
     assert.match(codexConfig, /\[features\][\s\S]*codex_hooks = true/);
@@ -117,6 +130,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const nextBeforeContext = installedCli.buildNextContext();
     assert.equal(nextBeforeContext.next.command, 'health');
     assert.equal(nextBeforeContext.next.gated_by_health, true);
+    assert.ok(nextBeforeContext.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(nextBeforeContext.workflow_stage.name, 'health-gate');
     assert.equal(nextBeforeContext.workflow_stage.primary_command, 'health');
     assert.ok(Array.isArray(nextBeforeContext.next.health_next_commands));
@@ -150,13 +164,16 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const nextAfterPause = installedCli.buildNextContext();
     assert.equal(fs.existsSync(handoffPath), true);
     assert.equal(plan.scheduler.primary_agent, 'hw-scout');
+    assert.ok(plan.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(plan.agent_execution.primary_agent, 'emb-hw-scout');
     assert.equal(plan.agent_execution.mode, 'primary-recommended');
     assert.ok(plan.steps.some(item => item.includes('minimal scan')));
     assert.equal(scan.scheduler.primary_agent, 'hw-scout');
+    assert.ok(scan.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(scan.agent_execution.primary_agent, 'emb-hw-scout');
     assert.ok(scan.next_reads.some(item => item.includes('Hardware truth sources')));
     assert.equal(resume.summary.resume_source, 'handoff');
+    assert.ok(resume.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(resume.memory_summary.source, 'pause');
     assert.ok(resume.memory_summary.next_action.includes('resume irq race first'));
     assert.ok(resume.next_actions.some(item => item.includes('handoff')));

@@ -4,6 +4,7 @@ const adapterQualityHelpers = require('./adapter-quality.cjs');
 const hookTrustHelpers = require('./hook-trust.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const updateCheckHelpers = require('./update-check.cjs');
+const workflowRegistry = require('./workflow-registry.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -1090,6 +1091,19 @@ function createHealthUpdateCommandHelpers(deps) {
   }
 
   function buildUpdateView(forceCheck) {
+    const projectRoot = resolveProjectRoot();
+    const projectExtDir = getProjectExtDir();
+    const projectDataPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
+    const hadProjectLayout = fs.existsSync(projectExtDir) || fs.existsSync(projectDataPath);
+    const workflowLayout = hadProjectLayout
+      ? workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true })
+      : {
+          project_ext_dir: projectExtDir,
+          registry_path: 'registry/workflow.json',
+          created: [],
+          migrated: [],
+          reused: []
+        };
     const cachePath = updateCheckHelpers.getUpdateCachePath(path, RUNTIME_HOST.stateRoot);
     const installed = updateCheckHelpers.readInstalledVersion(fs, path, RUNTIME_HOST.runtimeRoot);
     const hookVersion = process.env.EMB_AGENT_FORCE_HOOK_VERSION || readHookVersion();
@@ -1122,6 +1136,12 @@ function createHealthUpdateCommandHelpers(deps) {
     if (recommendations.length === 0) {
       recommendations.push('There is no explicit upgrade blocker right now. Run update check if you want to confirm the latest version.');
     }
+    if (workflowLayout.migrated.length > 0) {
+      recommendations.push('Legacy workflow registry paths were migrated into .emb-agent/registry/workflow.json.');
+    }
+    if (workflowLayout.created.length > 0) {
+      recommendations.push('Project workflow layout was normalized so spec/template/registry paths now share the same root.');
+    }
 
     return {
       command: 'update',
@@ -1144,6 +1164,13 @@ function createHealthUpdateCommandHelpers(deps) {
         reason: trigger.reason || '',
         cache_path: cachePath,
         stale: updateCheckHelpers.isUpdateCacheStale(cache, UPDATE_CHECK_INTERVAL_MS)
+      },
+      workflow_layout: {
+        project_ext_dir: projectExtDir,
+        registry_path: workflowLayout.registry_path,
+        created: workflowLayout.created,
+        migrated: workflowLayout.migrated,
+        reused: workflowLayout.reused
       },
       recommendations
     };

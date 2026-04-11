@@ -245,6 +245,8 @@ test('update reports stale install and cached newer version', () => {
     assert.equal(report.check.triggered, false);
     assert.equal(report.check.reason, 'skip-env');
     assert.ok(report.recommendations.some(item => item.includes('hooks / runtime / agents')));
+    assert.equal(report.workflow_layout.registry_path, 'registry/workflow.json');
+    assert.ok(Array.isArray(report.workflow_layout.reused));
     assert.equal(cli.loadSession().last_command, 'update');
   } finally {
     if (fs.existsSync(cachePath)) {

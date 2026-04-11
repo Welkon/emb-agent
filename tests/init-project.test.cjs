@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
+const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
@@ -59,7 +60,10 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', 'archive')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workspace')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'templates')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'project-local.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'CONNECTIVITY.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'RELEASE-NOTES.md')), true);
@@ -119,6 +123,127 @@ test('init-project with battery-charger pack seeds power charging doc', () => {
   }
 });
 
+test('init-project honors project-local smart-pillbox extension pack and template', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-smart-pillbox-'));
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    const projectExtDir = runtime.initProjectLayout(tempProject);
+    const registryPath = path.join(projectExtDir, 'registry', 'workflow.json');
+    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    registry.templates.push({
+      name: 'medication-flow',
+      source: 'templates/medication-flow.md.tpl',
+      description: 'Project-local medication flow note.',
+      default_output: 'docs/MEDICATION-FLOW.md'
+    });
+    registry.packs.push({
+      name: 'smart-pillbox',
+      file: 'packs/smart-pillbox.yaml',
+      description: 'Project-local smart pillbox workflow pack.'
+    });
+    registry.specs.push({
+      name: 'smart-pillbox-focus',
+      title: 'Smart Pillbox Focus',
+      path: 'specs/smart-pillbox-focus.md',
+      summary: 'Project-local smart pillbox rules.',
+      auto_inject: true,
+      priority: 62,
+      apply_when: {
+        packs: ['smart-pillbox']
+      }
+    });
+    fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
+    fs.writeFileSync(
+      path.join(projectExtDir, 'packs', 'smart-pillbox.yaml'),
+      [
+        'name: smart-pillbox',
+        'focus_areas:',
+        '  - medication_schedule',
+        '  - sync_reconciliation',
+        'extra_review_axes:',
+        '  - schedule_state_machine',
+        'preferred_notes:',
+        '  - docs/MEDICATION-FLOW.md',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectExtDir, 'specs', 'smart-pillbox-focus.md'),
+      '# Smart Pillbox Focus\n\n- Check adherence state transitions.\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectExtDir, 'templates', 'medication-flow.md.tpl'),
+      '# Medication Flow\n\n## Schedule Truth\n',
+      'utf8'
+    );
+
+    initProject.main([
+      '--project',
+      tempProject,
+      '--profile',
+      'baremetal-8bit',
+      '--pack',
+      'smart-pillbox'
+    ]);
+
+    const projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+
+    assert.equal(projectConfig.project_profile, 'baremetal-8bit');
+    assert.deepEqual(projectConfig.active_packs, ['smart-pillbox']);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md')), true);
+    assert.match(
+      fs.readFileSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md'), 'utf8'),
+      /Schedule Truth/
+    );
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('init-project with motor-drive pack seeds motor control doc', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-motor-drive-'));
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main([
+      '--project',
+      tempProject,
+      '--profile',
+      'baremetal-8bit',
+      '--pack',
+      'motor-drive'
+    ]);
+
+    const projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+
+    assert.equal(projectConfig.project_profile, 'baremetal-8bit');
+    assert.deepEqual(projectConfig.active_packs, ['motor-drive']);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MOTOR-CONTROL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-STAGE.md')), true);
+    assert.match(
+      fs.readFileSync(path.join(tempProject, 'docs', 'MOTOR-CONTROL.md'), 'utf8'),
+      /Motor Control/
+    );
+    assert.match(
+      fs.readFileSync(path.join(tempProject, 'docs', 'POWER-STAGE.md'), 'utf8'),
+      /Power Stage/
+    );
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('init preserves existing docs files without force', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-preserve-'));
   const currentCwd = process.cwd();
@@ -147,7 +272,9 @@ test('init preserves existing docs files without force', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workspace')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'templates')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), true);
   } finally {

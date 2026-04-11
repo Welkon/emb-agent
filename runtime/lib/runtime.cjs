@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const workflowRegistry = require('./workflow-registry.cjs');
 
 const PROJECT_EXT_DIR_NAME = '.emb-agent';
 const LEGACY_PROJECT_EXT_DIR_NAME = 'emb-agent';
@@ -239,6 +240,7 @@ function initProjectLayout(projectRoot) {
   ensureDir(path.join(projectExtDir, 'adapters'));
   ensureDir(path.join(projectExtDir, 'tasks', 'archive'));
   ensureDir(path.join(path.resolve(projectRoot), 'docs'));
+  workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true });
 
   return projectExtDir;
 }

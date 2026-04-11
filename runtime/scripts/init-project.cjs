@@ -8,9 +8,9 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const runtimeHostHelpers = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
+const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
-const { TEMPLATE_CONFIG, TEMPLATES_DIR } = require(path.join(ROOT, 'lib', 'template-registry.cjs'));
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
 
 function usage() {
@@ -136,6 +136,42 @@ function loadBuiltInPack(name) {
   );
 }
 
+function loadWorkflowCatalog(projectRoot) {
+  return workflowRegistry.loadWorkflowRegistry(ROOT, {
+    projectExtDir: runtime.getProjectExtDir(projectRoot)
+  });
+}
+
+function loadPackForProject(projectRoot, name, registry) {
+  const catalog = registry || loadWorkflowCatalog(projectRoot);
+  const entry = (catalog.packs || []).find(item => item.name === name);
+  if (!entry || !entry.absolute_path) {
+    throw new Error(`Pack not found: ${name}`);
+  }
+  return runtime.validatePack(name, runtime.parseSimpleYaml(entry.absolute_path));
+}
+
+function buildTemplateIndex(registry) {
+  const templates = (registry && Array.isArray(registry.templates)) ? registry.templates : [];
+  const byName = {};
+  const byOutput = {};
+
+  templates.forEach(entry => {
+    if (!entry || !entry.name || !entry.absolute_path) {
+      return;
+    }
+    byName[entry.name] = entry;
+    if (entry.default_output) {
+      byOutput[entry.default_output] = entry.name;
+    }
+  });
+
+  return {
+    byName,
+    byOutput
+  };
+}
+
 function applyTemplate(content, context) {
   return content.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_, key) => {
     return Object.prototype.hasOwnProperty.call(context, key) ? String(context[key]) : '';
@@ -191,9 +227,12 @@ function buildTemplateContext(projectRoot, projectConfig) {
   };
 }
 
-function createTemplateFile(templateName, outputPath, context, force) {
-  const meta = TEMPLATE_CONFIG[templateName];
-  if (!meta) {
+function createTemplateFile(templateName, outputPath, context, force, templatesByName) {
+  const meta =
+    templatesByName && Object.prototype.hasOwnProperty.call(templatesByName, templateName)
+      ? templatesByName[templateName]
+      : null;
+  if (!meta || !meta.absolute_path) {
     throw new Error(`Template not found: ${templateName}`);
   }
 
@@ -202,7 +241,7 @@ function createTemplateFile(templateName, outputPath, context, force) {
   }
 
   const content = applyTemplate(
-    runtime.readText(path.join(TEMPLATES_DIR, meta.source)),
+    runtime.readText(meta.absolute_path),
     context
   );
   ensureDir(path.dirname(outputPath));
@@ -210,15 +249,17 @@ function createTemplateFile(templateName, outputPath, context, force) {
   return true;
 }
 
-function buildProjectConfig(args) {
+function buildProjectConfig(projectRoot, args) {
   const project_profile = args.profile || RUNTIME_CONFIG.default_profile;
   loadBuiltInProfile(project_profile);
+  runtime.initProjectLayout(projectRoot);
+  const workflowCatalog = loadWorkflowCatalog(projectRoot);
 
   const active_packs = runtime.unique(
     (args.packs.length > 0 ? args.packs : RUNTIME_CONFIG.default_packs).filter(Boolean)
   );
 
-  active_packs.forEach(loadBuiltInPack);
+  active_packs.forEach(name => loadPackForProject(projectRoot, name, workflowCatalog));
 
   return runtime.validateProjectConfig(
     {
@@ -286,20 +327,16 @@ function ensureGitignoreRule(projectRoot, rule) {
   );
 }
 
-function buildDocsPlan(projectConfig) {
+function buildDocsPlan(projectRoot, projectConfig, registry) {
   const profile = loadBuiltInProfile(projectConfig.project_profile);
-  const packs = projectConfig.active_packs.map(loadBuiltInPack);
+  const workflowCatalog = registry || loadWorkflowCatalog(projectRoot);
+  const packs = projectConfig.active_packs.map(name => loadPackForProject(projectRoot, name, workflowCatalog));
   const noteTargets = runtime.unique([
     ...(profile.notes_targets || []),
     ...packs.flatMap(pack => pack.preferred_notes || [])
   ]);
 
-  const byOutput = Object.entries(TEMPLATE_CONFIG).reduce((acc, [name, meta]) => {
-    if (meta.default_output) {
-      acc[meta.default_output] = name;
-    }
-    return acc;
-  }, {});
+  const { byOutput } = buildTemplateIndex(workflowCatalog);
 
   return noteTargets
     .map(target => ({
@@ -404,12 +441,14 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   }
 
   const context = buildTemplateContext(projectRoot, effectiveProjectConfig);
-  const docsPlan = buildDocsPlan(effectiveProjectConfig);
+  const workflowCatalog = loadWorkflowCatalog(projectRoot);
+  const templateIndex = buildTemplateIndex(workflowCatalog);
+  const docsPlan = buildDocsPlan(projectRoot, effectiveProjectConfig, workflowCatalog);
   const truthPlan = buildTruthPlan();
 
   for (const item of [...truthPlan, ...docsPlan]) {
     const outputPath = path.join(projectRoot, item.output);
-    if (createTemplateFile(item.template, outputPath, context, force)) {
+    if (createTemplateFile(item.template, outputPath, context, force, templateIndex.byName)) {
       created.push(path.relative(projectRoot, outputPath));
     } else {
       reused.push(path.relative(projectRoot, outputPath));
@@ -435,7 +474,7 @@ function main(argv) {
   }
 
   const projectRoot = path.resolve(args.project || process.cwd());
-  const projectConfig = buildProjectConfig(args);
+  const projectConfig = buildProjectConfig(projectRoot, args);
   const result = scaffoldProject(projectRoot, projectConfig, args.force, args);
 
   process.stdout.write(

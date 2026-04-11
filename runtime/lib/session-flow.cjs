@@ -1,9 +1,13 @@
 'use strict';
 
+const path = require('path');
+
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const permissionGateHelpers = require('./permission-gates.cjs');
 const qualityGateHelpers = require('./quality-gates.cjs');
+const workflowRegistry = require('./workflow-registry.cjs');
 
+const ROOT = path.resolve(__dirname, '..');
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 const FORENSICS_PATTERNS = [
   'drift',
@@ -232,8 +236,34 @@ function createSessionFlowHelpers(deps) {
     return hasPattern(texts, HARDWARE_TOOL_PATTERNS) || suggestedTools.length > 0;
   }
 
+  function buildInjectedSpecs(resolved, task, handoff, limit = 5) {
+    const snapshot = workflowRegistry.buildInjectedSpecSnapshot(
+      ROOT,
+      runtime.getProjectExtDir(resolved.session.project_root),
+      {
+        profile: resolved.profile.name,
+        packs: resolved.session.active_packs || [],
+        task: task || null,
+        handoff: handoff || null
+      },
+      { limit }
+    );
+
+    return (snapshot.items || []).map(item => ({
+      name: item.name,
+      title: item.title || item.name,
+      summary: item.summary || '',
+      display_path: item.display_path,
+      scope: item.scope,
+      priority: item.priority,
+      reasons: item.reasons || []
+    }));
+  }
+
   function buildReviewContext() {
     const resolved = resolveSession();
+    const handoff = loadHandoff();
+    const activeTask = getActiveTask ? getActiveTask() : null;
 
     return {
       project_root: resolved.session.project_root,
@@ -249,7 +279,8 @@ function createSessionFlowHelpers(deps) {
       arch_review_triggers: resolved.effective.arch_review_triggers,
       known_risks: resolved.session.known_risks,
       open_questions: resolved.session.open_questions,
-      last_files: resolved.session.last_files
+      last_files: resolved.session.last_files,
+      injected_specs: buildInjectedSpecs(resolved, activeTask, handoff)
     };
   }
 
@@ -848,6 +879,7 @@ function createSessionFlowHelpers(deps) {
     const guidance = buildGuidance(resolved, handoff, memorySummary);
     const contextHygiene = buildContextHygiene(resolved, handoff, 'resume');
     const activeTask = getActiveTask ? getActiveTask() : null;
+    const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
 
     return enrichWithToolSuggestions({
       summary: {
@@ -888,9 +920,14 @@ function createSessionFlowHelpers(deps) {
             path: activeTask.path,
             worktree_path: activeTask.worktree_path,
             context_files: activeTask.context_files,
-            context: activeTask.context
+            context: activeTask.context,
+            injected_specs:
+              Array.isArray(activeTask.injected_specs) && activeTask.injected_specs.length > 0
+                ? activeTask.injected_specs
+                : injectedSpecs
           }
         : null,
+      injected_specs: injectedSpecs,
       diagnostics: resolved.session.diagnostics || { latest_forensics: {}, latest_executor: {}, executor_history: {}, human_signoffs: {} },
       memory_summary: buildMemorySummaryView(memorySummary),
       carry_over: {
@@ -948,6 +985,7 @@ function createSessionFlowHelpers(deps) {
     const permissionGates = permissionGateHelpers.buildPermissionGates({
       quality_gates: qualityGates
     });
+    const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
 
     return enrichWithToolSuggestions({
       current: {
@@ -972,9 +1010,14 @@ function createSessionFlowHelpers(deps) {
             type: activeTask.type,
             path: activeTask.path,
             worktree_path: activeTask.worktree_path,
-            context_files: activeTask.context_files
+            context_files: activeTask.context_files,
+            injected_specs:
+              Array.isArray(activeTask.injected_specs) && activeTask.injected_specs.length > 0
+                ? activeTask.injected_specs
+                : injectedSpecs
           }
         : null,
+      injected_specs: injectedSpecs,
       handoff: handoff
         ? {
             next_action: handoff.next_action,
@@ -1072,6 +1115,7 @@ function createSessionFlowHelpers(deps) {
     const permissionGates = permissionGateHelpers.buildPermissionGates({
       quality_gates: qualityGates
     });
+    const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
 
     return enrichWithToolSuggestions({
       session_version: resolved.session.session_version,
@@ -1099,6 +1143,7 @@ function createSessionFlowHelpers(deps) {
       memory_summary: buildMemorySummaryView(memorySummary),
       quality_gates: qualityGates,
       permission_gates: permissionGates,
+      injected_specs: injectedSpecs,
       active_task: activeTask
         ? {
             name: activeTask.name,
@@ -1107,7 +1152,11 @@ function createSessionFlowHelpers(deps) {
             type: activeTask.type,
             path: activeTask.path,
             worktree_path: activeTask.worktree_path,
-            context_files: activeTask.context_files
+            context_files: activeTask.context_files,
+            injected_specs:
+              Array.isArray(activeTask.injected_specs) && activeTask.injected_specs.length > 0
+                ? activeTask.injected_specs
+                : injectedSpecs
           }
         : null,
       context_hygiene: contextHygiene

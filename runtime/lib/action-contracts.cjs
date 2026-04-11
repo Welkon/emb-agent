@@ -1,8 +1,12 @@
 'use strict';
 
+const path = require('path');
+
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const permissionGateHelpers = require('./permission-gates.cjs');
+const workflowRegistry = require('./workflow-registry.cjs');
 
+const ROOT = path.resolve(__dirname, '..');
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
 function createActionContractHelpers(deps) {
@@ -14,12 +18,39 @@ function createActionContractHelpers(deps) {
     buildHealthReport,
     buildContextHygiene,
     enrichWithToolSuggestions,
-    buildArchReviewContext
+    buildArchReviewContext,
+    getActiveTask
   } = deps;
+
+  function buildInjectedSpecs(resolved, task, handoff, limit = 5) {
+    const snapshot = workflowRegistry.buildInjectedSpecSnapshot(
+      ROOT,
+      runtime.getProjectExtDir(resolved.session.project_root),
+      {
+        profile: resolved.profile.name,
+        packs: resolved.session.active_packs || [],
+        task: task || null,
+        handoff: handoff || null
+      },
+      { limit }
+    );
+
+    return (snapshot.items || []).map(item => ({
+      name: item.name,
+      title: item.title || item.name,
+      summary: item.summary || '',
+      display_path: item.display_path,
+      scope: item.scope,
+      priority: item.priority,
+      reasons: item.reasons || []
+    }));
+  }
 
   function buildActionOutput(action) {
     const resolved = resolveSession();
     const handoff = loadHandoff();
+    const activeTask = typeof getActiveTask === 'function' ? getActiveTask() : null;
+    const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
     let output;
 
     if (action === 'scan') {
@@ -70,6 +101,7 @@ function createActionContractHelpers(deps) {
 
     const enriched = enrichWithToolSuggestions({
       ...output,
+      injected_specs: injectedSpecs,
       agent_execution: output.scheduler && output.scheduler.agent_execution
         ? output.scheduler.agent_execution
         : scheduler.buildAgentExecution(action, resolved),

@@ -1,0 +1,284 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "name": "architecture-review",
+      "source": "templates/architecture-review.md.tpl",
+      "description": "Generate the architecture review document.",
+      "default_output": "docs/ARCH-REVIEW.md"
+    },
+    {
+      "name": "chip-extension-registry",
+      "source": "templates/chip-extension-registry.json.tpl",
+      "description": "Generate the chip extension registry.",
+      "default_output": ".emb-agent/extensions/chips/registry.json"
+    },
+    {
+      "name": "chip-profile",
+      "source": "templates/chip-profile.json.tpl",
+      "description": "Generate a chip profile definition.",
+      "default_output": ".emb-agent/extensions/chips/profiles/{{SLUG}}.json"
+    },
+    {
+      "name": "connectivity",
+      "source": "templates/connectivity.md.tpl",
+      "description": "Generate the connectivity document.",
+      "default_output": "docs/CONNECTIVITY.md"
+    },
+    {
+      "name": "debug-notes",
+      "source": "templates/debug-notes.md.tpl",
+      "description": "Generate the debug notes document.",
+      "default_output": "docs/DEBUG-NOTES.md"
+    },
+    {
+      "name": "hardware-logic",
+      "source": "templates/hardware-logic.md.tpl",
+      "description": "Generate the hardware logic working note.",
+      "default_output": "docs/HARDWARE-LOGIC.md"
+    },
+    {
+      "name": "hw-truth",
+      "source": "templates/hw.yaml.tpl",
+      "description": "Generate the hardware truth file.",
+      "default_output": ".emb-agent/hw.yaml"
+    },
+    {
+      "name": "mcu-foundation-checklist",
+      "source": "templates/mcu-foundation-checklist.md.tpl",
+      "description": "Generate the MCU foundation checklist.",
+      "default_output": "docs/MCU-FOUNDATION-CHECKLIST.md"
+    },
+    {
+      "name": "motor-control",
+      "source": "templates/motor-control.md.tpl",
+      "description": "Generate the motor control working note.",
+      "default_output": "docs/MOTOR-CONTROL.md"
+    },
+    {
+      "name": "pack",
+      "source": "templates/pack.yaml.tpl",
+      "description": "Generate a pack definition skeleton.",
+      "default_output": ".emb-agent/packs/{{SLUG}}.yaml"
+    },
+    {
+      "name": "power-charging",
+      "source": "templates/power-charging.md.tpl",
+      "description": "Generate the power and charging document.",
+      "default_output": "docs/POWER-CHARGING.md"
+    },
+    {
+      "name": "power-stage",
+      "source": "templates/power-stage.md.tpl",
+      "description": "Generate the motor power-stage document.",
+      "default_output": "docs/POWER-STAGE.md"
+    },
+    {
+      "name": "profile",
+      "source": "templates/profile.yaml.tpl",
+      "description": "Generate a runtime profile skeleton.",
+      "default_output": ".emb-agent/profiles/{{SLUG}}.yaml"
+    },
+    {
+      "name": "project-spec",
+      "source": "templates/project-spec.md.tpl",
+      "description": "Generate a project-local spec document.",
+      "default_output": ".emb-agent/specs/{{SLUG}}.md"
+    },
+    {
+      "name": "release-notes",
+      "source": "templates/release-notes.md.tpl",
+      "description": "Generate the release notes document.",
+      "default_output": "docs/RELEASE-NOTES.md"
+    },
+    {
+      "name": "req-truth",
+      "source": "templates/req.yaml.tpl",
+      "description": "Generate the requirements truth file.",
+      "default_output": ".emb-agent/req.yaml"
+    },
+    {
+      "name": "review-report",
+      "source": "templates/review-report.md.tpl",
+      "description": "Generate the review report document.",
+      "default_output": "docs/REVIEW-REPORT.md"
+    },
+    {
+      "name": "task-manifest",
+      "source": "templates/task.json.tpl",
+      "description": "Generate a task manifest.",
+      "default_output": ".emb-agent/tasks/{{SLUG}}/task.json"
+    },
+    {
+      "name": "tool-adapter",
+      "source": "templates/tool-adapter.cjs.tpl",
+      "description": "Generate a tool adapter skeleton.",
+      "default_output": ".emb-agent/extensions/tools/{{TOOL_NAME}}.cjs"
+    },
+    {
+      "name": "tool-device",
+      "source": "templates/tool-device.json.tpl",
+      "description": "Generate a tool device definition.",
+      "default_output": ".emb-agent/extensions/tools/devices/{{SLUG}}.json"
+    },
+    {
+      "name": "tool-extension-registry",
+      "source": "templates/tool-extension-registry.json.tpl",
+      "description": "Generate the tool extension registry.",
+      "default_output": ".emb-agent/extensions/tools/registry.json"
+    },
+    {
+      "name": "tool-family",
+      "source": "templates/tool-family.json.tpl",
+      "description": "Generate a tool family definition.",
+      "default_output": ".emb-agent/extensions/tools/families/{{SLUG}}.json"
+    },
+    {
+      "name": "verification-report",
+      "source": "templates/verification-report.md.tpl",
+      "description": "Generate the verification report document.",
+      "default_output": "docs/VERIFICATION.md"
+    }
+  ],
+  "packs": [
+    {
+      "name": "battery-charger",
+      "file": "packs/battery-charger.yaml",
+      "description": "Charging and power-path focused workflow pack."
+    },
+    {
+      "name": "connected-appliance",
+      "file": "packs/connected-appliance.yaml",
+      "description": "Connectivity, OTA, and safe-default workflow pack."
+    },
+    {
+      "name": "motor-drive",
+      "file": "packs/motor-drive.yaml",
+      "description": "Motor power-stage, PWM, sensing, and protection focused workflow pack."
+    },
+    {
+      "name": "sensor-node",
+      "file": "packs/sensor-node.yaml",
+      "description": "Sampling, timing, and calibration focused workflow pack."
+    }
+  ],
+  "specs": [
+    {
+      "name": "core-guardrails",
+      "title": "Emb Core Guardrails",
+      "path": "specs/core-guardrails.md",
+      "summary": "Core emb-agent operating rules: truth-first updates, explicit unknowns, and verification before mutation.",
+      "auto_inject": true,
+      "priority": 100,
+      "apply_when": {
+        "always": true
+      }
+    },
+    {
+      "name": "task-execution",
+      "title": "Task Execution Contract",
+      "path": "specs/task-execution.md",
+      "summary": "How to execute the current task with context hygiene, task context upkeep, and closure discipline.",
+      "auto_inject": true,
+      "priority": 90,
+      "apply_when": {
+        "requires_active_task": true
+      }
+    },
+    {
+      "name": "baremetal-8bit-focus",
+      "title": "Baremetal 8-bit Focus",
+      "path": "specs/baremetal-8bit-focus.md",
+      "summary": "Bias toward direct state, ISR discipline, and small-footprint tradeoffs for baremetal MCU work.",
+      "auto_inject": true,
+      "priority": 70,
+      "apply_when": {
+        "profiles": [
+          "baremetal-8bit"
+        ]
+      }
+    },
+    {
+      "name": "rtos-iot-focus",
+      "title": "RTOS IoT Focus",
+      "path": "specs/rtos-iot-focus.md",
+      "summary": "Bias toward task boundaries, offline behavior, upgrade recovery, and concurrency clarity for RTOS/IoT work.",
+      "auto_inject": true,
+      "priority": 70,
+      "apply_when": {
+        "profiles": [
+          "rtos-iot"
+        ]
+      }
+    },
+    {
+      "name": "motor-drive-focus",
+      "title": "Motor Drive Focus",
+      "path": "specs/motor-drive-focus.md",
+      "summary": "Motor power-stage, current-sense timing, startup behavior, and fault-protection checks.",
+      "auto_inject": true,
+      "priority": 62,
+      "apply_when": {
+        "packs": [
+          "motor-drive"
+        ]
+      }
+    },
+    {
+      "name": "sensor-node-focus",
+      "title": "Sensor Node Focus",
+      "path": "specs/sensor-node-focus.md",
+      "summary": "Sampling windows, settle time, calibration, and measurement-update path checks for sensor-node tasks.",
+      "auto_inject": true,
+      "priority": 60,
+      "apply_when": {
+        "packs": [
+          "sensor-node"
+        ]
+      }
+    },
+    {
+      "name": "connected-appliance-focus",
+      "title": "Connected Appliance Focus",
+      "path": "specs/connected-appliance-focus.md",
+      "summary": "Connectivity state, safe defaults, OTA recovery, and local/remote consistency checks.",
+      "auto_inject": true,
+      "priority": 60,
+      "apply_when": {
+        "packs": [
+          "connected-appliance"
+        ]
+      }
+    },
+    {
+      "name": "iot-device-focus",
+      "title": "IoT Device Contract Focus",
+      "path": "specs/iot-device-focus.md",
+      "summary": "Device/app/cloud contract checks for provisioning, sync ordering, idempotency, and offline-safe user state.",
+      "auto_inject": true,
+      "priority": 61,
+      "apply_when": {
+        "profiles": [
+          "rtos-iot"
+        ],
+        "packs": [
+          "connected-appliance",
+          "smart-pillbox"
+        ]
+      }
+    },
+    {
+      "name": "battery-charger-focus",
+      "title": "Battery Charger Focus",
+      "path": "specs/battery-charger-focus.md",
+      "summary": "Charge-state transitions, thresholds, protection margins, and wake/power fallback checks.",
+      "auto_inject": true,
+      "priority": 60,
+      "apply_when": {
+        "packs": [
+          "battery-charger"
+        ]
+      }
+    }
+  ]
+}

@@ -10,11 +10,16 @@ function createStateCommandHelpers(deps) {
     PACKS_DIR,
     AGENTS_DIR,
     COMMANDS_DIR,
+    commandVisibility,
     RUNTIME_CONFIG,
     getProjectProfilesDir,
     getProjectPacksDir,
+    listPackNames,
+    listSpecNames,
     loadProfile,
     loadPack,
+    loadSpec,
+    loadCommandMarkdown,
     loadMarkdown,
     loadSession,
     updateSession,
@@ -22,6 +27,7 @@ function createStateCommandHelpers(deps) {
     getProjectConfig,
     requireRestText,
     requirePreferenceKey,
+    handleWorkflowCommands,
     handleHealthUpdateCommands,
     handleTaskCommands,
     handleExecutorCommands,
@@ -43,6 +49,13 @@ function createStateCommandHelpers(deps) {
   } = deps;
 
   function handleCatalogAndStateCommands(cmd, subcmd, rest) {
+    const workflowResult = handleWorkflowCommands
+      ? handleWorkflowCommands(cmd, subcmd, rest)
+      : undefined;
+    if (workflowResult !== undefined) {
+      return workflowResult;
+    }
+
     const healthUpdateResult = handleHealthUpdateCommands
       ? handleHealthUpdateCommands(cmd, subcmd, rest)
       : undefined;
@@ -155,13 +168,15 @@ function createStateCommandHelpers(deps) {
     }
 
     if (cmd === 'commands' && subcmd === 'list') {
-      return runtime
-        .listNames(COMMANDS_DIR, '.md')
-        .filter(name => name !== 'attach');
+      return (commandVisibility.PUBLIC_COMMAND_NAMES || [])
+        .filter(name => runtime.listNames(COMMANDS_DIR, '.md').includes(name));
     }
 
     if (cmd === 'commands' && subcmd === 'show') {
       if (!rest[0]) throw new Error('Missing command name');
+      if (typeof loadCommandMarkdown === 'function') {
+        return loadCommandMarkdown(rest[0]);
+      }
       return loadMarkdown(COMMANDS_DIR, rest[0], 'Command');
     }
 
@@ -217,6 +232,9 @@ function createStateCommandHelpers(deps) {
     }
 
     if (cmd === 'pack' && subcmd === 'list') {
+      if (typeof listPackNames === 'function') {
+        return listPackNames();
+      }
       const builtIn = runtime.listNames(PACKS_DIR, '.yaml');
       const projectPacksDir = getProjectPacksDir();
       const projectLocal = fs.existsSync(projectPacksDir)
@@ -249,6 +267,27 @@ function createStateCommandHelpers(deps) {
       return updateSession(current => {
         current.active_packs = [];
       });
+    }
+
+    if (cmd === 'spec' && subcmd === 'list') {
+      if (typeof listSpecNames !== 'function') {
+        return [];
+      }
+      updateSession(current => {
+        current.last_command = 'spec list';
+      });
+      return listSpecNames();
+    }
+
+    if (cmd === 'spec' && subcmd === 'show') {
+      if (!rest[0]) throw new Error('Missing spec name');
+      if (typeof loadSpec !== 'function') {
+        throw new Error('Spec registry is not available');
+      }
+      updateSession(current => {
+        current.last_command = 'spec show';
+      });
+      return loadSpec(rest[0]);
     }
 
     if (cmd === 'focus' && subcmd === 'get') {
