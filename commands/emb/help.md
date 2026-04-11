@@ -32,9 +32,13 @@ Output the emb-agent help summary below and nothing else.
   If project `quality_gates.required_executors` is configured, keep `verify` active until required `executor run <name>` checks pass
   If project `quality_gates.required_signoffs` is configured, the engineer closes them with `verify confirm <name>` or `verify reject <name>`
 
-## Core Commands
+## Public Commands
 
-- `$emb-init-project`
+The public slash surface is intentionally small. Users should only need these 13 commands.
+
+### Start
+
+- `$emb-init`
   Initialize the current project with emb-agent defaults and truth layers. This is the official initialization flow.
 - `$emb-ingest`
   Import external documents or write new facts into project truth.
@@ -43,7 +47,7 @@ Output the emb-agent help summary below and nothing else.
 - `$emb-task`
   Manage task-local execution context once work becomes multi-step.
 
-## Workflow Commands
+### Execute
 
 - `$emb-scan`
   Find entry points, hardware truth, and relevant files before editing.
@@ -53,6 +57,11 @@ Output the emb-agent help summary below and nothing else.
   Apply a focused code or documentation change.
 - `$emb-debug`
   Narrow the root cause when symptoms are visible but the cause is not.
+
+### Close
+
+- `$emb-review`
+  Review the change before closure when structural risk is non-trivial.
 - `$emb-verify`
   Close work with explicit checks and evidence.
 - `$emb-pause`
@@ -70,7 +79,7 @@ Output the emb-agent help summary below and nothing else.
 ## Advanced Help
 
 - Use `help advanced` or `help --all` to show the full command surface.
-- Use `commands list` to inspect every installed public command.
+- Use `commands list` to inspect the installed public command surface.
 - Advanced runtime surfaces:
   `skills list`
   `skills show <name>`

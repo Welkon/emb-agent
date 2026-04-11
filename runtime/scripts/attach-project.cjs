@@ -346,7 +346,7 @@ function attachProject(argv) {
     user: args.user,
     userSet: args.userSet
   };
-  const projectConfig = initProject.buildProjectConfig(configArgs);
+  const projectConfig = initProject.buildProjectConfig(projectRoot, configArgs);
   const detected = detectProjectInputs(projectRoot);
   const scaffolded = initProject.scaffoldProject(projectRoot, projectConfig, args.force, configArgs);
   const projectExtDir = runtime.getProjectExtDir(projectRoot);

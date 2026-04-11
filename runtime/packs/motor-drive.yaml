@@ -1,0 +1,19 @@
+name: motor-drive
+focus_areas:
+  - power_stage
+  - pwm_generation
+  - current_sense
+  - startup_sequence
+  - fault_protection
+  - control_loop
+extra_review_axes:
+  - deadtime_and_shoot_through
+  - sampling_window_alignment
+  - fault_shutdown_path
+  - startup_and_stall_behavior
+  - sensor_feedback_consistency
+  - control_loop_latency
+preferred_notes:
+  - docs/MOTOR-CONTROL.md
+  - docs/POWER-STAGE.md
+  - docs/DEBUG-NOTES.md

@@ -3,6 +3,7 @@
 const os = require('os');
 
 const permissionGateHelpers = require('./permission-gates.cjs');
+const workflowRegistry = require('./workflow-registry.cjs');
 
 function createTaskCommandHelpers(deps) {
   const {
@@ -425,6 +426,84 @@ function createTaskCommandHelpers(deps) {
     return uniqueContextEntries(baseEntries);
   }
 
+  function buildInjectedSpecContext(taskLike, session) {
+    const summary = session || loadSession();
+    return workflowRegistry.buildInjectedSpecSnapshot(rootDir, getProjectExtDir(), {
+      profile: (summary && summary.project_profile) || '',
+      packs: (summary && summary.active_packs) || [],
+      task: taskLike || null,
+      handoff: null
+    }, { limit: 8 });
+  }
+
+  function getTaskAutoSpecsPath(name) {
+    return path.join(getTaskDir(name), 'auto-specs.md');
+  }
+
+  function buildTaskAutoSpecsArtifact(taskName, taskLike, session) {
+    const injected = buildInjectedSpecContext(taskLike, session);
+    const lines = [
+      '# Auto Injected Specs',
+      '',
+      `- Task: ${taskLike && taskLike.name ? taskLike.name : taskName}`,
+      `- Profile: ${(session && session.project_profile) || ''}`,
+      `- Packs: ${((session && session.active_packs) || []).join(', ') || '-'}`,
+      ''
+    ];
+
+    if ((injected.items || []).length === 0) {
+      lines.push('- No auto-injected specs matched this task state.', '');
+    } else {
+      lines.push('## Selected Specs', '');
+      injected.items.forEach(item => {
+        lines.push(`### ${item.title || item.name}`);
+        lines.push(`- Name: ${item.name}`);
+        lines.push(`- Path: ${item.display_path}`);
+        lines.push(`- Scope: ${item.scope}`);
+        lines.push(`- Priority: ${item.priority}`);
+        lines.push(`- Reasons: ${(item.reasons || []).join(', ') || '-'}`);
+        if (item.summary) {
+          lines.push(`- Summary: ${item.summary}`);
+        }
+        lines.push('');
+        lines.push('```md');
+        lines.push(runtime.readText(item.absolute_path).trim());
+        lines.push('```');
+        lines.push('');
+      });
+    }
+
+    fs.writeFileSync(getTaskAutoSpecsPath(taskName), `${lines.join('\n').trim()}\n`, 'utf8');
+    return {
+      path: path.relative(resolveProjectRoot(), getTaskAutoSpecsPath(taskName)).replace(/\\/g, '/'),
+      specs: injected.items.map(item => ({
+        name: item.name,
+        title: item.title || item.name,
+        summary: item.summary,
+        display_path: item.display_path,
+        scope: item.scope,
+        priority: item.priority,
+        reasons: item.reasons || []
+      }))
+    };
+  }
+
+  function ensureTaskInjectedSpecContext(taskName, taskLike, session) {
+    const generated = buildTaskAutoSpecsArtifact(taskName, taskLike, session);
+    CONTEXT_CHANNELS.forEach(channel => {
+      const next = uniqueContextEntries([
+        {
+          kind: 'file',
+          path: generated.path,
+          reason: 'Auto-injected task specs'
+        },
+        ...readJsonl(getTaskContextPath(taskName, channel))
+      ]);
+      writeJsonl(getTaskContextPath(taskName, channel), next);
+    });
+    return generated;
+  }
+
   function tokenizeText(text) {
     return runtime.unique(
       String(text || '')
@@ -663,6 +742,7 @@ function createTaskCommandHelpers(deps) {
         adapters: [],
         tools: []
       },
+      injected_specs: [],
       context: Object.fromEntries(
         CONTEXT_CHANNELS.map(channel => [
           channel,
@@ -937,6 +1017,7 @@ function createTaskCommandHelpers(deps) {
         adapters: [],
         tools: []
       },
+      injected_specs: Array.isArray(manifest.injected_specs) ? manifest.injected_specs : [],
       context_files: manifest.context || {},
       created_at: String(manifest.created_at || createdAt),
       updated_at: updatedAt,
@@ -982,15 +1063,30 @@ function createTaskCommandHelpers(deps) {
     const manifest = buildTaskManifest(name, parsed, parsed.type, session, bindings);
 
     writeTask(name, manifest);
+    const injected = ensureTaskInjectedSpecContext(name, {
+      name,
+      title: parsed.summary,
+      status: 'planning',
+      type: parsed.type
+    }, session);
     CONTEXT_CHANNELS.forEach(channel => {
       writeJsonl(
         getTaskContextPath(name, channel),
         uniqueContextEntries([
+          {
+            kind: 'file',
+            path: injected.path,
+            reason: 'Auto-injected task specs'
+          },
           ...buildBindingContextEntries(channel, bindings),
           ...buildDefaultContextEntries(channel, session)
         ])
       );
     });
+    writeTask(name, updateTaskTimestamps({
+      ...runtime.readJson(getTaskManifestPath(name)),
+      injected_specs: injected.specs
+    }));
 
     updateSession(current => {
       current.last_command = 'task add';
@@ -1028,11 +1124,19 @@ function createTaskCommandHelpers(deps) {
 
     const workspace = ensureTaskWorkspace(task);
     const manifest = runtime.readJson(getTaskManifestPath(input.name));
+    const session = loadSession();
+    const injected = ensureTaskInjectedSpecContext(input.name, {
+      name: task.name,
+      title: task.title,
+      status: 'in_progress',
+      type: task.type
+    }, session);
     writeTask(input.name, updateTaskTimestamps({
       ...manifest,
       status: 'in_progress',
       current_phase: 1,
-      worktree_path: workspace.path
+      worktree_path: workspace.path,
+      injected_specs: injected.specs
     }));
 
     updateSession(current => {

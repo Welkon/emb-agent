@@ -214,12 +214,14 @@ test('task commands create activate manage context and resolve lightweight tasks
     const taskName = created.task.name;
     const taskDir = path.join(tempProject, '.emb-agent', 'tasks', taskName);
     const manifest = JSON.parse(fs.readFileSync(path.join(taskDir, 'task.json'), 'utf8'));
+    const autoSpecsPath = `.emb-agent/tasks/${taskName}/auto-specs.md`;
 
     assert.equal(created.created, true);
     assert.equal(fs.existsSync(path.join(taskDir, 'task.json')), true);
     assert.equal(fs.existsSync(path.join(taskDir, 'implement.jsonl')), true);
     assert.equal(fs.existsSync(path.join(taskDir, 'check.jsonl')), true);
     assert.equal(fs.existsSync(path.join(taskDir, 'debug.jsonl')), true);
+    assert.equal(fs.existsSync(path.join(taskDir, 'auto-specs.md')), true);
     assert.match(manifest.id, /^\d{2}-\d{2}-implement-tm2-pwm-adapter/);
     assert.equal(manifest.status, 'planning');
     assert.equal(manifest.dev_type, 'embedded');
@@ -239,15 +241,18 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.ok(created.task.bindings.docs.some(item => item.doc_id));
     assert.ok(created.task.bindings.adapters.some(item => item.source === 'default-pack'));
     assert.ok(created.task.bindings.tools.some(item => item.tool === 'timer-calc'));
+    assert.ok(created.task.injected_specs.some(item => item.name === 'project-local'));
     assert.ok(created.task.context.implement.some(item => item.path === '.emb-agent/hw.yaml'));
     assert.ok(created.task.context.implement.some(item => item.path === 'docs/HARDWARE-LOGIC.md'));
     assert.ok(created.task.context.implement.some(item => item.path.includes('cache/docs/')));
+    assert.ok(created.task.context.implement.some(item => item.path === autoSpecsPath));
 
     const activated = await captureCliJson(['task', 'activate', taskName]);
     assert.equal(activated.activated, true);
     assert.equal(activated.workspace.mode, 'copy');
     assert.equal(fs.existsSync(activated.workspace.path), true);
     assert.equal(activated.task.worktree_path, activated.workspace.path);
+    assert.ok(activated.task.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(fs.existsSync(path.join(activated.workspace.path, 'docs', 'SC8F072.pdf')), true);
     assert.equal(cli.loadSession().active_task.name, taskName);
     assert.equal(cli.loadSession().active_task.status, 'in_progress');
@@ -277,6 +282,19 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(resume.task.name, taskName);
     assert.equal(resume.task.worktree_path, activated.workspace.path);
     assert.ok(resume.task.context.implement.some(item => item.path === 'src/timer.c'));
+    assert.ok(resume.injected_specs.some(item => item.name === 'project-local'));
+    assert.ok(resume.task.injected_specs.some(item => item.name === 'project-local'));
+
+    const next = cli.buildNextContext();
+    assert.ok(next.injected_specs.some(item => item.name === 'project-local'));
+    assert.ok(next.task.injected_specs.some(item => item.name === 'project-local'));
+
+    const status = cli.buildStatus();
+    assert.ok(status.injected_specs.some(item => item.name === 'project-local'));
+    assert.ok(status.active_task.injected_specs.some(item => item.name === 'project-local'));
+
+    const plan = cli.buildActionOutput('plan');
+    assert.ok(plan.injected_specs.some(item => item.name === 'project-local'));
 
     const resolved = await captureCliJson(['task', 'resolve', taskName, 'adapter merged']);
     assert.equal(resolved.resolved, true);

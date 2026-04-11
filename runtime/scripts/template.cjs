@@ -7,7 +7,8 @@ const path = require('path');
 const process = require('process');
 
 const ROOT = path.resolve(__dirname, '..');
-const { TEMPLATE_CONFIG, TEMPLATES_DIR } = require(path.join(ROOT, 'lib', 'template-registry.cjs'));
+const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
+const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs'));
 const { applyTemplate } = require(path.join(ROOT, 'scripts', 'init-project.cjs'));
 
 function slugify(value) {
@@ -19,11 +20,28 @@ function slugify(value) {
 }
 
 function loadTemplates() {
-  return TEMPLATE_CONFIG;
+  const registry = workflowRegistry.loadWorkflowRegistry(ROOT, {
+    projectExtDir: runtime.getProjectExtDir(process.cwd())
+  });
+  return Object.fromEntries(
+    registry.templates.map(entry => [
+      entry.name,
+      {
+        name: entry.name,
+        source: entry.scope === 'built-in'
+          ? path.basename(entry.relative_file)
+          : entry.relative_file,
+        description: entry.description,
+        default_output: entry.default_output,
+        scope: entry.scope,
+        sourcePath: entry.absolute_path
+      }
+    ])
+  );
 }
 
 function getTemplateMeta(name) {
-  const meta = TEMPLATE_CONFIG[name];
+  const meta = loadTemplates()[name];
   if (!meta) {
     throw new Error(`unknown template: ${name}`);
   }
@@ -32,12 +50,11 @@ function getTemplateMeta(name) {
 
 function readTemplateSource(name) {
   const meta = getTemplateMeta(name);
-  const sourcePath = path.join(TEMPLATES_DIR, meta.source);
   return {
     ...meta,
     name,
-    sourcePath,
-    content: fs.readFileSync(sourcePath, 'utf8')
+    sourcePath: meta.sourcePath,
+    content: fs.readFileSync(meta.sourcePath, 'utf8')
   };
 }
 
@@ -75,7 +92,7 @@ function resolveOutputPath(meta, outputArg, context, projectRoot) {
 }
 
 function listCommand() {
-  return Object.entries(TEMPLATE_CONFIG)
+  return Object.entries(loadTemplates())
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([name, meta]) => ({ name, ...meta }));
 }

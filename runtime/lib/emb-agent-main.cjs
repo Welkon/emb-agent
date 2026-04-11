@@ -12,6 +12,7 @@ const PROFILES_DIR = path.join(ROOT, 'profiles');
 const PACKS_DIR = path.join(ROOT, 'packs');
 const AGENTS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'agents') : path.join(ROOT, 'agents');
 const COMMANDS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'commands', 'emb') : path.join(ROOT, 'commands');
+const COMMAND_DOCS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'commands', 'emb') : path.join(ROOT, 'command-docs');
 const SKILLS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'skills') : path.join(ROOT, 'skills');
 const MEMORY_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'memory') : path.join(ROOT, 'memory');
 const { TEMPLATES_DIR } = require(path.join(ROOT, 'lib', 'template-registry.cjs'));
@@ -44,9 +45,12 @@ const settingsCommandHelpers = require(path.join(ROOT, 'lib', 'settings-command.
 const sessionReportCommandHelpers = require(path.join(ROOT, 'lib', 'session-report-command.cjs'));
 const healthUpdateCommandHelpers = require(path.join(ROOT, 'lib', 'health-update-command.cjs'));
 const executorCommandHelpers = require(path.join(ROOT, 'lib', 'executor-command.cjs'));
+const commandVisibility = require(path.join(ROOT, 'lib', 'command-visibility.cjs'));
+const workflowAuthoringHelpers = require(path.join(ROOT, 'lib', 'workflow-authoring.cjs'));
 const subAgentRuntimeHelpers = require(path.join(ROOT, 'lib', 'sub-agent-runtime.cjs'));
 const skillRuntimeHelpers = require(path.join(ROOT, 'lib', 'skill-runtime.cjs'));
 const memoryRuntimeHelpers = require(path.join(ROOT, 'lib', 'memory-runtime.cjs'));
+const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 
@@ -97,6 +101,12 @@ function getProjectPacksDir() {
 
 function getProjectStatePaths() {
   return runtime.getProjectStatePaths(ROOT, resolveProjectRoot(), RUNTIME_CONFIG);
+}
+
+function loadWorkflowCatalog() {
+  return workflowRegistry.loadWorkflowRegistry(ROOT, {
+    projectExtDir: getProjectExtDir()
+  });
 }
 
 function getProjectConfig() {
@@ -163,11 +173,42 @@ function loadProfile(name) {
 }
 
 function loadPack(name) {
-  const filePath = resolveYamlPath(getProjectPacksDir(), PACKS_DIR, name);
+  const catalog = loadWorkflowCatalog();
+  const registryEntry = (catalog.packs || []).find(item => item.name === name);
+  const filePath = registryEntry && fs.existsSync(registryEntry.absolute_path)
+    ? registryEntry.absolute_path
+    : resolveYamlPath(getProjectPacksDir(), PACKS_DIR, name);
   if (!filePath) {
     throw new Error(`Pack not found: ${name}`);
   }
   return runtime.validatePack(name, runtime.parseSimpleYaml(filePath));
+}
+
+function listPackNames() {
+  return runtime.unique((loadWorkflowCatalog().packs || []).map(item => item.name));
+}
+
+function listSpecNames() {
+  return runtime.unique((loadWorkflowCatalog().specs || []).map(item => item.name));
+}
+
+function loadSpec(name) {
+  const entry = (loadWorkflowCatalog().specs || []).find(item => item.name === name);
+  if (!entry) {
+    throw new Error(`Spec not found: ${name}`);
+  }
+
+  return {
+    name: entry.name,
+    title: entry.title || entry.name,
+    path: entry.display_path,
+    scope: entry.scope,
+    summary: entry.summary,
+    auto_inject: entry.auto_inject,
+    priority: entry.priority,
+    apply_when: entry.apply_when,
+    content: runtime.readText(entry.absolute_path)
+  };
 }
 
 function loadMarkdown(dirPath, name, kind) {
@@ -183,6 +224,26 @@ function loadMarkdown(dirPath, name, kind) {
     path: path.relative(displayRoot, filePath).replace(/\\/g, '/'),
     content: runtime.readText(filePath)
   };
+}
+
+function loadCommandMarkdown(name) {
+  const fileName = `${name}.md`;
+  const publicPath = path.join(COMMANDS_DIR, fileName);
+  if (fs.existsSync(publicPath)) {
+    return loadMarkdown(COMMANDS_DIR, name, 'Command');
+  }
+
+  const hiddenPath = path.join(COMMAND_DOCS_DIR, fileName);
+  if (fs.existsSync(hiddenPath)) {
+    const displayRoot = SOURCE_LAYOUT ? SOURCE_ROOT : ROOT;
+    return {
+      name,
+      path: path.relative(displayRoot, hiddenPath).replace(/\\/g, '/'),
+      content: runtime.readText(hiddenPath)
+    };
+  }
+
+  throw new Error(`Command not found: ${name}`);
 }
 
 function readScalarLine(content, prefix) {
@@ -552,6 +613,22 @@ const {
 });
 
 const {
+  handleWorkflowCommands
+} = workflowAuthoringHelpers.createWorkflowAuthoringHelpers({
+  fs,
+  path,
+  process,
+  ROOT,
+  runtime,
+  workflowRegistry,
+  templateCli,
+  getProjectExtDir,
+  loadPack,
+  loadSpec,
+  updateSession
+});
+
+const {
   handleCatalogAndStateCommands
 } = stateCommandHelpers.createStateCommandHelpers({
   fs,
@@ -562,11 +639,16 @@ const {
   PACKS_DIR,
   AGENTS_DIR,
   COMMANDS_DIR,
+  commandVisibility,
   RUNTIME_CONFIG,
   getProjectProfilesDir,
   getProjectPacksDir,
+  listPackNames,
+  listSpecNames,
   loadProfile,
   loadPack,
+  loadSpec,
+  loadCommandMarkdown,
   loadMarkdown,
   loadSession,
   updateSession,
@@ -574,6 +656,7 @@ const {
   getProjectConfig,
   requireRestText,
   requirePreferenceKey,
+  handleWorkflowCommands,
   handleHealthUpdateCommands,
   handleTaskCommands,
   handleExecutorCommands,
@@ -772,7 +855,8 @@ const {
   buildHealthReport: () => buildHealthReport(),
   buildContextHygiene,
   enrichWithToolSuggestions,
-  buildArchReviewContext
+  buildArchReviewContext,
+  getActiveTask
 });
 
 const {

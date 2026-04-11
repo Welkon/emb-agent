@@ -1,5 +1,7 @@
 'use strict';
 
+const commandVisibility = require('./command-visibility.cjs');
+
 function createInstallHelpers(deps) {
   const {
     fs,
@@ -772,6 +774,7 @@ function createInstallHelpers(deps) {
   function installRuntime(targetDir, target, args) {
     const runtimeDir = path.join(targetDir, target.runtimeDirName);
     const runtimeCommandsDir = path.join(runtimeDir, 'commands');
+    const runtimeCommandDocsDir = path.join(runtimeDir, 'command-docs');
     const runtimeAgentsDir = path.join(runtimeDir, 'agents');
     const runtimeToolsDir = path.join(runtimeDir, 'tools');
     const runtimeChipsDir = path.join(runtimeDir, 'chips');
@@ -796,8 +799,10 @@ function createInstallHelpers(deps) {
     copyDirWithReplacement(path.join(runtimeSrc, 'lib'), path.join(runtimeDir, 'lib'), targetDir, target);
     copyDirWithReplacement(path.join(runtimeSrc, 'scripts'), path.join(runtimeDir, 'scripts'), targetDir, target);
     copyDirWithReplacement(path.join(runtimeSrc, 'templates'), path.join(runtimeDir, 'templates'), targetDir, target);
+    copyDir(path.join(runtimeSrc, 'registry'), path.join(runtimeDir, 'registry'));
     copyDir(path.join(runtimeSrc, 'profiles'), path.join(runtimeDir, 'profiles'));
     copyDir(path.join(runtimeSrc, 'packs'), path.join(runtimeDir, 'packs'));
+    copyDir(path.join(runtimeSrc, 'specs'), path.join(runtimeDir, 'specs'));
     copyDir(path.join(runtimeSrc, 'tools'), runtimeToolsDir);
     copyDir(path.join(runtimeSrc, 'chips'), runtimeChipsDir);
     copyDir(path.join(runtimeSrc, 'state'), path.join(runtimeDir, 'state'));
@@ -818,9 +823,15 @@ function createInstallHelpers(deps) {
     ensureDir(path.join(runtimeDir, 'adapters'));
 
     ensureDir(runtimeCommandsDir);
+    ensureDir(runtimeCommandDocsDir);
     for (const file of fs.readdirSync(commandsSrc).filter(name => name.endsWith('.md'))) {
       const raw = fs.readFileSync(path.join(commandsSrc, file), 'utf8');
-      fs.writeFileSync(path.join(runtimeCommandsDir, file), replaceInstallPaths(raw, targetDir, target), 'utf8');
+      const rendered = replaceInstallPaths(raw, targetDir, target);
+      const commandName = file.replace(/\.md$/, '');
+      fs.writeFileSync(path.join(runtimeCommandDocsDir, file), rendered, 'utf8');
+      if (commandVisibility.isPublicCommandName(commandName)) {
+        fs.writeFileSync(path.join(runtimeCommandsDir, file), rendered, 'utf8');
+      }
     }
 
     ensureDir(runtimeAgentsDir);

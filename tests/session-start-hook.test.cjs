@@ -146,6 +146,9 @@ test('session start hook reminds active task context after clearable resume path
     assert.match(reminder, /Investigate PMS150G comparator timing/);
     assert.match(reminder, /task implement context/);
     assert.match(reminder, /emb-agent\/hw\.yaml/);
+    assert.match(reminder, /Auto-injected specs:/);
+    assert.match(reminder, /project-local/);
+    assert.match(reminder, /task-execution/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;

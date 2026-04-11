@@ -25,8 +25,11 @@ If the repository root README explains what emb-agent is, the docs directory sho
   What belongs in core and what belongs in adapters.
 - [Task Model](./task-model.md)
   How task manifests are structured and when to use them.
+- [Workflow Layering](./workflow-layering.md)
+  How to decide between built-in packs/specs and project-local workflow extensions.
 
 ## Examples
 
+- [Smart Pillbox Project Extension](../examples/project-extensions/smart-pillbox/README.md)
 - [SC8F072 PWM Bring-up](../examples/sc8f072-pwm/README.md)
 - [Brownfield Repo Onboarding](../examples/brownfield-repo-onboarding/README.md)

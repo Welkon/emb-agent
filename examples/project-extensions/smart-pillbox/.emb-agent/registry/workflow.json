@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "name": "medication-flow",
+      "source": "templates/medication-flow.md.tpl",
+      "description": "Generate the medication flow and adherence-state note.",
+      "default_output": "docs/MEDICATION-FLOW.md"
+    }
+  ],
+  "packs": [
+    {
+      "name": "smart-pillbox",
+      "file": "packs/smart-pillbox.yaml",
+      "description": "Medication reminder, adherence recording, and device/app/cloud consistency workflow pack."
+    }
+  ],
+  "specs": [
+    {
+      "name": "smart-pillbox-focus",
+      "title": "Smart Pillbox Focus",
+      "path": "specs/smart-pillbox-focus.md",
+      "summary": "Medication schedule, adherence evidence, sync reconciliation, and false-success risk checks for connected pillbox devices.",
+      "auto_inject": true,
+      "priority": 62,
+      "apply_when": {
+        "packs": [
+          "smart-pillbox"
+        ]
+      }
+    }
+  ]
+}

@@ -57,6 +57,16 @@ For Codex:
 npx emb-agent --codex --global --developer your-name
 ```
 
+As of Codex CLI `v0.116.0` on `2026-03-24`, hooks are still experimental and must be enabled manually in `~/.codex/config.toml`:
+
+```toml
+[features]
+multi_agent = true
+codex_hooks = true
+```
+
+emb-agent does not write these feature flags automatically. If Codex later enables hooks by default, this manual step may no longer be required.
+
 For Claude Code:
 
 ```bash
@@ -71,7 +81,17 @@ You do not need to run any internal CLI path yourself.
 
 After install, open the project in Codex or Claude Code and use emb-agent directly in the session. The host integration handles runtime invocation for you.
 
+If a workflow is product-specific instead of broadly reusable, keep it as a project-local extension under `.emb-agent/` and load it with `init --pack <project-local-pack>` rather than adding it to built-in runtime packs. See [docs/workflow-layering.md](./docs/workflow-layering.md) and the [smart pillbox example](./examples/project-extensions/smart-pillbox/README.md).
+
 The shortest onboarding path and session command flow are documented in [docs/quick-start.md](./docs/quick-start.md) and [commands/emb/help.md](./commands/emb/help.md).
+
+The public command surface is intentionally kept small:
+
+- Start: `init`, `ingest`, `next`, `task`
+- Execute: `scan`, `plan`, `do`, `debug`
+- Close: `review`, `verify`, `pause`, `resume`
+
+Everything else is treated as advanced runtime surface rather than default user-facing slash commands.
 
 ## Product Model
 
@@ -204,7 +224,14 @@ The core owns:
 
 Vendor-, family-, and chip-specific formulas and routes belong in adapters.
 
+Workflow guidance follows a similar layering rule:
+
+- keep core rules abstract
+- keep built-in packs at the engineering-domain level
+- keep product-specific packs and specs in project-local workflow extensions under `.emb-agent/`
+
 See [docs/adapter-model.md](./docs/adapter-model.md) for the intended separation between core and adapter responsibilities.
+See [docs/workflow-layering.md](./docs/workflow-layering.md) for the pack/spec layering rule.
 
 ## Command Reference
 

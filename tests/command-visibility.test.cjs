@@ -56,8 +56,14 @@ test('commands list hides legacy attach alias', async () => {
   const listed = await captureCliJson(['commands', 'list']);
 
   assert.ok(Array.isArray(listed));
-  assert.ok(listed.includes('init-project'));
+  assert.equal(listed.length, 13);
+  assert.ok(listed.includes('help'));
+  assert.ok(listed.includes('init'));
+  assert.ok(listed.includes('review'));
+  assert.ok(!listed.includes('workflow'));
   assert.ok(!listed.includes('attach'));
+  assert.ok(!listed.includes('init-project'));
+  assert.ok(!listed.includes('adapter'));
 });
 
 test('commands show keeps legacy attach alias accessible', async () => {
@@ -66,6 +72,20 @@ test('commands show keeps legacy attach alias accessible', async () => {
   assert.equal(shown.name, 'attach');
   assert.equal(shown.path, 'commands/emb/attach.md');
   assert.match(shown.content, /legacy alias kept for compatibility/);
+});
+
+test('commands show keeps hidden init-project command accessible', async () => {
+  const shown = await captureCliJson(['commands', 'show', 'init-project']);
+
+  assert.equal(shown.name, 'init-project');
+  assert.match(shown.content, /Initialize the current project/);
+});
+
+test('commands show keeps hidden advanced workflow command accessible', async () => {
+  const shown = await captureCliJson(['commands', 'show', 'workflow']);
+
+  assert.equal(shown.name, 'workflow');
+  assert.match(shown.content, /project-local workflow authoring/);
 });
 
 test('agents list and show resolve source-layout markdown files', async () => {
@@ -91,7 +111,7 @@ test('help markdown stays focused on core workflow commands', async () => {
   const helpPath = path.join(repoRoot, 'commands', 'emb', 'help.md');
   const content = fs.readFileSync(helpPath, 'utf8');
 
-  assert.match(content, /\$emb-init-project/);
+  assert.match(content, /\$emb-init/);
   assert.match(content, /\$emb-next/);
   assert.match(content, /\$emb-task/);
   assert.doesNotMatch(content, /\$emb-orchestrate/);
@@ -210,6 +230,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.doesNotMatch(compact, /workspace link/);
   assert.doesNotMatch(compact, /thread /);
   assert.doesNotMatch(compact, /spec /);
+  assert.doesNotMatch(compact, /workflow /);
   assert.doesNotMatch(compact, /skills list/);
   assert.doesNotMatch(compact, /memory stack/);
 
@@ -219,9 +240,11 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /context compress \[note\]/);
   assert.match(advanced, /skills list/);
   assert.match(advanced, /memory stack/);
+  assert.match(advanced, /spec list/);
+  assert.match(advanced, /workflow init/);
+  assert.match(advanced, /workflow new pack/);
   assert.doesNotMatch(advanced, /workspace link/);
   assert.doesNotMatch(advanced, /thread /);
-  assert.doesNotMatch(advanced, /spec /);
   assert.match(advanced, /commands list/);
   assert.equal(advanced, allFlag);
 });
