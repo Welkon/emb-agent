@@ -211,15 +211,17 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.doesNotMatch(compact, /thread /);
   assert.doesNotMatch(compact, /spec /);
   assert.doesNotMatch(compact, /skills list/);
+  assert.doesNotMatch(compact, /memory stack/);
 
   assert.match(advanced, /Advanced commands:/);
   assert.match(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
   assert.match(advanced, /context compress \[note\]/);
+  assert.match(advanced, /skills list/);
+  assert.match(advanced, /memory stack/);
   assert.doesNotMatch(advanced, /workspace link/);
   assert.doesNotMatch(advanced, /thread /);
   assert.doesNotMatch(advanced, /spec /);
-  assert.doesNotMatch(advanced, /skills list/);
   assert.match(advanced, /commands list/);
   assert.equal(advanced, allFlag);
 });

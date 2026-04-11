@@ -50,6 +50,10 @@ Project state is stored by default at:
   Core abstract tool specs.
 - `chips/`
   Core abstract chip registry.
+- package-root `skills/`
+  Built-in skills discovered lazily by the runtime. Metadata is listed first; full bodies load only on `skills show` or `skills run`.
+- package-root `memory/`
+  Built-in instruction-memory layers such as organization guidance that can be stacked with user, project, and local memory.
 - `extensions/`
   Optional extension root. It is created only when `adapter sync`, `adapter derive`, or the first extension-registry write is executed.
 - `state/default-session.json`
@@ -83,6 +87,17 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs pause
 node <runtime-home>/emb-agent/bin/emb-agent.cjs resume
 ```
 
+Inspect reusable skills and layered memory:
+
+```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs skills list
+node <runtime-home>/emb-agent/bin/emb-agent.cjs skills show swarm-execution
+node <runtime-home>/emb-agent/bin/emb-agent.cjs memory stack
+node <runtime-home>/emb-agent/bin/emb-agent.cjs memory audit
+```
+
+`pause` also performs one auto-memory extraction pass so reusable conclusions can be reviewed later instead of being lost in session-only state.
+
 Check runtime update state:
 
 ```bash
@@ -97,7 +112,18 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 
 ## Host Sub-Agent Bridge
 
-`dispatch run` and `orchestrate run` now emit and persist a coordinator-style delegation runtime under session diagnostics.
+`dispatch run` and `orchestrate run` now emit and persist a real delegation runtime under session diagnostics.
+
+Delegation pattern is selected from `preferences.orchestration_mode`:
+
+- `auto`
+  Conservative default. Resolves to `coordinator`.
+- `coordinator`
+  One primary worker integrates supporting outputs.
+- `fork`
+  Workers inherit the parent context snapshot and return directly for integration.
+- `swarm`
+  Flat peer roster with one `peer-lead` and supporting `peer` workers.
 
 If the host wants emb-agent to actually launch sub-agents, configure a bridge command that accepts a JSON payload on `stdin` and returns a JSON worker result on `stdout`:
 
@@ -109,6 +135,8 @@ Bridge contract:
 
 - Input: one JSON payload containing session summary, dispatch contract, worker envelope, and a self-contained worker prompt.
 - Output: one JSON payload containing `status` and `worker_result`.
+- Runtime users can steer the pattern with `prefs set orchestration_mode <auto|coordinator|fork|swarm>`.
+- `skills run <name> --isolated` also uses the bridge when a skill declares isolated execution.
 - Fallback: if no bridge is configured, emb-agent keeps the launch request and marks synthesis as `blocked-no-host-bridge` instead of pretending delegation already happened.
 
 ## Maintenance Boundaries

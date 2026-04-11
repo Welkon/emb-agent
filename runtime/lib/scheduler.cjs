@@ -360,9 +360,11 @@ function buildSpawnFallback(agentName, role) {
   };
 }
 
-function buildAgentCall(action, agentName, role, context) {
+function buildAgentCall(action, agentName, role, context, pattern) {
   let when = 'Call this agent only when the current action needs its specialization';
   let blocking = role === 'primary';
+  const delegationPattern = String(pattern || 'coordinator').trim() || 'coordinator';
+  let contextMode = 'fresh-self-contained';
 
   if (agentName === 'hw-scout') {
     when = context.isBaremetal
@@ -390,6 +392,12 @@ function buildAgentCall(action, agentName, role, context) {
     blocking = false;
   }
 
+  if (delegationPattern === 'fork' && action !== 'verify') {
+    contextMode = 'fork-inherit';
+  } else if (delegationPattern === 'swarm' && action !== 'verify') {
+    contextMode = 'peer-shared-task-board';
+  }
+
   return {
     agent: toInstalledAgentName(agentName),
     role,
@@ -398,13 +406,22 @@ function buildAgentCall(action, agentName, role, context) {
       role === 'primary'
         ? (action === 'do' ? 'implement' : 'research')
         : (action === 'verify' ? 'verify' : 'support'),
-    context_mode: 'fresh-self-contained',
+    context_mode: contextMode,
     tool_scope: buildAgentToolScope(action, agentName, role),
     purpose: AGENT_PURPOSES[agentName] || `Support the ${action} action`,
     ownership: AGENT_OWNERSHIP[agentName] || 'Handle only the assigned output surface and do not revert other agents\' work',
     when,
     spawn_fallback: buildSpawnFallback(agentName, role)
   };
+}
+
+function resolveDelegationPattern(resolved) {
+  const session = resolved && resolved.session ? resolved.session : {};
+  const preferences = session && session.preferences && typeof session.preferences === 'object'
+    ? session.preferences
+    : {};
+  const requested = String(preferences.orchestration_mode || 'auto').trim().toLowerCase();
+  return requested && requested !== 'auto' ? requested : 'coordinator';
 }
 
 function buildAgentToolScope(action, agentName, role) {
@@ -527,16 +544,29 @@ function buildAgentContextBundle(action, resolved) {
 function buildDispatchContract(action, resolved, primaryAgent, supportingAgents, mode, recommended) {
   const context = buildContext(resolved);
   const contextBundle = buildAgentContextBundle(action, resolved);
+  const delegationPattern = resolveDelegationPattern(resolved);
   const primary = primaryAgent
     ? {
-        ...buildAgentCall(action, primaryAgent, 'primary', context),
+        ...buildAgentCall(
+          action,
+          primaryAgent,
+          delegationPattern === 'swarm' ? 'peer-lead' : 'primary',
+          context,
+          delegationPattern
+        ),
         expected_output: buildAgentOutputExpectation(action, primaryAgent, context),
         context_bundle: contextBundle,
         start_when: recommended ? 'Start immediately' : 'Start only when the current thread does not want to inline'
       }
     : null;
   const supporting = supportingAgents.map(agentName => ({
-    ...buildAgentCall(action, agentName, 'supporting', context),
+    ...buildAgentCall(
+      action,
+      agentName,
+      delegationPattern === 'swarm' ? 'peer' : 'supporting',
+      context,
+      delegationPattern
+    ),
     expected_output: buildAgentOutputExpectation(action, agentName, context),
     context_bundle: contextBundle,
     start_when: mode === 'parallel-recommended' || mode === 'primary-plus-supporting'
@@ -569,6 +599,134 @@ function buildDispatchContract(action, resolved, primaryAgent, supportingAgents,
       completion_signal: 'final emb output and persistence decisions are explicit'
     }
   ];
+
+  if (delegationPattern === 'fork') {
+    return {
+      launch_via: 'installed-emb-agent',
+      delegation_pattern: 'fork',
+      pattern_constraints: {
+        allowed_patterns: ['fork'],
+        disallowed_patterns: ['coordinator', 'swarm'],
+        max_depth: 1,
+        workers_may_delegate: false,
+        verification_requires_fresh_context: true
+      },
+      auto_invoke_when_recommended: recommended,
+      primary_first: mode !== 'parallel-recommended',
+      parallel_safe: runtime.unique([
+        ...(primary ? [primary.agent] : []),
+        ...supporting.filter(item => !item.blocking).map(item => item.agent)
+      ]),
+      phases: [
+        {
+          id: 'fork-launch',
+          owner: 'Current main thread',
+          objective: `Fork the current context for ${action} without re-deriving shared background`,
+          completion_signal: 'fork workers have inherited the parent context snapshot'
+        },
+        {
+          id: action === 'verify' ? 'verification' : action === 'do' ? 'implementation' : 'execution',
+          owner: primary ? primary.agent : 'Current main thread',
+          objective: `Execute ${action} against the inherited context snapshot`,
+          completion_signal: `the standard ${action} output shape is available`
+        },
+        {
+          id: 'integration',
+          owner: 'Current main thread',
+          objective: 'Integrate forked worker results back into the main thread',
+          completion_signal: 'final emb output and persistence decisions are explicit'
+        }
+      ],
+      synthesis_required: false,
+      synthesis_contract: {
+        owner: 'Current main thread',
+        happens_after: [],
+        happens_before: ['integration'],
+        rule: 'Fork workers inherit the parent context; integrate their results without recursive delegation',
+        output_requirements: [
+          'Keep the inherited context boundary explicit',
+          'Do not recurse into deeper fork trees'
+        ]
+      },
+      do_not_parallelize: [
+        'Do not let fork children fork again',
+        'Keep the shared prefix stable so sibling workers inherit the same baseline context',
+        'Do not let multiple writable agents modify the same file set'
+      ],
+      integration_owner: 'Current main thread',
+      integration_steps: runtime.unique([
+        'Treat fork results as inherited-context worker outputs, not isolated fresh research',
+        'Keep verification workers fresh even when other workers inherit context',
+        `Integrate fork worker results back into the standard output shape for ${action}`
+      ]),
+      primary,
+      supporting
+    };
+  }
+
+  if (delegationPattern === 'swarm') {
+    return {
+      launch_via: 'installed-emb-agent',
+      delegation_pattern: 'swarm',
+      pattern_constraints: {
+        allowed_patterns: ['swarm'],
+        disallowed_patterns: ['coordinator', 'fork'],
+        max_depth: 1,
+        workers_may_delegate: false,
+        verification_requires_fresh_context: true
+      },
+      auto_invoke_when_recommended: recommended,
+      primary_first: false,
+      parallel_safe: runtime.unique([
+        ...(primary ? [primary.agent] : []),
+        ...supporting.map(item => item.agent)
+      ]),
+      phases: [
+        {
+          id: 'peer-launch',
+          owner: 'Current main thread',
+          objective: `Launch a flat peer roster for ${action}`,
+          completion_signal: 'all peers and the task board are explicit'
+        },
+        {
+          id: 'peer-sync',
+          owner: 'Current main thread',
+          objective: 'Collect peer outputs from the shared task board without nested delegation',
+          completion_signal: 'peer conclusions and remaining gaps are explicit'
+        },
+        {
+          id: 'integration',
+          owner: 'Current main thread',
+          objective: 'Integrate peer outputs back into standard emb output',
+          completion_signal: 'final emb output and persistence decisions are explicit'
+        }
+      ],
+      synthesis_required: false,
+      synthesis_contract: {
+        owner: 'Current main thread',
+        happens_after: ['peer-launch'],
+        happens_before: ['integration'],
+        rule: 'Swarm peers share only the task board; the main thread owns final integration',
+        output_requirements: [
+          'Keep the peer roster flat',
+          'Do not let peers recruit more peers or start hidden sub-teams'
+        ]
+      },
+      do_not_parallelize: [
+        'Keep the swarm roster flat',
+        'Do not let peers spawn more peers',
+        'Do not let multiple writable agents modify the same file set'
+      ],
+      integration_owner: 'Current main thread',
+      integration_steps: runtime.unique([
+        'Treat supporting agents as flat peers working against a shared task board',
+        'Let the main thread remain the single integration point',
+        `Integrate swarm peer results back into the standard output shape for ${action}`
+      ]),
+      primary,
+      supporting
+    };
+  }
 
   return {
     launch_via: 'installed-emb-agent',
@@ -771,8 +929,10 @@ function buildAgentExecution(action, resolved, primaryAgentInput, supportingAgen
     suggested_when: runtime.unique(suggestedWhen),
     avoid_when: runtime.unique(avoidWhen),
     calls: runtime.unique([
-      primaryAgent ? buildAgentCall(action, primaryAgent, 'primary', context) : '',
-      ...supportingAgents.map(agentName => buildAgentCall(action, agentName, 'supporting', context))
+      primaryAgent ? buildAgentCall(action, primaryAgent, 'primary', context, resolveDelegationPattern(resolved)) : '',
+      ...supportingAgents.map(agentName =>
+        buildAgentCall(action, agentName, 'supporting', context, resolveDelegationPattern(resolved))
+      )
     ].filter(Boolean)),
     dispatch_contract: buildDispatchContract(action, resolved, primaryAgent, supportingAgents, mode, recommended)
   };

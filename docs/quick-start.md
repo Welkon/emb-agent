@@ -87,7 +87,27 @@ If your project sets `quality_gates.required_executors` in `.emb-agent/project.j
 
 If your project sets `quality_gates.required_signoffs`, the engineer closes those board-level checks with `verify confirm <name>` or `verify reject <name>`.
 
-## 6. Pull truth out of documents only when needed
+## 6. Use advanced runtime surfaces only when they add leverage
+
+The default path should stay short, but advanced runtime surfaces are available when the session gets longer or more repetitive:
+
+```bash
+skills list
+skills run remember
+memory stack
+memory audit
+```
+
+If your host supports the sub-agent bridge and the work needs real delegation, you can also steer the execution pattern:
+
+```bash
+prefs set orchestration_mode swarm
+dispatch run plan
+```
+
+Use `coordinator` for one primary integrator, `fork` for inherited-context workers, and `swarm` for a flat peer roster.
+
+## 7. Pull truth out of documents only when needed
 
 If the answer still lives in a datasheet or manual:
 

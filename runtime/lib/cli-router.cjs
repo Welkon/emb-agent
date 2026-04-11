@@ -22,6 +22,7 @@ function createCliRouter(deps) {
     clearContextSummary,
     buildPausePayload,
     buildPauseContextSummary,
+    maybeAutoExtractOnPause,
     buildCompressContextSummary,
     saveHandoff,
     saveContextSummary,
@@ -362,10 +363,14 @@ function createCliRouter(deps) {
         current.last_command = 'pause';
         current.paused_at = handoff.timestamp;
       });
+      const autoMemory = typeof maybeAutoExtractOnPause === 'function'
+        ? maybeAutoExtractOnPause(noteText)
+        : null;
       emitJson({
         paused: true,
         handoff,
         memory_summary: pausedContext.summary,
+        auto_memory: autoMemory,
         session
       });
       return;

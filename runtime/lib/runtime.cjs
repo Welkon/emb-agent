@@ -675,7 +675,8 @@ const DEFAULT_PREFERENCES = Object.freeze({
   truth_source_mode: 'hardware_first',
   plan_mode: 'auto',
   review_mode: 'auto',
-  verification_mode: 'lean'
+  verification_mode: 'lean',
+  orchestration_mode: 'auto'
 });
 
 function ensureChoice(value, label, choices, fallback) {
@@ -727,6 +728,12 @@ function normalizePreferences(preferences, runtimeConfig) {
       'preferences.verification_mode',
       ['lean', 'strict'],
       defaults.verification_mode
+    ),
+    orchestration_mode: ensureChoice(
+      preferences.orchestration_mode,
+      'preferences.orchestration_mode',
+      ['auto', 'coordinator', 'fork', 'swarm'],
+      defaults.orchestration_mode
     )
   };
 }

@@ -71,3 +71,13 @@ Output the emb-agent help summary below and nothing else.
 
 - Use `help advanced` or `help --all` to show the full command surface.
 - Use `commands list` to inspect every installed public command.
+- Advanced runtime surfaces:
+  `skills list`
+  `skills show <name>`
+  `skills run <name> [--isolated] [input]`
+  `memory stack`
+  `memory list`
+  `memory audit`
+- Delegation runtime:
+  `dispatch run` and `orchestrate run` can execute through the configured host sub-agent bridge.
+  Use `prefs set orchestration_mode <auto|coordinator|fork|swarm>` to steer delegation shape when multi-agent execution is needed.
