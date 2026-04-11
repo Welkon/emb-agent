@@ -15,11 +15,13 @@ test('session start hook only reminds when an unconsumed handoff exists', () => 
   const currentCwd = process.cwd();
   const previousSkip = process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
   const previousCachePath = process.env.EMB_AGENT_UPDATE_CACHE_PATH;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
   const cachePath = path.join(tempProject, '.cache', 'update-check.json');
 
   try {
     process.env.EMB_AGENT_SKIP_UPDATE_CHECK = '1';
     process.env.EMB_AGENT_UPDATE_CACHE_PATH = cachePath;
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     if (fs.existsSync(cachePath)) {
       fs.rmSync(cachePath, { force: true });
     }
@@ -36,6 +38,11 @@ test('session start hook only reminds when an unconsumed handoff exists', () => 
     assert.match(reminder, /node ~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs resume/);
     assert.match(reminder, /resume irq race first/);
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     if (previousSkip === undefined) {
       delete process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
     } else {
@@ -56,6 +63,7 @@ test('session start hook surfaces cached update and stale install notices', () =
   const previousSkip = process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
   const previousHookVersion = process.env.EMB_AGENT_FORCE_HOOK_VERSION;
   const previousCachePath = process.env.EMB_AGENT_UPDATE_CACHE_PATH;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
   const cachePath = path.join(tempProject, '.cache', 'update-check.json');
   const cacheDir = path.dirname(cachePath);
 
@@ -63,6 +71,7 @@ test('session start hook surfaces cached update and stale install notices', () =
     process.env.EMB_AGENT_SKIP_UPDATE_CHECK = '1';
     process.env.EMB_AGENT_FORCE_HOOK_VERSION = '0.0.1';
     process.env.EMB_AGENT_UPDATE_CACHE_PATH = cachePath;
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     fs.mkdirSync(cacheDir, { recursive: true });
     fs.writeFileSync(
       cachePath,
@@ -86,6 +95,11 @@ test('session start hook surfaces cached update and stale install notices', () =
     assert.match(reminder, /Found a newer emb-agent version: 0.2.0 -> 0.3.0/);
     assert.match(reminder, /Detected stale install/);
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     if (fs.existsSync(cachePath)) {
       fs.rmSync(cachePath, { force: true });
     }
@@ -113,11 +127,13 @@ test('session start hook reminds active task context after clearable resume path
   const currentCwd = process.cwd();
   const previousSkip = process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
   const previousCachePath = process.env.EMB_AGENT_UPDATE_CACHE_PATH;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
   const cachePath = path.join(tempProject, '.cache', 'update-check.json');
 
   try {
     process.env.EMB_AGENT_SKIP_UPDATE_CHECK = '1';
     process.env.EMB_AGENT_UPDATE_CACHE_PATH = cachePath;
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
     process.chdir(tempProject);
     cli.main(['init']);
     cli.main(['task', 'add', 'Investigate PMS150G comparator timing']);
@@ -131,6 +147,11 @@ test('session start hook reminds active task context after clearable resume path
     assert.match(reminder, /task implement context/);
     assert.match(reminder, /emb-agent\/hw\.yaml/);
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
     if (previousSkip === undefined) {
       delete process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
     } else {

@@ -12,7 +12,8 @@ function createSessionReportCommandHelpers(deps) {
     buildNextContext,
     buildResumeContext,
     getProjectExtDir,
-    updateSession
+    updateSession,
+    maybeAutoExtractOnSessionReport
   } = deps;
 
   function stripPermissionControlTokens(tokens) {
@@ -315,6 +316,9 @@ function createSessionReportCommandHelpers(deps) {
     const filePath = path.join(getSessionReportsDir(), fileName);
 
     fs.writeFileSync(filePath, buildSessionReportMarkdown(report), 'utf8');
+    const autoMemory = typeof maybeAutoExtractOnSessionReport === 'function'
+      ? maybeAutoExtractOnSessionReport(summaryText || '')
+      : null;
 
     updateSession(current => {
       current.last_command = 'session-report';
@@ -330,7 +334,8 @@ function createSessionReportCommandHelpers(deps) {
       executor_signal: report.executor_signal,
       tool_recommendation: report.tool_recommendation,
       adapter_health: report.adapter_health,
-      handoff_present: Boolean(report.handoff)
+      handoff_present: Boolean(report.handoff),
+      auto_memory: autoMemory
     }, blocked.permission);
   }
 

@@ -537,12 +537,25 @@ function createMemoryRuntimeHelpers(deps) {
     return options;
   }
 
-  function maybeAutoExtractOnPause(noteText) {
+  function maybeAutoExtractAtBoundary(noteText, boundary) {
     const disabled = String(process.env.EMB_AGENT_MEMORY_DISABLED || '').trim() === '1';
     if (disabled) {
       return null;
     }
-    return extractMemory(noteText || '', true);
+    const boundaryLabel = String(boundary || '').trim().toLowerCase();
+    const noteBody = String(noteText || '').trim();
+    const finalNote = boundaryLabel
+      ? `${boundaryLabel}: ${noteBody}`.trim()
+      : noteBody;
+    return extractMemory(finalNote, true);
+  }
+
+  function maybeAutoExtractOnPause(noteText) {
+    return maybeAutoExtractAtBoundary(noteText, 'pause');
+  }
+
+  function maybeAutoExtractOnSessionReport(noteText) {
+    return maybeAutoExtractAtBoundary(noteText, 'session-report');
   }
 
   return {
@@ -556,7 +569,9 @@ function createMemoryRuntimeHelpers(deps) {
     parseMemoryRememberArgs,
     parseMemoryExtractArgs,
     parseMemoryPromoteArgs,
-    maybeAutoExtractOnPause
+    maybeAutoExtractAtBoundary,
+    maybeAutoExtractOnPause,
+    maybeAutoExtractOnSessionReport
   };
 }
 

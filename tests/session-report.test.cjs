@@ -47,6 +47,60 @@ test('session-report writes lightweight session report with next guidance', asyn
   }
 });
 
+test('session-report also performs auto-memory extraction at session boundary', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-memory-'));
+  const currentCwd = process.cwd();
+
+  async function runQuiet(args) {
+    const originalWrite = process.stdout.write;
+    process.stdout.write = () => true;
+
+    try {
+      await cli.main(args);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  }
+
+  async function captureJson(args) {
+    const originalWrite = process.stdout.write;
+    let stdout = '';
+
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    try {
+      await cli.main(args);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+
+    return JSON.parse(stdout);
+  }
+
+  try {
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    await runQuiet(['init']);
+    await runQuiet(['focus', 'set', 'capture closure summary']);
+    await runQuiet(['risk', 'add', 'resume path may skip timer reload']);
+
+    const report = await captureJson(['session-report', 'capture closure summary']);
+    assert.equal(report.generated, true);
+    assert.ok(report.auto_memory);
+    assert.equal(report.auto_memory.remembered, true);
+
+    const listed = await captureJson(['memory', 'list']);
+    assert.ok(listed.length >= 1);
+    const shown = await captureJson(['memory', 'show', listed[0].name]);
+    assert.match(shown.content, /session-report: capture closure summary/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('session-report records tool recommendation when scan tool is ready', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-tool-'));
   const currentCwd = process.cwd();

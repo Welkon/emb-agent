@@ -97,11 +97,11 @@ function resolveWorkspaceTrust(input, env) {
   }
 
   return {
-    trusted: true,
+    trusted: false,
     explicit: false,
     source: 'default',
-    signal: 'assumed-trusted',
-    summary: 'No explicit workspace trust signal was provided; runtime assumes trusted by default'
+    signal: 'untrusted-no-signal',
+    summary: 'No explicit workspace trust signal was provided; runtime treats the workspace as untrusted by default'
   };
 }
 
