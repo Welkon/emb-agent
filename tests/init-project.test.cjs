@@ -11,7 +11,16 @@ const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
-test('init-project creates project defaults and seeded docs', () => {
+function readBootstrapTask(projectRoot) {
+  return JSON.parse(
+    fs.readFileSync(
+      path.join(projectRoot, '.emb-agent', 'tasks', '00-bootstrap-project', 'task.json'),
+      'utf8'
+    )
+  );
+}
+
+test('init-project creates project defaults and defers note templates into a bootstrap task', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -31,6 +40,7 @@ test('init-project creates project defaults and seeded docs', () => {
     const projectConfig = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
     );
+    const bootstrapTask = readBootstrapTask(tempProject);
 
     assert.equal(projectConfig.project_profile, 'rtos-iot');
     assert.deepEqual(projectConfig.active_packs, ['connected-appliance']);
@@ -55,6 +65,7 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.developer')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.current-task')), true);
     assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
+    assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'README.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), false);
@@ -65,14 +76,18 @@ test('init-project creates project defaults and seeded docs', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'project-local.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'CONNECTIVITY.md')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'RELEASE-NOTES.md')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'DEBUG-NOTES.md')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), true);
-    assert.match(
-      fs.readFileSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md'), 'utf8'),
-      /manual-first/
-    );
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'CONNECTIVITY.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'RELEASE-NOTES.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'DEBUG-NOTES.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), false);
+    assert.equal(bootstrapTask.title, 'Bootstrap project notes');
+    assert.equal(bootstrapTask.dev_type, 'docs');
+    assert.ok(bootstrapTask.relatedFiles.includes('.emb-agent/hw.yaml'));
+    assert.ok(bootstrapTask.relatedFiles.includes('.emb-agent/req.yaml'));
+    assert.ok(bootstrapTask.relatedFiles.includes('docs/MCU-FOUNDATION-CHECKLIST.md'));
+    assert.ok(bootstrapTask.relatedFiles.includes('docs/CONNECTIVITY.md'));
+    assert.ok(bootstrapTask.relatedFiles.includes('docs/RELEASE-NOTES.md'));
+    assert.match(bootstrapTask.notes, /Init now creates the minimum emb-agent project skeleton first/);
 
     process.chdir(tempProject);
     cli.main(['init']);
@@ -91,7 +106,7 @@ test('init-project creates project defaults and seeded docs', () => {
   }
 });
 
-test('init-project with battery-charger pack seeds power charging doc', () => {
+test('init-project with battery-charger pack adds deferred power charging note target to bootstrap task', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-battery-charger-'));
   const originalWrite = process.stdout.write;
 
@@ -110,14 +125,13 @@ test('init-project with battery-charger pack seeds power charging doc', () => {
     const projectConfig = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
     );
+    const bootstrapTask = readBootstrapTask(tempProject);
 
     assert.equal(projectConfig.project_profile, 'baremetal-8bit');
     assert.deepEqual(projectConfig.active_packs, ['battery-charger']);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-CHARGING.md')), true);
-    assert.match(
-      fs.readFileSync(path.join(tempProject, 'docs', 'POWER-CHARGING.md'), 'utf8'),
-      /Charging Logic/
-    );
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-CHARGING.md')), false);
+    assert.ok(bootstrapTask.relatedFiles.includes('docs/POWER-CHARGING.md'));
+    assert.ok(bootstrapTask.subtasks.some(item => item.name.includes('docs/POWER-CHARGING.md')));
   } finally {
     process.stdout.write = originalWrite;
   }
@@ -194,20 +208,19 @@ test('init-project honors project-local smart-pillbox extension pack and templat
     const projectConfig = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
     );
+    const bootstrapTask = readBootstrapTask(tempProject);
 
     assert.equal(projectConfig.project_profile, 'baremetal-8bit');
     assert.deepEqual(projectConfig.active_packs, ['smart-pillbox']);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md')), true);
-    assert.match(
-      fs.readFileSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md'), 'utf8'),
-      /Schedule Truth/
-    );
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md')), false);
+    assert.ok(bootstrapTask.relatedFiles.includes('docs/MEDICATION-FLOW.md'));
+    assert.ok(bootstrapTask.subtasks.some(item => item.name.includes('docs/MEDICATION-FLOW.md')));
   } finally {
     process.stdout.write = originalWrite;
   }
 });
 
-test('init-project with motor-drive pack seeds motor control doc', () => {
+test('init-project with motor-drive pack adds deferred motor note targets to bootstrap task', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-motor-drive-'));
   const originalWrite = process.stdout.write;
 
@@ -226,19 +239,14 @@ test('init-project with motor-drive pack seeds motor control doc', () => {
     const projectConfig = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
     );
+    const bootstrapTask = readBootstrapTask(tempProject);
 
     assert.equal(projectConfig.project_profile, 'baremetal-8bit');
     assert.deepEqual(projectConfig.active_packs, ['motor-drive']);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MOTOR-CONTROL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-STAGE.md')), true);
-    assert.match(
-      fs.readFileSync(path.join(tempProject, 'docs', 'MOTOR-CONTROL.md'), 'utf8'),
-      /Motor Control/
-    );
-    assert.match(
-      fs.readFileSync(path.join(tempProject, 'docs', 'POWER-STAGE.md'), 'utf8'),
-      /Power Stage/
-    );
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MOTOR-CONTROL.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-STAGE.md')), false);
+    assert.ok(bootstrapTask.relatedFiles.includes('docs/MOTOR-CONTROL.md'));
+    assert.ok(bootstrapTask.relatedFiles.includes('docs/POWER-STAGE.md'));
   } finally {
     process.stdout.write = originalWrite;
   }
@@ -276,7 +284,8 @@ test('init preserves existing docs files without force', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'templates')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', '00-bootstrap-project', 'task.json')), true);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -298,13 +307,30 @@ test('init returns onboarding guidance for adapter setup', () => {
 
     cli.main(['init']);
     const result = JSON.parse(stdout);
+    const projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
 
     assert.equal(result.initialized, true);
+    assert.equal(result.session.project_profile, '');
+    assert.deepEqual(result.session.active_packs, []);
+    assert.equal(projectConfig.project_profile, '');
+    assert.deepEqual(projectConfig.active_packs, []);
     assert.equal(result.onboarding.hardware_identity_present, false);
     assert.equal(result.onboarding.adapter_sources_registered, 0);
-    assert.ok(result.next_steps.some(item => item.includes('declare hardware --mcu <name> --package <name>')));
-    assert.ok(result.next_steps.some(item => item.includes('Run adapter bootstrap after hardware identity is declared')));
-    assert.ok(result.next_steps.some(item => item.includes('Run next after hardware identity is declared')));
+    assert.equal(result.onboarding.bootstrap_task.name, '00-bootstrap-project');
+    assert.ok(result.next_steps.some(item => item.includes('Let the agent confirm which chip and package this board uses in .emb-agent/hw.yaml')));
+    assert.ok(result.next_steps.some(item => item.includes('Configure an adapter source, then run next after the chip is identified.')));
+    assert.ok(result.next_steps.some(item => item.includes('docs/ (recommended, not required)')));
+    assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
+    assert.ok(result.next_steps.some(item => item.includes('Optional: inspect deferred note targets with task show 00-bootstrap-project')));
+    assert.ok(Array.isArray(result.onboarding.agent_actions));
+    assert.ok(result.onboarding.agent_actions.some(item => item.kind === 'confirm-hardware-identity'));
+    assert.ok(
+      result.onboarding.agent_actions.some(
+        item => item.kind === 'bootstrap-adapters' && item.status === 'unconfigured'
+      )
+    );
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -339,8 +365,13 @@ test('init scans existing project inputs and suggests hardware confirmation befo
     assert.equal(result.onboarding.doc_parse_suggestion.suggested, true);
     assert.equal(result.onboarding.doc_parse_suggestion.requires_hardware_confirmation, true);
     assert.ok(result.onboarding.doc_parse_suggestion.candidate_docs.includes('docs/PMS150G.pdf'));
-    assert.ok(result.next_steps.some(item => item.includes('declare hardware --mcu <name> --package <name>')));
-    assert.ok(result.next_steps.some(item => item.includes('ingest doc --file docs/PMS150G.pdf')));
+    assert.ok(result.next_steps.some(item => item.includes('Let the agent confirm which chip and package this board uses in .emb-agent/hw.yaml')));
+    assert.ok(result.next_steps.some(item => item.includes('let the agent inspect docs/PMS150G.pdf')));
+    assert.ok(
+      result.onboarding.agent_actions.some(
+        item => item.kind === 'inspect-hardware-doc' && item.cli_fallback.includes('ingest doc --file docs/PMS150G.pdf')
+      )
+    );
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -410,8 +441,13 @@ test('init can show pin summary from confirmed chip profile without parsing docs
     assert.ok(result.onboarding.pin_summary.usable_pins.some(item => item.signal === 'PA3'));
     assert.ok(result.onboarding.pin_summary.reserved_pins.some(item => item.signal === 'VDD'));
     assert.equal(result.onboarding.doc_parse_suggestion.suggested, false);
-    assert.ok(result.next_steps.some(item => item.includes('declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin')));
-    assert.ok(result.next_steps.some(item => item.includes('Run next')));
+    assert.ok(result.next_steps.some(item => item.includes('Let the agent map board pins/peripherals into .emb-agent/hw.yaml')));
+    assert.ok(result.next_steps.some(item => item.includes('Configure an adapter source, then run next')));
+    assert.ok(
+      result.onboarding.agent_actions.some(
+        item => item.kind === 'declare-board-pins' && item.cli_fallback.includes('declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin')
+      )
+    );
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

@@ -17,8 +17,10 @@ const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const HOOK_VERSION = '{{EMB_VERSION}}';
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 const hookDispatch = hookDispatchHelpers.createHookDispatchHelpers({
+  fs,
   path,
-  process
+  process,
+  runtimeHost: RUNTIME_HOST
 });
 
 function getRuntimeRoot() {

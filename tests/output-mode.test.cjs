@@ -208,7 +208,7 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
   assert.equal(dispatchOutput.delegation_runtime.synthesis.status, 'ready');
 });
 
-test('applyOutputMode keeps workspace trust in brief health/bootstrap outputs', () => {
+test('applyOutputMode hides internal trust details in brief health/bootstrap outputs', () => {
   const healthOutput = outputMode.applyOutputMode({
     command: 'health',
     status: 'warn',
@@ -225,7 +225,7 @@ test('applyOutputMode keeps workspace trust in brief health/bootstrap outputs', 
     recommendations: [],
     next_commands: [],
     quickstart: {
-      followup: 'Grant workspace trust first',
+      followup: 'Restart the host once so emb-agent startup hooks are active',
       steps: []
     }
   }, true);
@@ -233,76 +233,75 @@ test('applyOutputMode keeps workspace trust in brief health/bootstrap outputs', 
   const bootstrapOutput = outputMode.applyOutputMode({
     command: 'bootstrap',
     status: 'manual',
-    summary: 'Grant workspace trust first',
-    current_stage: 'workspace-trust',
+    summary: 'Restart the host once so emb-agent startup hooks are active',
+    current_stage: 'startup-hooks',
     workspace_trust: {
       trusted: false,
       explicit: true,
       source: 'env',
       signal: 'untrusted',
-      summary: 'Workspace trust is explicitly disabled by environment override'
+      summary: 'Startup hooks are explicitly disabled by environment override'
     },
     next_stage: {
-      id: 'workspace-trust',
+      id: 'startup-hooks',
       status: 'manual',
-      label: 'Establish workspace trust',
+      label: 'Startup hooks ready',
       cli: ''
     },
     stages: [
       { id: 'init-project', status: 'completed', label: 'Initialize emb-agent project skeleton' },
-      { id: 'workspace-trust', status: 'manual', label: 'Establish workspace trust' }
+      { id: 'startup-hooks', status: 'manual', label: 'Startup hooks ready' }
     ],
     quickstart: {
-      stage: 'establish-workspace-trust',
-      followup: 'Grant workspace trust in the host/runtime first, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
+      stage: 'restart-host-hooks',
+      followup: 'Restart the host once so emb-agent startup hooks are active, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
       steps: [
         {
-          label: 'Establish workspace trust',
+          label: 'Startup hooks ready',
           cli: ''
         }
       ]
     }
   }, true);
 
-  assert.equal(healthOutput.workspace_trust.trusted, false);
-  assert.equal(healthOutput.workspace_trust.source, 'env');
-  assert.equal(bootstrapOutput.workspace_trust.signal, 'untrusted');
-  assert.equal(bootstrapOutput.current_stage, 'workspace-trust');
+  assert.equal('workspace_trust' in healthOutput, false);
+  assert.equal('workspace_trust' in bootstrapOutput, false);
+  assert.equal(bootstrapOutput.current_stage, 'startup-hooks');
 });
 
 test('applyOutputMode builds brief bootstrap output', () => {
   const output = outputMode.applyOutputMode({
     command: 'bootstrap',
     status: 'manual',
-    summary: 'Grant workspace trust first',
-    current_stage: 'workspace-trust',
+    summary: 'Restart the host once so emb-agent startup hooks are active',
+    current_stage: 'startup-hooks',
     workspace_trust: {
       trusted: false,
       explicit: false,
       source: 'default',
       signal: 'untrusted-no-signal',
-      summary: 'No explicit workspace trust signal was provided; runtime treats the workspace as untrusted by default'
+      summary: 'No startup hook signal was provided; hook-gated features stay disabled by default'
     },
     next_stage: {
-      id: 'workspace-trust',
+      id: 'startup-hooks',
       status: 'manual',
-      label: 'Establish workspace trust',
+      label: 'Startup hooks ready',
       cli: ''
     },
     stages: [
       { id: 'init-project', status: 'completed', label: 'Initialize emb-agent project skeleton' },
       {
-        id: 'workspace-trust',
+        id: 'startup-hooks',
         status: 'manual',
-        label: 'Establish workspace trust'
+        label: 'Startup hooks ready'
       }
     ],
     quickstart: {
-      stage: 'establish-workspace-trust',
-      followup: 'Grant workspace trust in the host/runtime first, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
+      stage: 'restart-host-hooks',
+      followup: 'Restart the host once so emb-agent startup hooks are active, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
       steps: [
         {
-          label: 'Establish workspace trust',
+          label: 'Startup hooks ready',
           cli: ''
         }
       ]
@@ -311,9 +310,9 @@ test('applyOutputMode builds brief bootstrap output', () => {
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.command, 'bootstrap');
-  assert.equal(output.current_stage, 'workspace-trust');
-  assert.equal(output.workspace_trust.trusted, false);
-  assert.equal(output.next_stage.id, 'workspace-trust');
+  assert.equal(output.current_stage, 'startup-hooks');
+  assert.equal('workspace_trust' in output, false);
+  assert.equal(output.next_stage.id, 'startup-hooks');
   assert.equal(output.stages.length, 2);
-  assert.equal(output.quickstart.stage, 'establish-workspace-trust');
+  assert.equal(output.quickstart.stage, 'restart-host-hooks');
 });

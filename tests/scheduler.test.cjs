@@ -223,6 +223,24 @@ test('preferences can switch truth source ordering and strict verification', () 
   assert.ok(plan.verification.some(item => item.includes('failure paths')));
 });
 
+test('scan prioritizes normalized schematic parsed data when recent schematic ingest exists', () => {
+  const resolved = buildResolved('baremetal-8bit', ['sensor-node'], {
+    last_files: [
+      '.emb-agent/cache/schematics/schematic-abc123/parsed.json',
+      '.emb-agent/cache/schematics/schematic-abc123/facts.hardware.yaml',
+      'src/main.c'
+    ]
+  });
+
+  const scan = scheduler.buildScanOutput(resolved);
+
+  assert.ok(scan.relevant_files.includes('.emb-agent/cache/schematics/schematic-abc123/parsed.json'));
+  assert.ok(scan.next_reads.some(item => item.includes('Normalized schematic data: .emb-agent/cache/schematics/schematic-abc123/parsed.json')));
+  assert.ok(scan.scheduler.agent_execution.dispatch_contract.primary.context_bundle.truth_sources.some(
+    item => item.includes('Normalized schematic data: .emb-agent/cache/schematics/schematic-abc123/parsed.json')
+  ));
+});
+
 test('preferences can switch delegation pattern to fork or swarm', () => {
   const forkResolved = buildResolved('baremetal-8bit', ['sensor-node'], {
     preferences: {

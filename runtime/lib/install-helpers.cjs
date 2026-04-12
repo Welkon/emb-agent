@@ -39,8 +39,8 @@ function createInstallHelpers(deps) {
         'emb-agent usage:',
         '  emb-agent --global',
         '  emb-agent --local',
-        '  emb-agent --claude --global',
-        '  emb-agent --codex --global',
+        '  emb-agent --claude --local',
+        '  emb-agent --codex --local',
         '  emb-agent --runtime claude --local',
         '  emb-agent --runtime codex --local',
         '  emb-agent --global --developer <name>',
@@ -55,12 +55,18 @@ function createInstallHelpers(deps) {
         '  --runtime <name>        Select runtime target (codex, claude; others reserved)',
         '  --developer <name>      Required developer name to seed new projects',
         '  --global                Install to runtime config home',
-        '  --local                 Install to current project runtime dir',
+        '  --local                 Install to current project runtime dir (recommended for Codex)',
         '  --config-dir <path>     Override target runtime directory',
         '  --subagent-bridge-cmd <command>',
         '                          Configure host sub-agent bridge command',
         '  --subagent-bridge-timeout-ms <ms>',
         '                          Set host sub-agent bridge timeout in milliseconds',
+        '  --default-adapter-source-location <url>',
+        '                          Persist the default git adapter source location for bootstrap/health',
+        '  --default-adapter-source-branch <name>',
+        '                          Optional default branch for the adapter source',
+        '  --default-adapter-source-subdir <path>',
+        '                          Optional subdirectory under the adapter source repository',
         '  --uninstall             Remove emb-agent managed files from the target',
         '  --force                 Overwrite existing emb-agent runtime',
         '  --help                  Show this help'
@@ -96,6 +102,11 @@ function createInstallHelpers(deps) {
     return parsed;
   }
 
+  function getDefaultInstallLocation(runtimeName) {
+    const runtime = String(runtimeName || '').trim().toLowerCase();
+    return runtime === 'claude' || runtime === 'codex' ? 'local' : 'global';
+  }
+
   function parseArgs(argv) {
     const result = {
       global: false,
@@ -105,6 +116,9 @@ function createInstallHelpers(deps) {
       configDir: '',
       subagentBridgeCmd: '',
       subagentBridgeTimeoutMs: DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
+      defaultAdapterSourceLocation: '',
+      defaultAdapterSourceBranch: '',
+      defaultAdapterSourceSubdir: '',
       uninstall: false,
       force: false,
       help: false
@@ -177,6 +191,21 @@ function createInstallHelpers(deps) {
         index += 1;
         continue;
       }
+      if (token === '--default-adapter-source-location') {
+        result.defaultAdapterSourceLocation = String(argv[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
+      if (token === '--default-adapter-source-branch') {
+        result.defaultAdapterSourceBranch = String(argv[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
+      if (token === '--default-adapter-source-subdir') {
+        result.defaultAdapterSourceSubdir = String(argv[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
       throw new Error(`Unknown argument: ${token}`);
     }
 
@@ -192,14 +221,25 @@ function createInstallHelpers(deps) {
     if (argv.includes('--subagent-bridge-timeout-ms') && !result.subagentBridgeCmd) {
       throw new Error('--subagent-bridge-timeout-ms requires --subagent-bridge-cmd');
     }
+    if (argv.includes('--default-adapter-source-location') && !result.defaultAdapterSourceLocation) {
+      throw new Error('Missing value after --default-adapter-source-location');
+    }
+    if (argv.includes('--default-adapter-source-branch') && !result.defaultAdapterSourceBranch) {
+      throw new Error('Missing value after --default-adapter-source-branch');
+    }
+    if (argv.includes('--default-adapter-source-subdir') && !result.defaultAdapterSourceSubdir) {
+      throw new Error('Missing value after --default-adapter-source-subdir');
+    }
     if (result.global && result.local) {
       throw new Error('Use either --global or --local, not both');
     }
-    if (!result.global && !result.local) {
-      result.global = true;
-    }
     if (!result.runtime) {
       result.runtime = 'codex';
+    }
+    if (!result.global && !result.local) {
+      const defaultLocation = getDefaultInstallLocation(result.runtime);
+      result.global = defaultLocation !== 'local';
+      result.local = defaultLocation === 'local';
     }
     if (!result.uninstall && !result.help && !result.developer) {
       throw new Error('Developer name is required during install. Pass --developer <name>.');
@@ -226,6 +266,8 @@ function createInstallHelpers(deps) {
 
   function buildInteractiveLocationPrompt(target) {
     const globalDir = path.join(os.homedir(), ...(target.defaultGlobalDirParts || [target.localDirName]));
+    const defaultLocation = getDefaultInstallLocation(target && target.name);
+    const defaultChoice = defaultLocation === 'local' ? '2' : '1';
     return [
       '',
       'Where would you like to install?',
@@ -233,7 +275,7 @@ function createInstallHelpers(deps) {
       `  1) Global (${globalDir.replace(os.homedir(), '~')})`,
       `  2) Local  (./${target.localDirName})`,
       '',
-      'Choice [1]: '
+      `Choice [${defaultChoice}]: `
     ].join('\n');
   }
 
@@ -286,7 +328,9 @@ function createInstallHelpers(deps) {
     if (typeof promptInstallerChoices === 'function') {
       const prompted = await promptInstallerChoices(targets);
       const runtime = String(prompted && prompted.runtime ? prompted.runtime : targets[0].name).trim().toLowerCase();
-      const location = String(prompted && prompted.location ? prompted.location : 'global').trim().toLowerCase();
+      const location = String(
+        prompted && prompted.location ? prompted.location : getDefaultInstallLocation(runtime)
+      ).trim().toLowerCase();
       const developer = String(prompted && prompted.developer ? prompted.developer : '').trim();
       const subagentBridgeCmd = String(prompted && prompted.subagentBridgeCmd ? prompted.subagentBridgeCmd : '').trim();
       const subagentBridgeTimeoutProvided =
@@ -322,8 +366,10 @@ function createInstallHelpers(deps) {
     }
     const target = targets[selectedIndex - 1];
 
+    const defaultLocation = getDefaultInstallLocation(target.name);
     const locationAnswer = await promptLine(buildInteractiveLocationPrompt(target));
-    const isLocal = String(locationAnswer || '1').trim() === '2';
+    const resolvedLocationAnswer = String(locationAnswer || (defaultLocation === 'local' ? '2' : '1')).trim();
+    const isLocal = resolvedLocationAnswer === '2';
     const developer = await promptLine(buildInteractiveDeveloperPrompt());
     if (!developer) {
       throw new Error('Developer name is required during install.');
@@ -474,6 +520,25 @@ function createInstallHelpers(deps) {
       .readdirSync(agentsSrc)
       .filter(name => name.startsWith(AGENT_PREFIX) && name.endsWith('.md'))
       .map(name => name.replace(/\.md$/, ''))
+      .sort();
+  }
+
+  function listManagedCodexSkillNames() {
+    return fs
+      .readdirSync(commandsSrc)
+      .filter(name => name.endsWith('.md'))
+      .map(name => name.replace(/\.md$/, ''))
+      .filter(name => commandVisibility.isPublicCommandName(name))
+      .map(name => `emb-${name}`)
+      .sort();
+  }
+
+  function listManagedPublicCommandNames() {
+    return fs
+      .readdirSync(commandsSrc)
+      .filter(name => name.endsWith('.md'))
+      .map(name => name.replace(/\.md$/, ''))
+      .filter(name => commandVisibility.isPublicCommandName(name))
       .sort();
   }
 
@@ -763,6 +828,133 @@ function createInstallHelpers(deps) {
     return agentFiles.length;
   }
 
+  function generateClaudeCommandContent(commandName, content, runtimeDir) {
+    const { frontmatter, body } = extractFrontmatterAndBody(content);
+    const commandLabel = extractFrontmatterField(frontmatter, 'name') || `emb-${commandName}`;
+    const description = toSingleLine(
+      extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
+    );
+    const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+
+    return [
+      `# ${commandLabel}`,
+      '',
+      description,
+      '',
+      '## Invocation',
+      '',
+      `- When this command matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
+      '- Use the runtime output as the source of truth for follow-up actions.',
+      '',
+      '## Original Guidance',
+      '',
+      body.trim(),
+      ''
+    ].join('\n');
+  }
+
+  function installClaudeCommands(targetDir, target, runtimeDir) {
+    if (!target || target.name !== 'claude') {
+      return 0;
+    }
+
+    const commandsRoot = path.join(targetDir, 'commands', 'emb');
+    ensureDir(commandsRoot);
+
+    for (const commandName of listManagedPublicCommandNames()) {
+      const commandPath = path.join(commandsRoot, `${commandName}.md`);
+      if (fs.existsSync(commandPath)) {
+        fs.unlinkSync(commandPath);
+      }
+    }
+
+    let installed = 0;
+
+    for (const file of fs.readdirSync(commandsSrc).filter(name => name.endsWith('.md')).sort()) {
+      const commandName = file.replace(/\.md$/, '');
+      if (!commandVisibility.isPublicCommandName(commandName)) {
+        continue;
+      }
+
+      const raw = fs.readFileSync(path.join(commandsSrc, file), 'utf8');
+      const rendered = replaceInstallPaths(raw, targetDir, target);
+      fs.writeFileSync(
+        path.join(commandsRoot, `${commandName}.md`),
+        generateClaudeCommandContent(commandName, rendered, runtimeDir),
+        'utf8'
+      );
+      installed += 1;
+    }
+
+    return installed;
+  }
+
+  function generateCodexSkillContent(commandName, content, runtimeDir) {
+    const { frontmatter, body } = extractFrontmatterAndBody(content);
+    const skillName = extractFrontmatterField(frontmatter, 'name') || `emb-${commandName}`;
+    const description = toSingleLine(
+      extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
+    );
+    const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+
+    return [
+      '---',
+      `name: ${skillName}`,
+      `description: ${JSON.stringify(description)}`,
+      '---',
+      '',
+      `# ${skillName}`,
+      '',
+      `This Codex skill mirrors the emb-agent public command \`${commandName}\`.`,
+      '',
+      '## Invocation',
+      '',
+      `- When this skill matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
+      '- Use the runtime output as the source of truth for the next step instead of improvising a parallel workflow.',
+      '',
+      '## Original Guidance',
+      '',
+      body.trim(),
+      ''
+    ].join('\n');
+  }
+
+  function installCodexSkills(targetDir, target, runtimeDir) {
+    if (!target || target.name !== 'codex') {
+      return 0;
+    }
+
+    const skillsRoot = path.join(targetDir, 'skills');
+    ensureDir(skillsRoot);
+
+    for (const skillName of listManagedCodexSkillNames()) {
+      removeDirIfExists(path.join(skillsRoot, skillName));
+    }
+
+    let installed = 0;
+
+    for (const file of fs.readdirSync(commandsSrc).filter(name => name.endsWith('.md')).sort()) {
+      const commandName = file.replace(/\.md$/, '');
+      if (!commandVisibility.isPublicCommandName(commandName)) {
+        continue;
+      }
+
+      const raw = fs.readFileSync(path.join(commandsSrc, file), 'utf8');
+      const rendered = replaceInstallPaths(raw, targetDir, target);
+      const skillName = `emb-${commandName}`;
+      const skillDir = path.join(skillsRoot, skillName);
+      ensureDir(skillDir);
+      fs.writeFileSync(
+        path.join(skillDir, 'SKILL.md'),
+        generateCodexSkillContent(commandName, rendered, runtimeDir),
+        'utf8'
+      );
+      installed += 1;
+    }
+
+    return installed;
+  }
+
   function installAgents(targetDir, target, args) {
     if (target.agentMode === 'markdown' || target.hookMode === 'claude-settings') {
       return installMarkdownAgents(targetDir, target, args);
@@ -813,6 +1005,22 @@ function createInstallHelpers(deps) {
       name: String((args && args.developer) || '').trim(),
       runtime: target.name
     };
+    if (args && args.local) {
+      runtimeConfig.project_state_dir = 'state/projects';
+      runtimeConfig.legacy_project_state_dir = 'state/projects';
+    }
+    if (
+      (args && args.defaultAdapterSourceLocation) ||
+      (args && args.defaultAdapterSourceBranch) ||
+      (args && args.defaultAdapterSourceSubdir)
+    ) {
+      runtimeConfig.default_adapter_source = {
+        type: 'git',
+        location: String((args && args.defaultAdapterSourceLocation) || '').trim(),
+        branch: String((args && args.defaultAdapterSourceBranch) || '').trim(),
+        subdir: String((args && args.defaultAdapterSourceSubdir) || '').trim()
+      };
+    }
     writeJsonObject(runtimeConfigPath, runtimeConfig);
     fs.writeFileSync(
       path.join(runtimeDir, 'HOST.json'),
@@ -885,6 +1093,23 @@ function createInstallHelpers(deps) {
       }
     }
 
+    if (target.name === 'codex') {
+      const skillsRoot = path.join(targetDir, 'skills');
+      for (const skillName of listManagedCodexSkillNames()) {
+        removeDirIfExists(path.join(skillsRoot, skillName));
+      }
+    }
+    if (target.name === 'claude') {
+      const commandsRoot = path.join(targetDir, 'commands', 'emb');
+      for (const commandName of listManagedPublicCommandNames()) {
+        const commandPath = path.join(commandsRoot, `${commandName}.md`);
+        if (fs.existsSync(commandPath)) {
+          fs.unlinkSync(commandPath);
+        }
+      }
+      removeDirIfExists(commandsRoot);
+    }
+
     removeDirIfExists(path.join(targetDir, target.runtimeDirName));
 
     const configPath = path.join(targetDir, target.configFileName || 'config.toml');
@@ -928,20 +1153,31 @@ function createInstallHelpers(deps) {
     const runtimeDir = installRuntime(targetDir, target, args);
     const installedRuntimeHost = runtimeHost.resolveRuntimeHost(runtimeDir);
     const agentCount = installAgents(targetDir, target, args);
+    const codexSkillCount = installCodexSkills(targetDir, target, runtimeDir);
+    const claudeCommandCount = installClaudeCommands(targetDir, target, runtimeDir);
     const envExamplePath = path.join(args.local ? process.cwd() : targetDir, '.env.example');
     const envExampleCreated = installEnvExample(envExamplePath);
     const envHintLines = buildEnvHintLines(envExamplePath);
     const lines = [
       `Installed emb-agent runtime for ${target.label} to: ${runtimeDir}`,
       `Installed ${agentCount} ${target.agentLabel || `${target.label} agents`} under: ${path.join(targetDir, target.agentsDirName || 'agents')}`,
+      ...(codexSkillCount > 0
+        ? [`Installed ${codexSkillCount} Codex skills under: ${path.join(targetDir, 'skills')}`]
+        : []),
+      ...(claudeCommandCount > 0
+        ? [`Installed ${claudeCommandCount} Claude commands under: ${path.join(targetDir, 'commands', 'emb')}`]
+        : []),
       `Updated ${target.label} config: ${path.join(targetDir, target.configFileName || 'config.toml')}`,
       `Developer identity: ${args.developer} (${target.name})`,
       ...(args.subagentBridgeCmd
         ? [`Sub-agent bridge: ${args.subagentBridgeCmd} (timeout: ${args.subagentBridgeTimeoutMs} ms)`]
         : []),
+      ...(args.defaultAdapterSourceLocation
+        ? [`Default adapter source: ${args.defaultAdapterSourceLocation}`]
+        : []),
       `${envExampleCreated ? 'Created' : 'Kept'} env example: ${envExamplePath}`,
       ...envHintLines,
-      'Trust hint: workspace trust now gates startup hooks and bootstrap visibility; leave it to the host by default, or use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.',
+      'Startup hooks are installed automatically. If they do not seem active yet, restart the host once and rerun init/next. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.',
       'Next steps:',
       `  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`,
       `  In a project repo, open a ${target.label} session and run: init`,

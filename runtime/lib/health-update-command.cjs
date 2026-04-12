@@ -1,6 +1,7 @@
 'use strict';
 
 const adapterQualityHelpers = require('./adapter-quality.cjs');
+const defaultAdapterSourceHelpers = require('./default-adapter-source.cjs');
 const hookTrustHelpers = require('./hook-trust.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const updateCheckHelpers = require('./update-check.cjs');
@@ -37,6 +38,20 @@ function createHealthUpdateCommandHelpers(deps) {
     getRuntimeHost,
     updateSession
   } = deps;
+
+  function getDefaultAdapterSource() {
+    return defaultAdapterSourceHelpers.resolveDefaultAdapterSource(RUNTIME_CONFIG, process && process.env);
+  }
+
+  function buildDefaultAdapterSourceAddCommand() {
+    const source = getDefaultAdapterSource();
+    const sourceArgs = defaultAdapterSourceHelpers.buildDefaultAdapterSourceArgs(source);
+
+    return {
+      cli: `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'source', 'add', source.name])} ${sourceArgs.join(' ')}`,
+      argv: ['adapter', 'source', 'add', source.name, ...sourceArgs]
+    };
+  }
 
   function readHookVersion() {
     const hookFile = path.join(RUNTIME_HOST.runtimeRoot, 'hooks', 'emb-session-start.js');
@@ -97,6 +112,16 @@ function createHealthUpdateCommandHelpers(deps) {
       summary,
       evidence: Array.isArray(evidence) ? evidence.filter(Boolean) : [],
       recommendation: recommendation || ''
+    };
+  }
+
+  function buildStartupAutomationSummary(workspaceTrust) {
+    const trust = workspaceTrust || {};
+    return {
+      status: trust.trusted ? 'ready' : 'action-needed',
+      source: trust.source || 'default',
+      signal: trust.signal || (trust.trusted ? 'trusted' : 'untrusted'),
+      summary: trust.summary || ''
     };
   }
 
@@ -203,36 +228,40 @@ function createHealthUpdateCommandHelpers(deps) {
       )
     );
 
-    stages.push(
-      createBootstrapStage(
-        'workspace-trust',
-        !initReady ? 'pending' : trustReady ? 'completed' : 'manual',
-        'Establish workspace trust',
-        {
-          summary: trustReady
-            ? (workspaceTrust && workspaceTrust.summary)
-              ? workspaceTrust.summary
-              : 'Workspace trust is established for trust-gated startup flows'
-            : 'Grant workspace trust first so hooks and trust-gated startup flows can activate safely',
-          evidence: workspaceTrust
-            ? [
-                workspaceTrust.source ? `source=${workspaceTrust.source}` : '',
-                workspaceTrust.signal ? `signal=${workspaceTrust.signal}` : ''
-              ]
-            : []
-        }
-      )
-    );
+    const showAuthorizationStage = !(workspaceTrust && workspaceTrust.trusted && workspaceTrust.source === 'host-config');
+
+    if (showAuthorizationStage) {
+      stages.push(
+        createBootstrapStage(
+          'startup-hooks',
+          !initReady ? 'pending' : trustReady ? 'completed' : 'manual',
+          'Startup hooks ready',
+          {
+            summary: trustReady
+              ? (workspaceTrust && workspaceTrust.summary)
+                ? workspaceTrust.summary
+                : 'Startup hooks are available for automatic bootstrap flows'
+              : 'Make sure the host has loaded emb-agent startup hooks before automatic bootstrap continues',
+            evidence: workspaceTrust
+              ? [
+                  workspaceTrust.source ? `source=${workspaceTrust.source}` : '',
+                  workspaceTrust.signal ? `signal=${workspaceTrust.signal}` : ''
+                ]
+              : []
+          }
+        )
+      );
+    }
 
     stages.push(
       createBootstrapStage(
         'hardware-truth',
         !initReady || !trustReady ? 'pending' : hardwareReady ? 'completed' : 'manual',
-        'Record hardware identity',
+        'Confirm chip identity',
         {
           summary: hardwareReady
             ? `Hardware identity is recorded as ${hardwareIdentity.model}/${hardwareIdentity.package}`
-            : `Fill vendor / model / package in ${runtime.getProjectAssetRelativePath('hw.yaml')} first`,
+            : `Ask the agent to fill which chip and package this board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')} first, for example SC8F072 + SOP8`,
           evidence: [runtime.getProjectAssetRelativePath('hw.yaml')]
         }
       )
@@ -305,8 +334,8 @@ function createHealthUpdateCommandHelpers(deps) {
     const quickstartStage = nextStage
       ? nextStage.id === 'hardware-truth'
         ? 'fill-hardware-identity'
-        : nextStage.id === 'workspace-trust'
-          ? 'establish-workspace-trust'
+        : nextStage.id === 'startup-hooks'
+          ? 'restart-host-hooks'
         : nextStage.id === 'doc-truth-sync'
           ? 'doc-apply-then-next'
           : nextStage.id === 'adapter-derive'
@@ -356,13 +385,13 @@ function createHealthUpdateCommandHelpers(deps) {
             ? nextStage.id === 'next-step'
             ? `Run first: ${nextStage.cli}`
             : `Run first: ${nextStage.cli} -> ${NEXT_CLI}`
-            : nextStage && nextStage.id === 'workspace-trust'
-              ? `Grant workspace trust in the host/runtime first, then rerun: ${HEALTH_CLI}`
+            : nextStage && nextStage.id === 'startup-hooks'
+              ? `Restart the host once so emb-agent startup hooks are active, then rerun: ${HEALTH_CLI}`
             : nextStage && nextStage.id === 'hardware-truth'
               ? `After hardware truth is complete, run directly: ${DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI} -> ${NEXT_CLI}`
               : `Run first: ${NEXT_CLI}`
       },
-      workspace_trust: workspaceTrust || null
+      startup_automation: buildStartupAutomationSummary(workspaceTrust)
     };
   }
 
@@ -423,7 +452,11 @@ function createHealthUpdateCommandHelpers(deps) {
     let normalizedSession = null;
     let rawSession = null;
     let handoff = null;
-    const workspaceTrust = hookTrustHelpers.resolveWorkspaceTrust(null, process.env);
+    const workspaceTrust = hookTrustHelpers.resolveWorkspaceTrust(null, process.env, {
+      fs,
+      path,
+      runtimeHost
+    });
 
     const subagentBridge = runtimeHost && runtimeHost.subagentBridge
       ? runtimeHost.subagentBridge
@@ -469,7 +502,7 @@ function createHealthUpdateCommandHelpers(deps) {
 
     checks.push(
       createCheck(
-        'workspace_trust',
+        'startup_automation',
         workspaceTrust.trusted ? 'pass' : 'warn',
         workspaceTrust.summary,
         [
@@ -478,7 +511,7 @@ function createHealthUpdateCommandHelpers(deps) {
         ],
         workspaceTrust.trusted
           ? ''
-          : 'Grant workspace trust first so startup hooks and trust-gated runtime helpers can activate safely.'
+          : 'Restart the host once so emb-agent startup hooks can activate, then rerun health.'
       )
     );
 
@@ -696,9 +729,9 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'hardware_identity',
           'warn',
-          'hw.yaml does not contain the MCU model yet',
+          'hw.yaml does not contain the chip identity yet',
           [hardwareIdentity.file],
-          'Write vendor/model/package into hw.yaml so tools and chip profiles can be discovered automatically later.'
+          `Add which chip and package this board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')} so emb-agent can match chip profiles later. If you only know the top marking, datasheet, BOM, or board photo, let the agent infer from that first.`
         )
       );
     } else {
@@ -707,7 +740,7 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'hardware_identity',
           chipProfile ? 'pass' : 'warn',
-          chipProfile ? 'The MCU model is mapped to a chip profile' : 'The MCU model is not mapped to a chip profile yet',
+          chipProfile ? 'The chip model is mapped to a chip profile' : 'The chip model is not mapped to a chip profile yet',
           chipProfile
             ? [
                 `model=${hardwareIdentity.model}`,
@@ -794,22 +827,23 @@ function createHealthUpdateCommandHelpers(deps) {
             : [`${runtime.getProjectAssetRelativePath('project.json')} -> adapter_sources`],
           enabledSources.length > 0
             ? ''
-            : 'Run adapter source add first to register emb-agent-adapters or your private source into the project.'
+            : 'Run adapter source add first to register the default adapter source or your private source into the project. Private git sources reuse the host git credentials that are already configured.'
         )
       );
       if (enabledSources.length === 0) {
+        const addCommand = buildDefaultAdapterSourceAddCommand();
         pushNextCommand(
           nextCommands,
           hardwareIdentity.model ? 'adapter-bootstrap' : 'adapter-source-add',
-          hardwareIdentity.model ? 'Register the default adapter repository and sync it against the current project' : 'Register the default adapter repository',
+          hardwareIdentity.model ? 'Register the default adapter source and sync it against the current project' : 'Register the default adapter source',
           hardwareIdentity.model
             ? DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI
-            : `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'source', 'add', 'default-pack'])} --type git --location https://github.com/Welkon/emb-agent-adapters.git`,
+            : addCommand.cli,
           'adapter',
           {
             argv: hardwareIdentity.model
               ? ['adapter', 'bootstrap']
-              : ['adapter', 'source', 'add', 'default-pack', '--type', 'git', '--location', 'https://github.com/Welkon/emb-agent-adapters.git']
+              : addCommand.argv
           }
         );
       }
@@ -880,8 +914,8 @@ function createHealthUpdateCommandHelpers(deps) {
             matchedProjectSources.length > 0
               ? ''
               : syncedProjectSources.length > 0
-                ? 'Check whether vendor/model/package in hw.yaml is accurate, or add the corresponding family/device/chip profiles.'
-                : 'Fill in hw.yaml first, then run adapter sync so emb-agent can automatically select the adapters needed by the current chip.'
+                ? 'Check whether the chip model/package in hw.yaml is accurate, or add the corresponding family/device/chip profiles.'
+                : 'Fill in the chip model/package in hw.yaml first, then run adapter sync so emb-agent can automatically select the adapters needed by the current chip.'
           )
         );
       }
@@ -1075,7 +1109,7 @@ function createHealthUpdateCommandHelpers(deps) {
       status: summary.status,
       summary: summary.counts,
       checks,
-      workspace_trust: workspaceTrust,
+      startup_automation: buildStartupAutomationSummary(workspaceTrust),
       subagent_bridge: subagentBridge,
       adapter_health: adapterHealth,
       next_commands: nextCommands,

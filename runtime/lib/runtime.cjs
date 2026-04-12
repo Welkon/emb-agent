@@ -855,6 +855,18 @@ function validateAdapterSources(config) {
   return normalized;
 }
 
+function validateDefaultAdapterSourceConfig(config) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, 'default_adapter_source');
+
+  return {
+    type: ensureChoice(source.type, 'default_adapter_source.type', ['path', 'git'], 'git'),
+    location: ensureOptionalString(source.location, 'default_adapter_source.location'),
+    branch: ensureOptionalString(source.branch, 'default_adapter_source.branch'),
+    subdir: ensureOptionalString(source.subdir, 'default_adapter_source.subdir')
+  };
+}
+
 function validateExecutorEnv(config, label) {
   const source = config === undefined || config === null ? {} : config;
   expectObject(source, label);
@@ -1000,6 +1012,7 @@ function validateRuntimeConfig(config) {
     default_preferences: normalizePreferences(config.default_preferences || {}, {
       default_preferences: DEFAULT_PREFERENCES
     }),
+    default_adapter_source: validateDefaultAdapterSourceConfig(config.default_adapter_source || {}),
     project_state_dir: ensureString(
       config.project_state_dir || '../state/emb-agent/projects',
       'project_state_dir'
@@ -1136,13 +1149,14 @@ function normalizeSession(session, paths, runtimeConfig, projectConfig) {
   next.project_key = paths.projectKey;
   next.project_name = path.basename(paths.projectRoot);
   next.project_profile =
-    typeof next.project_profile === 'string' && next.project_profile.trim()
-      ? next.project_profile
-      : defaults.default_profile;
+    ensureOptionalString(next.project_profile, 'project_profile') ||
+    ((projectConfig && projectConfig.project_profile) || '');
   next.active_packs = unique(
     Array.isArray(next.active_packs) && next.active_packs.length > 0
       ? ensureStringArray(next.active_packs, 'active_packs')
-      : defaults.default_packs
+      : Array.isArray(projectConfig && projectConfig.active_packs)
+        ? ensureStringArray(projectConfig.active_packs, 'active_packs')
+        : []
   );
   const developerSource =
     !next.developer || typeof next.developer !== 'object' || Array.isArray(next.developer)

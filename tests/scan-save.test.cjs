@@ -64,7 +64,6 @@ test('scan save can create debug notes target when missing', () => {
 
   try {
     initProject.main(['--project', tempProject]);
-    fs.unlinkSync(path.join(tempProject, 'docs', 'DEBUG-NOTES.md'));
 
     process.chdir(tempProject);
     cli.main(['init']);

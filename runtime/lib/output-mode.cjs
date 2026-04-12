@@ -461,15 +461,16 @@ function buildBriefNoteOutput(value) {
 }
 
 function buildBriefHealthOutput(value) {
+  const checks = toArray(value.checks).filter(item => !item || item.key !== 'startup_automation');
+
   return compactObject({
     output_mode: 'brief',
     status: value.status || '',
     runtime_host: value.runtime_host || '',
     summary: isObject(value.summary) ? value.summary : null,
-    checks: truncateList(value.checks, 5),
+    checks: truncateList(checks, 5),
     recommendations: truncateList(value.recommendations, 5),
     next_commands: truncateList(value.next_commands, 4),
-    workspace_trust: summarizeWorkspaceTrust(value.workspace_trust),
     subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
     quickstart: isObject(value.quickstart)
       ? compactObject({
@@ -489,7 +490,6 @@ function buildBriefBootstrapOutput(value) {
     status: value.status || '',
     summary: value.summary || '',
     current_stage: value.current_stage || '',
-    workspace_trust: summarizeWorkspaceTrust(value.workspace_trust),
     next_stage: compactObject({
       id: nextStage.id || '',
       status: nextStage.status || '',

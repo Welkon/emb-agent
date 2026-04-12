@@ -21,3 +21,7 @@ allowed-tools:
 
 - Run `$emb-ingest` when this command matches the current problem.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
+- For PDFs and manuals, prefer:
+  `ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
+- For schematics or schematic exports, prefer:
+  `ingest schematic --file <path>`

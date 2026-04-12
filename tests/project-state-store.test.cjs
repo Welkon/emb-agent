@@ -149,3 +149,86 @@ test('project state store initializes session and persists session/handoff updat
   store.clearContextSummary();
   assert.equal(store.loadContextSummary(), null);
 });
+
+test('project state store falls back to readonly session mode when lock file cannot be created', () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-store-ro-root-'));
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-store-ro-proj-'));
+  const runtimeConfig = {
+    project_state_dir: 'state/projects',
+    legacy_project_state_dir: 'state/legacy-projects',
+    lock_timeout_ms: 200,
+    lock_stale_ms: 200,
+    max_last_files: 12
+  };
+  const realFs = fs;
+  const readonlyFs = {
+    ...realFs,
+    openSync(filePath, flags, mode) {
+      if (String(filePath).endsWith('.lock') && flags === 'wx') {
+        const error = new Error('read-only state');
+        error.code = 'EROFS';
+        throw error;
+      }
+      return realFs.openSync(filePath, flags, mode);
+    }
+  };
+
+  const store = storeHelpers.createProjectStateStoreHelpers({
+    fs: readonlyFs,
+    path,
+    runtime,
+    RUNTIME_CONFIG: runtimeConfig,
+    getProjectStatePaths() {
+      return runtime.getProjectStatePaths(tempRoot, tempProject, runtimeConfig);
+    },
+    normalizeSession(session, paths) {
+      return {
+        session_version: 1,
+        project_root: paths.projectRoot,
+        project_key: paths.projectKey,
+        project_name: path.basename(paths.projectRoot),
+        project_profile: session.project_profile || '',
+        active_packs: session.active_packs || [],
+        preferences: session.preferences || {},
+        focus: session.focus || '',
+        last_files: session.last_files || [],
+        open_questions: session.open_questions || [],
+        known_risks: session.known_risks || [],
+        last_command: session.last_command || '',
+        paused_at: session.paused_at || '',
+        last_resumed_at: session.last_resumed_at || '',
+        created_at: session.created_at || new Date().toISOString(),
+        updated_at: session.updated_at || new Date().toISOString()
+      };
+    },
+    readDefaultSession(paths) {
+      return {
+        session_version: 1,
+        project_root: paths.projectRoot,
+        project_key: paths.projectKey,
+        project_name: path.basename(paths.projectRoot),
+        project_profile: '',
+        active_packs: [],
+        preferences: {},
+        focus: '',
+        last_files: [],
+        open_questions: [],
+        known_risks: [],
+        last_command: '',
+        paused_at: '',
+        last_resumed_at: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+    }
+  });
+
+  const updated = store.updateSession(current => {
+    current.last_command = 'init';
+    current.last_files = ['main.c'];
+  });
+
+  assert.equal(updated.last_command, 'init');
+  assert.deepEqual(updated.last_files, ['main.c']);
+  assert.equal(fs.existsSync(runtime.getProjectStatePaths(tempRoot, tempProject, runtimeConfig).lockPath), false);
+});

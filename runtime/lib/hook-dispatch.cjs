@@ -4,8 +4,10 @@ const hookTrustHelpers = require('./hook-trust.cjs');
 
 function createHookDispatchHelpers(deps) {
   const {
+    fs,
     path,
-    process
+    process,
+    runtimeHost
   } = deps;
 
   function parseHookInput(rawInput) {
@@ -23,7 +25,7 @@ function createHookDispatchHelpers(deps) {
   function runHookWithProjectContext(rawInput, handler) {
     const data = parseHookInput(rawInput);
 
-    if (!hookTrustHelpers.isWorkspaceTrusted(data, process.env)) {
+    if (!hookTrustHelpers.isWorkspaceTrusted(data, process.env, { fs, path, runtimeHost })) {
       return '';
     }
 

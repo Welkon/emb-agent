@@ -224,6 +224,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(compact, /Core workflow:/);
   assert.match(compact, /declare hardware/);
   assert.match(compact, /next \[run\]/);
+  assert.match(compact, /ingest schematic --file <path>/);
   assert.match(compact, /bootstrap \[run \[--confirm\]\]/);
   assert.match(compact, /help advanced/);
   assert.doesNotMatch(compact, /adapter source add/);
@@ -237,6 +238,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /Advanced commands:/);
   assert.match(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
+  assert.match(advanced, /ingest schematic --file <path>/);
   assert.match(advanced, /context compress \[note\]/);
   assert.match(advanced, /skills list/);
   assert.match(advanced, /memory stack/);

@@ -36,7 +36,7 @@ test('settings facade manages profile packs and preferences together', () => {
     cli.main(['settings', 'reset']);
     session = cli.loadSession();
     assert.equal(session.project_profile, 'baremetal-8bit');
-    assert.deepEqual(session.active_packs, ['sensor-node']);
+    assert.deepEqual(session.active_packs, []);
     assert.equal(session.preferences.plan_mode, 'auto');
     assert.equal(session.preferences.verification_mode, 'lean');
   } finally {

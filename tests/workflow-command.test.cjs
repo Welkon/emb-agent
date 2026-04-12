@@ -44,7 +44,7 @@ test('workflow init normalizes project-local workflow layout', async () => {
   }
 });
 
-test('workflow new pack authors project-local assets and init can consume them', async () => {
+test('workflow new pack authors project-local assets and init defers them into the bootstrap task', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-pack-'));
   const currentCwd = process.cwd();
 
@@ -75,13 +75,21 @@ test('workflow new pack authors project-local assets and init can consume them',
     assert.ok(registry.specs.some(item => item.name === 'smart-pillbox-focus'));
     assert.ok(registry.templates.some(item => item.name === 'medication-flow'));
 
-    await captureCliJson(['init', '--pack', 'smart-pillbox']);
+    const initialized = await captureCliJson(['init', '--pack', 'smart-pillbox']);
 
     const projectConfig = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
     );
+    const bootstrapTask = JSON.parse(
+      fs.readFileSync(
+        path.join(tempProject, '.emb-agent', 'tasks', '00-bootstrap-project', 'task.json'),
+        'utf8'
+      )
+    );
     assert.deepEqual(projectConfig.active_packs, ['smart-pillbox']);
-    assert.ok(fs.existsSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md')));
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md')), false);
+    assert.equal(initialized.onboarding.bootstrap_task.name, '00-bootstrap-project');
+    assert.ok(bootstrapTask.relatedFiles.includes('docs/MEDICATION-FLOW.md'));
   } finally {
     process.chdir(currentCwd);
   }

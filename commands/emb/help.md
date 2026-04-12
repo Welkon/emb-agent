@@ -34,7 +34,9 @@ Output the emb-agent help summary below and nothing else.
 
 ## Public Commands
 
-The public slash surface is intentionally small. Users should only need these 13 commands.
+The public command surface is intentionally small. Users should only need these 13 commands.
+In Codex, this surface is mirrored as skills such as `emb-init`.
+In slash-command hosts, the same surface can appear as `$emb-*`.
 
 ### Start
 
@@ -74,6 +76,8 @@ The public slash surface is intentionally small. Users should only need these 13
 - If the engineer already knows the chip, package, pin map, or peripheral usage, prefer `declare hardware` first.
 - If the truth still lives in a PDF or manual, use:
   `ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
+- If the board truth still lives in an Altium schematic or export, use:
+  `ingest schematic --file <path>`
 - If the response already includes `apply_ready`, run it first and then return to `next`.
 
 ## Advanced Help

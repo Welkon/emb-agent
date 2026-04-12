@@ -12,6 +12,8 @@ const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs')
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
+const BOOTSTRAP_TASK_NAME = '00-bootstrap-project';
+const BOOTSTRAP_TASK_CHANNELS = ['implement', 'check', 'debug'];
 
 function usage() {
   process.stdout.write(
@@ -250,14 +252,14 @@ function createTemplateFile(templateName, outputPath, context, force, templatesB
 }
 
 function buildProjectConfig(projectRoot, args) {
-  const project_profile = args.profile || RUNTIME_CONFIG.default_profile;
-  loadBuiltInProfile(project_profile);
+  const project_profile = args.profile || '';
+  if (project_profile) {
+    loadBuiltInProfile(project_profile);
+  }
   runtime.initProjectLayout(projectRoot);
   const workflowCatalog = loadWorkflowCatalog(projectRoot);
 
-  const active_packs = runtime.unique(
-    (args.packs.length > 0 ? args.packs : RUNTIME_CONFIG.default_packs).filter(Boolean)
-  );
+  const active_packs = runtime.unique((args.packs || []).filter(Boolean));
 
   active_packs.forEach(name => loadPackForProject(projectRoot, name, workflowCatalog));
 
@@ -328,7 +330,9 @@ function ensureGitignoreRule(projectRoot, rule) {
 }
 
 function buildDocsPlan(projectRoot, projectConfig, registry) {
-  const profile = loadBuiltInProfile(projectConfig.project_profile);
+  const profile = projectConfig.project_profile
+    ? loadBuiltInProfile(projectConfig.project_profile)
+    : { notes_targets: [] };
   const workflowCatalog = registry || loadWorkflowCatalog(projectRoot);
   const packs = projectConfig.active_packs.map(name => loadPackForProject(projectRoot, name, workflowCatalog));
   const noteTargets = runtime.unique([
@@ -349,9 +353,199 @@ function buildDocsPlan(projectRoot, projectConfig, registry) {
 function buildTruthPlan() {
   return [
     { output: runtime.getProjectAssetRelativePath('hw.yaml'), template: 'hw-truth' },
-    { output: runtime.getProjectAssetRelativePath('req.yaml'), template: 'req-truth' },
-    { output: path.join('docs', 'MCU-FOUNDATION-CHECKLIST.md'), template: 'mcu-foundation-checklist' }
+    { output: runtime.getProjectAssetRelativePath('req.yaml'), template: 'req-truth' }
   ];
+}
+
+function buildBootstrapDocsPlan(projectRoot, projectConfig, registry) {
+  return [
+    { output: path.join('docs', 'MCU-FOUNDATION-CHECKLIST.md'), template: 'mcu-foundation-checklist' },
+    ...buildDocsPlan(projectRoot, projectConfig, registry)
+  ];
+}
+
+function buildTaskId(timestamp, slug) {
+  const date = String(timestamp || new Date().toISOString()).slice(5, 10);
+  return `${date.replace('-', '-')}-${slug}`;
+}
+
+function buildBootstrapTaskNotes(projectConfig, docsPlan) {
+  const noteTargets = docsPlan.map(item => item.output);
+
+  return [
+    'Bootstrap checklist created by init-project.',
+    'Init now creates the minimum emb-agent project skeleton first; note templates are deferred until you decide they are needed.',
+    '',
+    'Suggested order:',
+    '1. Confirm which chip and package this board uses in .emb-agent/hw.yaml. Example: SC8F072 + SOP8.',
+    '2. Confirm goals and constraints in .emb-agent/req.yaml.',
+    '3. Fill only the note templates that matter for this project.',
+    `4. Continue with ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])}.`,
+    '',
+    `Project profile: ${projectConfig.project_profile || '-'}`,
+    `Active packs: ${projectConfig.active_packs.join(', ') || '-'}`,
+    '',
+    'Deferred note targets:',
+    ...noteTargets.map(target => `- ${target}`)
+  ].join('\n');
+}
+
+function buildBootstrapTaskSubtasks(docsPlan) {
+  return [
+    {
+      name: 'Confirm which chip and package the board uses in .emb-agent/hw.yaml',
+      status: 'pending'
+    },
+    {
+      name: 'Confirm goals and constraints in .emb-agent/req.yaml',
+      status: 'pending'
+    },
+    ...docsPlan.map(item => ({
+      name: `Decide whether to create ${item.output}`,
+      status: 'pending'
+    }))
+  ];
+}
+
+function writeJsonl(filePath, entries) {
+  const lines = (entries || []).map(entry => JSON.stringify(entry));
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, lines.length > 0 ? `${lines.join('\n')}\n` : '', 'utf8');
+}
+
+function ensureBootstrapTask(projectRoot, projectConfig, docsPlan, force) {
+  const taskDir = path.join(runtime.getProjectExtDir(projectRoot), 'tasks', BOOTSTRAP_TASK_NAME);
+  const taskPath = path.join(taskDir, 'task.json');
+  const existedBefore = fs.existsSync(taskPath);
+  const relatedFiles = runtime.unique([
+    runtime.getProjectAssetRelativePath('hw.yaml'),
+    runtime.getProjectAssetRelativePath('req.yaml'),
+    ...docsPlan.map(item => item.output)
+  ]);
+  const now = new Date().toISOString();
+  const developer = runtime.validateDeveloperConfig(projectConfig.developer || {});
+  const manifest = {
+    id: buildTaskId(now, BOOTSTRAP_TASK_NAME),
+    name: BOOTSTRAP_TASK_NAME,
+    title: 'Bootstrap project notes',
+    description: 'Review minimum project truth and decide which note templates should be created next.',
+    status: 'planning',
+    dev_type: 'docs',
+    scope: 'bootstrap',
+    priority: 'P1',
+    creator: developer.name,
+    assignee: developer.name,
+    createdAt: now,
+    completedAt: null,
+    branch: '',
+    base_branch: 'main',
+    worktree_path: null,
+    current_phase: 1,
+    next_action: [
+      { phase: 1, action: 'implement' },
+      { phase: 2, action: 'check' },
+      { phase: 3, action: 'finish' },
+      { phase: 4, action: 'create-pr' }
+    ],
+    commit: '',
+    pr_url: '',
+    subtasks: buildBootstrapTaskSubtasks(docsPlan),
+    relatedFiles,
+    notes: buildBootstrapTaskNotes(projectConfig, docsPlan),
+    type: 'implement',
+    goal: 'Bootstrap project notes and truth sources',
+    focus: '',
+    references: relatedFiles,
+    open_questions: [],
+    known_risks: [],
+    bindings: {
+      hardware: {
+        identity: {
+          vendor: '',
+          model: '',
+          package: '',
+          file: runtime.getProjectAssetRelativePath('hw.yaml')
+        },
+        chip_profile: null
+      },
+      docs: [],
+      adapters: [],
+      tools: []
+    },
+    injected_specs: [],
+    context: Object.fromEntries(
+      BOOTSTRAP_TASK_CHANNELS.map(channel => [
+        channel,
+        path.relative(projectRoot, path.join(taskDir, `${channel}.jsonl`)).replace(/\\/g, '/')
+      ])
+    ),
+    created_at: now,
+    updated_at: now,
+    updatedAt: now
+  };
+
+  const contextEntries = {
+    implement: [
+      {
+        kind: 'file',
+        path: runtime.getProjectAssetRelativePath('hw.yaml'),
+        reason: 'Confirm hardware truth first'
+      },
+      {
+        kind: 'file',
+        path: runtime.getProjectAssetRelativePath('req.yaml'),
+        reason: 'Confirm project goal and constraints'
+      },
+      ...docsPlan.map(item => ({
+        kind: 'file',
+        path: item.output,
+        reason: `Deferred template target (${item.template})`
+      }))
+    ],
+    check: [
+      {
+        kind: 'file',
+        path: runtime.getProjectAssetRelativePath('hw.yaml'),
+        reason: 'Verify hardware truth stayed current'
+      },
+      {
+        kind: 'file',
+        path: runtime.getProjectAssetRelativePath('req.yaml'),
+        reason: 'Verify requirements truth stayed current'
+      }
+    ],
+    debug: docsPlan.map(item => ({
+      kind: 'file',
+      path: item.output,
+      reason: 'Create only if a debugging or workflow gap appears'
+    }))
+  };
+
+  if (existedBefore && !force) {
+    return {
+      name: BOOTSTRAP_TASK_NAME,
+      path: path.relative(projectRoot, taskPath).replace(/\\/g, '/'),
+      created: false,
+      updated: false,
+      reused: true,
+      related_files: relatedFiles
+    };
+  }
+
+  ensureDir(taskDir);
+  runtime.writeJson(taskPath, manifest);
+  BOOTSTRAP_TASK_CHANNELS.forEach(channel => {
+    writeJsonl(path.join(taskDir, `${channel}.jsonl`), contextEntries[channel]);
+  });
+
+  return {
+    name: BOOTSTRAP_TASK_NAME,
+    path: path.relative(projectRoot, taskPath).replace(/\\/g, '/'),
+    created: !existedBefore,
+    updated: existedBefore && force,
+    reused: false,
+    related_files: relatedFiles
+  };
 }
 
 function scaffoldProject(projectRoot, projectConfig, force, options) {
@@ -363,6 +557,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   const projectConfigPath = path.join(projectConfigDir, 'project.json');
   const developerPath = path.join(projectConfigDir, '.developer');
   const currentTaskPath = path.join(projectConfigDir, '.current-task');
+  const srcDirPath = path.join(projectRoot, 'src');
   const initOptions = options || {};
   const shouldUpdateDeveloper = Boolean(initOptions.userSet || initOptions.runtimeSet);
 
@@ -440,13 +635,22 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     reused.push(path.relative(projectRoot, currentTaskPath));
   }
 
+  if (!fs.existsSync(srcDirPath)) {
+    ensureDir(srcDirPath);
+    created.push(path.relative(projectRoot, srcDirPath));
+  } else if (fs.statSync(srcDirPath).isDirectory()) {
+    reused.push(path.relative(projectRoot, srcDirPath));
+  } else {
+    throw new Error(`src path exists but is not a directory: ${srcDirPath}`);
+  }
+
   const context = buildTemplateContext(projectRoot, effectiveProjectConfig);
   const workflowCatalog = loadWorkflowCatalog(projectRoot);
   const templateIndex = buildTemplateIndex(workflowCatalog);
-  const docsPlan = buildDocsPlan(projectRoot, effectiveProjectConfig, workflowCatalog);
   const truthPlan = buildTruthPlan();
+  const bootstrapDocsPlan = buildBootstrapDocsPlan(projectRoot, effectiveProjectConfig, workflowCatalog);
 
-  for (const item of [...truthPlan, ...docsPlan]) {
+  for (const item of truthPlan) {
     const outputPath = path.join(projectRoot, item.output);
     if (createTemplateFile(item.template, outputPath, context, force, templateIndex.byName)) {
       created.push(path.relative(projectRoot, outputPath));
@@ -455,10 +659,20 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     }
   }
 
+  const bootstrapTask = ensureBootstrapTask(projectRoot, effectiveProjectConfig, bootstrapDocsPlan, force);
+  if (bootstrapTask.created) {
+    created.push(bootstrapTask.path);
+  } else if (bootstrapTask.updated) {
+    updated.push(bootstrapTask.path);
+  } else {
+    reused.push(bootstrapTask.path);
+  }
+
   return {
     project_root: projectRoot,
     project_config: path.relative(projectRoot, projectConfigPath),
     defaults: effectiveProjectConfig,
+    bootstrap_task: bootstrapTask,
     created,
     updated,
     reused
@@ -482,7 +696,7 @@ function main(argv) {
       {
         ...result,
         next_steps: [
-          runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['declare', 'hardware', '--mcu', '<name>', '--package', '<name>']),
+          `Ask the agent to confirm which chip and package the board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')}. If you only know the top marking, datasheet, BOM, or board photo, provide that first.`,
           runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
         ]
       },
@@ -494,6 +708,7 @@ function main(argv) {
 
 module.exports = {
   buildDocsPlan,
+  buildBootstrapDocsPlan,
   buildTruthPlan,
   buildProjectConfig,
   buildTemplateContext,

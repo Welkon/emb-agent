@@ -1,5 +1,9 @@
 'use strict';
 
+function escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function parseBoolean(value) {
   if (typeof value === 'boolean') {
     return value;
@@ -62,10 +66,105 @@ function resolveTrustSignal(source) {
 }
 
 function isWorkspaceTrusted(input, env) {
-  return resolveWorkspaceTrust(input, env).trusted;
+  return resolveWorkspaceTrust(input, env, arguments[2]).trusted;
 }
 
-function resolveWorkspaceTrust(input, env) {
+function hasEnabledCodexHooks(content) {
+  return (
+    /^\s*(?:"codex_hooks"|codex_hooks)\s*=\s*true(?:\s*#.*)?$/m.test(String(content || '')) ||
+    /^\s*features\.(?:"codex_hooks"|codex_hooks)\s*=\s*true(?:\s*#.*)?$/m.test(String(content || ''))
+  );
+}
+
+function hasCodexHookCommand(content, eventName, hookFileName) {
+  const eventPattern = new RegExp(`\\bevent\\s*=\\s*["']${escapeRegex(eventName)}["']`);
+  const commandPattern = new RegExp(`\\bcommand\\s*=\\s*["'][^"'\\r\\n]*${escapeRegex(hookFileName)}[^"'\\r\\n]*["']`);
+  const blocks = String(content || '').split(/\[\[hooks\]\]/u).slice(1);
+
+  return blocks.some(block => eventPattern.test(block) && commandPattern.test(block));
+}
+
+function hasClaudeHookCommand(settings, eventName, hookFileName) {
+  const entries =
+    settings &&
+    settings.hooks &&
+    typeof settings.hooks === 'object' &&
+    !Array.isArray(settings.hooks)
+      ? settings.hooks[eventName]
+      : null;
+
+  return Array.isArray(entries) && entries.some(entry =>
+    entry &&
+    Array.isArray(entry.hooks) &&
+    entry.hooks.some(hook =>
+      hook &&
+      typeof hook.command === 'string' &&
+      hook.command.includes(hookFileName)
+    )
+  );
+}
+
+function resolveHostConfigTrust(options) {
+  const fs = options && options.fs;
+  const path = options && options.path;
+  const runtimeHost = options && options.runtimeHost;
+
+  if (!fs || !path || !runtimeHost || !runtimeHost.runtimeHome || !runtimeHost.configFileName) {
+    return null;
+  }
+
+  const configPath = path.join(runtimeHost.runtimeHome, runtimeHost.configFileName);
+  if (!fs.existsSync(configPath)) {
+    return null;
+  }
+
+  try {
+    if (runtimeHost.name === 'codex') {
+      const content = fs.readFileSync(configPath, 'utf8');
+      const hooksEnabled =
+        hasEnabledCodexHooks(content) &&
+        hasCodexHookCommand(content, 'SessionStart', 'emb-session-start.js') &&
+        hasCodexHookCommand(content, 'PostToolUse', 'emb-context-monitor.js');
+
+      if (!hooksEnabled) {
+        return null;
+      }
+
+      return {
+        trusted: true,
+        explicit: true,
+        source: 'host-config',
+        signal: 'hooks-enabled',
+        summary: 'Codex startup hooks are enabled in host config; automatic bootstrap is available'
+      };
+    }
+
+    if (runtimeHost.name === 'claude') {
+      const settings = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const hooksEnabled =
+        hasClaudeHookCommand(settings, 'SessionStart', 'emb-session-start.js') &&
+        hasClaudeHookCommand(settings, 'PostToolUse', 'emb-context-monitor.js');
+
+      if (!hooksEnabled) {
+        return null;
+      }
+
+      return {
+        trusted: true,
+        explicit: true,
+        source: 'host-config',
+        signal: 'hooks-enabled',
+        summary: 'Claude Code startup hooks are enabled in host config; automatic bootstrap is available'
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function resolveWorkspaceTrust(input, env, options) {
   const environment = env || process.env;
   const forced = parseBoolean(
     environment.EMB_AGENT_FORCE_WORKSPACE_TRUST ||
@@ -78,8 +177,8 @@ function resolveWorkspaceTrust(input, env) {
       source: 'env',
       signal: forced ? 'trusted' : 'untrusted',
       summary: forced
-        ? 'Workspace trust is explicitly enabled by environment override'
-        : 'Workspace trust is explicitly disabled by environment override'
+        ? 'Startup hooks are explicitly enabled by environment override'
+        : 'Startup hooks are explicitly disabled by environment override'
     };
   }
 
@@ -91,9 +190,14 @@ function resolveWorkspaceTrust(input, env) {
       source: 'payload',
       signal: payloadSignal ? 'trusted' : 'untrusted',
       summary: payloadSignal
-        ? 'Workspace trust is provided by the host hook payload'
-        : 'Workspace trust is withheld by the host hook payload'
+        ? 'Startup hook access is provided by the runtime hook payload'
+        : 'Startup hook access is withheld by the runtime hook payload'
     };
+  }
+
+  const hostConfigTrust = resolveHostConfigTrust(options);
+  if (hostConfigTrust) {
+    return hostConfigTrust;
   }
 
   return {
@@ -101,13 +205,17 @@ function resolveWorkspaceTrust(input, env) {
     explicit: false,
     source: 'default',
     signal: 'untrusted-no-signal',
-    summary: 'No explicit workspace trust signal was provided; runtime treats the workspace as untrusted by default'
+    summary: 'No startup hook signal was provided; hook-gated features stay disabled by default'
   };
 }
 
 module.exports = {
+  hasClaudeHookCommand,
+  hasCodexHookCommand,
+  hasEnabledCodexHooks,
   isWorkspaceTrusted,
   parseBoolean,
   resolveTrustSignal,
+  resolveHostConfigTrust,
   resolveWorkspaceTrust
 };

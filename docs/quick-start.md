@@ -7,7 +7,7 @@ This is the shortest recommended path for getting emb-agent running in a real em
 For Codex:
 
 ```bash
-npx emb-agent --codex --global --developer your-name
+npx emb-agent --codex --local --developer your-name
 ```
 
 As of Codex CLI `v0.116.0` on `2026-03-24`, Codex hooks are still experimental. Before using emb-agent in Codex, add this to `~/.codex/config.toml`:
@@ -23,9 +23,10 @@ emb-agent does not add these flags automatically. If a future Codex release enab
 For Claude Code:
 
 ```bash
-npx emb-agent --claude --global --developer your-name
+npx emb-agent --claude --local --developer your-name
 ```
 
+This writes project-scoped Claude assets under `./.claude/`.
 `--developer` is required during install. The value is stored in runtime config and reused by `init`.
 
 ## 2. Open the project in Codex or Claude Code

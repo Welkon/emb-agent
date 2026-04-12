@@ -109,6 +109,76 @@ test('parseArgs accepts sub-agent bridge command and timeout', () => {
   assert.equal(args.subagentBridgeTimeoutMs, 21000);
 });
 
+test('parseArgs defaults Codex installs to local project scope', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+  const args = helper.parseArgs(['--developer', 'welkon']);
+
+  assert.equal(args.runtime, 'codex');
+  assert.equal(args.local, true);
+  assert.equal(args.global, false);
+});
+
+test('parseArgs keeps Claude installs global by default', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+  const args = helper.parseArgs(['--claude', '--developer', 'welkon']);
+
+  assert.equal(args.runtime, 'claude');
+  assert.equal(args.local, true);
+  assert.equal(args.global, false);
+});
+
+test('parseArgs accepts default adapter source overrides', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+  const args = helper.parseArgs([
+    '--global',
+    '--developer',
+    'welkon',
+    '--default-adapter-source-location',
+    'git@github.com:Welkon/emb-agent-adapters.git',
+    '--default-adapter-source-branch',
+    'main',
+    '--default-adapter-source-subdir',
+    'emb-agent'
+  ]);
+
+  assert.equal(args.defaultAdapterSourceLocation, 'git@github.com:Welkon/emb-agent-adapters.git');
+  assert.equal(args.defaultAdapterSourceBranch, 'main');
+  assert.equal(args.defaultAdapterSourceSubdir, 'emb-agent');
+});
+
 test('parseArgs rejects sub-agent bridge timeout without command', () => {
   const fakeProcess = {
     cwd: () => repoRoot,
@@ -126,5 +196,25 @@ test('parseArgs rejects sub-agent bridge timeout without command', () => {
   assert.throws(
     () => helper.parseArgs(['--global', '--developer', 'welkon', '--subagent-bridge-timeout-ms', '21000']),
     /--subagent-bridge-timeout-ms requires --subagent-bridge-cmd/
+  );
+});
+
+test('parseArgs rejects empty default adapter source location', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+
+  assert.throws(
+    () => helper.parseArgs(['--global', '--developer', 'welkon', '--default-adapter-source-location']),
+    /Missing value after --default-adapter-source-location/
   );
 });

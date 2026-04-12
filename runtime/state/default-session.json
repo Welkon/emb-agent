@@ -1,9 +1,7 @@
 {
   "session_version": 1,
-  "project_profile": "baremetal-8bit",
-  "active_packs": [
-    "sensor-node"
-  ],
+  "project_profile": "",
+  "active_packs": [],
   "preferences": {
     "truth_source_mode": "hardware_first",
     "plan_mode": "auto",

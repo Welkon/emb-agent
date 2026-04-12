@@ -17,8 +17,10 @@ const CRITICAL_REMAINING_PERCENT = 25;
 const METRICS_STALE_MS = 60 * 1000;
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 const hookDispatch = hookDispatchHelpers.createHookDispatchHelpers({
+  fs,
   path,
-  process
+  process,
+  runtimeHost: RUNTIME_HOST
 });
 
 function getWarnPath(projectRoot) {

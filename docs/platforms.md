@@ -9,8 +9,13 @@ emb-agent is designed to keep one embedded workflow model across multiple AI run
 Install:
 
 ```bash
-npx emb-agent --codex --global --developer your-name
+npx emb-agent --codex --local --developer your-name
 ```
+
+Recommended layout:
+
+- project-scoped Codex assets under `./.codex/`
+- global host feature flags in `~/.codex/config.toml`
 
 Manual feature gate:
 
@@ -24,10 +29,10 @@ codex_hooks = true
 
 emb-agent intentionally does not add these flags for the user. If Codex later ships hooks as a default stable feature, this step may become unnecessary.
 
-Default runtime CLI path:
+Project runtime CLI path:
 
 ```bash
-node ~/.codex/emb-agent/bin/emb-agent.cjs
+node ./.codex/emb-agent/bin/emb-agent.cjs
 ```
 
 ### Claude Code
@@ -35,13 +40,19 @@ node ~/.codex/emb-agent/bin/emb-agent.cjs
 Install:
 
 ```bash
-npx emb-agent --claude --global --developer your-name
+npx emb-agent --claude --local --developer your-name
 ```
 
-Default runtime CLI path:
+Recommended layout:
+
+- project-scoped Claude assets under `./.claude/`
+- project-scoped slash-command wrappers under `./.claude/commands/emb/`
+- project-scoped hook config in `./.claude/settings.json`
+
+Project runtime CLI path:
 
 ```bash
-node ~/.claude/emb-agent/bin/emb-agent.cjs
+node ./.claude/emb-agent/bin/emb-agent.cjs
 ```
 
 ## Shared workflow

@@ -89,6 +89,38 @@ function runGit(args, cwd, label) {
   }
 }
 
+function normalizeRelativePath(filePath) {
+  return String(filePath || '')
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
+    .replace(/^\/+/, '')
+    .replace(/\/+/g, '/')
+    .replace(/\/$/, '');
+}
+
+function joinRelativePath(prefix, relativePath) {
+  const normalizedPrefix = normalizeRelativePath(prefix);
+  const normalizedRelative = normalizeRelativePath(relativePath);
+
+  if (!normalizedPrefix) {
+    return normalizedRelative;
+  }
+  if (!normalizedRelative) {
+    return normalizedPrefix;
+  }
+
+  return `${normalizedPrefix}/${normalizedRelative}`;
+}
+
+function isRemoteGitLocation(location) {
+  const normalized = String(location || '').trim();
+  return (
+    normalized.includes('://') ||
+    normalized.startsWith('git@') ||
+    normalized.startsWith('ssh://')
+  );
+}
+
 function pathExists(filePath) {
   return fs.existsSync(filePath);
 }
@@ -118,35 +150,110 @@ function resolveLayoutRoot(baseRoot, subdir) {
   throw new Error(`Adapter source layout not found under: ${rootWithSubdir}`);
 }
 
-function materializeGitSource(rootDir, projectRoot, source, target) {
+function buildCandidateLayoutPrefixes(source) {
+  const prefixes = [];
+  const base = normalizeRelativePath(source && source.subdir);
+  const push = value => {
+    const normalized = normalizeRelativePath(value);
+    if (!prefixes.includes(normalized)) {
+      prefixes.push(normalized);
+    }
+  };
+
+  push(base);
+  push(joinRelativePath(base, '.emb-agent'));
+  push(joinRelativePath(base, 'emb-agent'));
+  return prefixes;
+}
+
+function buildGitMetadataSparsePatterns(source) {
+  const patterns = new Set();
+  const layoutPrefixes = buildCandidateLayoutPrefixes(source);
+  const relativePaths = [
+    'adapters/core/**',
+    'extensions/tools/specs/**',
+    'extensions/tools/families/**',
+    'extensions/tools/devices/**',
+    'extensions/chips/profiles/**',
+    'extensions/chips/devices/**'
+  ];
+
+  layoutPrefixes.forEach(prefix => {
+    relativePaths.forEach(relativePath => {
+      patterns.add(joinRelativePath(prefix, relativePath));
+    });
+  });
+
+  return Array.from(patterns).sort();
+}
+
+function configureGitWorkingTree(repoDir, source, patterns) {
+  const hasPatterns = Array.isArray(patterns) && patterns.length > 0;
+
+  if (hasPatterns) {
+    runGit(['sparse-checkout', 'init', '--no-cone'], repoDir, `git sparse-checkout init for source ${source.name}`);
+    runGit(
+      ['sparse-checkout', 'set'].concat(patterns.map(pattern => normalizeRelativePath(pattern)).filter(Boolean)),
+      repoDir,
+      `git sparse-checkout set for source ${source.name}`
+    );
+    runGit(['checkout', '--force', 'HEAD'], repoDir, `git checkout for source ${source.name}`);
+    return;
+  }
+
+  try {
+    runGit(['sparse-checkout', 'disable'], repoDir, `git sparse-checkout disable for source ${source.name}`);
+  } catch (error) {
+    const message = String(error && error.message ? error.message : error);
+    if (!message.includes('disable')) {
+      throw error;
+    }
+  }
+}
+
+function materializeGitSource(rootDir, projectRoot, source, target, sparsePatterns, options) {
   const cacheDir = path.join(getTargetCacheDir(rootDir, projectRoot, target), source.name);
   const repoDir = path.join(cacheDir, 'repo');
+  const settings = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
   runtime.ensureDir(cacheDir);
 
   if (!pathExists(repoDir)) {
     const cloneArgs = ['clone'];
+    const useSparse = Array.isArray(sparsePatterns) && sparsePatterns.length > 0;
+    if (useSparse) {
+      cloneArgs.push('--no-checkout', '--sparse');
+      if (isRemoteGitLocation(source.location)) {
+        cloneArgs.push('--filter=blob:none');
+      }
+    }
     if (source.branch) {
       cloneArgs.push('--branch', source.branch, '--single-branch');
     }
     cloneArgs.push(source.location, repoDir);
     runGit(cloneArgs, projectRoot, `git clone for source ${source.name}`);
+    configureGitWorkingTree(repoDir, source, sparsePatterns);
   } else {
     if (!pathExists(path.join(repoDir, '.git'))) {
       throw new Error(`Cached source is not a git repository: ${repoDir}`);
     }
-    runGit(['fetch', '--all', '--tags'], repoDir, `git fetch for source ${source.name}`);
-    if (source.branch) {
-      runGit(['checkout', source.branch], repoDir, `git checkout for source ${source.name}`);
-      runGit(['pull', '--ff-only', 'origin', source.branch], repoDir, `git pull for source ${source.name}`);
-    } else {
-      runGit(['pull', '--ff-only'], repoDir, `git pull for source ${source.name}`);
+
+    if (settings.skip_update !== true) {
+      runGit(['fetch', '--all', '--tags'], repoDir, `git fetch for source ${source.name}`);
+      if (source.branch) {
+        runGit(['checkout', source.branch], repoDir, `git checkout for source ${source.name}`);
+        runGit(['pull', '--ff-only', 'origin', source.branch], repoDir, `git pull for source ${source.name}`);
+      } else {
+        runGit(['pull', '--ff-only'], repoDir, `git pull for source ${source.name}`);
+      }
     }
+
+    configureGitWorkingTree(repoDir, source, sparsePatterns);
   }
 
   return repoDir;
 }
 
-function resolveSourceRoot(rootDir, projectRoot, source, target) {
+function resolveSourceRoot(rootDir, projectRoot, source, target, sparsePatterns, options) {
   if (source.type === 'path') {
     const location = path.isAbsolute(source.location)
       ? source.location
@@ -158,7 +265,7 @@ function resolveSourceRoot(rootDir, projectRoot, source, target) {
     };
   }
 
-  const checkoutRoot = materializeGitSource(rootDir, projectRoot, source, target);
+  const checkoutRoot = materializeGitSource(rootDir, projectRoot, source, target, sparsePatterns, options);
   return {
     checkout_root: checkoutRoot,
     layout_root: resolveLayoutRoot(checkoutRoot, source.subdir),
@@ -481,10 +588,9 @@ function scanLocalRequires(layoutRoot, selectedPaths) {
   return discovered;
 }
 
-function filterSourceFiles(layoutRoot, files, selection) {
+function analyzeSourceSelection(layoutRoot, files, selection) {
   if (!selection || !selection.filtered) {
     return {
-      files,
       selection: {
         filtered: false,
         inferred_from_project: false,
@@ -507,7 +613,14 @@ function filterSourceFiles(layoutRoot, files, selection) {
         },
         total_files: files.length,
         selected_files: files.length
-      }
+      },
+      selected_relative_paths: new Set(),
+      matched_tools: [],
+      matched_families: [],
+      matched_devices: [],
+      matched_chips: [],
+      selected_source_refs: [],
+      selected_algorithms: []
     };
   }
 
@@ -635,9 +748,9 @@ function filterSourceFiles(layoutRoot, files, selection) {
     });
   }
 
-  const matchedChips = Array.from(requestedChips).filter(name => chipProfiles.has(name));
-  const matchedDevices = Array.from(requestedDevices).filter(name => toolDevices.has(name));
-  const matchedFamilies = Array.from(requestedFamilies).filter(name => toolFamilies.has(name));
+  const matchedChips = Array.from(requestedChips).filter(name => chipProfiles.has(name)).sort();
+  const matchedDevices = Array.from(requestedDevices).filter(name => toolDevices.has(name)).sort();
+  const matchedFamilies = Array.from(requestedFamilies).filter(name => toolFamilies.has(name)).sort();
   const matchedTools = new Set(requestedTools);
 
   matchedChips.forEach(name => {
@@ -729,8 +842,89 @@ function filterSourceFiles(layoutRoot, files, selection) {
     }
   });
 
-  const discovered = scanLocalRequires(layoutRoot, selectedRelativePaths);
-  const filteredFiles = files.filter(item => discovered.has(item.relativePath) || selectedRelativePaths.has(item.relativePath));
+  return {
+    selection: {
+      filtered: true,
+      inferred_from_project: selection.inferred_from_project,
+      hardware: selection.hardware,
+      requested: selection.selectors,
+      matched: {
+        tools: Array.from(matchedTools).sort(),
+        families: matchedFamilies,
+        devices: matchedDevices,
+        chips: matchedChips
+      },
+      total_files: files.length,
+      selected_files: 0
+    },
+    selected_relative_paths: selectedRelativePaths,
+    matched_tools: Array.from(matchedTools).sort(),
+    matched_families: matchedFamilies,
+    matched_devices: matchedDevices,
+    matched_chips: matchedChips,
+    selected_source_refs: Array.from(selectedSourceRefs).sort(),
+    selected_algorithms: Array.from(selectedAlgorithms).sort()
+  };
+}
+
+function buildGitSelectionSparsePatterns(checkoutRoot, layoutRoot, analysis) {
+  if (!analysis || !analysis.selection || !analysis.selection.filtered) {
+    return [];
+  }
+
+  const matched =
+    analysis.selection.matched || { tools: [], families: [], devices: [], chips: [] };
+  const hasMeaningfulSelection =
+    matched.tools.length > 0 ||
+    matched.families.length > 0 ||
+    matched.devices.length > 0 ||
+    matched.chips.length > 0;
+
+  if (!hasMeaningfulSelection) {
+    return [];
+  }
+
+  const prefix = normalizeRelativePath(path.relative(checkoutRoot, layoutRoot));
+  const patterns = new Set();
+  const add = relativePath => {
+    const normalized = normalizeRelativePath(relativePath);
+    if (normalized) {
+      patterns.add(joinRelativePath(prefix, normalized));
+    }
+  };
+
+  add('adapters/core/**');
+  (analysis.selected_algorithms || []).forEach(name => add(`adapters/algorithms/${name}.cjs`));
+
+  matched.tools.forEach(name => {
+    add(`extensions/tools/specs/${name}.json`);
+    add(`adapters/routes/${name}.cjs`);
+  });
+  matched.families.forEach(name => add(`extensions/tools/families/${name}.json`));
+  matched.devices.forEach(name => add(`extensions/tools/devices/${name}.json`));
+  matched.chips.forEach(name => {
+    add(`extensions/chips/profiles/${name}.json`);
+    add(`extensions/chips/devices/${name}.json`);
+  });
+  (analysis.selected_source_refs || []).forEach(refId => add(`docs/sources/${refId}.md`));
+
+  return Array.from(patterns).sort();
+}
+
+function filterSourceFiles(layoutRoot, files, selection) {
+  const analysis = analyzeSourceSelection(layoutRoot, files, selection);
+
+  if (!analysis.selection.filtered) {
+    return {
+      files,
+      selection: analysis.selection
+    };
+  }
+
+  const discovered = scanLocalRequires(layoutRoot, analysis.selected_relative_paths);
+  const filteredFiles = files.filter(
+    item => discovered.has(item.relativePath) || analysis.selected_relative_paths.has(item.relativePath)
+  );
 
   if (filteredFiles.length === 0) {
     return {
@@ -738,15 +932,10 @@ function filterSourceFiles(layoutRoot, files, selection) {
       selection: {
         filtered: false,
         fallback_to_full_sync: true,
-        inferred_from_project: selection.inferred_from_project,
-        hardware: selection.hardware,
-        requested: selection.selectors,
-        matched: {
-          tools: Array.from(matchedTools).sort(),
-          families: matchedFamilies.sort(),
-          devices: matchedDevices.sort(),
-          chips: matchedChips.sort()
-        },
+        inferred_from_project: analysis.selection.inferred_from_project,
+        hardware: analysis.selection.hardware,
+        requested: analysis.selection.requested,
+        matched: analysis.selection.matched,
         total_files: files.length,
         selected_files: files.length
       }
@@ -757,15 +946,10 @@ function filterSourceFiles(layoutRoot, files, selection) {
     files: filteredFiles,
     selection: {
       filtered: true,
-      inferred_from_project: selection.inferred_from_project,
-      hardware: selection.hardware,
-      requested: selection.selectors,
-      matched: {
-        tools: Array.from(matchedTools).sort(),
-        families: matchedFamilies.sort(),
-        devices: matchedDevices.sort(),
-        chips: matchedChips.sort()
-      },
+      inferred_from_project: analysis.selection.inferred_from_project,
+      hardware: analysis.selection.hardware,
+      requested: analysis.selection.requested,
+      matched: analysis.selection.matched,
       total_files: files.length,
       selected_files: filteredFiles.length
     }
@@ -846,9 +1030,27 @@ function syncAdapterSource(rootDir, projectRoot, source, options) {
   const entryKey = buildEntryKey(target, source.name);
   const previousEntry = manifest.entries[entryKey] || null;
   const ownedByOthers = buildOwnedPathMap(manifest, entryKey);
-  const resolved = resolveSourceRoot(rootDir, projectRoot, source, target);
-  const allFiles = collectSourceFiles(resolved.layout_root);
   const selectionRequest = buildSyncSelection(projectRoot, options || {});
+  const metadataPatterns =
+    source.type === 'git' && selectionRequest.filtered ? buildGitMetadataSparsePatterns(source) : null;
+  let resolved = resolveSourceRoot(rootDir, projectRoot, source, target, metadataPatterns);
+  let allFiles = collectSourceFiles(resolved.layout_root);
+
+  if (source.type === 'git' && selectionRequest.filtered) {
+    const analysis = analyzeSourceSelection(resolved.layout_root, allFiles, selectionRequest);
+    const sparsePatterns = buildGitSelectionSparsePatterns(resolved.checkout_root, resolved.layout_root, analysis);
+
+    resolved = resolveSourceRoot(
+      rootDir,
+      projectRoot,
+      source,
+      target,
+      sparsePatterns.length > 0 ? sparsePatterns : null,
+      { skip_update: true }
+    );
+    allFiles = collectSourceFiles(resolved.layout_root);
+  }
+
   const filtered = filterSourceFiles(resolved.layout_root, allFiles, selectionRequest);
   const files = filtered.files;
 
