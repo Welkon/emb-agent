@@ -181,6 +181,26 @@ function createGitAdapterSource(rootDir) {
   );
 }
 
+function createFilteredGitAdapterSource(rootDir) {
+  createFilteredAdapterSource(rootDir);
+  childProcess.execFileSync('git', ['init'], {
+    cwd: rootDir,
+    stdio: 'ignore'
+  });
+  childProcess.execFileSync('git', ['add', '.'], {
+    cwd: rootDir,
+    stdio: 'ignore'
+  });
+  childProcess.execFileSync(
+    'git',
+    ['-c', 'user.name=emb-agent', '-c', 'user.email=emb-agent@example.com', 'commit', '-m', 'init'],
+    {
+      cwd: rootDir,
+      stdio: 'ignore'
+    }
+  );
+}
+
 function createFilteredAdapterSource(rootDir) {
   writeText(
     path.join(rootDir, 'adapters', 'core', 'shared.cjs'),
@@ -484,6 +504,53 @@ test('adapter bootstrap adds source and syncs matching project adapters in one s
   }
 });
 
+test('adapter bootstrap uses default adapter source overrides when no source args are provided', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-bootstrap-default-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-bootstrap-default-source-'));
+  const currentCwd = process.cwd();
+  const previousType = process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_TYPE;
+  const previousLocation = process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION;
+
+  try {
+    createPathAdapterSource(tempSource);
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main(['init']);
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      'mcu:\n  vendor: "VendorName"\n  model: "vendor-chip"\n  package: "sop8"\n',
+      'utf8'
+    );
+    process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_TYPE = 'path';
+    process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION = tempSource;
+
+    const bootstrap = JSON.parse(await captureStdout(() => cli.main(['adapter', 'bootstrap'])));
+
+    assert.equal(bootstrap.action, 'bootstrapped');
+    assert.equal(bootstrap.source_action, 'added');
+    assert.equal(bootstrap.source.name, 'default-pack');
+    assert.equal(bootstrap.source.type, 'path');
+    assert.equal(bootstrap.source.location, tempSource);
+    assert.equal(bootstrap.sync.status, 'synced');
+    assert.equal(
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      true
+    );
+  } finally {
+    if (previousLocation === undefined) {
+      delete process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION;
+    } else {
+      process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION = previousLocation;
+    }
+    if (previousType === undefined) {
+      delete process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_TYPE;
+    } else {
+      process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_TYPE = previousType;
+    }
+    process.chdir(currentCwd);
+  }
+});
+
 test('adapter status shows project-level quality overview', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-status-quality-'));
   const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-status-quality-source-'));
@@ -732,6 +799,87 @@ test('adapter sync supports explicit chip and tool filters', async () => {
     );
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json')),
+      false
+    );
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('adapter sync keeps git source checkout scoped to matching chip files', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-git-filter-project-'));
+  const tempSourceRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-git-filter-source-'));
+  const currentCwd = process.cwd();
+
+  try {
+    createFilteredGitAdapterSource(tempSourceRepo);
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    writeText(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      ['mcu:', '  vendor: "SCMCU"', '  model: "SC8F072"', '  package: "SOP8"', ''].join('\n')
+    );
+
+    await captureStdout(() =>
+      cli.main([
+        'adapter',
+        'source',
+        'add',
+        'git-filtered-pack',
+        '--type',
+        'git',
+        '--location',
+        tempSourceRepo
+      ])
+    );
+
+    const syncResult = JSON.parse(
+      await captureStdout(() => cli.main(['adapter', 'sync', 'git-filtered-pack']))
+    );
+
+    const cachedLayoutRoot = path.join(
+      tempProject,
+      '.emb-agent',
+      'cache',
+      'adapter-sources',
+      'git-filtered-pack',
+      'repo'
+    );
+
+    assert.equal(syncResult.selection.filtered, true);
+    assert.deepEqual(syncResult.selection.matched.chips, ['sc8f072']);
+    assert.equal(
+      fs.existsSync(path.join(cachedLayoutRoot, 'extensions', 'chips', 'profiles', 'sc8f072.json')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(cachedLayoutRoot, 'extensions', 'chips', 'profiles', 'pms150g.json')),
+      false
+    );
+    assert.equal(
+      fs.existsSync(path.join(cachedLayoutRoot, 'adapters', 'routes', 'timer-calc.cjs')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(cachedLayoutRoot, 'adapters', 'routes', 'pwm-calc.cjs')),
+      false
+    );
+    assert.equal(
+      fs.existsSync(path.join(cachedLayoutRoot, 'adapters', 'algorithms', 'scmcu-timer.cjs')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(cachedLayoutRoot, 'adapters', 'algorithms', 'padauk-tm2-pwm.cjs')),
+      false
+    );
+    assert.equal(
+      fs.existsSync(path.join(cachedLayoutRoot, 'docs', 'sources', 'mcu', 'scmcu-sc8f072-registers.md')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(cachedLayoutRoot, 'docs', 'sources', 'mcu', 'padauk-pms150g-registers.md')),
       false
     );
   } finally {

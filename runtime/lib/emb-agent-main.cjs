@@ -21,6 +21,7 @@ const adapterDeriveCli = require(path.join(ROOT, 'scripts', 'adapter-derive.cjs'
 const attachProjectCli = require(path.join(ROOT, 'scripts', 'attach-project.cjs'));
 const ingestTruthCli = require(path.join(ROOT, 'scripts', 'ingest-truth.cjs'));
 const ingestDocCli = require(path.join(ROOT, 'scripts', 'ingest-doc.cjs'));
+const ingestSchematicCli = require(path.join(ROOT, 'scripts', 'ingest-schematic.cjs'));
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const scheduler = require(path.join(ROOT, 'lib', 'scheduler.cjs'));
 const toolCatalog = require(path.join(ROOT, 'lib', 'tool-catalog.cjs'));
@@ -337,7 +338,8 @@ const {
 
 function resolveSession() {
   const session = loadSession();
-  const profile = loadProfile(session.project_profile);
+  const effectiveProfileName = session.project_profile || RUNTIME_CONFIG.default_profile;
+  const profile = loadProfile(effectiveProfileName);
   const packs = session.active_packs.map(loadPack);
   const projectConfig = getProjectConfig();
   const hardwareIdentity = loadHardwareIdentity(session.project_root || resolveProjectRoot());
@@ -467,6 +469,7 @@ const {
   syncAllAdapterSources
 } = projectConfigHelpers.createProjectConfigHelpers({
   path,
+  process,
   runtime,
   adapterSources,
   ROOT,
@@ -822,10 +825,11 @@ const {
   initProjectLayout,
   ensureSession,
   updateSession,
-  attachProjectCli,
-  chipCatalog,
-  ingestTruthCli,
-  ingestDocCli
+    attachProjectCli,
+    chipCatalog,
+    ingestTruthCli,
+    ingestDocCli,
+    ingestSchematicCli
 });
 
 function requireRestText(rest, label) {

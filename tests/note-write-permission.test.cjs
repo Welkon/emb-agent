@@ -57,7 +57,8 @@ test('scan save honors write ask rules before touching doc or truth', async () =
 
     const docPath = path.join(tempProject, 'docs', 'HARDWARE-LOGIC.md');
     const truthPath = path.join(tempProject, '.emb-agent', 'hw.yaml');
-    const docBefore = fs.readFileSync(docPath, 'utf8');
+    const docBeforeExists = fs.existsSync(docPath);
+    const docBefore = docBeforeExists ? fs.readFileSync(docPath, 'utf8') : '';
     const truthBefore = fs.readFileSync(truthPath, 'utf8');
 
     const blocked = await runJson([
@@ -76,7 +77,10 @@ test('scan save honors write ask rules before touching doc or truth', async () =
     assert.equal(blocked.status, 'permission-pending');
     assert.equal(blocked.permission_decision.decision, 'ask');
     assert.equal(blocked.permission_decision.reason_code, 'policy-ask');
-    assert.equal(fs.readFileSync(docPath, 'utf8'), docBefore);
+    assert.equal(fs.existsSync(docPath), docBeforeExists);
+    if (docBeforeExists) {
+      assert.equal(fs.readFileSync(docPath, 'utf8'), docBefore);
+    }
     assert.equal(fs.readFileSync(truthPath, 'utf8'), truthBefore);
 
     const allowed = await runJson([
@@ -121,7 +125,8 @@ test('plan save honors write ask rules before touching doc or requirements', asy
 
     const docPath = path.join(tempProject, 'docs', 'DEBUG-NOTES.md');
     const reqPath = path.join(tempProject, '.emb-agent', 'req.yaml');
-    const docBefore = fs.readFileSync(docPath, 'utf8');
+    const docBeforeExists = fs.existsSync(docPath);
+    const docBefore = docBeforeExists ? fs.readFileSync(docPath, 'utf8') : '';
     const reqBefore = fs.readFileSync(reqPath, 'utf8');
 
     const blocked = await runJson([
@@ -139,7 +144,10 @@ test('plan save honors write ask rules before touching doc or requirements', asy
     assert.equal(blocked.status, 'permission-pending');
     assert.equal(blocked.permission_decision.decision, 'ask');
     assert.equal(blocked.permission_decision.reason_code, 'policy-ask');
-    assert.equal(fs.readFileSync(docPath, 'utf8'), docBefore);
+    assert.equal(fs.existsSync(docPath), docBeforeExists);
+    if (docBeforeExists) {
+      assert.equal(fs.readFileSync(docPath, 'utf8'), docBefore);
+    }
     assert.equal(fs.readFileSync(reqPath, 'utf8'), reqBefore);
 
     const allowed = await runJson([
@@ -278,7 +286,8 @@ test('note add honors write ask rules before touching doc or hardware truth', as
 
     const docPath = path.join(tempProject, 'docs', 'HARDWARE-LOGIC.md');
     const truthPath = path.join(tempProject, '.emb-agent', 'hw.yaml');
-    const docBefore = fs.readFileSync(docPath, 'utf8');
+    const docBeforeExists = fs.existsSync(docPath);
+    const docBefore = docBeforeExists ? fs.readFileSync(docPath, 'utf8') : '';
     const truthBefore = fs.readFileSync(truthPath, 'utf8');
 
     const blocked = await runJson([
@@ -297,7 +306,10 @@ test('note add honors write ask rules before touching doc or hardware truth', as
     assert.equal(blocked.status, 'permission-pending');
     assert.equal(blocked.permission_decision.decision, 'ask');
     assert.equal(blocked.permission_decision.reason_code, 'policy-ask');
-    assert.equal(fs.readFileSync(docPath, 'utf8'), docBefore);
+    assert.equal(fs.existsSync(docPath), docBeforeExists);
+    if (docBeforeExists) {
+      assert.equal(fs.readFileSync(docPath, 'utf8'), docBefore);
+    }
     assert.equal(fs.readFileSync(truthPath, 'utf8'), truthBefore);
 
     const allowed = await runJson([

@@ -138,7 +138,10 @@ test('session start hook reminds active task context after clearable resume path
     cli.main(['init']);
     cli.main(['task', 'add', 'Investigate PMS150G comparator timing']);
     const tasksDir = path.join(tempProject, '.emb-agent', 'tasks');
-    const taskName = fs.readdirSync(tasksDir).find(name => fs.existsSync(path.join(tasksDir, name, 'task.json')));
+    const taskName = fs.readdirSync(tasksDir).find(name =>
+      name !== '00-bootstrap-project' &&
+      fs.existsSync(path.join(tasksDir, name, 'task.json'))
+    );
     cli.main(['task', 'activate', taskName]);
 
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });

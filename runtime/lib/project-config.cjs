@@ -1,11 +1,13 @@
 'use strict';
 
 const adapterQualityHelpers = require('./adapter-quality.cjs');
+const defaultAdapterSourceHelpers = require('./default-adapter-source.cjs');
 const permissionGateHelpers = require('./permission-gates.cjs');
 
 function createProjectConfigHelpers(deps) {
   const {
     path,
+    process,
     runtime,
     adapterSources,
     ROOT,
@@ -17,9 +19,11 @@ function createProjectConfigHelpers(deps) {
     updateSession,
     getPreferences
   } = deps;
-  const DEFAULT_ADAPTER_SOURCE_NAME = 'default-pack';
-  const DEFAULT_ADAPTER_SOURCE_TYPE = 'git';
-  const DEFAULT_ADAPTER_SOURCE_LOCATION = 'https://github.com/Welkon/emb-agent-adapters.git';
+  const { DEFAULT_ADAPTER_SOURCE_NAME } = defaultAdapterSourceHelpers;
+
+  function getDefaultAdapterSource() {
+    return defaultAdapterSourceHelpers.resolveDefaultAdapterSource(RUNTIME_CONFIG, process && process.env);
+  }
 
   function stripPermissionControlTokens(tokens) {
     const list = Array.isArray(tokens) ? tokens : [];
@@ -488,11 +492,18 @@ function createProjectConfigHelpers(deps) {
     }
 
     if (result.name === DEFAULT_ADAPTER_SOURCE_NAME) {
+      const defaultSource = getDefaultAdapterSource();
       if (!result.source.type) {
-        result.source.type = DEFAULT_ADAPTER_SOURCE_TYPE;
+        result.source.type = defaultSource.type;
       }
       if (!result.source.location) {
-        result.source.location = DEFAULT_ADAPTER_SOURCE_LOCATION;
+        result.source.location = defaultSource.location;
+      }
+      if (!result.source.branch && defaultSource.branch) {
+        result.source.branch = defaultSource.branch;
+      }
+      if (!result.source.subdir && defaultSource.subdir) {
+        result.source.subdir = defaultSource.subdir;
       }
     }
 

@@ -54,8 +54,14 @@ Instead of treating firmware work like generic code generation, emb-agent keeps 
 For Codex:
 
 ```bash
-npx emb-agent --codex --global --developer your-name
+npx emb-agent --codex --local --developer your-name
 ```
+
+This installs:
+
+- project-scoped runtime files under `./.codex/emb-agent/`
+- project-scoped Codex agents under `./.codex/agents/`
+- project-scoped Codex-discoverable public emb skills under `./.codex/skills/`
 
 As of Codex CLI `v0.116.0` on `2026-03-24`, hooks are still experimental and must be enabled manually in `~/.codex/config.toml`:
 
@@ -70,8 +76,15 @@ emb-agent does not write these feature flags automatically. If Codex later enabl
 For Claude Code:
 
 ```bash
-npx emb-agent --claude --global --developer your-name
+npx emb-agent --claude --local --developer your-name
 ```
+
+This installs Claude integration into the repository under `./.claude/`, including:
+
+- project-scoped runtime files under `./.claude/emb-agent/`
+- project-scoped agents under `./.claude/agents/`
+- project-scoped command wrappers under `./.claude/commands/emb/`
+- project-scoped hook configuration in `./.claude/settings.json`
 
 `--developer` is required during install. The value is stored in runtime config and reused by `init`, so you do not have to re-enter your developer identity in every project.
 
@@ -85,7 +98,7 @@ If a workflow is product-specific instead of broadly reusable, keep it as a proj
 
 The shortest onboarding path and session command flow are documented in [docs/quick-start.md](./docs/quick-start.md) and [commands/emb/help.md](./commands/emb/help.md).
 
-The public command surface is intentionally kept small:
+The public command surface is intentionally kept small. In Codex it is mirrored as skills such as `emb-init` and `emb-next`; in slash-command hosts the same surface can appear as `$emb-*` commands:
 
 - Start: `init`, `ingest`, `next`, `task`
 - Execute: `scan`, `plan`, `do`, `debug`

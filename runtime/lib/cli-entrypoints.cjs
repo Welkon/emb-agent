@@ -16,7 +16,8 @@ function createCliEntryHelpers(deps) {
     attachProjectCli,
     chipCatalog,
     ingestTruthCli,
-    ingestDocCli
+    ingestDocCli,
+    ingestSchematicCli
   } = deps;
 
   const GENERATED_DOCS = new Set([
@@ -338,6 +339,40 @@ function createCliEntryHelpers(deps) {
     return `ingest doc --file ${filePath} --kind datasheet --to hardware`;
   }
 
+  function buildAdapterBootstrapCommand(sources) {
+    if (Array.isArray(sources) && sources.length > 0 && sources[0] && sources[0].name) {
+      return `adapter bootstrap ${sources[0].name}`;
+    }
+    return 'adapter bootstrap';
+  }
+
+  function hasConfiguredDefaultAdapterSource() {
+    const source = (RUNTIME_CONFIG && RUNTIME_CONFIG.default_adapter_source) || {};
+    return Boolean(source.location);
+  }
+
+  function loadBootstrapTaskSummary(projectRoot) {
+    const taskPath = path.join(
+      runtime.getProjectExtDir(projectRoot),
+      'tasks',
+      '00-bootstrap-project',
+      'task.json'
+    );
+
+    if (!fs.existsSync(taskPath)) {
+      return null;
+    }
+
+    const task = runtime.readJson(taskPath);
+    return {
+      name: String(task.name || '00-bootstrap-project'),
+      title: String(task.title || 'Bootstrap project notes'),
+      status: String(task.status || 'planning'),
+      path: path.relative(projectRoot, taskPath).replace(/\\/g, '/'),
+      related_files: Array.isArray(task.relatedFiles) ? task.relatedFiles : []
+    };
+  }
+
   function buildInitGuidance(projectRoot, context) {
     const initContext = context || {};
     const hardware = loadInitHardwareIdentity(projectRoot);
@@ -365,51 +400,108 @@ function createCliEntryHelpers(deps) {
     const selectedChipProfile = selectedHardware
       ? findChipProfileByModel(selectedHardware.model, selectedHardware.package)
       : null;
+    const bootstrapTask = loadBootstrapTaskSummary(projectRoot);
     const pinSummary = buildPinSummary(selectedChipProfile, selectedHardware && selectedHardware.package, !hardwareReady);
+    const declareHardwareCommand = candidateHardware.length > 0
+      ? buildDeclareHardwareCommand({
+          mcu: candidateHardware[0].model,
+          package: candidateHardware[0].package
+        })
+      : 'declare hardware --mcu <name> --package <name>';
+    const adapterBootstrapCommand = buildAdapterBootstrapCommand(sources);
+    const adapterSourceReady = sources.length > 0 || hasConfiguredDefaultAdapterSource();
+    const agentActions = [];
     const firstUsablePin =
       pinSummary && Array.isArray(pinSummary.usable_pins) && pinSummary.usable_pins.length > 0
         ? pinSummary.usable_pins[0]
         : null;
 
     if (!hardwareReady) {
-      if (candidateHardware.length > 0) {
-        const suggested = candidateHardware[0];
-        nextSteps.push(
-          `Declare the detected hardware identity with: ${buildDeclareHardwareCommand({
-            mcu: suggested.model,
-            package: suggested.package
-          })}`
-        );
-      } else {
-        nextSteps.push('Declare MCU/package first with: declare hardware --mcu <name> --package <name>');
-      }
+      agentActions.push({
+        kind: 'confirm-hardware-identity',
+        status: 'required',
+        target_file: runtime.getProjectAssetRelativePath('hw.yaml'),
+        summary:
+          candidateHardware.length > 0
+            ? `Ask the agent to confirm which chip and package were detected, then write that into ${runtime.getProjectAssetRelativePath('hw.yaml')}.`
+            : `Ask the agent to inspect the project and fill which chip and package this board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')}. If the only clue is a top marking, datasheet, BOM, or board photo, that is still enough to start.`,
+        cli_fallback: declareHardwareCommand
+      });
+
+      nextSteps.push(`Let the agent confirm which chip and package this board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')} before continuing.`);
       if (candidateDocs.length > 0) {
-        nextSteps.push(`After hardware confirmation, parse docs only if needed: ${buildDocIngestCommand(candidateDocs[0])}`);
+        agentActions.push({
+          kind: 'inspect-hardware-doc',
+          status: 'optional',
+          target_file: candidateDocs[0],
+          summary: `If hardware is still unclear, let the agent inspect ${candidateDocs[0]} before writing truth.`,
+          cli_fallback: buildDocIngestCommand(candidateDocs[0])
+        });
+        nextSteps.push(`If hardware is still unclear, let the agent inspect ${candidateDocs[0]}.`);
       }
-      if (sources.length === 0) {
-        nextSteps.push('Run adapter bootstrap after hardware identity is declared');
-      } else {
-        nextSteps.push(`Run adapter bootstrap ${sources[0].name} after hardware identity is declared`);
-      }
-      nextSteps.push('Run next after hardware identity is declared');
+
+      agentActions.push({
+        kind: 'bootstrap-adapters',
+        status: adapterSourceReady ? 'blocked' : 'unconfigured',
+        blocked_by: adapterSourceReady ? ['hardware_identity'] : ['hardware_identity', 'adapter_source'],
+        summary: adapterSourceReady
+          ? 'Adapter bootstrap can continue automatically after hardware identity is confirmed.'
+          : 'Configure an adapter source before adapters can be bootstrapped.',
+        cli_fallback: adapterBootstrapCommand
+      });
+
+      nextSteps.push(adapterSourceReady
+        ? 'Run next after the chip is identified so the agent can continue bootstrap.'
+        : 'Configure an adapter source, then run next after the chip is identified.');
     } else {
+      agentActions.push({
+        kind: 'declare-board-pins',
+        status: 'recommended',
+        target_file: runtime.getProjectAssetRelativePath('hw.yaml'),
+        summary: firstUsablePin
+          ? `Ask the agent to map board signals into ${runtime.getProjectAssetRelativePath('hw.yaml')} with auto-selected pins (first candidate ${firstUsablePin.signal}).`
+          : `Ask the agent to map board signals into ${runtime.getProjectAssetRelativePath('hw.yaml')} with auto-selected pins.`,
+        cli_fallback: 'declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin'
+      });
+
       nextSteps.push(
         firstUsablePin
-          ? `Declare board pins/peripherals with agent-selected pins (first candidate ${firstUsablePin.signal}): declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin`
-          : 'Declare board pins/peripherals with agent-selected pins: declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin'
+          ? `Let the agent map board pins/peripherals into ${runtime.getProjectAssetRelativePath('hw.yaml')} (first candidate ${firstUsablePin.signal}).`
+          : `Let the agent map board pins/peripherals into ${runtime.getProjectAssetRelativePath('hw.yaml')}.`
       );
 
-      if (sources.length === 0) {
-        nextSteps.push('Run adapter bootstrap');
-      } else {
-        nextSteps.push(`Run adapter bootstrap ${sources[0].name}`);
-      }
+      agentActions.push({
+        kind: 'bootstrap-adapters',
+        status: adapterSourceReady ? 'ready' : 'unconfigured',
+        blocked_by: adapterSourceReady ? [] : ['adapter_source'],
+        summary: adapterSourceReady
+          ? 'Adapter bootstrap is ready. Let next continue and auto-run it when health and permissions allow.'
+          : 'Configure an adapter source before adapters can be bootstrapped.',
+        cli_fallback: adapterBootstrapCommand
+      });
 
       if (candidateDocs.length > 0) {
-        nextSteps.push(`If docs still need to be parsed, run ${buildDocIngestCommand(candidateDocs[0])}`);
+        agentActions.push({
+          kind: 'inspect-hardware-doc',
+          status: 'optional',
+          target_file: candidateDocs[0],
+          summary: `If more hardware detail is needed, let the agent inspect ${candidateDocs[0]}.`,
+          cli_fallback: buildDocIngestCommand(candidateDocs[0])
+        });
+        nextSteps.push(`If more hardware detail is needed, let the agent inspect ${candidateDocs[0]}.`);
       }
 
-      nextSteps.push('Run next');
+      nextSteps.push(adapterSourceReady
+        ? 'Run next to continue the agent-guided bootstrap. Adapter bootstrap can proceed automatically when allowed.'
+        : 'Configure an adapter source, then run next to continue the agent-guided bootstrap.');
+    }
+
+    if (meaningfulInputCount === 0) {
+      nextSteps.push('If the repo is still empty, add any datasheet/manual under docs/ (recommended, not required), any schematic under hardware/ or docs/, and any firmware tree under src/ or the project root.');
+    }
+
+    if (bootstrapTask) {
+      nextSteps.push(`Optional: inspect deferred note targets with task show ${bootstrapTask.name}.`);
     }
 
     return {
@@ -435,6 +527,8 @@ function createCliEntryHelpers(deps) {
             package: selectedChipProfile.package
           }
         : null,
+      bootstrap_task: bootstrapTask,
+      agent_actions: agentActions,
       pin_summary: pinSummary,
       doc_parse_suggestion: {
         suggested: candidateDocs.length > 0,
@@ -460,6 +554,7 @@ function createCliEntryHelpers(deps) {
       '    [--peripheral <name> --usage <text>]',
       '  next [run]',
       '  ingest doc --file <path> [--provider mineru] [--kind datasheet] [--title <text>] [--pages <range>] [--language ch|en] [--ocr] [--force] [--to hardware|requirements]',
+      '  ingest schematic --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force]',
       '  task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
       '  task show <name>',
       '  task activate [--confirm] <name>',
@@ -491,6 +586,7 @@ function createCliEntryHelpers(deps) {
       '  ingest apply doc <doc-id> [--confirm] --to hardware|requirements [--only field1,field2] [--force]',
       '  ingest apply doc <doc-id> --from-last-diff',
       '  ingest apply doc <doc-id> --preset <name>',
+      '  ingest schematic --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force]',
       '  doc list',
       '  doc show <doc-id> [--preset <name>] [--apply-ready]',
       '  doc diff [--confirm] <doc-id> --to hardware|requirements [--only field1,field2] [--force] [--save-as <name>]',
@@ -704,6 +800,12 @@ function createCliEntryHelpers(deps) {
       lastFiles = ingested.last_files || [];
     } else if (subcmd === 'doc') {
       ingested = await ingestDocCli.ingestDoc(rest, {
+        projectRoot: resolveProjectRoot(),
+        ...(options || {})
+      });
+      lastFiles = ingested.last_files || [];
+    } else if (subcmd === 'schematic') {
+      ingested = ingestSchematicCli.ingestSchematic(rest, {
         projectRoot: resolveProjectRoot(),
         ...(options || {})
       });

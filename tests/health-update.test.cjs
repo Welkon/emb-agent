@@ -8,6 +8,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const installer = require(path.join(repoRoot, 'bin', 'install.js'));
 const sessionStartHook = require(path.join(repoRoot, 'runtime', 'hooks', 'emb-session-start.js'));
 
 function writeText(filePath, content) {
@@ -146,7 +147,71 @@ test('health reports warn for incomplete hardware identity and fail for missing 
   }
 });
 
-test('health and bootstrap expose workspace trust as an explicit bootstrap boundary', async () => {
+test('health uses configured default adapter source from environment', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-private-source-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  const previousLocation = process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION;
+  const previousBranch = process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_BRANCH;
+  const previousSubdir = process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_SUBDIR;
+  let stdout = '';
+
+  try {
+    process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = 'mock://ok';
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
+    process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION = 'git@github.com:Welkon/emb-agent-adapters.git';
+    process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_BRANCH = 'main';
+    process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_SUBDIR = 'emb-agent';
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+    stdout = '';
+    cli.main(['health']);
+    const report = JSON.parse(stdout);
+    const adapterCommand = report.next_commands.find(item => item.cli.includes('adapter source add default-pack'));
+
+    assert.ok(adapterCommand);
+    assert.match(adapterCommand.cli, /git@github\.com:Welkon\/emb-agent-adapters\.git/);
+    assert.match(adapterCommand.cli, /--branch main/);
+    assert.match(adapterCommand.cli, /--subdir emb-agent/);
+  } finally {
+    if (previousSubdir === undefined) {
+      delete process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_SUBDIR;
+    } else {
+      process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_SUBDIR = previousSubdir;
+    }
+    if (previousBranch === undefined) {
+      delete process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_BRANCH;
+    } else {
+      process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_BRANCH = previousBranch;
+    }
+    if (previousLocation === undefined) {
+      delete process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION;
+    } else {
+      process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION = previousLocation;
+    }
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
+    if (originalBridgeCmd === undefined) {
+      delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    } else {
+      process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('health and bootstrap expose startup hooks as an explicit bootstrap boundary', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-trust-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -167,22 +232,75 @@ test('health and bootstrap expose workspace trust as an explicit bootstrap bound
     cli.main(['health']);
     let report = JSON.parse(stdout);
 
-    assert.equal(report.workspace_trust.trusted, false);
-    assert.equal(report.workspace_trust.source, 'env');
-    assert.equal(report.checks.find(item => item.key === 'workspace_trust').status, 'warn');
-    assert.equal(report.bootstrap.current_stage, 'workspace-trust');
+    assert.equal(report.startup_automation.status, 'action-needed');
+    assert.equal(report.startup_automation.source, 'env');
+    assert.equal(report.checks.find(item => item.key === 'startup_automation').status, 'warn');
+    assert.equal(report.bootstrap.current_stage, 'startup-hooks');
     assert.equal(report.bootstrap.next_stage.status, 'manual');
-    assert.equal(report.quickstart.stage, 'establish-workspace-trust');
-    assert.ok(report.recommendations.some(item => item.includes('workspace trust')));
+    assert.equal(report.quickstart.stage, 'restart-host-hooks');
+    assert.ok(report.recommendations.some(item => item.includes('startup hooks')));
 
     stdout = '';
     await cli.main(['bootstrap']);
     report = JSON.parse(stdout);
 
-    assert.equal(report.current_stage, 'workspace-trust');
-    assert.equal(report.next_stage.id, 'workspace-trust');
+    assert.equal(report.current_stage, 'startup-hooks');
+    assert.equal(report.next_stage.id, 'startup-hooks');
     assert.equal(report.next_stage.status, 'manual');
-    assert.ok(report.stages.some(item => item.id === 'workspace-trust' && item.status === 'manual'));
+    assert.ok(report.stages.some(item => item.id === 'startup-hooks' && item.status === 'manual'));
+  } finally {
+    if (previousWorkspaceTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousWorkspaceTrust;
+    }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installed codex runtime uses enabled hooks config as authorization signal', async () => {
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-hooks-home-'));
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-hooks-project-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const previousWorkspaceTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  let stdout = '';
+
+  try {
+    delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    process.chdir(repoRoot);
+    await installer.main([
+      '--codex',
+      '--global',
+      '--config-dir',
+      tempHome,
+      '--developer',
+      'tester'
+    ]);
+
+    const installedCli = require(path.join(tempHome, 'emb-agent', 'bin', 'emb-agent.cjs'));
+
+    process.chdir(tempProject);
+    stdout = '';
+    await installedCli.main(['init']);
+
+    stdout = '';
+    await installedCli.main(['health']);
+    const report = JSON.parse(stdout);
+
+    assert.equal(report.startup_automation.status, 'ready');
+    assert.equal(report.startup_automation.source, 'host-config');
+    assert.equal(report.startup_automation.signal, 'hooks-enabled');
+    assert.equal(report.bootstrap.current_stage, 'hardware-truth');
+    assert.equal(report.quickstart.stage, 'fill-hardware-identity');
+    assert.ok(!report.bootstrap.stages.some(item => item.id === 'startup-hooks'));
+    assert.ok(!report.recommendations.some(item => item.includes('startup hooks')));
   } finally {
     if (previousWorkspaceTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;

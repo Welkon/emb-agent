@@ -15,7 +15,7 @@ test('loadRuntimeConfig returns validated defaults', () => {
   assert.equal(config.runtime_version, 1);
   assert.equal(config.session_version, 1);
   assert.equal(config.default_profile, 'baremetal-8bit');
-  assert.deepEqual(config.default_packs, ['sensor-node']);
+  assert.deepEqual(config.default_packs, []);
   assert.deepEqual(config.developer, { name: '', runtime: '' });
   assert.deepEqual(config.default_preferences, {
     truth_source_mode: 'hardware_first',
@@ -23,6 +23,12 @@ test('loadRuntimeConfig returns validated defaults', () => {
     review_mode: 'auto',
     verification_mode: 'lean',
     orchestration_mode: 'auto'
+  });
+  assert.deepEqual(config.default_adapter_source, {
+    type: 'git',
+    location: '',
+    branch: '',
+    subdir: ''
   });
   assert.equal(config.project_state_dir, '../state/emb-agent/projects');
   assert.equal(config.legacy_project_state_dir, 'state/projects');
@@ -46,8 +52,8 @@ test('normalizeSession fills metadata and trims arrays', () => {
   assert.equal(session.session_version, 1);
   assert.equal(session.project_root, '/tmp/example-proj');
   assert.equal(session.project_name, 'example-proj');
-  assert.equal(session.project_profile, 'baremetal-8bit');
-  assert.deepEqual(session.active_packs, ['sensor-node']);
+  assert.equal(session.project_profile, '');
+  assert.deepEqual(session.active_packs, []);
   assert.deepEqual(session.developer, { name: '', runtime: '' });
   assert.deepEqual(session.preferences, {
     truth_source_mode: 'hardware_first',

@@ -55,6 +55,14 @@ function getProjectTruthFiles(resolved) {
   return candidates.filter(file => fs.existsSync(path.join(projectRoot, file)));
 }
 
+function getRecentSchematicParsedFiles(resolved) {
+  const lastFiles = resolved && resolved.session && Array.isArray(resolved.session.last_files)
+    ? resolved.session.last_files
+    : [];
+
+  return lastFiles.filter(file => /(?:^|\/)\.emb-agent\/cache\/schematics\/[^/]+\/parsed\.json$/i.test(String(file || '')));
+}
+
 function ensureResolved(resolved) {
   if (!resolved || typeof resolved !== 'object') {
     throw new Error('Resolved session is required');
@@ -1063,9 +1071,11 @@ function buildNextReads(resolved) {
   const context = buildContext(resolved);
   const hintedReads = buildPreferredReadKeys(resolved).map(key => READ_HINTS[key] || key);
   const truthFiles = getProjectTruthFiles(resolved).map(file => `Project truth layer: ${file}`);
+  const schematicReads = getRecentSchematicParsedFiles(resolved).map(file => `Normalized schematic data: ${file}`);
 
   return runtime.unique([
     ...truthFiles,
+    ...schematicReads,
     ...hintedReads,
     context.lastFiles[0] ? `Re-read recent file: ${context.lastFiles[0]}` : '',
     context.knownRisks[0] ? `Re-check risk source: ${context.knownRisks[0]}` : ''
@@ -1303,10 +1313,12 @@ function buildSchedule(action, resolved) {
 
 function buildScanOutput(resolved) {
   const truthFiles = getProjectTruthFiles(resolved);
+  const schematicFiles = getRecentSchematicParsedFiles(resolved);
 
   return {
     relevant_files: runtime.unique([
       ...truthFiles,
+      ...schematicFiles,
       ...(resolved.session.last_files || [])
     ]),
     key_facts: runtime.unique([

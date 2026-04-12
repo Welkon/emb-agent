@@ -16,6 +16,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
   const originalWrite = process.stdout.write;
   const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
   const bridgeCommand = 'node /tmp/emb-subagent-bridge.cjs --stdio-json';
+  const privateAdapterSource = 'git@github.com:Welkon/emb-agent-adapters.git';
   let stdout = '';
 
   process.stdout.write = chunk => {
@@ -36,7 +37,13 @@ test('installer lays down config/lib and runtime commands work', async () => {
       '--subagent-bridge-cmd',
       bridgeCommand,
       '--subagent-bridge-timeout-ms',
-      '25000'
+      '25000',
+      '--default-adapter-source-location',
+      privateAdapterSource,
+      '--default-adapter-source-branch',
+      'main',
+      '--default-adapter-source-subdir',
+      'emb-agent'
     ]);
 
     const runtimeRoot = path.join(tempHome, 'emb-agent');
@@ -46,6 +53,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const internalCommandDocs = fs.readdirSync(path.join(runtimeRoot, 'command-docs')).filter(name => name.endsWith('.md')).sort();
 
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.toml')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-init', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'config.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'runtime.cjs')), true);
@@ -76,6 +85,14 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.ok(internalCommandDocs.includes('adapter.md'));
     assert.ok(internalCommandDocs.includes('init-project.md'));
     assert.match(fs.readFileSync(path.join(tempHome, '.env.example'), 'utf8'), /MINERU_API_KEY=/);
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-init', 'SKILL.md'), 'utf8'),
+      /This Codex skill mirrors the emb-agent public command `init`\./
+    );
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-init', 'SKILL.md'), 'utf8'),
+      /node .*emb-agent\/bin\/emb-agent\.cjs init/
+    );
     const codexConfig = fs.readFileSync(path.join(tempHome, 'config.toml'), 'utf8');
     assert.match(codexConfig, /\[features\][\s\S]*codex_hooks = true/);
     assert.match(codexConfig, /\[\[hooks\]\]\s*[\r\n]+event = "SessionStart"/);
@@ -84,9 +101,11 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(codexConfig, /emb-context-monitor\.js/);
     assert.doesNotMatch(fs.readFileSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js'), 'utf8'), /\{\{EMB_VERSION\}\}/);
     assert.match(stdout, /Created env example:/);
+    assert.match(stdout, /Installed 13 Codex skills under:/);
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
-    assert.match(stdout, /Trust hint: workspace trust now gates startup hooks and bootstrap visibility/);
+    assert.match(stdout, /Default adapter source: git@github\.com:Welkon\/emb-agent-adapters\.git/);
+    assert.match(stdout, /Startup hooks are installed automatically\./);
     assert.match(stdout, /Sub-agent bridge: node \/tmp\/emb-subagent-bridge\.cjs --stdio-json \(timeout: 25000 ms\)/);
     assert.match(stdout, /Next steps:/);
     assert.match(stdout, /open a Codex session and run: init/);
@@ -104,6 +123,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
 
     const configData = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'config.json'), 'utf8'));
     const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
@@ -111,6 +131,12 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
     assert.equal(configData.session_version, 1);
     assert.equal(configData.default_preferences.truth_source_mode, 'hardware_first');
+    assert.deepEqual(configData.default_adapter_source, {
+      type: 'git',
+      location: privateAdapterSource,
+      branch: 'main',
+      subdir: 'emb-agent'
+    });
     assert.deepEqual(configData.developer, { name: 'welkon', runtime: 'codex' });
     assert.equal(hostMetadata.name, 'codex');
     assert.deepEqual(hostMetadata.subagent_bridge, {
@@ -135,6 +161,9 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(nextBeforeContext.workflow_stage.primary_command, 'health');
     assert.ok(Array.isArray(nextBeforeContext.next.health_next_commands));
     assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes('adapter source add default-pack')));
+    assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes(privateAdapterSource)));
+    assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes('--branch main')));
+    assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes('--subdir emb-agent')));
     assert.equal(nextBeforeContext.health.quickstart.stage, 'fill-hardware-identity');
     assert.ok(nextBeforeContext.next.health_quickstart.followup.includes('adapter bootstrap'));
     const orchestratorBeforeContext = installedCli.buildOrchestratorContext('next');
@@ -451,6 +480,7 @@ test('installer lays down claude agents and settings hooks', async () => {
     const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
 
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'commands', 'emb', 'init.md')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
@@ -459,6 +489,10 @@ test('installer lays down claude agents and settings hooks', async () => {
     assert.ok(Array.isArray(settings.hooks.PostToolUse));
     assert.match(JSON.stringify(settings.hooks.SessionStart), /emb-session-start\.js/);
     assert.match(JSON.stringify(settings.hooks.PostToolUse), /emb-context-monitor\.js/);
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'commands', 'emb', 'init.md'), 'utf8'),
+      /When this command matches the user intent, run `node .*emb-agent\/bin\/emb-agent\.cjs init`/
+    );
     const sessionFlowContent = fs.readFileSync(path.join(runtimeRoot, 'lib', 'session-flow.cjs'), 'utf8');
     assert.doesNotMatch(sessionFlowContent, /~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs/);
     assert.doesNotMatch(sessionFlowContent, /~\/\.claude\/emb-agent\/bin\/emb-agent\.cjs/);
@@ -470,8 +504,81 @@ test('installer lays down claude agents and settings hooks', async () => {
     assert.equal(resolvedHost.subagentBridge.available, false);
     assert.equal(resolvedHost.subagentBridge.mode, 'disabled');
     assert.equal(resolvedHost.subagentBridge.source, 'none');
+    assert.match(stdout, /Installed 13 Claude commands under:/);
     assert.match(stdout, /Updated Claude Code config:/);
   } finally {
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer defaults Claude to project-scoped .claude layout', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-claude-local-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    process.chdir(tempProject);
+    await installer.main(['--claude', '--developer', 'felix']);
+
+    const claudeRoot = path.join(tempProject, '.claude');
+
+    assert.equal(fs.existsSync(path.join(claudeRoot, 'emb-agent', 'bin', 'emb-agent.cjs')), true);
+    assert.equal(fs.existsSync(path.join(claudeRoot, 'agents', 'emb-arch-reviewer.md')), true);
+    assert.equal(fs.existsSync(path.join(claudeRoot, 'commands', 'emb', 'init.md')), true);
+    assert.equal(fs.existsSync(path.join(claudeRoot, 'settings.json')), true);
+    assert.match(stdout, /Installed 13 Claude commands under:/);
+    assert.match(stdout, /\.claude\/commands\/emb/);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer defaults Codex to project-scoped .codex layout with local state paths', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-codex-local-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
+    process.chdir(tempProject);
+    await installer.main(['--developer', 'felix']);
+
+    const codexRoot = path.join(tempProject, '.codex');
+    const runtimeRoot = path.join(codexRoot, 'emb-agent');
+    const configData = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'config.json'), 'utf8'));
+    const installedCli = require(path.join(runtimeRoot, 'bin', 'emb-agent.cjs'));
+
+    assert.equal(fs.existsSync(path.join(codexRoot, 'skills', 'emb-init', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'projects')), true);
+    assert.equal(configData.project_state_dir, 'state/projects');
+    assert.equal(configData.legacy_project_state_dir, 'state/projects');
+
+    installedCli.main(['init']);
+
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'projects')), true);
+    assert.match(stdout, /Installed 13 Codex skills under:/);
+    assert.match(stdout, /\.codex\/skills/);
+  } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
+    process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }
 });

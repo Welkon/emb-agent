@@ -15,6 +15,20 @@ function createProjectStateStoreHelpers(deps) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
   }
 
+  function isReadonlyStateError(error) {
+    return Boolean(
+      error &&
+      ['EROFS', 'EACCES', 'EPERM'].includes(error.code)
+    );
+  }
+
+  function loadSessionReadonly(paths) {
+    if (fs.existsSync(paths.sessionPath)) {
+      return normalizeSession(runtime.readJson(paths.sessionPath), paths);
+    }
+    return normalizeSession(readDefaultSession(paths), paths);
+  }
+
   function acquireLock(lockPath) {
     const start = Date.now();
 
@@ -61,16 +75,37 @@ function createProjectStateStoreHelpers(deps) {
 
   function ensureSession() {
     const paths = getProjectStatePaths();
-    runtime.ensureProjectStateStorage(paths);
+    try {
+      runtime.ensureProjectStateStorage(paths);
+    } catch (error) {
+      if (isReadonlyStateError(error)) {
+        return loadSessionReadonly(paths);
+      }
+      throw error;
+    }
 
     if (!fs.existsSync(paths.sessionPath)) {
-      const session = readDefaultSession(paths);
-      runtime.writeJson(paths.sessionPath, session);
+      const session = normalizeSession(readDefaultSession(paths), paths);
+      try {
+        runtime.writeJson(paths.sessionPath, session);
+      } catch (error) {
+        if (isReadonlyStateError(error)) {
+          return session;
+        }
+        throw error;
+      }
       return session;
     }
 
     const session = normalizeSession(runtime.readJson(paths.sessionPath), paths);
-    runtime.writeJson(paths.sessionPath, session);
+    try {
+      runtime.writeJson(paths.sessionPath, session);
+    } catch (error) {
+      if (isReadonlyStateError(error)) {
+        return session;
+      }
+      throw error;
+    }
     return session;
   }
 
@@ -133,12 +168,25 @@ function createProjectStateStoreHelpers(deps) {
   }
 
   function updateSession(mutator) {
-    return withProjectLock(() => {
-      const session = loadSession();
+    try {
+      return withProjectLock(() => {
+        const session = loadSession();
+        mutator(session);
+        saveSession(session);
+        return loadSession();
+      });
+    } catch (error) {
+      if (!isReadonlyStateError(error)) {
+        throw error;
+      }
+
+      const paths = getProjectStatePaths();
+      const session = loadSessionReadonly(paths);
       mutator(session);
-      saveSession(session);
-      return loadSession();
-    });
+      const next = normalizeSession(session, paths);
+      next.updated_at = new Date().toISOString();
+      return next;
+    }
   }
 
   return {
