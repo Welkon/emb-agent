@@ -87,12 +87,14 @@ In slash-command hosts, the same surface can appear as `$emb-*`.
 - If the board truth still lives in an Altium schematic or export, use:
   `ingest schematic --file <path>`
 - `declare hardware` writes `hw.yaml` directly and returns `write_mode: truth-write`.
+- `ingest doc` returns `write_mode: staged-truth` when the parsed document can be applied into `hw.yaml` or `req.yaml`; use `apply_ready` to move from parsed evidence to truth.
 - After `ingest schematic`, let the agent analyze the normalized `parsed.json` / hardware draft first; do not copy inferred controller or signals straight into `hw.yaml`.
 - `ingest schematic` returns `write_mode: analysis-only`, `truth_write.direct: false`, and `apply_ready: null` to make that deferred handoff explicit.
 - If you want normalized supplier-search inputs from a schematic, use:
   `component lookup --file <schematic>`
 - If you want explicit supplier candidates from 立创商城, use:
   `component lookup --file <schematic> --provider szlcsc`
+- `doc lookup` and `component lookup` return `result_mode: candidate-only`; they help collect evidence, not write project truth.
 - If the response already includes `apply_ready`, run it first and then return to `next`.
 
 ## Advanced Help

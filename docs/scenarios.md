@@ -70,6 +70,7 @@ ingest doc -> review/apply -> next
 Use:
 
 - `ingest doc --file <path> --kind datasheet --to hardware`
+- `write_mode: staged-truth` as the signal that document facts are ready to review and apply
 - apply-ready diff flows before implementation
 
 Prefer this path when pin mux, timing limits, or register boundaries still need evidence.

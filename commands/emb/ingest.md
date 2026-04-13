@@ -29,12 +29,14 @@ allowed-tools:
 - For schematics or schematic exports, prefer:
   `ingest schematic --file <path>`
 - `declare hardware` / `ingest hardware` return `write_mode: truth-write` because they update truth files directly.
+- `ingest doc` returns `write_mode: staged-truth` when it has a target truth file; review `apply_ready` and then use `ingest apply doc ...` to write the selected fields.
 - `ingest schematic` returns `write_mode: analysis-only`, `truth_write.direct: false`, and `apply_ready: null`; it only prepares artifacts for agent analysis.
 - After schematic ingest, use the returned parsed artifacts as agent input and confirm controller/signals/peripherals before writing truth.
 - For normalized part-search inputs from a schematic, use:
   `component lookup --file <path>`
 - For explicit supplier candidates from 立创商城, use:
   `component lookup --file <path> --provider szlcsc`
+- `doc lookup` and `component lookup` return `result_mode: candidate-only`; they surface evidence or supplier candidates and never write truth by themselves.
 
 ## Prefer The Lightest Truth Path
 

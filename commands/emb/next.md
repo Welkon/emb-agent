@@ -25,7 +25,7 @@ allowed-tools:
 ## What Next Should Do
 
 - If hardware truth is still incomplete, it should keep you on truth-closing work first.
-- If pending document apply is waiting, it should route you to apply that truth before implementation.
+- If pending document apply is waiting, it should route you to apply that staged truth before implementation.
 - If bootstrap prerequisites are already closed, it should move you toward:
   `scan`, `plan`, `do`, `debug`, `review`, or `verify`
 

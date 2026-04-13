@@ -75,6 +75,9 @@ test('doc lookup finds local docs and schematic datasheet references', async () 
     ]);
 
     assert.equal(localLookup.command, 'doc lookup');
+    assert.equal(localLookup.result_mode, 'candidate-only');
+    assert.equal(localLookup.candidate_status, 'unverified');
+    assert.equal(localLookup.candidate_kind, 'document');
     assert.ok(localLookup.candidates.some(item => item.location === 'docs/SC8F072-datasheet.pdf'));
     assert.ok(localLookup.search_queries.some(item => item.includes('SC8F072 datasheet pdf')));
     assert.ok(schematicLookup.candidates.some(item => item.location === 'https://vendor.invalid/SC8F072.pdf'));
@@ -120,6 +123,9 @@ test('component lookup builds szlcsc-style query inputs from schematic data', as
     const result = await captureCliJson(['component', 'lookup', '--file', 'docs/ir-board.json', '--ref', 'U2']);
 
     assert.equal(result.command, 'component lookup');
+    assert.equal(result.result_mode, 'candidate-only');
+    assert.equal(result.candidate_status, 'unverified');
+    assert.equal(result.candidate_kind, 'component');
     assert.equal(result.components.length, 1);
     assert.equal(result.components[0].designator, 'U2');
     assert.ok(result.components[0].query_terms.includes('VS1838B'));
@@ -215,6 +221,9 @@ test('component lookup enriches schematic components through szlcsc provider', a
     });
 
     assert.equal(result.command, 'component lookup');
+    assert.equal(result.result_mode, 'candidate-only');
+    assert.equal(result.candidate_status, 'unverified');
+    assert.equal(result.candidate_kind, 'component');
     assert.equal(result.provider, 'szlcsc');
     assert.equal(result.integration.enabled, true);
     assert.equal(result.components.length, 1);

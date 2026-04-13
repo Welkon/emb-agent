@@ -38,6 +38,7 @@ allowed-tools:
   `ingest doc --file <path> --kind datasheet --to hardware`
   or
   `ingest schematic --file <path>`
+- `ingest doc` stages document-derived truth first; apply it after review rather than assuming it already changed `hw.yaml`.
 
 ## Typical Next Step
 

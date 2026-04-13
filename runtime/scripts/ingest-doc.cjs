@@ -588,7 +588,7 @@ async function ingestDoc(argv, options) {
     fs.existsSync(markdownPath) &&
     fs.existsSync(metadataPath)
   ) {
-    return {
+    return withDocIngestSemantics(cached, {
       domain: 'doc',
       cached: true,
       provider: args.provider,
@@ -605,7 +605,7 @@ async function ingestDoc(argv, options) {
         cached.artifacts && cached.artifacts.metadata,
         path.relative(projectRoot, docCache.getDocsIndexPath(projectRoot))
       ])
-    };
+    });
   }
 
   const parsed = await provider.parseDocument(
@@ -684,7 +684,9 @@ async function ingestDoc(argv, options) {
     artifacts
   });
 
-  return {
+  const cachedEntry = docCache.getCachedEntry(projectRoot, identity.doc_id);
+
+  return withDocIngestSemantics(cachedEntry, {
     domain: 'doc',
     cached: false,
     provider: args.provider,
@@ -703,7 +705,7 @@ async function ingestDoc(argv, options) {
       artifacts.requirements_facts,
       path.relative(projectRoot, docCache.getDocsIndexPath(projectRoot))
     ])
-  };
+  });
 }
 
 function loadDraftFacts(projectRoot, entry, to) {
@@ -1129,6 +1131,77 @@ function buildAutoApplyReadyHint(projectRoot, entry) {
   };
 }
 
+function resolveTruthTarget(to) {
+  if (to === 'hardware') {
+    return runtime.getProjectAssetRelativePath('hw.yaml');
+  }
+  if (to === 'requirements') {
+    return runtime.getProjectAssetRelativePath('req.yaml');
+  }
+  return '';
+}
+
+function buildDocSourceArtifacts(artifacts) {
+  return runtime.unique([
+    artifacts && artifacts.markdown,
+    artifacts && artifacts.metadata,
+    artifacts && artifacts.hardware_facts,
+    artifacts && artifacts.hardware_facts_json,
+    artifacts && artifacts.requirements_facts,
+    artifacts && artifacts.requirements_facts_json
+  ].filter(Boolean));
+}
+
+function buildDocTruthSemantics(entry, artifacts, applyReady) {
+  const intendedTo = String((entry && entry.intended_to) || '').trim();
+  const target = resolveTruthTarget(intendedTo);
+  const appliedState = intendedTo ? getAppliedState(entry, intendedTo) : null;
+  let status = 'not-routable';
+
+  if (target) {
+    status = applyReady
+      ? 'ready-to-apply'
+      : (appliedState ? 'already-applied' : 'staged');
+  }
+
+  return {
+    write_mode: target ? 'staged-truth' : 'analysis-only',
+    truth_write: {
+      direct: false,
+      performed: false,
+      requires_confirmation: Boolean(applyReady),
+      status,
+      domain: intendedTo,
+      target,
+      apply_via: applyReady ? 'ingest apply doc' : '',
+      source_artifacts: buildDocSourceArtifacts(artifacts)
+    }
+  };
+}
+
+function buildDocApplySemantics(to, target, performed, status) {
+  return {
+    write_mode: 'truth-write',
+    truth_write: {
+      direct: true,
+      performed: Boolean(performed),
+      requires_confirmation: false,
+      status: status || (performed ? 'written' : 'skipped'),
+      domain: to,
+      target
+    }
+  };
+}
+
+function withDocIngestSemantics(entry, payload) {
+  const base = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  const applyReady = Object.prototype.hasOwnProperty.call(base, 'apply_ready') ? base.apply_ready : null;
+  return {
+    ...buildDocTruthSemantics(entry, base.artifacts || {}, applyReady),
+    ...base
+  };
+}
+
 function findPendingDocApply(projectRoot) {
   const index = docCache.loadDocsIndex(projectRoot);
 
@@ -1366,6 +1439,7 @@ async function applyDoc(argv, options) {
   const selectedFields = resolvedApply.only;
   const actionName = resolvedApply.to === 'hardware' ? 'doc-apply-hardware' : 'doc-apply-requirements';
   const blocked = applyDocPermission({
+    ...buildDocApplySemantics(resolvedApply.to, truthFile, false, 'permission-pending'),
     domain: `doc-${resolvedApply.to}`,
     status: 'permission-pending',
     applied_from: args.docId,
@@ -1386,6 +1460,7 @@ async function applyDoc(argv, options) {
 
   if (shouldSkipApply(entry, resolvedApply.to, selectedFields, resolvedApply.force)) {
     return applyDocPermission({
+      ...buildDocApplySemantics(resolvedApply.to, truthFile, false, 'already-applied'),
       domain: `doc-${resolvedApply.to}`,
       skipped: true,
       reason: 'already_applied',
@@ -1423,6 +1498,7 @@ async function applyDoc(argv, options) {
   );
 
   return applyDocPermission({
+    ...buildDocApplySemantics(resolvedApply.to, truthFile, true, 'written'),
     domain: `doc-${resolvedApply.to}`,
     applied_from: args.docId,
     provider: entry.provider,
