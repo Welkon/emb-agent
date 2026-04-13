@@ -1,4 +1,4 @@
-# Codex Instructions
+# Windsurf Workflow
 
 ## Quick Routing
 
@@ -11,7 +11,7 @@
 ## Auto Triggers
 
 - Any non-trivial task must run Task Closure Protocol before completion.
-- After context compression, re-enter through this file before continuing.
+- On a fresh Windsurf session, re-enter through this file before trusting prior context.
 
 ## Red Flags - STOP
 
@@ -19,8 +19,6 @@
 - "任务很小不用扫"
 - "等会话结束一起补"
 
-## Local Codex Rules
+## Windsurf Notes
 
-- Structure may be templated, content may not.
-- Ask the anti-template question before adding defaults.
-- <!-- FILL: Codex local instruction that every real task must follow -->
+- <!-- FILL: Windsurf-specific workflow rule -->

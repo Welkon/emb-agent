@@ -94,6 +94,7 @@ test('scaffold install shells replaces placeholders in nested file paths', async
 
     assert.equal(installed.installed, true);
     assert.ok(installed.created.includes('.cursor/skills/irq-review/SKILL.md'));
+    assert.ok(installed.created.includes('.windsurf/rules/workflow.md'));
     assert.equal(fs.existsSync(path.join(tempProject, '.codex', 'instructions.md')), true);
 
     const cursorSkill = fs.readFileSync(
@@ -102,6 +103,22 @@ test('scaffold install shells replaces placeholders in nested file paths', async
     );
     assert.match(cursorSkill, /# irq-review/);
     assert.match(cursorSkill, /Review IRQ closure rules/);
+    assert.match(cursorSkill, /## Quick Routing/);
+    assert.match(cursorSkill, /## Auto Triggers/);
+    assert.match(cursorSkill, /## Red Flags - STOP/);
+
+    const agentsShell = fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8');
+    assert.match(agentsShell, /Quick Routing/);
+    assert.match(agentsShell, /Multiple independent sub-tasks/);
+    assert.match(agentsShell, /Any non-trivial task must run Task Closure Protocol before completion/);
+    assert.match(agentsShell, /等会话结束一起补/);
+
+    const windsurfShell = fs.readFileSync(
+      path.join(tempProject, '.windsurf', 'rules', 'workflow.md'),
+      'utf8'
+    );
+    assert.match(windsurfShell, /## Quick Routing/);
+    assert.match(windsurfShell, /## Red Flags - STOP/);
   } finally {
     process.chdir(currentCwd);
   }
