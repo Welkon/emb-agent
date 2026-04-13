@@ -507,7 +507,21 @@ test('task write commands honor write rules before mutating shared task state', 
     assert.equal(blockedResolve.status, 'permission-pending');
     assert.equal(JSON.parse(fs.readFileSync(manifestPath, 'utf8')).status, 'in_progress');
 
-    const resolved = await captureJson(['task', 'resolve', '--confirm', taskName, 'adapter merged']);
+    const resolved = await captureJson([
+      'task',
+      'resolve',
+      '--confirm',
+      taskName,
+      '--aar-new-pattern',
+      'no',
+      '--aar-new-trap',
+      'no',
+      '--aar-missing-rule',
+      'no',
+      '--aar-outdated-rule',
+      'no',
+      'adapter merged'
+    ]);
     assert.equal(resolved.permission_decision.decision, 'allow');
     assert.equal(JSON.parse(fs.readFileSync(manifestPath, 'utf8')).status, 'completed');
   } finally {

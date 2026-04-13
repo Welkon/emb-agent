@@ -192,6 +192,17 @@
       }
     },
     {
+      "name": "task-completion-aar",
+      "title": "Task Completion AAR",
+      "path": "specs/task-completion-aar.md",
+      "summary": "Task completion includes a mandatory AAR scan, triggered lesson recording, and red-flag discipline.",
+      "auto_inject": true,
+      "priority": 57,
+      "apply_when": {
+        "requires_active_task": true
+      }
+    },
+    {
       "name": "implementation-style",
       "title": "Embedded Implementation Style",
       "path": "specs/implementation-style.md",

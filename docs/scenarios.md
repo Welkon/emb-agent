@@ -101,7 +101,7 @@ Use this when the work is no longer a one-shot patch.
 Flow:
 
 ```text
-task add -> task activate -> task context add -> task resolve
+task add -> task activate -> task context add -> task aar scan -> task aar record? -> task resolve
 ```
 
 This is where `task.json` and task-local file context become more useful than a purely conversational workflow.
