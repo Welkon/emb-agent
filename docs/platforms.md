@@ -27,7 +27,7 @@ multi_agent = true
 codex_hooks = true
 ```
 
-emb-agent intentionally does not add these flags for the user. If Codex later ships hooks as a default stable feature, this step may become unnecessary.
+emb-agent intentionally does not add these flags for the user. If your team or runtime config already enables them, you can skip this step. If Codex later ships hooks as a default stable feature, this step may become unnecessary.
 
 Project runtime CLI path:
 
@@ -61,6 +61,12 @@ Regardless of runtime, the default project path stays the same:
 
 ```text
 install -> init -> declare hardware -> next
+```
+
+If MCU choice is still open, the parallel concept-stage path is:
+
+```text
+install -> init -> record goals/constraints in req.yaml -> next
 ```
 
 The runtime changes where host-side state is stored, not how project truth is modeled.

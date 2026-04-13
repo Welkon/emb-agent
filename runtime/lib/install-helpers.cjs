@@ -1178,7 +1178,7 @@ function createInstallHelpers(deps) {
         : []),
       `${envExampleCreated ? 'Created' : 'Kept'} env example: ${envExamplePath}`,
       ...envHintLines,
-      'Startup hooks are installed automatically. If they do not seem active yet, restart the host once and rerun init/next. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.',
+      'Startup automation is installed automatically. If it does not seem active yet, restart the host once and rerun init/next. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.',
       'Next steps:',
       `  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`,
       `  In a project repo, open a ${target.label} session and run: init`,

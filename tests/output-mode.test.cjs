@@ -233,14 +233,14 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
       explicit: true,
       source: 'env',
       signal: 'untrusted',
-      summary: 'Workspace trust is explicitly disabled by environment override'
+      summary: 'Automatic startup is explicitly disabled by environment override'
     },
     summary: { pass: 3, warn: 1, fail: 0, info: 0 },
     checks: [],
     recommendations: [],
     next_commands: [],
     quickstart: {
-      followup: 'Restart the host once so emb-agent startup hooks are active',
+      followup: 'Restart the host once so emb-agent automatic startup is active',
       steps: []
     }
   }, true);
@@ -248,31 +248,31 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
   const bootstrapOutput = outputMode.applyOutputMode({
     command: 'bootstrap',
     status: 'manual',
-    summary: 'Restart the host once so emb-agent startup hooks are active',
+    summary: 'Restart the host once so emb-agent automatic startup is active',
     current_stage: 'startup-hooks',
     workspace_trust: {
       trusted: false,
       explicit: true,
       source: 'env',
       signal: 'untrusted',
-      summary: 'Startup hooks are explicitly disabled by environment override'
+      summary: 'Automatic startup is explicitly disabled by environment override'
     },
     next_stage: {
       id: 'startup-hooks',
       status: 'manual',
-      label: 'Startup hooks ready',
+      label: 'Host session ready for automatic bootstrap',
       cli: ''
     },
     stages: [
       { id: 'init-project', status: 'completed', label: 'Initialize emb-agent project skeleton' },
-      { id: 'startup-hooks', status: 'manual', label: 'Startup hooks ready' }
+      { id: 'startup-hooks', status: 'manual', label: 'Host session ready for automatic bootstrap' }
     ],
     quickstart: {
       stage: 'restart-host-hooks',
-      followup: 'Restart the host once so emb-agent startup hooks are active, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
+      followup: 'Restart the host once so emb-agent automatic startup is active, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
       steps: [
         {
-          label: 'Startup hooks ready',
+          label: 'Host session ready for automatic bootstrap',
           cli: ''
         }
       ]
@@ -288,19 +288,19 @@ test('applyOutputMode builds brief bootstrap output', () => {
   const output = outputMode.applyOutputMode({
     command: 'bootstrap',
     status: 'manual',
-    summary: 'Restart the host once so emb-agent startup hooks are active',
+    summary: 'Restart the host once so emb-agent automatic startup is active',
     current_stage: 'startup-hooks',
     workspace_trust: {
       trusted: false,
       explicit: false,
       source: 'default',
       signal: 'untrusted-no-signal',
-      summary: 'No startup hook signal was provided; hook-gated features stay disabled by default'
+      summary: 'The current host session is not ready for automatic startup yet; automatic bootstrap steps stay paused by default'
     },
     next_stage: {
       id: 'startup-hooks',
       status: 'manual',
-      label: 'Startup hooks ready',
+      label: 'Host session ready for automatic bootstrap',
       cli: ''
     },
     stages: [
@@ -308,15 +308,15 @@ test('applyOutputMode builds brief bootstrap output', () => {
       {
         id: 'startup-hooks',
         status: 'manual',
-        label: 'Startup hooks ready'
+        label: 'Host session ready for automatic bootstrap'
       }
     ],
     quickstart: {
       stage: 'restart-host-hooks',
-      followup: 'Restart the host once so emb-agent startup hooks are active, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
+      followup: 'Restart the host once so emb-agent automatic startup is active, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
       steps: [
         {
-          label: 'Startup hooks ready',
+          label: 'Host session ready for automatic bootstrap',
           cli: ''
         }
       ]

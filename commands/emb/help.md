@@ -18,9 +18,12 @@ Output the emb-agent help summary below and nothing else.
   Runtime invocation details are handled by the host integration.
 - First time in a project:
   `init`
+  If MCU/package are already known:
   `declare hardware --mcu <name> --package <name>`
+  If MCU/package are still unknown:
+  keep `.emb-agent/hw.yaml` unknown, record goals and constraints in `.emb-agent/req.yaml`, then continue
   `next`
-  If hooks or bootstrap seem blocked unexpectedly, run `health` first to inspect workspace trust and truth readiness.
+  If automatic bootstrap seems blocked unexpectedly, run `health` first to inspect host readiness and truth readiness.
 - Continuing work:
   `next`
   `next run` (optional one-step mode: directly enter the recommended stage)
@@ -74,6 +77,7 @@ In slash-command hosts, the same surface can appear as `$emb-*`.
 ## Hardware And Manual Work
 
 - If the engineer already knows the chip, package, pin map, or peripheral usage, prefer `declare hardware` first.
+- If the MCU is not chosen yet, do not guess. Keep `hw.yaml` unknown, record product constraints in `req.yaml`, and let `next` stay on the concept-stage path.
 - If the truth still lives in a PDF or manual, use:
   `ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
 - If the chip is known but the PDF is still missing, use:

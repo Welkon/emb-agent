@@ -16,6 +16,7 @@ allowed-tools:
 ## Purpose
 
 - Write new facts into truth files or import external documents.
+- Pull durable project truth out of manuals, schematics, and other evidence when the answer is not already known.
 
 ## Usage
 
@@ -32,3 +33,9 @@ allowed-tools:
   `component lookup --file <path>`
 - For explicit supplier candidates from 立创商城, use:
   `component lookup --file <path> --provider szlcsc`
+
+## Prefer The Lightest Truth Path
+
+- If the engineer already knows the MCU, package, signals, or peripheral ownership, prefer `declare hardware` first.
+- If the answer still lives in a PDF or schematic, prefer `ingest`.
+- If a parsed result includes `apply_ready`, apply that truth before returning to `next`.

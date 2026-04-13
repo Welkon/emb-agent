@@ -284,7 +284,7 @@ test('health uses configured default adapter source from environment', () => {
   }
 });
 
-test('health and bootstrap expose startup hooks as an explicit bootstrap boundary', async () => {
+test('health and bootstrap expose host startup readiness as an explicit bootstrap boundary', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-trust-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -311,7 +311,7 @@ test('health and bootstrap expose startup hooks as an explicit bootstrap boundar
     assert.equal(report.bootstrap.current_stage, 'startup-hooks');
     assert.equal(report.bootstrap.next_stage.status, 'manual');
     assert.equal(report.quickstart.stage, 'restart-host-hooks');
-    assert.ok(report.recommendations.some(item => item.includes('startup hooks')));
+    assert.ok(report.recommendations.some(item => item.includes('automatic startup')));
 
     stdout = '';
     await cli.main(['bootstrap']);
@@ -373,7 +373,7 @@ test('installed codex runtime uses enabled hooks config as authorization signal'
     assert.equal(report.bootstrap.current_stage, 'hardware-truth');
     assert.equal(report.quickstart.stage, 'fill-hardware-identity');
     assert.ok(!report.bootstrap.stages.some(item => item.id === 'startup-hooks'));
-    assert.ok(!report.recommendations.some(item => item.includes('startup hooks')));
+    assert.ok(!report.recommendations.some(item => item.includes('automatic startup')));
   } finally {
     if (previousWorkspaceTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;

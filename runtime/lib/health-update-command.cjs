@@ -235,13 +235,13 @@ function createHealthUpdateCommandHelpers(deps) {
         createBootstrapStage(
           'startup-hooks',
           !initReady ? 'pending' : trustReady ? 'completed' : 'manual',
-          'Startup hooks ready',
+          'Host session ready for automatic bootstrap',
           {
             summary: trustReady
               ? (workspaceTrust && workspaceTrust.summary)
                 ? workspaceTrust.summary
-                : 'Startup hooks are available for automatic bootstrap flows'
-              : 'Make sure the host has loaded emb-agent startup hooks before automatic bootstrap continues',
+                : 'The current host session is ready for automatic bootstrap flows'
+              : 'Restart the host once so emb-agent automatic startup can attach before bootstrap continues',
             evidence: workspaceTrust
               ? [
                   workspaceTrust.source ? `source=${workspaceTrust.source}` : '',
@@ -386,7 +386,7 @@ function createHealthUpdateCommandHelpers(deps) {
             ? `Run first: ${nextStage.cli}`
             : `Run first: ${nextStage.cli} -> ${NEXT_CLI}`
             : nextStage && nextStage.id === 'startup-hooks'
-              ? `Restart the host once so emb-agent startup hooks are active, then rerun: ${HEALTH_CLI}`
+              ? `Restart the host once so emb-agent automatic startup is active, then rerun: ${HEALTH_CLI}`
             : nextStage && nextStage.id === 'hardware-truth'
               ? `After hardware truth is complete, run directly: ${DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI} -> ${NEXT_CLI}`
               : `Run first: ${NEXT_CLI}`
@@ -511,7 +511,7 @@ function createHealthUpdateCommandHelpers(deps) {
         ],
         workspaceTrust.trusted
           ? ''
-          : 'Restart the host once so emb-agent startup hooks can activate, then rerun health.'
+          : 'Restart the host once so emb-agent automatic startup can activate, then rerun health.'
       )
     );
 
