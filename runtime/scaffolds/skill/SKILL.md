@@ -12,6 +12,12 @@ allowed-tools:
 
 {{SUMMARY}}
 
+## Content Boundary
+
+- Record project-specific constraints, unusual architecture, hidden dependencies, and the cases where the agent's default behavior tends to fail.
+- Do not record generic programming knowledge, mainstream framework usage, or facts that are already obvious from the code and official docs.
+- Prefer "what is different here" over "how software usually works."
+
 ## Iron Law
 
 <!-- FILL: define the one closure rule this skill must never skip -->
@@ -23,9 +29,34 @@ allowed-tools:
 3. Read the workflow file that matches the current task.
 4. Run `rg -n "FILL:" .` inside this skill directory and close every required field before claiming the scaffold is complete.
 
+## Template Guarantees
+
+- Treat the scaffold structure as load-bearing infrastructure, not optional prose.
+- Frontmatter fields, directory layout, shell entry points, routing tables, workflow files, and `<!-- FILL: -->` markers exist to prevent structural forgetting.
+- Do not remove a placeholder by accident. Replace it with project truth, or leave it visible so the missing decision stays loud.
+- The template should remember the infrastructure so the skill author can focus on project-specific content.
+- Do not regenerate this scaffold from scratch during authoring. Copy the template tree and replace placeholders so structure cannot silently disappear.
+- Do not prefill concrete business spec examples into shared templates. Leave `FILL` markers and force real project judgment.
+- Auto-trigger guidance must survive context compression, so it belongs in thin shells as well as workflows.
+- Thin shells may grow to roughly 60 lines when they carry Quick Routing, Auto Triggers, and Red Flags. Do not force them back into 15-line fragments.
+- Multi-harness support is explicit. Missing harness entry files such as `GEMINI.md` or the shared `AGENTS.md` means that harness is effectively blind.
+
 ## Common Tasks
 
-<!-- FILL: list 3-5 task shapes this skill is allowed to handle -->
+<!-- FILL: list 3-5 project-specific task shapes this skill is allowed to handle; do not list generic work like "write code" or "fix bugs" -->
+
+## Guidance Style
+
+- Encode constraints, invariants, and context. Do not hardcode low-level implementation steps unless the project truly requires an exact sequence.
+- Prefer rules such as "use the project's design tokens" over brittle instructions such as exact class strings or boilerplate snippets.
+- Write only enough process to keep the agent on the correct path.
+
+## Helper Scripts
+
+- If this skill relies on repeatable extraction, validation, migration, or report-generation work, add helper scripts under `scripts/`.
+- Prefer calling those scripts over generating large boilerplate directly in the prompt.
+- Reuse existing repository scripts before inventing new wrappers.
+- Keep `scripts/smoke-test.sh` and `scripts/test-trigger.sh` working. They are the preflight checks for structural completeness and discovery coverage.
 
 ## Evolution Rules
 
@@ -99,6 +130,21 @@ When the agent is corrected:
 - Split a large file only when the topic separates cleanly, navigation is already difficult, and the split files can stand alone.
 - Merge small files only when the topics are related, the result will be easier to find, and the merged file will remain manageable.
 - Run periodic homogeneity drift checks across two very different projects. Shells and protocol blocks should stay similar; `rules/`, `gotchas`, and `Common Tasks` should not.
+
+## Skill Quality Checks
+
+- Test activation: confirm the skill triggers for the right task shapes.
+- Test routing: confirm each task shape reads the correct workflow and rules.
+- Pressure test under time pressure, rule conflicts, and ambiguous specs. Capture the rationalizations that appear.
+- Feed failures back through the task AAR path instead of patching the scaffold ad hoc.
+
+## Focus Guard
+
+Split the skill when any of these become true:
+
+- The description accumulates 10 or more trigger phrases from different domains.
+- `Common Tasks` grows beyond about 15 items or mixes unrelated work.
+- Narrow subdomain tasks keep activating the whole skill.
 
 ## References
 

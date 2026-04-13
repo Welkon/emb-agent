@@ -1,0 +1,1 @@
+- Any non-trivial task must run Task Closure Protocol before completion.

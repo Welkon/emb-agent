@@ -2,6 +2,8 @@
 
 This is the shortest recommended path for getting emb-agent running in a real embedded repository.
 
+This guide is intentionally embedded-workflow first. It does not try to teach every scaffold, skill, hook, or support surface on day one.
+
 ## 1. Install into a supported runtime
 
 For Codex:
@@ -125,7 +127,9 @@ If your project sets `quality_gates.required_executors` in `.emb-agent/project.j
 
 If your project sets `quality_gates.required_signoffs`, the engineer closes those board-level checks with `verify confirm <name>` or `verify reject <name>`.
 
-## 7. Use advanced runtime surfaces only when they add leverage
+## 7. Use optional support surfaces only when they add leverage
+
+Most embedded projects can ignore this section at first.
 
 The default path should stay short, but advanced runtime surfaces are available when the session gets longer or more repetitive:
 
@@ -144,6 +148,10 @@ dispatch run plan
 ```
 
 Use `coordinator` for one primary integrator, `fork` for inherited-context workers, and `swarm` for a flat peer roster.
+
+These are still support surfaces around the same embedded workflow.
+
+If you are looking for skill authoring, shell templates, hooks, or protocol blocks, those are support layers rather than the default embedded-project path. See [Product Boundaries](./product-boundaries.md).
 
 ## 8. Pull truth out of documents only when needed
 

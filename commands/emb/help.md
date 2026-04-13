@@ -91,9 +91,10 @@ In slash-command hosts, the same surface can appear as `$emb-*`.
 
 ## Advanced Help
 
+- If you are just trying to move an embedded project forward, you can usually stop before this section.
 - Use `help advanced` or `help --all` to show the full command surface.
 - Use `commands list` to inspect the installed public command surface.
-- Advanced runtime surfaces:
+- Embedded workflow support surfaces:
   `skills list`
   `skills show <name>`
   `skills run <name> [--isolated] [input]`
@@ -103,3 +104,9 @@ In slash-command hosts, the same surface can appear as `$emb-*`.
 - Delegation runtime:
   `dispatch run` and `orchestrate run` can execute through the configured host sub-agent bridge.
   Use `prefs set orchestration_mode <auto|coordinator|fork|swarm>` to steer delegation shape when multi-agent execution is needed.
+- Authoring surfaces:
+  `scaffold list`
+  `scaffold show <name>`
+  `scaffold install <name> [output] [--force] [KEY=VALUE ...]`
+  `workflow ...`
+  These are for skill, shell, hook, and protocol maintenance in service of the embedded workflow. They are not part of the default firmware-project path.

@@ -12,6 +12,7 @@
   <a href="./docs/quick-start.md">Quick Start</a> •
   <a href="./docs/platforms.md">Platforms</a> •
   <a href="./docs/scenarios.md">Scenarios</a> •
+  <a href="./docs/product-boundaries.md">Product Boundaries</a> •
   <a href="./docs/adapter-model.md">Adapter Model</a> •
   <a href="./docs/task-model.md">Task Model</a> •
   <a href="./commands/emb/help.md">Command Help</a>
@@ -23,15 +24,36 @@ It is built for the kind of firmware work that normal AI coding loops handle bad
 
 Instead of treating firmware work like generic code generation, emb-agent keeps durable hardware truth in the project, gives the agent a small command flow, and makes it easy to move from "what chip is this?" to "which pin owns PWM output?" to "what should I do next?" without rebuilding context every session.
 
+## One Embedded Product, Layered Internals
+
+emb-agent is one product, and it is primarily in service of embedded work.
+
+The repository looks broad because it contains several internal layers that all support that same goal:
+
+- embedded runtime flow:
+  project truth, task/session flow, document ingestion, and adapter-oriented routing
+- runtime support:
+  reusable skills, memory, and delegation surfaces that keep long sessions usable
+- structural support:
+  scaffolds, shell entries, hooks, and protocol blocks that keep agent behavior stable instead of drifting
+
+These are not separate products. They are supporting layers around the same embedded workflow.
+
+The intended posture is:
+
+- The default user path stays centered on `init`, `declare hardware`, `next`, `scan`, `do`, `review`, and `verify`.
+- Skills, scaffolds, hooks, and shell templates exist to make the embedded workflow more reliable, not to compete with it as a separate center of gravity.
+
+See [docs/product-boundaries.md](./docs/product-boundaries.md) for the explicit layering.
+
 ## What's New
 
 - Direct hardware declaration with `declare hardware`, so known MCU/package/pin facts can be written immediately.
 - Install-time developer identity, reused automatically by `init`.
 - Richer task manifests with schema-backed `task.json` metadata.
+- Better document-to-truth flow and stronger embedded-first command posture around `declare hardware`, `ingest`, and `verify`.
 - Default help now stays focused on the shortest onboarding path, with advanced commands behind `help advanced`.
-- Built-in skill discovery with lazy loading, so reusable workflow skills stay cataloged without loading every body into every session.
-- Layered instruction memory plus durable auto-memory extraction, so cross-session conclusions can be reviewed and promoted instead of getting trapped in chat history.
-- Real multi-agent delegation patterns through the host bridge, with `coordinator`, `fork`, and `swarm` execution shapes instead of a single placeholder contract.
+- Runtime support improvements for longer sessions, including reusable skills, layered memory, and real delegation modes.
 
 ## Why emb-agent?
 
@@ -41,11 +63,11 @@ Instead of treating firmware work like generic code generation, emb-agent keeps 
 | **Direct hardware declaration** | Use `declare hardware` to write MCU, package, pins, and peripherals directly, instead of re-explaining the project every time. |
 | **Short default workflow** | Most users only need `init`, `declare hardware`, and `next` to start, then follow `scan/plan/do/debug/review/verify` as needed. |
 | **Document-to-truth flow** | Import datasheets or manuals with `ingest doc`, then land useful facts back into truth files. |
+| **Adapter-oriented execution** | Keep core workflow abstract while pushing chip-, family-, and vendor-specific formulas and routes into adapters. |
+| **Verification-aware closure** | Close work with explicit review and verify loops instead of treating embedded changes like generic code generation. |
 | **Runtime-aware setup** | Install into Codex or Claude Code runtimes without changing the project-side structure. |
 | **Session continuity** | Keep handoffs, state, and visible project artifacts so the next session starts from reality, not from scratch. |
-| **Lazy skill catalog** | Discover reusable skills with `skills list/show/run` without paying to load every skill body up front. |
-| **Layered memory** | Stack organization, user, project, and local memory, then promote durable findings intentionally instead of burying them in prompts. |
-| **Real delegation modes** | Use `dispatch run` / `orchestrate run` with host bridge support and steer the execution shape with `orchestration_mode=coordinator|fork|swarm`. |
+| **Long-session support** | Add reusable skills, layered memory, and delegation only when the embedded workflow becomes long-running or repetitive. |
 
 ## Quick Start
 
@@ -160,6 +182,27 @@ emb-agent also ships reusable runtime-side guidance:
   Built-in instruction-memory layers that combine with user, project, and local memory.
 
 These resources are runtime-facing. They support the session, but they do not replace visible project truth in `.emb-agent/`.
+
+## Embedded Flow And Support Layers
+
+The repository contains the embedded workflow itself plus the support layers around it.
+
+Embedded flow includes:
+
+- hardware truth files under `.emb-agent/`
+- default session flow such as `init -> declare hardware -> next`
+- task manifests and task-local execution state
+- document ingestion and truth promotion
+- adapter-aware routing and execution readiness
+
+Support layers include:
+
+- reusable runtime skills exposed through `skills list/show/run`
+- scaffold trees for skills, shells, hooks, and protocol blocks
+- harness-facing entry files such as `AGENTS.md`, `CODEX.md`, `CLAUDE.md`, and `GEMINI.md`
+- workflow/spec template layers used to keep long-running agent setups consistent
+
+These layers live together because they all serve the embedded workflow. If you are only trying to use emb-agent on a firmware project, stay on the embedded-flow path first.
 
 ## Shared Vs Personal Layers
 
