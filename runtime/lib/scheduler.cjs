@@ -1233,12 +1233,22 @@ function buildSuggestedSteps(action, resolved) {
   }
 
   if (action === 'do') {
-    if (context.lastFiles.length === 0) {
-      steps.push('Add a minimal scan first to confirm the real change point');
+    if (context.isBlankSelectionMode) {
+      if (context.lastFiles.length === 0) {
+        steps.push('Run scan or plan first so the concept-stage decision surface is explicit');
+      }
+      steps.push(`Confirm the shortlist, ranking criteria, and evidence you are about to record in ${runtime.getProjectAssetRelativePath('req.yaml')}`);
+      steps.push('Execute the smallest durable selection update instead of jumping into firmware implementation');
+      steps.push(`Write candidate tradeoffs, must-have constraints, and still-unknown facts into ${runtime.getProjectAssetRelativePath('req.yaml')} or supporting docs`);
+      steps.push('Report what evidence is still needed before locking a real MCU/package choice');
+    } else {
+      if (context.lastFiles.length === 0) {
+        steps.push('Add a minimal scan first to confirm the real change point');
+      }
+      steps.push('Confirm prerequisite truth sources and constraints for the change');
+      steps.push('Execute the minimal change');
+      steps.push('Report minimal verification and residual risk');
     }
-    steps.push('Confirm prerequisite truth sources and constraints for the change');
-    steps.push('Execute the minimal change');
-    steps.push('Report minimal verification and residual risk');
   }
 
   if (action === 'plan') {
@@ -1676,7 +1686,7 @@ function buildDoOutput(resolved) {
     prerequisites: runtime.unique([
       context.lastFiles.length === 0 ? 'Add a minimal scan first to confirm the real change point' : '',
       context.isBlankSelectionMode
-        ? 'Confirm a real chip candidate or hardware reference before starting implementation'
+        ? `Confirm the shortlist or candidate evidence you are about to record in ${runtime.getProjectAssetRelativePath('req.yaml')} before starting the selection update`
         : 'Confirm hardware truth sources or implementation truth sources',
       context.focus ? `Execute around the current focus: ${context.focus}` : '',
       context.isConnected ? 'Confirm offline defaults, upgrade recovery, and consistency constraints' : ''
