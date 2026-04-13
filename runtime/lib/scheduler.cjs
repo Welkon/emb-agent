@@ -763,6 +763,37 @@ function buildWorkerContract(action, call) {
   };
 }
 
+function buildReviewContract(action) {
+  return {
+    required: true,
+    policy: 'If Stage A fails, set redispatch_required=true and tighten the worker contract instead of patching inline in the main thread.',
+    stage_a: {
+      id: 'contract-review',
+      owner: 'Current main thread',
+      objective: `Verify worker outputs for ${action} match Goal, Inputs, Outputs, Forbidden Zones, and Acceptance Criteria before quality judgment.`,
+      completion_signal: 'contract compliance, output boundaries, and drive-by changes are explicit',
+      failure_action: 'redispatch',
+      review_checks: [
+        'Check that files_considered and side effects stay inside Outputs',
+        'Check that Forbidden Zones were not crossed',
+        'Check that Acceptance Criteria were addressed before merge'
+      ]
+    },
+    stage_b: {
+      id: 'quality-review',
+      owner: 'Current main thread',
+      objective: `Review code, reasoning quality, residual risks, and follow-up gaps for ${action} only after Stage A passes.`,
+      completion_signal: 'quality findings, residual risks, and merge decision are explicit',
+      failure_action: 'reject-or-follow-up',
+      review_checks: [
+        'Review correctness, regression risk, and missing verification',
+        'Separate spec-compliance failures from quality concerns',
+        'Do not let the worker review its own output'
+      ]
+    }
+  };
+}
+
 function buildDispatchContract(action, resolved, primaryAgent, supportingAgents, mode, recommended) {
   const context = buildContext(resolved);
   const contextBundle = buildAgentContextBundle(action, resolved);
@@ -886,6 +917,7 @@ function buildDispatchContract(action, resolved, primaryAgent, supportingAgents,
           'Do not recurse into deeper fork trees'
         ]
       },
+      review_contract: buildReviewContract(action),
       do_not_parallelize: [
         'Do not let fork children fork again',
         'Keep the shared prefix stable so sibling workers inherit the same baseline context',
@@ -950,6 +982,7 @@ function buildDispatchContract(action, resolved, primaryAgent, supportingAgents,
           'Do not let peers recruit more peers or start hidden sub-teams'
         ]
       },
+      review_contract: buildReviewContract(action),
       do_not_parallelize: [
         'Keep the swarm roster flat',
         'Do not let peers spawn more peers',
@@ -995,6 +1028,7 @@ function buildDispatchContract(action, resolved, primaryAgent, supportingAgents,
         'Do not forward raw worker findings directly to implementation or verification workers'
       ]
     },
+    review_contract: buildReviewContract(action),
     do_not_parallelize: [
       'Do not let multiple writable agents modify the same file set',
       'Do not overbuild orchestration for a small task',

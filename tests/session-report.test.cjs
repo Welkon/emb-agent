@@ -301,6 +301,7 @@ test('session-report includes delegation runtime summary from latest orchestrate
     assert.match(content, /delegation_synthesis: ready, owner=Current main thread/);
     assert.match(content, /delegation_worker_results: emb-hw-scout:research:ok/);
     assert.match(content, /delegation_integration: completed-inline, owner=Current main thread, kind=action/);
+    assert.match(content, /delegation_review: stage_a=passed, stage_b=main-thread-review-required, redispatch=no/);
   } finally {
     if (originalBridgeCmd === undefined) {
       delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;

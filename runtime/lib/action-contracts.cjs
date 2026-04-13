@@ -53,6 +53,37 @@ function createActionContractHelpers(deps) {
     };
   }
 
+  function buildReviewContract() {
+    return {
+      required: true,
+      policy: 'If Stage A fails, set redispatch_required=true and tighten the worker contract instead of patching inline in the main thread.',
+      stage_a: {
+        id: 'contract-review',
+        owner: 'Current main thread',
+        objective: 'Verify architecture worker outputs match the worker contract and stay inside declared read-only boundaries.',
+        completion_signal: 'contract compliance, evidence boundaries, and drive-by changes are explicit',
+        failure_action: 'redispatch',
+        review_checks: [
+          'Check that outputs stay read-only and match the declared worker contract',
+          'Check that side evidence does not replace the primary review conclusion',
+          'Check that acceptance criteria were actually addressed'
+        ]
+      },
+      stage_b: {
+        id: 'quality-review',
+        owner: 'Current main thread',
+        objective: 'Review architecture quality, tradeoff coherence, residual risks, and follow-up gaps only after Stage A passes.',
+        completion_signal: 'quality findings and merge/reject decision are explicit',
+        failure_action: 'reject-or-follow-up',
+        review_checks: [
+          'Review option quality, factual separation, and residual risk',
+          'Separate contract failures from quality concerns',
+          'Do not let the worker review its own output'
+        ]
+      }
+    };
+  }
+
   function buildInjectedSpecs(resolved, task, handoff, limit = 5) {
     const snapshot = workflowRegistry.buildInjectedSpecSnapshot(
       ROOT,
@@ -213,6 +244,7 @@ function createActionContractHelpers(deps) {
               'Do not forward raw evidence directly to downstream workers as if it were already synthesized'
             ]
           },
+          review_contract: buildReviewContract(),
           do_not_parallelize: [
             'Do not split architecture preflight into multiple competing writable agents',
             'Do not skip fact checks and jump directly to a selection conclusion',

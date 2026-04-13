@@ -259,6 +259,11 @@ function createSessionReportCommandHelpers(deps) {
           ? `${report.diagnostics.delegation_runtime.integration.status || '-'}, owner=${report.diagnostics.delegation_runtime.integration.owner || '-'}, kind=${report.diagnostics.delegation_runtime.integration.execution_kind || '-'}`
           : '(none)'}`
       );
+      lines.push(
+        `- delegation_review: ${report.diagnostics.delegation_runtime.review
+          ? `stage_a=${report.diagnostics.delegation_runtime.review.stage_a ? report.diagnostics.delegation_runtime.review.stage_a.status || '-' : '-'}, stage_b=${report.diagnostics.delegation_runtime.review.stage_b ? report.diagnostics.delegation_runtime.review.stage_b.status || '-' : '-'}, redispatch=${report.diagnostics.delegation_runtime.review.redispatch_required === true ? 'yes' : 'no'}`
+          : '(none)'}`
+      );
       lines.push(`- delegation_updated_at: ${report.diagnostics.delegation_runtime.updated_at || '(empty)'}`);
     }
     lines.push('');

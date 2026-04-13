@@ -120,6 +120,30 @@ test('normalizeSession fills metadata and trims arrays', () => {
         execution_cli: '',
         steps: []
       },
+      review: {
+        required: false,
+        policy: '',
+        redispatch_required: false,
+        summary: '',
+        stage_a: {
+          id: 'contract-review',
+          owner: '',
+          objective: '',
+          completion_signal: '',
+          failure_action: '',
+          review_checks: [],
+          status: ''
+        },
+        stage_b: {
+          id: 'quality-review',
+          owner: '',
+          objective: '',
+          completion_signal: '',
+          failure_action: '',
+          review_checks: [],
+          status: ''
+        }
+      },
       updated_at: ''
     }
   });

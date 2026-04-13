@@ -91,7 +91,102 @@ function createCommandGroupHelpers(deps) {
         : 'continue only when the loaded worker context still overlaps the next task',
       fresh_context_required: freshContextRequired,
       expected_output: Array.isArray(call.expected_output) ? call.expected_output.map(item => String(item)) : [],
-      tool_scope: normalizeToolScope(call.tool_scope)
+      tool_scope: normalizeToolScope(call.tool_scope),
+      worker_contract:
+        call.worker_contract && isObject(call.worker_contract)
+          ? {
+              goal: String(call.worker_contract.goal || ''),
+              inputs: Array.isArray(call.worker_contract.inputs) ? call.worker_contract.inputs.map(item => String(item)) : [],
+              outputs: Array.isArray(call.worker_contract.outputs) ? call.worker_contract.outputs.map(item => String(item)) : [],
+              forbidden_zones: Array.isArray(call.worker_contract.forbidden_zones)
+                ? call.worker_contract.forbidden_zones.map(item => String(item))
+                : [],
+              acceptance_criteria: Array.isArray(call.worker_contract.acceptance_criteria)
+                ? call.worker_contract.acceptance_criteria.map(item => String(item))
+                : []
+            }
+          : null
+    };
+  }
+
+  function buildReviewRuntimeArtifact(dispatchContract, snapshot) {
+    const reviewContract =
+      dispatchContract && isObject(dispatchContract.review_contract)
+        ? dispatchContract.review_contract
+        : {};
+    const stageAContract = isObject(reviewContract.stage_a) ? reviewContract.stage_a : {};
+    const stageBContract = isObject(reviewContract.stage_b) ? reviewContract.stage_b : {};
+    const launchRequests = Array.isArray(snapshot.launch_requests) ? snapshot.launch_requests : [];
+    const jobs = Array.isArray(snapshot.jobs) ? snapshot.jobs : [];
+    const workerResults = Array.isArray(snapshot.worker_results) ? snapshot.worker_results : [];
+    const synthesis = isObject(snapshot.synthesis) ? snapshot.synthesis : {};
+    const integration = isObject(snapshot.integration) ? snapshot.integration : {};
+    const workerFailed = workerResults.some(item => ['failed', 'blocked', 'bridge-error'].includes(String(item && item.status ? item.status : '')));
+    const workerOk = workerResults.some(item => String(item && item.status ? item.status : '') === 'ok');
+    const waitingWorkers = jobs.some(item => String(item && item.status ? item.status : '') === 'running');
+    const blockedWithoutResults =
+      Boolean(synthesis.required) &&
+      !workerOk &&
+      !workerFailed &&
+      ['blocked-no-host-bridge', 'blocked-worker-results'].includes(String(synthesis.status || ''));
+
+    let stageAStatus = reviewContract.required ? 'pending' : 'not-required';
+    if (reviewContract.required) {
+      if (workerFailed) {
+        stageAStatus = 'redispatch-required';
+      } else if (workerOk) {
+        stageAStatus = 'passed';
+      } else if (waitingWorkers) {
+        stageAStatus = 'waiting-worker-results';
+      } else if (blockedWithoutResults) {
+        stageAStatus = 'blocked-no-worker-results';
+      } else if (launchRequests.length > 0) {
+        stageAStatus = 'pending-worker-results';
+      }
+    }
+
+    let stageBStatus = reviewContract.required ? 'blocked-by-stage-a' : 'not-required';
+    if (reviewContract.required && stageAStatus === 'passed') {
+      stageBStatus = integration.status === 'completed-inline'
+        ? 'main-thread-review-required'
+        : 'ready-for-quality-review';
+    }
+
+    const redispatchRequired = stageAStatus === 'redispatch-required';
+
+    return {
+      required: Boolean(reviewContract.required),
+      policy: reviewContract.policy ? String(reviewContract.policy) : '',
+      redispatch_required: redispatchRequired,
+      summary: redispatchRequired
+        ? 'Stage A contract review failed; redispatch with a tighter contract instead of patching inline.'
+        : stageAStatus === 'passed'
+          ? 'Stage A passed; Stage B quality review is the next explicit gate.'
+          : blockedWithoutResults
+            ? 'Worker outputs are unavailable, so Stage A cannot complete yet.'
+            : '',
+      stage_a: {
+        id: stageAContract.id ? String(stageAContract.id) : 'contract-review',
+        owner: stageAContract.owner ? String(stageAContract.owner) : 'Current main thread',
+        objective: stageAContract.objective ? String(stageAContract.objective) : '',
+        completion_signal: stageAContract.completion_signal ? String(stageAContract.completion_signal) : '',
+        failure_action: stageAContract.failure_action ? String(stageAContract.failure_action) : 'redispatch',
+        review_checks: Array.isArray(stageAContract.review_checks)
+          ? stageAContract.review_checks.map(item => String(item))
+          : [],
+        status: stageAStatus
+      },
+      stage_b: {
+        id: stageBContract.id ? String(stageBContract.id) : 'quality-review',
+        owner: stageBContract.owner ? String(stageBContract.owner) : 'Current main thread',
+        objective: stageBContract.objective ? String(stageBContract.objective) : '',
+        completion_signal: stageBContract.completion_signal ? String(stageBContract.completion_signal) : '',
+        failure_action: stageBContract.failure_action ? String(stageBContract.failure_action) : 'reject-or-follow-up',
+        review_checks: Array.isArray(stageBContract.review_checks)
+          ? stageBContract.review_checks.map(item => String(item))
+          : [],
+        status: stageBStatus
+      }
     };
   }
 
@@ -118,7 +213,7 @@ function createCommandGroupHelpers(deps) {
         ]
       : [];
 
-    return {
+    const snapshot = {
       pattern: dispatchContract && dispatchContract.delegation_pattern
         ? dispatchContract.delegation_pattern
         : 'inline',
@@ -174,6 +269,8 @@ function createCommandGroupHelpers(deps) {
       },
       updated_at: new Date().toISOString()
     };
+    snapshot.review = buildReviewRuntimeArtifact(dispatchContract, snapshot);
+    return snapshot;
   }
 
   function persistDelegationRuntime(snapshot) {
@@ -203,6 +300,12 @@ function createCommandGroupHelpers(deps) {
       },
       updated_at: collected.collected_at || new Date().toISOString()
     };
+    nextRuntime.review = buildReviewRuntimeArtifact(
+      {
+        review_contract: isObject(currentRuntime.review) ? currentRuntime.review : null
+      },
+      nextRuntime
+    );
 
     persistDelegationRuntime(nextRuntime);
 
@@ -515,6 +618,13 @@ function createCommandGroupHelpers(deps) {
     if (executionMeta.delegation_runtime && payload.delegation_runtime === undefined) {
       payload.delegation_runtime = executionMeta.delegation_runtime;
     }
+    if (
+      executionMeta.delegation_runtime &&
+      executionMeta.delegation_runtime.review &&
+      payload.redispatch_required === undefined
+    ) {
+      payload.redispatch_required = Boolean(executionMeta.delegation_runtime.review.redispatch_required);
+    }
     if (executionMeta.worker_results && payload.worker_results === undefined) {
       payload.worker_results = executionMeta.worker_results;
     }
@@ -523,6 +633,43 @@ function createCommandGroupHelpers(deps) {
     }
 
     return payload;
+  }
+
+  function buildRedispatchBlockedResult(dispatch, executionMeta, delegationRuntime, bridgeExecution) {
+    const review = delegationRuntime && isObject(delegationRuntime.review)
+      ? delegationRuntime.review
+      : {};
+    const stageA = review && isObject(review.stage_a) ? review.stage_a : {};
+    const summary = String(
+      review.summary ||
+      'Stage A contract review failed; redispatch with a tighter worker contract before continuing.'
+    ).trim();
+
+    return annotateExecutionResult({
+      status: 'redispatch-required',
+      executed: false,
+      reason: 'contract-review-failed',
+      summary,
+      blocked_by: {
+        kind: 'review-gate',
+        stage: stageA.id || 'contract-review',
+        status: stageA.status || 'redispatch-required'
+      },
+      review_gate: {
+        stage: stageA.id || 'contract-review',
+        owner: stageA.owner || 'Current main thread',
+        failure_action: stageA.failure_action || 'redispatch',
+        status: stageA.status || 'redispatch-required'
+      },
+      recommended_next_step: 'Tighten the worker contract and redispatch; do not patch the remaining 10% inline in the main thread.'
+    }, {
+      ...executionMeta,
+      kind: 'action-blocked',
+      delegation_runtime: delegationRuntime,
+      jobs: bridgeExecution.jobs,
+      worker_results: bridgeExecution.worker_results,
+      subagent_bridge: bridgeExecution.bridge
+    });
   }
 
   function executeDispatchCommand(requestedAction, options) {
@@ -608,8 +755,15 @@ function createCommandGroupHelpers(deps) {
     if (delegationRuntime.synthesis && delegationRuntime.synthesis.required) {
       delegationRuntime.synthesis.status = bridgeExecution.synthesis_status || delegationRuntime.synthesis.status;
     }
+    delegationRuntime.review = buildReviewRuntimeArtifact(
+      executionMeta.dispatch_contract,
+      delegationRuntime
+    );
     if (persistRuntime) {
       persistDelegationRuntime(delegationRuntime);
+    }
+    if (delegationRuntime.review && delegationRuntime.review.redispatch_required) {
+      return buildRedispatchBlockedResult(dispatch, executionMeta, delegationRuntime, bridgeExecution);
     }
     return annotateExecutionResult(executeResolvedAction(dispatch.resolved_action), {
       ...executionMeta,
@@ -664,6 +818,10 @@ function createCommandGroupHelpers(deps) {
     if (delegationRuntime.synthesis && delegationRuntime.synthesis.required) {
       delegationRuntime.synthesis.status = bridgeExecution.synthesis_status || delegationRuntime.synthesis.status;
     }
+    delegationRuntime.review = buildReviewRuntimeArtifact(
+      executionMeta.dispatch_contract,
+      delegationRuntime
+    );
     persistDelegationRuntime(delegationRuntime);
 
     return {
