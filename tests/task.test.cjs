@@ -296,12 +296,35 @@ test('task commands create activate manage context and resolve lightweight tasks
     const plan = cli.buildActionOutput('plan');
     assert.ok(plan.injected_specs.some(item => item.name === 'project-local'));
 
+    const blockedResolve = await captureCliJson(['task', 'resolve', taskName, 'adapter merged']);
+    assert.equal(blockedResolve.status, 'aar-required');
+
+    const scanned = await captureCliJson([
+      'task',
+      'aar',
+      'scan',
+      taskName,
+      '--aar-new-pattern',
+      'no',
+      '--aar-new-trap',
+      'no',
+      '--aar-missing-rule',
+      'no',
+      '--aar-outdated-rule',
+      'no'
+    ]);
+    assert.equal(scanned.scanned, true);
+    assert.equal(scanned.task.aar.scan_completed, true);
+    assert.equal(scanned.task.aar.record_required, false);
+
     const resolved = await captureCliJson(['task', 'resolve', taskName, 'adapter merged']);
     assert.equal(resolved.resolved, true);
     assert.equal(resolved.workspace_cleanup.cleaned, true);
     assert.equal(resolved.task.status, 'completed');
     assert.equal(resolved.task.worktree_path, null);
     assert.equal(resolved.task.notes, 'adapter merged');
+    assert.equal(resolved.task.aar.scan_completed, true);
+    assert.equal(resolved.task.aar.record_required, false);
     assert.equal(fs.existsSync(activated.workspace.path), false);
     assert.equal(cli.loadSession().active_task.name, '');
     assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
@@ -329,9 +352,83 @@ test('task activate creates a real git worktree when the project is a git reposi
     assert.equal(fs.existsSync(path.join(activated.workspace.path, '.git')), true);
     assert.equal(activated.task.worktree_path, activated.workspace.path);
 
-    const resolved = await captureCliJson(['task', 'resolve', taskName, 'done']);
+    const resolved = await captureCliJson([
+      'task',
+      'resolve',
+      taskName,
+      '--aar-new-pattern',
+      'no',
+      '--aar-new-trap',
+      'no',
+      '--aar-missing-rule',
+      'no',
+      '--aar-outdated-rule',
+      'no',
+      'done'
+    ]);
     assert.equal(resolved.workspace_cleanup.cleaned, true);
     assert.equal(fs.existsSync(activated.workspace.path), false);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task aar record is required when the scan finds a new lesson', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-aar-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    writeText(path.join(tempProject, 'src', 'main.c'), '// main\n');
+    await cli.main(['init']);
+
+    const created = await captureCliJson(['task', 'add', 'Document timer gotcha']);
+    const taskName = created.task.name;
+    await captureCliJson(['task', 'activate', taskName]);
+
+    const scanned = await captureCliJson([
+      'task',
+      'aar',
+      'scan',
+      taskName,
+      '--aar-new-pattern',
+      'no',
+      '--aar-new-trap',
+      'yes',
+      '--aar-missing-rule',
+      'no',
+      '--aar-outdated-rule',
+      'no'
+    ]);
+    assert.equal(scanned.scanned, true);
+    assert.equal(scanned.task.aar.record_required, true);
+    assert.deepEqual(scanned.task.aar.triggered_questions, ['new_trap']);
+
+    const blockedResolve = await captureCliJson(['task', 'resolve', taskName, 'captured lesson']);
+    assert.equal(blockedResolve.status, 'aar-record-required');
+
+    const recorded = await captureCliJson([
+      'task',
+      'aar',
+      'record',
+      taskName,
+      '--aar-summary',
+      'Document timer reload sequencing trap',
+      '--aar-detail',
+      'The timer reload register must be written before enabling the interrupt, so the workflow now needs an explicit verification checkpoint.'
+    ]);
+    assert.equal(recorded.recorded, true);
+    assert.equal(recorded.task.aar.record_completed, true);
+    assert.match(recorded.task.aar.artifact_path, /\.emb-agent\/tasks\/.*\/aar\.md$/);
+
+    const aarPath = path.join(tempProject, recorded.task.aar.artifact_path);
+    assert.equal(fs.existsSync(aarPath), true);
+    assert.match(fs.readFileSync(aarPath, 'utf8'), /Document timer reload sequencing trap/);
+
+    const resolved = await captureCliJson(['task', 'resolve', taskName, 'captured lesson']);
+    assert.equal(resolved.resolved, true);
+    assert.equal(resolved.task.aar.record_completed, true);
+    assert.equal(resolved.task.status, 'completed');
   } finally {
     process.chdir(currentCwd);
   }

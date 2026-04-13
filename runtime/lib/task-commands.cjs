@@ -27,6 +27,71 @@ function createTaskCommandHelpers(deps) {
   const TASK_STATUSES = ['planning', 'in_progress', 'review', 'completed', 'rejected'];
   const TASK_DEV_TYPES = ['backend', 'frontend', 'fullstack', 'test', 'docs', 'embedded'];
   const TASK_PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
+  const AAR_QUESTION_DEFS = [
+    {
+      id: 'new_pattern',
+      flag: '--aar-new-pattern',
+      prompt: '新模式? — 用了未记录的模式或约定吗?'
+    },
+    {
+      id: 'new_trap',
+      flag: '--aar-new-trap',
+      prompt: '新陷阱? — 遇到了不提前知道就会浪费大量时间的问题吗?'
+    },
+    {
+      id: 'missing_rule',
+      flag: '--aar-missing-rule',
+      prompt: '缺失规则? — 因为缺少某条规则导致走了弯路吗?'
+    },
+    {
+      id: 'outdated_rule',
+      flag: '--aar-outdated-rule',
+      prompt: '过时规则? — 发现现有规则已经不准确或不再适用吗?'
+    }
+  ];
+  const AAR_SKIP_REASON_ALIASES = {
+    'format-only': 'format-only',
+    'comment-only': 'comment-only',
+    'dependency-version-only': 'dependency-version-only',
+    'deps-only': 'dependency-version-only',
+    'dependency-only': 'dependency-version-only',
+    'no-new-lesson-refactor': 'no-new-lesson-refactor',
+    'refactor-no-lesson': 'no-new-lesson-refactor'
+  };
+  const AAR_SKIP_REASON_LABELS = {
+    'format-only': '仅格式化',
+    'comment-only': '仅注释',
+    'dependency-version-only': '仅依赖版本变更',
+    'no-new-lesson-refactor': '无新教训的重构'
+  };
+  const AAR_RATIONALIZATIONS = [
+    {
+      excuse: '这次任务很小,AAR 没必要',
+      rebuttal: '小任务正是教训藏身的地方。30 秒扫完,跳过比做还慢'
+    },
+    {
+      excuse: '等会话结束再一起补 AAR',
+      rebuttal: '你会忘。扫描必须在任务收尾做,不能批处理'
+    },
+    {
+      excuse: '用户在赶时间',
+      rebuttal: '赶时间是最容易踩坑的时刻。压力是跑 AAR 的理由,不是跳过的理由'
+    },
+    {
+      excuse: '这条经验我已经知道了,不用记',
+      rebuttal: '记录是给未来的 Agent 看的,不是给现在的你'
+    },
+    {
+      excuse: '这个已经在现有规则里了',
+      rebuttal: '那 10 秒内就能扫完,跑了比争论快'
+    }
+  ];
+  const AAR_RED_FLAGS = [
+    '发现自己在想"这次 AAR 就算了"',
+    '任务声明完成但没跑 30 秒扫描',
+    '把 gotcha 写进了 reference,但没更新对应 workflow 的完成清单',
+    '修了同一类 bug 第二次,但规则文件没动过'
+  ];
   const DEFAULT_TASK_PHASES = [
     { phase: 1, action: 'implement' },
     { phase: 2, action: 'check' },
@@ -381,6 +446,359 @@ function createTaskCommandHelpers(deps) {
       name,
       rest: tokens.slice(1),
       explicit_confirmation: control.explicit_confirmation
+    };
+  }
+
+  function buildDefaultAarState() {
+    return {
+      required: true,
+      scan_completed: false,
+      scan_completed_at: '',
+      skip_reason: '',
+      questions: Object.fromEntries(AAR_QUESTION_DEFS.map(item => [item.id, null])),
+      triggered_questions: [],
+      record_required: false,
+      record_completed: false,
+      record_completed_at: '',
+      summary: '',
+      detail: '',
+      artifact_path: '',
+      workflow_update_needed: false
+    };
+  }
+
+  function normalizeAarQuestionValue(value) {
+    if (value === true || value === false) {
+      return value;
+    }
+    if (value === null) {
+      return null;
+    }
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+    if (['yes', 'y', 'true', '1'].includes(normalized)) {
+      return true;
+    }
+    if (['no', 'n', 'false', '0'].includes(normalized)) {
+      return false;
+    }
+    throw new Error(`Unsupported AAR answer: ${value}`);
+  }
+
+  function normalizeAarSkipReason(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      return '';
+    }
+    const alias = AAR_SKIP_REASON_ALIASES[normalized];
+    if (!alias) {
+      throw new Error(`Unsupported AAR skip reason: ${value}`);
+    }
+    return alias;
+  }
+
+  function normalizeTaskAar(source) {
+    const value = source && typeof source === 'object' && !Array.isArray(source) ? source : {};
+    const questions = buildDefaultAarState().questions;
+    Object.keys(questions).forEach(key => {
+      questions[key] = normalizeAarQuestionValue(value.questions ? value.questions[key] : null);
+    });
+    const triggered = AAR_QUESTION_DEFS
+      .filter(item => questions[item.id] === true)
+      .map(item => item.id);
+
+    return {
+      required: value.required !== false,
+      scan_completed: value.scan_completed === true,
+      scan_completed_at: String(value.scan_completed_at || ''),
+      skip_reason: normalizeAarSkipReason(value.skip_reason || ''),
+      questions,
+      triggered_questions: Array.isArray(value.triggered_questions) && value.triggered_questions.length > 0
+        ? value.triggered_questions.map(item => String(item))
+        : triggered,
+      record_required: value.record_required === true || triggered.length > 0,
+      record_completed: value.record_completed === true,
+      record_completed_at: String(value.record_completed_at || ''),
+      summary: String(value.summary || ''),
+      detail: String(value.detail || ''),
+      artifact_path: String(value.artifact_path || ''),
+      workflow_update_needed: value.workflow_update_needed === true
+    };
+  }
+
+  function getTaskAarArtifactPath(name) {
+    return path.join(getTaskDir(name), 'aar.md');
+  }
+
+  function buildAarQuestionPrompts() {
+    return AAR_QUESTION_DEFS.map(item => ({
+      id: item.id,
+      flag: item.flag,
+      prompt: item.prompt
+    }));
+  }
+
+  function buildAarGuidance() {
+    return {
+      protocol: [
+        '主体工作完成并验证',
+        '完成 30 秒 AAR 扫描',
+        '若任一答案为 yes, 必须完成录入并通过后才能声明任务完成'
+      ],
+      skip_reasons: Object.entries(AAR_SKIP_REASON_LABELS).map(([key, label]) => ({
+        id: key,
+        label
+      })),
+      rationalizations: AAR_RATIONALIZATIONS.slice(),
+      red_flags: AAR_RED_FLAGS.slice()
+    };
+  }
+
+  function parseTaskAarFlags(tokens, options = {}) {
+    const result = {
+      note_parts: [],
+      questions: {},
+      skip_reason: '',
+      summary: '',
+      detail: ''
+    };
+    const allowFreeText = options.allowFreeText !== false;
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = String(tokens[index] || '');
+      const question = AAR_QUESTION_DEFS.find(item => item.flag === token);
+      if (question) {
+        result.questions[question.id] = normalizeAarQuestionValue(tokens[index + 1]);
+        index += 1;
+        continue;
+      }
+      if (token === '--aar-skip-reason') {
+        result.skip_reason = normalizeAarSkipReason(tokens[index + 1]);
+        index += 1;
+        continue;
+      }
+      if (token === '--aar-summary') {
+        result.summary = String(tokens[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
+      if (token === '--aar-detail') {
+        result.detail = String(tokens[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
+      if (!allowFreeText && token.startsWith('--aar-')) {
+        throw new Error(`Unknown AAR flag: ${token}`);
+      }
+      if (allowFreeText) {
+        result.note_parts.push(token);
+      }
+    }
+
+    return result;
+  }
+
+  function hasOwn(object, key) {
+    return Object.prototype.hasOwnProperty.call(object || {}, key);
+  }
+
+  function hasAnyAarQuestionInput(input) {
+    return AAR_QUESTION_DEFS.some(item => hasOwn(input.questions, item.id));
+  }
+
+  function getMissingAarQuestions(questions) {
+    return AAR_QUESTION_DEFS
+      .filter(item => questions[item.id] !== true && questions[item.id] !== false)
+      .map(item => item.id);
+  }
+
+  function buildAarTriggeredQuestions(questions) {
+    return AAR_QUESTION_DEFS
+      .filter(item => questions[item.id] === true)
+      .map(item => item.id);
+  }
+
+  function shouldFlagWorkflowUpdate(triggeredQuestions) {
+    return (triggeredQuestions || []).some(item => item === 'missing_rule' || item === 'outdated_rule');
+  }
+
+  function buildTaskAarArtifactContent(task, aar) {
+    const questionLines = AAR_QUESTION_DEFS.map(item => {
+      const answer = aar.questions[item.id] === true ? 'yes' : aar.questions[item.id] === false ? 'no' : 'unanswered';
+      return `- ${item.prompt} ${answer}`;
+    });
+    const triggeredLabels = (aar.triggered_questions || [])
+      .map(id => {
+        const match = AAR_QUESTION_DEFS.find(item => item.id === id);
+        return match ? match.prompt : id;
+      });
+
+    return [
+      '# Task AAR',
+      '',
+      `- Task: ${task.name}`,
+      `- Title: ${task.title}`,
+      `- Completed scan: ${aar.scan_completed_at || ''}`,
+      `- Completed record: ${aar.record_completed_at || ''}`,
+      `- Skip reason: ${aar.skip_reason || 'none'}`,
+      '',
+      '## Scan',
+      '',
+      ...questionLines,
+      '',
+      '## Triggered',
+      '',
+      ...(triggeredLabels.length > 0 ? triggeredLabels.map(item => `- ${item}`) : ['- none']),
+      '',
+      '## Summary',
+      '',
+      aar.summary || 'None.',
+      '',
+      '## Detail',
+      '',
+      aar.detail || 'None.',
+      '',
+      '## Workflow Follow-up',
+      '',
+      `- Needed: ${aar.workflow_update_needed ? 'yes' : 'no'}`,
+      ''
+    ].join('\n');
+  }
+
+  function removeTaskAarArtifact(name) {
+    const artifactPath = getTaskAarArtifactPath(name);
+    if (fs.existsSync(artifactPath)) {
+      fs.unlinkSync(artifactPath);
+    }
+  }
+
+  function writeTaskAarArtifact(task, aar) {
+    const artifactPath = getTaskAarArtifactPath(task.name);
+    runtime.ensureDir(path.dirname(artifactPath));
+    fs.writeFileSync(artifactPath, buildTaskAarArtifactContent(task, aar), 'utf8');
+    return path.relative(resolveProjectRoot(), artifactPath);
+  }
+
+  function buildAarGateResult(status, task, aar, extra = {}) {
+    return {
+      status,
+      task: {
+        name: task.name,
+        title: task.title,
+        status: task.status
+      },
+      aar,
+      guidance: {
+        questions: buildAarQuestionPrompts(),
+        ...buildAarGuidance()
+      },
+      ...extra
+    };
+  }
+
+  function applyAarUpdate(task, manifest, input, options = {}) {
+    const now = new Date().toISOString();
+    const current = normalizeTaskAar(manifest.aar);
+    const next = normalizeTaskAar({
+      ...current,
+      questions: current.questions
+    });
+    const scanTouched = hasAnyAarQuestionInput(input) || Boolean(input.skip_reason);
+    const recordTouched = Boolean(input.summary || input.detail);
+
+    if (scanTouched) {
+      AAR_QUESTION_DEFS.forEach(item => {
+        if (hasOwn(input.questions, item.id)) {
+          next.questions[item.id] = normalizeAarQuestionValue(input.questions[item.id]);
+        }
+      });
+      next.skip_reason = input.skip_reason || '';
+
+      const missingQuestions = getMissingAarQuestions(next.questions);
+      if (missingQuestions.length > 0) {
+        return {
+          ok: false,
+          result: buildAarGateResult('aar-required', task, next, {
+            message: 'Task completion requires a full 30-second AAR scan.',
+            missing_questions: missingQuestions
+          })
+        };
+      }
+
+      next.scan_completed = true;
+      next.scan_completed_at = now;
+      next.triggered_questions = buildAarTriggeredQuestions(next.questions);
+      next.record_required = next.triggered_questions.length > 0;
+      next.record_completed = false;
+      next.record_completed_at = '';
+      next.summary = '';
+      next.detail = '';
+      next.artifact_path = '';
+      next.workflow_update_needed = shouldFlagWorkflowUpdate(next.triggered_questions);
+
+      if (next.skip_reason && next.record_required) {
+        return {
+          ok: false,
+          result: buildAarGateResult('aar-invalid', task, next, {
+            message: 'A trivial-task skip reason cannot be combined with triggered AAR questions.'
+          })
+        };
+      }
+
+      removeTaskAarArtifact(task.name);
+    }
+
+    if (options.requireScan && !next.scan_completed) {
+      return {
+        ok: false,
+        result: buildAarGateResult('aar-required', task, next, {
+          message: 'Task completion requires a completed AAR scan before resolve.',
+          missing_questions: getMissingAarQuestions(next.questions)
+        })
+      };
+    }
+
+    if (recordTouched && !next.record_required) {
+      return {
+        ok: false,
+        result: buildAarGateResult('aar-record-not-needed', task, next, {
+          message: 'AAR record input is only valid when at least one scan answer is yes.'
+        })
+      };
+    }
+
+    if (recordTouched) {
+      if (!input.summary || !input.detail) {
+        return {
+          ok: false,
+          result: buildAarGateResult('aar-record-required', task, next, {
+            message: 'Triggered AAR questions require both --aar-summary and --aar-detail.',
+            missing_fields: ['summary', 'detail'].filter(field => !input[field])
+          })
+        };
+      }
+      next.record_completed = true;
+      next.record_completed_at = now;
+      next.summary = input.summary;
+      next.detail = input.detail;
+      next.artifact_path = writeTaskAarArtifact(task, next);
+    }
+
+    if (options.requireRecord && next.record_required && !next.record_completed) {
+      return {
+        ok: false,
+        result: buildAarGateResult('aar-record-required', task, next, {
+          message: 'At least one AAR answer is yes, so a recorded AAR entry is required before resolve.',
+          missing_fields: ['summary', 'detail']
+        })
+      };
+    }
+
+    return {
+      ok: true,
+      aar: next
     };
   }
 
@@ -742,6 +1160,7 @@ function createTaskCommandHelpers(deps) {
         adapters: [],
         tools: []
       },
+      aar: buildDefaultAarState(),
       injected_specs: [],
       context: Object.fromEntries(
         CONTEXT_CHANNELS.map(channel => [
@@ -1018,6 +1437,7 @@ function createTaskCommandHelpers(deps) {
         tools: []
       },
       injected_specs: Array.isArray(manifest.injected_specs) ? manifest.injected_specs : [],
+      aar: normalizeTaskAar(manifest.aar),
       context_files: manifest.context || {},
       created_at: String(manifest.created_at || createdAt),
       updated_at: updatedAt,
@@ -1167,7 +1587,8 @@ function createTaskCommandHelpers(deps) {
 
   function resolveTask(rest) {
     const input = parseNamedTaskWriteArgs(rest, 'task resolve');
-    const note = input.rest.join(' ').trim();
+    const aarInput = parseTaskAarFlags(input.rest, { allowFreeText: true });
+    const note = aarInput.note_parts.join(' ').trim();
     const task = readTask(input.name);
     const blocked = applyTaskWritePermission({
       resolved: false,
@@ -1183,9 +1604,16 @@ function createTaskCommandHelpers(deps) {
       return blocked.result;
     }
 
-    const workspaceCleanup = cleanupTaskWorkspace(task);
     const manifestPath = getTaskManifestPath(input.name);
     const manifest = runtime.readJson(manifestPath);
+    const aarUpdate = applyAarUpdate(task, manifest, aarInput, {
+      requireScan: true,
+      requireRecord: true
+    });
+    if (!aarUpdate.ok) {
+      return aarUpdate.result;
+    }
+    const workspaceCleanup = cleanupTaskWorkspace(task);
     const session = loadSession();
     const shouldClearActiveTask = Boolean(session.active_task && session.active_task.name === input.name);
     writeTask(input.name, updateTaskTimestamps({
@@ -1195,7 +1623,8 @@ function createTaskCommandHelpers(deps) {
       completedAt: new Date().toISOString(),
       worktree_path: null,
       notes: note || manifest.notes || '',
-      resolution_note: note || manifest.resolution_note || ''
+      resolution_note: note || manifest.resolution_note || '',
+      aar: aarUpdate.aar
     }));
 
     updateSession(current => {
@@ -1218,6 +1647,104 @@ function createTaskCommandHelpers(deps) {
       resolved: true,
       task: readTask(input.name),
       workspace_cleanup: workspaceCleanup
+    }, blocked.permission);
+  }
+
+  function scanTaskAar(rest) {
+    const input = parseNamedTaskWriteArgs(rest, 'task aar scan');
+    const task = readTask(input.name);
+    const blocked = applyTaskWritePermission({
+      scanned: false,
+      task: {
+        name: task.name,
+        title: task.title,
+        status: task.status
+      }
+    }, 'task-aar-scan', input.explicit_confirmation);
+
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    const manifestPath = getTaskManifestPath(input.name);
+    const manifest = runtime.readJson(manifestPath);
+    const aarInput = parseTaskAarFlags(input.rest, { allowFreeText: false });
+    const aarUpdate = applyAarUpdate(task, manifest, aarInput, {});
+    if (!aarUpdate.ok) {
+      return aarUpdate.result;
+    }
+
+    if (!hasAnyAarQuestionInput(aarInput) && !aarInput.skip_reason) {
+      return buildAarGateResult('aar-required', task, normalizeTaskAar(manifest.aar), {
+        message: 'Provide all four AAR answers to complete the scan step.',
+        missing_questions: getMissingAarQuestions(normalizeTaskAar(manifest.aar).questions)
+      });
+    }
+
+    writeTask(input.name, updateTaskTimestamps({
+      ...manifest,
+      aar: aarUpdate.aar
+    }));
+
+    updateSession(current => {
+      current.last_command = 'task aar scan';
+    });
+
+    return permissionGateHelpers.applyPermissionDecision({
+      scanned: true,
+      task: readTask(input.name),
+      aar: readTask(input.name).aar,
+      guidance: {
+        questions: buildAarQuestionPrompts(),
+        ...buildAarGuidance()
+      }
+    }, blocked.permission);
+  }
+
+  function recordTaskAar(rest) {
+    const input = parseNamedTaskWriteArgs(rest, 'task aar record');
+    const task = readTask(input.name);
+    const blocked = applyTaskWritePermission({
+      recorded: false,
+      task: {
+        name: task.name,
+        title: task.title,
+        status: task.status
+      }
+    }, 'task-aar-record', input.explicit_confirmation);
+
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    const manifestPath = getTaskManifestPath(input.name);
+    const manifest = runtime.readJson(manifestPath);
+    const aarInput = parseTaskAarFlags(input.rest, { allowFreeText: false });
+    const aarUpdate = applyAarUpdate(task, manifest, aarInput, {
+      requireScan: true,
+      requireRecord: true
+    });
+    if (!aarUpdate.ok) {
+      return aarUpdate.result;
+    }
+
+    writeTask(input.name, updateTaskTimestamps({
+      ...manifest,
+      aar: aarUpdate.aar
+    }));
+
+    updateSession(current => {
+      current.last_command = 'task aar record';
+    });
+
+    return permissionGateHelpers.applyPermissionDecision({
+      recorded: true,
+      task: readTask(input.name),
+      aar: readTask(input.name).aar,
+      guidance: {
+        questions: buildAarQuestionPrompts(),
+        ...buildAarGuidance()
+      }
     }, blocked.permission);
   }
 
@@ -1337,6 +1864,23 @@ function createTaskCommandHelpers(deps) {
 
     if (subcmd === 'resolve') {
       return resolveTask(rest);
+    }
+
+    if (subcmd === 'aar' && (!rest[0] || rest[0] === 'help')) {
+      return {
+        guidance: {
+          questions: buildAarQuestionPrompts(),
+          ...buildAarGuidance()
+        }
+      };
+    }
+
+    if (subcmd === 'aar' && rest[0] === 'scan') {
+      return scanTaskAar(rest.slice(1));
+    }
+
+    if (subcmd === 'aar' && rest[0] === 'record') {
+      return recordTaskAar(rest.slice(1));
     }
 
     if (subcmd === 'context' && (rest[0] === 'list' || rest[0] === 'show')) {

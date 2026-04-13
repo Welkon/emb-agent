@@ -169,4 +169,6 @@ test('workflow registry exposes implementation style spec and template', () => {
   assert.ok(injected.some(item => item.name === 'implementation-style'));
   assert.ok((merged.specs || []).some(item => item.name === 'clean-worker-execution'));
   assert.ok(injected.some(item => item.name === 'clean-worker-execution'));
+  assert.ok((merged.specs || []).some(item => item.name === 'task-completion-aar'));
+  assert.ok(injected.some(item => item.name === 'task-completion-aar'));
 });
