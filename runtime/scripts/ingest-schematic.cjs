@@ -156,6 +156,47 @@ function getSchematicCacheRoot(projectRoot) {
   return path.join(runtime.getProjectExtDir(projectRoot), 'cache', 'schematics');
 }
 
+function buildAnalysisOnlySemantics(artifacts) {
+  const sourceArtifacts = [
+    artifacts && artifacts.parsed,
+    artifacts && artifacts.hardware_facts,
+    artifacts && artifacts.hardware_facts_json
+  ].filter(Boolean);
+
+  return {
+    write_mode: 'analysis-only',
+    truth_write: {
+      direct: false,
+      requires_confirmation: true,
+      domain: 'hardware',
+      target: runtime.getProjectAssetRelativePath('hw.yaml'),
+      confirmation_targets: [
+        'mcu.vendor',
+        'mcu.model',
+        'mcu.package',
+        'signals',
+        'peripherals'
+      ],
+      source_artifacts: sourceArtifacts
+    },
+    apply_ready: null
+  };
+}
+
+function normalizeSchematicResult(summary) {
+  if (!summary || typeof summary !== 'object' || Array.isArray(summary)) {
+    return summary;
+  }
+
+  const semantics = buildAnalysisOnlySemantics(summary.artifacts || {});
+  return {
+    ...semantics,
+    ...summary,
+    truth_write: summary.truth_write || semantics.truth_write,
+    apply_ready: Object.prototype.hasOwnProperty.call(summary, 'apply_ready') ? summary.apply_ready : semantics.apply_ready
+  };
+}
+
 function detectFormat(filePath, requestedFormat) {
   if (requestedFormat && requestedFormat !== 'auto') {
     return requestedFormat;
@@ -532,7 +573,7 @@ function ingestSchematic(argv, options) {
   if (!args.force && fs.existsSync(artifactPaths.summaryJson) && fs.existsSync(artifactPaths.hardwareJson)) {
     const cached = runtime.readJson(artifactPaths.summaryJson);
     return {
-      ...cached,
+      ...normalizeSchematicResult(cached),
       cached: true,
       last_files: [path.relative(projectRoot, artifactPaths.summaryJson).replace(/\\/g, '/')]
     };
@@ -552,7 +593,15 @@ function ingestSchematic(argv, options) {
   const hardwareDraft = buildHardwareDraft(relativePath, parsed);
   const componentRefs = [];
   const signalCandidates = [];
+  const artifacts = {
+    parsed: path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),
+    summary: path.relative(projectRoot, artifactPaths.summaryJson).replace(/\\/g, '/'),
+    hardware_facts: path.relative(projectRoot, artifactPaths.hardwareYaml).replace(/\\/g, '/'),
+    hardware_facts_json: path.relative(projectRoot, artifactPaths.hardwareJson).replace(/\\/g, '/'),
+    source: path.relative(projectRoot, artifactPaths.sourceJson).replace(/\\/g, '/')
+  };
   const summary = {
+    ...buildAnalysisOnlySemantics(artifacts),
     status: 'ok',
     domain: 'schematic',
     cached: false,
@@ -576,13 +625,7 @@ function ingestSchematic(argv, options) {
       `Inspect ${path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/')} and let the agent judge controller, signals, and peripherals from the normalized data`
     ],
     cache_dir: path.relative(projectRoot, cacheDir).replace(/\\/g, '/'),
-    artifacts: {
-      parsed: path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),
-      summary: path.relative(projectRoot, artifactPaths.summaryJson).replace(/\\/g, '/'),
-      hardware_facts: path.relative(projectRoot, artifactPaths.hardwareYaml).replace(/\\/g, '/'),
-      hardware_facts_json: path.relative(projectRoot, artifactPaths.hardwareJson).replace(/\\/g, '/'),
-      source: path.relative(projectRoot, artifactPaths.sourceJson).replace(/\\/g, '/')
-    },
+    artifacts,
     agent_analysis: null,
     last_files: [
       path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),

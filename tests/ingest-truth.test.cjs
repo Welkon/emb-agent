@@ -10,7 +10,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
-test('ingest hardware appends stable facts into hw truth file', () => {
+test('ingest hardware appends stable facts into hw truth file', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-ingest-hw-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -20,9 +20,7 @@ test('ingest hardware appends stable facts into hw truth file', () => {
   try {
     initProject.main(['--project', tempProject]);
     process.chdir(tempProject);
-    cli.main([
-      'ingest',
-      'hardware',
+    const result = await cli.runIngestCommand('hardware', [
       '--mcu',
       'PMS150G',
       '--truth',
@@ -38,6 +36,11 @@ test('ingest hardware appends stable facts into hw truth file', () => {
     const content = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
     const status = cli.buildStatus();
 
+    assert.equal(result.write_mode, 'truth-write');
+    assert.equal(result.truth_write.direct, true);
+    assert.equal(result.truth_write.requires_confirmation, false);
+    assert.equal(result.truth_write.domain, 'hardware');
+    assert.equal(result.truth_write.target, '.emb-agent/hw.yaml');
     assert.match(content, /model: "PMS150G"/);
     assert.match(content, /PA5 reserved for programming/);
     assert.match(content, /ISR must stay thin/);
@@ -248,7 +251,7 @@ test('declare hardware aliases ingest hardware for direct board truth updates', 
   }
 });
 
-test('ingest requirements appends reusable requirement facts into req truth file', () => {
+test('ingest requirements appends reusable requirement facts into req truth file', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-ingest-req-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -258,9 +261,7 @@ test('ingest requirements appends reusable requirement facts into req truth file
   try {
     initProject.main(['--project', tempProject]);
     process.chdir(tempProject);
-    cli.main([
-      'ingest',
-      'requirements',
+    const result = await cli.runIngestCommand('requirements', [
       '--goal',
       'stabilize wakeup path',
       '--feature',
@@ -280,6 +281,11 @@ test('ingest requirements appends reusable requirement facts into req truth file
     const content = fs.readFileSync(path.join(tempProject, '.emb-agent', 'req.yaml'), 'utf8');
     const status = cli.buildStatus();
 
+    assert.equal(result.write_mode, 'truth-write');
+    assert.equal(result.truth_write.direct, true);
+    assert.equal(result.truth_write.requires_confirmation, false);
+    assert.equal(result.truth_write.domain, 'requirements');
+    assert.equal(result.truth_write.target, '.emb-agent/req.yaml');
     assert.match(content, /stabilize wakeup path/);
     assert.match(content, /short press toggles relay/);
     assert.match(content, /boot within 100 ms/);

@@ -28,6 +28,8 @@ allowed-tools:
   `doc lookup --chip <name> --vendor <name>`
 - For schematics or schematic exports, prefer:
   `ingest schematic --file <path>`
+- `declare hardware` / `ingest hardware` return `write_mode: truth-write` because they update truth files directly.
+- `ingest schematic` returns `write_mode: analysis-only`, `truth_write.direct: false`, and `apply_ready: null`; it only prepares artifacts for agent analysis.
 - After schematic ingest, use the returned parsed artifacts as agent input and confirm controller/signals/peripherals before writing truth.
 - For normalized part-search inputs from a schematic, use:
   `component lookup --file <path>`

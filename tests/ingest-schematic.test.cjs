@@ -60,6 +60,18 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     assert.equal(ingested.status, 'ok');
     assert.equal(ingested.domain, 'schematic');
     assert.equal(ingested.format, 'altium-json');
+    assert.equal(ingested.write_mode, 'analysis-only');
+    assert.equal(ingested.truth_write.direct, false);
+    assert.equal(ingested.truth_write.requires_confirmation, true);
+    assert.equal(ingested.truth_write.domain, 'hardware');
+    assert.equal(ingested.truth_write.target, '.emb-agent/hw.yaml');
+    assert.deepEqual(ingested.truth_write.confirmation_targets, ['mcu.vendor', 'mcu.model', 'mcu.package', 'signals', 'peripherals']);
+    assert.deepEqual(ingested.truth_write.source_artifacts, [
+      ingested.artifacts.parsed,
+      ingested.artifacts.hardware_facts,
+      ingested.artifacts.hardware_facts_json
+    ]);
+    assert.equal(ingested.apply_ready, null);
     assert.equal(ingested.summary.components, 1);
     assert.equal(ingested.summary.signal_candidates, 0);
     assert.ok(Array.isArray(ingested.component_refs));
@@ -70,6 +82,9 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     assert.match(hardwareFacts, /Named nets extracted: IR_RX, VDD/);
     assert.match(hardwareFacts, /Component roles, controller identity, and signal direction should be judged later by the agent from parsed.json/);
     assert.equal(summaryJson.status, 'ok');
+    assert.equal(summaryJson.write_mode, 'analysis-only');
+    assert.equal(summaryJson.truth_write.direct, false);
+    assert.equal(summaryJson.apply_ready, null);
     assert.equal(summaryJson.component_refs.length, 0);
     assert.equal(summaryJson.agent_analysis.required, true);
     assert.equal(summaryJson.agent_analysis.recommended_agent, 'emb-hw-scout');
