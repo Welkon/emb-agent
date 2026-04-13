@@ -257,11 +257,11 @@ function createHealthUpdateCommandHelpers(deps) {
       createBootstrapStage(
         'hardware-truth',
         !initReady || !trustReady ? 'pending' : hardwareReady ? 'completed' : 'manual',
-        'Confirm chip identity',
+        'Confirm or choose chip identity',
         {
           summary: hardwareReady
             ? `Hardware identity is recorded as ${hardwareIdentity.model}/${hardwareIdentity.package}`
-            : `Ask the agent to fill which chip and package this board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')} first, for example SC8F072 + SOP8`,
+            : `If a chip is already known, write chip/package into ${runtime.getProjectAssetRelativePath('hw.yaml')} first, for example SC8F072 + SOP8. If the project is still at concept stage, keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown and record goals and constraints in ${runtime.getProjectAssetRelativePath('req.yaml')} first.`,
           evidence: [runtime.getProjectAssetRelativePath('hw.yaml')]
         }
       )
@@ -731,7 +731,7 @@ function createHealthUpdateCommandHelpers(deps) {
           'warn',
           'hw.yaml does not contain the chip identity yet',
           [hardwareIdentity.file],
-          `Add which chip and package this board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')} so emb-agent can match chip profiles later. If you only know the top marking, datasheet, BOM, or board photo, let the agent infer from that first.`
+          `If the chip is already known, add chip/package to ${runtime.getProjectAssetRelativePath('hw.yaml')} so emb-agent can match chip profiles later. If the project is still at concept stage, record goals and constraints in ${runtime.getProjectAssetRelativePath('req.yaml')} first and leave ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a real candidate exists.`
         )
       );
     } else {

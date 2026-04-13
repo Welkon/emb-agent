@@ -1,5 +1,7 @@
 'use strict';
 
+const projectInputState = require('./project-input-state.cjs');
+
 function createCliEntryHelpers(deps) {
   const {
     fs,
@@ -19,18 +21,6 @@ function createCliEntryHelpers(deps) {
     ingestDocCli,
     ingestSchematicCli
   } = deps;
-
-  const GENERATED_DOCS = new Set([
-    'docs/HARDWARE-LOGIC.md',
-    'docs/DEBUG-NOTES.md',
-    'docs/MCU-FOUNDATION-CHECKLIST.md',
-    'docs/CONNECTIVITY.md',
-    'docs/RELEASE-NOTES.md',
-    'docs/POWER-CHARGING.md',
-    'docs/VERIFICATION.md',
-    'docs/REVIEW-REPORT.md',
-    'docs/ARCH-REVIEW.md'
-  ]);
 
   function parseScalar(content, key) {
     const line = String(content || '')
@@ -173,31 +163,6 @@ function createCliEntryHelpers(deps) {
     } catch {
       return '';
     }
-  }
-
-  function isMeaningfulProjectInput(relativePath) {
-    const normalized = String(relativePath || '').replace(/\\/g, '/');
-    const lower = normalized.toLowerCase();
-    if (GENERATED_DOCS.has(normalized)) {
-      return false;
-    }
-    return (
-      lower.endsWith('.pdf') ||
-      lower.includes('datasheet') ||
-      lower.includes('manual') ||
-      lower.includes('reference') ||
-      lower.includes('pin') ||
-      lower.endsWith('.ioc') ||
-      lower.endsWith('.uvprojx') ||
-      lower.endsWith('.ewp') ||
-      lower.endsWith('.c') ||
-      lower.endsWith('.h') ||
-      lower.endsWith('.cpp') ||
-      lower.endsWith('.hpp') ||
-      lower.endsWith('.schdoc') ||
-      lower.endsWith('.sch') ||
-      lower.endsWith('.dsn')
-    );
   }
 
   function detectHardwareCandidates(projectRoot, detected) {
@@ -386,12 +351,8 @@ function createCliEntryHelpers(deps) {
       .filter(item => String(item).toLowerCase().endsWith('.pdf'))
       .slice(0, 4);
     const candidateHardware = detectHardwareCandidates(projectRoot, detected);
-    const meaningfulInputCount = runtime.unique([
-      ...((detected && detected.code) || []),
-      ...((detected && detected.projects) || []),
-      ...((detected && detected.schematics) || []),
-      ...((detected && detected.docs) || []).filter(isMeaningfulProjectInput)
-    ]).length;
+    const meaningfulInputCount = runtime.unique(projectInputState.listMeaningfulProjectInputs(detected)).length;
+    const blankProject = !hardwareReady && meaningfulInputCount === 0 && candidateHardware.length === 0;
     const selectedHardware = hardwareReady
       ? hardware
       : candidateHardware.length > 0
@@ -417,19 +378,33 @@ function createCliEntryHelpers(deps) {
         : null;
 
     if (!hardwareReady) {
-      agentActions.push({
-        kind: 'confirm-hardware-identity',
-        status: 'required',
-        target_file: runtime.getProjectAssetRelativePath('hw.yaml'),
-        summary:
-          candidateHardware.length > 0
-            ? `Ask the agent to confirm which chip and package were detected, then write that into ${runtime.getProjectAssetRelativePath('hw.yaml')}.`
-            : `Ask the agent to inspect the project and fill which chip and package this board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')}. If the only clue is a top marking, datasheet, BOM, or board photo, that is still enough to start.`,
-        cli_fallback: declareHardwareCommand
-      });
+      if (blankProject) {
+        agentActions.push({
+          kind: 'define-project-constraints',
+          status: 'required',
+          target_file: runtime.getProjectAssetRelativePath('req.yaml'),
+          summary: `Ask the agent to record goals, constraints, and any known interfaces in ${runtime.getProjectAssetRelativePath('req.yaml')} first. Leave ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a chip candidate is chosen.`,
+          cli_fallback: 'next'
+        });
 
-      nextSteps.push(`Let the agent confirm which chip and package this board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')} before continuing.`);
-      if (candidateDocs.length > 0) {
+        nextSteps.push(`Let the agent record goals, constraints, and any known interfaces in ${runtime.getProjectAssetRelativePath('req.yaml')} before selecting a chip.`);
+        nextSteps.push(`Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until you have a real chip candidate or hardware reference.`);
+      } else {
+        agentActions.push({
+          kind: 'confirm-hardware-identity',
+          status: 'required',
+          target_file: runtime.getProjectAssetRelativePath('hw.yaml'),
+          summary:
+            candidateHardware.length > 0
+              ? `Ask the agent to confirm which chip and package were detected, then write that into ${runtime.getProjectAssetRelativePath('hw.yaml')}.`
+              : `Ask the agent to inspect the project and fill which chip and package this board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')}. If the only clue is a top marking, datasheet, BOM, or board photo, that is still enough to start.`,
+          cli_fallback: declareHardwareCommand
+        });
+
+        nextSteps.push(`Let the agent confirm which chip and package this board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')} before continuing.`);
+      }
+
+      if (!blankProject && candidateDocs.length > 0) {
         agentActions.push({
           kind: 'inspect-hardware-doc',
           status: 'optional',
@@ -443,16 +418,28 @@ function createCliEntryHelpers(deps) {
       agentActions.push({
         kind: 'bootstrap-adapters',
         status: adapterSourceReady ? 'blocked' : 'unconfigured',
-        blocked_by: adapterSourceReady ? ['hardware_identity'] : ['hardware_identity', 'adapter_source'],
+        blocked_by: blankProject
+          ? adapterSourceReady
+            ? ['project_constraints', 'hardware_identity']
+            : ['project_constraints', 'hardware_identity', 'adapter_source']
+          : adapterSourceReady
+            ? ['hardware_identity']
+            : ['hardware_identity', 'adapter_source'],
         summary: adapterSourceReady
-          ? 'Adapter bootstrap can continue automatically after hardware identity is confirmed.'
-          : 'Configure an adapter source before adapters can be bootstrapped.',
+          ? blankProject
+            ? 'Adapter bootstrap should wait until project constraints are recorded and a chip candidate is chosen.'
+            : 'Adapter bootstrap can continue automatically after hardware identity is confirmed.'
+          : blankProject
+            ? 'Configure an adapter source later, after project constraints are recorded and a chip candidate is chosen.'
+            : 'Configure an adapter source before adapters can be bootstrapped.',
         cli_fallback: adapterBootstrapCommand
       });
 
-      nextSteps.push(adapterSourceReady
-        ? 'Run next after the chip is identified so the agent can continue bootstrap.'
-        : 'Configure an adapter source, then run next after the chip is identified.');
+      nextSteps.push(blankProject
+        ? 'Run next after the requirements are recorded so the agent can help narrow chip candidates.'
+        : adapterSourceReady
+          ? 'Run next after the chip is identified so the agent can continue bootstrap.'
+          : 'Configure an adapter source, then run next after the chip is identified.');
     } else {
       agentActions.push({
         kind: 'declare-board-pins',
@@ -509,7 +496,8 @@ function createCliEntryHelpers(deps) {
       package_present: Boolean(hardware.package),
       adapter_sources_registered: sources.length,
       existing_project_detected: meaningfulInputCount > 0,
-      hardware_confirmation_required: !hardwareReady,
+      hardware_confirmation_required: !hardwareReady && !blankProject,
+      project_definition_required: blankProject,
       hardware_candidates: candidateHardware,
       selected_identity: selectedHardware
         ? {

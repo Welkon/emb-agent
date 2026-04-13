@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const projectInputState = require('./project-input-state.cjs');
 const runtime = require('./runtime.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const qualityGateHelpers = require('./quality-gates.cjs');
@@ -47,10 +48,15 @@ function getProjectTruthFiles(resolved) {
     return [];
   }
 
-  const candidates = [
-    runtime.getProjectAssetRelativePath('hw.yaml'),
-    runtime.getProjectAssetRelativePath('req.yaml')
-  ];
+  const candidates = isBlankProjectSelectionMode(resolved)
+    ? [
+        runtime.getProjectAssetRelativePath('req.yaml'),
+        runtime.getProjectAssetRelativePath('hw.yaml')
+      ]
+    : [
+        runtime.getProjectAssetRelativePath('hw.yaml'),
+        runtime.getProjectAssetRelativePath('req.yaml')
+      ];
 
   return candidates.filter(file => fs.existsSync(path.join(projectRoot, file)));
 }
@@ -80,6 +86,15 @@ function hasPack(resolved, name) {
   return (resolved.packs || []).some(pack => pack.name === name);
 }
 
+function isBlankProjectSelectionMode(resolved) {
+  const projectRoot = resolved && resolved.session ? resolved.session.project_root : '';
+  const hardware = resolved && resolved.hardware ? resolved.hardware : {};
+  return projectInputState.detectBlankProjectSelectionMode({
+    projectRoot,
+    hardware
+  });
+}
+
 function buildContext(resolved) {
   ensureResolved(resolved);
 
@@ -99,6 +114,7 @@ function buildContext(resolved) {
     packNames,
     focusAreas,
     preferences,
+    isBlankSelectionMode: isBlankProjectSelectionMode(resolved),
     isBaremetal: resolved.profile.runtime_model === 'main_loop_plus_isr',
     isRtos:
       resolved.profile.runtime_model === 'task_scheduler_plus_isr' ||
@@ -119,6 +135,10 @@ function buildPreferredReadKeys(resolved) {
   const hardwareKeys = ['hardware_truth', 'registers'];
   const hardwareFirst = searchPriority.filter(key => hardwareKeys.includes(key));
   const codeFirst = searchPriority.filter(key => !hardwareKeys.includes(key));
+
+  if (context.isBlankSelectionMode) {
+    return [];
+  }
 
   if (context.preferences.truth_source_mode === 'code_first') {
     return runtime.unique([...codeFirst, ...hardwareFirst]);
@@ -951,8 +971,14 @@ function buildSuggestedSteps(action, resolved) {
   const steps = [];
 
   if (action === 'scan') {
-    steps.push('Lock hardware truth sources and the main entry first');
-    steps.push(context.isBaremetal ? 'Then read ISR, shared-state, and timing paths' : 'Then read task, queue, lock, and timer boundaries');
+    if (context.isBlankSelectionMode) {
+      steps.push(`Read ${runtime.getProjectAssetRelativePath('req.yaml')} first and extract goals, constraints, interfaces, and acceptance clues`);
+      steps.push('Turn vague product intent into concrete chip-selection constraints such as power, package, IO, peripherals, timing, and cost');
+      steps.push('List the missing facts that still block narrowing to a real chip candidate');
+    } else {
+      steps.push('Lock hardware truth sources and the main entry first');
+      steps.push(context.isBaremetal ? 'Then read ISR, shared-state, and timing paths' : 'Then read task, queue, lock, and timer boundaries');
+    }
     if (context.lastFiles[0]) {
       steps.push(`Re-read the recent file ${context.lastFiles[0]}`);
     }
@@ -972,10 +998,17 @@ function buildSuggestedSteps(action, resolved) {
   }
 
   if (action === 'plan') {
-    steps.push('Clarify the goal and impact boundary first');
-    steps.push('Lock truth sources, constraints, and primary risks');
-    steps.push('Split into the smallest executable steps');
-    steps.push('Provide pre-execution and post-execution verification');
+    if (context.isBlankSelectionMode) {
+      steps.push('Clarify the product goal, non-goals, and acceptance boundary first');
+      steps.push('Turn req truth into explicit chip-selection constraints and ranking criteria');
+      steps.push('Narrow to the smallest viable candidate set instead of jumping into implementation');
+      steps.push('Define what evidence will justify the first chip candidate choice');
+    } else {
+      steps.push('Clarify the goal and impact boundary first');
+      steps.push('Lock truth sources, constraints, and primary risks');
+      steps.push('Split into the smallest executable steps');
+      steps.push('Provide pre-execution and post-execution verification');
+    }
   }
 
   if (action === 'debug') {
@@ -1052,6 +1085,14 @@ function buildDefaultOpenQuestions(resolved) {
     return context.openQuestions;
   }
 
+  if (context.isBlankSelectionMode) {
+    return runtime.unique([
+      'What must this product actually do, and what can stay out of scope for the first board?',
+      'Which constraints are already known: supply voltage, cost target, package size, IO count, peripherals, timing, low power, certification?',
+      'Is there any reference module, legacy board, or preferred vendor family that should bias chip selection?'
+    ]);
+  }
+
   if (context.isBaremetal) {
     return runtime.unique([
       'Have hardware truth sources been confirmed down to pins, registers, and timing?',
@@ -1076,6 +1117,12 @@ function buildNextReads(resolved) {
   return runtime.unique([
     ...truthFiles,
     ...schematicReads,
+    context.isBlankSelectionMode
+      ? `Selection input first: ${runtime.getProjectAssetRelativePath('req.yaml')}`
+      : '',
+    context.isBlankSelectionMode
+      ? 'Collect only decision-shaping facts first: power, package, IO, peripherals, timing, cost, environment'
+      : '',
     ...hintedReads,
     context.lastFiles[0] ? `Re-read recent file: ${context.lastFiles[0]}` : '',
     context.knownRisks[0] ? `Re-check risk source: ${context.knownRisks[0]}` : ''
@@ -1195,6 +1242,10 @@ function buildPlanGoal(resolved) {
     return context.focus;
   }
 
+  if (context.isBlankSelectionMode) {
+    return 'Converge product constraints first, then narrow to the first viable chip candidate';
+  }
+
   if (context.isBaremetal) {
     return context.isSensor
       ? 'Lock hardware truth and the sampling path first, then execute the minimal change'
@@ -1232,9 +1283,10 @@ function buildPlanConstraints(resolved) {
   return runtime.unique([
     ...(resolved.profile.resource_priority || []).map(item => `resource: ${item}`),
     ...(resolved.effective.guardrails || []).map(item => `guardrail: ${item}`),
-    context.isBaremetal ? 'Constraint: keep ISR thin, main loop flat, and avoid extra abstraction' : '',
+    context.isBlankSelectionMode ? 'Constraint: do not invent MCU, package, or pin facts before there is a real candidate' : '',
+    !context.isBlankSelectionMode && context.isBaremetal ? 'Constraint: keep ISR thin, main loop flat, and avoid extra abstraction' : '',
     context.isConnected ? 'Constraint: do not break offline defaults, reconnect, or recovery paths' : '',
-    context.isSensor ? 'Constraint: do not break sampling windows, settling time, or measurement-update flow' : ''
+    !context.isBlankSelectionMode && context.isSensor ? 'Constraint: do not break sampling windows, settling time, or measurement-update flow' : ''
   ]);
 }
 
@@ -1243,9 +1295,12 @@ function buildPlanRisks(resolved) {
 
   return runtime.unique([
     ...(resolved.session.known_risks || []),
-    context.isBaremetal ? 'ISR / main-loop shared-state race' : 'Task-boundary, blocking, and priority risks',
-    context.isConnected ? 'Regression in offline behavior, reconnect, consistency, or rollback paths' : '',
-    context.isSensor ? 'Regression in sampling settling time, filtering, or calibration paths' : ''
+    context.isBlankSelectionMode ? 'Chip selection could drift if constraints stay vague or contradictory' : '',
+    !context.isBlankSelectionMode
+      ? (context.isBaremetal ? 'ISR / main-loop shared-state race' : 'Task-boundary, blocking, and priority risks')
+      : '',
+    !context.isBlankSelectionMode && context.isConnected ? 'Regression in offline behavior, reconnect, consistency, or rollback paths' : '',
+    !context.isBlankSelectionMode && context.isSensor ? 'Regression in sampling settling time, filtering, or calibration paths' : ''
   ]);
 }
 
@@ -1254,7 +1309,19 @@ function buildPlanSteps(resolved) {
   const steps = [];
 
   if (context.lastFiles.length === 0) {
-    steps.push('Run a minimal scan first to confirm the real change point');
+    steps.push(
+      context.isBlankSelectionMode
+        ? 'Run a minimal scan first to confirm the current requirement truth and missing decision inputs'
+        : 'Run a minimal scan first to confirm the real change point'
+    );
+  }
+
+  if (context.isBlankSelectionMode) {
+    steps.push(`Review ${runtime.getProjectAssetRelativePath('req.yaml')} and turn ambiguous goals into explicit engineering constraints`);
+    steps.push('Separate must-have peripherals and interfaces from optional nice-to-haves');
+    steps.push('Narrow to a shortlist of viable chips or module families before choosing implementation details');
+    steps.push('Record why the current shortlist is acceptable and what facts are still missing');
+    return steps;
   }
 
   steps.push('Confirm the hardware truth, code entry points, and impact boundary involved in the goal');
@@ -1279,9 +1346,13 @@ function buildPlanVerification(resolved) {
   const context = buildContext(resolved);
 
   return runtime.unique([
-    context.isBaremetal ? 'Verify ISR, main loop, shared state, and timing windows' : 'Verify task boundaries, blocking points, and concurrency paths',
-    context.isConnected ? 'Verify offline defaults, reconnect, upgrade recovery, and rollback paths' : '',
-    context.isSensor ? 'Verify sampling windows, settling time, filtering, and measurement-update paths' : '',
+    context.isBlankSelectionMode ? 'Verify that goals, constraints, and interfaces are explicit enough to compare real chip candidates' : '',
+    context.isBlankSelectionMode ? 'Verify that every shortlisted candidate is tied to documented constraints rather than guesses' : '',
+    !context.isBlankSelectionMode
+      ? (context.isBaremetal ? 'Verify ISR, main loop, shared state, and timing windows' : 'Verify task boundaries, blocking points, and concurrency paths')
+      : '',
+    !context.isBlankSelectionMode && context.isConnected ? 'Verify offline defaults, reconnect, upgrade recovery, and rollback paths' : '',
+    !context.isBlankSelectionMode && context.isSensor ? 'Verify sampling windows, settling time, filtering, and measurement-update paths' : '',
     context.preferences.verification_mode === 'strict'
       ? 'Verify failure paths, abnormal inputs, timeout recovery, and boundary conditions'
       : '',
@@ -1314,6 +1385,7 @@ function buildSchedule(action, resolved) {
 function buildScanOutput(resolved) {
   const truthFiles = getProjectTruthFiles(resolved);
   const schematicFiles = getRecentSchematicParsedFiles(resolved);
+  const blankSelectionMode = isBlankProjectSelectionMode(resolved);
 
   return {
     relevant_files: runtime.unique([
@@ -1327,6 +1399,7 @@ function buildScanOutput(resolved) {
       `concurrency_model=${resolved.profile.concurrency_model}`,
       `resource_priority=${(resolved.profile.resource_priority || []).join(' -> ')}`,
       truthFiles.length > 0 ? `project_truth=${truthFiles.join(', ')}` : 'project_truth=missing',
+      `selection_mode=${blankSelectionMode ? 'blank-project' : 'existing-hardware'}`,
       `focus_areas=${(resolved.effective.focus_areas || []).join(', ')}`
     ]),
     open_questions: buildDefaultOpenQuestions(resolved),
@@ -1354,7 +1427,9 @@ function buildDoOutput(resolved) {
     chosen_agent: choosePrimaryAgent('do', resolved),
     prerequisites: runtime.unique([
       context.lastFiles.length === 0 ? 'Add a minimal scan first to confirm the real change point' : '',
-      'Confirm hardware truth sources or implementation truth sources',
+      context.isBlankSelectionMode
+        ? 'Confirm a real chip candidate or hardware reference before starting implementation'
+        : 'Confirm hardware truth sources or implementation truth sources',
       context.focus ? `Execute around the current focus: ${context.focus}` : '',
       context.isConnected ? 'Confirm offline defaults, upgrade recovery, and consistency constraints' : ''
     ]),

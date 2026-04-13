@@ -377,8 +377,8 @@ function buildBootstrapTaskNotes(projectConfig, docsPlan) {
     'Init now creates the minimum emb-agent project skeleton first; note templates are deferred until you decide they are needed.',
     '',
     'Suggested order:',
-    '1. Confirm which chip and package this board uses in .emb-agent/hw.yaml. Example: SC8F072 + SOP8.',
-    '2. Confirm goals and constraints in .emb-agent/req.yaml.',
+    '1. Confirm goals and constraints in .emb-agent/req.yaml.',
+    '2. If the chip/package are already known, record them in .emb-agent/hw.yaml. Otherwise leave hw.yaml unknown until a candidate is chosen.',
     '3. Fill only the note templates that matter for this project.',
     `4. Continue with ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])}.`,
     '',
@@ -393,11 +393,11 @@ function buildBootstrapTaskNotes(projectConfig, docsPlan) {
 function buildBootstrapTaskSubtasks(docsPlan) {
   return [
     {
-      name: 'Confirm which chip and package the board uses in .emb-agent/hw.yaml',
+      name: 'Confirm goals and constraints in .emb-agent/req.yaml',
       status: 'pending'
     },
     {
-      name: 'Confirm goals and constraints in .emb-agent/req.yaml',
+      name: 'If already known, record chip and package in .emb-agent/hw.yaml',
       status: 'pending'
     },
     ...docsPlan.map(item => ({
@@ -696,7 +696,7 @@ function main(argv) {
       {
         ...result,
         next_steps: [
-          `Ask the agent to confirm which chip and package the board uses in ${runtime.getProjectAssetRelativePath('hw.yaml')}. If you only know the top marking, datasheet, BOM, or board photo, provide that first.`,
+          `Ask the agent to record goals and constraints in ${runtime.getProjectAssetRelativePath('req.yaml')} first. If chip/package are already known, add them to ${runtime.getProjectAssetRelativePath('hw.yaml')}; otherwise leave them unknown for now.`,
           runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
         ]
       },

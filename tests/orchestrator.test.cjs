@@ -28,7 +28,7 @@ async function captureCliJson(args) {
   return JSON.parse(stdout);
 }
 
-test('orchestrator defaults to next and stays inline for empty project context', () => {
+test('orchestrator defaults to selection scan and stays inline for empty project context', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-next-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -43,9 +43,9 @@ test('orchestrator defaults to next and stays inline for empty project context',
 
     assert.equal(orchestrator.mode, 'lightweight-action-orchestrator');
     assert.equal(orchestrator.source, 'next');
-    assert.equal(orchestrator.resolved_action, 'health');
+    assert.equal(orchestrator.resolved_action, 'scan');
     assert.equal(orchestrator.workflow.strategy, 'inline');
-    assert.match(orchestrator.workflow.next_cli, / health$/);
+    assert.match(orchestrator.workflow.next_cli, / scan$/);
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'inline-action'));
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'integrate'));
   } finally {

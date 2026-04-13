@@ -4,6 +4,7 @@ const path = require('path');
 
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const permissionGateHelpers = require('./permission-gates.cjs');
+const projectInputState = require('./project-input-state.cjs');
 const qualityGateHelpers = require('./quality-gates.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
 
@@ -78,6 +79,30 @@ function createSessionFlowHelpers(deps) {
     enrichWithToolSuggestions,
     getActiveTask
   } = deps;
+  const blankSelectionModeCache = new Map();
+
+  function isBlankProjectSelectionMode(resolved) {
+    const projectRoot = resolved && resolved.session ? resolved.session.project_root : '';
+    const hardware = resolved && resolved.hardware ? resolved.hardware : {};
+    const identity = hardware && hardware.identity ? hardware.identity : hardware;
+    const cacheKey = JSON.stringify({
+      projectRoot,
+      model: identity && identity.model ? identity.model : '',
+      package: identity && identity.package ? identity.package : '',
+      chipProfile: hardware && hardware.chip_profile ? hardware.chip_profile.name || 'present' : ''
+    });
+
+    if (blankSelectionModeCache.has(cacheKey)) {
+      return blankSelectionModeCache.get(cacheKey);
+    }
+
+    const result = projectInputState.detectBlankProjectSelectionMode({
+      projectRoot,
+      hardware
+    });
+    blankSelectionModeCache.set(cacheKey, result);
+    return result;
+  }
 
   function shouldGateNextWithHealth(resolved, handoff, nextCommand, healthReport) {
     if (!healthReport || nextCommand !== 'scan' || handoff) {
@@ -96,23 +121,23 @@ function createSessionFlowHelpers(deps) {
       Array.isArray(resolved.effective.tool_recommendations)
         ? resolved.effective.tool_recommendations
         : [];
+    const blankSelectionMode = isBlankProjectSelectionMode(resolved);
 
     if (hasChipProfile || toolRecommendations.length > 0) {
       return false;
     }
 
-    const blockingChecks = new Set(['hw_truth', 'req_truth', 'hardware_identity']);
+    const blockingChecks = blankSelectionMode
+      ? new Set(['req_truth'])
+      : new Set(['hw_truth', 'req_truth', 'hardware_identity']);
     const hasBlockingCheck = Array.isArray(healthReport.checks)
       ? healthReport.checks.some(item => blockingChecks.has(item.key) && (item.status === 'warn' || item.status === 'fail'))
       : false;
     const actionableHealthCommands = Array.isArray(healthReport.next_commands)
       ? healthReport.next_commands.some(item => [
-          'init',
-          'adapter-source-add',
-          'adapter-sync',
-          'adapter-bootstrap',
-          'adapter-derive-from-doc',
-          'doc-apply'
+          ...(blankSelectionMode
+            ? ['init', 'doc-apply']
+            : ['init', 'adapter-source-add', 'adapter-sync', 'adapter-bootstrap', 'adapter-derive-from-doc', 'doc-apply'])
         ].includes(item.key))
       : false;
 
@@ -345,6 +370,7 @@ function createSessionFlowHelpers(deps) {
         (session.last_command || '').startsWith('verify ') ||
         (session.last_command || '').startsWith('executor run')
       );
+    const blankSelectionMode = isBlankProjectSelectionMode(resolved);
 
     if (hasQualityGateBlock) {
       const blockingItems = runtime.unique([
@@ -433,6 +459,13 @@ function createSessionFlowHelpers(deps) {
           preferences.plan_mode === 'always'
             ? 'Current preferences require a micro-plan before execution'
             : 'Current context has entered a complex-task signal; make a micro-plan before execution'
+      };
+    }
+
+    if (blankSelectionMode) {
+      return {
+        command: 'scan',
+        reason: `Project is still in definition and chip-selection mode; run scan to converge goals, constraints, interfaces, and candidate devices from ${runtime.getProjectAssetRelativePath('req.yaml')} first`
       };
     }
 
@@ -825,8 +858,9 @@ function createSessionFlowHelpers(deps) {
     };
   }
 
-  function buildWorkflowStage(nextCommand) {
+  function buildWorkflowStage(nextCommand, resolved) {
     const command = String(nextCommand && nextCommand.command ? nextCommand.command : '').trim();
+    const blankSelectionMode = isBlankProjectSelectionMode(resolved);
 
     if (command === 'health') {
       return {
@@ -839,9 +873,13 @@ function createSessionFlowHelpers(deps) {
 
     if (command === 'scan') {
       return {
-        name: 'triage',
-        why: 'Entry point, truth source, or failure scene is not narrow enough yet',
-        exit_criteria: 'The real change point and evidence source are explicit',
+        name: blankSelectionMode ? 'selection' : 'triage',
+        why: blankSelectionMode
+          ? `Requirements and interfaces are not converged enough yet; read ${runtime.getProjectAssetRelativePath('req.yaml')} and narrow the first viable chip candidates`
+          : 'Entry point, truth source, or failure scene is not narrow enough yet',
+        exit_criteria: blankSelectionMode
+          ? 'Project constraints are explicit enough to shortlist a real chip candidate or first hardware target'
+          : 'The real change point and evidence source are explicit',
         primary_command: command
       };
     }
@@ -980,7 +1018,7 @@ function createSessionFlowHelpers(deps) {
           ...buildAdapterHealthHints(health, guidance.primary_tool_recommendation),
           ...guidance.next_actions
         ]);
-    const workflowStage = buildWorkflowStage(nextCommand);
+    const workflowStage = buildWorkflowStage(nextCommand, resolved);
     const qualityGates = getQualityGateSummary(resolved);
     const permissionGates = permissionGateHelpers.buildPermissionGates({
       quality_gates: qualityGates
