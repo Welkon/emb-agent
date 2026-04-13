@@ -111,14 +111,14 @@ function setupExecutableToolFixture(projectEmbDir) {
   );
 }
 
-test('behavior regression sentinel: next routes to health in empty project', () => {
+test('behavior regression sentinel: next routes to selection scan in empty project', () => {
   withTempProject('emb-agent-behavior-health-', () => {
     const orchestrator = cli.buildOrchestratorContext('next');
 
     assert.equal(orchestrator.source, 'next');
-    assert.equal(orchestrator.resolved_action, 'health');
+    assert.equal(orchestrator.resolved_action, 'scan');
     assert.equal(orchestrator.workflow.strategy, 'inline');
-    assert.match(orchestrator.workflow.next_cli, / health$/);
+    assert.match(orchestrator.workflow.next_cli, / scan$/);
   });
 });
 

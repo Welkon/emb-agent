@@ -317,15 +317,19 @@ test('init returns onboarding guidance for adapter setup', () => {
     assert.equal(projectConfig.project_profile, '');
     assert.deepEqual(projectConfig.active_packs, []);
     assert.equal(result.onboarding.hardware_identity_present, false);
+    assert.equal(result.onboarding.existing_project_detected, false);
     assert.equal(result.onboarding.adapter_sources_registered, 0);
+    assert.equal(result.onboarding.hardware_confirmation_required, false);
+    assert.equal(result.onboarding.project_definition_required, true);
     assert.equal(result.onboarding.bootstrap_task.name, '00-bootstrap-project');
-    assert.ok(result.next_steps.some(item => item.includes('Let the agent confirm which chip and package this board uses in .emb-agent/hw.yaml')));
-    assert.ok(result.next_steps.some(item => item.includes('Configure an adapter source, then run next after the chip is identified.')));
+    assert.ok(result.next_steps.some(item => item.includes('Let the agent record goals, constraints, and any known interfaces in .emb-agent/req.yaml')));
+    assert.ok(result.next_steps.some(item => item.includes('Keep .emb-agent/hw.yaml unknown until you have a real chip candidate')));
+    assert.ok(result.next_steps.some(item => item.includes('Run next after the requirements are recorded so the agent can help narrow chip candidates.')));
     assert.ok(result.next_steps.some(item => item.includes('docs/ (recommended, not required)')));
     assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
     assert.ok(result.next_steps.some(item => item.includes('Optional: inspect deferred note targets with task show 00-bootstrap-project')));
     assert.ok(Array.isArray(result.onboarding.agent_actions));
-    assert.ok(result.onboarding.agent_actions.some(item => item.kind === 'confirm-hardware-identity'));
+    assert.ok(result.onboarding.agent_actions.some(item => item.kind === 'define-project-constraints'));
     assert.ok(
       result.onboarding.agent_actions.some(
         item => item.kind === 'bootstrap-adapters' && item.status === 'unconfigured'
@@ -360,6 +364,7 @@ test('init scans existing project inputs and suggests hardware confirmation befo
     assert.equal(result.initialized, true);
     assert.equal(result.onboarding.existing_project_detected, true);
     assert.equal(result.onboarding.hardware_confirmation_required, true);
+    assert.equal(result.onboarding.project_definition_required, false);
     assert.deepEqual(result.onboarding.hardware_candidates, []);
     assert.equal(result.onboarding.selected_identity, null);
     assert.equal(result.onboarding.doc_parse_suggestion.suggested, true);
@@ -436,6 +441,7 @@ test('init can show pin summary from confirmed chip profile without parsing docs
 
     assert.equal(result.initialized, true);
     assert.equal(result.onboarding.hardware_confirmation_required, false);
+    assert.equal(result.onboarding.project_definition_required, false);
     assert.equal(result.onboarding.chip_profile.name, 'vendor-chip');
     assert.equal(result.onboarding.pin_summary.package, 'sop8');
     assert.ok(result.onboarding.pin_summary.usable_pins.some(item => item.signal === 'PA3'));

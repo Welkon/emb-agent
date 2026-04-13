@@ -241,6 +241,31 @@ test('scan prioritizes normalized schematic parsed data when recent schematic in
   ));
 });
 
+test('blank project selection mode prioritizes req truth and constraint questions', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-selection-'));
+  const embDir = path.join(tempProject, '.emb-agent');
+  fs.mkdirSync(embDir, { recursive: true });
+  fs.writeFileSync(path.join(embDir, 'req.yaml'), 'goals:\n  - choose first MCU\n', 'utf8');
+  fs.writeFileSync(path.join(embDir, 'hw.yaml'), 'mcu:\n  vendor: ""\n  model: ""\n  package: ""\n', 'utf8');
+
+  const resolved = buildResolved('baremetal-8bit', ['sensor-node'], {
+    project_root: tempProject
+  });
+
+  const scan = scheduler.buildScanOutput(resolved);
+  const plan = scheduler.buildPlanOutput(resolved);
+  const action = scheduler.buildDoOutput(resolved);
+
+  assert.equal(scan.relevant_files[0], '.emb-agent/req.yaml');
+  assert.ok(scan.key_facts.includes('selection_mode=blank-project'));
+  assert.ok(scan.open_questions.some(item => item.includes('What must this product actually do')));
+  assert.ok(scan.next_reads.some(item => item.includes('Selection input first: .emb-agent/req.yaml')));
+  assert.equal(plan.goal, 'Converge product constraints first, then narrow to the first viable chip candidate');
+  assert.ok(plan.steps.some(item => item.includes('.emb-agent/req.yaml')));
+  assert.ok(plan.verification.some(item => item.includes('documented constraints')));
+  assert.ok(action.prerequisites.includes('Confirm a real chip candidate or hardware reference before starting implementation'));
+});
+
 test('preferences can switch delegation pattern to fork or swarm', () => {
   const forkResolved = buildResolved('baremetal-8bit', ['sensor-node'], {
     preferences: {
@@ -285,6 +310,14 @@ test('project truth files are preferred when present', () => {
     project_root: tempProject,
     last_files: ['main.c']
   });
+  resolved.hardware = {
+    identity: {
+      vendor: 'test-vendor',
+      model: 'test',
+      package: 'SOP8'
+    },
+    chip_profile: null
+  };
 
   const scan = scheduler.buildScanOutput(resolved);
   const plan = scheduler.buildPlanOutput(resolved);

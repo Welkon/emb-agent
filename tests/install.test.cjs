@@ -154,22 +154,19 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.deepEqual(resolvedHost.subagentBridge.command_argv, ['node', '/tmp/emb-subagent-bridge.cjs', '--stdio-json']);
 
     const nextBeforeContext = installedCli.buildNextContext();
-    assert.equal(nextBeforeContext.next.command, 'health');
-    assert.equal(nextBeforeContext.next.gated_by_health, true);
+    assert.equal(nextBeforeContext.next.command, 'scan');
+    assert.equal(nextBeforeContext.next.gated_by_health, false);
     assert.ok(nextBeforeContext.injected_specs.some(item => item.name === 'project-local'));
-    assert.equal(nextBeforeContext.workflow_stage.name, 'health-gate');
-    assert.equal(nextBeforeContext.workflow_stage.primary_command, 'health');
+    assert.equal(nextBeforeContext.workflow_stage.name, 'selection');
+    assert.equal(nextBeforeContext.workflow_stage.primary_command, 'scan');
+    assert.match(nextBeforeContext.next.reason, /definition and chip-selection mode/);
+    assert.ok(nextBeforeContext.next_actions.some(item => item.includes('.emb-agent/req.yaml')));
     assert.ok(Array.isArray(nextBeforeContext.next.health_next_commands));
-    assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes('adapter source add default-pack')));
-    assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes(privateAdapterSource)));
-    assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes('--branch main')));
-    assert.ok(nextBeforeContext.next.health_next_commands.some(item => item.cli.includes('--subdir emb-agent')));
-    assert.equal(nextBeforeContext.health.quickstart.stage, 'fill-hardware-identity');
-    assert.ok(nextBeforeContext.next.health_quickstart.followup.includes('adapter bootstrap'));
+    assert.equal(nextBeforeContext.next.health_next_commands.length, 0);
     const orchestratorBeforeContext = installedCli.buildOrchestratorContext('next');
     assert.equal(orchestratorBeforeContext.workflow.strategy, 'inline');
-    assert.equal(orchestratorBeforeContext.resolved_action, 'health');
-    assert.match(orchestratorBeforeContext.workflow.next_cli, / health$/);
+    assert.equal(orchestratorBeforeContext.resolved_action, 'scan');
+    assert.match(orchestratorBeforeContext.workflow.next_cli, / scan$/);
 
     installedCli.main(['prefs', 'set', 'plan_mode', 'always']);
     const nextWithForcedPlan = installedCli.buildNextContext();
@@ -200,7 +197,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(scan.scheduler.primary_agent, 'hw-scout');
     assert.ok(scan.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(scan.agent_execution.primary_agent, 'emb-hw-scout');
-    assert.ok(scan.next_reads.some(item => item.includes('Hardware truth sources')));
+    assert.ok(scan.next_reads.some(item => item.includes('.emb-agent/req.yaml')));
     assert.equal(resume.summary.resume_source, 'handoff');
     assert.ok(resume.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(resume.memory_summary.source, 'pause');

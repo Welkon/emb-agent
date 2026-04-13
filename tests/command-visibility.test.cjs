@@ -204,11 +204,13 @@ test('orchestrate run preserves orchestration metadata while executing the targe
 
     assert.equal(run.mode, 'lightweight-action-orchestrator');
     assert.equal(run.source, 'next');
-    assert.equal(run.resolved_action, 'health');
+    assert.equal(run.resolved_action, 'scan');
     assert.equal(run.execution.kind, 'action');
     assert.equal(run.execution.entered_via, 'orchestrate run next');
     assert.equal(run.workflow.strategy, 'inline');
-    assert.ok(Array.isArray(run.checks));
+    assert.equal(run.workflow_stage.name, 'selection');
+    assert.ok(Array.isArray(run.relevant_files));
+    assert.ok(Array.isArray(run.open_questions));
     assert.ok(Array.isArray(run.orchestrator_steps));
   } finally {
     process.stdout.write = originalWrite;
