@@ -9,6 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 const scheduler = require(path.join(repoRoot, 'runtime', 'lib', 'scheduler.cjs'));
+const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
 const REVIEW_AGENT_NAMES = ['hw-scout', 'bug-hunter', 'sys-reviewer', 'release-checker'];
 
@@ -271,7 +272,54 @@ test('blank project selection mode prioritizes req truth and constraint question
   assert.equal(plan.goal, 'Converge product constraints first, then narrow to the first viable chip candidate');
   assert.ok(plan.steps.some(item => item.includes('.emb-agent/req.yaml')));
   assert.ok(plan.verification.some(item => item.includes('documented constraints')));
-  assert.ok(action.prerequisites.includes('Confirm a real chip candidate or hardware reference before starting implementation'));
+  assert.ok(action.prerequisites.some(item => item.includes('.emb-agent/req.yaml')));
+  assert.ok(action.execution_brief.suggested_steps.some(item => item.includes('smallest durable selection update')));
+});
+
+test('blank project next flow advances from scan to plan to do to verify', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-selection-flow-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
+    process.chdir(tempProject);
+
+    await cli.main(['init']);
+
+    const nextBeforeContext = cli.buildNextContext();
+    assert.equal(nextBeforeContext.next.command, 'scan');
+    assert.equal(nextBeforeContext.workflow_stage.primary_command, 'scan');
+
+    await cli.main(['scan']);
+    const nextAfterScan = cli.buildNextContext();
+    assert.equal(nextAfterScan.next.command, 'plan');
+    assert.equal(nextAfterScan.workflow_stage.primary_command, 'plan');
+
+    await cli.main(['plan']);
+    const nextAfterPlan = cli.buildNextContext();
+    assert.equal(nextAfterPlan.next.command, 'do');
+    assert.equal(nextAfterPlan.workflow_stage.primary_command, 'do');
+    const conceptDo = cli.buildActionOutput('do');
+    assert.ok(conceptDo.prerequisites.some(item => item.includes('.emb-agent/req.yaml')));
+    assert.ok(conceptDo.execution_brief.suggested_steps.some(item => item.includes('smallest durable selection update')));
+
+    await cli.main(['do']);
+    const nextAfterDo = cli.buildNextContext();
+    assert.equal(nextAfterDo.next.command, 'verify');
+    assert.equal(nextAfterDo.workflow_stage.primary_command, 'verify');
+  } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
+    process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
+  }
 });
 
 test('preferences can switch delegation pattern to fork or swarm', () => {

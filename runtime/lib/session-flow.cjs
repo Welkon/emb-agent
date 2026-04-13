@@ -425,6 +425,7 @@ function createSessionFlowHelpers(deps) {
         (session.last_command || '').startsWith('executor run')
       );
     const blankSelectionMode = isBlankProjectSelectionMode(resolved);
+    const useBlankSelectionFlow = blankSelectionMode && lastFiles.length === 0;
 
     if (hasQualityGateBlock) {
       const blockingItems = runtime.unique([
@@ -454,6 +455,55 @@ function createSessionFlowHelpers(deps) {
         reason: latestExecutor && ['failed', 'error'].includes(latestExecutor.status)
           ? `Latest executor ${latestExecutor.name || 'unknown'} ${latestExecutor.status}; run review first to narrow the failure scene`
           : 'Current context shows drift, resume failure, or repeated failure signals; run review first to narrow the problem space'
+      };
+    }
+
+    if (useBlankSelectionFlow) {
+      if ((session.last_command || '').trim() === 'do' || (session.last_command || '').startsWith('do ')) {
+        return {
+          command: 'verify',
+          reason: 'A concept-stage do step just finished; verify that the recorded shortlist, constraints, and evidence are explicit before moving on'
+        };
+      }
+
+      if (preferences.review_mode === 'always') {
+        return {
+          command: 'review',
+          reason: 'Current preferences require review first before closing the concept-stage selection pass'
+        };
+      }
+
+      if (shouldSuggestArchReview(resolved)) {
+        return {
+          command: 'arch-review',
+          reason: 'Current concept-stage context shows solution preflight signals; run a system-level architecture review first'
+        };
+      }
+
+      if (shouldSuggestReview(resolved)) {
+        return {
+          command: 'review',
+          reason: 'A review signal is active; run a structural review before locking the concept-stage selection path'
+        };
+      }
+
+      if ((session.last_command || '').trim() === 'plan' || (session.last_command || '').startsWith('plan ')) {
+        return {
+          command: 'do',
+          reason: `Constraints are already structured; execute the smallest durable selection update in ${runtime.getProjectAssetRelativePath('req.yaml')} or supporting docs`
+        };
+      }
+
+      if (shouldSuggestPlan(resolved) || (session.last_command || '').trim() === 'scan' || (session.last_command || '').startsWith('scan ')) {
+        return {
+          command: 'plan',
+          reason: `Concept-stage scan is complete enough; turn ${runtime.getProjectAssetRelativePath('req.yaml')} into a ranked shortlist and explicit chip-selection criteria before executing updates`
+        };
+      }
+
+      return {
+        command: 'scan',
+        reason: `Project is still in definition and chip-selection mode; run scan to converge goals, constraints, interfaces, and candidate devices from ${runtime.getProjectAssetRelativePath('req.yaml')} first`
       };
     }
 
@@ -513,13 +563,6 @@ function createSessionFlowHelpers(deps) {
           preferences.plan_mode === 'always'
             ? 'Current preferences require a micro-plan before execution'
             : 'Current context has entered a complex-task signal; make a micro-plan before execution'
-      };
-    }
-
-    if (blankSelectionMode) {
-      return {
-        command: 'scan',
-        reason: `Project is still in definition and chip-selection mode; run scan to converge goals, constraints, interfaces, and candidate devices from ${runtime.getProjectAssetRelativePath('req.yaml')} first`
       };
     }
 
