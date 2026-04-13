@@ -18,6 +18,12 @@ const DEFAULT_HOSTS = {
     label: 'Claude Code',
     defaultHomeDirName: '.claude',
     configFileName: 'settings.json'
+  },
+  cursor: {
+    name: 'cursor',
+    label: 'Cursor',
+    defaultHomeDirName: '.cursor',
+    configFileName: 'settings.json'
   }
 };
 
@@ -146,6 +152,9 @@ function inferHostName(runtimeRoot, metadata) {
   const homeDirName = path.basename(path.resolve(runtimeRoot, '..'));
   if (homeDirName === '.claude') {
     return 'claude';
+  }
+  if (homeDirName === '.cursor') {
+    return 'cursor';
   }
   if (homeDirName === '.codex') {
     return 'codex';

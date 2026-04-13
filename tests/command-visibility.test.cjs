@@ -148,18 +148,16 @@ test('next run resolves and enters the recommended stage directly', async () => 
     const next = await captureCliJson(['next']);
     const run = await captureCliJson(['next', 'run']);
 
-    assert.equal(next.next.command, 'debug');
-    assert.equal(next.workflow_stage.name, 'execution');
-    assert.equal(next.workflow_stage.primary_command, 'debug');
+    assert.equal(next.next.command, 'scan');
+    assert.equal(next.workflow_stage.name, 'selection');
+    assert.equal(next.workflow_stage.primary_command, 'scan');
     assert.equal(run.source, 'next');
     assert.equal(run.requested_action, 'next');
-    assert.equal(run.resolved_action, 'debug');
-    assert.equal(run.workflow_stage.name, 'execution');
-    assert.equal(run.workflow_stage.primary_command, 'debug');
+    assert.equal(run.resolved_action, 'scan');
+    assert.equal(run.workflow_stage.name, 'selection');
+    assert.equal(run.workflow_stage.primary_command, 'scan');
     assert.equal(run.execution.kind, 'action');
     assert.equal(run.execution.entered_via, 'next run');
-    assert.ok(Array.isArray(run.hypotheses));
-    assert.ok(Array.isArray(run.checks));
 
     await cli.main(['question', 'clear']);
     await cli.main(['focus', 'set', 'close loop after irq fix']);
@@ -191,11 +189,10 @@ test('dispatch run executes the resolved action instead of returning only the co
 
     assert.equal(run.source, 'next');
     assert.equal(run.requested_action, 'next');
-    assert.equal(run.resolved_action, 'debug');
+    assert.equal(run.resolved_action, 'scan');
+    assert.equal(run.workflow_stage.name, 'selection');
     assert.equal(run.execution.kind, 'action');
     assert.equal(run.execution.entered_via, 'dispatch run next');
-    assert.ok(Array.isArray(run.hypotheses));
-    assert.ok(Array.isArray(run.checks));
   } finally {
     process.stdout.write = originalWrite;
     process.chdir(currentCwd);

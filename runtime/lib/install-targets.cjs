@@ -3,9 +3,9 @@
 function createInstallTargets(deps) {
   const { os, path, process } = deps;
   const managedRuntimePathPatterns = [
-    /~\/\.(?:codex|claude)\/emb-agent\//g,
-    /\$HOME\/\.(?:codex|claude)\/emb-agent\//g,
-    /\.\/\.(?:codex|claude)\/emb-agent\//g
+    /~\/\.(?:codex|claude|cursor)\/emb-agent\//g,
+    /\$HOME\/\.(?:codex|claude|cursor)\/emb-agent\//g,
+    /\.\/\.(?:codex|claude|cursor)\/emb-agent\//g
   ];
 
   const targetDefs = {
@@ -44,15 +44,21 @@ function createInstallTargets(deps) {
       managedRuntimePathPatterns: managedRuntimePathPatterns.slice()
     },
     cursor: {
-      order: 30,
+      order: 3,
       name: 'cursor',
       label: 'Cursor',
-      supported: false,
-      notSupportedReason: 'installer target adapter is not implemented yet',
+      supported: true,
       localDirName: '.cursor',
       defaultGlobalDirParts: ['.cursor'],
       globalEnvVar: 'CURSOR_CONFIG_DIR',
-      runtimeDirName: 'emb-agent'
+      runtimeDirName: 'emb-agent',
+      agentsDirName: 'agents',
+      configFileName: 'settings.json',
+      agentLabel: 'Cursor agents',
+      restartLabel: 'Cursor',
+      agentMode: 'markdown',
+      hookMode: 'cursor-settings',
+      managedRuntimePathPatterns: managedRuntimePathPatterns.slice()
     },
     windsurf: {
       order: 40,

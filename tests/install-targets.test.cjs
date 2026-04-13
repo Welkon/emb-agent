@@ -38,10 +38,15 @@ test('codex target resolves expected local/global directories', () => {
 test('install target registry keeps future runtimes declared but disabled', () => {
   const targets = createTargets();
   const claude = targets.resolveInstallTarget('claude');
+  const cursor = targets.resolveInstallTarget('cursor');
   const knownTargets = targets.listInstallTargets().map(item => item.name).sort();
 
   assert.deepEqual(knownTargets, ['augment', 'claude', 'codex', 'copilot', 'cursor', 'gemini', 'windsurf']);
   assert.equal(claude.supported, true);
   assert.equal(claude.configFileName, 'settings.json');
   assert.equal(claude.agentMode, 'markdown');
+  assert.equal(cursor.supported, true);
+  assert.equal(cursor.configFileName, 'settings.json');
+  assert.equal(cursor.agentMode, 'markdown');
+  assert.equal(cursor.hookMode, 'cursor-settings');
 });

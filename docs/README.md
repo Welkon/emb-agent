@@ -18,7 +18,7 @@ If the repository root README explains what emb-agent is, the docs directory sho
 - [Quick Start](./quick-start.md)
   The shortest path from install to either `init -> declare hardware -> next` or `init -> req truth -> next` when MCU is still unknown.
 - [Platforms](./platforms.md)
-  Runtime-specific install and path details for Codex and Claude Code.
+  Runtime-specific install and path details for Codex, Claude Code, and Cursor.
 - [Scenarios](./scenarios.md)
   Real embedded workflows such as known pin maps, brownfield bring-up, and datasheet-first work.
 
