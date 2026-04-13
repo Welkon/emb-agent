@@ -97,7 +97,8 @@ In slash-command hosts, the same surface can appear as `$emb-*`.
 
 - If you are just trying to move an embedded project forward, you can usually stop before this section.
 - Use `help advanced` or `help --all` to show the full command surface.
-- Use `commands list` to inspect the installed public command surface.
+- Use `commands list` to inspect the default public command surface.
+- Use `commands list --all` when you explicitly want the full installed command inventory.
 - Embedded workflow support surfaces:
   `skills list`
   `skills show <name>`
