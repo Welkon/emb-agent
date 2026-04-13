@@ -22,3 +22,11 @@ allowed-tools:
 - Run `bootstrap run [--confirm]` in runtime CLI to execute the first auto-runnable bootstrap stage.
 - If the next stage is the default remote `adapter bootstrap`, `bootstrap run` should stop and require an explicit source or manual network-enabled execution first.
 - Use `bootstrap run --confirm` when the current bootstrap stage is gated by write permissions or explicit confirmation.
+
+## Mental Model
+
+- `bootstrap` is the dependency-ordered view.
+- `next` is the default user-facing view.
+
+Use `bootstrap` when you need to know exactly why emb-agent is not moving forward yet.
+Use `next` when you just want the recommended stage without reading the whole dependency chain.

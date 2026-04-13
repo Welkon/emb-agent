@@ -106,7 +106,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
     assert.match(stdout, /Default adapter source: git@github\.com:Welkon\/emb-agent-adapters\.git/);
-    assert.match(stdout, /Startup hooks are installed automatically\./);
+    assert.match(stdout, /Startup automation is installed automatically\./);
     assert.match(stdout, /Sub-agent bridge: node \/tmp\/emb-subagent-bridge\.cjs --stdio-json \(timeout: 25000 ms\)/);
     assert.match(stdout, /Next steps:/);
     assert.match(stdout, /open a Codex session and run: init/);

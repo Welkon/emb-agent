@@ -2,7 +2,25 @@
 
 emb-agent works best when the user can quickly identify their current scenario and choose the lightest path that keeps truth aligned.
 
-## 1. Existing repository, hardware identity not fully locked
+## 1. Concept-stage project, MCU not chosen yet
+
+Use this when the product direction is known, but the chip decision is still open.
+
+Flow:
+
+```text
+init -> record goals/constraints in req.yaml -> next
+```
+
+Use:
+
+- `init` to create truth files
+- `req.yaml` to record product goals, interfaces, constraints, and acceptance
+- `next` to stay on the concept-stage path without inventing fake hardware identity
+
+Do not guess an MCU only to satisfy the tool.
+
+## 2. Existing repository, hardware identity not fully locked
 
 Use this when the codebase exists, but the MCU/package truth is still unclear or scattered.
 
@@ -18,7 +36,7 @@ Use:
 - `declare hardware` to lock MCU and package
 - `ingest doc` only if the answer still lives in manuals or PDFs
 
-## 2. Known pin map, no repeated questioning needed
+## 3. Known pin map, no repeated questioning needed
 
 Use this when an experienced engineer already knows the final signal mapping.
 
@@ -39,7 +57,7 @@ Example:
 
 This is the shortest path for real embedded work when the board truth is already known.
 
-## 3. Datasheet-first project truth extraction
+## 4. Datasheet-first project truth extraction
 
 Use this when the answer is not confidently known and must be derived from evidence.
 
@@ -56,7 +74,7 @@ Use:
 
 Prefer this path when pin mux, timing limits, or register boundaries still need evidence.
 
-## 4. Peripheral bring-up
+## 5. Peripheral bring-up
 
 Use this for timer / PWM / ADC / comparator / register-heavy work.
 
@@ -78,7 +96,7 @@ Typical pattern:
 - use `next` for routing
 - if the work becomes more structured, move to `scan`, `plan`, `debug`, or `verify`
 
-## 5. Long-running debug session
+## 6. Long-running debug session
 
 Use this when a bug investigation spans multiple sessions or context resets.
 
@@ -94,7 +112,7 @@ Useful when:
 - timing issues need several passes
 - work must be handed back to the same engineer later
 
-## 6. Multi-step implementation work
+## 7. Multi-step implementation work
 
 Use this when the work is no longer a one-shot patch.
 

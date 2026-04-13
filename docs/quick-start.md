@@ -37,28 +37,7 @@ Use emb-agent from inside the session.
 
 These are session commands. You do not need to run internal runtime files manually.
 
-## 3. Add project-local workflow extensions when needed
-
-If you need a product-specific workflow pack, keep it in the repository instead of pushing it into built-in runtime assets.
-
-Place these under the project before `init`:
-
-- `.emb-agent/registry/workflow.json`
-- `.emb-agent/packs/`
-- `.emb-agent/specs/`
-- `.emb-agent/templates/`
-
-Then initialize with the project-local pack name:
-
-```bash
-init --pack <project-local-pack>
-```
-
-Use this for vertical product logic such as pillbox adherence flow, SKU-specific factory branching, or customer-specific device/app/cloud behavior.
-
-See [Workflow Layering](./workflow-layering.md) for the layering rule and [Smart Pillbox Project Extension](../examples/project-extensions/smart-pillbox/README.md) for a concrete example.
-
-## 4. Initialize the project
+## 3. Initialize the project
 
 Inside the session:
 
@@ -73,7 +52,7 @@ This prepares:
 - `.emb-agent/req.yaml`
 - starter docs and checklists
 
-## 5. Lock hardware truth early
+## 4. Lock hardware truth early
 
 If you already know the target MCU and package:
 
@@ -91,7 +70,15 @@ declare hardware \
 
 This is the preferred path when the hardware facts are already known.
 
-## 6. Continue from the default command
+If the project is still at concept stage and the MCU is not chosen yet:
+
+- leave `.emb-agent/hw.yaml` unknown for now
+- record goals, constraints, interfaces, and acceptance in `.emb-agent/req.yaml`
+- then run `next`
+
+You do not need to invent a fake MCU just to continue.
+
+## 5. Continue from the default command
 
 ```bash
 next
@@ -127,6 +114,22 @@ If your project sets `quality_gates.required_executors` in `.emb-agent/project.j
 
 If your project sets `quality_gates.required_signoffs`, the engineer closes those board-level checks with `verify confirm <name>` or `verify reject <name>`.
 
+## 6. Pull truth out of documents only when needed
+
+If the answer still lives in a datasheet or manual:
+
+```bash
+ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware
+```
+
+Use `declare hardware` first when the answer is already known and only needs to be written down.
+
+If the board truth still lives in a schematic rather than a datasheet, use:
+
+```bash
+ingest schematic --file <path>
+```
+
 ## 7. Use optional support surfaces only when they add leverage
 
 Most embedded projects can ignore this section at first.
@@ -153,12 +156,25 @@ These are still support surfaces around the same embedded workflow.
 
 If you are looking for skill authoring, shell templates, hooks, or protocol blocks, those are support layers rather than the default embedded-project path. See [Product Boundaries](./product-boundaries.md).
 
-## 8. Pull truth out of documents only when needed
+## 8. Add project-local workflow extensions only when the product really needs them
 
-If the answer still lives in a datasheet or manual:
+Most projects should skip this section on day one.
+
+If you need a product-specific workflow pack, keep it in the repository instead of pushing it into built-in runtime assets.
+
+Place these under the project before `init`:
+
+- `.emb-agent/registry/workflow.json`
+- `.emb-agent/packs/`
+- `.emb-agent/specs/`
+- `.emb-agent/templates/`
+
+Then initialize with the project-local pack name:
 
 ```bash
-ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware
+init --pack <project-local-pack>
 ```
 
-Use `declare hardware` first when the answer is already known and only needs to be written down.
+Use this only for vertical product logic such as SKU-specific factory branching or customer-specific device/app/cloud behavior.
+
+See [Workflow Layering](./workflow-layering.md) for the layering rule and [Smart Pillbox Project Extension](../examples/project-extensions/smart-pillbox/README.md) for a concrete example.

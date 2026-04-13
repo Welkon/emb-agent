@@ -85,7 +85,7 @@ This installs:
 - project-scoped Codex agents under `./.codex/agents/`
 - project-scoped Codex-discoverable public emb skills under `./.codex/skills/`
 
-As of Codex CLI `v0.116.0` on `2026-03-24`, hooks are still experimental and must be enabled manually in `~/.codex/config.toml`:
+As of Codex CLI `v0.116.0` on `2026-03-24`, hooks are still experimental and must be enabled manually in `~/.codex/config.toml` unless your team config already enables them:
 
 ```toml
 [features]
@@ -127,6 +127,16 @@ The public command surface is intentionally kept small. In Codex it is mirrored 
 - Close: `review`, `verify`, `pause`, `resume`
 
 Everything else is treated as advanced runtime surface rather than default user-facing slash commands.
+
+If the MCU is already known, the shortest path is:
+
+`init -> declare hardware -> next`
+
+If the project is still at concept stage and the MCU is not chosen yet, the shortest path is:
+
+`init -> record goals/constraints in req.yaml -> next`
+
+You do not need to invent a placeholder MCU just to start using emb-agent.
 
 ## Product Model
 

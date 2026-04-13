@@ -135,7 +135,7 @@ function resolveHostConfigTrust(options) {
         explicit: true,
         source: 'host-config',
         signal: 'hooks-enabled',
-        summary: 'Codex startup hooks are enabled in host config; automatic bootstrap is available'
+        summary: 'Codex host startup automation is available; emb-agent can continue automatic bootstrap steps'
       };
     }
 
@@ -154,7 +154,7 @@ function resolveHostConfigTrust(options) {
         explicit: true,
         source: 'host-config',
         signal: 'hooks-enabled',
-        summary: 'Claude Code startup hooks are enabled in host config; automatic bootstrap is available'
+        summary: 'Claude Code startup automation is available; emb-agent can continue automatic bootstrap steps'
       };
     }
   } catch {
@@ -177,8 +177,8 @@ function resolveWorkspaceTrust(input, env, options) {
       source: 'env',
       signal: forced ? 'trusted' : 'untrusted',
       summary: forced
-        ? 'Startup hooks are explicitly enabled by environment override'
-        : 'Startup hooks are explicitly disabled by environment override'
+        ? 'Automatic startup is explicitly enabled by environment override'
+        : 'Automatic startup is explicitly disabled by environment override'
     };
   }
 
@@ -190,8 +190,8 @@ function resolveWorkspaceTrust(input, env, options) {
       source: 'payload',
       signal: payloadSignal ? 'trusted' : 'untrusted',
       summary: payloadSignal
-        ? 'Startup hook access is provided by the runtime hook payload'
-        : 'Startup hook access is withheld by the runtime hook payload'
+        ? 'The current host session provided automatic-startup access'
+        : 'The current host session withheld automatic-startup access'
     };
   }
 
@@ -205,7 +205,7 @@ function resolveWorkspaceTrust(input, env, options) {
     explicit: false,
     source: 'default',
     signal: 'untrusted-no-signal',
-    summary: 'No startup hook signal was provided; hook-gated features stay disabled by default'
+    summary: 'The current host session is not ready for automatic startup yet; automatic bootstrap steps stay paused by default'
   };
 }
 
