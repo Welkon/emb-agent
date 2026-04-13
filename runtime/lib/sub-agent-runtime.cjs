@@ -26,6 +26,11 @@ function createSubAgentRuntimeHelpers(deps) {
     return Array.isArray(value) ? value.map(item => String(item)) : [];
   }
 
+  function normalizeStringList(value, fallback) {
+    const items = toStringArray(value).map(item => item.trim()).filter(Boolean);
+    return items.length > 0 ? items : fallback.slice();
+  }
+
   function getDelegationJobsState() {
     const paths = typeof getProjectStatePaths === 'function'
       ? getProjectStatePaths()
@@ -177,6 +182,43 @@ function createSubAgentRuntimeHelpers(deps) {
     return requests;
   }
 
+  function normalizeWorkerContract(request) {
+    const call = isObject(request) ? request : {};
+    const source = isObject(call.worker_contract) ? call.worker_contract : {};
+    const toolScope = isObject(call.tool_scope) ? call.tool_scope : {};
+    const readOnlyOutputs = [
+      'stdout: compact worker_result JSON only',
+      'Optional files_considered array with repo-relative paths'
+    ];
+    const writeOutputs = [
+      'Only the exact repo files named by the synthesized specification in this prompt',
+      'stdout: compact worker_result JSON summarizing the change'
+    ];
+
+    return {
+      goal: String(source.goal || call.purpose || 'Execute the assigned worker task').trim(),
+      inputs: normalizeStringList(source.inputs, [
+        'Context Bundle entries explicitly listed in this prompt',
+        'Agent instructions loaded from agents show <agent>'
+      ]),
+      outputs: normalizeStringList(source.outputs, toolScope.allows_write === true ? writeOutputs : readOnlyOutputs),
+      forbidden_zones: normalizeStringList(source.forbidden_zones, [
+        'Any file or side effect outside the declared Outputs',
+        'Recursive delegation, hidden sub-teams, or orchestration-state mutations',
+        toolScope.allows_write === true
+          ? 'Any repository mutation outside the declared Outputs'
+          : 'Any repository file write or mutation'
+      ]),
+      acceptance_criteria: normalizeStringList(source.acceptance_criteria, [
+        'Return a compact JSON object matching the Output Contract in this prompt',
+        'Keep status within ok | failed | blocked and keep findings as an array',
+        toolScope.allows_write === true
+          ? 'If repository files are modified, keep every changed path inside Outputs and report them in files_considered'
+          : 'Do not modify repository files; Outputs must remain stdout-only'
+      ])
+    };
+  }
+
   function buildWorkerPrompt(context, request, instructions) {
     const resolved = resolveSession();
     const call = isObject(request) ? request : {};
@@ -185,6 +227,7 @@ function createSubAgentRuntimeHelpers(deps) {
     const synthesis = isObject(contract.synthesis_contract) ? contract.synthesis_contract : {};
     const contextBundle = isObject(call.context_bundle) ? call.context_bundle : {};
     const toolScope = isObject(call.tool_scope) ? call.tool_scope : {};
+    const workerContract = normalizeWorkerContract(call);
     const lines = [
       `# emb-agent worker launch`,
       '',
@@ -202,6 +245,22 @@ function createSubAgentRuntimeHelpers(deps) {
       '',
       '## Ownership',
       call.ownership || '(none)',
+      '',
+      '## Worker Contract',
+      '### Goal',
+      workerContract.goal || '(none)',
+      '',
+      '### Inputs',
+      ...workerContract.inputs.map(item => `- ${item}`),
+      '',
+      '### Outputs',
+      ...workerContract.outputs.map(item => `- ${item}`),
+      '',
+      '### Forbidden Zones',
+      ...workerContract.forbidden_zones.map(item => `- ${item}`),
+      '',
+      '### Acceptance Criteria',
+      ...workerContract.acceptance_criteria.map(item => `- ${item}`),
       '',
       '## Agent Instructions',
       instructions && instructions.content ? instructions.content.trim() : '(missing)',
@@ -238,6 +297,7 @@ function createSubAgentRuntimeHelpers(deps) {
       '',
       '## Critical Rules',
       '- Work from this prompt only; do not assume hidden prior conversation.',
+      '- Do not change the worker contract. If it is wrong, fail fast instead of rewriting it.',
       '- Do not spawn or delegate further work.',
       '- Keep conclusions explicit and separate facts from inference.',
       '- If this is verification or fresh-self-contained work, preserve independence from implementation assumptions.'
@@ -268,7 +328,8 @@ function createSubAgentRuntimeHelpers(deps) {
         purpose: call.purpose || '',
         ownership: call.ownership || '',
         expected_output: toStringArray(call.expected_output),
-        tool_scope: isObject(call.tool_scope) ? call.tool_scope : {}
+        tool_scope: isObject(call.tool_scope) ? call.tool_scope : {},
+        worker_contract: normalizeWorkerContract(call)
       },
       instructions: {
         name: instructions.name || call.agent || '',

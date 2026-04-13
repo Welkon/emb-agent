@@ -114,6 +114,7 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.ok(report.checks.some(item => item.key === 'subagent_bridge' && item.status === 'pass'));
     assert.equal(report.subagent_bridge.mode, 'mock');
     assert.ok(report.checks.some(item => item.key === 'hardware_identity' && item.status === 'warn'));
+    assert.ok(report.checks.some(item => item.key === 'szlcsc_integration' && item.status === 'pass'));
     assert.ok(Array.isArray(report.next_commands));
     assert.ok(report.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
     assert.equal(report.quickstart.stage, 'fill-hardware-identity');
@@ -132,6 +133,78 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.ok(report.checks.some(item => item.key === 'req_truth' && item.status === 'fail'));
     assert.ok(report.recommendations.some(item => item.includes('req.yaml')));
   } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
+    if (originalBridgeCmd === undefined) {
+      delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    } else {
+      process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('health warns when szlcsc integration is enabled without credentials', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-szlcsc-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  const previousSzlcscKey = process.env.SZLCSC_API_KEY;
+  const previousSzlcscSecret = process.env.SZLCSC_API_SECRET;
+  const previousLcscKey = process.env.LCSC_API_KEY;
+  const previousLcscSecret = process.env.LCSC_API_SECRET;
+  let stdout = '';
+
+  try {
+    delete process.env.SZLCSC_API_KEY;
+    delete process.env.SZLCSC_API_SECRET;
+    delete process.env.LCSC_API_KEY;
+    delete process.env.LCSC_API_SECRET;
+    process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = 'mock://ok';
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+    const projectConfigPath = path.join(tempProject, '.emb-agent', 'project.json');
+    const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
+    projectConfig.integrations.szlcsc.enabled = true;
+    fs.writeFileSync(projectConfigPath, JSON.stringify(projectConfig, null, 2) + '\n', 'utf8');
+
+    stdout = '';
+    cli.main(['health']);
+    const report = JSON.parse(stdout);
+
+    assert.ok(report.checks.some(item => item.key === 'szlcsc_integration' && item.status === 'warn'));
+  } finally {
+    if (previousSzlcscKey === undefined) {
+      delete process.env.SZLCSC_API_KEY;
+    } else {
+      process.env.SZLCSC_API_KEY = previousSzlcscKey;
+    }
+    if (previousSzlcscSecret === undefined) {
+      delete process.env.SZLCSC_API_SECRET;
+    } else {
+      process.env.SZLCSC_API_SECRET = previousSzlcscSecret;
+    }
+    if (previousLcscKey === undefined) {
+      delete process.env.LCSC_API_KEY;
+    } else {
+      process.env.LCSC_API_KEY = previousLcscKey;
+    }
+    if (previousLcscSecret === undefined) {
+      delete process.env.LCSC_API_SECRET;
+    } else {
+      process.env.LCSC_API_SECRET = previousLcscSecret;
+    }
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
     } else {

@@ -54,6 +54,8 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
 
     const hardwareFacts = fs.readFileSync(path.join(tempProject, ingested.artifacts.hardware_facts), 'utf8');
     const summaryJson = JSON.parse(fs.readFileSync(path.join(tempProject, ingested.artifacts.summary), 'utf8'));
+    const nextContext = cli.buildNextContext();
+    const scanContext = cli.buildActionOutput('scan');
 
     assert.equal(ingested.status, 'ok');
     assert.equal(ingested.domain, 'schematic');
@@ -69,6 +71,13 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     assert.match(hardwareFacts, /Component roles, controller identity, and signal direction should be judged later by the agent from parsed.json/);
     assert.equal(summaryJson.status, 'ok');
     assert.equal(summaryJson.component_refs.length, 0);
+    assert.equal(summaryJson.agent_analysis.required, true);
+    assert.equal(summaryJson.agent_analysis.recommended_agent, 'emb-hw-scout');
+    assert.ok(summaryJson.agent_analysis.inputs.includes(ingested.artifacts.parsed));
+    assert.equal(nextContext.next.schematic_analysis.recommended_agent, 'emb-hw-scout');
+    assert.ok(nextContext.next_actions.some(item => item.includes('Analyze the latest schematic with emb-hw-scout first')));
+    assert.ok(nextContext.next_actions.some(item => item.includes('Confirm schematic-derived fields before truth edits:')));
+    assert.ok(scanContext.next_reads.some(item => item.includes('Schematic agent handoff:')));
     assert.equal(ingested.session.last_files[0], ingested.artifacts.parsed);
   } finally {
     process.chdir(currentCwd);
@@ -116,6 +125,9 @@ test('ingest schematic parses raw SchDoc through the internal parser and keeps i
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.summary)), true);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.source)), true);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.hardware_facts)), true);
+    assert.equal(ingested.agent_analysis.required, true);
+    assert.equal(ingested.agent_analysis.recommended_agent, 'emb-hw-scout');
+    assert.ok(ingested.agent_analysis.confirmation_targets.includes('mcu.model'));
     assert.equal(ingested.session.last_files[0], ingested.artifacts.parsed);
     assert.match(hardwareFacts, /docs\/board\.SchDoc/);
     assert.match(hardwareFacts, /Normalized \d+ components and \d+ nets/);
@@ -163,6 +175,8 @@ test('ingest schematic keeps explicit controller marking in parsed data without 
     assert.ok(ingested.summary.components > 0);
     assert.equal(ingested.summary.signal_candidates, 0);
     assert.ok(parsedJson.components.some(item => item.designator === 'U1' && /PMS150G/i.test(item.comment || '')));
+    assert.equal(ingested.agent_analysis.status, 'agent-review-required');
+    assert.ok(Array.isArray(ingested.agent_analysis.candidate_components));
     assert.equal(ingested.session.last_files[0], ingested.artifacts.parsed);
     assert.match(hardwareFacts, /vendor: ""/);
     assert.match(hardwareFacts, /model: ""/);

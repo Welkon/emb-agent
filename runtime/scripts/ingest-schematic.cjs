@@ -428,6 +428,68 @@ function buildHardwareDraft(sourcePath, parsed) {
   };
 }
 
+function countNamedNets(parsed) {
+  return makeArray(parsed && parsed.nets)
+    .map(item => ensureString(item && item.name))
+    .filter(Boolean).length;
+}
+
+function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts) {
+  const components = makeArray(parsed && parsed.components);
+  const candidateComponents = components
+    .filter(component =>
+      ensureString(component && component.designator) &&
+      (
+        ensureString(component && component.value) ||
+        ensureString(component && component.comment) ||
+        ensureString(component && component.footprint) ||
+        ensureString(component && component.package) ||
+        ensureString(component && component.datasheet)
+      )
+    )
+    .slice(0, 8)
+    .map(component => ({
+      designator: ensureString(component.designator),
+      value: ensureString(component.value),
+      comment: ensureString(component.comment),
+      package: ensureString(component.package || component.footprint),
+      datasheet: ensureString(component.datasheet)
+    }));
+
+  return {
+    required: true,
+    status: 'agent-review-required',
+    recommended_agent: 'emb-hw-scout',
+    summary: 'Let emb-hw-scout inspect the normalized schematic before writing controller identity, signal roles, or peripheral truth into hw.yaml.',
+    inputs: [
+      artifacts.parsed,
+      artifacts.hardware_facts,
+      sourcePath
+    ].filter(Boolean),
+    evidence: {
+      components: components.length,
+      named_nets: countNamedNets(parsed),
+      components_with_package: components.filter(item => ensureString(item.package || item.footprint)).length,
+      components_with_datasheet: components.filter(item => ensureString(item.datasheet)).length
+    },
+    candidate_components: candidateComponents,
+    confirmation_targets: [
+      'mcu.vendor',
+      'mcu.model',
+      'mcu.package',
+      'signals[]',
+      'peripherals[]',
+      'docs.datasheet[]'
+    ],
+    expected_output: [
+      'Separate explicit schematic facts from engineering inference.',
+      'Propose confirmation candidates instead of writing truth directly.',
+      'List what still needs datasheet, BOM, board photo, or manual confirmation.'
+    ],
+    cli_hint: `Ask emb-hw-scout to inspect ${artifacts.parsed} and ${artifacts.hardware_facts} first.`
+  };
+}
+
 function getArtifactPaths(projectRoot, cacheDir) {
   return {
     parsedJson: path.join(cacheDir, 'parsed.json'),
@@ -521,12 +583,14 @@ function ingestSchematic(argv, options) {
       hardware_facts_json: path.relative(projectRoot, artifactPaths.hardwareJson).replace(/\\/g, '/'),
       source: path.relative(projectRoot, artifactPaths.sourceJson).replace(/\\/g, '/')
     },
+    agent_analysis: null,
     last_files: [
       path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),
       path.relative(projectRoot, artifactPaths.hardwareYaml).replace(/\\/g, '/'),
       path.relative(projectRoot, artifactPaths.summaryJson).replace(/\\/g, '/')
     ]
   };
+  summary.agent_analysis = buildAgentAnalysisHandoff(relativePath, parsed, summary.artifacts);
 
   runtime.writeJson(artifactPaths.sourceJson, {
     source_path: relativePath,

@@ -22,6 +22,37 @@ function createActionContractHelpers(deps) {
     getActiveTask
   } = deps;
 
+  function normalizeStringArray(value, fallback) {
+    const items = Array.isArray(value)
+      ? value.map(item => String(item || '').trim()).filter(Boolean)
+      : [];
+    return items.length > 0 ? items : fallback.slice();
+  }
+
+  function buildWorkerContract(call, defaults = {}) {
+    return {
+      goal: String(defaults.goal || call.purpose || 'Execute the assigned worker task').trim(),
+      inputs: normalizeStringArray(defaults.inputs, [
+        'Context Bundle entries explicitly listed in this prompt',
+        'Agent instructions loaded from agents show <agent>'
+      ]),
+      outputs: normalizeStringArray(defaults.outputs, [
+        'stdout: compact worker_result JSON only',
+        'Optional files_considered array with repo-relative paths'
+      ]),
+      forbidden_zones: normalizeStringArray(defaults.forbidden_zones, [
+        'Any file or side effect outside the declared Outputs',
+        'Recursive delegation, hidden sub-teams, or orchestration-state mutations',
+        'Any repository file write or mutation'
+      ]),
+      acceptance_criteria: normalizeStringArray(defaults.acceptance_criteria, [
+        'Return a compact JSON object matching the Output Contract in this prompt',
+        'Keep status within ok | failed | blocked and keep findings as an array',
+        'Do not modify repository files; Outputs must remain stdout-only'
+      ])
+    };
+  }
+
   function buildInjectedSpecs(resolved, task, handoff, limit = 5) {
     const snapshot = workflowRegistry.buildInjectedSpecSnapshot(
       ROOT,
@@ -231,6 +262,31 @@ function createActionContractHelpers(deps) {
               'Provide three options, an evaluation matrix, and a pre-mortem',
               'Separate confirmed facts, engineering inference, and experience-based warnings'
             ],
+            worker_contract: buildWorkerContract({
+              purpose: 'Execute system-level architecture preflight, option comparison, and pre-mortem',
+              role: 'primary'
+            }, {
+              goal: 'Produce the primary architecture review conclusion from a fresh context without changing the contract scope.',
+              inputs: [
+                'Context Bundle entries explicitly listed in this prompt',
+                'Agent instructions loaded from agents show emb-arch-reviewer',
+                '.emb-agent/hw.yaml, .emb-agent/req.yaml, and any files explicitly named in the context bundle'
+              ],
+              outputs: [
+                'stdout: compact worker_result JSON only',
+                'Optional files_considered array with repo-relative paths'
+              ],
+              forbidden_zones: [
+                'Any repository file write or mutation',
+                'Recursive delegation, hidden sub-teams, or orchestration-state mutations',
+                'Changing the worker contract or replacing the main-thread decision'
+              ],
+              acceptance_criteria: [
+                'Return a compact JSON object matching the Output Contract in this prompt',
+                'Keep status within ok | failed | blocked and keep findings as an array',
+                'Do not modify repository files; Outputs must remain stdout-only'
+              ]
+            }),
             context_bundle: {
               trigger_patterns: context.trigger_patterns || [],
               checkpoints: context.checkpoints || [],
@@ -273,6 +329,31 @@ function createActionContractHelpers(deps) {
               ]
             },
             expected_output: ['Supplemental evidence, constraints, or risks awaiting verification'],
+            worker_contract: buildWorkerContract({
+              purpose: 'Add structural, hardware, or release-side evidence for the architecture preflight',
+              role: 'supporting'
+            }, {
+              goal: 'Add side evidence for architecture review without replacing the primary review conclusion.',
+              inputs: [
+                'Context Bundle entries explicitly listed in this prompt',
+                `Agent instructions loaded from agents show ${agent}`,
+                '.emb-agent/hw.yaml, .emb-agent/req.yaml, and any files explicitly named in the context bundle'
+              ],
+              outputs: [
+                'stdout: compact worker_result JSON only',
+                'Optional files_considered array with repo-relative paths'
+              ],
+              forbidden_zones: [
+                'Any repository file write or mutation',
+                'Recursive delegation, hidden sub-teams, or orchestration-state mutations',
+                'Overriding the primary architecture review conclusion'
+              ],
+              acceptance_criteria: [
+                'Return a compact JSON object matching the Output Contract in this prompt',
+                'Keep status within ok | failed | blocked and keep findings as an array',
+                'Do not modify repository files; Outputs must remain stdout-only'
+              ]
+            }),
             context_bundle: {
               review_axes: context.review_axes || [],
               note_targets: context.note_targets || []

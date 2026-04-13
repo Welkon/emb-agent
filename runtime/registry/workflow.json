@@ -38,6 +38,12 @@
       "default_output": "docs/HARDWARE-LOGIC.md"
     },
     {
+      "name": "implementation-style",
+      "source": "templates/implementation-style.md.tpl",
+      "description": "Generate the embedded implementation style document.",
+      "default_output": "docs/IMPLEMENTATION-STYLE.md"
+    },
+    {
       "name": "hw-truth",
       "source": "templates/hw.yaml.tpl",
       "description": "Generate the hardware truth file.",
@@ -183,6 +189,28 @@
       "priority": 90,
       "apply_when": {
         "requires_active_task": true
+      }
+    },
+    {
+      "name": "implementation-style",
+      "title": "Embedded Implementation Style",
+      "path": "specs/implementation-style.md",
+      "summary": "Register, formula, and magic-number comments should stay tied to manual-backed sources.",
+      "auto_inject": true,
+      "priority": 58,
+      "apply_when": {
+        "always": true
+      }
+    },
+    {
+      "name": "clean-worker-execution",
+      "title": "Clean Worker Execution",
+      "path": "specs/clean-worker-execution.md",
+      "summary": "Independent sub-tasks should run through immutable worker contracts, fresh context, and two-stage review discipline.",
+      "auto_inject": true,
+      "priority": 56,
+      "apply_when": {
+        "always": true
       }
     },
     {

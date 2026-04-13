@@ -481,6 +481,50 @@ test('project config accepts mineru auto mode settings', () => {
   assert.equal(projectConfig.integrations.mineru.auto_api_file_size_kb, 2048);
 });
 
+test('project config accepts szlcsc integration settings', () => {
+  const config = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-project-szlcsc-'));
+  const projectConfigDir = path.join(tempProject, '.emb-agent');
+  fs.mkdirSync(projectConfigDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(projectConfigDir, 'project.json'),
+    JSON.stringify(
+      {
+        integrations: {
+          szlcsc: {
+            enabled: true,
+            base_url: 'https://ips.lcsc.com',
+            api_key_env: 'SZLCSC_KEY',
+            api_secret_env: 'SZLCSC_SECRET',
+            match_type: 'exact',
+            page_size: 8,
+            max_matches_per_component: 3,
+            only_available: true,
+            currency: 'USD',
+            timeout_ms: 9000
+          }
+        }
+      },
+      null,
+      2
+    ) + '\n',
+    'utf8'
+  );
+
+  const projectConfig = runtime.loadProjectConfig(tempProject, config);
+
+  assert.equal(projectConfig.integrations.szlcsc.enabled, true);
+  assert.equal(projectConfig.integrations.szlcsc.base_url, 'https://ips.lcsc.com');
+  assert.equal(projectConfig.integrations.szlcsc.api_key_env, 'SZLCSC_KEY');
+  assert.equal(projectConfig.integrations.szlcsc.api_secret_env, 'SZLCSC_SECRET');
+  assert.equal(projectConfig.integrations.szlcsc.match_type, 'exact');
+  assert.equal(projectConfig.integrations.szlcsc.page_size, 8);
+  assert.equal(projectConfig.integrations.szlcsc.max_matches_per_component, 3);
+  assert.equal(projectConfig.integrations.szlcsc.only_available, true);
+  assert.equal(projectConfig.integrations.szlcsc.currency, 'USD');
+  assert.equal(projectConfig.integrations.szlcsc.timeout_ms, 9000);
+});
+
 test('validators reject malformed profile/pack data', () => {
   assert.throws(
     () => runtime.validateProfile('broken', { name: 'broken', runtime_model: 'x' }),

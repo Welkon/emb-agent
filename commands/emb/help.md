@@ -76,8 +76,17 @@ In slash-command hosts, the same surface can appear as `$emb-*`.
 - If the engineer already knows the chip, package, pin map, or peripheral usage, prefer `declare hardware` first.
 - If the truth still lives in a PDF or manual, use:
   `ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
+- If the chip is known but the PDF is still missing, use:
+  `doc lookup --chip <name> --vendor <name>`
+- If a schematic already carries datasheet links, use:
+  `doc lookup --file <schematic> --ref <designator>`
 - If the board truth still lives in an Altium schematic or export, use:
   `ingest schematic --file <path>`
+- After `ingest schematic`, let the agent analyze the normalized `parsed.json` / hardware draft first; do not copy inferred controller or signals straight into `hw.yaml`.
+- If you want normalized supplier-search inputs from a schematic, use:
+  `component lookup --file <schematic>`
+- If you want explicit supplier candidates from 立创商城, use:
+  `component lookup --file <schematic> --provider szlcsc`
 - If the response already includes `apply_ready`, run it first and then return to `next`.
 
 ## Advanced Help

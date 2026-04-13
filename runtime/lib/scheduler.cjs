@@ -69,6 +69,53 @@ function getRecentSchematicParsedFiles(resolved) {
   return lastFiles.filter(file => /(?:^|\/)\.emb-agent\/cache\/schematics\/[^/]+\/parsed\.json$/i.test(String(file || '')));
 }
 
+function readJsonIfExists(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    return runtime.readJson(filePath);
+  } catch {
+    return null;
+  }
+}
+
+function getRecentSchematicAnalyses(resolved) {
+  const projectRoot = resolved && resolved.session ? resolved.session.project_root : '';
+  if (!projectRoot) {
+    return [];
+  }
+
+  return getRecentSchematicParsedFiles(resolved)
+    .map(parsedFile => {
+      const normalized = String(parsedFile || '');
+      const summaryFile = normalized.replace(/parsed\.json$/i, 'summary.json');
+      const summary = readJsonIfExists(path.join(projectRoot, summaryFile));
+      const agentAnalysis =
+        summary && summary.agent_analysis && typeof summary.agent_analysis === 'object'
+          ? summary.agent_analysis
+          : null;
+      if (!agentAnalysis) {
+        return null;
+      }
+
+      return {
+        summary_file: summaryFile,
+        parsed_file: normalized,
+        source_path: summary.source_path || '',
+        recommended_agent: agentAnalysis.recommended_agent || '',
+        status: agentAnalysis.status || '',
+        summary: agentAnalysis.summary || '',
+        confirmation_targets: Array.isArray(agentAnalysis.confirmation_targets)
+          ? agentAnalysis.confirmation_targets
+          : [],
+        cli_hint: agentAnalysis.cli_hint || ''
+      };
+    })
+    .filter(Boolean);
+}
+
 function ensureResolved(resolved) {
   if (!resolved || typeof resolved !== 'object') {
     throw new Error('Resolved session is required');
@@ -569,37 +616,200 @@ function buildAgentContextBundle(action, resolved) {
   };
 }
 
+function extractRepoPaths(values) {
+  const queue = Array.isArray(values) ? values : [values];
+  const matches = [];
+  const seen = new Set();
+  const pattern = /(?:^|[\s"'`(])((?:\.{0,2}\/)?(?:[A-Za-z0-9._-]+\/)+[A-Za-z0-9._-]+(?:\.[A-Za-z0-9._-]+)?)/g;
+
+  queue.forEach(item => {
+    const source = String(item || '');
+    let match = pattern.exec(source);
+    while (match) {
+      const candidate = String(match[1] || '')
+        .replace(/^\.\/+/, '')
+        .replace(/[),.:;]+$/g, '')
+        .trim();
+      if (
+        candidate &&
+        candidate.includes('/') &&
+        !candidate.startsWith('http://') &&
+        !candidate.startsWith('https://') &&
+        !seen.has(candidate)
+      ) {
+        seen.add(candidate);
+        matches.push(candidate);
+      }
+      match = pattern.exec(source);
+    }
+    pattern.lastIndex = 0;
+  });
+
+  return matches;
+}
+
+function buildWorkerInputs(call) {
+  const contextBundle =
+    call && call.context_bundle && typeof call.context_bundle === 'object'
+      ? call.context_bundle
+      : {};
+  const repoPaths = runtime.unique([
+    ...extractRepoPaths(contextBundle.truth_sources),
+    ...extractRepoPaths(contextBundle.last_files),
+    ...extractRepoPaths(contextBundle.safety_checks),
+    ...extractRepoPaths(contextBundle.suggested_steps)
+  ]);
+
+  if (repoPaths.length > 0) {
+    return repoPaths.slice(0, 6);
+  }
+
+  return [
+    'Context Bundle entries explicitly listed in this prompt',
+    'Agent instructions loaded from agents show <agent>'
+  ];
+}
+
+function buildWorkerOutputs(call) {
+  const toolScope =
+    call && call.tool_scope && typeof call.tool_scope === 'object'
+      ? call.tool_scope
+      : {};
+  const allowsWrite = toolScope.allows_write === true;
+  const repoPaths = runtime.unique([
+    ...extractRepoPaths(call && call.context_bundle ? call.context_bundle.last_files : []),
+    ...extractRepoPaths(call && call.context_bundle ? call.context_bundle.truth_sources : [])
+  ]).slice(0, 4);
+
+  if (!allowsWrite) {
+    return [
+      'stdout: compact worker_result JSON only',
+      'Optional files_considered array with repo-relative paths'
+    ];
+  }
+
+  if (repoPaths.length > 0) {
+    return repoPaths;
+  }
+
+  return [
+    'Only the exact repo files named by the synthesized specification in this prompt',
+    'stdout: compact worker_result JSON summarizing the change'
+  ];
+}
+
+function buildWorkerGoal(action, call) {
+  const purpose = String(call && call.purpose ? call.purpose : '').trim();
+  const ownership = String(call && call.ownership ? call.ownership : '').trim();
+  const base = purpose || `Execute the assigned ${action} worker task`;
+
+  return ownership ? `${base}. ${ownership}` : base;
+}
+
+function buildWorkerForbiddenZones(call) {
+  const toolScope =
+    call && call.tool_scope && typeof call.tool_scope === 'object'
+      ? call.tool_scope
+      : {};
+  const outputs = buildWorkerOutputs(call);
+  const forbidden = [
+    'Any file or side effect outside the declared Outputs',
+    'Recursive delegation, hidden sub-teams, or orchestration-state mutations',
+    '.git/, dependency manifests, and generated caches unless explicitly listed in Outputs'
+  ];
+
+  if (toolScope.allows_write !== true) {
+    forbidden.push('Any repository file write or mutation');
+  }
+
+  if (Array.isArray(outputs) && outputs.some(item => String(item).includes('stdout:'))) {
+    forbidden.push('Treating prompt examples or context snippets as writable project files');
+  }
+
+  return runtime.unique(forbidden);
+}
+
+function buildWorkerAcceptance(call) {
+  const toolScope =
+    call && call.tool_scope && typeof call.tool_scope === 'object'
+      ? call.tool_scope
+      : {};
+  const outputs = buildWorkerOutputs(call);
+  const checks = [
+    'Return a compact JSON object matching the Output Contract in this prompt',
+    'Keep status within ok | failed | blocked and keep findings as an array'
+  ];
+
+  if (toolScope.allows_write === true) {
+    checks.push('If repository files are modified, keep every changed path inside Outputs and report them in files_considered');
+  } else {
+    checks.push('Do not modify repository files; Outputs must remain stdout-only');
+  }
+
+  if (outputs.length > 0) {
+    checks.push(`Respect the declared Outputs boundary: ${outputs.join(', ')}`);
+  }
+
+  return runtime.unique(checks);
+}
+
+function buildWorkerContract(action, call) {
+  return {
+    goal: buildWorkerGoal(action, call),
+    inputs: buildWorkerInputs(call),
+    outputs: buildWorkerOutputs(call),
+    forbidden_zones: buildWorkerForbiddenZones(call),
+    acceptance_criteria: buildWorkerAcceptance(call)
+  };
+}
+
 function buildDispatchContract(action, resolved, primaryAgent, supportingAgents, mode, recommended) {
   const context = buildContext(resolved);
   const contextBundle = buildAgentContextBundle(action, resolved);
   const delegationPattern = resolveDelegationPattern(resolved);
   const primary = primaryAgent
     ? {
-        ...buildAgentCall(
-          action,
-          primaryAgent,
-          delegationPattern === 'swarm' ? 'peer-lead' : 'primary',
-          context,
-          delegationPattern
-        ),
-        expected_output: buildAgentOutputExpectation(action, primaryAgent, context),
-        context_bundle: contextBundle,
-        start_when: recommended ? 'Start immediately' : 'Start only when the current thread does not want to inline'
+        ...(() => {
+          const baseCall = {
+            ...buildAgentCall(
+              action,
+              primaryAgent,
+              delegationPattern === 'swarm' ? 'peer-lead' : 'primary',
+              context,
+              delegationPattern
+            ),
+            expected_output: buildAgentOutputExpectation(action, primaryAgent, context),
+            context_bundle: contextBundle,
+            start_when: recommended ? 'Start immediately' : 'Start only when the current thread does not want to inline'
+          };
+          return {
+            ...baseCall,
+            worker_contract: buildWorkerContract(action, baseCall)
+          };
+        })()
       }
     : null;
   const supporting = supportingAgents.map(agentName => ({
-    ...buildAgentCall(
-      action,
-      agentName,
-      delegationPattern === 'swarm' ? 'peer' : 'supporting',
-      context,
-      delegationPattern
-    ),
-    expected_output: buildAgentOutputExpectation(action, agentName, context),
-    context_bundle: contextBundle,
-    start_when: mode === 'parallel-recommended' || mode === 'primary-plus-supporting'
-      ? 'Can start in parallel with the main thread'
-      : 'Start only when the main thread finds a side issue'
+    ...(() => {
+      const baseCall = {
+        ...buildAgentCall(
+          action,
+          agentName,
+          delegationPattern === 'swarm' ? 'peer' : 'supporting',
+          context,
+          delegationPattern
+        ),
+        expected_output: buildAgentOutputExpectation(action, agentName, context),
+        context_bundle: contextBundle,
+        start_when: mode === 'parallel-recommended' || mode === 'primary-plus-supporting'
+          ? 'Can start in parallel with the main thread'
+          : 'Start only when the main thread finds a side issue'
+      };
+      return {
+        ...baseCall,
+        worker_contract: buildWorkerContract(action, baseCall)
+      };
+    })()
   }));
   const coordinatorPhases = [
     {
@@ -1113,10 +1323,14 @@ function buildNextReads(resolved) {
   const hintedReads = buildPreferredReadKeys(resolved).map(key => READ_HINTS[key] || key);
   const truthFiles = getProjectTruthFiles(resolved).map(file => `Project truth layer: ${file}`);
   const schematicReads = getRecentSchematicParsedFiles(resolved).map(file => `Normalized schematic data: ${file}`);
+  const schematicAnalysisReads = getRecentSchematicAnalyses(resolved).map(item =>
+    `Schematic agent handoff: ${item.summary_file}${item.recommended_agent ? ` -> ${item.recommended_agent}` : ''}`
+  );
 
   return runtime.unique([
     ...truthFiles,
     ...schematicReads,
+    ...schematicAnalysisReads,
     context.isBlankSelectionMode
       ? `Selection input first: ${runtime.getProjectAssetRelativePath('req.yaml')}`
       : '',

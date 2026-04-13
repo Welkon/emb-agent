@@ -34,6 +34,7 @@ const permissionGateHelpers = require(path.join(ROOT, 'lib', 'permission-gates.c
 const noteReportHelpers = require(path.join(ROOT, 'lib', 'note-reports.cjs'));
 const dispatchHelpers = require(path.join(ROOT, 'lib', 'dispatch-orchestrator.cjs'));
 const sessionFlowHelpers = require(path.join(ROOT, 'lib', 'session-flow.cjs'));
+const referenceLookupHelpers = require(path.join(ROOT, 'lib', 'reference-lookup.cjs'));
 const projectConfigHelpers = require(path.join(ROOT, 'lib', 'project-config.cjs'));
 const stateCommandHelpers = require(path.join(ROOT, 'lib', 'state-commands.cjs'));
 const actionContractHelpers = require(path.join(ROOT, 'lib', 'action-contracts.cjs'));
@@ -832,6 +833,25 @@ const {
     ingestSchematicCli
 });
 
+const referenceLookupCli = {
+  lookupDocs(projectRoot, args) {
+    return referenceLookupHelpers.lookupDocs(projectRoot, args, {
+      runtime,
+      ingestSchematicCli
+    });
+  },
+  lookupComponents(projectRoot, args) {
+    return referenceLookupHelpers.lookupComponents(projectRoot, args, {
+      runtime,
+      runtimeConfig: RUNTIME_CONFIG,
+      ingestSchematicCli
+    });
+  },
+  fetchDocument(projectRoot, args) {
+    return referenceLookupHelpers.fetchDocument(projectRoot, args);
+  }
+};
+
 function requireRestText(rest, label) {
   const value = rest.join(' ').trim();
   if (!value) {
@@ -922,7 +942,8 @@ const {
     rejectVerifySignoff,
     saveVerifyReport,
     addNoteEntry,
-  ingestDocCli
+    ingestDocCli,
+    referenceLookupCli
 });
 
 const {
