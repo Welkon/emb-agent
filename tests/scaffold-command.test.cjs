@@ -123,3 +123,40 @@ test('scaffold install shells replaces placeholders in nested file paths', async
     process.chdir(currentCwd);
   }
 });
+
+test('scaffold install hooks provides SessionStart reinjection script and claude matcher config', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-scaffold-hooks-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+
+    const installed = await captureCliJson([
+      'scaffold',
+      'install',
+      'hooks',
+      'NAME=irq-review',
+      'SUMMARY=Review IRQ closure rules'
+    ]);
+
+    assert.equal(installed.installed, true);
+    assert.ok(installed.created.includes('hooks/session-start'));
+    assert.ok(installed.created.includes('hooks/hooks.json'));
+
+    const hookScript = fs.readFileSync(path.join(tempProject, 'hooks', 'session-start'), 'utf8');
+    assert.match(hookScript, /SessionStart skill reinjection triggered by/);
+    assert.match(hookScript, /hookSpecificOutput/);
+    assert.match(hookScript, /additional_context/);
+    assert.match(hookScript, /additionalContext/);
+    assert.match(hookScript, /startup, clear, or compact/);
+
+    const claudeHooks = JSON.parse(fs.readFileSync(path.join(tempProject, 'hooks', 'hooks.json'), 'utf8'));
+    assert.ok(Array.isArray(claudeHooks.hooks.SessionStart));
+    assert.deepEqual(
+      claudeHooks.hooks.SessionStart.map(item => item.matcher),
+      ['startup', 'clear', 'compact']
+    );
+  } finally {
+    process.chdir(currentCwd);
+  }
+});

@@ -1,5 +1,187 @@
 #!/usr/bin/env bash
 set -eu
 
-# <!-- FILL: gather session facts that must be shown before work starts -->
-# <!-- FILL: enforce one stop condition if project state is incomplete -->
+RAW_INPUT="$(cat || true)"
+HOOK_PROJECT_ROOT="${HOOK_PROJECT_ROOT:-}"
+HOOK_HARNESS="${HOOK_HARNESS:-}"
+HOOK_SKILL_PATH="${HOOK_SKILL_PATH:-}"
+HOOK_SKILL_NAME="${HOOK_SKILL_NAME:-{{NAME}}}"
+
+resolve_project_root() {
+  if [ -n "$HOOK_PROJECT_ROOT" ]; then
+    printf '%s\n' "$HOOK_PROJECT_ROOT"
+    return
+  fi
+
+  RAW_INPUT="$RAW_INPUT" node - <<'NODE'
+const raw = process.env.RAW_INPUT || '';
+let data = {};
+try {
+  data = raw.trim() ? JSON.parse(raw) : {};
+} catch {
+  data = {};
+}
+process.stdout.write(String(data.cwd || process.cwd()));
+NODE
+}
+
+detect_harness() {
+  if [ -n "$HOOK_HARNESS" ]; then
+    printf '%s\n' "$HOOK_HARNESS"
+    return
+  fi
+
+  PROJECT_ROOT="$1"
+  if [ -f "$PROJECT_ROOT/.claude/settings.json" ]; then
+    printf 'claude\n'
+    return
+  fi
+  if [ -d "$PROJECT_ROOT/.cursor" ]; then
+    printf 'cursor\n'
+    return
+  fi
+  if [ -d "$PROJECT_ROOT/.codex" ]; then
+    printf 'codex\n'
+    return
+  fi
+  if [ -f "$PROJECT_ROOT/GEMINI.md" ]; then
+    printf 'gemini\n'
+    return
+  fi
+  if [ -d "$PROJECT_ROOT/.windsurf" ]; then
+    printf 'windsurf\n'
+    return
+  fi
+  printf 'generic\n'
+}
+
+resolve_trigger() {
+  RAW_INPUT="$RAW_INPUT" node - <<'NODE'
+const raw = process.env.RAW_INPUT || '';
+let data = {};
+try {
+  data = raw.trim() ? JSON.parse(raw) : {};
+} catch {
+  data = {};
+}
+const trigger =
+  data.matcher ||
+  data.session_event ||
+  data.reason ||
+  data.hookEvent ||
+  data.hook_event_name ||
+  data.event ||
+  'startup';
+process.stdout.write(String(trigger));
+NODE
+}
+
+resolve_skill_path() {
+  PROJECT_ROOT="$1"
+
+  if [ -n "$HOOK_SKILL_PATH" ] && [ -f "$HOOK_SKILL_PATH" ]; then
+    printf '%s\n' "$HOOK_SKILL_PATH"
+    return
+  fi
+
+  if [ -f "$PROJECT_ROOT/SKILL.md" ]; then
+    printf '%s\n' "$PROJECT_ROOT/SKILL.md"
+    return
+  fi
+
+  if [ -n "$HOOK_SKILL_NAME" ]; then
+    for candidate in \
+      "$PROJECT_ROOT/skills/$HOOK_SKILL_NAME/SKILL.md" \
+      "$PROJECT_ROOT/.cursor/skills/$HOOK_SKILL_NAME/SKILL.md" \
+      "$PROJECT_ROOT/.codex/skills/$HOOK_SKILL_NAME/SKILL.md"
+    do
+      if [ -f "$candidate" ]; then
+        printf '%s\n' "$candidate"
+        return
+      fi
+    done
+  fi
+
+  for search_root in "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.cursor/skills" "$PROJECT_ROOT/.codex/skills"; do
+    if [ ! -d "$search_root" ]; then
+      continue
+    fi
+    found="$(find "$search_root" -mindepth 2 -maxdepth 2 -type f -name 'SKILL.md' | sort | head -n 1)"
+    if [ -n "$found" ]; then
+      printf '%s\n' "$found"
+      return
+    fi
+  done
+}
+
+emit_payload() {
+  HARNESS="$1"
+  TRIGGER="$2"
+  SKILL_PATH="$3"
+  PROJECT_ROOT="$4"
+  CONTENT="$5"
+
+  HARNESS="$HARNESS" \
+  TRIGGER="$TRIGGER" \
+  SKILL_PATH="$SKILL_PATH" \
+  PROJECT_ROOT="$PROJECT_ROOT" \
+  CONTENT="$CONTENT" \
+  node - <<'NODE'
+const path = require('path');
+
+const harness = String(process.env.HARNESS || '').trim().toLowerCase();
+const trigger = String(process.env.TRIGGER || 'startup');
+const projectRoot = String(process.env.PROJECT_ROOT || process.cwd());
+const skillPath = String(process.env.SKILL_PATH || '');
+const relativeSkillPath = skillPath ? path.relative(projectRoot, skillPath).replace(/\\/g, '/') : '';
+const content = String(process.env.CONTENT || '');
+
+if (!content.trim()) {
+  process.exit(0);
+}
+
+const message = [
+  `SessionStart skill reinjection triggered by: ${trigger}`,
+  relativeSkillPath ? `Skill path: ${relativeSkillPath}` : '',
+  'Re-read and follow the skill below before continuing after startup, clear, or compact.',
+  '',
+  content
+].filter(Boolean).join('\n');
+
+let payload;
+if (harness === 'claude' || harness === 'codex') {
+  payload = {
+    hookSpecificOutput: {
+      hookEventName: 'SessionStart',
+      additionalContext: message
+    }
+  };
+} else if (harness === 'cursor') {
+  payload = {
+    additional_context: message
+  };
+} else {
+  payload = {
+    additionalContext: message
+  };
+}
+
+process.stdout.write(JSON.stringify(payload));
+NODE
+}
+
+PROJECT_ROOT="$(resolve_project_root)"
+HARNESS="$(detect_harness "$PROJECT_ROOT")"
+TRIGGER="$(resolve_trigger)"
+SKILL_PATH="$(resolve_skill_path "$PROJECT_ROOT" || true)"
+
+if [ -z "$SKILL_PATH" ] || [ ! -f "$SKILL_PATH" ]; then
+  exit 0
+fi
+
+SKILL_CONTENT="$(cat "$SKILL_PATH")"
+if [ -z "$SKILL_CONTENT" ]; then
+  exit 0
+fi
+
+emit_payload "$HARNESS" "$TRIGGER" "$SKILL_PATH" "$PROJECT_ROOT" "$SKILL_CONTENT"

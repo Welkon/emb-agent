@@ -16,7 +16,7 @@
       "name": "hooks",
       "source": "hooks",
       "description": "Install session-start hook stubs and host hook manifests.",
-      "default_output": "."
+      "default_output": "hooks"
     },
     {
       "name": "protocol-blocks",
