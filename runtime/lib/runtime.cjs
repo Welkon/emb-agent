@@ -537,7 +537,19 @@ function normalizeDiagnostics(value) {
         false
       ),
       expected_output: ensureStringArray(safeEntry.expected_output || [], `${label}.expected_output`),
-      tool_scope: normalizeToolScope(safeEntry.tool_scope, `${label}.tool_scope`)
+      tool_scope: normalizeToolScope(safeEntry.tool_scope, `${label}.tool_scope`),
+      worker_contract: normalizeWorkerContractArtifact(safeEntry.worker_contract, `${label}.worker_contract`)
+    };
+  }
+
+  function normalizeWorkerContractArtifact(value, label) {
+    const safeValue = !value || typeof value !== 'object' || Array.isArray(value) ? {} : value;
+    return {
+      goal: ensureOptionalString(safeValue.goal, `${label}.goal`),
+      inputs: ensureStringArray(safeValue.inputs || [], `${label}.inputs`),
+      outputs: ensureStringArray(safeValue.outputs || [], `${label}.outputs`),
+      forbidden_zones: ensureStringArray(safeValue.forbidden_zones || [], `${label}.forbidden_zones`),
+      acceptance_criteria: ensureStringArray(safeValue.acceptance_criteria || [], `${label}.acceptance_criteria`)
     };
   }
 
@@ -596,6 +608,31 @@ function normalizeDiagnostics(value) {
     };
   }
 
+  function normalizeReviewStageArtifact(value, label, defaultId) {
+    const safeValue = !value || typeof value !== 'object' || Array.isArray(value) ? {} : value;
+    return {
+      id: ensureOptionalString(safeValue.id, `${label}.id`) || defaultId,
+      owner: ensureOptionalString(safeValue.owner, `${label}.owner`),
+      objective: ensureOptionalString(safeValue.objective, `${label}.objective`),
+      completion_signal: ensureOptionalString(safeValue.completion_signal, `${label}.completion_signal`),
+      failure_action: ensureOptionalString(safeValue.failure_action, `${label}.failure_action`),
+      review_checks: ensureStringArray(safeValue.review_checks || [], `${label}.review_checks`),
+      status: ensureOptionalString(safeValue.status, `${label}.status`)
+    };
+  }
+
+  function normalizeReviewArtifact(value, label) {
+    const safeValue = !value || typeof value !== 'object' || Array.isArray(value) ? {} : value;
+    return {
+      required: ensureBoolean(safeValue.required, `${label}.required`, false),
+      policy: ensureOptionalString(safeValue.policy, `${label}.policy`),
+      redispatch_required: ensureBoolean(safeValue.redispatch_required, `${label}.redispatch_required`, false),
+      summary: ensureOptionalString(safeValue.summary, `${label}.summary`),
+      stage_a: normalizeReviewStageArtifact(safeValue.stage_a, `${label}.stage_a`, 'contract-review'),
+      stage_b: normalizeReviewStageArtifact(safeValue.stage_b, `${label}.stage_b`, 'quality-review')
+    };
+  }
+
   function normalizeObjectArray(value, label, normalizer) {
     const list = Array.isArray(value) ? value : [];
     return list.map((entry, index) => normalizer(entry, `${label}.${index}`));
@@ -639,6 +676,10 @@ function normalizeDiagnostics(value) {
     integration: normalizeIntegrationArtifact(
       delegationRuntimeSource.integration,
       'diagnostics.delegation_runtime.integration'
+    ),
+    review: normalizeReviewArtifact(
+      delegationRuntimeSource.review,
+      'diagnostics.delegation_runtime.review'
     ),
     updated_at: ensureOptionalString(
       delegationRuntimeSource.updated_at,

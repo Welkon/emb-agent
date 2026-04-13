@@ -511,6 +511,38 @@ test('dispatch launch registers async delegation jobs and collect persists compl
   }
 });
 
+test('dispatch run hard-blocks action execution when stage A review requires redispatch', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-redispatch-'));
+  const currentCwd = process.cwd();
+  const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+  const failingBridge = `${process.execPath} ${path.join(repoRoot, 'tests', 'fixtures', 'failing-subagent-bridge.cjs')}`;
+
+  try {
+    process.chdir(tempProject);
+    process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = failingBridge;
+    await cli.main(['init']);
+    await cli.main(['risk', 'add', 'irq race']);
+
+    const run = await captureCliJson(['dispatch', 'run', 'next']);
+
+    assert.equal(run.status, 'redispatch-required');
+    assert.equal(run.executed, false);
+    assert.equal(run.execution.kind, 'action-blocked');
+    assert.equal(run.blocked_by.stage, 'contract-review');
+    assert.equal(run.delegation_runtime.review.redispatch_required, true);
+    assert.equal(run.delegation_runtime.review.stage_a.status, 'redispatch-required');
+    assert.equal(run.redispatch_required, true);
+    assert.equal(run.summary.includes('Stage A contract review failed'), true);
+  } finally {
+    if (originalBridgeCmd === undefined) {
+      delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    } else {
+      process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
+  }
+});
+
 test('dispatch next keeps current context focused on session carry-over', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-session-'));
   const currentCwd = process.cwd();

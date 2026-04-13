@@ -174,7 +174,13 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
       launch_requests: [{ agent: 'emb-hw-scout' }],
       worker_results: [{ agent: 'emb-hw-scout', status: 'ok' }],
       synthesis: { required: true, status: 'ready', owner: 'Current main thread' },
-      integration: { status: 'completed-inline', owner: 'Current main thread', execution_kind: 'action' }
+      integration: { status: 'completed-inline', owner: 'Current main thread', execution_kind: 'action' },
+      review: {
+        required: true,
+        redispatch_required: false,
+        stage_a: { status: 'passed' },
+        stage_b: { status: 'main-thread-review-required' }
+      }
     }
   }, true);
 
@@ -196,7 +202,13 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
       phases: [{ id: 'research' }, { id: 'synthesis' }],
       worker_results: [{ agent: 'emb-hw-scout', status: 'ok' }],
       synthesis: { required: true, status: 'ready', owner: 'Current main thread' },
-      integration: { status: 'completed-inline', owner: 'Current main thread', execution_kind: 'action' }
+      integration: { status: 'completed-inline', owner: 'Current main thread', execution_kind: 'action' },
+      review: {
+        required: true,
+        redispatch_required: false,
+        stage_a: { status: 'passed' },
+        stage_b: { status: 'main-thread-review-required' }
+      }
     }
   }, true);
 
@@ -204,8 +216,11 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
   assert.equal(statusOutput.subagent_bridge.mode, 'mock');
   assert.equal(statusOutput.delegation_runtime.pattern, 'coordinator');
   assert.deepEqual(statusOutput.delegation_runtime.worker_results, ['emb-hw-scout:ok']);
+  assert.equal(statusOutput.delegation_runtime.review.stage_a, 'passed');
+  assert.equal(statusOutput.delegation_runtime.review.stage_b, 'main-thread-review-required');
   assert.equal(dispatchOutput.subagent_bridge.status, 'ok');
   assert.equal(dispatchOutput.delegation_runtime.synthesis.status, 'ready');
+  assert.equal(dispatchOutput.delegation_runtime.review.redispatch_required, false);
 });
 
 test('applyOutputMode hides internal trust details in brief health/bootstrap outputs', () => {

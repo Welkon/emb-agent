@@ -163,6 +163,9 @@ function summarizeDelegationRuntime(value) {
 
   const synthesis = isObject(value.synthesis) ? value.synthesis : {};
   const integration = isObject(value.integration) ? value.integration : {};
+  const review = isObject(value.review) ? value.review : {};
+  const stageA = isObject(review.stage_a) ? review.stage_a : {};
+  const stageB = isObject(review.stage_b) ? review.stage_b : {};
   return compactObject({
     pattern: value.pattern || '',
     strategy: value.strategy || '',
@@ -190,6 +193,12 @@ function summarizeDelegationRuntime(value) {
       status: integration.status || '',
       owner: integration.owner || '',
       execution_kind: integration.execution_kind || ''
+    }),
+    review: compactObject({
+      required: review.required === undefined ? undefined : Boolean(review.required),
+      redispatch_required: review.redispatch_required === undefined ? undefined : Boolean(review.redispatch_required),
+      stage_a: stageA.status || '',
+      stage_b: stageB.status || ''
     })
   });
 }

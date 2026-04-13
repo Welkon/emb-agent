@@ -158,6 +158,9 @@ function createDispatchHelpers(deps) {
     const contract = execution.dispatch_contract || {};
     const primary = contract.primary || null;
     const supporting = contract.supporting || [];
+    const reviewContract = contract.review_contract || {};
+    const stageA = reviewContract.stage_a || {};
+    const stageB = reviewContract.stage_b || {};
     const steps = [
       {
         id: 'restore-context',
@@ -254,6 +257,37 @@ function createDispatchHelpers(deps) {
                   'compose a self-contained specification for the next worker or inline step',
                   'do not forward raw findings as if they were already integrated'
                 ]
+        });
+      }
+
+      if (reviewContract.required) {
+        steps.push({
+          id: 'contract-review',
+          kind: 'review-gate',
+          required: true,
+          owner: stageA.owner || 'Current main thread',
+          when: 'after worker outputs arrive and before any quality judgment or integration',
+          rule: reviewContract.policy || 'If Stage A fails, redispatch instead of patching inline in the main thread.',
+          outcome: Array.isArray(stageA.review_checks) && stageA.review_checks.length > 0
+            ? stageA.review_checks
+            : [
+                'check Goal / Inputs / Outputs / Forbidden Zones / Acceptance Criteria',
+                'set redispatch_required=true when contract compliance fails'
+              ]
+        });
+        steps.push({
+          id: 'quality-review',
+          kind: 'review-gate',
+          required: true,
+          owner: stageB.owner || 'Current main thread',
+          when: 'only after contract-review passes',
+          rule: 'Review quality only after spec compliance is explicit.',
+          outcome: Array.isArray(stageB.review_checks) && stageB.review_checks.length > 0
+            ? stageB.review_checks
+            : [
+                'review correctness, regression risk, and missing verification',
+                'keep final merge/reject ownership in the main thread'
+              ]
         });
       }
     }

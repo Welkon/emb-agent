@@ -74,7 +74,11 @@ test('orchestrator upgrades to primary-first when plan is recommended', () => {
     assert.equal(orchestrator.dispatch_contract.delegation_pattern, 'coordinator');
     assert.equal(orchestrator.dispatch_contract.synthesis_required, true);
     assert.equal(orchestrator.dispatch_contract.primary.agent, 'emb-hw-scout');
+    assert.equal(orchestrator.dispatch_contract.review_contract.stage_a.id, 'contract-review');
+    assert.equal(orchestrator.dispatch_contract.review_contract.stage_b.id, 'quality-review');
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'synthesize'));
+    assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'contract-review'));
+    assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'quality-review'));
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'launch-primary'));
   } finally {
     process.chdir(currentCwd);
@@ -102,6 +106,8 @@ test('orchestrator exposes arch-review contract as primary-first flow', () => {
     assert.equal(orchestrator.dispatch_contract.delegation_pattern, 'coordinator');
     assert.equal(orchestrator.dispatch_contract.primary.agent, 'emb-arch-reviewer');
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'synthesize'));
+    assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'contract-review'));
+    assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'quality-review'));
     assert.ok(orchestrator.orchestrator_steps.some(item => item.id === 'launch-primary'));
   } finally {
     process.chdir(currentCwd);
@@ -312,6 +318,11 @@ test('orchestrate run exposes delegation runtime synthesis and integration artif
     assert.match(run.delegation_runtime.synthesis.rule, /Synthesize, do not delegate understanding/);
     assert.equal(run.delegation_runtime.integration.status, 'completed-inline');
     assert.equal(run.delegation_runtime.integration.execution_kind, 'action');
+    assert.equal(run.delegation_runtime.review.required, true);
+    assert.equal(run.delegation_runtime.review.stage_a.id, 'contract-review');
+    assert.equal(run.delegation_runtime.review.stage_a.status, 'blocked-no-worker-results');
+    assert.equal(run.delegation_runtime.review.stage_b.status, 'blocked-by-stage-a');
+    assert.equal(run.redispatch_required, false);
     assert.ok(run.delegation_runtime.launch_requests.some(item => item.agent === 'emb-hw-scout'));
     assert.equal(delegationRuntime.pattern, 'coordinator');
     assert.equal(delegationRuntime.strategy, 'primary-first');
@@ -340,6 +351,9 @@ test('orchestrate run invokes configured host sub-agent bridge and keeps worker 
     assert.equal(run.worker_results.length, 1);
     assert.equal(run.worker_results[0].agent, 'emb-hw-scout');
     assert.equal(run.delegation_runtime.synthesis.status, 'ready');
+    assert.equal(run.delegation_runtime.review.stage_a.status, 'passed');
+    assert.equal(run.delegation_runtime.review.stage_b.status, 'main-thread-review-required');
+    assert.equal(run.redispatch_required, false);
     assert.equal(delegationRuntime.worker_results.length, 1);
     assert.equal(delegationRuntime.worker_results[0].status, 'ok');
   } finally {
@@ -383,8 +397,42 @@ test('orchestrate launch keeps orchestration metadata while async jobs are colle
     assert.equal(collected.delegation_runtime.jobs[0].status, 'completed');
     assert.equal(collected.delegation_runtime.worker_results.length, 1);
     assert.equal(collected.delegation_runtime.synthesis.status, 'ready');
+    assert.equal(collected.delegation_runtime.review.stage_a.status, 'passed');
     assert.equal(session.diagnostics.delegation_runtime.jobs[0].status, 'completed');
     assert.equal(session.diagnostics.delegation_runtime.worker_results[0].status, 'ok');
+  } finally {
+    if (originalBridgeCmd === undefined) {
+      delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    } else {
+      process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
+  }
+});
+
+test('orchestrate run marks redispatch required when worker result fails stage A gate', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-redispatch-'));
+  const currentCwd = process.cwd();
+  const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+  const failingBridge = `${process.execPath} ${path.join(repoRoot, 'tests', 'fixtures', 'failing-subagent-bridge.cjs')}`;
+
+  try {
+    process.chdir(tempProject);
+    process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = failingBridge;
+    await cli.main(['init']);
+    await cli.main(['risk', 'add', 'irq race']);
+
+    const run = await captureCliJson(['orchestrate', 'run', 'next']);
+
+    assert.equal(run.status, 'redispatch-required');
+    assert.equal(run.executed, false);
+    assert.equal(run.execution.kind, 'action-blocked');
+    assert.equal(run.worker_results.length, 1);
+    assert.equal(run.worker_results[0].status, 'bridge-error');
+    assert.equal(run.delegation_runtime.review.redispatch_required, true);
+    assert.equal(run.delegation_runtime.review.stage_a.status, 'redispatch-required');
+    assert.equal(run.delegation_runtime.review.stage_b.status, 'blocked-by-stage-a');
+    assert.equal(run.redispatch_required, true);
   } finally {
     if (originalBridgeCmd === undefined) {
       delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
