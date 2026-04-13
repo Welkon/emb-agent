@@ -11,6 +11,8 @@ allowed-tools:
 
 Use `skills` to inspect the lazily loaded skill catalog exposed by `emb-agent`.
 
+This is support surface for longer embedded sessions. It can add leverage, but it is not the default day-one firmware-project path.
+
 ## Commands
 
 - `skills list`

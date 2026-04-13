@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const childProcess = require('node:child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -30,6 +31,7 @@ async function captureCliJson(args) {
 test('scaffold list and show expose built-in scaffold trees', async () => {
   const listed = await captureCliJson(['scaffold', 'list']);
   const shown = await captureCliJson(['scaffold', 'show', 'skill']);
+  const shownShells = await captureCliJson(['scaffold', 'show', 'shells']);
 
   assert.ok(Array.isArray(listed.scaffolds));
   assert.ok(listed.scaffolds.some(item => item.name === 'skill'));
@@ -37,6 +39,10 @@ test('scaffold list and show expose built-in scaffold trees', async () => {
   assert.equal(shown.scaffold.name, 'skill');
   assert.ok(shown.scaffold.files.includes('SKILL.md'));
   assert.ok(shown.scaffold.files.includes('workflows/subagent-driven.md'));
+  assert.equal(shownShells.scaffold.name, 'shells');
+  assert.ok(shownShells.scaffold.files.includes('AGENTS.md'));
+  assert.ok(shownShells.scaffold.files.includes('.codex/instructions.md'));
+  assert.ok(!shownShells.scaffold.files.some(file => file.includes('_partials/')));
 });
 
 test('scaffold install skill copies the tree, replaces placeholders, and reports FILL markers', async () => {
@@ -59,6 +65,9 @@ test('scaffold install skill copies the tree, replaces placeholders, and reports
     assert.equal(installed.output_root, 'skills/irq-review');
     assert.ok(installed.created.includes('skills/irq-review/SKILL.md'));
     assert.ok(installed.created.includes('skills/irq-review/workflows/fix-bug.md'));
+    assert.ok(installed.created.includes('skills/irq-review/scripts/README.md'));
+    assert.ok(installed.created.includes('skills/irq-review/scripts/smoke-test.sh'));
+    assert.ok(installed.created.includes('skills/irq-review/scripts/test-trigger.sh'));
     assert.equal(installed.validation.needs_manual_completion, true);
     assert.ok(installed.validation.fill_count > 0);
     assert.match(installed.validation.grep_hint, /rg -n "FILL:" skills\/irq-review/);
@@ -69,6 +78,20 @@ test('scaffold install skill copies the tree, replaces placeholders, and reports
     assert.match(skillContent, /Review IRQ closure rules/);
     assert.doesNotMatch(skillContent, /\{\{NAME\}\}/);
     assert.doesNotMatch(skillContent, /\{\{SUMMARY\}\}/);
+    assert.match(skillContent, /Record project-specific constraints, unusual architecture, hidden dependencies/);
+    assert.match(skillContent, /Do not record generic programming knowledge, mainstream framework usage/);
+    assert.match(skillContent, /Encode constraints, invariants, and context/);
+    assert.match(skillContent, /If this skill relies on repeatable extraction, validation, migration, or report-generation work, add helper scripts under `scripts\/`\./);
+    assert.match(skillContent, /Keep `scripts\/smoke-test\.sh` and `scripts\/test-trigger\.sh` working/);
+    assert.match(skillContent, /Test activation: confirm the skill triggers for the right task shapes/);
+    assert.match(skillContent, /The description accumulates 10 or more trigger phrases from different domains/);
+    assert.match(skillContent, /Treat the scaffold structure as load-bearing infrastructure/);
+    assert.match(skillContent, /The template should remember the infrastructure so the skill author can focus on project-specific content/);
+    assert.match(skillContent, /Do not regenerate this scaffold from scratch during authoring/);
+    assert.match(skillContent, /Do not prefill concrete business spec examples into shared templates/);
+    assert.match(skillContent, /Auto-trigger guidance must survive context compression/);
+    assert.match(skillContent, /Thin shells may grow to roughly 60 lines/);
+    assert.match(skillContent, /Missing harness entry files such as `GEMINI\.md` or the shared `AGENTS\.md` means that harness is effectively blind/);
     assert.match(skillContent, /Record a lesson only if at least 2 of these 3 checks pass/);
     assert.match(skillContent, /Activation Over Storage/);
     assert.match(skillContent, /When the agent is corrected/);
@@ -80,6 +103,108 @@ test('scaffold install skill copies the tree, replaces placeholders, and reports
 
     const gotchasPath = path.join(tempProject, 'skills', 'irq-review', 'references', 'gotchas.md');
     assert.equal(fs.readFileSync(gotchasPath, 'utf8').trim(), '');
+
+    const scriptsReadmePath = path.join(tempProject, 'skills', 'irq-review', 'scripts', 'README.md');
+    const scriptsReadme = fs.readFileSync(scriptsReadmePath, 'utf8');
+    assert.match(scriptsReadme, /scripts\/smoke-test\.sh/);
+    assert.match(scriptsReadme, /scripts\/test-trigger\.sh/);
+    assert.match(scriptsReadme, /source of truth/);
+    assert.match(scriptsReadme, /Reuse repository-native scripts first/);
+    assert.match(scriptsReadme, /humans are bad at self-auditing repetitive structure/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('scaffolded smoke and trigger scripts fail loudly on unfinished skills', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-scaffold-scripts-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+
+    await captureCliJson([
+      'scaffold',
+      'install',
+      'skill',
+      'NAME=irq-review',
+      'SUMMARY=Review IRQ closure rules'
+    ]);
+
+    await captureCliJson([
+      'scaffold',
+      'install',
+      'shells',
+      'NAME=irq-review',
+      'SUMMARY=Review IRQ closure rules'
+    ]);
+
+    const smokeResult = childProcess.spawnSync(
+      'bash',
+      ['skills/irq-review/scripts/smoke-test.sh', 'skills/irq-review'],
+      {
+        cwd: tempProject,
+        encoding: 'utf8'
+      }
+    );
+    assert.notEqual(smokeResult.status, 0);
+    assert.match(smokeResult.stdout, /== Placeholder residue ==/);
+    assert.match(smokeResult.stdout, /unresolved placeholders remain/);
+    assert.match(smokeResult.stdout, /description is too short/);
+
+    const triggerResult = childProcess.spawnSync(
+      'bash',
+      ['skills/irq-review/scripts/test-trigger.sh', 'skills/irq-review'],
+      {
+        cwd: tempProject,
+        encoding: 'utf8'
+      }
+    );
+    assert.notEqual(triggerResult.status, 0);
+    assert.match(triggerResult.stdout, /Static trigger preflight only/);
+    assert.match(triggerResult.stdout, /description is too short for discovery/);
+    assert.match(triggerResult.stdout, /need at least 2 concrete trigger phrases/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('smoke-test catches missing harness entry files after shell install', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-scaffold-harness-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+
+    await captureCliJson([
+      'scaffold',
+      'install',
+      'skill',
+      'NAME=irq-review',
+      'SUMMARY=Review IRQ closure rules'
+    ]);
+
+    await captureCliJson([
+      'scaffold',
+      'install',
+      'shells',
+      'NAME=irq-review',
+      'SUMMARY=Review IRQ closure rules'
+    ]);
+
+    fs.rmSync(path.join(tempProject, 'GEMINI.md'));
+
+    const smokeResult = childProcess.spawnSync(
+      'bash',
+      ['skills/irq-review/scripts/smoke-test.sh', 'skills/irq-review'],
+      {
+        cwd: tempProject,
+        encoding: 'utf8'
+      }
+    );
+    assert.notEqual(smokeResult.status, 0);
+    assert.match(smokeResult.stdout, /== Harness coverage ==/);
+    assert.match(smokeResult.stdout, /missing harness entry GEMINI\.md/);
   } finally {
     process.chdir(currentCwd);
   }
@@ -156,6 +281,7 @@ test('scaffold install shells replaces placeholders in nested file paths', async
     assert.equal(installed.installed, true);
     assert.ok(installed.created.includes('.cursor/skills/irq-review/SKILL.md'));
     assert.ok(installed.created.includes('.windsurf/rules/workflow.md'));
+    assert.ok(installed.created.includes('GEMINI.md'));
     assert.equal(fs.existsSync(path.join(tempProject, '.codex', 'instructions.md')), true);
 
     const cursorSkill = fs.readFileSync(
@@ -167,12 +293,22 @@ test('scaffold install shells replaces placeholders in nested file paths', async
     assert.match(cursorSkill, /## Quick Routing/);
     assert.match(cursorSkill, /## Auto Triggers/);
     assert.match(cursorSkill, /## Red Flags - STOP/);
+    assert.match(cursorSkill, /Bug fix or regression/);
+    assert.match(cursorSkill, /Rules or protocol update/);
+    assert.match(cursorSkill, /Docs-only maintenance/);
 
     const agentsShell = fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8');
     assert.match(agentsShell, /Quick Routing/);
     assert.match(agentsShell, /Multiple independent sub-tasks/);
+    assert.match(agentsShell, /Treat shell entry points, routing tables, and visible/);
     assert.match(agentsShell, /Any non-trivial task must run Task Closure Protocol before completion/);
     assert.match(agentsShell, /等会话结束一起补/);
+
+    const codexShell = fs.readFileSync(path.join(tempProject, '.codex', 'instructions.md'), 'utf8');
+    assert.match(codexShell, /Bug fix or regression/);
+    assert.match(codexShell, /Rules or protocol update/);
+    assert.match(codexShell, /Docs-only maintenance/);
+    assert.match(codexShell, /The template should remember harness infrastructure/);
 
     const windsurfShell = fs.readFileSync(
       path.join(tempProject, '.windsurf', 'rules', 'workflow.md'),
@@ -180,6 +316,9 @@ test('scaffold install shells replaces placeholders in nested file paths', async
     );
     assert.match(windsurfShell, /## Quick Routing/);
     assert.match(windsurfShell, /## Red Flags - STOP/);
+    assert.match(windsurfShell, /Bug fix or regression/);
+    assert.match(windsurfShell, /Rules or protocol update/);
+    assert.match(windsurfShell, /Docs-only maintenance/);
   } finally {
     process.chdir(currentCwd);
   }

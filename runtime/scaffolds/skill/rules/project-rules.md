@@ -1,9 +1,9 @@
 # Project Rules
 
-- <!-- FILL: stable repo constraint 1 -->
-- <!-- FILL: stable repo constraint 2 -->
+- <!-- FILL: stable repo-specific constraint 1; prefer what differs from mainstream defaults -->
+- <!-- FILL: stable repo-specific constraint 2 or a known agent failure mode -->
 - <!-- FILL: exact verification command -->
-- <!-- FILL: naming or directory convention -->
+- <!-- FILL: naming or directory convention only if project-specific -->
 
 ## Out Of Bounds
 

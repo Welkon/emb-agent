@@ -13,6 +13,8 @@ Use `scaffold` for advanced bootstrap work where structure should be copied, not
 
 This command family is intentionally separate from `workflow`. `workflow` authors project-local runtime assets under `.emb-agent/`; `scaffold` copies higher-level skeleton trees such as skills, hooks, shells, and protocol blocks.
 
+This is support-maintenance surface for the embedded workflow, not default firmware-project flow.
+
 ## Commands
 
 - `scaffold list`

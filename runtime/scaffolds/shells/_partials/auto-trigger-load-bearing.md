@@ -1,0 +1,1 @@
+- Treat shell entry points, routing tables, and visible `<!-- FILL: -->` markers as load-bearing structure that prevents silent scaffold drift.

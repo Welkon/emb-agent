@@ -14,6 +14,13 @@ function createScaffoldAuthoringHelpers(deps) {
   const SCAFFOLDS_DIR = path.join(ROOT, 'scaffolds');
   const REGISTRY_PATH = path.join(SCAFFOLDS_DIR, 'registry.json');
 
+  function isPrivateScaffoldRelativePath(relativePath) {
+    return String(relativePath || '')
+      .split('/')
+      .filter(Boolean)
+      .some(segment => segment.startsWith('_'));
+  }
+
   function ensureScaffoldRegistry() {
     if (!fs.existsSync(REGISTRY_PATH)) {
       throw new Error(`Scaffold registry not found: ${REGISTRY_PATH}`);
@@ -71,6 +78,9 @@ function createScaffoldAuthoringHelpers(deps) {
       const absolute = current ? path.join(sourcePath, current) : sourcePath;
       for (const name of fs.readdirSync(absolute)) {
         const relative = current ? path.posix.join(current.replace(/\\/g, '/'), name) : name;
+        if (isPrivateScaffoldRelativePath(relative.replace(/\\/g, '/'))) {
+          continue;
+        }
         const fullPath = path.join(sourcePath, relative);
         const entryStats = fs.statSync(fullPath);
         if (entryStats.isDirectory()) {
@@ -159,6 +169,33 @@ function createScaffoldAuthoringHelpers(deps) {
     return markers;
   }
 
+  function resolveScaffoldIncludes(content, currentSourcePath, sourceRoot, stack) {
+    const includeStack = Array.isArray(stack) ? stack.slice() : [];
+    const markerPattern = /\{\{INCLUDE:([^}]+)\}\}/g;
+
+    return String(content || '').replace(markerPattern, (fullMatch, includeTarget) => {
+      const relativeInclude = String(includeTarget || '').trim();
+      if (!relativeInclude) {
+        throw new Error(`Empty scaffold include in ${currentSourcePath}`);
+      }
+
+      const localIncludePath = path.resolve(path.dirname(currentSourcePath), relativeInclude);
+      const rootIncludePath = path.resolve(sourceRoot, relativeInclude);
+      const includePath = fs.existsSync(localIncludePath)
+        ? localIncludePath
+        : rootIncludePath;
+      if (includeStack.includes(includePath)) {
+        throw new Error(`Recursive scaffold include detected: ${[...includeStack, includePath].join(' -> ')}`);
+      }
+      if (!fs.existsSync(includePath) || !fs.statSync(includePath).isFile()) {
+        throw new Error(`Scaffold include not found: ${relativeInclude}`);
+      }
+
+      const nestedContent = fs.readFileSync(includePath, 'utf8');
+      return resolveScaffoldIncludes(nestedContent, includePath, sourceRoot, [...includeStack, includePath]);
+    });
+  }
+
   function buildInstallPlan(meta, outputArg, fields) {
     const projectRoot = process.cwd();
     const context = templateCli.buildContext(fields || {}, projectRoot);
@@ -177,6 +214,10 @@ function createScaffoldAuthoringHelpers(deps) {
 
     function visit(currentSourcePath, currentRelativePath) {
       const stats = fs.statSync(currentSourcePath);
+      const normalizedRelativePath = currentRelativePath.replace(/\\/g, '/');
+      if (normalizedRelativePath && isPrivateScaffoldRelativePath(normalizedRelativePath)) {
+        return;
+      }
       const renderedRelativePath = currentRelativePath
         ? templateCli.applyTemplate(currentRelativePath.replace(/\\/g, '/'), context)
         : '';
@@ -214,7 +255,13 @@ function createScaffoldAuthoringHelpers(deps) {
       }
 
       const rawContent = fs.readFileSync(currentSourcePath, 'utf8');
-      const renderedContent = templateCli.applyTemplate(rawContent, context);
+      const includedContent = resolveScaffoldIncludes(
+        rawContent,
+        currentSourcePath,
+        meta.source_path,
+        [currentSourcePath]
+      );
+      const renderedContent = templateCli.applyTemplate(includedContent, context);
       const unresolvedContentTokens = findTemplateTokens(renderedContent);
       if (unresolvedContentTokens.length > 0) {
         unresolved.push({

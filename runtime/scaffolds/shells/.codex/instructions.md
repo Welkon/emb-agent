@@ -2,25 +2,20 @@
 
 ## Quick Routing
 
-| Task | Required reads | Workflow |
-| --- | --- | --- |
-| Multi-step implementation | `skills/{{NAME}}/SKILL.md` | `workflows/subagent-driven.md` |
-| Multiple independent sub-tasks | `skills/{{NAME}}/SKILL.md` | `workflows/subagent-driven.md` |
-| Other | `skills/{{NAME}}/SKILL.md` | `<!-- FILL: default workflow path -->` |
+{{INCLUDE:_partials/quick-routing-table.md}}
 
 ## Auto Triggers
 
-- Any non-trivial task must run Task Closure Protocol before completion.
+{{INCLUDE:_partials/auto-trigger-closure.md}}
 - After context compression, re-enter through this file before continuing.
 
 ## Red Flags - STOP
 
-- "就这一次跳过 AAR"
-- "任务很小不用扫"
-- "等会话结束一起补"
+{{INCLUDE:_partials/red-flags-stop.md}}
 
 ## Local Codex Rules
 
 - Structure may be templated, content may not.
 - Ask the anti-template question before adding defaults.
+- The template should remember harness infrastructure so the skill author can focus on project truth.
 - <!-- FILL: Codex local instruction that every real task must follow -->
