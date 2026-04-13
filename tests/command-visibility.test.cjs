@@ -66,6 +66,19 @@ test('commands list hides legacy attach alias', async () => {
   assert.ok(!listed.includes('adapter'));
 });
 
+test('commands list --all exposes installed advanced commands', async () => {
+  const listed = await captureCliJson(['commands', 'list', '--all']);
+
+  assert.ok(Array.isArray(listed));
+  assert.ok(listed.includes('help'));
+  assert.ok(listed.includes('workflow'));
+  assert.ok(listed.includes('adapter'));
+  assert.ok(listed.includes('dispatch'));
+  assert.ok(listed.includes('orchestrate'));
+  assert.ok(listed.includes('attach'));
+  assert.ok(listed.includes('init-project'));
+});
+
 test('commands show keeps legacy attach alias accessible', async () => {
   const shown = await captureCliJson(['commands', 'show', 'attach']);
 
@@ -238,6 +251,13 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.doesNotMatch(compact, /memory stack/);
 
   assert.match(advanced, /Advanced commands:/);
+  assert.match(advanced, /Truth and document intake:/);
+  assert.match(advanced, /Bootstrap and project state:/);
+  assert.match(advanced, /Execution support and closure:/);
+  assert.match(advanced, /Task, skills, and memory:/);
+  assert.match(advanced, /Workflow and scaffold authoring:/);
+  assert.match(advanced, /Delegation and adapter runtime:/);
+  assert.match(advanced, /Inspection and discovery:/);
   assert.match(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
   assert.match(advanced, /ingest schematic --file <path>/);
@@ -253,6 +273,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.doesNotMatch(advanced, /workspace link/);
   assert.doesNotMatch(advanced, /thread /);
   assert.match(advanced, /commands list/);
+  assert.match(advanced, /commands list --all/);
   assert.equal(advanced, allFlag);
 });
 

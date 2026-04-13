@@ -176,8 +176,17 @@ function createStateCommandHelpers(deps) {
     }
 
     if (cmd === 'commands' && subcmd === 'list') {
+      const commandNames = runtime.listNames(COMMANDS_DIR, '.md');
+      const includeAll = Array.isArray(rest) && rest.includes('--all');
+      const unknownArgs = Array.isArray(rest) ? rest.filter(token => token !== '--all') : [];
+      if (unknownArgs.length > 0) {
+        throw new Error(`Unknown commands list option: ${unknownArgs[0]}`);
+      }
+      if (includeAll) {
+        return commandNames;
+      }
       return (commandVisibility.PUBLIC_COMMAND_NAMES || [])
-        .filter(name => runtime.listNames(COMMANDS_DIR, '.md').includes(name));
+        .filter(name => commandNames.includes(name));
     }
 
     if (cmd === 'commands' && subcmd === 'show') {
