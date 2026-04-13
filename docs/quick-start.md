@@ -122,6 +122,8 @@ If the answer still lives in a datasheet or manual:
 ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware
 ```
 
+This returns staged truth rather than writing `hw.yaml` immediately. Review the parsed result and run the suggested `ingest apply doc ...` step before returning to `next`.
+
 Use `declare hardware` first when the answer is already known and only needs to be written down.
 
 If the board truth still lives in a schematic rather than a datasheet, use:
@@ -129,6 +131,8 @@ If the board truth still lives in a schematic rather than a datasheet, use:
 ```bash
 ingest schematic --file <path>
 ```
+
+`ingest schematic` is analysis-only: it prepares normalized artifacts for agent review and does not directly update truth files.
 
 ## 7. Use optional support surfaces only when they add leverage
 

@@ -432,6 +432,14 @@ function runtimeSafeUnique(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
+function buildLookupSemantics(kind) {
+  return {
+    result_mode: 'candidate-only',
+    candidate_status: 'unverified',
+    candidate_kind: kind
+  };
+}
+
 function lookupDocs(projectRootInput, argv, deps) {
   const args = Array.isArray(argv) ? parseDocLookupArgs(argv) : (argv || {});
   if (args.help) {
@@ -524,6 +532,7 @@ function lookupDocs(projectRootInput, argv, deps) {
     .slice(0, args.limit || 10);
 
   return {
+    ...buildLookupSemantics('document'),
     command: 'doc lookup',
     provider: args.provider || 'local',
     scope: {
@@ -639,6 +648,7 @@ async function lookupComponents(projectRootInput, argv, deps) {
   const entries = loadParsedSchematicEntries(projectRoot, args, deps);
   const limited = buildLocalComponentMatches(entries, args).slice(0, args.limit || 10);
   const result = {
+    ...buildLookupSemantics('component'),
     command: 'component lookup',
     provider,
     scope: {

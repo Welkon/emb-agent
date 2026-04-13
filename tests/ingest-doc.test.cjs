@@ -59,6 +59,14 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     assert.equal(first.cached, false);
     assert.equal(parseCalls, 1);
     assert.equal(first.intended_to, 'hardware');
+    assert.equal(first.write_mode, 'staged-truth');
+    assert.equal(first.truth_write.direct, false);
+    assert.equal(first.truth_write.performed, false);
+    assert.equal(first.truth_write.requires_confirmation, true);
+    assert.equal(first.truth_write.status, 'ready-to-apply');
+    assert.equal(first.truth_write.domain, 'hardware');
+    assert.equal(first.truth_write.target, '.emb-agent/hw.yaml');
+    assert.equal(first.truth_write.apply_via, 'ingest apply doc');
     assert.equal(first.apply_ready.to, 'hardware');
     assert.match(first.apply_ready.command, /ingest apply doc .* --to hardware/);
     assert.equal(fs.existsSync(path.join(cacheDir, 'parse.md')), true);
@@ -102,6 +110,8 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
 
     assert.equal(second.cached, true);
     assert.equal(parseCalls, 1);
+    assert.equal(second.write_mode, 'staged-truth');
+    assert.equal(second.truth_write.status, 'ready-to-apply');
 
     const applied = await cli.runIngestCommand(
       'apply',
@@ -112,6 +122,12 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     const hwTruth = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
     const appliedStatus = cli.buildStatus();
 
+    assert.equal(applied.write_mode, 'truth-write');
+    assert.equal(applied.truth_write.direct, true);
+    assert.equal(applied.truth_write.performed, true);
+    assert.equal(applied.truth_write.status, 'written');
+    assert.equal(applied.truth_write.domain, 'hardware');
+    assert.equal(applied.truth_write.target, '.emb-agent/hw.yaml');
     assert.equal(applied.target, '.emb-agent/hw.yaml');
     assert.equal(applied.skipped, undefined);
     assert.match(hwTruth, /model: "PMS150G"/);
@@ -142,6 +158,9 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
 
     assert.equal(skipped.skipped, true);
     assert.equal(skipped.reason, 'already_applied');
+    assert.equal(skipped.write_mode, 'truth-write');
+    assert.equal(skipped.truth_write.performed, false);
+    assert.equal(skipped.truth_write.status, 'already-applied');
     assert.equal(hwTruthAfterSkipped, hwTruth);
   } finally {
     process.chdir(currentCwd);
@@ -187,6 +206,9 @@ test('apply doc supports selective field application with --only', async () => {
       ['--file', 'docs/PMS150G.pdf', '--kind', 'datasheet', '--to', 'hardware'],
       { providerImpls }
     );
+
+    assert.equal(ingested.write_mode, 'staged-truth');
+    assert.equal(ingested.truth_write.status, 'ready-to-apply');
 
     const applied = await cli.runIngestCommand(
       'apply',
@@ -246,6 +268,7 @@ test('doc diff previews selective hardware application before apply', async () =
       { providerImpls }
     );
 
+    assert.equal(ingested.write_mode, 'staged-truth');
     const diffView = ingestDocCli.diffDoc(
       tempProject,
       ingested.doc_id,
