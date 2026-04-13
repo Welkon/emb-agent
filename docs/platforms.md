@@ -55,6 +55,26 @@ Project runtime CLI path:
 node ./.claude/emb-agent/bin/emb-agent.cjs
 ```
 
+### Cursor
+
+Install:
+
+```bash
+npx emb-agent --cursor --local --developer your-name
+```
+
+Recommended layout:
+
+- project-scoped Cursor assets under `./.cursor/`
+- project-scoped command wrappers under `./.cursor/commands/`
+- project-scoped hook config in `./.cursor/settings.json`
+
+Project runtime CLI path:
+
+```bash
+node ./.cursor/emb-agent/bin/emb-agent.cjs
+```
+
 ## Shared workflow
 
 Regardless of runtime, the default project path stays the same:

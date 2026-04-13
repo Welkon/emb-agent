@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  Codex • Claude Code • Brownfield MCU repos • Register-heavy debugging • Datasheet-grounded work
+  Codex • Claude Code • Cursor • Brownfield MCU repos • Register-heavy debugging • Datasheet-grounded work
 </p>
 
 <p align="center">
@@ -65,7 +65,7 @@ See [docs/product-boundaries.md](./docs/product-boundaries.md) for the explicit 
 | **Document-to-truth flow** | Import datasheets or manuals with `ingest doc`, then land useful facts back into truth files. |
 | **Adapter-oriented execution** | Keep core workflow abstract while pushing chip-, family-, and vendor-specific formulas and routes into adapters. |
 | **Verification-aware closure** | Close work with explicit review and verify loops instead of treating embedded changes like generic code generation. |
-| **Runtime-aware setup** | Install into Codex or Claude Code runtimes without changing the project-side structure. |
+| **Runtime-aware setup** | Install into Codex, Claude Code, or Cursor runtimes without changing the project-side structure. |
 | **Session continuity** | Keep handoffs, state, and visible project artifacts so the next session starts from reality, not from scratch. |
 | **Long-session support** | Add reusable skills, layered memory, and delegation only when the embedded workflow becomes long-running or repetitive. |
 
@@ -108,13 +108,26 @@ This installs Claude integration into the repository under `./.claude/`, includi
 - project-scoped command wrappers under `./.claude/commands/emb/`
 - project-scoped hook configuration in `./.claude/settings.json`
 
+For Cursor:
+
+```bash
+npx emb-agent --cursor --local --developer your-name
+```
+
+This installs Cursor integration into the repository under `./.cursor/`, including:
+
+- project-scoped runtime files under `./.cursor/emb-agent/`
+- project-scoped agents under `./.cursor/agents/`
+- project-scoped command wrappers under `./.cursor/commands/`
+- project-scoped hook configuration in `./.cursor/settings.json`
+
 `--developer` is required during install. The value is stored in runtime config and reused by `init`, so you do not have to re-enter your developer identity in every project.
 
 ### 2. Use emb-agent inside the session
 
 You do not need to run any internal CLI path yourself.
 
-After install, open the project in Codex or Claude Code and use emb-agent directly in the session. The host integration handles runtime invocation for you.
+After install, open the project in Codex, Claude Code, or Cursor and use emb-agent directly in the session. The host integration handles runtime invocation for you.
 
 If a workflow is product-specific instead of broadly reusable, keep it as a project-local extension under `.emb-agent/` and load it with `init --pack <project-local-pack>` rather than adding it to built-in runtime packs. See [docs/workflow-layering.md](./docs/workflow-layering.md) and the [smart pillbox example](./examples/project-extensions/smart-pillbox/README.md).
 

@@ -64,7 +64,7 @@ test('interactive no-args install can resolve local codex choice through prompt 
   };
 
   const helper = createHelper(fakeProcess, async targets => {
-    assert.deepEqual(targets.map(item => item.name), ['codex', 'claude']);
+    assert.deepEqual(targets.map(item => item.name), ['codex', 'claude', 'cursor']);
     return {
       runtime: 'codex',
       location: 'local',

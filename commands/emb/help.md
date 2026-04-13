@@ -14,7 +14,7 @@ Output the emb-agent help summary below and nothing else.
 ## Default Flow
 
 - Runtime integration:
-  Run these as Codex or Claude Code session commands.
+  Run these as Codex, Claude Code, or Cursor session commands.
   Runtime invocation details are handled by the host integration.
 - First time in a project:
   `init`

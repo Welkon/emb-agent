@@ -41,8 +41,10 @@ function createInstallHelpers(deps) {
         '  emb-agent --local',
         '  emb-agent --claude --local',
         '  emb-agent --codex --local',
+        '  emb-agent --cursor --local',
         '  emb-agent --runtime claude --local',
         '  emb-agent --runtime codex --local',
+        '  emb-agent --runtime cursor --local',
         '  emb-agent --global --developer <name>',
         '  emb-agent --global --config-dir <path>',
         '  emb-agent --local --uninstall',
@@ -52,7 +54,8 @@ function createInstallHelpers(deps) {
         'Options:',
         '  --claude                Install for Claude Code explicitly',
         '  --codex                 Install for Codex explicitly (default)',
-        '  --runtime <name>        Select runtime target (codex, claude; others reserved)',
+        '  --cursor                Install for Cursor explicitly',
+        '  --runtime <name>        Select runtime target (codex, claude, cursor; others reserved)',
         '  --developer <name>      Required developer name to seed new projects',
         '  --global                Install to runtime config home',
         '  --local                 Install to current project runtime dir (recommended for Codex)',
@@ -104,7 +107,7 @@ function createInstallHelpers(deps) {
 
   function getDefaultInstallLocation(runtimeName) {
     const runtime = String(runtimeName || '').trim().toLowerCase();
-    return runtime === 'claude' || runtime === 'codex' ? 'local' : 'global';
+    return runtime === 'claude' || runtime === 'codex' || runtime === 'cursor' ? 'local' : 'global';
   }
 
   function parseArgs(argv) {
@@ -152,6 +155,10 @@ function createInstallHelpers(deps) {
       }
       if (token === '--codex') {
         setRuntime('codex');
+        continue;
+      }
+      if (token === '--cursor') {
+        setRuntime('cursor');
         continue;
       }
       if (token === '--runtime') {
@@ -460,6 +467,19 @@ function createInstallHelpers(deps) {
     }
   }
 
+  function removeDirIfEmpty(dirPath) {
+    if (!fs.existsSync(dirPath)) {
+      return;
+    }
+    try {
+      if (fs.statSync(dirPath).isDirectory() && fs.readdirSync(dirPath).length === 0) {
+        fs.rmdirSync(dirPath);
+      }
+    } catch {
+      // Best-effort cleanup only.
+    }
+  }
+
   function getRuntimeTarget(args) {
     const target = installTargets.resolveInstallTarget(args.runtime || 'codex');
 
@@ -662,14 +682,14 @@ function createInstallHelpers(deps) {
     fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + '\n', 'utf8');
   }
 
-  function buildClaudeHookCommand(targetDir, target, hookFileName, isLocal) {
+  function buildJsonHostHookCommand(targetDir, target, hookFileName, isLocal) {
     const hookPath = isLocal
       ? path.join('.', target.localDirName, target.runtimeDirName, 'hooks', hookFileName)
       : path.join(targetDir, target.runtimeDirName, 'hooks', hookFileName);
     return `node "${hookPath.replace(/\\/g, '/')}"`;
   }
 
-  function ensureClaudeSettingsHooks(settingsPath, targetDir, target, isLocal) {
+  function ensureJsonHostHooks(settingsPath, targetDir, target, isLocal) {
     const settings = readJsonObject(settingsPath);
     const next = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {};
 
@@ -683,49 +703,77 @@ function createInstallHelpers(deps) {
       next.hooks.PostToolUse = [];
     }
 
-    const sessionStartCommand = buildClaudeHookCommand(targetDir, target, 'emb-session-start.js', isLocal);
-    const contextMonitorCommand = buildClaudeHookCommand(targetDir, target, 'emb-context-monitor.js', isLocal);
+    const sessionStartCommand = buildJsonHostHookCommand(targetDir, target, 'emb-session-start.js', isLocal);
+    const contextMonitorCommand = buildJsonHostHookCommand(targetDir, target, 'emb-context-monitor.js', isLocal);
 
     const hasSessionStartHook = next.hooks.SessionStart.some(entry =>
-      entry && Array.isArray(entry.hooks) && entry.hooks.some(hook =>
-        hook && typeof hook.command === 'string' && hook.command.includes('emb-session-start.js')
+      entry &&
+      (
+        (typeof entry.command === 'string' && entry.command.includes('emb-session-start.js')) ||
+        (
+          Array.isArray(entry.hooks) &&
+          entry.hooks.some(hook =>
+            hook && typeof hook.command === 'string' && hook.command.includes('emb-session-start.js')
+          )
+        )
       )
     );
 
     if (!hasSessionStartHook) {
-      next.hooks.SessionStart.push({
-        hooks: [
-          {
-            type: 'command',
-            command: sessionStartCommand
-          }
-        ]
-      });
+      if (target.hookMode === 'cursor-settings') {
+        next.hooks.SessionStart.push({
+          command: sessionStartCommand
+        });
+      } else {
+        next.hooks.SessionStart.push({
+          hooks: [
+            {
+              type: 'command',
+              command: sessionStartCommand
+            }
+          ]
+        });
+      }
     }
 
     const hasContextMonitorHook = next.hooks.PostToolUse.some(entry =>
-      entry && Array.isArray(entry.hooks) && entry.hooks.some(hook =>
-        hook && typeof hook.command === 'string' && hook.command.includes('emb-context-monitor.js')
+      entry &&
+      (
+        (typeof entry.command === 'string' && entry.command.includes('emb-context-monitor.js')) ||
+        (
+          Array.isArray(entry.hooks) &&
+          entry.hooks.some(hook =>
+            hook && typeof hook.command === 'string' && hook.command.includes('emb-context-monitor.js')
+          )
+        )
       )
     );
 
     if (!hasContextMonitorHook) {
-      next.hooks.PostToolUse.push({
-        matcher: 'Bash|Edit|Write|MultiEdit|Agent|Task',
-        hooks: [
-          {
-            type: 'command',
-            command: contextMonitorCommand,
-            timeout: 10
-          }
-        ]
-      });
+      if (target.hookMode === 'cursor-settings') {
+        next.hooks.PostToolUse.push({
+          matcher: 'Bash|Edit|Write|MultiEdit|Agent|Task',
+          command: contextMonitorCommand,
+          timeout: 10
+        });
+      } else {
+        next.hooks.PostToolUse.push({
+          matcher: 'Bash|Edit|Write|MultiEdit|Agent|Task',
+          hooks: [
+            {
+              type: 'command',
+              command: contextMonitorCommand,
+              timeout: 10
+            }
+          ]
+        });
+      }
     }
 
     writeJsonObject(settingsPath, next);
   }
 
-  function stripClaudeManagedHooks(settings) {
+  function stripJsonHostManagedHooks(settings) {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings) || !settings.hooks) {
       return settings;
     }
@@ -736,7 +784,18 @@ function createInstallHelpers(deps) {
       const entries = Array.isArray(next.hooks[eventName]) ? next.hooks[eventName] : [];
       const filtered = entries
         .map(entry => {
-          if (!entry || !Array.isArray(entry.hooks)) {
+          if (!entry || typeof entry !== 'object') {
+            return entry;
+          }
+
+          if (typeof entry.command === 'string') {
+            if (entry.command.includes('emb-session-start.js') || entry.command.includes('emb-context-monitor.js')) {
+              return null;
+            }
+            return entry;
+          }
+
+          if (!Array.isArray(entry.hooks)) {
             return entry;
           }
 
@@ -818,7 +877,7 @@ function createInstallHelpers(deps) {
       fs.writeFileSync(path.join(agentsDir, file), content, 'utf8');
     }
 
-    ensureClaudeSettingsHooks(
+    ensureJsonHostHooks(
       path.join(targetDir, target.configFileName || 'settings.json'),
       targetDir,
       target,
@@ -881,6 +940,67 @@ function createInstallHelpers(deps) {
       fs.writeFileSync(
         path.join(commandsRoot, `${commandName}.md`),
         generateClaudeCommandContent(commandName, rendered, runtimeDir),
+        'utf8'
+      );
+      installed += 1;
+    }
+
+    return installed;
+  }
+
+  function generateCursorCommandContent(commandName, content, runtimeDir) {
+    const { frontmatter, body } = extractFrontmatterAndBody(content);
+    const commandLabel = extractFrontmatterField(frontmatter, 'name') || `emb-${commandName}`;
+    const description = toSingleLine(
+      extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
+    );
+    const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+
+    return [
+      `# ${commandLabel}`,
+      '',
+      description,
+      '',
+      '## Invocation',
+      '',
+      `- When this command matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
+      '- Use the runtime output as the source of truth for follow-up actions.',
+      '',
+      '## Original Guidance',
+      '',
+      body.trim(),
+      ''
+    ].join('\n');
+  }
+
+  function installCursorCommands(targetDir, target, runtimeDir) {
+    if (!target || target.name !== 'cursor') {
+      return 0;
+    }
+
+    const commandsRoot = path.join(targetDir, 'commands');
+    ensureDir(commandsRoot);
+
+    for (const commandName of listManagedPublicCommandNames()) {
+      const commandPath = path.join(commandsRoot, `emb-${commandName}.md`);
+      if (fs.existsSync(commandPath)) {
+        fs.unlinkSync(commandPath);
+      }
+    }
+
+    let installed = 0;
+
+    for (const file of fs.readdirSync(commandsSrc).filter(name => name.endsWith('.md')).sort()) {
+      const commandName = file.replace(/\.md$/, '');
+      if (!commandVisibility.isPublicCommandName(commandName)) {
+        continue;
+      }
+
+      const raw = fs.readFileSync(path.join(commandsSrc, file), 'utf8');
+      const rendered = replaceInstallPaths(raw, targetDir, target);
+      fs.writeFileSync(
+        path.join(commandsRoot, `emb-${commandName}.md`),
+        generateCursorCommandContent(commandName, rendered, runtimeDir),
         'utf8'
       );
       installed += 1;
@@ -1110,13 +1230,23 @@ function createInstallHelpers(deps) {
       }
       removeDirIfExists(commandsRoot);
     }
+    if (target.name === 'cursor') {
+      const commandsRoot = path.join(targetDir, 'commands');
+      for (const commandName of listManagedPublicCommandNames()) {
+        const commandPath = path.join(commandsRoot, `emb-${commandName}.md`);
+        if (fs.existsSync(commandPath)) {
+          fs.unlinkSync(commandPath);
+        }
+      }
+      removeDirIfEmpty(commandsRoot);
+    }
 
     removeDirIfExists(path.join(targetDir, target.runtimeDirName));
 
     const configPath = path.join(targetDir, target.configFileName || 'config.toml');
     if (fs.existsSync(configPath)) {
-      if (target.hookMode === 'claude-settings') {
-        const cleanedSettings = stripClaudeManagedHooks(readJsonObject(configPath));
+      if (target.hookMode === 'claude-settings' || target.hookMode === 'cursor-settings') {
+        const cleanedSettings = stripJsonHostManagedHooks(readJsonObject(configPath));
         if (cleanedSettings && Object.keys(cleanedSettings).length > 0) {
           writeJsonObject(configPath, cleanedSettings);
         } else {
@@ -1156,6 +1286,7 @@ function createInstallHelpers(deps) {
     const agentCount = installAgents(targetDir, target, args);
     const codexSkillCount = installCodexSkills(targetDir, target, runtimeDir);
     const claudeCommandCount = installClaudeCommands(targetDir, target, runtimeDir);
+    const cursorCommandCount = installCursorCommands(targetDir, target, runtimeDir);
     const envExamplePath = path.join(args.local ? process.cwd() : targetDir, '.env.example');
     const envExampleCreated = installEnvExample(envExamplePath);
     const envHintLines = buildEnvHintLines(envExamplePath);
@@ -1167,6 +1298,9 @@ function createInstallHelpers(deps) {
         : []),
       ...(claudeCommandCount > 0
         ? [`Installed ${claudeCommandCount} Claude commands under: ${path.join(targetDir, 'commands', 'emb')}`]
+        : []),
+      ...(cursorCommandCount > 0
+        ? [`Installed ${cursorCommandCount} Cursor commands under: ${path.join(targetDir, 'commands')}`]
         : []),
       `Updated ${target.label} config: ${path.join(targetDir, target.configFileName || 'config.toml')}`,
       `Developer identity: ${args.developer} (${target.name})`,

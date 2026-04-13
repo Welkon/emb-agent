@@ -31,7 +31,16 @@ npx emb-agent --claude --local --developer your-name
 This writes project-scoped Claude assets under `./.claude/`.
 `--developer` is required during install. The value is stored in runtime config and reused by `init`.
 
-## 2. Open the project in Codex or Claude Code
+For Cursor:
+
+```bash
+npx emb-agent --cursor --local --developer your-name
+```
+
+This writes project-scoped Cursor assets under `./.cursor/`, including `commands/` wrappers and `settings.json` hooks.
+`--developer` is required during install. The value is stored in runtime config and reused by `init`.
+
+## 2. Open the project in Codex, Claude Code, or Cursor
 
 Use emb-agent from inside the session.
 

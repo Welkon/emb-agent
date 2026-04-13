@@ -452,8 +452,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
 
 test('installer rejects declared but unsupported runtime targets', () => {
   return assert.rejects(
-    () => installer.main(['--runtime', 'cursor', '--global', '--config-dir', '/tmp/emb-agent-cursor', '--developer', 'welkon']),
-    /Runtime target "cursor" is not supported yet/
+    () => installer.main(['--runtime', 'windsurf', '--global', '--config-dir', '/tmp/emb-agent-windsurf', '--developer', 'welkon']),
+    /Runtime target "windsurf" is not supported yet/
   );
 });
 
@@ -532,6 +532,84 @@ test('installer defaults Claude to project-scoped .claude layout', async () => {
     assert.equal(fs.existsSync(path.join(claudeRoot, 'settings.json')), true);
     assert.match(stdout, /Installed 13 Claude commands under:/);
     assert.match(stdout, /\.claude\/commands\/emb/);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer lays down cursor commands and settings hooks', async () => {
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-cursor-home-'));
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    await installer.main(['--cursor', '--global', '--config-dir', tempHome, '--developer', 'felix']);
+
+    const runtimeRoot = path.join(tempHome, 'emb-agent');
+    const settingsPath = path.join(tempHome, 'settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const runtimeHost = require(path.join(runtimeRoot, 'lib', 'runtime-host.cjs'));
+    const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
+    const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
+
+    assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'commands', 'emb-init.md')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'config.toml')), false);
+    assert.ok(Array.isArray(settings.hooks.SessionStart));
+    assert.ok(Array.isArray(settings.hooks.PostToolUse));
+    assert.match(JSON.stringify(settings.hooks.SessionStart), /emb-session-start\.js/);
+    assert.match(JSON.stringify(settings.hooks.PostToolUse), /emb-context-monitor\.js/);
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'commands', 'emb-init.md'), 'utf8'),
+      /When this command matches the user intent, run `node .*emb-agent\/bin\/emb-agent\.cjs init`/
+    );
+    assert.equal(hostMetadata.name, 'cursor');
+    assert.equal(hostMetadata.subagent_bridge, undefined);
+    assert.equal(resolvedHost.name, 'cursor');
+    assert.equal(resolvedHost.stateRoot, path.join(tempHome, 'state', 'emb-agent'));
+    assert.match(resolvedHost.cliCommand, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.equal(resolvedHost.subagentBridge.available, false);
+    assert.equal(resolvedHost.subagentBridge.mode, 'disabled');
+    assert.equal(resolvedHost.subagentBridge.source, 'none');
+    assert.match(stdout, /Installed 13 Cursor commands under:/);
+    assert.match(stdout, /Updated Cursor config:/);
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer defaults Cursor to project-scoped .cursor layout', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-cursor-local-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    process.chdir(tempProject);
+    await installer.main(['--cursor', '--developer', 'felix']);
+
+    const cursorRoot = path.join(tempProject, '.cursor');
+
+    assert.equal(fs.existsSync(path.join(cursorRoot, 'emb-agent', 'bin', 'emb-agent.cjs')), true);
+    assert.equal(fs.existsSync(path.join(cursorRoot, 'agents', 'emb-arch-reviewer.md')), true);
+    assert.equal(fs.existsSync(path.join(cursorRoot, 'commands', 'emb-init.md')), true);
+    assert.equal(fs.existsSync(path.join(cursorRoot, 'settings.json')), true);
+    assert.match(stdout, /Installed 13 Cursor commands under:/);
+    assert.match(stdout, /\.cursor\/commands/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

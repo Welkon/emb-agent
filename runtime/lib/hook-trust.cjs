@@ -100,8 +100,35 @@ function hasClaudeHookCommand(settings, eventName, hookFileName) {
       hook &&
       typeof hook.command === 'string' &&
       hook.command.includes(hookFileName)
-    )
+      )
   );
+}
+
+function hasCursorHookCommand(settings, eventName, hookFileName) {
+  const entries =
+    settings &&
+    settings.hooks &&
+    typeof settings.hooks === 'object' &&
+    !Array.isArray(settings.hooks)
+      ? settings.hooks[eventName]
+      : null;
+
+  return Array.isArray(entries) && entries.some(entry => {
+    if (!entry || typeof entry !== 'object') {
+      return false;
+    }
+    if (typeof entry.command === 'string' && entry.command.includes(hookFileName)) {
+      return true;
+    }
+    if (Array.isArray(entry.hooks)) {
+      return entry.hooks.some(hook =>
+        hook &&
+        typeof hook.command === 'string' &&
+        hook.command.includes(hookFileName)
+      );
+    }
+    return false;
+  });
 }
 
 function resolveHostConfigTrust(options) {
@@ -155,6 +182,25 @@ function resolveHostConfigTrust(options) {
         source: 'host-config',
         signal: 'hooks-enabled',
         summary: 'Claude Code startup automation is available; emb-agent can continue automatic bootstrap steps'
+      };
+    }
+
+    if (runtimeHost.name === 'cursor') {
+      const settings = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const hooksEnabled =
+        hasCursorHookCommand(settings, 'SessionStart', 'emb-session-start.js') &&
+        hasCursorHookCommand(settings, 'PostToolUse', 'emb-context-monitor.js');
+
+      if (!hooksEnabled) {
+        return null;
+      }
+
+      return {
+        trusted: true,
+        explicit: true,
+        source: 'host-config',
+        signal: 'hooks-enabled',
+        summary: 'Cursor startup automation is available; emb-agent can continue automatic bootstrap steps'
       };
     }
   } catch {
@@ -212,6 +258,7 @@ function resolveWorkspaceTrust(input, env, options) {
 module.exports = {
   hasClaudeHookCommand,
   hasCodexHookCommand,
+  hasCursorHookCommand,
   hasEnabledCodexHooks,
   isWorkspaceTrusted,
   parseBoolean,
