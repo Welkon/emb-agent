@@ -48,6 +48,9 @@ test('dispatch show returns direct action contract for plan', () => {
     assert.equal(dispatch.agent_execution.primary_agent, 'emb-hw-scout');
     assert.equal(dispatch.agent_execution.dispatch_contract.primary.agent, 'emb-hw-scout');
     assert.equal(dispatch.agent_execution.dispatch_contract.primary.spawn_fallback.fallback_agent_type, 'explorer');
+    assert.ok(dispatch.agent_execution.dispatch_contract.primary.worker_contract);
+    assert.ok(dispatch.agent_execution.dispatch_contract.primary.worker_contract.inputs.length > 0);
+    assert.ok(dispatch.agent_execution.dispatch_contract.primary.worker_contract.acceptance_criteria.length > 0);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -132,6 +135,9 @@ test('dispatch next returns arch-review contract when focus triggers architectur
     assert.equal(dispatch.agent_execution.dispatch_contract.pattern_constraints.max_depth, 1);
     assert.equal(dispatch.agent_execution.dispatch_contract.synthesis_required, true);
     assert.equal(dispatch.agent_execution.dispatch_contract.primary.spawn_fallback.fallback_agent_type, 'default');
+    assert.ok(dispatch.agent_execution.dispatch_contract.primary.worker_contract);
+    assert.ok(dispatch.agent_execution.dispatch_contract.primary.worker_contract.outputs.length > 0);
+    assert.ok(dispatch.agent_execution.dispatch_contract.supporting.every(item => item.worker_contract));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

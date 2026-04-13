@@ -791,12 +791,56 @@ function validateMineruIntegration(config) {
   };
 }
 
+function validateSzlcscIntegration(config) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, 'integrations.szlcsc');
+
+  return {
+    enabled: ensureBoolean(source.enabled, 'integrations.szlcsc.enabled', false),
+    base_url:
+      ensureOptionalString(source.base_url, 'integrations.szlcsc.base_url') || 'https://ips.lcsc.com',
+    api_key: ensureOptionalString(source.api_key, 'integrations.szlcsc.api_key'),
+    api_key_env: ensureOptionalString(source.api_key_env, 'integrations.szlcsc.api_key_env') || 'SZLCSC_API_KEY',
+    api_secret: ensureOptionalString(source.api_secret, 'integrations.szlcsc.api_secret'),
+    api_secret_env:
+      ensureOptionalString(source.api_secret_env, 'integrations.szlcsc.api_secret_env') || 'SZLCSC_API_SECRET',
+    match_type: ensureChoice(
+      source.match_type,
+      'integrations.szlcsc.match_type',
+      ['exact', 'fuzzy'],
+      'fuzzy'
+    ),
+    page_size: ensurePositiveInteger(
+      source.page_size,
+      'integrations.szlcsc.page_size',
+      5
+    ),
+    max_matches_per_component: ensurePositiveInteger(
+      source.max_matches_per_component,
+      'integrations.szlcsc.max_matches_per_component',
+      5
+    ),
+    only_available: ensureBoolean(
+      source.only_available,
+      'integrations.szlcsc.only_available',
+      false
+    ),
+    currency: ensureOptionalString(source.currency, 'integrations.szlcsc.currency'),
+    timeout_ms: ensurePositiveInteger(
+      source.timeout_ms,
+      'integrations.szlcsc.timeout_ms',
+      15000
+    )
+  };
+}
+
 function validateIntegrations(config) {
   const source = config === undefined || config === null ? {} : config;
   expectObject(source, 'integrations');
 
   return {
-    mineru: validateMineruIntegration(source.mineru)
+    mineru: validateMineruIntegration(source.mineru),
+    szlcsc: validateSzlcscIntegration(source.szlcsc || source.lcsc)
   };
 }
 

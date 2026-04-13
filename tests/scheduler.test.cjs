@@ -96,6 +96,11 @@ test('baremetal sensor profile routes scan plan debug do to lightweight agents',
   assert.equal(plan.scheduler.agent_execution.dispatch_contract.primary.spawn_fallback.fallback_agent_type, 'explorer');
   assert.match(plan.scheduler.agent_execution.dispatch_contract.primary.spawn_fallback.instructions_source_cli, /agents show emb-hw-scout/);
   assert.ok(plan.scheduler.agent_execution.dispatch_contract.primary.context_bundle.truth_sources.length > 0);
+  assert.match(plan.scheduler.agent_execution.dispatch_contract.primary.worker_contract.goal, /hardware truth|fact-finding/i);
+  assert.ok(plan.scheduler.agent_execution.dispatch_contract.primary.worker_contract.inputs.length > 0);
+  assert.ok(plan.scheduler.agent_execution.dispatch_contract.primary.worker_contract.outputs.length > 0);
+  assert.ok(plan.scheduler.agent_execution.dispatch_contract.primary.worker_contract.forbidden_zones.length > 0);
+  assert.ok(plan.scheduler.agent_execution.dispatch_contract.primary.worker_contract.acceptance_criteria.length > 0);
   assert.ok(plan.constraints.some(item => item.includes('ISR thin')));
   assert.ok(plan.verification.some(item => item.includes('timing windows')));
   assert.ok(debug.hypotheses.some(item => item.includes('ISR')));
@@ -139,6 +144,9 @@ test('rtos connected profile routes review note to system and release aware outp
   assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.some(item => item.agent === 'emb-release-checker'));
   assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.every(item => item.tool_scope.allows_delegate === false));
   assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.some(item => item.spawn_fallback.fallback_agent_type === 'explorer'));
+  assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.every(item => item.worker_contract));
+  assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.every(item => item.worker_contract.inputs.length > 0));
+  assert.ok(review.scheduler.agent_execution.dispatch_contract.supporting.every(item => item.worker_contract.acceptance_criteria.length > 0));
   assert.ok(review.review_agents.includes('release-checker'));
   assert.ok(review.required_checks.some(item => item.includes('offline defaults')));
   assert.equal(verify.scheduler.primary_agent, 'release-checker');

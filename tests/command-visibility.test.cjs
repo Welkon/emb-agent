@@ -241,6 +241,9 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
   assert.match(advanced, /ingest schematic --file <path>/);
+  assert.match(advanced, /doc lookup \[--chip <name>/);
+  assert.match(advanced, /doc fetch --url <http\(s\)-url>/);
+  assert.match(advanced, /component lookup \[--file <schematic>/);
   assert.match(advanced, /context compress \[note\]/);
   assert.match(advanced, /skills list/);
   assert.match(advanced, /memory stack/);

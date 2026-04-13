@@ -38,7 +38,8 @@ function createCommandGroupHelpers(deps) {
     rejectVerifySignoff,
     saveVerifyReport,
     addNoteEntry,
-    ingestDocCli
+    ingestDocCli,
+    referenceLookupCli
   } = deps;
 
   function isObject(value) {
@@ -226,6 +227,24 @@ function createCommandGroupHelpers(deps) {
       return docs;
     }
 
+    if (cmd === 'doc' && subcmd === 'lookup') {
+      const result = referenceLookupCli.lookupDocs(resolveProjectRoot(), rest);
+      rememberDocFiles(
+        (result.candidates || [])
+          .filter(item => item && item.fetch_required === false)
+          .map(item => item.location),
+        'doc lookup'
+      );
+      return result;
+    }
+
+    if (cmd === 'doc' && subcmd === 'fetch') {
+      return referenceLookupCli.fetchDocument(resolveProjectRoot(), rest).then(result => {
+        rememberDocFiles([result.output], 'doc fetch');
+        return result;
+      });
+    }
+
     if (cmd === 'doc' && subcmd === 'show') {
       const showArgs = ingestDocCli.parseShowArgs(rest);
       const docView = ingestDocCli.showDoc(resolveProjectRoot(), showArgs.docId, {
@@ -282,6 +301,28 @@ function createCommandGroupHelpers(deps) {
         ...diffView,
         saved_preset: ingestDocCli.saveDiffPreset(resolveProjectRoot(), diffArgs.saveAs, diffView)
       }, permissionDecision);
+    }
+
+    if (cmd === 'component' && subcmd === 'lookup') {
+      const result = referenceLookupCli.lookupComponents(resolveProjectRoot(), rest);
+      if (result && typeof result.then === 'function') {
+        return result.then(resolved => {
+          rememberDocFiles(
+            (resolved.components || [])
+              .map(item => item.parsed_source)
+              .filter(Boolean),
+            'component lookup'
+          );
+          return resolved;
+        });
+      }
+      rememberDocFiles(
+        (result.components || [])
+          .map(item => item.parsed_source)
+          .filter(Boolean),
+        'component lookup'
+      );
+      return result;
     }
 
     return undefined;

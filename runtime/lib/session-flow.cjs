@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 
 const runtimeHostHelpers = require('./runtime-host.cjs');
@@ -102,6 +103,59 @@ function createSessionFlowHelpers(deps) {
     });
     blankSelectionModeCache.set(cacheKey, result);
     return result;
+  }
+
+  function readJsonIfExists(filePath) {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return null;
+    }
+
+    try {
+      return runtime.readJson(filePath);
+    } catch {
+      return null;
+    }
+  }
+
+  function getRecentSchematicAnalysis(resolved) {
+    const lastFiles =
+      resolved && resolved.session && Array.isArray(resolved.session.last_files)
+        ? resolved.session.last_files
+        : [];
+    const projectRoot = resolved && resolved.session ? resolved.session.project_root : '';
+    if (!projectRoot) {
+      return null;
+    }
+
+    const parsedFiles = lastFiles.filter(file =>
+      /(?:^|\/)\.emb-agent\/cache\/schematics\/[^/]+\/parsed\.json$/i.test(String(file || ''))
+    );
+    const latestParsed = parsedFiles[0] || '';
+    if (!latestParsed) {
+      return null;
+    }
+
+    const summaryFile = latestParsed.replace(/parsed\.json$/i, 'summary.json');
+    const summary = readJsonIfExists(path.join(projectRoot, summaryFile));
+    const agentAnalysis =
+      summary && summary.agent_analysis && typeof summary.agent_analysis === 'object'
+        ? summary.agent_analysis
+        : null;
+    if (!agentAnalysis) {
+      return null;
+    }
+
+    return {
+      summary_file: summaryFile,
+      parsed_file: latestParsed,
+      source_path: summary.source_path || '',
+      recommended_agent: agentAnalysis.recommended_agent || '',
+      summary: agentAnalysis.summary || '',
+      confirmation_targets: Array.isArray(agentAnalysis.confirmation_targets)
+        ? agentAnalysis.confirmation_targets
+        : [],
+      cli_hint: agentAnalysis.cli_hint || ''
+    };
   }
 
   function shouldGateNextWithHealth(resolved, handoff, nextCommand, healthReport) {
@@ -795,10 +849,12 @@ function createSessionFlowHelpers(deps) {
       memorySummary && Array.isArray(memorySummary.known_risks) && memorySummary.known_risks.length > 0
         ? memorySummary.known_risks
         : knownRisks;
+    const schematicAnalysis = getRecentSchematicAnalysis(resolved);
 
     return {
       suggested_flow: suggestedFlow,
       next,
+      schematic_analysis: schematicAnalysis,
       primary_tool_recommendation: primaryToolRecommendation,
       next_actions: runtime.unique([
         memorySummary && memorySummary.generated_at
@@ -833,6 +889,15 @@ function createSessionFlowHelpers(deps) {
         ...qualityGates.recommended_runs.map(item => `Run quality gate first: ${item}`),
         ...qualityGates.recommended_signoffs.map(item => `Confirm human gate first: ${item}`),
         ...qualityGates.rejected_signoffs.map(item => `Human signoff rejected: ${item}`),
+        schematicAnalysis && schematicAnalysis.recommended_agent
+          ? `Analyze the latest schematic with ${schematicAnalysis.recommended_agent} first: ${schematicAnalysis.parsed_file}`
+          : '',
+        schematicAnalysis && schematicAnalysis.confirmation_targets.length > 0
+          ? `Confirm schematic-derived fields before truth edits: ${schematicAnalysis.confirmation_targets.join(', ')}`
+          : '',
+        schematicAnalysis && schematicAnalysis.cli_hint
+          ? `Schematic handoff: ${schematicAnalysis.cli_hint}`
+          : '',
         primaryRegisterSource ? `Re-read the register summary first: ${primaryRegisterSource.path}` : '',
         !primaryRegisterSource && primarySource ? `Re-read the source summary first: ${primarySource.path}` : '',
         ...suggestedTools.slice(0, 2).map(tool => `Tool to evaluate first: ${tool.name} (${tool.status})`),
@@ -1084,6 +1149,7 @@ function createSessionFlowHelpers(deps) {
         gated_by_health: gatedByHealth,
         health_next_commands: nextCommand.health_next_commands || [],
         health_quickstart: nextCommand.health_quickstart || null,
+        schematic_analysis: guidance.schematic_analysis,
         tool_recommendation: guidance.primary_tool_recommendation
       },
       workflow_stage: workflowStage,

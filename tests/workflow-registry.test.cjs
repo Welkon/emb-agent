@@ -151,3 +151,22 @@ test('workflow registry injects motor drive focus for motor control projects', (
   assert.ok(injected.some(item => item.name === 'motor-drive-focus'));
   assert.ok(!injected.some(item => item.name === 'iot-device-focus'));
 });
+
+test('workflow registry exposes implementation style spec and template', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-style-'));
+  const projectExtDir = runtime.initProjectLayout(tempProject);
+
+  const merged = workflowRegistry.loadWorkflowRegistry(path.join(repoRoot, 'runtime'), {
+    projectExtDir
+  });
+  const injected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
+    profile: 'baremetal-8bit',
+    packs: [],
+    task: { type: 'implement', status: 'active' }
+  }, { limit: 8 });
+
+  assert.ok((merged.templates || []).some(item => item.name === 'implementation-style'));
+  assert.ok(injected.some(item => item.name === 'implementation-style'));
+  assert.ok((merged.specs || []).some(item => item.name === 'clean-worker-execution'));
+  assert.ok(injected.some(item => item.name === 'clean-worker-execution'));
+});

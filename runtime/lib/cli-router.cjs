@@ -420,7 +420,11 @@ function createCliRouter(deps) {
 
     const docCommandResult = handleDocCommands(cmd, subcmd, rest);
     if (docCommandResult !== undefined) {
-      emitJson(docCommandResult);
+      const resolvedDocCommandResult =
+        docCommandResult && typeof docCommandResult.then === 'function'
+          ? await docCommandResult
+          : docCommandResult;
+      emitJson(resolvedDocCommandResult);
       return;
     }
 
