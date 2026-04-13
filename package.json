@@ -15,6 +15,7 @@
     "runtime/hooks",
     "runtime/lib",
     "runtime/registry",
+    "runtime/scaffolds",
     "runtime/schemas",
     "runtime/packs",
     "runtime/profiles",

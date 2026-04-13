@@ -1,0 +1,34 @@
+{
+  "scaffolds": [
+    {
+      "name": "skill",
+      "source": "skill",
+      "description": "Bootstrap a skill skeleton with protocol-only structure, explicit FILL markers, and empty gotchas.",
+      "default_output": "skills/{{NAME}}"
+    },
+    {
+      "name": "shells",
+      "source": "shells",
+      "description": "Install host-facing shell instruction files and runtime-specific wrappers.",
+      "default_output": "."
+    },
+    {
+      "name": "hooks",
+      "source": "hooks",
+      "description": "Install session-start hook stubs and host hook manifests.",
+      "default_output": "."
+    },
+    {
+      "name": "protocol-blocks",
+      "source": "protocol-blocks",
+      "description": "Install reusable protocol building blocks without project-specific content.",
+      "default_output": "templates/protocol-blocks"
+    },
+    {
+      "name": "anti-templates",
+      "source": "ANTI-TEMPLATES.md",
+      "description": "Install the explicit list of decisions that must not be templated.",
+      "default_output": "ANTI-TEMPLATES.md"
+    }
+  ]
+}

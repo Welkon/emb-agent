@@ -49,6 +49,7 @@ const healthUpdateCommandHelpers = require(path.join(ROOT, 'lib', 'health-update
 const executorCommandHelpers = require(path.join(ROOT, 'lib', 'executor-command.cjs'));
 const commandVisibility = require(path.join(ROOT, 'lib', 'command-visibility.cjs'));
 const workflowAuthoringHelpers = require(path.join(ROOT, 'lib', 'workflow-authoring.cjs'));
+const scaffoldAuthoringHelpers = require(path.join(ROOT, 'lib', 'scaffold-authoring.cjs'));
 const subAgentRuntimeHelpers = require(path.join(ROOT, 'lib', 'sub-agent-runtime.cjs'));
 const skillRuntimeHelpers = require(path.join(ROOT, 'lib', 'skill-runtime.cjs'));
 const memoryRuntimeHelpers = require(path.join(ROOT, 'lib', 'memory-runtime.cjs'));
@@ -633,6 +634,18 @@ const {
 });
 
 const {
+  handleScaffoldCommands
+} = scaffoldAuthoringHelpers.createScaffoldAuthoringHelpers({
+  fs,
+  path,
+  process,
+  ROOT,
+  runtime,
+  templateCli,
+  updateSession
+});
+
+const {
   handleCatalogAndStateCommands
 } = stateCommandHelpers.createStateCommandHelpers({
   fs,
@@ -660,6 +673,7 @@ const {
   getProjectConfig,
   requireRestText,
   requirePreferenceKey,
+  handleScaffoldCommands,
   handleWorkflowCommands,
   handleHealthUpdateCommands,
   handleTaskCommands,

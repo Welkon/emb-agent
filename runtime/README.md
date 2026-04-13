@@ -40,6 +40,8 @@ Project state is stored by default at:
   Internal runtime libraries, including session, handoff, scheduling, dispatch, and host/path resolution.
 - `scripts/`
   Runtime helper scripts such as `init-project`, `attach-project`, `ingest-doc`, and `adapter-derive`.
+- `scaffolds/`
+  Fixed scaffold trees for skill, shell, hook, and protocol bootstrap. Structure may be prebuilt here; project content must still be filled explicitly.
 - `templates/`
   Fixed output templates.
 - `profiles/`
