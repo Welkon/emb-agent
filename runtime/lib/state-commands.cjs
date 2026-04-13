@@ -27,6 +27,7 @@ function createStateCommandHelpers(deps) {
     getProjectConfig,
     requireRestText,
     requirePreferenceKey,
+    handleScaffoldCommands,
     handleWorkflowCommands,
     handleHealthUpdateCommands,
     handleTaskCommands,
@@ -49,6 +50,13 @@ function createStateCommandHelpers(deps) {
   } = deps;
 
   function handleCatalogAndStateCommands(cmd, subcmd, rest) {
+    const scaffoldResult = handleScaffoldCommands
+      ? handleScaffoldCommands(cmd, subcmd, rest)
+      : undefined;
+    if (scaffoldResult !== undefined) {
+      return scaffoldResult;
+    }
+
     const workflowResult = handleWorkflowCommands
       ? handleWorkflowCommands(cmd, subcmd, rest)
       : undefined;

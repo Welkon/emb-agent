@@ -88,6 +88,7 @@ function main() {
   ensure(Array.isArray(pkg.files), 'package.json files must be an array');
   ensure(pkg.files.includes('runtime/bin'), 'package.json files must include runtime/bin');
   ensure(pkg.files.includes('runtime/lib'), 'package.json files must include runtime/lib');
+  ensure(pkg.files.includes('runtime/scaffolds'), 'package.json files must include runtime/scaffolds');
   ensure(
     pkg.files.includes('runtime/state/default-session.json'),
     'package.json files must include runtime/state/default-session.json'

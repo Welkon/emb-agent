@@ -1,0 +1,10 @@
+---
+description: Workflow shell for {{NAME}}
+alwaysApply: false
+---
+
+# Workflow Shell
+
+- Skill: {{NAME}}
+- Summary: {{SUMMARY}}
+- <!-- FILL: exact workflow routing rule -->

@@ -990,6 +990,7 @@ function createInstallHelpers(deps) {
     }
     copyDirWithReplacement(path.join(runtimeSrc, 'lib'), path.join(runtimeDir, 'lib'), targetDir, target);
     copyDirWithReplacement(path.join(runtimeSrc, 'scripts'), path.join(runtimeDir, 'scripts'), targetDir, target);
+    copyDirWithReplacement(path.join(runtimeSrc, 'scaffolds'), path.join(runtimeDir, 'scaffolds'), targetDir, target);
     copyDirWithReplacement(path.join(runtimeSrc, 'templates'), path.join(runtimeDir, 'templates'), targetDir, target);
     copyDir(path.join(runtimeSrc, 'registry'), path.join(runtimeDir, 'registry'));
     copyDir(path.join(runtimeSrc, 'profiles'), path.join(runtimeDir, 'profiles'));

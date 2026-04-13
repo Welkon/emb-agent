@@ -65,6 +65,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'chip-catalog.cjs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'scaffolds', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'VERSION')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'command-docs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'tools', 'registry.json')), true);
