@@ -680,6 +680,18 @@ function renderPeripheralEntry(entry, itemIndent) {
   ];
 }
 
+function buildTruthWriteSemantics(projectRoot, filePath, domain) {
+  return {
+    write_mode: 'truth-write',
+    truth_write: {
+      direct: true,
+      requires_confirmation: false,
+      domain,
+      target: path.relative(projectRoot, filePath).replace(/\\/g, '/')
+    }
+  };
+}
+
 function ingestHardware(projectRoot, args) {
   const filePath = ensureTemplateFile(projectRoot, 'hw-truth');
   let content = runtime.readText(filePath);
@@ -715,6 +727,7 @@ function ingestHardware(projectRoot, args) {
   fs.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`, 'utf8');
 
   return {
+    ...buildTruthWriteSemantics(projectRoot, filePath, 'hardware'),
     domain: 'hardware',
     target: path.relative(projectRoot, filePath),
     updated: {
@@ -743,6 +756,7 @@ function ingestRequirements(projectRoot, args) {
   fs.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`, 'utf8');
 
   return {
+    ...buildTruthWriteSemantics(projectRoot, filePath, 'requirements'),
     domain: 'requirements',
     target: path.relative(projectRoot, filePath),
     updated: {
