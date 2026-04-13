@@ -24,3 +24,5 @@
 - <!-- FILL: code quality axis -->
 - <!-- FILL: gotcha or AAR threshold -->
 - <!-- FILL: recording threshold -->
+- Reject any lesson write-up that fails the 2/3 recording threshold or stays project-specific instead of being generalized.
+- For any accepted high-cost lesson, verify both storage and activation before merge.

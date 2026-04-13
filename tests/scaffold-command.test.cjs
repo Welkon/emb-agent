@@ -69,9 +69,70 @@ test('scaffold install skill copies the tree, replaces placeholders, and reports
     assert.match(skillContent, /Review IRQ closure rules/);
     assert.doesNotMatch(skillContent, /\{\{NAME\}\}/);
     assert.doesNotMatch(skillContent, /\{\{SUMMARY\}\}/);
+    assert.match(skillContent, /Record a lesson only if at least 2 of these 3 checks pass/);
+    assert.match(skillContent, /Activation Over Storage/);
+    assert.match(skillContent, /When the agent is corrected/);
+    assert.match(skillContent, /Rule Retirement/);
+    assert.match(skillContent, /Run periodic homogeneity drift checks/);
+    assert.match(skillContent, /Stable constraints or conventions go to `rules\/`\./);
+    assert.match(skillContent, /Traps, lifecycle notes, or architecture gotchas go to `references\/`\./);
+    assert.match(skillContent, /Ordered steps or completion checks go to `workflows\/`\./);
 
     const gotchasPath = path.join(tempProject, 'skills', 'irq-review', 'references', 'gotchas.md');
     assert.equal(fs.readFileSync(gotchasPath, 'utf8').trim(), '');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('protocol blocks include knowledge evolution and anti-template drift log guidance', async () => {
+  const knowledgeBlock = fs.readFileSync(
+    path.join(repoRoot, 'runtime', 'scaffolds', 'protocol-blocks', 'knowledge-evolution.md'),
+    'utf8'
+  );
+  const antiTemplates = fs.readFileSync(
+    path.join(repoRoot, 'runtime', 'scaffolds', 'ANTI-TEMPLATES.md'),
+    'utf8'
+  );
+
+  assert.match(knowledgeBlock, /Learn From Mistakes/);
+  assert.match(knowledgeBlock, /Rule Deprecation/);
+  assert.match(knowledgeBlock, /Split Evaluation/);
+  assert.match(knowledgeBlock, /Merge Evaluation/);
+  assert.match(knowledgeBlock, /Homogeneity Drift Check/);
+
+  assert.match(antiTemplates, /Homogeneity Drift Log/);
+  assert.match(antiTemplates, /Expected same:/);
+  assert.match(antiTemplates, /Expected different:/);
+});
+
+test('scaffold show and install protocol-blocks expose knowledge evolution guidance', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-scaffold-protocol-'));
+  const currentCwd = process.cwd();
+
+  try {
+    const shown = await captureCliJson(['scaffold', 'show', 'protocol-blocks']);
+    assert.equal(shown.scaffold.name, 'protocol-blocks');
+    assert.ok(shown.scaffold.files.includes('knowledge-evolution.md'));
+
+    process.chdir(tempProject);
+
+    const installed = await captureCliJson([
+      'scaffold',
+      'install',
+      'protocol-blocks'
+    ]);
+
+    assert.equal(installed.installed, true);
+    assert.equal(installed.scaffold, 'protocol-blocks');
+    assert.ok(installed.created.includes('templates/protocol-blocks/knowledge-evolution.md'));
+
+    const installedKnowledgeBlock = fs.readFileSync(
+      path.join(tempProject, 'templates', 'protocol-blocks', 'knowledge-evolution.md'),
+      'utf8'
+    );
+    assert.match(installedKnowledgeBlock, /Learn From Mistakes/);
+    assert.match(installedKnowledgeBlock, /Homogeneity Drift Check/);
   } finally {
     process.chdir(currentCwd);
   }
