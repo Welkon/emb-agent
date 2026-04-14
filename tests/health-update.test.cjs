@@ -118,8 +118,18 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.ok(Array.isArray(report.next_commands));
     assert.ok(report.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
     assert.equal(report.quickstart.stage, 'fill-hardware-identity');
+    assert.equal(report.quickstart.display_stage, 'complete-project-facts');
+    assert.match(report.quickstart.user_summary, /Record project facts first/);
+    assert.equal(report.action_card.action, 'Needs project facts');
+    assert.equal(report.action_card.stage, 'project-facts');
+    assert.match(report.action_card.first_instruction, /Record project facts first/);
+    assert.ok(report.action_card.followup.includes('adapter bootstrap'));
     assert.equal(report.bootstrap.current_stage, 'hardware-truth');
+    assert.equal(report.bootstrap.display_current_stage, 'project-facts');
     assert.equal(report.bootstrap.next_stage.status, 'manual');
+    assert.equal(report.bootstrap.next_stage.display_status, 'needs-user-input');
+    assert.equal(report.bootstrap.next_stage.display_id, 'project-facts');
+    assert.equal(report.bootstrap.next_stage.action_summary, 'Needs project facts');
     assert.ok(report.bootstrap.stages.some(item => item.id === 'init-project' && item.status === 'completed'));
     assert.ok(report.quickstart.followup.includes('adapter bootstrap'));
     assert.equal(cli.loadSession().last_command, 'health');
@@ -309,8 +319,16 @@ test('health and bootstrap expose host startup readiness as an explicit bootstra
     assert.equal(report.startup_automation.source, 'env');
     assert.equal(report.checks.find(item => item.key === 'startup_automation').status, 'warn');
     assert.equal(report.bootstrap.current_stage, 'startup-hooks');
+    assert.equal(report.bootstrap.display_current_stage, 'host-readiness');
     assert.equal(report.bootstrap.next_stage.status, 'manual');
+    assert.equal(report.bootstrap.next_stage.display_status, 'needs-user-input');
+    assert.equal(report.bootstrap.next_stage.action_summary, 'Needs host action');
     assert.equal(report.quickstart.stage, 'restart-host-hooks');
+    assert.equal(report.quickstart.display_stage, 'restart-host-for-bootstrap');
+    assert.match(report.quickstart.user_summary, /Restart the host once/);
+    assert.equal(report.action_card.action, 'Needs host action');
+    assert.equal(report.action_card.stage, 'host-readiness');
+    assert.match(report.action_card.first_instruction, /Restart the host once/);
     assert.ok(report.recommendations.some(item => item.includes('automatic startup')));
 
     stdout = '';
@@ -318,8 +336,12 @@ test('health and bootstrap expose host startup readiness as an explicit bootstra
     report = JSON.parse(stdout);
 
     assert.equal(report.current_stage, 'startup-hooks');
+    assert.equal(report.display_current_stage, 'host-readiness');
+    assert.equal(report.action_card.action, 'Needs host action');
     assert.equal(report.next_stage.id, 'startup-hooks');
+    assert.equal(report.next_stage.display_id, 'host-readiness');
     assert.equal(report.next_stage.status, 'manual');
+    assert.equal(report.next_stage.display_status, 'needs-user-input');
     assert.ok(report.stages.some(item => item.id === 'startup-hooks' && item.status === 'manual'));
   } finally {
     if (previousWorkspaceTrust === undefined) {
@@ -371,7 +393,9 @@ test('installed codex runtime uses enabled hooks config as authorization signal'
     assert.equal(report.startup_automation.source, 'host-config');
     assert.equal(report.startup_automation.signal, 'hooks-enabled');
     assert.equal(report.bootstrap.current_stage, 'hardware-truth');
+    assert.equal(report.bootstrap.display_current_stage, 'project-facts');
     assert.equal(report.quickstart.stage, 'fill-hardware-identity');
+    assert.equal(report.quickstart.display_stage, 'complete-project-facts');
     assert.ok(!report.bootstrap.stages.some(item => item.id === 'startup-hooks'));
     assert.ok(!report.recommendations.some(item => item.includes('automatic startup')));
   } finally {
@@ -494,6 +518,11 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'info');
     assert.ok(report.next_commands.some(item => item.cli.includes('adapter bootstrap')));
     assert.equal(report.quickstart.stage, 'bootstrap-then-next');
+    assert.equal(report.action_card.action, 'Ready to continue');
+    assert.equal(report.action_card.stage, 'adapter-setup');
+    assert.equal(report.action_card.first_instruction, '');
+    assert.ok(report.action_card.first_cli.includes('adapter bootstrap'));
+    assert.ok(report.action_card.then_cli.endsWith(' next'));
     assert.equal(report.bootstrap.current_stage, 'adapter-bootstrap');
     assert.ok(report.bootstrap.next_stage.cli.includes('adapter bootstrap'));
     assert.ok(report.quickstart.steps[0].cli.includes('adapter bootstrap'));
@@ -617,6 +646,10 @@ test('health surfaces pending doc apply as quickstart before generic next', asyn
     assert.equal(report.checks.find(item => item.key === 'doc_apply_backlog').status, 'warn');
     assert.ok(report.next_commands.some(item => item.key === 'doc-apply'));
     assert.equal(report.quickstart.stage, 'doc-apply-then-next');
+    assert.equal(report.action_card.stage, 'apply-document-facts');
+    assert.equal(report.action_card.action, 'Needs document apply');
+    assert.equal(report.action_card.first_instruction, '');
+    assert.ok(report.action_card.first_cli.includes('ingest apply doc'));
     assert.equal(report.bootstrap.current_stage, 'doc-truth-sync');
     assert.ok(report.quickstart.steps[0].cli.includes('ingest apply doc'));
     assert.ok(report.quickstart.steps[1].cli.endsWith(' next'));
@@ -696,6 +729,10 @@ test('health routes from applied hardware doc to adapter derive when synced adap
     assert.ok(report.next_commands.some(item => item.key === 'adapter-derive-from-doc'));
     assert.ok(report.next_commands.some(item => item.cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`)));
     assert.equal(report.quickstart.stage, 'derive-then-next');
+    assert.equal(report.action_card.stage, 'adapter-from-document');
+    assert.equal(report.action_card.action, 'Ready to continue');
+    assert.equal(report.action_card.first_instruction, '');
+    assert.ok(report.action_card.first_cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`));
     assert.equal(report.bootstrap.current_stage, 'adapter-derive');
     assert.ok(report.quickstart.steps[0].cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`));
   } finally {
