@@ -177,6 +177,146 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
+  function getBootstrapStageDisplayId(id) {
+    switch (id) {
+      case 'init-project':
+        return 'project-init';
+      case 'startup-hooks':
+        return 'host-readiness';
+      case 'hardware-truth':
+        return 'project-facts';
+      case 'doc-truth-sync':
+        return 'apply-document-facts';
+      case 'adapter-bootstrap':
+        return 'adapter-setup';
+      case 'adapter-derive':
+        return 'adapter-from-document';
+      case 'next-step':
+        return 'continue-with-next';
+      default:
+        return id || '';
+    }
+  }
+
+  function getBootstrapStageAction(id) {
+    switch (id) {
+      case 'startup-hooks':
+        return 'Needs host action';
+      case 'hardware-truth':
+        return 'Needs project facts';
+      case 'doc-truth-sync':
+        return 'Needs document apply';
+      case 'adapter-bootstrap':
+      case 'adapter-derive':
+      case 'next-step':
+        return 'Ready to continue';
+      case 'init-project':
+        return 'Needs project init';
+      default:
+        return '';
+    }
+  }
+
+  function getBootstrapStatusDisplay(status) {
+    switch (status) {
+      case 'manual':
+        return 'needs-user-input';
+      case 'ready':
+        return 'ready-to-run';
+      case 'completed':
+        return 'done';
+      case 'pending':
+        return 'waiting-on-earlier-step';
+      default:
+        return status || '';
+    }
+  }
+
+  function decorateBootstrapStage(stage) {
+    if (!stage || typeof stage !== 'object') {
+      return stage;
+    }
+
+    return {
+      ...stage,
+      display_id: getBootstrapStageDisplayId(stage.id),
+      display_status: getBootstrapStatusDisplay(stage.status),
+      action_summary: getBootstrapStageAction(stage.id)
+    };
+  }
+
+  function getQuickstartDisplayStage(id) {
+    switch (id) {
+      case 'restart-host-hooks':
+        return 'restart-host-for-bootstrap';
+      case 'fill-hardware-identity':
+        return 'complete-project-facts';
+      case 'doc-apply-then-next':
+        return 'apply-document-facts';
+      case 'derive-then-next':
+        return 'derive-adapter-then-next';
+      case 'bootstrap-then-next':
+        return 'bootstrap-adapters-then-next';
+      case 'next':
+        return 'enter-next-stage';
+      default:
+        return id || '';
+    }
+  }
+
+  function getQuickstartUserSummary(stageId, summary) {
+    if (stageId === 'restart-host-hooks') {
+      return 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.';
+    }
+
+    if (stageId === 'fill-hardware-identity') {
+      return 'Record project facts first: if the chip is known, write MCU and package; if not, write goals, constraints, and interfaces.';
+    }
+
+    if (stageId === 'doc-apply-then-next') {
+      return 'Write the latest parsed document findings into truth files before continuing.';
+    }
+
+    if (stageId === 'derive-then-next') {
+      return 'Derive an adapter from the hardware document before entering the recommended next stage.';
+    }
+
+    if (stageId === 'bootstrap-then-next') {
+      return 'Finish adapter bootstrap before entering the recommended next stage.';
+    }
+
+    if (stageId === 'next') {
+      return 'Bootstrap prerequisites are closed; enter the recommended next stage.';
+    }
+
+    return summary || '';
+  }
+
+  function buildActionCardFromBootstrap(bootstrap) {
+    const plan = bootstrap && typeof bootstrap === 'object' ? bootstrap : {};
+    const quickstart = plan.quickstart && typeof plan.quickstart === 'object' ? plan.quickstart : {};
+    const nextStage = plan.next_stage && typeof plan.next_stage === 'object' ? plan.next_stage : {};
+    const steps = Array.isArray(quickstart.steps) ? quickstart.steps.filter(Boolean) : [];
+    const firstStep = steps[0] && typeof steps[0] === 'object' ? steps[0] : {};
+    const secondStep = steps[1] && typeof steps[1] === 'object' ? steps[1] : {};
+
+    return {
+      status: plan.display_status || getBootstrapStatusDisplay(plan.status),
+      stage: plan.display_current_stage || getBootstrapStageDisplayId(plan.current_stage),
+      action: nextStage.action_summary || getBootstrapStageAction(nextStage.id),
+      summary: plan.display_summary || quickstart.user_summary || plan.summary || '',
+      reason: nextStage.label || '',
+      first_step_label: firstStep.label || '',
+      first_instruction:
+        firstStep.cli
+          ? ''
+          : (quickstart.user_summary || nextStage.summary || firstStep.label || plan.display_summary || ''),
+      first_cli: firstStep.cli || nextStage.cli || '',
+      then_cli: secondStep.cli || '',
+      followup: quickstart.followup || ''
+    };
+  }
+
   function buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks) {
     const commands = Array.isArray(nextCommands) ? nextCommands : [];
     const allChecks = Array.isArray(checks) ? checks : [];
@@ -330,7 +470,8 @@ function createHealthUpdateCommandHelpers(deps) {
       )
     );
 
-    const nextStage = stages.find(item => ['ready', 'manual'].includes(item.status)) || null;
+    const decoratedStages = stages.map(decorateBootstrapStage);
+    const nextStage = decoratedStages.find(item => ['ready', 'manual'].includes(item.status)) || null;
     const quickstartStage = nextStage
       ? nextStage.id === 'hardware-truth'
         ? 'fill-hardware-identity'
@@ -362,35 +503,76 @@ function createHealthUpdateCommandHelpers(deps) {
           ]
         : [])
     ];
+    const quickstartSummary = nextStage
+      ? nextStage.summary || nextStage.label
+      : 'Bootstrap prerequisites are already closed; run next directly';
+    const quickstartUserSummary = getQuickstartUserSummary(quickstartStage, quickstartSummary);
+
+    const actionCard = buildActionCardFromBootstrap({
+      status: nextStage ? (nextStage.status === 'manual' ? 'manual' : 'ready') : 'complete',
+      display_status: nextStage ? getBootstrapStatusDisplay(nextStage.status) : 'done',
+      summary: nextStage
+        ? nextStage.summary || nextStage.label
+        : 'Bootstrap prerequisites are already closed',
+      display_summary: nextStage
+        ? getQuickstartUserSummary(quickstartStage, nextStage.summary || nextStage.label)
+        : 'Bootstrap prerequisites are closed; enter the recommended next stage.',
+      current_stage: nextStage ? nextStage.id : '',
+      display_current_stage: nextStage ? nextStage.display_id : 'continue-with-next',
+      next_stage: nextStage,
+      quickstart: {
+        stage: quickstartStage,
+        display_stage: getQuickstartDisplayStage(quickstartStage),
+        summary: quickstartSummary,
+        user_summary: quickstartUserSummary,
+        steps: quickstartSteps,
+        followup:
+          nextStage && nextStage.cli
+            ? nextStage.id === 'next-step'
+              ? `Run first: ${nextStage.cli}`
+              : `Run first: ${nextStage.cli} -> ${NEXT_CLI}`
+            : nextStage && nextStage.id === 'startup-hooks'
+              ? `Restart the host once so emb-agent can attach at session start, then rerun: ${HEALTH_CLI}`
+              : nextStage && nextStage.id === 'hardware-truth'
+                ? `After chip identity or concept-stage requirements are recorded, run directly: ${DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI} -> ${NEXT_CLI}`
+                : `Run first: ${NEXT_CLI}`
+      }
+    });
 
     return {
       command: 'bootstrap',
       project_root: projectRoot,
       runtime_host: RUNTIME_HOST.name,
       status: nextStage ? (nextStage.status === 'manual' ? 'manual' : 'ready') : 'complete',
+      display_status: nextStage ? getBootstrapStatusDisplay(nextStage.status) : 'done',
       summary: nextStage
         ? nextStage.summary || nextStage.label
         : 'Bootstrap prerequisites are already closed',
+      display_summary: nextStage
+        ? getQuickstartUserSummary(quickstartStage, nextStage.summary || nextStage.label)
+        : 'Bootstrap prerequisites are closed; enter the recommended next stage.',
       current_stage: nextStage ? nextStage.id : '',
+      display_current_stage: nextStage ? nextStage.display_id : 'continue-with-next',
       next_stage: nextStage,
-      stages,
-      quickstart: {
-        stage: quickstartStage,
-        summary: nextStage
-          ? nextStage.summary || nextStage.label
-          : 'Bootstrap prerequisites are already closed; run next directly',
-        steps: quickstartSteps,
-        followup:
-          nextStage && nextStage.cli
-            ? nextStage.id === 'next-step'
-            ? `Run first: ${nextStage.cli}`
-            : `Run first: ${nextStage.cli} -> ${NEXT_CLI}`
-            : nextStage && nextStage.id === 'startup-hooks'
-              ? `Restart the host once so emb-agent automatic startup is active, then rerun: ${HEALTH_CLI}`
-            : nextStage && nextStage.id === 'hardware-truth'
-              ? `After hardware truth is complete, run directly: ${DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI} -> ${NEXT_CLI}`
-              : `Run first: ${NEXT_CLI}`
-      },
+      stages: decoratedStages,
+      quickstart: actionCard.first_cli || actionCard.then_cli || actionCard.followup
+        ? {
+            stage: quickstartStage,
+            display_stage: getQuickstartDisplayStage(quickstartStage),
+            summary: quickstartSummary,
+            user_summary: quickstartUserSummary,
+            steps: quickstartSteps,
+            followup: actionCard.followup
+          }
+        : {
+            stage: quickstartStage,
+            display_stage: getQuickstartDisplayStage(quickstartStage),
+            summary: quickstartSummary,
+            user_summary: quickstartUserSummary,
+            steps: quickstartSteps,
+            followup: ''
+          },
+      action_card: actionCard,
       startup_automation: buildStartupAutomationSummary(workspaceTrust)
     };
   }
@@ -1145,6 +1327,7 @@ function createHealthUpdateCommandHelpers(deps) {
       next_commands: nextCommands,
       quickstart: buildQuickstartHint(workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, projectRoot),
       bootstrap,
+      action_card: bootstrap.action_card || buildActionCardFromBootstrap(bootstrap),
       recommendations: runtime.unique(
         checks
           .filter(item => item.status === 'fail' || item.status === 'warn')

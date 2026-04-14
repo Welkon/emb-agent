@@ -236,10 +236,32 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
       summary: 'Automatic startup is explicitly disabled by environment override'
     },
     summary: { pass: 3, warn: 1, fail: 0, info: 0 },
-    checks: [],
-    recommendations: [],
+    checks: [
+      { key: 'project_root', status: 'pass', summary: 'Project root is accessible' },
+      { key: 'startup_automation', status: 'warn', summary: 'Startup automation is not ready yet' },
+      { key: 'project_config_valid', status: 'pass', summary: 'project.json validation passed' },
+      { key: 'subagent_bridge', status: 'info', summary: 'Host sub-agent bridge is not configured' }
+    ],
+    recommendations: [
+      'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      'Configure EMB_AGENT_SUBAGENT_BRIDGE_CMD if you want dispatch/orchestrate to launch host sub-agents automatically.'
+    ],
     next_commands: [],
+    action_card: {
+      status: 'needs-user-input',
+      stage: 'host-readiness',
+      action: 'Needs host action',
+      summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      reason: 'Host session ready for automatic bootstrap',
+      first_instruction: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      first_cli: '',
+      then_cli: '',
+      followup: 'Restart the host once so emb-agent automatic startup is active'
+    },
     quickstart: {
+      stage: 'restart-host-hooks',
+      display_stage: 'restart-host-for-bootstrap',
+      user_summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
       followup: 'Restart the host once so emb-agent automatic startup is active',
       steps: []
     }
@@ -248,8 +270,22 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
   const bootstrapOutput = outputMode.applyOutputMode({
     command: 'bootstrap',
     status: 'manual',
+    display_status: 'needs-user-input',
     summary: 'Restart the host once so emb-agent automatic startup is active',
+    display_summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
     current_stage: 'startup-hooks',
+    display_current_stage: 'host-readiness',
+    action_card: {
+      status: 'needs-user-input',
+      stage: 'host-readiness',
+      action: 'Needs host action',
+      summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      reason: 'Host session ready for automatic bootstrap',
+      first_instruction: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      first_cli: '',
+      then_cli: '',
+      followup: 'Restart the host once so emb-agent automatic startup is active, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health'
+    },
     workspace_trust: {
       trusted: false,
       explicit: true,
@@ -260,15 +296,27 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
     next_stage: {
       id: 'startup-hooks',
       status: 'manual',
+      display_id: 'host-readiness',
+      display_status: 'needs-user-input',
       label: 'Host session ready for automatic bootstrap',
+      action_summary: 'Needs host action',
       cli: ''
     },
     stages: [
       { id: 'init-project', status: 'completed', label: 'Initialize emb-agent project skeleton' },
-      { id: 'startup-hooks', status: 'manual', label: 'Host session ready for automatic bootstrap' }
+      {
+        id: 'startup-hooks',
+        status: 'manual',
+        display_id: 'host-readiness',
+        display_status: 'needs-user-input',
+        label: 'Host session ready for automatic bootstrap',
+        action_summary: 'Needs host action'
+      }
     ],
     quickstart: {
       stage: 'restart-host-hooks',
+      display_stage: 'restart-host-for-bootstrap',
+      user_summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
       followup: 'Restart the host once so emb-agent automatic startup is active, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
       steps: [
         {
@@ -281,15 +329,168 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
 
   assert.equal('workspace_trust' in healthOutput, false);
   assert.equal('workspace_trust' in bootstrapOutput, false);
-  assert.equal(bootstrapOutput.current_stage, 'startup-hooks');
+  assert.equal(healthOutput.quickstart.stage, 'restart-host-for-bootstrap');
+  assert.equal(healthOutput.action_card.action, 'Needs host action');
+  assert.match(healthOutput.action_card.first_instruction, /Restart the host once/);
+  assert.deepEqual(healthOutput.checks.map(item => item.key), ['startup_automation']);
+  assert.deepEqual(healthOutput.recommendations, ['Configure EMB_AGENT_SUBAGENT_BRIDGE_CMD if you want dispatch/orchestrate to launch host sub-agents automatically.']);
+  assert.equal('primary_cli' in healthOutput, false);
+  assert.equal(bootstrapOutput.action_card.stage, 'host-readiness');
+  assert.equal(bootstrapOutput.current_stage, 'host-readiness');
+});
+
+test('applyOutputMode prioritizes brief health checks around the current action stage', () => {
+  const output = outputMode.applyOutputMode({
+    command: 'health',
+    status: 'warn',
+    runtime_host: 'codex',
+    summary: { pass: 8, warn: 2, fail: 0, info: 1 },
+    checks: [
+      { key: 'project_root', status: 'pass', summary: 'Project root is accessible' },
+      { key: 'project_config_valid', status: 'pass', summary: 'project.json validation passed' },
+      { key: 'adapter_match', status: 'warn', summary: 'No adapter matches the current chip yet' },
+      { key: 'adapter_sources_registered', status: 'warn', summary: 'No adapter source is registered yet' },
+      { key: 'subagent_bridge', status: 'info', summary: 'Host sub-agent bridge is not configured' },
+      { key: 'hardware_identity', status: 'pass', summary: 'The chip model is mapped to a chip profile' }
+    ],
+    recommendations: [
+      'Finish adapter bootstrap before entering the recommended next stage.',
+      'Register the default adapter source before retrying adapter bootstrap.'
+    ],
+    next_commands: [
+      {
+        key: 'adapter-source-add',
+        cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git'
+      }
+    ],
+    action_card: {
+      status: 'ready-to-run',
+      stage: 'adapter-setup',
+      action: 'Ready to continue',
+      summary: 'Finish adapter bootstrap before entering the recommended next stage.',
+      first_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter bootstrap'
+    },
+    quickstart: {
+      stage: 'bootstrap-adapters-then-next',
+      display_stage: 'bootstrap-adapters-then-next',
+      user_summary: 'Finish adapter bootstrap before entering the recommended next stage.',
+      steps: []
+    }
+  }, true);
+
+  assert.deepEqual(output.checks.map(item => item.key), ['adapter_match', 'adapter_sources_registered']);
+  assert.deepEqual(output.recommendations, ['Register the default adapter source before retrying adapter bootstrap.']);
+  assert.equal(output.primary_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter bootstrap');
+});
+
+test('applyOutputMode limits brief health checks to three non-info items when action_card exists', () => {
+  const output = outputMode.applyOutputMode({
+    command: 'health',
+    status: 'warn',
+    runtime_host: 'codex',
+    summary: { pass: 10, warn: 4, fail: 0, info: 2 },
+    checks: [
+      { key: 'startup_automation', status: 'warn', summary: 'Startup automation is not ready yet' },
+      { key: 'hardware_identity', status: 'warn', summary: 'hw.yaml does not contain the chip identity yet' },
+      { key: 'adapter_sources_registered', status: 'warn', summary: 'No adapter source is registered yet' },
+      { key: 'subagent_bridge', status: 'info', summary: 'Host sub-agent bridge is not configured' },
+      { key: 'project_root', status: 'pass', summary: 'Project root is accessible' }
+    ],
+    recommendations: [
+      'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      'Register the default adapter source before retrying adapter bootstrap.'
+    ],
+    next_commands: [
+      {
+        key: 'adapter-source-add',
+        cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git'
+      }
+    ],
+    action_card: {
+      status: 'needs-user-input',
+      stage: 'host-readiness',
+      action: 'Needs host action',
+      summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.'
+    },
+    quickstart: {
+      stage: 'restart-host-for-bootstrap',
+      display_stage: 'restart-host-for-bootstrap',
+      user_summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      steps: []
+    }
+  }, true);
+
+  assert.equal(output.checks.length, 3);
+  assert.ok(output.checks.every(item => item.status !== 'info'));
+  assert.deepEqual(output.recommendations, ['Register the default adapter source before retrying adapter bootstrap.']);
+  assert.equal(output.primary_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git');
+});
+
+test('applyOutputMode skips recommendation owned by the active action stage when picking the brief main recommendation', () => {
+  const output = outputMode.applyOutputMode({
+    command: 'health',
+    status: 'warn',
+    runtime_host: 'codex',
+    summary: { pass: 9, warn: 3, fail: 0, info: 0 },
+    checks: [
+      {
+        key: 'startup_automation',
+        status: 'warn',
+        summary: 'Startup automation is not ready yet',
+        recommendation: 'Restart the host once so emb-agent automatic startup can activate, then rerun health.'
+      },
+      {
+        key: 'hardware_identity',
+        status: 'warn',
+        summary: 'hw.yaml does not contain the chip identity yet',
+        recommendation: 'Record goals and constraints in .emb-agent/req.yaml first and leave .emb-agent/hw.yaml unknown until a real candidate exists.'
+      }
+    ],
+    recommendations: [
+      'Restart the host once so emb-agent automatic startup can activate, then rerun health.',
+      'Record goals and constraints in .emb-agent/req.yaml first and leave .emb-agent/hw.yaml unknown until a real candidate exists.'
+    ],
+    next_commands: [],
+    action_card: {
+      status: 'needs-user-input',
+      stage: 'host-readiness',
+      action: 'Needs host action',
+      summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      first_instruction: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.'
+    },
+    quickstart: {
+      stage: 'restart-host-for-bootstrap',
+      display_stage: 'restart-host-for-bootstrap',
+      user_summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      steps: []
+    }
+  }, true);
+
+  assert.deepEqual(output.recommendations, [
+    'Record goals and constraints in .emb-agent/req.yaml first and leave .emb-agent/hw.yaml unknown until a real candidate exists.'
+  ]);
 });
 
 test('applyOutputMode builds brief bootstrap output', () => {
   const output = outputMode.applyOutputMode({
     command: 'bootstrap',
     status: 'manual',
+    display_status: 'needs-user-input',
     summary: 'Restart the host once so emb-agent automatic startup is active',
+    display_summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
     current_stage: 'startup-hooks',
+    display_current_stage: 'host-readiness',
+    action_card: {
+      status: 'needs-user-input',
+      stage: 'host-readiness',
+      action: 'Needs host action',
+      summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      reason: 'Host session ready for automatic bootstrap',
+      first_instruction: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
+      first_cli: '',
+      then_cli: '',
+      followup: 'Restart the host once so emb-agent automatic startup is active, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health'
+    },
     workspace_trust: {
       trusted: false,
       explicit: false,
@@ -300,7 +501,10 @@ test('applyOutputMode builds brief bootstrap output', () => {
     next_stage: {
       id: 'startup-hooks',
       status: 'manual',
+      display_id: 'host-readiness',
+      display_status: 'needs-user-input',
       label: 'Host session ready for automatic bootstrap',
+      action_summary: 'Needs host action',
       cli: ''
     },
     stages: [
@@ -308,11 +512,15 @@ test('applyOutputMode builds brief bootstrap output', () => {
       {
         id: 'startup-hooks',
         status: 'manual',
+        display_id: 'host-readiness',
+        display_status: 'needs-user-input',
         label: 'Host session ready for automatic bootstrap'
       }
     ],
     quickstart: {
       stage: 'restart-host-hooks',
+      display_stage: 'restart-host-for-bootstrap',
+      user_summary: 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.',
       followup: 'Restart the host once so emb-agent automatic startup is active, then rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health',
       steps: [
         {
@@ -325,9 +533,13 @@ test('applyOutputMode builds brief bootstrap output', () => {
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.command, 'bootstrap');
-  assert.equal(output.current_stage, 'startup-hooks');
+  assert.equal(output.status, 'needs-user-input');
+  assert.equal(output.current_stage, 'host-readiness');
   assert.equal('workspace_trust' in output, false);
-  assert.equal(output.next_stage.id, 'startup-hooks');
+  assert.equal(output.action_card.action, 'Needs host action');
+  assert.equal(output.next_stage.id, 'host-readiness');
+  assert.equal(output.next_stage.action_summary, 'Needs host action');
   assert.equal(output.stages.length, 2);
-  assert.equal(output.quickstart.stage, 'restart-host-hooks');
+  assert.equal(output.quickstart.stage, 'restart-host-for-bootstrap');
+  assert.equal(output.quickstart.summary, 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.');
 });

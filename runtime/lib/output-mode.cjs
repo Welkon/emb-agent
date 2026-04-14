@@ -111,6 +111,176 @@ function summarizeToolRecommendation(value) {
   });
 }
 
+function summarizeActionCard(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    status: value.status || '',
+    stage: value.stage || '',
+    action: value.action || '',
+    summary: value.summary || '',
+    reason: value.reason || '',
+    first_step_label: value.first_step_label || '',
+    first_instruction: value.first_instruction || '',
+    first_cli: value.first_cli || '',
+    then_cli: value.then_cli || '',
+    followup: value.followup || ''
+  });
+}
+
+function normalizeComparableText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function isNearDuplicateRecommendation(candidate, actionCard) {
+  const text = normalizeComparableText(candidate);
+  if (!text) {
+    return false;
+  }
+
+  const summarizedAction = isObject(actionCard) ? actionCard : {};
+  const references = [
+    summarizedAction.summary,
+    summarizedAction.followup,
+    summarizedAction.first_instruction
+  ]
+    .map(normalizeComparableText)
+    .filter(Boolean);
+
+  return references.some(reference => reference.includes(text) || text.includes(reference));
+}
+
+function selectBriefHealthRecommendations(recommendations, actionCard, checks) {
+  const allRecommendations = toArray(recommendations).filter(Boolean);
+  const summarizedAction = isObject(actionCard) ? actionCard : {};
+  const hasActionCard = Boolean(
+    summarizedAction.stage ||
+      summarizedAction.action ||
+      summarizedAction.summary
+  );
+  const relevantKeys = new Set(relevantHealthCheckKeys(summarizedAction.stage || ''));
+  const allChecks = toArray(checks).filter(isObject);
+
+  if (!hasActionCard) {
+    return truncateList(allRecommendations, 5);
+  }
+
+  const preferred =
+    allRecommendations.find(item => {
+      if (isNearDuplicateRecommendation(item, summarizedAction)) {
+        return false;
+      }
+
+      const ownerCheck = allChecks.find(check => check.recommendation === item);
+      return !(ownerCheck && relevantKeys.has(ownerCheck.key));
+    }) ||
+    allRecommendations.find(item => !isNearDuplicateRecommendation(item, summarizedAction)) ||
+    allRecommendations[0] ||
+    '';
+
+  return preferred ? [preferred] : [];
+}
+
+function selectBriefHealthPrimaryCli(actionCard, nextCommands) {
+  const summarizedAction = isObject(actionCard) ? actionCard : {};
+  if (summarizedAction.first_cli) {
+    return summarizedAction.first_cli;
+  }
+
+  if (summarizedAction.first_instruction) {
+    return '';
+  }
+
+  const commands = toArray(nextCommands).filter(isObject);
+  const firstCommand = commands.find(item => item.cli) || null;
+  return firstCommand ? firstCommand.cli || '' : '';
+}
+
+function relevantHealthCheckKeys(stage) {
+  switch (stage) {
+    case 'host-readiness':
+      return ['startup_automation'];
+    case 'project-facts':
+      return ['hardware_identity', 'hw_truth', 'req_truth'];
+    case 'apply-document-facts':
+      return ['doc_apply_backlog'];
+    case 'adapter-setup':
+      return [
+        'adapter_sources_registered',
+        'adapter_sync_project',
+        'adapter_match',
+        'adapter_quality',
+        'binding_quality',
+        'register_summary_available'
+      ];
+    case 'adapter-from-document':
+      return ['adapter_derive_candidate', 'adapter_match'];
+    default:
+      return [];
+  }
+}
+
+function getHealthCheckPriority(status) {
+  switch (status) {
+    case 'fail':
+      return 0;
+    case 'warn':
+      return 1;
+    case 'info':
+      return 2;
+    case 'pass':
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function selectBriefHealthChecks(checks, actionCard) {
+  const allChecks = toArray(checks).filter(isObject);
+  const summarizedAction = isObject(actionCard) ? actionCard : {};
+  const hasActionCard = Boolean(
+    summarizedAction.stage ||
+      summarizedAction.action ||
+      summarizedAction.summary
+  );
+  const relevantKeys = new Set(relevantHealthCheckKeys(summarizedAction.stage || ''));
+
+  const ranked = allChecks
+    .filter(item => item.key !== 'startup_automation' || relevantKeys.has('startup_automation'))
+    .filter(item => !hasActionCard || item.status !== 'info')
+    .map((item, index) => ({
+      item,
+      index,
+      relevant: relevantKeys.has(item.key),
+      priority: getHealthCheckPriority(item.status)
+    }))
+    .sort((left, right) => {
+      if (left.relevant !== right.relevant) {
+        return left.relevant ? -1 : 1;
+      }
+      if (left.priority !== right.priority) {
+        return left.priority - right.priority;
+      }
+      return left.index - right.index;
+    })
+    .map(entry => entry.item);
+
+  const limit = hasActionCard ? 3 : 5;
+  const limited = ranked.slice(0, limit);
+  const hasBlocking = limited.some(item => item.status === 'fail' || item.status === 'warn');
+
+  if (hasBlocking) {
+    return limited.filter(item => item.status !== 'pass').slice(0, limit);
+  }
+
+  return limited;
+}
+
 function summarizeHealth(value) {
   if (!isObject(value)) {
     return null;
@@ -470,19 +640,27 @@ function buildBriefNoteOutput(value) {
 }
 
 function buildBriefHealthOutput(value) {
-  const checks = toArray(value.checks).filter(item => !item || item.key !== 'startup_automation');
+  const actionCard = summarizeActionCard(value.action_card);
+  const checks = selectBriefHealthChecks(value.checks, actionCard);
+  const quickstart = isObject(value.quickstart) ? value.quickstart : {};
+  const recommendations = selectBriefHealthRecommendations(value.recommendations, actionCard, value.checks);
+  const primaryCli = selectBriefHealthPrimaryCli(actionCard, value.next_commands);
 
   return compactObject({
     output_mode: 'brief',
     status: value.status || '',
     runtime_host: value.runtime_host || '',
     summary: isObject(value.summary) ? value.summary : null,
-    checks: truncateList(checks, 5),
-    recommendations: truncateList(value.recommendations, 5),
+    checks,
+    recommendations,
+    primary_cli: primaryCli,
     next_commands: truncateList(value.next_commands, 4),
     subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
+    action_card: actionCard,
     quickstart: isObject(value.quickstart)
       ? compactObject({
+          stage: quickstart.display_stage || quickstart.stage || '',
+          summary: quickstart.user_summary || quickstart.summary || '',
           followup: value.quickstart.followup || '',
           steps: truncateList(value.quickstart.steps, 3)
         })
@@ -496,24 +674,28 @@ function buildBriefBootstrapOutput(value) {
   return compactObject({
     output_mode: 'brief',
     command: value.command || 'bootstrap',
-    status: value.status || '',
-    summary: value.summary || '',
-    current_stage: value.current_stage || '',
+    status: value.display_status || value.status || '',
+    summary: value.display_summary || value.summary || '',
+    current_stage: value.display_current_stage || value.current_stage || '',
+    action_card: summarizeActionCard(value.action_card),
     next_stage: compactObject({
-      id: nextStage.id || '',
-      status: nextStage.status || '',
+      id: nextStage.display_id || nextStage.id || '',
+      status: nextStage.display_status || nextStage.status || '',
       label: nextStage.label || '',
+      action_summary: nextStage.action_summary || '',
       cli: nextStage.cli || ''
     }),
     stages: truncateList(value.stages, 5).map(stage => compactObject({
-      id: stage.id || '',
-      status: stage.status || '',
+      id: stage.display_id || stage.id || '',
+      status: stage.display_status || stage.status || '',
       label: stage.label || '',
+      action_summary: stage.action_summary || '',
       cli: stage.cli || ''
     })),
     quickstart: isObject(value.quickstart)
       ? compactObject({
-          stage: value.quickstart.stage || '',
+          stage: value.quickstart.display_stage || value.quickstart.stage || '',
+          summary: value.quickstart.user_summary || value.quickstart.summary || '',
           followup: value.quickstart.followup || '',
           steps: truncateList(value.quickstart.steps, 3)
         })
@@ -710,6 +892,7 @@ module.exports = {
   summarizeContextHygiene,
   summarizeScheduler,
   summarizeToolRecommendation,
+  summarizeActionCard,
   summarizeHealth,
   summarizePermissionGates,
   compactObject,
