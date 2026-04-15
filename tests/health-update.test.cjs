@@ -574,10 +574,13 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.checks.find(item => item.key === 'chip_support_match').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'chip_support_quality').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'binding_quality').status, 'pass');
+    assert.equal(report.checks.find(item => item.key === 'chip_support_reusability').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'register_summary_available').status, 'warn');
     assert.equal(report.chip_support_health.primary.tool, 'timer-calc');
     assert.equal(report.chip_support_health.primary.grade, 'usable');
     assert.equal(report.chip_support_health.primary.executable, true);
+    assert.equal(report.chip_support_health.reusability.status, 'reusable');
+    assert.equal(report.chip_support_health.reusability.reusable, true);
     assert.ok(report.recommendations.every(item => !item.includes('support sync default-pack')));
     assert.ok(report.next_commands.some(item => item.cli.includes('tool run timer-calc')));
   } finally {

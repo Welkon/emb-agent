@@ -588,6 +588,8 @@ test('adapter status shows project-level quality overview', async () => {
     assert.equal(status.quality_overview.mode, 'session-aware');
     assert.equal(status.quality_overview.primary.tool, 'timer-calc');
     assert.equal(status.quality_overview.primary.executable, true);
+    assert.equal(status.quality_overview.reusability.status, 'reusable');
+    assert.equal(status.quality_overview.reusability.reusable, true);
     assert.equal(status.chip_support_sources.length, 1);
   } finally {
     process.chdir(currentCwd);

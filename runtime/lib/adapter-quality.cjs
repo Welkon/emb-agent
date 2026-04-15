@@ -357,8 +357,61 @@ function summarizeAdapterHealth(toolRecommendations, recommendedSources) {
   };
 }
 
+function summarizeAdapterReusability(adapterHealth) {
+  const health =
+    adapterHealth && typeof adapterHealth === 'object' && !Array.isArray(adapterHealth)
+      ? adapterHealth
+      : {};
+  const totalTools = Number(health.total_tools || 0);
+  const bindingReadyTools = Number(health.binding_ready_tools || 0);
+  const executableTools = Number(health.executable_tools || 0);
+  const primary = health.primary && typeof health.primary === 'object' ? health.primary : null;
+
+  if (totalTools === 0) {
+    return {
+      status: 'project-only',
+      reusable: false,
+      review_required: false,
+      summary: 'No reusable chip support is ready yet.',
+      recommended_action: 'derive-or-sync-chip-support'
+    };
+  }
+
+  if (executableTools > 0 && primary && primary.executable) {
+    return {
+      status: 'reusable',
+      reusable: true,
+      review_required: false,
+      summary: 'Current chip support is already reusable across projects.',
+      recommended_action: 'reuse-current-chip-support',
+      primary_tool: primary.tool || ''
+    };
+  }
+
+  if (bindingReadyTools > 0) {
+    return {
+      status: 'reusable-candidate',
+      reusable: false,
+      review_required: true,
+      summary: 'Current chip support looks reusable, but it still needs review before sharing.',
+      recommended_action: 'review-for-reuse',
+      primary_tool: primary && primary.tool ? primary.tool : ''
+    };
+  }
+
+  return {
+    status: 'project-only',
+    reusable: false,
+    review_required: false,
+    summary: 'Current chip support should stay project-local for now.',
+    recommended_action: primary && primary.recommended_action ? primary.recommended_action : 'complete-chip-support',
+    primary_tool: primary && primary.tool ? primary.tool : ''
+  };
+}
+
 module.exports = {
   evaluateToolRecommendationTrust,
   gradeFromScore,
-  summarizeAdapterHealth
+  summarizeAdapterHealth,
+  summarizeAdapterReusability
 };
