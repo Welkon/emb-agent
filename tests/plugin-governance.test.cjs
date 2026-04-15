@@ -43,7 +43,7 @@ test('plugin governance rejects malformed external tool registry schema', () => 
   }
 });
 
-test('plugin governance rejects external adapter without runTool export', () => {
+test('plugin governance rejects chip support module without runTool export', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-plugin-adapter-'));
   const currentCwd = process.cwd();
   const adapterPath = path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs');
@@ -67,7 +67,7 @@ test('plugin governance rejects external adapter without runTool export', () => 
 
     assert.throws(
       () => toolRuntime.runTool(runtimeRoot, 'timer-calc', ['--family', 'vendor-family']),
-      /Tool adapter must export runTool\(\):/
+      /Tool chip support module must export runTool\(\):/
     );
   } finally {
     process.chdir(currentCwd);

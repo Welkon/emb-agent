@@ -65,7 +65,7 @@ function gradeFromScore(score) {
 
 function buildGradeSummary(grade) {
   if (grade === 'trusted') {
-    return 'The evidence chain is complete and this adapter can be used as trusted.';
+    return 'The evidence chain is complete and this chip support can be used as trusted.';
   }
   if (grade === 'usable') {
     return 'The primary path is usable, but more references or packaging details are still recommended.';
@@ -76,7 +76,7 @@ function buildGradeSummary(grade) {
   if (grade === 'draft') {
     return 'This is still better treated as a draft and should not be taken as final ground truth.';
   }
-  return 'There is almost not enough evidence to support this adapter yet.';
+  return 'There is almost not enough evidence to support this chip support yet.';
 }
 
 function buildRecommendedAction(input) {
@@ -301,7 +301,7 @@ function summarizeAdapterHealth(toolRecommendations, recommendedSources) {
       binding_ready_tools: 0,
       draft_binding_tools: 0,
       primary: null,
-      summary: 'There is no adapter/tool recommendation to evaluate yet.'
+      summary: 'There is no chip-support/tool recommendation to evaluate yet.'
     };
   }
 

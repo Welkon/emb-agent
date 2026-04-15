@@ -1,5 +1,7 @@
 'use strict';
 
+const chipSupportStatusHelpers = require('./chip-support-status.cjs');
+
 function ensureNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : NaN;
@@ -1073,8 +1075,24 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
 }
 
 module.exports = {
-  runGeneratedTimerAdapter,
-  runGeneratedPwmAdapter,
-  runGeneratedAdcAdapter,
-  runGeneratedComparatorAdapter
+  runGeneratedTimerAdapter(context, resolved, options) {
+    return chipSupportStatusHelpers.normalizeToolExecutionResult(
+      runGeneratedTimerAdapter(context, resolved, options)
+    );
+  },
+  runGeneratedPwmAdapter(context, resolved, options) {
+    return chipSupportStatusHelpers.normalizeToolExecutionResult(
+      runGeneratedPwmAdapter(context, resolved, options)
+    );
+  },
+  runGeneratedAdcAdapter(context, resolved, options) {
+    return chipSupportStatusHelpers.normalizeToolExecutionResult(
+      runGeneratedAdcAdapter(context, resolved, options)
+    );
+  },
+  runGeneratedComparatorAdapter(context, resolved, options) {
+    return chipSupportStatusHelpers.normalizeToolExecutionResult(
+      runGeneratedComparatorAdapter(context, resolved, options)
+    );
+  }
 };
