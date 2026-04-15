@@ -41,6 +41,15 @@ Without chip support packs, embedded AI workflows tend to mix:
 
 emb-agent keeps these separate so the workflow remains stable even when chip-specific logic changes.
 
+## Reuse-first status
+
+Read chip support in two layers:
+
+- first: `reusable`, `reusable-candidate`, or `project-only`
+- second: trust details such as score, evidence gaps, and `recommended_action`
+
+This keeps the user-facing decision simple: "can I reuse this?" comes before "why is the trust score like this?".
+
 ## Trust model
 
 Trust should come from the full evidence chain:

@@ -1,6 +1,6 @@
 ---
 name: emb-health
-description: Check whether project truth, chip support, session state, and cache are healthy.
+description: Check whether project truth, chip support reuse status, session state, and cache are healthy.
 allowed-tools:
   - Read
   - Bash
@@ -14,6 +14,7 @@ allowed-tools:
 ## Purpose
 
 - Check whether project truth, host startup readiness, chip support, session state, and cache are healthy.
+- Read chip-support results in this order: `reusable` / `reusable-candidate` / `project-only` first, then trust details.
 
 ## Usage
 
