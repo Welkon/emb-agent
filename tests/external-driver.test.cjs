@@ -38,10 +38,14 @@ test('external start exposes minimal driver protocol before init', async () => {
 
     assert.equal(start.protocol, 'emb-agent.external/1');
     assert.equal(start.entrypoint, 'start');
-    assert.equal(start.driver.protocol_file, '.emb-agent/external-agent.md');
-    assert.equal(start.driver.recommended_command, 'init');
-    assert.match(start.driver.recommended_cli, / init$/);
+    assert.match(start.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.match(start.immediate.cli, / init$/);
     assert.equal(start.initialized, false);
+    assert.equal('project_root' in start, false);
+    assert.equal('handoff_present' in start, false);
+    assert.equal('hardware_identity' in start, false);
+    assert.equal('active_task' in start, false);
+    assert.equal('next' in start, false);
   } finally {
     process.chdir(currentCwd);
   }
@@ -58,15 +62,17 @@ test('external health exposes fixed bootstrap protocol before init', async () =>
 
     assert.equal(health.protocol, 'emb-agent.external/1');
     assert.equal(health.entrypoint, 'health');
-    assert.equal(health.driver.protocol_file, '.emb-agent/external-agent.md');
-    assert.equal(health.driver.recommended_command, 'init');
-    assert.match(health.driver.recommended_cli, / init$/);
+    assert.match(health.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.match(health.next.cli, / init$/);
     assert.equal(health.status, 'fail');
     assert.equal(health.bootstrap.status, 'ready');
-    assert.equal(health.next.command, 'init');
+    assert.equal(health.bootstrap.stage, 'project-init');
     assert.match(health.next.cli, / init$/);
     assert.ok(Array.isArray(health.blocking_checks));
     assert.ok(health.blocking_checks.length > 0);
+    assert.equal('project_root' in health, false);
+    assert.equal('checks' in health, false);
+    assert.equal('chip_support' in health, false);
   } finally {
     process.chdir(currentCwd);
   }
@@ -85,24 +91,36 @@ test('external init and next expose fixed driver payload for external agents', a
 
     assert.equal(initialized.protocol, 'emb-agent.external/1');
     assert.equal(initialized.entrypoint, 'init');
-    assert.equal(initialized.driver.protocol_file, '.emb-agent/external-agent.md');
-    assert.equal(initialized.driver.recommended_command, 'next');
-    assert.match(initialized.driver.recommended_cli, / next$/);
+    assert.match(initialized.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.match(initialized.next.cli, / next$/);
+    assert.equal('project_root' in initialized, false);
+    assert.equal('project_dir' in initialized, false);
+    assert.equal('reused_existing' in initialized, false);
+    assert.equal('session' in initialized, false);
+    assert.equal('bootstrap_task' in initialized, false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), true);
 
     assert.equal(next.protocol, 'emb-agent.external/1');
     assert.equal(next.entrypoint, 'next');
-    assert.equal(next.driver.protocol_file, '.emb-agent/external-agent.md');
-    assert.equal(next.driver.preferred_local_cli, 'node ./.emb-agent/runtime/bin/emb-agent.cjs');
-    assert.equal(next.next.command, 'scan');
+    assert.match(next.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
     assert.match(next.next.cli, / scan$/);
     assert.equal(next.workflow_stage.name, 'selection');
+    assert.equal(next.workflow_stage.primary_command, 'scan');
+    assert.equal('project_root' in next, false);
+    assert.equal('project_profile' in next, false);
+    assert.equal('focus' in next, false);
+    assert.equal('active_task' in next, false);
 
     assert.equal(status.protocol, 'emb-agent.external/1');
     assert.equal(status.entrypoint, 'status');
-    assert.equal(status.driver.recommended_command, 'next');
-    assert.equal(status.driver.protocol_file, '.emb-agent/external-agent.md');
-    assert.equal(status.project_root, tempProject);
+    assert.match(status.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.match(status.next.cli, / next$/);
+    assert.equal('project_root' in status, false);
+    assert.equal('active_task' in status, false);
+    assert.equal('project_profile' in status, false);
+    assert.equal('focus' in status, false);
+    assert.equal('developer' in status, false);
+    assert.equal('memory_summary' in status, false);
   } finally {
     process.chdir(currentCwd);
   }
@@ -120,15 +138,18 @@ test('external dispatch-next exposes minimal execution decision protocol', async
 
     assert.equal(dispatch.protocol, 'emb-agent.external/1');
     assert.equal(dispatch.entrypoint, 'dispatch-next');
-    assert.equal(dispatch.driver.protocol_file, '.emb-agent/external-agent.md');
-    assert.equal(dispatch.driver.recommended_command, 'scan');
-    assert.match(dispatch.driver.recommended_cli, / scan$/);
-    assert.equal(dispatch.resolved_action, 'scan');
+    assert.match(dispatch.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.match(dispatch.next.cli, / scan$/);
     assert.equal(dispatch.next.kind, 'action');
-    assert.equal(dispatch.next.command, 'scan');
     assert.match(dispatch.next.cli, / scan$/);
     assert.equal(dispatch.execution.mode, 'inline');
+    assert.equal(dispatch.execution.dispatch_ready, true);
     assert.equal(dispatch.workflow_stage.name, 'selection');
+    assert.equal(dispatch.workflow_stage.primary_command, 'scan');
+    assert.equal('project_root' in dispatch, false);
+    assert.equal('project_profile' in dispatch, false);
+    assert.equal('focus' in dispatch, false);
+    assert.equal('resolved_action' in dispatch, false);
   } finally {
     process.chdir(currentCwd);
   }
