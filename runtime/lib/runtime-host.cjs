@@ -239,6 +239,7 @@ function createInstallHostMetadata(targetDir, target, args) {
     label: target.label,
     config_file_name: target.configFileName || '',
     install_scope: args && args.local ? 'local' : 'global',
+    install_profile: String((args && args.profile) || 'core').trim() || 'core',
     target_dir: path.resolve(targetDir).replace(/\\/g, '/'),
     runtime_dir_name: target.runtimeDirName || 'emb-agent'
   };
