@@ -129,37 +129,55 @@ function buildInjectedSpecLines(projectRoot, resume) {
 function runHook(rawInput) {
   return hookDispatch.runHookWithProjectContext(rawInput, ({ data, projectRoot }) => {
     const cli = require(path.join(__dirname, '..', 'bin', 'emb-agent.cjs'));
-    const resume = cli.buildResumeContext();
+    const start = cli.buildStartContext();
+    const resume = start.summary && start.summary.initialized ? cli.buildResumeContext() : { handoff: null, task: null };
     const lines = buildUpdateLines();
     const specLines = buildInjectedSpecLines(projectRoot, resume);
 
-    if (resume.handoff) {
-      const nextAction = resume.handoff.next_action || 'run resume first to restore the working state';
+    if (start.resume && start.resume.handoff) {
+      const nextAction = start.resume.handoff.next_action || 'run resume first to restore the working state';
       lines.unshift(
         '## Emb-Agent Session Reminder',
         '',
-        `Found an unconsumed handoff. Run this first: ${resume.context_hygiene.resume_cli}`,
-        `Next step: ${nextAction}`,
-        `Suggested chain: ${resume.context_hygiene.clear_hint}`,
+        'Primary entrypoint: start',
+        `Current shortest command: ${start.immediate.command}`,
+        `Found an unconsumed handoff. If start confirms resume, use: ${resume.context_hygiene.resume_cli}`,
+        `Handoff note: ${nextAction}`,
         ...specLines
       );
     }
 
-    if (!resume.handoff && resume.task) {
+    if (!(start.resume && start.resume.handoff) && resume.task) {
       const implementFiles = (((resume.task.context || {}).implement) || [])
         .slice(0, 4)
         .map(item => item.path)
         .filter(Boolean);
+      const prdPath = resume.task.artifacts && resume.task.artifacts.prd
+        ? resume.task.artifacts.prd
+        : `.emb-agent/tasks/${resume.task.name}/prd.md`;
 
       lines.unshift(
         '## Emb-Agent Session Reminder',
         '',
+        'Primary entrypoint: start',
+        `Current shortest command: ${start.immediate.command}`,
         `Current active task: ${resume.task.name} (${resume.task.title})`,
         `Status: ${resume.task.status} / Type: ${resume.task.type}`,
+        `Re-read the task PRD first: ${prdPath}`,
         implementFiles.length > 0
           ? `Re-read the task implement context first: ${implementFiles.join(', ')}`
           : 'Run task context list <name> first to confirm the local context for the current task.',
         ...specLines
+      );
+    }
+
+    if (!(start.resume && start.resume.handoff) && !resume.task) {
+      lines.unshift(
+        '## Emb-Agent Session Reminder',
+        '',
+        'Primary entrypoint: start',
+        `Current shortest command: ${start.immediate.command}`,
+        `Why: ${start.immediate.reason}`
       );
     }
 

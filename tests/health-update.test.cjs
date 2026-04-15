@@ -119,11 +119,11 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.ok(report.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
     assert.equal(report.quickstart.stage, 'fill-hardware-identity');
     assert.equal(report.quickstart.display_stage, 'complete-project-facts');
-    assert.match(report.quickstart.user_summary, /Record project facts first/);
+    assert.match(report.quickstart.user_summary, /Hardware identity is incomplete/);
     assert.equal(report.action_card.action, 'Needs project facts');
     assert.equal(report.action_card.stage, 'project-facts');
-    assert.match(report.action_card.first_instruction, /Record project facts first/);
-    assert.ok(report.action_card.followup.includes('adapter bootstrap'));
+    assert.match(report.action_card.first_instruction, /Hardware identity is incomplete/);
+    assert.ok(report.action_card.followup.includes('rerun:'));
     assert.equal(report.bootstrap.current_stage, 'hardware-truth');
     assert.equal(report.bootstrap.display_current_stage, 'project-facts');
     assert.equal(report.bootstrap.next_stage.status, 'manual');
@@ -131,7 +131,7 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.equal(report.bootstrap.next_stage.display_id, 'project-facts');
     assert.equal(report.bootstrap.next_stage.action_summary, 'Needs project facts');
     assert.ok(report.bootstrap.stages.some(item => item.id === 'init-project' && item.status === 'completed'));
-    assert.ok(report.quickstart.followup.includes('adapter bootstrap'));
+    assert.ok(report.quickstart.followup.includes('rerun:'));
     assert.equal(cli.loadSession().last_command, 'health');
 
     stdout = '';
@@ -325,10 +325,10 @@ test('health and bootstrap expose host startup readiness as an explicit bootstra
     assert.equal(report.bootstrap.next_stage.action_summary, 'Needs host action');
     assert.equal(report.quickstart.stage, 'restart-host-hooks');
     assert.equal(report.quickstart.display_stage, 'restart-host-for-bootstrap');
-    assert.match(report.quickstart.user_summary, /Restart the host once/);
+    assert.match(report.quickstart.user_summary, /Startup hooks are not active/);
     assert.equal(report.action_card.action, 'Needs host action');
     assert.equal(report.action_card.stage, 'host-readiness');
-    assert.match(report.action_card.first_instruction, /Restart the host once/);
+    assert.match(report.action_card.first_instruction, /Startup hooks are not active/);
     assert.ok(report.recommendations.some(item => item.includes('automatic startup')));
 
     stdout = '';

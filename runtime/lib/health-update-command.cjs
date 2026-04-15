@@ -266,30 +266,50 @@ function createHealthUpdateCommandHelpers(deps) {
 
   function getQuickstartUserSummary(stageId, summary) {
     if (stageId === 'restart-host-hooks') {
-      return 'Restart the host once so emb-agent can attach at session start and continue the remaining bootstrap steps.';
+      return 'Startup hooks are not active in the current host session; restart the host once, then rerun health.';
     }
 
     if (stageId === 'fill-hardware-identity') {
-      return 'Record project facts first: if the chip is known, write MCU and package; if not, write goals, constraints, and interfaces.';
+      return 'Hardware identity is incomplete; update .emb-agent/hw.yaml or .emb-agent/req.yaml before continuing.';
     }
 
     if (stageId === 'doc-apply-then-next') {
-      return 'Write the latest parsed document findings into truth files before continuing.';
+      return 'Parsed hardware document facts are pending apply; write them into truth files before continuing.';
     }
 
     if (stageId === 'derive-then-next') {
-      return 'Derive an adapter from the hardware document before entering the recommended next stage.';
+      return 'No synced adapter matches the recorded chip yet; derive one from the applied hardware document.';
     }
 
     if (stageId === 'bootstrap-then-next') {
-      return 'Finish adapter bootstrap before entering the recommended next stage.';
+      return 'Adapters are available but not bootstrapped into the project yet; finish adapter bootstrap before continuing.';
     }
 
     if (stageId === 'next') {
-      return 'Bootstrap prerequisites are closed; enter the recommended next stage.';
+      return 'Bootstrap blockers are closed; run the recommended next stage.';
     }
 
     return summary || '';
+  }
+
+  function getQuickstartFollowup(nextStage, quickstartStage) {
+    if (!nextStage || typeof nextStage !== 'object') {
+      return '';
+    }
+
+    if (nextStage.cli) {
+      return nextStage.id === 'next-step' ? '' : `Then: ${NEXT_CLI}`;
+    }
+
+    if (quickstartStage === 'restart-host-hooks' || nextStage.id === 'startup-hooks') {
+      return `After restarting the host, rerun: ${HEALTH_CLI}`;
+    }
+
+    if (quickstartStage === 'fill-hardware-identity' || nextStage.id === 'hardware-truth') {
+      return `After updating truth files, rerun: ${HEALTH_CLI}`;
+    }
+
+    return '';
   }
 
   function buildActionCardFromBootstrap(bootstrap) {
@@ -486,15 +506,15 @@ function createHealthUpdateCommandHelpers(deps) {
               : 'next'
       : 'next';
     const quickstartSteps = [
-      ...(nextStage
+      ...(nextStage && nextStage.cli
         ? [
             {
               label: nextStage.label,
-              cli: nextStage.cli || ''
+              cli: nextStage.cli
             }
           ]
         : []),
-      ...(nextStage && nextStage.id !== 'next-step'
+      ...(nextStage && nextStage.cli && nextStage.id !== 'next-step'
         ? [
             {
               label: 'Enter the emb-agent recommended next step',
@@ -507,6 +527,7 @@ function createHealthUpdateCommandHelpers(deps) {
       ? nextStage.summary || nextStage.label
       : 'Bootstrap prerequisites are already closed; run next directly';
     const quickstartUserSummary = getQuickstartUserSummary(quickstartStage, quickstartSummary);
+    const quickstartFollowup = getQuickstartFollowup(nextStage, quickstartStage);
 
     const actionCard = buildActionCardFromBootstrap({
       status: nextStage ? (nextStage.status === 'manual' ? 'manual' : 'ready') : 'complete',
@@ -526,16 +547,7 @@ function createHealthUpdateCommandHelpers(deps) {
         summary: quickstartSummary,
         user_summary: quickstartUserSummary,
         steps: quickstartSteps,
-        followup:
-          nextStage && nextStage.cli
-            ? nextStage.id === 'next-step'
-              ? `Run first: ${nextStage.cli}`
-              : `Run first: ${nextStage.cli} -> ${NEXT_CLI}`
-            : nextStage && nextStage.id === 'startup-hooks'
-              ? `Restart the host once so emb-agent can attach at session start, then rerun: ${HEALTH_CLI}`
-              : nextStage && nextStage.id === 'hardware-truth'
-                ? `After chip identity or concept-stage requirements are recorded, run directly: ${DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI} -> ${NEXT_CLI}`
-                : `Run first: ${NEXT_CLI}`
+        followup: quickstartFollowup
       }
     });
 

@@ -56,8 +56,9 @@ test('commands list hides legacy attach alias', async () => {
   const listed = await captureCliJson(['commands', 'list']);
 
   assert.ok(Array.isArray(listed));
-  assert.equal(listed.length, 13);
+  assert.equal(listed.length, 14);
   assert.ok(listed.includes('help'));
+  assert.ok(listed.includes('start'));
   assert.ok(listed.includes('init'));
   assert.ok(listed.includes('review'));
   assert.ok(!listed.includes('workflow'));
@@ -124,12 +125,16 @@ test('help markdown stays focused on core workflow commands', async () => {
   const helpPath = path.join(repoRoot, 'commands', 'emb', 'help.md');
   const content = fs.readFileSync(helpPath, 'utf8');
 
+  assert.match(content, /## Fast Path/);
+  assert.match(content, /\$emb-start/);
   assert.match(content, /\$emb-init/);
   assert.match(content, /\$emb-next/);
   assert.match(content, /\$emb-task/);
   assert.doesNotMatch(content, /\$emb-orchestrate/);
   assert.doesNotMatch(content, /emb-agent\.cjs/);
   assert.doesNotMatch(content, /<runtime-cli>/);
+  assert.doesNotMatch(content, /## Default Flow/);
+  assert.doesNotMatch(content, /doc lookup --chip/);
   assert.match(content, /help advanced/);
 });
 
@@ -234,6 +239,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   const allFlag = await captureCliText(['--help', '--all']);
 
   assert.match(compact, /Core workflow:/);
+  assert.match(compact, /start/);
   assert.match(compact, /declare hardware/);
   assert.match(compact, /next \[run\]/);
   assert.match(compact, /ingest schematic --file <path>/);
@@ -272,6 +278,34 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /commands list/);
   assert.match(advanced, /commands list --all/);
   assert.equal(advanced, allFlag);
+});
+
+test('start returns a linear default workflow for project and task execution', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-start-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const start = await captureCliJson(['start']);
+
+    assert.equal(start.entry, 'start');
+    assert.equal(start.summary.initialized, true);
+    assert.equal(start.immediate.command, 'task add <summary>');
+    assert.equal(start.workflow.mode, 'linear-default');
+    assert.ok(Array.isArray(start.workflow.steps));
+    assert.equal(start.workflow.steps[0].title, 'Project bootstrap');
+    assert.equal(start.workflow.steps[1].title, 'Task bootstrap');
+    assert.equal(start.workflow.steps[2].title, 'Execution loop');
+    assert.equal(start.next.command, 'scan');
+  } finally {
+    process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
+  }
 });
 
 test('help fast path does not eagerly load emb-agent-main', async () => {

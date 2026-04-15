@@ -34,10 +34,6 @@ function createInstallHelpers(deps) {
     workflow: {
       name: 'workflow',
       includeScaffolds: true
-    },
-    full: {
-      name: 'full',
-      includeScaffolds: true
     }
   });
   const SANDBOX_BY_AGENT = {
@@ -74,7 +70,7 @@ function createInstallHelpers(deps) {
         '  --developer <name>      Required developer name to seed new projects',
         '  --global                Install to runtime config home',
         '  --local                 Install to current project runtime dir and bootstrap .emb-agent/',
-        '  --profile <name>        Install profile: core (default), workflow, full',
+        '  --profile <name>        Install profile: core (default), workflow',
         '  --config-dir <path>     Override target runtime directory',
         '  --subagent-bridge-cmd <command>',
         '                          Configure host sub-agent bridge command',
