@@ -1358,6 +1358,78 @@ function buildDerivedTrustReport(config, embRoot, projectRoot) {
   };
 }
 
+function buildDerivedReusability(config, trustReport) {
+  const sourceMode = String(config && config.source_mode ? config.source_mode : 'manual').trim() || 'manual';
+  const hasProjectOrDocEvidence = sourceMode !== 'manual';
+  const docs = Array.isArray(config && config.docs) ? config.docs : [];
+  const signals = Array.isArray(config && config.signals) ? config.signals : [];
+  const tools = Array.isArray(config && config.tools) ? config.tools : [];
+  const bindings =
+    config && config.bindings && typeof config.bindings === 'object' && !Array.isArray(config.bindings)
+      ? Object.keys(config.bindings).filter(Boolean)
+      : [];
+  const reasons = [];
+  const blockers = [];
+
+  if (hasProjectOrDocEvidence) {
+    reasons.push(`source-mode=${sourceMode}`);
+  } else {
+    blockers.push('missing project/doc evidence');
+  }
+
+  if (docs.length > 0) {
+    reasons.push(`docs=${docs.length}`);
+  }
+
+  if (signals.length > 0) {
+    reasons.push(`signals=${signals.length}`);
+  }
+
+  if (tools.length > 0) {
+    reasons.push(`tools=${tools.length}`);
+  } else {
+    blockers.push('missing tool coverage');
+  }
+
+  if (bindings.length > 0) {
+    reasons.push(`binding-tools=${bindings.length}`);
+  } else {
+    blockers.push('missing inferred bindings');
+  }
+
+  if (trustReport && trustReport.primary && trustReport.primary.tool) {
+    reasons.push(`primary-tool=${trustReport.primary.tool}`);
+    reasons.push(`primary-grade=${trustReport.primary.grade}`);
+  }
+
+  const status =
+    hasProjectOrDocEvidence &&
+    tools.length > 0 &&
+    bindings.length > 0 &&
+    (docs.length > 0 || signals.length > 0)
+      ? 'reusable-candidate'
+      : 'project-only';
+
+  return {
+    status,
+    review_required: true,
+    summary:
+      status === 'reusable-candidate'
+        ? 'This draft looks reusable after catalog review, but normal users only need to know it can be reused later.'
+        : 'This draft should stay project-local until project/doc evidence and binding coverage are more complete.',
+    recommended_action:
+      status === 'reusable-candidate'
+        ? 'review-for-catalog'
+        : 'keep-project-local',
+    reasons,
+    blockers,
+    publish:
+      status === 'reusable-candidate'
+        ? 'maintainer-review-only'
+        : 'not-recommended'
+  };
+}
+
 function deriveProfiles(argv, options) {
   const config = parseArgs(argv || []);
   if (config.help) {
@@ -1437,6 +1509,7 @@ function deriveProfiles(argv, options) {
   });
 
   const trustReport = buildDerivedTrustReport(config, embRoot, projectRoot);
+  const reusability = buildDerivedReusability(config, trustReport);
 
   return {
     status: 'ok',
@@ -1467,10 +1540,12 @@ function deriveProfiles(argv, options) {
       path: path.relative(projectRoot, item.path) || path.basename(item.path),
       status: item.status
     })),
+    reusability,
     trust: trustReport,
     notes: [
       'Family/device/chip drafts were generated, and device draft bindings were added from inferable information.',
       'The generated result is still draft chip support; do not treat tool output as ground truth yet.',
+      reusability.summary,
       trustReport && trustReport.primary
         ? `Handle ${trustReport.primary.tool} first: ${trustReport.primary.recommended_action} (${trustReport.primary.grade} ${trustReport.primary.score}/100).`
         : 'Next, fill in device-binding details and chip-support implementation from manuals, examples, or verified code.',
