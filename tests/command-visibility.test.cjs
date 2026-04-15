@@ -103,12 +103,12 @@ test('commands show keeps hidden advanced workflow command accessible', async ()
   assert.match(shown.content, /project-local workflow authoring/);
 });
 
-test('commands show keeps adapter compatibility alias accessible', async () => {
-  const shown = await captureCliJson(['commands', 'show', 'adapter']);
+test('commands show resolves support command markdown directly', async () => {
+  const shown = await captureCliJson(['commands', 'show', 'support']);
 
-  assert.equal(shown.name, 'adapter');
+  assert.equal(shown.name, 'support');
   assert.equal(shown.path, 'commands/emb/support.md');
-  assert.match(shown.content, /Compatibility alias: `adapter` remains accepted/);
+  assert.doesNotMatch(shown.content, /Compatibility alias/);
 });
 
 test('agents list and show resolve source-layout markdown files', async () => {

@@ -604,7 +604,7 @@ function createProjectConfigHelpers(deps) {
       {
         project_profile: resolved.session.project_profile,
         active_packs: resolved.session.active_packs,
-        adapter_sources: [],
+        chip_support_sources: [],
         executors: {},
         quality_gates: {
           required_executors: [],
@@ -813,7 +813,7 @@ function createProjectConfigHelpers(deps) {
       return {
         project_root: resolveProjectRoot(),
         quality_overview: qualityOverview,
-        adapter_sources: sources
+        chip_support_sources: sources
       };
     }
 
@@ -865,7 +865,7 @@ function createProjectConfigHelpers(deps) {
       },
       0
     );
-    const sources = nextConfig.adapter_sources || [];
+    const sources = nextConfig.chip_support_sources || [];
     const existingIndex = sources.findIndex(item => item.name === sourceName);
 
     if (existingIndex >= 0) {
@@ -894,7 +894,7 @@ function createProjectConfigHelpers(deps) {
 
     const parsed = parseAdapterSourceAddArgs(tokens);
     const permissionContext = buildProjectWritePermissionContext(
-      'adapter-source-add',
+      'support-source-add',
       parsed.explicit_confirmation
     );
     const blocked = applyProjectWritePermission({
@@ -921,14 +921,14 @@ function createProjectConfigHelpers(deps) {
 
   function removeAdapterSourceInternal(sourceName) {
     const nextConfig = JSON.parse(JSON.stringify(buildProjectConfigSeed()));
-    const sources = nextConfig.adapter_sources || [];
+    const sources = nextConfig.chip_support_sources || [];
     const existing = sources.find(item => item.name === sourceName);
 
     if (!existing) {
       throw new Error(`Adapter source not found: ${sourceName}`);
     }
 
-    nextConfig.adapter_sources = sources.filter(item => item.name !== sourceName);
+    nextConfig.chip_support_sources = sources.filter(item => item.name !== sourceName);
     const validated = runtime.validateProjectConfig(nextConfig, RUNTIME_CONFIG);
     const saved = writeProjectConfig(validated);
 
@@ -948,12 +948,12 @@ function createProjectConfigHelpers(deps) {
   function removeAdapterSource(name, tokens) {
     const parsed = parseNamedAdapterActionArgs(name, tokens, 'source name');
     const permissionContext = buildProjectWritePermissionContext(
-      'adapter-source-remove',
+      'support-source-remove',
       parsed.explicit_confirmation
     );
     const sourceName = parsed.name;
     const projectConfig = buildProjectConfigSeed();
-    const existing = (projectConfig.adapter_sources || []).find(item => item.name === sourceName);
+    const existing = (projectConfig.chip_support_sources || []).find(item => item.name === sourceName);
     const blocked = applyProjectWritePermission({
       action: 'pending',
       source: existing || { name: sourceName }
@@ -992,7 +992,7 @@ function createProjectConfigHelpers(deps) {
 
   function syncNamedAdapterSource(name, options) {
     const settings = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
-    const actionName = settings.target === 'runtime' ? 'adapter-sync-runtime' : 'adapter-sync-project';
+    const actionName = settings.target === 'runtime' ? 'support-sync-runtime' : 'support-sync-project';
     const permissionContext = buildProjectWritePermissionContext(
       actionName,
       settings.explicit_confirmation
@@ -1041,7 +1041,7 @@ function createProjectConfigHelpers(deps) {
 
   function syncAllAdapterSources(options) {
     const settings = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
-    const actionName = settings.target === 'runtime' ? 'adapter-sync-all-runtime' : 'adapter-sync-all-project';
+    const actionName = settings.target === 'runtime' ? 'support-sync-all-runtime' : 'support-sync-all-project';
     const permissionContext = buildProjectWritePermissionContext(
       actionName,
       settings.explicit_confirmation
@@ -1071,7 +1071,7 @@ function createProjectConfigHelpers(deps) {
   function bootstrapAdapterSource(name, tokens) {
     const sourceName = String(name || '').trim();
     const parsed = parseAdapterBootstrapArgs(tokens || [], sourceName);
-    const actionName = parsed.sync.target === 'runtime' ? 'adapter-bootstrap-runtime' : 'adapter-bootstrap-project';
+    const actionName = parsed.sync.target === 'runtime' ? 'support-bootstrap-runtime' : 'support-bootstrap-project';
     const permissionContext = buildProjectWritePermissionContext(
       actionName,
       parsed.explicit_confirmation

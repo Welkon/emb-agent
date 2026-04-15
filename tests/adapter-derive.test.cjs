@@ -40,7 +40,7 @@ test('adapter derive creates extension registries and profile skeletons', () => 
 
     const result = captureJson(() =>
       cli.main([
-        'adapter',
+        'support',
         'derive',
         '--family',
         'scmcu-sc8f0xx',
@@ -210,7 +210,7 @@ test('adapter derive can infer family device chip and tools from project truth',
 
     const result = captureJson(() =>
       cli.main([
-        'adapter',
+        'support',
         'derive',
         '--from-project'
       ])
@@ -327,7 +327,7 @@ test('adapter derive drafts chip pins and richer bindings from project signals',
 
     const result = captureJson(() =>
       cli.main([
-        'adapter',
+        'support',
         'derive',
         '--from-project',
         '--tool',
@@ -421,7 +421,7 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
 
     const result = captureJson(() =>
       cli.main([
-        'adapter',
+        'support',
         'derive',
         '--from-doc',
         ingested.doc_id,
@@ -549,7 +549,7 @@ test('adapter generate can write emb-style output to arbitrary root', () => {
 
     const result = captureJson(() =>
       cli.main([
-        'adapter',
+        'support',
         'generate',
         '--from-project',
         '--output-root',

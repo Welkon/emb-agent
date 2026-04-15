@@ -236,17 +236,17 @@ test('health uses configured default adapter source from environment', () => {
   const originalWrite = process.stdout.write;
   const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
   const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
-  const previousLocation = process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION;
-  const previousBranch = process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_BRANCH;
-  const previousSubdir = process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_SUBDIR;
+  const previousLocation = process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_LOCATION;
+  const previousBranch = process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_BRANCH;
+  const previousSubdir = process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_SUBDIR;
   let stdout = '';
 
   try {
     process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = 'mock://ok';
     process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
-    process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION = 'git@github.com:Welkon/emb-agent-adapters.git';
-    process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_BRANCH = 'main';
-    process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_SUBDIR = 'emb-agent';
+    process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_LOCATION = 'git@github.com:Welkon/emb-agent-adapters.git';
+    process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_BRANCH = 'main';
+    process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_SUBDIR = 'emb-agent';
     process.chdir(tempProject);
     process.stdout.write = chunk => {
       stdout += String(chunk);
@@ -265,19 +265,19 @@ test('health uses configured default adapter source from environment', () => {
     assert.match(adapterCommand.cli, /--subdir emb-agent/);
   } finally {
     if (previousSubdir === undefined) {
-      delete process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_SUBDIR;
+      delete process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_SUBDIR;
     } else {
-      process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_SUBDIR = previousSubdir;
+      process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_SUBDIR = previousSubdir;
     }
     if (previousBranch === undefined) {
-      delete process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_BRANCH;
+      delete process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_BRANCH;
     } else {
-      process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_BRANCH = previousBranch;
+      process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_BRANCH = previousBranch;
     }
     if (previousLocation === undefined) {
-      delete process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION;
+      delete process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_LOCATION;
     } else {
-      process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION = previousLocation;
+      process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_LOCATION = previousLocation;
     }
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
@@ -543,7 +543,7 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(bootstrapRun.reason, 'network-bootstrap-required');
 
     stdout = '';
-    cli.main(['adapter', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
+    cli.main(['support', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
 
     stdout = '';
     cli.main(['health']);
@@ -717,8 +717,8 @@ test('health routes from applied hardware doc to adapter derive when synced adap
       { providerImpls }
     );
     await cli.runIngestCommand('apply', ['doc', ingested.doc_id, '--to', 'hardware']);
-    cli.main(['adapter', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
-    cli.main(['adapter', 'sync', 'default-pack']);
+    cli.main(['support', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
+    cli.main(['support', 'sync', 'default-pack']);
 
     stdout = '';
     cli.main(['health']);

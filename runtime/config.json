@@ -13,7 +13,7 @@
     "review_mode": "auto",
     "verification_mode": "lean"
   },
-  "default_adapter_source": {
+  "default_chip_support_source": {
     "type": "git",
     "location": "",
     "branch": "",

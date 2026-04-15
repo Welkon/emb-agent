@@ -17,25 +17,25 @@ function readConfigObject(runtimeConfig) {
     !runtimeConfig ||
     typeof runtimeConfig !== 'object' ||
     Array.isArray(runtimeConfig) ||
-    !runtimeConfig.default_adapter_source ||
-    typeof runtimeConfig.default_adapter_source !== 'object' ||
-    Array.isArray(runtimeConfig.default_adapter_source)
+    !runtimeConfig.default_chip_support_source ||
+    typeof runtimeConfig.default_chip_support_source !== 'object' ||
+    Array.isArray(runtimeConfig.default_chip_support_source)
   ) {
     return {};
   }
 
-  return runtimeConfig.default_adapter_source;
+  return runtimeConfig.default_chip_support_source;
 }
 
 function resolveDefaultAdapterSource(runtimeConfig, env) {
   const config = readConfigObject(runtimeConfig);
-  const type = readEnvString(env, 'EMB_AGENT_DEFAULT_ADAPTER_SOURCE_TYPE') || String(config.type || '').trim() || DEFAULT_ADAPTER_SOURCE_TYPE;
+  const type = readEnvString(env, 'EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_TYPE') || String(config.type || '').trim() || DEFAULT_ADAPTER_SOURCE_TYPE;
   const location =
-    readEnvString(env, 'EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION') ||
+    readEnvString(env, 'EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_LOCATION') ||
     String(config.location || '').trim() ||
     DEFAULT_ADAPTER_SOURCE_LOCATION;
-  const branch = readEnvString(env, 'EMB_AGENT_DEFAULT_ADAPTER_SOURCE_BRANCH') || String(config.branch || '').trim();
-  const subdir = readEnvString(env, 'EMB_AGENT_DEFAULT_ADAPTER_SOURCE_SUBDIR') || String(config.subdir || '').trim();
+  const branch = readEnvString(env, 'EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_BRANCH') || String(config.branch || '').trim();
+  const subdir = readEnvString(env, 'EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_SUBDIR') || String(config.subdir || '').trim();
 
   return {
     name: DEFAULT_ADAPTER_SOURCE_NAME,

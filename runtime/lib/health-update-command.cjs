@@ -54,7 +54,7 @@ function createHealthUpdateCommandHelpers(deps) {
 
     return {
       cli: `${buildSupportCli(['support', 'source', 'add', source.name])} ${sourceArgs.join(' ')}`,
-      argv: ['adapter', 'source', 'add', source.name, ...sourceArgs]
+      argv: ['support', 'source', 'add', source.name, ...sourceArgs]
     };
   }
 
@@ -371,8 +371,8 @@ function createHealthUpdateCommandHelpers(deps) {
           argv: pendingDocApply.argv || []
         }
       : null;
-    const bootstrap = findCommand('support-bootstrap', 'support-sync', 'adapter-bootstrap', 'adapter-sync');
-    const derive = findCommand('support-derive-from-doc', 'adapter-derive-from-doc');
+    const bootstrap = findCommand('support-bootstrap', 'support-sync');
+    const derive = findCommand('support-derive-from-doc');
     const next = findCommand('next');
     const stages = [];
 
@@ -735,7 +735,7 @@ function createHealthUpdateCommandHelpers(deps) {
             ? [
                 `profile=${projectConfig.project_profile || '(default)'}`,
                 `packs=${(projectConfig.active_packs || []).join(',') || '(none)'}`,
-                `chip_support_sources=${(projectConfig.adapter_sources || []).length}`
+                `chip_support_sources=${(projectConfig.chip_support_sources || []).length}`
               ]
             : [path.relative(projectRoot, projectConfigPath)],
           projectConfig ? '' : 'Run init first to write the minimal project configuration.'
@@ -1053,7 +1053,7 @@ function createHealthUpdateCommandHelpers(deps) {
           enabledSources.length > 0 ? 'Chip support sources are registered' : 'No chip support source is registered yet',
           enabledSources.length > 0
             ? enabledSources.map(item => `source=${item.name}`)
-            : [`${runtime.getProjectAssetRelativePath('project.json')} -> adapter_sources`],
+            : [`${runtime.getProjectAssetRelativePath('project.json')} -> chip_support_sources`],
           enabledSources.length > 0
             ? ''
             : 'Register a chip support source first. Private git sources reuse the host git credentials that are already configured.'
@@ -1068,10 +1068,10 @@ function createHealthUpdateCommandHelpers(deps) {
           hardwareIdentity.model
             ? DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI
             : addCommand.cli,
-          'adapter',
+          'support',
           {
             argv: hardwareIdentity.model
-              ? ['adapter', 'bootstrap']
+              ? ['support', 'bootstrap']
               : addCommand.argv
           }
         );
@@ -1106,11 +1106,11 @@ function createHealthUpdateCommandHelpers(deps) {
           hardwareIdentity.model
             ? buildSupportCli(['support', 'bootstrap', enabledSources[0].name])
             : buildSupportCli(['support', 'sync', enabledSources[0].name]),
-          'adapter',
+          'support',
           {
             argv: hardwareIdentity.model
-              ? ['adapter', 'bootstrap', enabledSources[0].name]
-              : ['adapter', 'sync', enabledSources[0].name]
+              ? ['support', 'bootstrap', enabledSources[0].name]
+              : ['support', 'sync', enabledSources[0].name]
           }
         );
       }
@@ -1174,9 +1174,9 @@ function createHealthUpdateCommandHelpers(deps) {
           'support-derive-from-doc',
           `Draft chip support for current hardware from document ${latestHardwareDoc.doc_id}`,
           buildAdapterDeriveCli(latestHardwareDoc),
-          'adapter',
+          'support',
           {
-            argv: ['adapter', 'derive', '--from-project', '--from-doc', latestHardwareDoc.doc_id]
+            argv: ['support', 'derive', '--from-project', '--from-doc', latestHardwareDoc.doc_id]
           }
         );
       }

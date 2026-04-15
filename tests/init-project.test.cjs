@@ -44,7 +44,7 @@ test('init-project creates project defaults and defers note templates into a boo
 
     assert.equal(projectConfig.project_profile, 'rtos-iot');
     assert.deepEqual(projectConfig.active_packs, ['connected-appliance']);
-    assert.deepEqual(projectConfig.adapter_sources, []);
+    assert.deepEqual(projectConfig.chip_support_sources, []);
     assert.deepEqual(projectConfig.executors, {});
     assert.deepEqual(projectConfig.quality_gates.required_executors, []);
     assert.deepEqual(projectConfig.quality_gates.required_signoffs, []);
@@ -304,7 +304,7 @@ test('init preserves existing docs files without force', () => {
   }
 });
 
-test('init returns onboarding guidance for adapter setup', () => {
+test('init returns onboarding guidance for chip support setup', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-guidance-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;

@@ -230,10 +230,7 @@ function loadMarkdown(dirPath, name, kind) {
 }
 
 function loadCommandMarkdown(name) {
-  const aliases = {
-    adapter: 'support'
-  };
-  const resolvedName = aliases[name] || name;
+  const resolvedName = name;
   const fileName = `${resolvedName}.md`;
   const publicPath = path.join(COMMANDS_DIR, fileName);
   if (fs.existsSync(publicPath)) {
@@ -733,10 +730,10 @@ function runAdapterDerive(args) {
 
   const actionName =
     parsed.target === 'runtime'
-      ? 'adapter-derive-runtime'
+      ? 'support-derive-runtime'
       : parsed.target === 'path'
-        ? 'adapter-derive-path'
-        : 'adapter-derive-project';
+        ? 'support-derive-path'
+        : 'support-derive-project';
   const blocked = applyAdapterWritePermission({
     status: 'permission-pending',
     target: parsed.target,
@@ -774,7 +771,7 @@ function runAdapterGenerate(args) {
     device: parsed.device,
     chip: parsed.chip,
     tools: parsed.tools
-  }, 'adapter-generate', parsed.explicit_confirmation);
+  }, 'support-generate', parsed.explicit_confirmation);
 
   if (blocked.permission.decision !== 'allow') {
     return blocked.result;

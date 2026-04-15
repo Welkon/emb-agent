@@ -24,7 +24,7 @@ test('loadRuntimeConfig returns validated defaults', () => {
     verification_mode: 'lean',
     orchestration_mode: 'auto'
   });
-  assert.deepEqual(config.default_adapter_source, {
+  assert.deepEqual(config.default_chip_support_source, {
     type: 'git',
     location: '',
     branch: '',

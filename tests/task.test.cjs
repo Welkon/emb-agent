@@ -173,8 +173,8 @@ test('task commands create activate manage context and resolve lightweight tasks
       ].join('\n'),
       'utf8'
     );
-    await cli.main(['adapter', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
-    await cli.main(['adapter', 'sync', 'default-pack']);
+    await cli.main(['support', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
+    await cli.main(['support', 'sync', 'default-pack']);
     await cli.runIngestCommand(
       'doc',
       ['--file', 'docs/SC8F072.pdf', '--kind', 'datasheet', '--to', 'hardware'],

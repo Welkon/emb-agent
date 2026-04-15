@@ -129,8 +129,8 @@ function createSessionReportCommandHelpers(deps) {
     const chipSupportHealth =
       next &&
       next.health &&
-      (next.health.chip_support_health || next.health.adapter_health)
-        ? (next.health.chip_support_health || next.health.adapter_health)
+      next.health.chip_support_health
+        ? next.health.chip_support_health
         : null;
     const latestExecutor = getLatestExecutor(resolved.session);
     const latestForensics = getLatestForensics(resolved.session);

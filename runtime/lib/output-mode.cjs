@@ -215,15 +215,11 @@ function relevantHealthCheckKeys(stage) {
         'chip_support_sync_project',
         'chip_support_match',
         'chip_support_quality',
-        'adapter_sources_registered',
-        'adapter_sync_project',
-        'adapter_match',
-        'adapter_quality',
         'binding_quality',
         'register_summary_available'
       ];
     case 'chip-support-from-document':
-      return ['chip_support_derive_candidate', 'chip_support_match', 'adapter_derive_candidate', 'adapter_match'];
+      return ['chip_support_derive_candidate', 'chip_support_match'];
     default:
       return [];
   }

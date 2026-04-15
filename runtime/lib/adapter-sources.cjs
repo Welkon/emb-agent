@@ -72,7 +72,7 @@ function buildEntryKey(target, name) {
 
 function findSource(projectConfig, name) {
   const normalized = ensureString(name, 'source name');
-  const sources = (projectConfig && projectConfig.adapter_sources) || [];
+  const sources = (projectConfig && projectConfig.chip_support_sources) || [];
   return sources.find(item => item.name === normalized) || null;
 }
 
@@ -1225,13 +1225,13 @@ function buildSourceStatus(rootDir, projectRoot, source) {
 }
 
 function listSourceStatus(rootDir, projectRoot, projectConfig) {
-  return ((projectConfig && projectConfig.adapter_sources) || []).map(source =>
+  return ((projectConfig && projectConfig.chip_support_sources) || []).map(source =>
     buildSourceStatus(rootDir, projectRoot, source)
   );
 }
 
 function syncAllAdapterSources(rootDir, projectRoot, projectConfig, options) {
-  const sources = ((projectConfig && projectConfig.adapter_sources) || []).filter(
+  const sources = ((projectConfig && projectConfig.chip_support_sources) || []).filter(
     source => source.enabled !== false
   );
 
