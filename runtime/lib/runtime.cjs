@@ -141,7 +141,7 @@ function looksLikeLegacyProjectExtDir(legacyDir) {
     'reports',
     'profiles',
     'packs',
-    'adapters',
+    'chip-support',
     'extensions'
   ];
 
@@ -230,14 +230,14 @@ function initProjectLayout(projectRoot) {
   ensureDir(projectExtDir);
   ensureDir(path.join(projectExtDir, 'cache'));
   ensureDir(path.join(projectExtDir, 'cache', 'docs'));
-  ensureDir(path.join(projectExtDir, 'cache', 'adapter-sources'));
+  ensureDir(path.join(projectExtDir, 'cache', 'chip-support-sources'));
   ensureDir(path.join(projectExtDir, 'tasks'));
   ensureDir(path.join(projectExtDir, 'reports'));
   ensureDir(path.join(projectExtDir, 'reports', 'forensics'));
   ensureDir(path.join(projectExtDir, 'reports', 'sessions'));
   ensureDir(path.join(projectExtDir, 'profiles'));
   ensureDir(path.join(projectExtDir, 'packs'));
-  ensureDir(path.join(projectExtDir, 'adapters'));
+  ensureDir(path.join(projectExtDir, 'chip-support'));
   ensureDir(path.join(projectExtDir, 'tasks', 'archive'));
   ensureDir(path.join(path.resolve(projectRoot), 'docs'));
   workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true });

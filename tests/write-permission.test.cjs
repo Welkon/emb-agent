@@ -51,7 +51,7 @@ function writeJson(filePath, value) {
 
 function createPathAdapterSource(rootDir) {
   writeText(
-    path.join(rootDir, 'adapters', 'core', 'shared.cjs'),
+    path.join(rootDir, 'chip-support', 'core', 'shared.cjs'),
     [
       "'use strict';",
       '',
@@ -65,7 +65,7 @@ function createPathAdapterSource(rootDir) {
   );
 
   writeText(
-    path.join(rootDir, 'adapters', 'routes', 'timer-calc.cjs'),
+    path.join(rootDir, 'chip-support', 'routes', 'timer-calc.cjs'),
     [
       "'use strict';",
       '',
@@ -667,14 +667,14 @@ test('adapter source add/remove and sync honor write rules before mutating share
     const blockedSync = await captureJson(['support', 'sync', 'vendor-pack']);
     assert.equal(blockedSync.status, 'permission-pending');
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
       false
     );
 
     const allowedSync = await captureJson(['support', 'sync', 'vendor-pack', '--confirm']);
     assert.equal(allowedSync.permission_decision.decision, 'allow');
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
       true
     );
 
@@ -725,7 +725,7 @@ test('adapter bootstrap honors write ask rules before adding source and syncing 
     const projectConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     assert.deepEqual(projectConfig.chip_support_sources, []);
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
       false
     );
 
@@ -817,7 +817,7 @@ test('adapter derive and generate honor write rules before writing derived outpu
       config.permissions.writes.deny = ['support-generate'];
     });
 
-    const outputRoot = path.join(tempProject, 'generated-adapters');
+    const outputRoot = path.join(tempProject, 'generated-chip-support');
     const blockedGenerate = await captureJson([
       'support',
       'generate',

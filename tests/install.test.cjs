@@ -72,7 +72,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'command-docs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'tools', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'chips', 'registry.json')), true);
-    assert.equal(fs.existsSync(path.join(runtimeRoot, 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'chip-support')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'extensions')), false);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'scheduler.cjs')), true);
     assert.equal(fs.existsSync(cliPath), true);
@@ -128,8 +128,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
 

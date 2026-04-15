@@ -1058,7 +1058,7 @@ function createTaskCommandHelpers(deps) {
     }));
   }
 
-  function buildAdapterBindings(resolved) {
+  function buildChipSupportBindings(resolved) {
     const projectConfig = getProjectConfig ? getProjectConfig() : {};
     const statuses = adapterSources.listSourceStatus(rootDir, resolveProjectRoot(), projectConfig);
 
@@ -1098,13 +1098,13 @@ function createTaskCommandHelpers(deps) {
       return {
         tool: item.tool,
         status: item.status,
-        adapter_status: item.adapter_status,
+        chip_support_status: item.chip_support_status,
         binding_source: item.binding_source,
         binding_algorithm: item.binding_algorithm,
         cli_draft: item.cli_draft,
         missing_inputs: item.missing_inputs || [],
         discovered_from: suggested ? suggested.discovered_from : '',
-        adapter_path: suggested ? suggested.adapter_path : ''
+        chip_support_path: suggested ? suggested.chip_support_path : ''
       };
     });
   }
@@ -1133,7 +1133,7 @@ function createTaskCommandHelpers(deps) {
           : null
       },
       docs: buildDocBindings(summary, resolved),
-      adapters: buildAdapterBindings(resolved),
+      chip_support: buildChipSupportBindings(resolved),
       tools: buildToolBindings(resolved)
     };
   }

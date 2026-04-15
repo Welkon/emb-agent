@@ -1205,7 +1205,7 @@ function createInstallHelpers(deps) {
       'utf8'
     );
     fs.writeFileSync(path.join(runtimeDir, 'VERSION'), `${packageVersion}\n`, 'utf8');
-    ensureDir(path.join(runtimeDir, 'adapters'));
+    ensureDir(path.join(runtimeDir, 'chip-support'));
 
     ensureDir(runtimeCommandsDir);
     ensureDir(runtimeCommandDocsDir);

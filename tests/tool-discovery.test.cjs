@@ -183,7 +183,7 @@ test('draft chip support route is discoverable but not treated as ready', () => 
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(projectEmbDir, 'adapters', 'routes'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'chip-support', 'routes'), { recursive: true });
 
     fs.writeFileSync(
       path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
@@ -250,7 +250,7 @@ test('draft chip support route is discoverable but not treated as ready', () => 
       'utf8'
     );
     fs.writeFileSync(
-      path.join(projectEmbDir, 'adapters', 'routes', 'timer-calc.cjs'),
+      path.join(projectEmbDir, 'chip-support', 'routes', 'timer-calc.cjs'),
       [
         "'use strict';",
         '',

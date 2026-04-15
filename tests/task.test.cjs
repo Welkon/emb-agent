@@ -40,17 +40,17 @@ function initGitRepo(rootDir) {
 
 function createAdapterSource(rootDir) {
   writeText(
-    path.join(rootDir, 'adapters', 'core', 'shared.cjs'),
+    path.join(rootDir, 'chip-support', 'core', 'shared.cjs'),
     "'use strict';\nmodule.exports = {};\n"
   );
 
   writeText(
-    path.join(rootDir, 'adapters', 'algorithms', 'scmcu-timer.cjs'),
+    path.join(rootDir, 'chip-support', 'algorithms', 'scmcu-timer.cjs'),
     "'use strict';\nmodule.exports = { name: 'scmcu-timer' };\n"
   );
 
   writeText(
-    path.join(rootDir, 'adapters', 'routes', 'timer-calc.cjs'),
+    path.join(rootDir, 'chip-support', 'routes', 'timer-calc.cjs'),
     [
       "'use strict';",
       '',
@@ -240,7 +240,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(created.task.scope, 'pwm');
     assert.equal(created.task.priority, 'P1');
     assert.ok(created.task.bindings.docs.some(item => item.doc_id));
-    assert.ok(created.task.bindings.adapters.some(item => item.source === 'default-pack'));
+    assert.ok(created.task.bindings.chip_support.some(item => item.source === 'default-pack'));
     assert.ok(created.task.bindings.tools.some(item => item.tool === 'timer-calc'));
     assert.ok(created.task.injected_specs.some(item => item.name === 'project-local'));
     assert.ok(created.task.context.implement.some(item => item.path === '.emb-agent/hw.yaml'));

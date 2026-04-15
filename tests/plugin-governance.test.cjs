@@ -46,7 +46,7 @@ test('plugin governance rejects malformed external tool registry schema', () => 
 test('plugin governance rejects chip support module without runTool export', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-plugin-adapter-'));
   const currentCwd = process.cwd();
-  const adapterPath = path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs');
+  const adapterPath = path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs');
 
   try {
     fs.mkdirSync(path.dirname(adapterPath), { recursive: true });

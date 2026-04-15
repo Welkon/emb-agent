@@ -52,7 +52,7 @@ It owns:
 - route bindings and executable tool algorithms
 - chip profiles, package details, and derived hardware constraints
 
-The embedded workflow should stay abstract. Chip support should absorb vendor- and chip-specific logic. See [Chip Support Model](./adapter-model.md).
+The embedded workflow should stay abstract. Chip support should absorb vendor- and chip-specific logic. See [Chip Support Model](./chip-support-model.md).
 
 ## What Should Dominate The Default Path
 

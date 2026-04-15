@@ -22,17 +22,17 @@ function writeJson(filePath, value) {
 
 function createHealthAdapterSource(rootDir) {
   writeText(
-    path.join(rootDir, 'adapters', 'core', 'shared.cjs'),
+    path.join(rootDir, 'chip-support', 'core', 'shared.cjs'),
     "'use strict';\nmodule.exports = {};\n"
   );
 
   writeText(
-    path.join(rootDir, 'adapters', 'algorithms', 'scmcu-timer.cjs'),
+    path.join(rootDir, 'chip-support', 'algorithms', 'scmcu-timer.cjs'),
     "'use strict';\nmodule.exports = { name: 'scmcu-timer' };\n"
   );
 
   writeText(
-    path.join(rootDir, 'adapters', 'routes', 'timer-calc.cjs'),
+    path.join(rootDir, 'chip-support', 'routes', 'timer-calc.cjs'),
     [
       "'use strict';",
       '',

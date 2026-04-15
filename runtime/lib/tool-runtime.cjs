@@ -220,15 +220,15 @@ function loadProjectPermissionConfig(rootDir) {
 function resolveAdapterCandidates(rootDir, toolName) {
   const projectExtDir = runtime.getProjectExtDir(process.cwd());
   const names = [
-    path.join(rootDir, 'adapters', `${toolName}.cjs`),
-    path.join(rootDir, 'adapters', toolName, 'index.cjs'),
-    path.join(rootDir, 'adapters', 'routes', `${toolName}.cjs`),
+    path.join(rootDir, 'chip-support', `${toolName}.cjs`),
+    path.join(rootDir, 'chip-support', toolName, 'index.cjs'),
+    path.join(rootDir, 'chip-support', 'routes', `${toolName}.cjs`),
     path.join(rootDir, 'extensions', 'tools', `${toolName}.cjs`),
     path.join(rootDir, 'extensions', 'tools', toolName, 'index.cjs'),
     path.join(rootDir, 'extensions', 'tools', 'routes', `${toolName}.cjs`),
-    path.join(projectExtDir, 'adapters', `${toolName}.cjs`),
-    path.join(projectExtDir, 'adapters', toolName, 'index.cjs'),
-    path.join(projectExtDir, 'adapters', 'routes', `${toolName}.cjs`),
+    path.join(projectExtDir, 'chip-support', `${toolName}.cjs`),
+    path.join(projectExtDir, 'chip-support', toolName, 'index.cjs'),
+    path.join(projectExtDir, 'chip-support', 'routes', `${toolName}.cjs`),
     path.join(projectExtDir, 'extensions', 'tools', `${toolName}.cjs`),
     path.join(projectExtDir, 'extensions', 'tools', toolName, 'index.cjs'),
     path.join(projectExtDir, 'extensions', 'tools', 'routes', `${toolName}.cjs`)
@@ -272,7 +272,7 @@ function buildAdapterRequiredResult(rootDir, toolName, tokens) {
       raw_tokens: tokens || [],
       options
     },
-    adapter_search_paths: searchPaths,
+    chip_support_search_paths: searchPaths,
     notes: [
       'emb-agent core only provides abstract tool specs and does not include any vendor family/device/chip bindings.',
       'To run this tool for real, install chip support under runtime or the project directory.',
