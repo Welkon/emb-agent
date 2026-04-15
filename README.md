@@ -28,6 +28,24 @@ npx emb-agent --codex --local --developer your-name
 
 Replace `--codex` with `--claude` or `--cursor` for the host you use. Local install wires the runtime and bootstraps `.emb-agent/` in the current repository.
 
+If you are driving emb-agent from an external agent runtime instead of a host-integrated client, install with:
+
+```bash
+npx emb-agent --external --local --developer your-name
+```
+
+That writes the runtime to `.emb-agent/runtime` and creates `.emb-agent/external-agent.md` so a generic external agent can follow emb-agent's command loop without guessing.
+
+External agents can also skip the full session payloads and use the fixed driver protocol directly:
+
+```bash
+node ./.emb-agent/runtime/bin/emb-agent.cjs external start
+node ./.emb-agent/runtime/bin/emb-agent.cjs external init --runtime external --user your-name
+node ./.emb-agent/runtime/bin/emb-agent.cjs external next
+node ./.emb-agent/runtime/bin/emb-agent.cjs external health
+node ./.emb-agent/runtime/bin/emb-agent.cjs external dispatch-next
+```
+
 Use `--profile workflow` only when you are authoring scaffolds instead of using emb-agent day to day.
 
 ### 2. Open a session and run `start`

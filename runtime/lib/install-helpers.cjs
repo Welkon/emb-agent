@@ -48,11 +48,13 @@ function createInstallHelpers(deps) {
     process.stdout.write(
       [
         'emb-agent usage:',
+        '  emb-agent --external --local',
         '  emb-agent --global',
         '  emb-agent --local',
         '  emb-agent --claude --local',
         '  emb-agent --codex --local',
         '  emb-agent --cursor --local',
+        '  emb-agent --runtime external --local',
         '  emb-agent --runtime claude --local',
         '  emb-agent --runtime codex --local',
         '  emb-agent --runtime cursor --local',
@@ -63,10 +65,11 @@ function createInstallHelpers(deps) {
         '  emb-agent --help',
         '',
         'Options:',
+        '  --external              Install a hostless runtime for external agents (for example GenericAgent)',
         '  --claude                Install for Claude Code explicitly',
         '  --codex                 Install for Codex explicitly (default)',
         '  --cursor                Install for Cursor explicitly',
-        '  --runtime <name>        Select runtime target (codex, claude, cursor; others reserved)',
+        '  --runtime <name>        Select runtime target (external, codex, claude, cursor; others reserved)',
         '  --developer <name>      Required developer name to seed new projects',
         '  --global                Install to runtime config home',
         '  --local                 Install to current project runtime dir and bootstrap .emb-agent/',
@@ -119,7 +122,9 @@ function createInstallHelpers(deps) {
 
   function getDefaultInstallLocation(runtimeName) {
     const runtime = String(runtimeName || '').trim().toLowerCase();
-    return runtime === 'claude' || runtime === 'codex' || runtime === 'cursor' ? 'local' : 'global';
+    return runtime === 'external' || runtime === 'claude' || runtime === 'codex' || runtime === 'cursor'
+      ? 'local'
+      : 'global';
   }
 
   function normalizeInstallProfile(value, flagName) {
@@ -183,6 +188,10 @@ function createInstallHelpers(deps) {
       }
       if (token === '--claude') {
         setRuntime('claude');
+        continue;
+      }
+      if (token === '--external') {
+        setRuntime('external');
         continue;
       }
       if (token === '--codex') {
@@ -1125,6 +1134,10 @@ function createInstallHelpers(deps) {
   }
 
   function installAgents(targetDir, target, args) {
+    if (target.agentMode === 'none' || target.hookMode === 'none') {
+      return 0;
+    }
+
     if (target.agentMode === 'markdown' || target.hookMode === 'claude-settings') {
       return installMarkdownAgents(targetDir, target, args);
     }
@@ -1371,7 +1384,9 @@ function createInstallHelpers(deps) {
     const lines = [
       `Installed emb-agent runtime for ${target.label} to: ${runtimeDir}`,
       `Install profile: ${installProfile.name}`,
-      `Installed ${agentCount} ${target.agentLabel || `${target.label} agents`} under: ${path.join(targetDir, target.agentsDirName || 'agents')}`,
+      ...(agentCount > 0
+        ? [`Installed ${agentCount} ${target.agentLabel || `${target.label} agents`} under: ${path.join(targetDir, target.agentsDirName || 'agents')}`]
+        : []),
       ...(codexSkillCount > 0
         ? [`Installed ${codexSkillCount} Codex skills under: ${path.join(targetDir, 'skills')}`]
         : []),
@@ -1381,7 +1396,9 @@ function createInstallHelpers(deps) {
       ...(cursorCommandCount > 0
         ? [`Installed ${cursorCommandCount} Cursor commands under: ${path.join(targetDir, 'commands')}`]
         : []),
-      `Updated ${target.label} config: ${path.join(targetDir, target.configFileName || 'config.toml')}`,
+      ...(target.managesHostConfig === false
+        ? [`External runtime metadata: ${path.join(runtimeDir, 'HOST.json')}`]
+        : [`Updated ${target.label} config: ${path.join(targetDir, target.configFileName || 'config.toml')}`]),
       `Developer identity: ${args.developer} (${target.name})`,
       ...(args.subagentBridgeCmd
         ? [`Sub-agent bridge: ${args.subagentBridgeCmd} (timeout: ${args.subagentBridgeTimeoutMs} ms)`]
@@ -1401,10 +1418,16 @@ function createInstallHelpers(deps) {
       ...(!installProfile.includeScaffolds
         ? ['Advanced scaffold assets were skipped in core profile. Reinstall with --profile workflow to include them.']
         : []),
-      `Startup automation is installed automatically. If it does not seem active yet, restart the host once and rerun ${projectBootstrap ? 'next' : 'init/next'}. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.`,
+      ...(target.managesHostConfig === false
+        ? ['Host automation was not installed because the external runtime target is hostless. Drive the CLI directly from the external agent.']
+        : [`Startup automation is installed automatically. If it does not seem active yet, restart the host once and rerun ${projectBootstrap ? 'next' : 'init/next'}. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.`]),
       'Next steps:',
-      `  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`,
-      `  In a project repo, open a ${target.label} session and run: ${projectBootstrap ? 'next' : 'init'}`,
+      ...(target.managesHostConfig === false
+        ? [`  Point your external agent at: ${installedRuntimeHost.cliCommand}`]
+        : [`  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`]),
+      ...(target.managesHostConfig === false
+        ? [`  In the project repo, have the external agent run: ${projectBootstrap ? 'next' : 'init'}`]
+        : [`  In a project repo, open a ${target.label} session and run: ${projectBootstrap ? 'next' : 'init'}`]),
       `  ${projectBootstrap ? 'Review .emb-agent/tasks/00-bootstrap-project before broadening the workflow.' : 'Then continue with: next'}`
     ];
 

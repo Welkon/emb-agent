@@ -10,6 +10,24 @@ npx emb-agent --codex --local --developer your-name
 
 Replace `--codex` with `--claude` or `--cursor` for the host you actually use.
 
+For hostless external-agent setups, use:
+
+```bash
+npx emb-agent --external --local --developer your-name
+```
+
+This installs the runtime under `.emb-agent/runtime` and generates `.emb-agent/external-agent.md` for external driver loops.
+
+If the caller is a generic external agent, prefer the fixed driver protocol commands:
+
+```bash
+node ./.emb-agent/runtime/bin/emb-agent.cjs external start
+node ./.emb-agent/runtime/bin/emb-agent.cjs external init --runtime external --user your-name
+node ./.emb-agent/runtime/bin/emb-agent.cjs external next
+node ./.emb-agent/runtime/bin/emb-agent.cjs external health
+node ./.emb-agent/runtime/bin/emb-agent.cjs external dispatch-next
+```
+
 Use `--profile workflow` only if you are authoring scaffold assets rather than using emb-agent day to day.
 
 For Codex, hooks may still require manual enablement in `~/.codex/config.toml`. See [platforms.md](./platforms.md).

@@ -891,7 +891,7 @@ function validateDeveloperConfig(config) {
 
   return {
     name: ensureOptionalString(source.name, 'developer.name'),
-    runtime: ensureChoice(source.runtime, 'developer.runtime', ['', 'codex', 'claude', 'cursor'], '')
+    runtime: ensureChoice(source.runtime, 'developer.runtime', ['', 'external', 'codex', 'claude', 'cursor'], '')
   };
 }
 

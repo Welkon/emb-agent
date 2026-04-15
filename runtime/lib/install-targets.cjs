@@ -9,6 +9,24 @@ function createInstallTargets(deps) {
   ];
 
   const targetDefs = {
+    external: {
+      order: 4,
+      name: 'external',
+      label: 'External Agent',
+      supported: true,
+      localDirName: '.emb-agent',
+      defaultGlobalDirParts: ['.emb-agent'],
+      globalEnvVar: 'EMB_AGENT_EXTERNAL_HOME',
+      runtimeDirName: 'runtime',
+      agentsDirName: 'agents',
+      configFileName: 'external-agent.json',
+      agentLabel: 'external agent instructions',
+      restartLabel: 'the external agent runtime',
+      agentMode: 'none',
+      hookMode: 'none',
+      managesHostConfig: false,
+      managedRuntimePathPatterns: managedRuntimePathPatterns.slice()
+    },
     codex: {
       order: 1,
       name: 'codex',

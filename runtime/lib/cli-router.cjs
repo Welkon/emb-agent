@@ -8,12 +8,18 @@ function createCliRouter(deps) {
     usage,
     printJson,
     runInitCommand,
+    buildExternalInitProtocol,
     runIngestCommand,
     buildStartContext,
+    buildExternalStartProtocol,
     buildStatus,
+    buildExternalStatusProtocol,
+    buildExternalHealthProtocol,
     buildBootstrapReport,
     updateSession,
     buildNextContext,
+    buildExternalNextProtocol,
+    buildExternalDispatchNextProtocol,
     buildDispatchContext,
     executeDispatchCommand,
     executeOrchestratorCommand,
@@ -134,6 +140,57 @@ function createCliRouter(deps) {
 
     if (cmd === 'start') {
       emitJson(buildStartContext());
+      return;
+    }
+
+    if (cmd === 'external') {
+      if (!subcmd || subcmd === '--help') {
+        usage({ advanced: true });
+        return;
+      }
+
+      if (subcmd === 'start') {
+        emitJson(buildExternalStartProtocol());
+        return;
+      }
+
+      if (subcmd === 'status') {
+        emitJson(buildExternalStatusProtocol());
+        return;
+      }
+
+      if (subcmd === 'health') {
+        emitJson(buildExternalHealthProtocol());
+        return;
+      }
+
+      if (subcmd === 'next') {
+        const session = updateSession(current => {
+          current.last_command = 'next';
+        });
+        const protocol = buildExternalNextProtocol();
+        if (protocol && protocol.next) {
+          protocol.next.last_command = session.last_command || '';
+        }
+        emitJson(protocol);
+        return;
+      }
+
+      if (subcmd === 'dispatch-next') {
+        emitJson(buildExternalDispatchNextProtocol());
+        return;
+      }
+
+      if (subcmd === 'init') {
+        const protocol = buildExternalInitProtocol(rest, 'init');
+        if (protocol) {
+          emitJson(protocol);
+        }
+        return;
+      }
+
+      usage({ advanced: true });
+      process.exitCode = 1;
       return;
     }
 

@@ -7,6 +7,12 @@ const path = require('path');
 const DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS = 15000;
 
 const DEFAULT_HOSTS = {
+  external: {
+    name: 'external',
+    label: 'External Agent',
+    defaultHomeDirName: '.emb-agent',
+    configFileName: 'external-agent.json'
+  },
   codex: {
     name: 'codex',
     label: 'Codex',

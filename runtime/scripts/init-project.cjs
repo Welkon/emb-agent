@@ -14,6 +14,7 @@ const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
 const BOOTSTRAP_TASK_NAME = '00-bootstrap-project';
 const BOOTSTRAP_TASK_CHANNELS = ['implement', 'check', 'debug'];
+const EXTERNAL_AGENT_GUIDE_PATH = runtime.getProjectAssetRelativePath('external-agent.md');
 
 function usage() {
   process.stdout.write(
@@ -21,7 +22,7 @@ function usage() {
       'init-project usage:',
       '  node scripts/init-project.cjs',
       '  node scripts/init-project.cjs --project <repo-root>',
-      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--pack <name> ...] [--runtime <codex|claude|cursor>|--codex|--claude|--cursor] [-u <name>]',
+      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--pack <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>]',
       '  node scripts/init-project.cjs --force'
     ].join('\n') + '\n'
   );
@@ -45,7 +46,7 @@ function parseArgs(argv) {
     if (!normalized) {
       throw new Error(`Missing value after ${token}`);
     }
-    if (!['codex', 'claude', 'cursor'].includes(normalized)) {
+    if (!['external', 'codex', 'claude', 'cursor'].includes(normalized)) {
       throw new Error(`Unsupported runtime: ${value}`);
     }
     if (result.runtimeSet && result.runtime !== normalized) {
@@ -80,6 +81,10 @@ function parseArgs(argv) {
     if (token === '--runtime') {
       setRuntime(argv[index + 1] || '', '--runtime');
       index += 1;
+      continue;
+    }
+    if (token === '--external') {
+      setRuntime('external', '--external');
       continue;
     }
     if (token === '--codex') {
@@ -375,6 +380,77 @@ function buildTruthPlan() {
   ];
 }
 
+function buildExternalAgentGuide() {
+  return [
+    '# External Agent Driver',
+    '',
+    'This repository uses emb-agent as the embedded workflow state machine.',
+    'If you are an external agent, do not invent a parallel workflow. Drive emb-agent directly and treat its JSON output as the source of truth.',
+    '',
+    '## Rules',
+    '',
+    '- Always enter through `start` first.',
+    '- After any state-changing emb-agent command, run `next` again.',
+    '- Prefer `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, and `.emb-agent/project.json` over chat memory.',
+    '- If hardware identity is unknown, leave it unknown until confirmed instead of guessing.',
+    '- If `start` or `next` returns a concrete CLI recommendation, execute that CLI instead of improvising.',
+    '',
+    '## Preferred CLI Resolution',
+    '',
+    `1. If \`./${runtime.getProjectAssetRelativePath('runtime', 'bin', 'emb-agent.cjs')}\` exists, prefer: \`node ./${runtime.getProjectAssetRelativePath('runtime', 'bin', 'emb-agent.cjs')}\``,
+    '2. Otherwise read the current `external_agent.runtime_cli` field from `start` or `next` output and use that exact CLI prefix.',
+    '',
+    '## Default Loop',
+    '',
+    '1. Run `start`.',
+    '2. Read `.emb-agent/hw.yaml` and `.emb-agent/req.yaml`.',
+    '3. Execute the recommended emb-agent CLI.',
+    '4. Run `next`.',
+    '5. Repeat until the next action moves into scan/plan/do/debug/review/verify.',
+    '',
+    '## Typical Commands',
+    '',
+    '- `start`',
+    '- `external start`',
+    '- `external health`',
+    '- `external dispatch-next`',
+    '- `declare hardware --mcu <name> --package <name>`',
+    '- `ingest doc --file <path> --kind datasheet --to hardware`',
+    '- `next`',
+    '',
+    '## Do Not',
+    '',
+    '- Do not guess MCU/package when the project truth is still unknown.',
+    '- Do not bypass `.emb-agent/` truth files with a private scratch workflow.',
+    '- Do not treat old chat context as fresher than emb-agent JSON output.',
+    ''
+  ].join('\n');
+}
+
+function ensureExternalAgentGuide(projectRoot, force) {
+  const filePath = path.join(projectRoot, EXTERNAL_AGENT_GUIDE_PATH);
+  const existedBefore = fs.existsSync(filePath);
+
+  if (existedBefore && !force) {
+    return {
+      path: EXTERNAL_AGENT_GUIDE_PATH,
+      created: false,
+      updated: false,
+      reused: true
+    };
+  }
+
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, buildExternalAgentGuide(), 'utf8');
+
+  return {
+    path: EXTERNAL_AGENT_GUIDE_PATH,
+    created: !existedBefore,
+    updated: existedBefore && force,
+    reused: false
+  };
+}
+
 function buildBootstrapDocsPlan(projectRoot, projectConfig, registry) {
   return [
     { output: path.join('docs', 'MCU-FOUNDATION-CHECKLIST.md'), template: 'mcu-foundation-checklist' },
@@ -438,6 +514,7 @@ function ensureBootstrapTask(projectRoot, projectConfig, docsPlan, force) {
   const relatedFiles = runtime.unique([
     runtime.getProjectAssetRelativePath('hw.yaml'),
     runtime.getProjectAssetRelativePath('req.yaml'),
+    EXTERNAL_AGENT_GUIDE_PATH,
     ...docsPlan.map(item => item.output)
   ]);
   const now = new Date().toISOString();
@@ -513,6 +590,11 @@ function ensureBootstrapTask(projectRoot, projectConfig, docsPlan, force) {
         kind: 'file',
         path: runtime.getProjectAssetRelativePath('req.yaml'),
         reason: 'Confirm project goal and constraints'
+      },
+      {
+        kind: 'file',
+        path: EXTERNAL_AGENT_GUIDE_PATH,
+        reason: 'External agents should follow this driver contract instead of improvising'
       },
       ...docsPlan.map(item => ({
         kind: 'file',
@@ -667,6 +749,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   const templateIndex = buildTemplateIndex(workflowCatalog);
   const truthPlan = buildTruthPlan();
   const bootstrapDocsPlan = buildBootstrapDocsPlan(projectRoot, effectiveProjectConfig, workflowCatalog);
+  const externalAgentGuide = ensureExternalAgentGuide(projectRoot, force);
 
   for (const item of truthPlan) {
     const outputPath = path.join(projectRoot, item.output);
@@ -675,6 +758,14 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     } else {
       reused.push(path.relative(projectRoot, outputPath));
     }
+  }
+
+  if (externalAgentGuide.created) {
+    created.push(externalAgentGuide.path);
+  } else if (externalAgentGuide.updated) {
+    updated.push(externalAgentGuide.path);
+  } else {
+    reused.push(externalAgentGuide.path);
   }
 
   const bootstrapTask = ensureBootstrapTask(projectRoot, effectiveProjectConfig, bootstrapDocsPlan, force);

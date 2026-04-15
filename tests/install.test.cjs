@@ -9,6 +9,49 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const installer = require(path.join(repoRoot, 'bin', 'install.js'));
 
+test('installer supports hostless external local runtime for generic external agents', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-external-proj-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    process.chdir(tempProject);
+    await installer.main([
+      '--external',
+      '--local',
+      '--developer',
+      'welkon'
+    ]);
+
+    const runtimeRoot = path.join(tempProject, '.emb-agent', 'runtime');
+    const runtimeHost = require(path.join(runtimeRoot, 'lib', 'runtime-host.cjs'));
+    const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
+    const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
+
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'runtime', 'bin', 'emb-agent.cjs')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'agents')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'skills')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.json')), false);
+    assert.equal(hostMetadata.name, 'external');
+    assert.equal(resolvedHost.name, 'external');
+    assert.match(resolvedHost.cliPath, /\.emb-agent\/runtime\/bin\/emb-agent\.cjs$/);
+    assert.match(stdout, /Installed emb-agent runtime for External Agent to:/);
+    assert.match(stdout, /Host automation was not installed because the external runtime target is hostless/);
+    assert.match(stdout, /Point your external agent at:/);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('installer lays down config/lib and runtime commands work', async () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-home-'));
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-proj-'));
@@ -163,8 +206,16 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.deepEqual(resolvedHost.subagentBridge.command_argv, ['node', '/tmp/emb-subagent-bridge.cjs', '--stdio-json']);
 
     const nextBeforeContext = installedCli.buildNextContext();
+    const statusBeforeContext = installedCli.buildStatus();
+    const startBeforeContext = installedCli.buildStartContext();
     assert.equal(nextBeforeContext.next.command, 'scan');
     assert.equal(nextBeforeContext.next.gated_by_health, false);
+    assert.equal(nextBeforeContext.external_agent.protocol_file, '.emb-agent/external-agent.md');
+    assert.match(nextBeforeContext.external_agent.recommended_cli, / scan$/);
+    assert.equal(statusBeforeContext.external_agent.protocol_file, '.emb-agent/external-agent.md');
+    assert.match(statusBeforeContext.external_agent.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.equal(startBeforeContext.external_agent.protocol_file, '.emb-agent/external-agent.md');
+    assert.match(startBeforeContext.immediate.cli, / next$/);
     assert.ok(nextBeforeContext.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(nextBeforeContext.workflow_stage.name, 'selection');
     assert.equal(nextBeforeContext.workflow_stage.primary_command, 'scan');

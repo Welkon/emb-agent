@@ -47,6 +47,7 @@ const settingsCommandHelpers = require(path.join(ROOT, 'lib', 'settings-command.
 const sessionReportCommandHelpers = require(path.join(ROOT, 'lib', 'session-report-command.cjs'));
 const healthUpdateCommandHelpers = require(path.join(ROOT, 'lib', 'health-update-command.cjs'));
 const executorCommandHelpers = require(path.join(ROOT, 'lib', 'executor-command.cjs'));
+const externalAgentHelpers = require(path.join(ROOT, 'lib', 'external-agent.cjs'));
 const commandVisibility = require(path.join(ROOT, 'lib', 'command-visibility.cjs'));
 const workflowAuthoringHelpers = require(path.join(ROOT, 'lib', 'workflow-authoring.cjs'));
 const scaffoldAuthoringHelpers = require(path.join(ROOT, 'lib', 'scaffold-authoring.cjs'));
@@ -56,6 +57,10 @@ const memoryRuntimeHelpers = require(path.join(ROOT, 'lib', 'memory-runtime.cjs'
 const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
+const externalAgent = externalAgentHelpers.createExternalAgentHelpers({
+  runtime,
+  runtimeHostHelpers: runtimeHost
+});
 
 const REVIEW_AGENT_NAMES = [
   'hw-scout',
@@ -902,7 +907,8 @@ function buildStartContext() {
     },
     immediate: {
       command: immediateCommand,
-      reason: immediateReason
+      reason: immediateReason,
+      cli: `${getRuntimeHost().cliCommand} ${immediateCommand}`
     },
     workflow: {
       mode: 'linear-default',
@@ -921,6 +927,14 @@ function buildStartContext() {
           cli: nextContext.next.cli
         }
       : null,
+    external_agent: externalAgent.buildStartDriver(getRuntimeHost(), {
+      immediate: {
+        command: immediateCommand
+      },
+      source_of_truth_files: activeTask
+        ? [activeTask.path || '', activeTask.worktree_path || '']
+        : []
+    }),
     resume: resumeContext
       ? {
           context_hygiene: resumeContext.context_hygiene,
@@ -929,6 +943,31 @@ function buildStartContext() {
         }
       : null
   };
+}
+
+function buildExternalStartProtocol() {
+  return externalAgent.buildStartProtocol(buildStartContext());
+}
+
+function buildExternalNextProtocol() {
+  return externalAgent.buildNextProtocol(buildNextContext());
+}
+
+function buildExternalStatusProtocol() {
+  return externalAgent.buildStatusProtocol(buildStatus());
+}
+
+function buildExternalHealthProtocol() {
+  return externalAgent.buildHealthProtocol(getRuntimeHost(), buildHealthReport());
+}
+
+function buildExternalDispatchNextProtocol() {
+  return externalAgent.buildDispatchNextProtocol(getRuntimeHost(), buildDispatchContext('next'));
+}
+
+function buildExternalInitProtocol(tokens, aliasUsed) {
+  const initialized = runInitCommand(tokens, aliasUsed);
+  return initialized ? externalAgent.buildInitProtocol(initialized) : null;
 }
 
 const referenceLookupCli = {
@@ -1051,12 +1090,18 @@ const {
   usage,
   printJson,
   runInitCommand,
+  buildExternalInitProtocol,
   runIngestCommand,
   buildStartContext,
+  buildExternalStartProtocol,
   buildStatus,
+  buildExternalStatusProtocol,
+  buildExternalHealthProtocol,
   buildBootstrapReport,
   updateSession,
   buildNextContext,
+  buildExternalNextProtocol,
+  buildExternalDispatchNextProtocol,
   buildDispatchContext,
   executeDispatchCommand,
   executeOrchestratorCommand,
@@ -1101,10 +1146,15 @@ module.exports = {
   buildContextHygiene,
   buildGuidance,
   buildStartContext,
+  buildExternalStartProtocol,
   buildNextContext,
+  buildExternalNextProtocol,
   buildPausePayload,
   buildCompressContextSummary,
   buildStatus,
+  buildExternalStatusProtocol,
+  buildExternalHealthProtocol,
+  buildExternalDispatchNextProtocol,
   buildHealthReport,
   buildBootstrapReport,
   buildUpdateView,
