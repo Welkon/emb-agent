@@ -1184,6 +1184,7 @@ function createInstallHelpers(deps) {
     copyDir(path.join(runtimeSrc, 'tools'), runtimeToolsDir);
     copyDir(path.join(runtimeSrc, 'chips'), runtimeChipsDir);
     ensureDir(path.join(runtimeDir, 'state'));
+    ensureDir(path.join(runtimeDir, 'state', 'projects'));
     fs.copyFileSync(
       path.join(runtimeSrc, 'state', 'default-session.json'),
       path.join(runtimeDir, 'state', 'default-session.json')
