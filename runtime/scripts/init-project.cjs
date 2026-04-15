@@ -21,7 +21,7 @@ function usage() {
       'init-project usage:',
       '  node scripts/init-project.cjs',
       '  node scripts/init-project.cjs --project <repo-root>',
-      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--pack <name> ...] [--runtime <codex|claude>|--codex|--claude] [-u <name>]',
+      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--pack <name> ...] [--runtime <codex|claude|cursor>|--codex|--claude|--cursor] [-u <name>]',
       '  node scripts/init-project.cjs --force'
     ].join('\n') + '\n'
   );
@@ -45,7 +45,7 @@ function parseArgs(argv) {
     if (!normalized) {
       throw new Error(`Missing value after ${token}`);
     }
-    if (!['codex', 'claude'].includes(normalized)) {
+    if (!['codex', 'claude', 'cursor'].includes(normalized)) {
       throw new Error(`Unsupported runtime: ${value}`);
     }
     if (result.runtimeSet && result.runtime !== normalized) {
@@ -88,6 +88,10 @@ function parseArgs(argv) {
     }
     if (token === '--claude') {
       setRuntime('claude', '--claude');
+      continue;
+    }
+    if (token === '--cursor') {
+      setRuntime('cursor', '--cursor');
       continue;
     }
     if (token === '--user' || token === '-u') {

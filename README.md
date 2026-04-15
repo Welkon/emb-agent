@@ -71,7 +71,7 @@ See [docs/product-boundaries.md](./docs/product-boundaries.md) for the explicit 
 
 ## Quick Start
 
-### 1. Install emb-agent into your runtime
+### 1. Install emb-agent and bootstrap the repo
 
 For Codex:
 
@@ -79,11 +79,20 @@ For Codex:
 npx emb-agent --codex --local --developer your-name
 ```
 
+This uses the default `core` install profile. It keeps the runtime lean and skips advanced scaffold-authoring assets that are not needed for normal day-to-day use.
+
+If you are actively authoring or extending shared workflow scaffolds, reinstall with:
+
+```bash
+npx emb-agent --codex --local --developer your-name --profile workflow
+```
+
 This installs:
 
 - project-scoped runtime files under `./.codex/emb-agent/`
 - project-scoped Codex agents under `./.codex/agents/`
 - project-scoped Codex-discoverable public emb skills under `./.codex/skills/`
+- project-scoped emb-agent truth under `./.emb-agent/`
 
 As of Codex CLI `v0.116.0` on `2026-03-24`, hooks are still experimental and must be enabled manually in `~/.codex/config.toml` unless your team config already enables them:
 
@@ -107,6 +116,7 @@ This installs Claude integration into the repository under `./.claude/`, includi
 - project-scoped agents under `./.claude/agents/`
 - project-scoped command wrappers under `./.claude/commands/emb/`
 - project-scoped hook configuration in `./.claude/settings.json`
+- project-scoped emb-agent truth under `./.emb-agent/`
 
 For Cursor:
 
@@ -120,14 +130,17 @@ This installs Cursor integration into the repository under `./.cursor/`, includi
 - project-scoped agents under `./.cursor/agents/`
 - project-scoped command wrappers under `./.cursor/commands/`
 - project-scoped hook configuration in `./.cursor/settings.json`
+- project-scoped emb-agent truth under `./.emb-agent/`
 
-`--developer` is required during install. The value is stored in runtime config and reused by `init`, so you do not have to re-enter your developer identity in every project.
+`--developer` is required during install. For local installs it is also written into the bootstrapped project, so the repo is ready before the first session command.
+
+`--profile` is optional. `core` is the default and is recommended for normal usage. Use `--profile workflow` when you need built-in scaffold authoring assets in the installed runtime.
 
 ### 2. Use emb-agent inside the session
 
 You do not need to run any internal CLI path yourself.
 
-After install, open the project in Codex, Claude Code, or Cursor and use emb-agent directly in the session. The host integration handles runtime invocation for you.
+After install, open the project in Codex, Claude Code, or Cursor and use emb-agent directly in the session. The host integration handles runtime invocation for you, and local installs have already created the minimum `.emb-agent/` skeleton.
 
 If a workflow is product-specific instead of broadly reusable, keep it as a project-local extension under `.emb-agent/` and load it with `init --pack <project-local-pack>` rather than adding it to built-in runtime packs. See [docs/workflow-layering.md](./docs/workflow-layering.md) and the [smart pillbox example](./examples/project-extensions/smart-pillbox/README.md).
 
@@ -141,13 +154,13 @@ The public command surface is intentionally kept small. In Codex it is mirrored 
 
 Everything else is treated as advanced runtime surface rather than default user-facing slash commands.
 
-If the MCU is already known, the shortest path is:
+If the MCU is already known, the shortest path after install is:
 
-`init -> declare hardware -> next`
+`declare hardware -> next`
 
-If the project is still at concept stage and the MCU is not chosen yet, the shortest path is:
+If the project is still at concept stage and the MCU is not chosen yet, the shortest path after install is:
 
-`init -> record goals/constraints in req.yaml -> next`
+`record goals/constraints in req.yaml -> next`
 
 You do not need to invent a placeholder MCU just to start using emb-agent.
 

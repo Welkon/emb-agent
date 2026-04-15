@@ -4,12 +4,20 @@ This is the shortest recommended path for getting emb-agent running in a real em
 
 This guide is intentionally embedded-workflow first. It does not try to teach every scaffold, skill, hook, or support surface on day one.
 
-## 1. Install into a supported runtime
+## 1. Install into a supported runtime and bootstrap the repo
 
 For Codex:
 
 ```bash
 npx emb-agent --codex --local --developer your-name
+```
+
+This uses the default `core` install profile, which keeps the runtime lean, skips advanced scaffold-authoring assets, and creates the minimum `.emb-agent/` project skeleton in the current repository.
+
+If you need the built-in scaffold authoring layer, reinstall with:
+
+```bash
+npx emb-agent --codex --local --developer your-name --profile workflow
 ```
 
 As of Codex CLI `v0.116.0` on `2026-03-24`, Codex hooks are still experimental. Before using emb-agent in Codex, add this to `~/.codex/config.toml`:
@@ -28,8 +36,9 @@ For Claude Code:
 npx emb-agent --claude --local --developer your-name
 ```
 
-This writes project-scoped Claude assets under `./.claude/`.
-`--developer` is required during install. The value is stored in runtime config and reused by `init`.
+This writes project-scoped Claude assets under `./.claude/` and bootstraps `.emb-agent/` in the repo.
+`--developer` is required during install. The value is stored in runtime config and written into the bootstrapped project.
+`--profile` is optional. `core` is the default; use `--profile workflow` only when you need scaffold authoring assets.
 
 For Cursor:
 
@@ -37,8 +46,9 @@ For Cursor:
 npx emb-agent --cursor --local --developer your-name
 ```
 
-This writes project-scoped Cursor assets under `./.cursor/`, including `commands/` wrappers and `settings.json` hooks.
-`--developer` is required during install. The value is stored in runtime config and reused by `init`.
+This writes project-scoped Cursor assets under `./.cursor/`, including `commands/` wrappers and `settings.json` hooks, and bootstraps `.emb-agent/` in the repo.
+`--developer` is required during install. The value is stored in runtime config and written into the bootstrapped project.
+`--profile` is optional. `core` is the default; use `--profile workflow` only when you need scaffold authoring assets.
 
 ## 2. Open the project in Codex, Claude Code, or Cursor
 
@@ -46,20 +56,14 @@ Use emb-agent from inside the session.
 
 These are session commands. You do not need to run internal runtime files manually.
 
-## 3. Initialize the project
+## 3. Confirm the bootstrapped project skeleton
 
-Inside the session:
-
-```bash
-init
-```
-
-This prepares:
+After local install, emb-agent has already prepared:
 
 - `.emb-agent/project.json`
 - `.emb-agent/hw.yaml`
 - `.emb-agent/req.yaml`
-- starter docs and checklists
+- a bootstrap task under `.emb-agent/tasks/00-bootstrap-project/`
 
 ## 4. Lock hardware truth early
 

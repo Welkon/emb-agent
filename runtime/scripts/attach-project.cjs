@@ -32,8 +32,8 @@ function usage() {
     [
       'attach-project usage:',
       '  node scripts/attach-project.cjs',
-      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--pack <name> ...] [--runtime <codex|claude>|--codex|--claude] [-u <name>]',
-      '  node scripts/attach-project.cjs --mcu <name> [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [-u <name>] [--force]'
+      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--pack <name> ...] [--runtime <codex|claude|cursor>|--codex|--claude|--cursor] [-u <name>]',
+      '  node scripts/attach-project.cjs --mcu <name> [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude|cursor>|--codex|--claude|--cursor] [-u <name>] [--force]'
     ].join('\n') + '\n'
   );
 }
@@ -61,7 +61,7 @@ function parseArgs(argv) {
     if (!normalized) {
       throw new Error(`Missing value after ${token}`);
     }
-    if (!['codex', 'claude'].includes(normalized)) {
+    if (!['codex', 'claude', 'cursor'].includes(normalized)) {
       throw new Error(`Unsupported runtime: ${value}`);
     }
     if (result.runtimeSet && result.runtime !== normalized) {
@@ -104,6 +104,10 @@ function parseArgs(argv) {
     }
     if (token === '--claude') {
       setRuntime('claude', '--claude');
+      continue;
+    }
+    if (token === '--cursor') {
+      setRuntime('cursor', '--cursor');
       continue;
     }
     if (token === '--user' || token === '-u') {
