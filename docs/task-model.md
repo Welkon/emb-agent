@@ -74,11 +74,11 @@ task add -> task activate -> task context add -> task aar scan -> task aar recor
 Example:
 
 ```bash
-<runtime-cli> task add "Implement TM2 PWM adapter" --scope pwm --priority P1 --assignee welkon
-<runtime-cli> task activate implement-tm2-pwm-adapter
-<runtime-cli> task context add implement-tm2-pwm-adapter implement src/timer.c "TM2 implementation file"
-<runtime-cli> task aar scan implement-tm2-pwm-adapter --aar-new-pattern no --aar-new-trap no --aar-missing-rule no --aar-outdated-rule no
-<runtime-cli> task resolve implement-tm2-pwm-adapter "adapter merged"
+<runtime-cli> task add "Implement TM2 PWM support" --scope pwm --priority P1 --assignee welkon
+<runtime-cli> task activate implement-tm2-pwm-support
+<runtime-cli> task context add implement-tm2-pwm-support implement src/timer.c "TM2 implementation file"
+<runtime-cli> task aar scan implement-tm2-pwm-support --aar-new-pattern no --aar-new-trap no --aar-missing-rule no --aar-outdated-rule no
+<runtime-cli> task resolve implement-tm2-pwm-support "chip support merged"
 ```
 
 If any AAR answer is `yes`, insert `task aar record <task> --aar-summary ... --aar-detail ...` before `task resolve`.

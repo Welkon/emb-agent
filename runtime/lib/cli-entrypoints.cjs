@@ -427,11 +427,11 @@ function createCliEntryHelpers(deps) {
             : ['hardware_identity', 'adapter_source'],
         summary: adapterSourceReady
           ? blankProject
-            ? 'Adapter bootstrap should wait until project constraints are recorded and a chip candidate is chosen.'
-            : 'Adapter bootstrap can continue automatically after hardware identity is confirmed.'
+            ? 'Chip support install should wait until project constraints are recorded and a chip candidate is chosen.'
+            : 'Chip support install can continue automatically after hardware identity is confirmed.'
           : blankProject
-            ? 'Configure an adapter source later, after project constraints are recorded and a chip candidate is chosen.'
-            : 'Configure an adapter source before adapters can be bootstrapped.',
+            ? 'Configure a chip support source later, after project constraints are recorded and a chip candidate is chosen.'
+            : 'Configure a chip support source before chip support can be installed.',
         cli_fallback: adapterBootstrapCommand
       });
 
@@ -439,7 +439,7 @@ function createCliEntryHelpers(deps) {
         ? 'Run next after the requirements are recorded so the agent can help narrow chip candidates.'
         : adapterSourceReady
           ? 'Run next after the chip is identified so the agent can continue bootstrap.'
-          : 'Configure an adapter source, then run next after the chip is identified.');
+          : 'Configure a chip support source, then run next after the chip is identified.');
     } else {
       agentActions.push({
         kind: 'declare-board-pins',
@@ -462,8 +462,8 @@ function createCliEntryHelpers(deps) {
         status: adapterSourceReady ? 'ready' : 'unconfigured',
         blocked_by: adapterSourceReady ? [] : ['adapter_source'],
         summary: adapterSourceReady
-          ? 'Adapter bootstrap is ready. Let next continue and auto-run it when health and permissions allow.'
-          : 'Configure an adapter source before adapters can be bootstrapped.',
+          ? 'Chip support install is ready. Let next continue and auto-run it when health and permissions allow.'
+          : 'Configure a chip support source before chip support can be installed.',
         cli_fallback: adapterBootstrapCommand
       });
 
@@ -479,8 +479,8 @@ function createCliEntryHelpers(deps) {
       }
 
       nextSteps.push(adapterSourceReady
-        ? 'Run next to continue the agent-guided bootstrap. Adapter bootstrap can proceed automatically when allowed.'
-        : 'Configure an adapter source, then run next to continue the agent-guided bootstrap.');
+        ? 'Run next to continue the agent-guided bootstrap. Chip support install can proceed automatically when allowed.'
+        : 'Configure a chip support source, then run next to continue the agent-guided bootstrap.');
     }
 
     if (meaningfulInputCount === 0) {
@@ -659,7 +659,7 @@ function createCliEntryHelpers(deps) {
       '  pack remove <name>',
       '  pack clear',
       '',
-      'Delegation and adapter runtime:',
+      'Delegation and chip support runtime:',
       '  dispatch show <action>',
       '  dispatch next',
       '  dispatch launch [next|<action>]',
@@ -795,7 +795,7 @@ function createCliEntryHelpers(deps) {
 
     if (primaryAction) {
       return {
-        status: primaryAction.status === 'unconfigured' ? 'needs-adapter-source' : 'ready-for-next',
+        status: primaryAction.status === 'unconfigured' ? 'needs-chip-support-source' : 'ready-for-next',
         stage: primaryAction.kind,
         summary: String(primaryAction.summary || '').trim() || 'Project bootstrap can continue with next.',
         command: primaryAction.cli_fallback || 'next',

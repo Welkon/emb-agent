@@ -259,7 +259,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /Execution support and closure:/);
   assert.match(advanced, /Task, skills, and memory:/);
   assert.match(advanced, /Workflow and scaffold authoring:/);
-  assert.match(advanced, /Delegation and adapter runtime:/);
+  assert.match(advanced, /Delegation and chip support runtime:/);
   assert.match(advanced, /Inspection and discovery:/);
   assert.match(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
