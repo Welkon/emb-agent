@@ -64,7 +64,7 @@ test('interactive no-args install can resolve local codex choice through prompt 
   };
 
   const helper = createHelper(fakeProcess, async targets => {
-    assert.deepEqual(targets.map(item => item.name), ['codex', 'claude', 'cursor']);
+    assert.deepEqual(targets.map(item => item.name), ['codex', 'claude', 'cursor', 'external']);
     return {
       runtime: 'codex',
       location: 'local',
@@ -146,6 +146,26 @@ test('parseArgs keeps Claude installs global by default', () => {
   const args = helper.parseArgs(['--claude', '--developer', 'welkon']);
 
   assert.equal(args.runtime, 'claude');
+  assert.equal(args.local, true);
+  assert.equal(args.global, false);
+});
+
+test('parseArgs accepts external runtime shorthand and keeps it local by default', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+  const args = helper.parseArgs(['--external', '--developer', 'welkon']);
+
+  assert.equal(args.runtime, 'external');
   assert.equal(args.local, true);
   assert.equal(args.global, false);
 });

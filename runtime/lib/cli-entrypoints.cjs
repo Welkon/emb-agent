@@ -1,6 +1,8 @@
 'use strict';
 
 const projectInputState = require('./project-input-state.cjs');
+const externalAgentHelpers = require('./external-agent.cjs');
+const runtimeHostHelpers = require('./runtime-host.cjs');
 
 function createCliEntryHelpers(deps) {
   const {
@@ -21,6 +23,22 @@ function createCliEntryHelpers(deps) {
     ingestDocCli,
     ingestSchematicCli
   } = deps;
+  const externalAgent = externalAgentHelpers.createExternalAgentHelpers({
+    runtime,
+    runtimeHostHelpers
+  });
+
+  function resolveExternalRuntimeHost() {
+    if (!ROOT || !runtime || typeof runtime.getProjectAssetRelativePath !== 'function') {
+      return {
+        name: 'external',
+        label: 'External Agent',
+        cliCommand: 'node ./.emb-agent/runtime/bin/emb-agent.cjs'
+      };
+    }
+
+    return runtimeHostHelpers.resolveRuntimeHost(ROOT);
+  }
 
   function parseScalar(content, key) {
     const line = String(content || '')
@@ -537,7 +555,7 @@ function createCliEntryHelpers(deps) {
       'Global option: --brief outputs compact JSON (recommended for action commands such as next/plan/review/verify)',
       'Core workflow:',
       '  start',
-      '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude|cursor>|--codex|--claude|--cursor] [--user <name>|-u <name>] [--force]',
+      '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [--user <name>|-u <name>] [--force]',
       '  declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
       '    [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>]',
@@ -558,6 +576,7 @@ function createCliEntryHelpers(deps) {
       '  bootstrap [run [--confirm]]',
       '  pause [note]',
       '  resume',
+      '  external <start|init|status|next|health|dispatch-next>',
       '',
       'Show the full command set:',
       '  help advanced',
@@ -588,6 +607,7 @@ function createCliEntryHelpers(deps) {
       '  status',
       '  bootstrap [run [--confirm]]',
       '  health',
+      '  external <start|init|status|next|health|dispatch-next>',
       '  update [check]',
       '  project show [--effective] [--field <path>]',
       '  project set [--confirm] --field <path> --value <json-or-string>',
@@ -829,6 +849,7 @@ function createCliEntryHelpers(deps) {
         '--target',
         '--goal',
         '--runtime',
+        '--external',
         '--codex',
         '--claude',
         '--cursor',
@@ -859,7 +880,15 @@ function createCliEntryHelpers(deps) {
         active_packs: session.active_packs,
         developer: session.developer,
         bootstrap_task: guidance.bootstrap_task || null,
-        bootstrap
+        bootstrap,
+        external_agent: externalAgent.buildInitDriver(resolveExternalRuntimeHost(), {
+          bootstrap,
+          source_of_truth_files: [
+            runtime.getProjectAssetRelativePath('project.json'),
+            runtime.getProjectAssetRelativePath('hw.yaml'),
+            runtime.getProjectAssetRelativePath('req.yaml')
+          ]
+        })
       };
     }
 
@@ -882,6 +911,14 @@ function createCliEntryHelpers(deps) {
       init_alias: aliasUsed || 'init',
       bootstrap_task: guidance.bootstrap_task || null,
       bootstrap,
+      external_agent: externalAgent.buildInitDriver(resolveExternalRuntimeHost(), {
+        bootstrap,
+        source_of_truth_files: [
+          runtime.getProjectAssetRelativePath('project.json'),
+          runtime.getProjectAssetRelativePath('hw.yaml'),
+          runtime.getProjectAssetRelativePath('req.yaml')
+        ]
+      }),
       session: {
         project_profile: session.project_profile,
         active_packs: session.active_packs,

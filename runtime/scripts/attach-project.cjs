@@ -32,8 +32,8 @@ function usage() {
     [
       'attach-project usage:',
       '  node scripts/attach-project.cjs',
-      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--pack <name> ...] [--runtime <codex|claude|cursor>|--codex|--claude|--cursor] [-u <name>]',
-      '  node scripts/attach-project.cjs --mcu <name> [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude|cursor>|--codex|--claude|--cursor] [-u <name>] [--force]'
+      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--pack <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>]',
+      '  node scripts/attach-project.cjs --mcu <name> [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [--force]'
     ].join('\n') + '\n'
   );
 }
@@ -61,7 +61,7 @@ function parseArgs(argv) {
     if (!normalized) {
       throw new Error(`Missing value after ${token}`);
     }
-    if (!['codex', 'claude', 'cursor'].includes(normalized)) {
+    if (!['external', 'codex', 'claude', 'cursor'].includes(normalized)) {
       throw new Error(`Unsupported runtime: ${value}`);
     }
     if (result.runtimeSet && result.runtime !== normalized) {
@@ -96,6 +96,10 @@ function parseArgs(argv) {
     if (token === '--runtime') {
       setRuntime(argv[index + 1] || '', '--runtime');
       index += 1;
+      continue;
+    }
+    if (token === '--external') {
+      setRuntime('external', '--external');
       continue;
     }
     if (token === '--codex') {

@@ -462,6 +462,7 @@ function compactObject(input) {
 function buildBriefNextContext(value) {
   const current = isObject(value.current) ? value.current : {};
   const next = isObject(value.next) ? value.next : {};
+  const externalAgent = isObject(value.external_agent) ? value.external_agent : {};
 
   return compactObject({
     output_mode: 'brief',
@@ -482,10 +483,90 @@ function buildBriefNextContext(value) {
     quality_gates: summarizeQualityGates(value.quality_gates),
     permission_gates: summarizePermissionGates(value.permission_gates),
     tool_recommendation: summarizeToolRecommendation(next.tool_recommendation || value.tool_recommendation),
+    external_agent: compactObject({
+      protocol_file: externalAgent.protocol_file || '',
+      runtime_cli: externalAgent.runtime_cli || '',
+      preferred_local_cli: externalAgent.preferred_local_cli || '',
+      recommended_command: externalAgent.recommended_command || '',
+      recommended_cli: externalAgent.recommended_cli || ''
+    }),
     memory_summary: summarizeMemorySummary(value.memory_summary),
     context_hygiene: summarizeContextHygiene(value.context_hygiene),
     next_actions: truncateList(value.next_actions, 5),
     health: summarizeHealth(value.health)
+  });
+}
+
+function buildBriefStartContext(value) {
+  const summary = isObject(value.summary) ? value.summary : {};
+  const immediate = isObject(value.immediate) ? value.immediate : {};
+  const externalAgent = isObject(value.external_agent) ? value.external_agent : {};
+
+  return compactObject({
+    output_mode: 'brief',
+    entry: value.entry || 'start',
+    summary: compactObject({
+      project_root: summary.project_root || '',
+      initialized: summary.initialized === undefined ? undefined : Boolean(summary.initialized),
+      handoff_present: summary.handoff_present === undefined ? undefined : Boolean(summary.handoff_present),
+      hardware_identity: isObject(summary.hardware_identity) ? summary.hardware_identity : null
+    }),
+    immediate: compactObject({
+      command: immediate.command || '',
+      reason: immediate.reason || '',
+      cli: immediate.cli || ''
+    }),
+    bootstrap: compactObject({
+      status: value.bootstrap && value.bootstrap.status || '',
+      stage: value.bootstrap && value.bootstrap.stage || '',
+      command: value.bootstrap && value.bootstrap.command || '',
+      summary: value.bootstrap && value.bootstrap.summary || ''
+    }),
+    next: isObject(value.next)
+      ? compactObject({
+          command: value.next.command || '',
+          reason: value.next.reason || '',
+          cli: value.next.cli || ''
+        })
+      : null,
+    external_agent: compactObject({
+      protocol_file: externalAgent.protocol_file || '',
+      runtime_cli: externalAgent.runtime_cli || '',
+      preferred_local_cli: externalAgent.preferred_local_cli || '',
+      recommended_command: externalAgent.recommended_command || '',
+      recommended_cli: externalAgent.recommended_cli || ''
+    })
+  });
+}
+
+function buildBriefInitOutput(value) {
+  const bootstrap = isObject(value.bootstrap) ? value.bootstrap : {};
+  const externalAgent = isObject(value.external_agent) ? value.external_agent : {};
+  const session = isObject(value.session) ? value.session : {};
+
+  return compactObject({
+    output_mode: 'brief',
+    initialized: value.initialized === undefined ? undefined : Boolean(value.initialized),
+    reused_existing: value.reused_existing === undefined ? undefined : Boolean(value.reused_existing),
+    init_alias: value.init_alias || '',
+    project_root: value.project_root || '',
+    project_dir: value.project_dir || '',
+    project_profile: value.project_profile || session.project_profile || '',
+    active_packs: toArray(value.active_packs || session.active_packs),
+    developer: isObject(value.developer) ? value.developer : (isObject(session.developer) ? session.developer : null),
+    bootstrap: compactObject({
+      status: bootstrap.status || '',
+      stage: bootstrap.stage || '',
+      command: bootstrap.command || '',
+      summary: bootstrap.summary || ''
+    }),
+    external_agent: compactObject({
+      protocol_file: externalAgent.protocol_file || '',
+      runtime_cli: externalAgent.runtime_cli || '',
+      preferred_local_cli: externalAgent.preferred_local_cli || '',
+      recommended_command: externalAgent.recommended_command || '',
+      recommended_cli: externalAgent.recommended_cli || ''
+    })
   });
 }
 
@@ -745,6 +826,15 @@ function buildBriefStatusOutput(value) {
     runtime_host: value.runtime_host || '',
     subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
     delegation_runtime: summarizeDelegationRuntime(value.delegation_runtime),
+    external_agent: isObject(value.external_agent)
+      ? compactObject({
+          protocol_file: value.external_agent.protocol_file || '',
+          runtime_cli: value.external_agent.runtime_cli || '',
+          preferred_local_cli: value.external_agent.preferred_local_cli || '',
+          recommended_command: value.external_agent.recommended_command || '',
+          recommended_cli: value.external_agent.recommended_cli || ''
+        })
+      : null,
     memory_summary: summarizeMemorySummary(value.memory_summary),
     permission_gates: summarizePermissionGates(value.permission_gates),
     context_hygiene: summarizeContextHygiene(value.context_hygiene)
@@ -778,6 +868,14 @@ function applyBriefMode(value) {
 
   if (isObject(value.current) && isObject(value.next) && Array.isArray(value.next_actions)) {
     return buildBriefNextContext(value);
+  }
+
+  if (value.entry === 'start' && isObject(value.summary) && isObject(value.immediate)) {
+    return buildBriefStartContext(value);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'initialized') && Object.prototype.hasOwnProperty.call(value, 'bootstrap')) {
+    return buildBriefInitOutput(value);
   }
 
   if (isObject(value.summary) && Array.isArray(value.next_actions) && Object.prototype.hasOwnProperty.call(value, 'carry_over')) {

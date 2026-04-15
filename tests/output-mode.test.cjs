@@ -41,6 +41,13 @@ test('applyOutputMode builds brief next context payload', () => {
         cli_draft: 'tool run timer-calc --target-us 500'
       }
     },
+    external_agent: {
+      protocol_file: '.emb-agent/external-agent.md',
+      runtime_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs',
+      preferred_local_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
+      recommended_command: 'plan',
+      recommended_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs plan'
+    },
     workflow_stage: {
       name: 'planning',
       why: 'complex task',
@@ -119,6 +126,84 @@ test('applyOutputMode builds brief next context payload', () => {
   assert.equal(output.context_hygiene.compress_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress');
   assert.equal(output.next_actions.length, 5);
   assert.equal(output.tool_recommendation.tool, 'timer-calc');
+  assert.equal(output.external_agent.protocol_file, '.emb-agent/external-agent.md');
+  assert.equal(output.external_agent.recommended_command, 'plan');
+});
+
+test('applyOutputMode builds brief start context payload with external driver hints', () => {
+  const output = outputMode.applyOutputMode({
+    entry: 'start',
+    summary: {
+      project_root: '/tmp/demo',
+      initialized: true,
+      handoff_present: false,
+      hardware_identity: {
+        vendor: 'SCMCU',
+        model: 'SC8F072',
+        package: 'SOP8'
+      }
+    },
+    immediate: {
+      command: 'task add <summary>',
+      reason: 'Project bootstrap exists; create and activate a task before execution.',
+      cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs task add <summary>'
+    },
+    bootstrap: {
+      status: 'ready-for-next',
+      stage: 'continue-with-next',
+      command: 'next',
+      summary: 'Project bootstrap is explicit enough to continue with next.'
+    },
+    next: {
+      command: 'scan',
+      reason: 'selection mode is already closed',
+      cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs scan'
+    },
+    external_agent: {
+      protocol_file: '.emb-agent/external-agent.md',
+      runtime_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs',
+      preferred_local_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
+      recommended_command: 'task add <summary>',
+      recommended_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs task add <summary>'
+    }
+  }, true);
+
+  assert.equal(output.output_mode, 'brief');
+  assert.equal(output.entry, 'start');
+  assert.equal(output.immediate.command, 'task add <summary>');
+  assert.equal(output.external_agent.protocol_file, '.emb-agent/external-agent.md');
+  assert.equal(output.external_agent.preferred_local_cli, 'node ./.emb-agent/runtime/bin/emb-agent.cjs');
+});
+
+test('applyOutputMode builds brief init output with external driver hints', () => {
+  const output = outputMode.applyOutputMode({
+    initialized: true,
+    reused_existing: false,
+    init_alias: 'init',
+    project_root: '/tmp/demo',
+    project_dir: '.emb-agent',
+    project_profile: '',
+    active_packs: [],
+    developer: { name: 'welkon', runtime: 'external' },
+    bootstrap: {
+      status: 'needs-project-definition',
+      stage: 'define-project-constraints',
+      command: 'next',
+      summary: 'Project facts are still open.'
+    },
+    external_agent: {
+      protocol_file: '.emb-agent/external-agent.md',
+      runtime_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
+      preferred_local_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
+      recommended_command: 'next',
+      recommended_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs next'
+    }
+  }, true);
+
+  assert.equal(output.output_mode, 'brief');
+  assert.equal(output.initialized, true);
+  assert.equal(output.bootstrap.command, 'next');
+  assert.equal(output.external_agent.recommended_cli, 'node ./.emb-agent/runtime/bin/emb-agent.cjs next');
 });
 
 test('applyOutputMode builds brief tool output with permission gates', () => {
@@ -215,12 +300,34 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
   assert.equal(statusOutput.runtime_host, 'codex');
   assert.equal(statusOutput.subagent_bridge.mode, 'mock');
   assert.equal(statusOutput.delegation_runtime.pattern, 'coordinator');
+  assert.equal(statusOutput.external_agent, undefined);
   assert.deepEqual(statusOutput.delegation_runtime.worker_results, ['emb-hw-scout:ok']);
   assert.equal(statusOutput.delegation_runtime.review.stage_a, 'passed');
   assert.equal(statusOutput.delegation_runtime.review.stage_b, 'main-thread-review-required');
   assert.equal(dispatchOutput.subagent_bridge.status, 'ok');
   assert.equal(dispatchOutput.delegation_runtime.synthesis.status, 'ready');
   assert.equal(dispatchOutput.delegation_runtime.review.redispatch_required, false);
+});
+
+test('applyOutputMode keeps external driver summary in brief status output', () => {
+  const output = outputMode.applyOutputMode({
+    session_version: 1,
+    runtime_host: 'external',
+    project_root: '/tmp/demo',
+    project_profile: 'baremetal-8bit',
+    context_hygiene: { level: 'ok' },
+    external_agent: {
+      protocol_file: '.emb-agent/external-agent.md',
+      runtime_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
+      preferred_local_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
+      recommended_command: 'next',
+      recommended_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs next'
+    }
+  }, true);
+
+  assert.equal(output.output_mode, 'brief');
+  assert.equal(output.external_agent.protocol_file, '.emb-agent/external-agent.md');
+  assert.equal(output.external_agent.recommended_command, 'next');
 });
 
 test('applyOutputMode hides internal trust details in brief health/bootstrap outputs', () => {
