@@ -62,11 +62,11 @@ function createCliRouter(deps) {
 
     const [cmd, subcmd, ...rest] = args;
 
-    function isDefaultRemoteAdapterBootstrapStage(stage) {
+    function isDefaultRemoteChipSupportBootstrapStage(stage) {
       return Boolean(
         stage &&
           Array.isArray(stage.argv) &&
-          stage.argv[0] === 'adapter' &&
+          stage.argv[0] === 'support' &&
           stage.argv[1] === 'bootstrap' &&
           stage.argv.length === 2
       );
@@ -202,7 +202,7 @@ function createCliRouter(deps) {
           return;
         }
 
-        if (isDefaultRemoteAdapterBootstrapStage(stage)) {
+        if (isDefaultRemoteChipSupportBootstrapStage(stage)) {
           emitJson({
             executed: false,
             reason: 'network-bootstrap-required',
@@ -225,7 +225,7 @@ function createCliRouter(deps) {
           return;
         }
 
-        if (stage.argv[0] === 'adapter' || stage.argv[0] === 'tool') {
+        if (stage.argv[0] === 'support' || stage.argv[0] === 'tool') {
           const result = handleAdapterToolChipCommands(stage.argv[0], stage.argv[1], stage.argv.slice(2));
           emitJson(buildBootstrapRunResponse(stage, result));
           return;

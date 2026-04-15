@@ -167,11 +167,11 @@ test('parseArgs accepts default adapter source overrides', () => {
     '--global',
     '--developer',
     'welkon',
-    '--default-adapter-source-location',
+    '--default-chip-support-source-location',
     'git@github.com:Welkon/emb-agent-adapters.git',
-    '--default-adapter-source-branch',
+    '--default-chip-support-source-branch',
     'main',
-    '--default-adapter-source-subdir',
+    '--default-chip-support-source-subdir',
     'emb-agent'
   ]);
 
@@ -233,7 +233,7 @@ test('parseArgs rejects empty default adapter source location', () => {
   const helper = createHelper(fakeProcess);
 
   assert.throws(
-    () => helper.parseArgs(['--global', '--developer', 'welkon', '--default-adapter-source-location']),
-    /Missing value after --default-adapter-source-location/
+    () => helper.parseArgs(['--global', '--developer', 'welkon', '--default-chip-support-source-location']),
+    /Missing value after --default-chip-support-source-location/
   );
 });

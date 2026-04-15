@@ -18,7 +18,7 @@ function createAdapterToolChipCommandHelpers(deps) {
   } = deps;
 
   function handleAdapterToolChipCommands(cmd, subcmd, rest) {
-    const isChipSupportCommand = cmd === 'adapter' || cmd === 'support';
+    const isChipSupportCommand = cmd === 'support';
 
     if (isChipSupportCommand && subcmd === 'status') {
       return buildAdapterStatus(rest[0] || '');

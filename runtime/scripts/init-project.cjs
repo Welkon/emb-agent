@@ -271,7 +271,7 @@ function buildProjectConfig(projectRoot, args) {
     {
       project_profile,
       active_packs,
-      adapter_sources: [],
+      chip_support_sources: [],
       executors: {},
       quality_gates: {
         required_executors: [],

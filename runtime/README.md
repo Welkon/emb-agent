@@ -80,7 +80,7 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs dispatch next
 
 For peripheral-formula, pin, or register-location problems, check whether `next` / `dispatch next` already provides `tool_recommendation` or `tool_execution`.
 
-If `health` / `next` / `adapter status` already exposes `adapter_health`, `quality_overview`, or tool `trust`, follow `recommended_action` first before treating tool output as ground truth.
+If `health` / `next` / `support status` already exposes `chip_support_health`, `quality_overview`, or tool `trust`, follow `recommended_action` first before treating tool output as ground truth.
 
 Close down context:
 

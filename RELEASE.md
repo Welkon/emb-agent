@@ -9,11 +9,11 @@ This document defines the minimum release closure for `emb-agent` and `emb-agent
 
 ## Release Order
 
-When adapter changes depend on new runtime contracts, release in this order:
+When chip-support changes depend on new runtime contracts, release in this order:
 
 1. Release `emb-agent`.
 2. Release `emb-agent-adapters`.
-3. Perform a fresh install and `adapter sync` verification pass.
+3. Perform a fresh install and `support sync` verification pass.
 
 ## Pre-Release Checks
 
@@ -32,4 +32,4 @@ For `emb-agent-adapters`:
 
 ## Final Validation
 
-After both repositories move together, verify at least one real chip flow end to end, including runtime install, adapter sync, and one runnable tool call.
+After both repositories move together, verify at least one real chip flow end to end, including runtime install, `support sync`, and one runnable tool call.

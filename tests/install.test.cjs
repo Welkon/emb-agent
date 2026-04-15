@@ -38,11 +38,11 @@ test('installer lays down config/lib and runtime commands work', async () => {
       bridgeCommand,
       '--subagent-bridge-timeout-ms',
       '25000',
-      '--default-adapter-source-location',
+      '--default-chip-support-source-location',
       privateAdapterSource,
-      '--default-adapter-source-branch',
+      '--default-chip-support-source-branch',
       'main',
-      '--default-adapter-source-subdir',
+      '--default-chip-support-source-subdir',
       'emb-agent'
     ]);
 
@@ -139,7 +139,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
     assert.equal(configData.session_version, 1);
     assert.equal(configData.default_preferences.truth_source_mode, 'hardware_first');
-    assert.deepEqual(configData.default_adapter_source, {
+    assert.deepEqual(configData.default_chip_support_source, {
       type: 'git',
       location: privateAdapterSource,
       branch: 'main',

@@ -382,7 +382,7 @@ test('adapter source add and sync install project adapters from path source', as
     const addResult = JSON.parse(
       await captureStdout(() =>
         cli.main([
-          'adapter',
+          'support',
           'source',
           'add',
           'vendor-pack',
@@ -399,7 +399,7 @@ test('adapter source add and sync install project adapters from path source', as
     assert.equal(addResult.source.type, 'path');
 
     const syncResult = JSON.parse(
-      await captureStdout(() => cli.main(['adapter', 'sync', 'vendor-pack']))
+      await captureStdout(() => cli.main(['support', 'sync', 'vendor-pack']))
     );
 
     assert.equal(syncResult.status, 'synced');
@@ -441,7 +441,7 @@ test('adapter source add and sync install project adapters from path source', as
     );
 
     const status = JSON.parse(
-      await captureStdout(() => cli.main(['adapter', 'status', 'vendor-pack']))
+      await captureStdout(() => cli.main(['support', 'status', 'vendor-pack']))
     );
     assert.equal(status.targets.project.synced, true);
     assert.equal(status.targets.project.files_count, 5);
@@ -471,7 +471,7 @@ test('adapter bootstrap adds source and syncs matching project adapters in one s
     const bootstrap = JSON.parse(
       await captureStdout(() =>
         cli.main([
-          'adapter',
+          'support',
           'bootstrap',
           'vendor-pack',
           '--type',
@@ -508,8 +508,8 @@ test('adapter bootstrap uses default adapter source overrides when no source arg
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-bootstrap-default-'));
   const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-bootstrap-default-source-'));
   const currentCwd = process.cwd();
-  const previousType = process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_TYPE;
-  const previousLocation = process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION;
+  const previousType = process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_TYPE;
+  const previousLocation = process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_LOCATION;
 
   try {
     createPathAdapterSource(tempSource);
@@ -521,10 +521,10 @@ test('adapter bootstrap uses default adapter source overrides when no source arg
       'mcu:\n  vendor: "VendorName"\n  model: "vendor-chip"\n  package: "sop8"\n',
       'utf8'
     );
-    process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_TYPE = 'path';
-    process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION = tempSource;
+    process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_TYPE = 'path';
+    process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_LOCATION = tempSource;
 
-    const bootstrap = JSON.parse(await captureStdout(() => cli.main(['adapter', 'bootstrap'])));
+    const bootstrap = JSON.parse(await captureStdout(() => cli.main(['support', 'bootstrap'])));
 
     assert.equal(bootstrap.action, 'bootstrapped');
     assert.equal(bootstrap.source_action, 'added');
@@ -538,14 +538,14 @@ test('adapter bootstrap uses default adapter source overrides when no source arg
     );
   } finally {
     if (previousLocation === undefined) {
-      delete process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION;
+      delete process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_LOCATION;
     } else {
-      process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_LOCATION = previousLocation;
+      process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_LOCATION = previousLocation;
     }
     if (previousType === undefined) {
-      delete process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_TYPE;
+      delete process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_TYPE;
     } else {
-      process.env.EMB_AGENT_DEFAULT_ADAPTER_SOURCE_TYPE = previousType;
+      process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_TYPE = previousType;
     }
     process.chdir(currentCwd);
   }
@@ -569,7 +569,7 @@ test('adapter status shows project-level quality overview', async () => {
 
     await captureStdout(() =>
       cli.main([
-        'adapter',
+        'support',
         'source',
         'add',
         'filtered-pack',
@@ -579,16 +579,16 @@ test('adapter status shows project-level quality overview', async () => {
         tempSource
       ])
     );
-    await captureStdout(() => cli.main(['adapter', 'sync', 'filtered-pack']));
+    await captureStdout(() => cli.main(['support', 'sync', 'filtered-pack']));
 
     const status = JSON.parse(
-      await captureStdout(() => cli.main(['adapter', 'status']))
+      await captureStdout(() => cli.main(['support', 'status']))
     );
 
     assert.equal(status.quality_overview.mode, 'session-aware');
     assert.equal(status.quality_overview.primary.tool, 'timer-calc');
     assert.equal(status.quality_overview.primary.executable, true);
-    assert.equal(status.adapter_sources.length, 1);
+    assert.equal(status.chip_support_sources.length, 1);
   } finally {
     process.chdir(currentCwd);
   }
@@ -607,7 +607,7 @@ test('adapter source sync supports git source and remove cleans project artifact
 
     await captureStdout(() =>
       cli.main([
-        'adapter',
+        'support',
         'source',
         'add',
         'git-pack',
@@ -619,7 +619,7 @@ test('adapter source sync supports git source and remove cleans project artifact
     );
 
     const syncResult = JSON.parse(
-      await captureStdout(() => cli.main(['adapter', 'sync', 'git-pack']))
+      await captureStdout(() => cli.main(['support', 'sync', 'git-pack']))
     );
 
     assert.equal(syncResult.status, 'synced');
@@ -639,7 +639,7 @@ test('adapter source sync supports git source and remove cleans project artifact
     assert.equal(toolResult.duty, '50');
 
     const removeResult = JSON.parse(
-      await captureStdout(() => cli.main(['adapter', 'source', 'remove', 'git-pack']))
+      await captureStdout(() => cli.main(['support', 'source', 'remove', 'git-pack']))
     );
 
     assert.equal(removeResult.action, 'removed');
@@ -680,7 +680,7 @@ test('adapter sync auto-filters files by project hardware identity', async () =>
 
     await captureStdout(() =>
       cli.main([
-        'adapter',
+        'support',
         'source',
         'add',
         'filtered-pack',
@@ -692,7 +692,7 @@ test('adapter sync auto-filters files by project hardware identity', async () =>
     );
 
     const syncResult = JSON.parse(
-      await captureStdout(() => cli.main(['adapter', 'sync', 'filtered-pack']))
+      await captureStdout(() => cli.main(['support', 'sync', 'filtered-pack']))
     );
 
     assert.equal(syncResult.selection.filtered, true);
@@ -752,7 +752,7 @@ test('adapter sync supports explicit chip and tool filters', async () => {
 
     await captureStdout(() =>
       cli.main([
-        'adapter',
+        'support',
         'source',
         'add',
         'filtered-pack',
@@ -766,7 +766,7 @@ test('adapter sync supports explicit chip and tool filters', async () => {
     const syncResult = JSON.parse(
       await captureStdout(() =>
         cli.main([
-          'adapter',
+          'support',
           'sync',
           'filtered-pack',
           '--chip',
@@ -824,7 +824,7 @@ test('adapter sync keeps git source checkout scoped to matching chip files', asy
 
     await captureStdout(() =>
       cli.main([
-        'adapter',
+        'support',
         'source',
         'add',
         'git-filtered-pack',
@@ -836,7 +836,7 @@ test('adapter sync keeps git source checkout scoped to matching chip files', asy
     );
 
     const syncResult = JSON.parse(
-      await captureStdout(() => cli.main(['adapter', 'sync', 'git-filtered-pack']))
+      await captureStdout(() => cli.main(['support', 'sync', 'git-filtered-pack']))
     );
 
     const cachedLayoutRoot = path.join(

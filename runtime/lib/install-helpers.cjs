@@ -76,11 +76,11 @@ function createInstallHelpers(deps) {
         '                          Configure host sub-agent bridge command',
         '  --subagent-bridge-timeout-ms <ms>',
         '                          Set host sub-agent bridge timeout in milliseconds',
-        '  --default-adapter-source-location <url>',
+        '  --default-chip-support-source-location <url>',
         '                          Persist the default git chip support source location for bootstrap/health',
-        '  --default-adapter-source-branch <name>',
+        '  --default-chip-support-source-branch <name>',
         '                          Optional default branch for the chip support source',
-        '  --default-adapter-source-subdir <path>',
+        '  --default-chip-support-source-subdir <path>',
         '                          Optional subdirectory under the chip support source repository',
         '  --uninstall             Remove emb-agent managed files from the target',
         '  --force                 Overwrite existing emb-agent runtime',
@@ -235,17 +235,17 @@ function createInstallHelpers(deps) {
         index += 1;
         continue;
       }
-      if (token === '--default-adapter-source-location') {
+      if (token === '--default-chip-support-source-location') {
         result.defaultAdapterSourceLocation = String(argv[index + 1] || '').trim();
         index += 1;
         continue;
       }
-      if (token === '--default-adapter-source-branch') {
+      if (token === '--default-chip-support-source-branch') {
         result.defaultAdapterSourceBranch = String(argv[index + 1] || '').trim();
         index += 1;
         continue;
       }
-      if (token === '--default-adapter-source-subdir') {
+      if (token === '--default-chip-support-source-subdir') {
         result.defaultAdapterSourceSubdir = String(argv[index + 1] || '').trim();
         index += 1;
         continue;
@@ -268,14 +268,14 @@ function createInstallHelpers(deps) {
     if (argv.includes('--subagent-bridge-timeout-ms') && !result.subagentBridgeCmd) {
       throw new Error('--subagent-bridge-timeout-ms requires --subagent-bridge-cmd');
     }
-    if (argv.includes('--default-adapter-source-location') && !result.defaultAdapterSourceLocation) {
-      throw new Error('Missing value after --default-adapter-source-location');
+    if (argv.includes('--default-chip-support-source-location') && !result.defaultAdapterSourceLocation) {
+      throw new Error('Missing value after --default-chip-support-source-location');
     }
-    if (argv.includes('--default-adapter-source-branch') && !result.defaultAdapterSourceBranch) {
-      throw new Error('Missing value after --default-adapter-source-branch');
+    if (argv.includes('--default-chip-support-source-branch') && !result.defaultAdapterSourceBranch) {
+      throw new Error('Missing value after --default-chip-support-source-branch');
     }
-    if (argv.includes('--default-adapter-source-subdir') && !result.defaultAdapterSourceSubdir) {
-      throw new Error('Missing value after --default-adapter-source-subdir');
+    if (argv.includes('--default-chip-support-source-subdir') && !result.defaultAdapterSourceSubdir) {
+      throw new Error('Missing value after --default-chip-support-source-subdir');
     }
     if (result.global && result.local) {
       throw new Error('Use either --global or --local, not both');
@@ -1191,7 +1191,7 @@ function createInstallHelpers(deps) {
       (args && args.defaultAdapterSourceBranch) ||
       (args && args.defaultAdapterSourceSubdir)
     ) {
-      runtimeConfig.default_adapter_source = {
+      runtimeConfig.default_chip_support_source = {
         type: 'git',
         location: String((args && args.defaultAdapterSourceLocation) || '').trim(),
         branch: String((args && args.defaultAdapterSourceBranch) || '').trim(),

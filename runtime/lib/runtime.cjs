@@ -905,7 +905,7 @@ function validateArchReviewConfig(config) {
 }
 
 function validateAdapterSource(source, index) {
-  const label = `adapter_sources[${index}]`;
+  const label = `chip_support_sources[${index}]`;
   const input = source === undefined || source === null ? {} : source;
   expectObject(input, label);
 
@@ -924,7 +924,7 @@ function validateAdapterSources(config) {
     return [];
   }
   if (!Array.isArray(config)) {
-    throw new Error('adapter_sources must be an array');
+    throw new Error('chip_support_sources must be an array');
   }
 
   const normalized = config.map((item, index) => validateAdapterSource(item, index));
@@ -932,7 +932,7 @@ function validateAdapterSources(config) {
 
   normalized.forEach(item => {
     if (seen.has(item.name)) {
-      throw new Error(`adapter_sources contains duplicate name: ${item.name}`);
+      throw new Error(`chip_support_sources contains duplicate name: ${item.name}`);
     }
     seen.add(item.name);
   });
@@ -942,13 +942,13 @@ function validateAdapterSources(config) {
 
 function validateDefaultAdapterSourceConfig(config) {
   const source = config === undefined || config === null ? {} : config;
-  expectObject(source, 'default_adapter_source');
+  expectObject(source, 'default_chip_support_source');
 
   return {
-    type: ensureChoice(source.type, 'default_adapter_source.type', ['path', 'git'], 'git'),
-    location: ensureOptionalString(source.location, 'default_adapter_source.location'),
-    branch: ensureOptionalString(source.branch, 'default_adapter_source.branch'),
-    subdir: ensureOptionalString(source.subdir, 'default_adapter_source.subdir')
+    type: ensureChoice(source.type, 'default_chip_support_source.type', ['path', 'git'], 'git'),
+    location: ensureOptionalString(source.location, 'default_chip_support_source.location'),
+    branch: ensureOptionalString(source.branch, 'default_chip_support_source.branch'),
+    subdir: ensureOptionalString(source.subdir, 'default_chip_support_source.subdir')
   };
 }
 
@@ -1050,7 +1050,7 @@ function validateProjectConfig(config, runtimeConfig) {
   return {
     project_profile: ensureOptionalString(config.project_profile, 'project_profile'),
     active_packs: ensureStringArray(config.active_packs || [], 'active_packs'),
-    adapter_sources: validateAdapterSources(config.adapter_sources || []),
+    chip_support_sources: validateAdapterSources(config.chip_support_sources || []),
     executors: validateExecutors(config.executors || {}),
     quality_gates: validateQualityGates(config.quality_gates || {}),
     permissions: validatePermissionsConfig(config.permissions || {}),
@@ -1097,7 +1097,7 @@ function validateRuntimeConfig(config) {
     default_preferences: normalizePreferences(config.default_preferences || {}, {
       default_preferences: DEFAULT_PREFERENCES
     }),
-    default_adapter_source: validateDefaultAdapterSourceConfig(config.default_adapter_source || {}),
+    default_chip_support_source: validateDefaultAdapterSourceConfig(config.default_chip_support_source || {}),
     project_state_dir: ensureString(
       config.project_state_dir || '../state/emb-agent/projects',
       'project_state_dir'

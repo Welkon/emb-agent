@@ -312,7 +312,7 @@ function createCliEntryHelpers(deps) {
   }
 
   function hasConfiguredDefaultAdapterSource() {
-    const source = (RUNTIME_CONFIG && RUNTIME_CONFIG.default_adapter_source) || {};
+    const source = (RUNTIME_CONFIG && RUNTIME_CONFIG.default_chip_support_source) || {};
     return Boolean(source.location);
   }
 
@@ -342,8 +342,8 @@ function createCliEntryHelpers(deps) {
     const initContext = context || {};
     const hardware = loadInitHardwareIdentity(projectRoot);
     const configPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
-    const projectConfig = fs.existsSync(configPath) ? runtime.readJson(configPath) : { adapter_sources: [] };
-    const sources = Array.isArray(projectConfig.adapter_sources) ? projectConfig.adapter_sources : [];
+    const projectConfig = fs.existsSync(configPath) ? runtime.readJson(configPath) : { chip_support_sources: [] };
+    const sources = Array.isArray(projectConfig.chip_support_sources) ? projectConfig.chip_support_sources : [];
     const detected = attachProjectCli.detectProjectInputs(projectRoot);
     const nextSteps = [];
     const hardwareReady = Boolean(hardware.model && hardware.package);
@@ -421,10 +421,10 @@ function createCliEntryHelpers(deps) {
         blocked_by: blankProject
           ? adapterSourceReady
             ? ['project_constraints', 'hardware_identity']
-            : ['project_constraints', 'hardware_identity', 'adapter_source']
+            : ['project_constraints', 'hardware_identity', 'chip_support_source']
           : adapterSourceReady
             ? ['hardware_identity']
-            : ['hardware_identity', 'adapter_source'],
+            : ['hardware_identity', 'chip_support_source'],
         summary: adapterSourceReady
           ? blankProject
             ? 'Chip support install should wait until project constraints are recorded and a chip candidate is chosen.'
@@ -460,7 +460,7 @@ function createCliEntryHelpers(deps) {
       agentActions.push({
         kind: 'bootstrap-adapters',
         status: adapterSourceReady ? 'ready' : 'unconfigured',
-        blocked_by: adapterSourceReady ? [] : ['adapter_source'],
+        blocked_by: adapterSourceReady ? [] : ['chip_support_source'],
         summary: adapterSourceReady
           ? 'Chip support install is ready. Let next continue and auto-run it when health and permissions allow.'
           : 'Configure a chip support source before chip support can be installed.',

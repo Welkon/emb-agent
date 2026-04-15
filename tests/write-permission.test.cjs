@@ -297,7 +297,7 @@ test('bootstrap run surfaces permission ask and supports --confirm for gated ada
     );
 
     await cli.main([
-      'adapter',
+      'support',
       'source',
       'add',
       'default-pack',
@@ -308,7 +308,7 @@ test('bootstrap run surfaces permission ask and supports --confirm for gated ada
     ]);
 
     updateProjectConfig(tempProject, config => {
-      config.permissions.writes.ask = ['adapter-bootstrap-project'];
+      config.permissions.writes.ask = ['support-bootstrap-project'];
     });
 
     const blocked = await captureJson(['bootstrap', 'run']);
@@ -627,11 +627,11 @@ test('adapter source add/remove and sync honor write rules before mutating share
     await cli.main(['init']);
 
     updateProjectConfig(tempProject, config => {
-      config.permissions.writes.ask = ['adapter-source-add'];
+      config.permissions.writes.ask = ['support-source-add'];
     });
 
     const blockedAdd = await captureJson([
-      'adapter',
+      'support',
       'source',
       'add',
       'vendor-pack',
@@ -643,10 +643,10 @@ test('adapter source add/remove and sync honor write rules before mutating share
     assert.equal(blockedAdd.status, 'permission-pending');
     const configPath = path.join(tempProject, '.emb-agent', 'project.json');
     let projectConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    assert.deepEqual(projectConfig.adapter_sources, []);
+    assert.deepEqual(projectConfig.chip_support_sources, []);
 
     const allowedAdd = await captureJson([
-      'adapter',
+      'support',
       'source',
       'add',
       'vendor-pack',
@@ -658,20 +658,20 @@ test('adapter source add/remove and sync honor write rules before mutating share
     ]);
     assert.equal(allowedAdd.permission_decision.decision, 'allow');
     projectConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    assert.equal(projectConfig.adapter_sources[0].name, 'vendor-pack');
+    assert.equal(projectConfig.chip_support_sources[0].name, 'vendor-pack');
 
     updateProjectConfig(tempProject, config => {
-      config.permissions.writes.ask = ['adapter-sync-project'];
+      config.permissions.writes.ask = ['support-sync-project'];
     });
 
-    const blockedSync = await captureJson(['adapter', 'sync', 'vendor-pack']);
+    const blockedSync = await captureJson(['support', 'sync', 'vendor-pack']);
     assert.equal(blockedSync.status, 'permission-pending');
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
       false
     );
 
-    const allowedSync = await captureJson(['adapter', 'sync', 'vendor-pack', '--confirm']);
+    const allowedSync = await captureJson(['support', 'sync', 'vendor-pack', '--confirm']);
     assert.equal(allowedSync.permission_decision.decision, 'allow');
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
@@ -679,18 +679,18 @@ test('adapter source add/remove and sync honor write rules before mutating share
     );
 
     updateProjectConfig(tempProject, config => {
-      config.permissions.writes.ask = ['adapter-source-remove'];
+      config.permissions.writes.ask = ['support-source-remove'];
     });
 
-    const blockedRemove = await captureJson(['adapter', 'source', 'remove', 'vendor-pack']);
+    const blockedRemove = await captureJson(['support', 'source', 'remove', 'vendor-pack']);
     assert.equal(blockedRemove.status, 'permission-pending');
     projectConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    assert.equal(projectConfig.adapter_sources.length, 1);
+    assert.equal(projectConfig.chip_support_sources.length, 1);
 
-    const allowedRemove = await captureJson(['adapter', 'source', 'remove', 'vendor-pack', '--confirm']);
+    const allowedRemove = await captureJson(['support', 'source', 'remove', 'vendor-pack', '--confirm']);
     assert.equal(allowedRemove.permission_decision.decision, 'allow');
     projectConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    assert.equal(projectConfig.adapter_sources.length, 0);
+    assert.equal(projectConfig.chip_support_sources.length, 0);
   } finally {
     process.chdir(currentCwd);
   }
@@ -708,11 +708,11 @@ test('adapter bootstrap honors write ask rules before adding source and syncing 
     await cli.main(['init']);
 
     updateProjectConfig(tempProject, config => {
-      config.permissions.writes.ask = ['adapter-bootstrap-project'];
+      config.permissions.writes.ask = ['support-bootstrap-project'];
     });
 
     const blocked = await captureJson([
-      'adapter',
+      'support',
       'bootstrap',
       'vendor-pack',
       '--type',
@@ -723,14 +723,14 @@ test('adapter bootstrap honors write ask rules before adding source and syncing 
     assert.equal(blocked.status, 'permission-pending');
     const configPath = path.join(tempProject, '.emb-agent', 'project.json');
     const projectConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    assert.deepEqual(projectConfig.adapter_sources, []);
+    assert.deepEqual(projectConfig.chip_support_sources, []);
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
       false
     );
 
     const allowed = await captureJson([
-      'adapter',
+      'support',
       'bootstrap',
       'vendor-pack',
       '--confirm',
@@ -757,11 +757,11 @@ test('adapter derive and generate honor write rules before writing derived outpu
     await cli.main(['init']);
 
     updateProjectConfig(tempProject, config => {
-      config.permissions.writes.ask = ['adapter-derive-project'];
+      config.permissions.writes.ask = ['support-derive-project'];
     });
 
     const blockedDerive = await captureJson([
-      'adapter',
+      'support',
       'derive',
       '--family',
       'scmcu-sc8f0xx',
@@ -787,7 +787,7 @@ test('adapter derive and generate honor write rules before writing derived outpu
     );
 
     const allowedDerive = await captureJson([
-      'adapter',
+      'support',
       'derive',
       '--confirm',
       '--family',
@@ -814,12 +814,12 @@ test('adapter derive and generate honor write rules before writing derived outpu
     );
 
     updateProjectConfig(tempProject, config => {
-      config.permissions.writes.deny = ['adapter-generate'];
+      config.permissions.writes.deny = ['support-generate'];
     });
 
     const outputRoot = path.join(tempProject, 'generated-adapters');
     const blockedGenerate = await captureJson([
-      'adapter',
+      'support',
       'generate',
       '--family',
       'scmcu-sc8f0xx',

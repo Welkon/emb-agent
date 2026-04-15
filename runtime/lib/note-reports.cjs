@@ -1051,9 +1051,9 @@ function createNoteReportHelpers(deps) {
     const chipSupportHealth =
       next &&
       next.health &&
-      (next.health.chip_support_health || next.health.adapter_health) &&
-      (next.health.chip_support_health || next.health.adapter_health).primary
-        ? (next.health.chip_support_health || next.health.adapter_health).primary
+      next.health.chip_support_health &&
+      next.health.chip_support_health.primary
+        ? next.health.chip_support_health.primary
         : null;
     const lines = [
       `### ${timestamp}`,
@@ -1212,8 +1212,8 @@ function createNoteReportHelpers(deps) {
           ? next.next.tool_recommendation
           : null,
       chip_support_health:
-        next && next.health && (next.health.chip_support_health || next.health.adapter_health)
-          ? (next.health.chip_support_health || next.health.adapter_health)
+        next && next.health && next.health.chip_support_health
+          ? next.health.chip_support_health
           : null
     }, permissionCheck.permission);
   }
