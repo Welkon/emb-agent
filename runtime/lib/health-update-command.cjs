@@ -188,9 +188,9 @@ function createHealthUpdateCommandHelpers(deps) {
       case 'doc-truth-sync':
         return 'apply-document-facts';
       case 'adapter-bootstrap':
-        return 'adapter-setup';
+        return 'chip-support';
       case 'adapter-derive':
-        return 'adapter-from-document';
+        return 'chip-support-from-document';
       case 'next-step':
         return 'continue-with-next';
       default:
@@ -254,9 +254,9 @@ function createHealthUpdateCommandHelpers(deps) {
       case 'doc-apply-then-next':
         return 'apply-document-facts';
       case 'derive-then-next':
-        return 'derive-adapter-then-next';
+        return 'derive-chip-support-then-next';
       case 'bootstrap-then-next':
-        return 'bootstrap-adapters-then-next';
+        return 'install-chip-support-then-next';
       case 'next':
         return 'enter-next-stage';
       default:
@@ -278,11 +278,11 @@ function createHealthUpdateCommandHelpers(deps) {
     }
 
     if (stageId === 'derive-then-next') {
-      return 'No synced adapter matches the recorded chip yet; derive one from the applied hardware document.';
+      return 'No installed chip support matches the recorded chip yet; draft support from the applied hardware document.';
     }
 
     if (stageId === 'bootstrap-then-next') {
-      return 'Adapters are available but not bootstrapped into the project yet; finish adapter bootstrap before continuing.';
+      return 'Chip support is available but not installed in the project yet; install it before continuing.';
     }
 
     if (stageId === 'next') {
@@ -450,7 +450,7 @@ function createHealthUpdateCommandHelpers(deps) {
         createBootstrapStage(
           bootstrap ? 'adapter-bootstrap' : 'adapter-derive',
           !initReady || !trustReady || !hardwareReady || Boolean(docApply) ? 'pending' : 'ready',
-          bootstrap ? 'Bootstrap matching adapters' : 'Derive adapter from hardware document',
+          bootstrap ? 'Install matching chip support' : 'Draft chip support from hardware document',
           {
             summary: command.summary || '',
             cli: command.cli || '',
@@ -465,9 +465,9 @@ function createHealthUpdateCommandHelpers(deps) {
         createBootstrapStage(
           'adapter-bootstrap',
           !initReady || !trustReady || !hardwareReady || Boolean(docApply) ? 'pending' : 'completed',
-          'Bootstrap matching adapters',
+          'Install matching chip support',
           {
-            summary: 'Adapter registration and matching bootstrap are already closed'
+            summary: 'Chip support registration and hardware matching are already closed'
           }
         )
       );
@@ -1045,13 +1045,13 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'adapter_sources_registered',
           enabledSources.length > 0 ? 'pass' : 'warn',
-          enabledSources.length > 0 ? 'Adapter sources are registered' : 'No adapter source is registered yet',
+          enabledSources.length > 0 ? 'Chip support sources are registered' : 'No chip support source is registered yet',
           enabledSources.length > 0
             ? enabledSources.map(item => `source=${item.name}`)
             : [`${runtime.getProjectAssetRelativePath('project.json')} -> adapter_sources`],
           enabledSources.length > 0
             ? ''
-            : 'Run adapter source add first to register the default adapter source or your private source into the project. Private git sources reuse the host git credentials that are already configured.'
+            : 'Register a chip support source first. Private git sources reuse the host git credentials that are already configured.'
         )
       );
       if (enabledSources.length === 0) {
@@ -1059,7 +1059,7 @@ function createHealthUpdateCommandHelpers(deps) {
         pushNextCommand(
           nextCommands,
           hardwareIdentity.model ? 'adapter-bootstrap' : 'adapter-source-add',
-          hardwareIdentity.model ? 'Register the default adapter source and sync it against the current project' : 'Register the default adapter source',
+          hardwareIdentity.model ? 'Register the default chip support source and install matching support into the project' : 'Register the default chip support source',
           hardwareIdentity.model
             ? DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI
             : addCommand.cli,
@@ -1077,10 +1077,10 @@ function createHealthUpdateCommandHelpers(deps) {
           'adapter_sync_project',
           syncedProjectSources.length > 0 ? 'pass' : enabledSources.length > 0 ? 'warn' : 'info',
           syncedProjectSources.length > 0
-            ? 'Adapters have been synced into the project directory'
+            ? 'Chip support has been installed into the project directory'
             : enabledSources.length > 0
-              ? 'The adapter source is registered but not synced yet'
-              : 'There is no adapter source available to sync yet',
+              ? 'The chip support source is registered but not installed yet'
+              : 'There is no chip support source available yet',
           syncedProjectSources.length > 0
             ? syncedProjectSources.map(item => `source=${item.name}, files=${item.targets.project.files_count}`)
             : enabledSources.length > 0
@@ -1089,7 +1089,7 @@ function createHealthUpdateCommandHelpers(deps) {
           syncedProjectSources.length > 0
             ? ''
             : enabledSources.length > 0
-              ? `Run adapter sync ${enabledSources[0].name} to place matched adapters/profiles into the project.`
+              ? 'Install matching chip support into the project first.'
               : ''
         )
       );
@@ -1097,7 +1097,7 @@ function createHealthUpdateCommandHelpers(deps) {
         pushNextCommand(
           nextCommands,
           hardwareIdentity.model ? 'adapter-bootstrap' : 'adapter-sync',
-          hardwareIdentity.model ? 'Sync the adapter source against the current project' : 'Sync the registered adapter source into the current project',
+          hardwareIdentity.model ? 'Install matching chip support into the current project' : 'Install registered chip support into the current project',
           hardwareIdentity.model
             ? runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'bootstrap', enabledSources[0].name])
             : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'sync', enabledSources[0].name]),
@@ -1116,10 +1116,10 @@ function createHealthUpdateCommandHelpers(deps) {
             'adapter_match',
             matchedProjectSources.length > 0 ? 'pass' : syncedProjectSources.length > 0 ? 'warn' : 'info',
             matchedProjectSources.length > 0
-              ? 'A subset of adapters matching the current hardware was found'
+              ? 'Installed chip support matches the current hardware'
               : syncedProjectSources.length > 0
-                ? 'Adapters are synced, but a match for current hardware is not confirmed yet'
-                : 'Wait until adapter source sync completes before checking match results',
+                ? 'Chip support is installed, but the current hardware is not covered yet'
+                : 'Wait until chip support install completes before checking hardware coverage',
             matchedProjectSources.length > 0
               ? matchedProjectSources.map(item => {
                   const selection = item.targets.project.selection;
@@ -1138,8 +1138,8 @@ function createHealthUpdateCommandHelpers(deps) {
             matchedProjectSources.length > 0
               ? ''
               : syncedProjectSources.length > 0
-                ? 'Check whether the chip model/package in hw.yaml is accurate, or add the corresponding family/device/chip profiles.'
-                : 'Fill in the chip model/package in hw.yaml first, then run adapter sync so emb-agent can automatically select the adapters needed by the current chip.'
+                ? 'Check whether the chip model/package in hw.yaml is accurate, or add matching family/device/chip support definitions.'
+                : 'Fill in the chip model/package in hw.yaml first, then install chip support so emb-agent can select the coverage needed by the current chip.'
           )
         );
       }
@@ -1155,19 +1155,19 @@ function createHealthUpdateCommandHelpers(deps) {
           createCheck(
             'adapter_derive_candidate',
             'warn',
-            `The latest hardware document ${latestHardwareDoc.doc_id} can be used directly to draft an adapter`,
+            `The latest hardware document ${latestHardwareDoc.doc_id} can be used directly to draft chip support`,
             [
               latestHardwareDoc.title ? `title=${latestHardwareDoc.title}` : '',
               latestHardwareDoc.source ? `source=${latestHardwareDoc.source}` : '',
               latestHardwareDoc.cached_at ? `cached_at=${latestHardwareDoc.cached_at}` : ''
             ],
-            'Draft an adapter from the latest hardware document first, then run next; this is safer than guessing family/device/chip manually.'
+            'Draft chip support from the latest hardware document first, then run next; this is safer than guessing family/device/chip coverage manually.'
           )
         );
         pushNextCommand(
           nextCommands,
           'adapter-derive-from-doc',
-          `Draft an adapter for current hardware from document ${latestHardwareDoc.doc_id}`,
+          `Draft chip support for current hardware from document ${latestHardwareDoc.doc_id}`,
           buildAdapterDeriveCli(latestHardwareDoc),
           'adapter',
           {
@@ -1242,7 +1242,7 @@ function createHealthUpdateCommandHelpers(deps) {
           adapterHealth.status,
           adapterHealth.primary && adapterHealth.primary.executable
             ? `Preferred tool ${adapterHealth.primary.tool} has reached executable trust level`
-            : `Preferred tool ${adapterHealth.primary ? adapterHealth.primary.tool : '(none)'} still needs more adapter evidence`,
+            : `Preferred tool ${adapterHealth.primary ? adapterHealth.primary.tool : '(none)'} still needs more chip-support evidence`,
           adapterHealth.primary
             ? [
                 `tool=${adapterHealth.primary.tool}`,

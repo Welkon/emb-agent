@@ -8,13 +8,13 @@ If the repository root README explains what emb-agent is, the docs directory sho
 - which runtime am I using?
 - which scenario matches my work?
 - which parts are the default embedded path and which parts are support layers around it?
-- how are adapters supposed to fit?
+- how is chip support supposed to fit?
 - how are tasks supposed to be modeled?
 
 ## Start here
 
 - [Product Boundaries](./product-boundaries.md)
-  The embedded-first layering between default workflow, support surfaces, and adapters.
+  The embedded-first layering between default workflow, support surfaces, and chip support.
 - [Quick Start](./quick-start.md)
   The shortest path from install to either `init -> declare hardware -> next` or `init -> req truth -> next` when MCU is still unknown.
 - [Platforms](./platforms.md)
@@ -26,8 +26,8 @@ If the repository root README explains what emb-agent is, the docs directory sho
 
 - [Product Boundaries](./product-boundaries.md)
   Why this repository contains several layers, while still remaining one embedded product.
-- [Adapter Model](./adapter-model.md)
-  What belongs in core and what belongs in adapters.
+- [Chip Support Model](./adapter-model.md)
+  What belongs in core and what belongs in chip support.
 - [Task Model](./task-model.md)
   How task manifests are structured and when to use them.
 - [Workflow Layering](./workflow-layering.md)

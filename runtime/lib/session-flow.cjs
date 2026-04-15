@@ -686,13 +686,13 @@ function createSessionFlowHelpers(deps) {
 
     if (primary.executable) {
       return [
-        `Adapter trust: ${primary.tool} ${primary.grade} (${primary.score}/100)`
+        `Chip support trust: ${primary.tool} ${primary.grade} (${primary.score}/100)`
       ];
     }
 
     return [
-      `Adapter trust reminder: ${primary.tool} is currently ${primary.grade} (${primary.score}/100)`,
-      `Handle the adapter gap first: ${primary.recommended_action}`,
+      `Chip support trust reminder: ${primary.tool} is currently ${primary.grade} (${primary.score}/100)`,
+      `Handle the chip-support gap first: ${primary.recommended_action}`,
       primaryToolRecommendation && primaryToolRecommendation.cli_draft
         ? `Use the current tool draft for calibration first; do not treat it as ground truth yet: ${primaryToolRecommendation.cli_draft}`
         : 'Use the current tool output for calibration first; do not treat it as ground truth yet'
@@ -973,7 +973,7 @@ function createSessionFlowHelpers(deps) {
     if (command === 'health') {
       return {
         name: 'health-gate',
-        why: 'Base hardware truth or adapter health is not closed yet; complete health closure first',
+        why: 'Base hardware truth or chip support health is not closed yet; complete health closure first',
         exit_criteria: 'Health next commands are closed and the next command is no longer health',
         primary_command: 'health'
       };
@@ -1099,7 +1099,7 @@ function createSessionFlowHelpers(deps) {
     const nextCommand = gatedByHealth
       ? {
           command: 'health',
-          reason: 'The base integration is not closed yet. Follow the health guidance to complete hardware truth or adapter sync before entering scan',
+          reason: 'The base integration is not closed yet. Follow the health guidance to complete hardware truth or chip support install before entering scan',
           health_next_commands: health && Array.isArray(health.next_commands) ? health.next_commands : [],
           health_quickstart: health && health.quickstart ? health.quickstart : null
         }

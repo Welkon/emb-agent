@@ -548,7 +548,7 @@ test('orchestrator keeps tool step non-required when adapter trust is not yet ex
 
     assert.equal(next.health.adapter_health.primary.tool, 'timer-calc');
     assert.equal(next.health.adapter_health.primary.executable, false);
-    assert.ok(next.next_actions.some(item => item.includes('Adapter trust reminder')));
+    assert.ok(next.next_actions.some(item => item.includes('Chip support trust reminder')));
     assert.ok(next.next_actions.some(item => item.includes('implement-adapter')));
 
     assert.equal(orchestrator.resolved_action, 'scan');

@@ -76,7 +76,7 @@ Host-specific runtime state stays outside the repo. That keeps project truth col
 | **Hardware truth in the repo** | Keep MCU model, package, signals, peripherals, constraints, and unknowns in `.emb-agent/hw.yaml` instead of repeating them in chat. |
 | **Short default workflow** | Most projects only need `start`, `declare hardware`, `next`, and the execution loop behind them. |
 | **Document-to-truth flow** | Pull facts out of datasheets or schematics when the answer is not already known. |
-| **Adapter-oriented execution** | Keep chip-, family-, and vendor-specific logic in adapters instead of bloating the core workflow. |
+| **Chip-support execution** | Keep chip-, family-, and vendor-specific logic in chip support packs instead of bloating the core workflow. |
 | **Verification-aware closure** | Close work with explicit review and verify loops instead of generic code-only completion. |
 
 ## More Docs

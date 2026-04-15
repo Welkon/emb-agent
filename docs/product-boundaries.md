@@ -6,7 +6,7 @@ The useful split is not "core vs miscellaneous", and it is also not "multiple un
 
 - embedded workflow
 - support layers
-- adapters
+- chip support
 
 emb-agent is still one product, and it is primarily for embedded work.
 
@@ -42,17 +42,17 @@ These are valuable, but they are not a separate product and they are not the def
 
 If the repository feels like it is doing too many things at once, it is usually because the embedded workflow and its support layers are both visible at the same time.
 
-## Adapters
+## Chip Support
 
-Adapters are a third boundary, not a subsection of support layers.
+Chip support is a third boundary, not a subsection of support layers.
 
-They own:
+It owns:
 
 - family/device/chip-specific formulas
 - route bindings and executable tool algorithms
 - chip profiles, package details, and derived hardware constraints
 
-The embedded workflow should stay abstract. Adapters should absorb vendor- and chip-specific logic. See [Adapter Model](./adapter-model.md).
+The embedded workflow should stay abstract. Chip support should absorb vendor- and chip-specific logic. See [Chip Support Model](./adapter-model.md).
 
 ## What Should Dominate The Default Path
 
@@ -89,6 +89,6 @@ The intended interpretation is:
 
 - embedded workflow solves project truth and session flow
 - support layers keep long-running agent setups structurally consistent
-- adapters isolate chip/tool specificity
+- chip support isolates chip/tool specificity
 
 That is still one embedded product, but only if the layers stay explicit in docs, help, and command posture.

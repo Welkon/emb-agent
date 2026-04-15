@@ -209,7 +209,7 @@ function relevantHealthCheckKeys(stage) {
       return ['hardware_identity', 'hw_truth', 'req_truth'];
     case 'apply-document-facts':
       return ['doc_apply_backlog'];
-    case 'adapter-setup':
+    case 'chip-support':
       return [
         'adapter_sources_registered',
         'adapter_sync_project',
@@ -218,7 +218,7 @@ function relevantHealthCheckKeys(stage) {
         'binding_quality',
         'register_summary_available'
       ];
-    case 'adapter-from-document':
+    case 'chip-support-from-document':
       return ['adapter_derive_candidate', 'adapter_match'];
     default:
       return [];
