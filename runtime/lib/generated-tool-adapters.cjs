@@ -364,7 +364,7 @@ function runGeneratedTimerAdapter(context, resolved, options) {
       },
       notes: [
         'A draft route already exists, but no matching device/family binding was found.',
-        'Add bindings first, or run adapter derive again.'
+        'Add bindings first, or run support derive again.'
       ]
     };
   }
@@ -526,7 +526,7 @@ function runGeneratedPwmAdapter(context, resolved, options) {
       },
       notes: [
         'A draft route already exists, but no matching device/family binding was found.',
-        'Add bindings first, or run adapter derive again.'
+        'Add bindings first, or run support derive again.'
       ]
     };
   }
@@ -711,7 +711,7 @@ function runGeneratedAdcAdapter(context, resolved, options) {
       },
       notes: [
         'A draft route already exists, but no matching device/family binding was found.',
-        'Add bindings first, or run adapter derive again.'
+        'Add bindings first, or run support derive again.'
       ]
     };
   }
@@ -883,7 +883,7 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
       },
       notes: [
         'A draft route already exists, but no matching device/family binding was found.',
-        'Add bindings first, or run adapter derive again.'
+        'Add bindings first, or run support derive again.'
       ]
     };
   }

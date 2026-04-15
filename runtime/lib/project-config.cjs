@@ -1108,7 +1108,7 @@ function createProjectConfigHelpers(deps) {
 
     if (!existing || parsed.source_config_provided) {
       if (!parsed.source.type || !parsed.source.location) {
-        throw new Error(`Missing source config for adapter bootstrap: ${parsed.name}`);
+        throw new Error(`Missing source config for chip support install: ${parsed.name}`);
       }
 
       const addTokens = ['--type', parsed.source.type, '--location', parsed.source.location];

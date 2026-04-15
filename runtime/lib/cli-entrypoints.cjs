@@ -306,9 +306,9 @@ function createCliEntryHelpers(deps) {
 
   function buildAdapterBootstrapCommand(sources) {
     if (Array.isArray(sources) && sources.length > 0 && sources[0] && sources[0].name) {
-      return `adapter bootstrap ${sources[0].name}`;
+      return `support bootstrap ${sources[0].name}`;
     }
-    return 'adapter bootstrap';
+    return 'support bootstrap';
   }
 
   function hasConfiguredDefaultAdapterSource() {
@@ -674,16 +674,16 @@ function createCliEntryHelpers(deps) {
       '  prefs show',
       '  prefs set <key> <value>',
       '  prefs reset',
-      '  adapter status [<name>]',
-      '  adapter source list',
-      '  adapter source show <name>',
-      '  adapter source add <name> [--confirm] --type path|git --location <path-or-url> [--branch <name>] [--subdir <path>] [--disabled]',
-      '  adapter source remove <name> [--confirm]',
-      '  adapter bootstrap [<name>] [--confirm] [--type path|git --location <path-or-url>] [--branch <name>] [--subdir <path>] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
-      '  adapter sync <name> [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
-      '  adapter sync --all [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
-      '  adapter derive [--confirm] [--from-project] [--from-doc <doc-id>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',
-      '  adapter generate [--confirm] [--from-project] [--from-doc <doc-id>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] --output-root <path> [--force]',
+      '  support status [<name>]',
+      '  support source list',
+      '  support source show <name>',
+      '  support source add <name> [--confirm] --type path|git --location <path-or-url> [--branch <name>] [--subdir <path>] [--disabled]',
+      '  support source remove <name> [--confirm]',
+      '  support bootstrap [<name>] [--confirm] [--type path|git --location <path-or-url>] [--branch <name>] [--subdir <path>] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
+      '  support sync <name> [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
+      '  support sync --all [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
+      '  support derive [--confirm] [--from-project] [--from-doc <doc-id>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',
+      '  support generate [--confirm] [--from-project] [--from-doc <doc-id>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] --output-root <path> [--force]',
       '  tool list',
       '  tool show <name>',
       '  tool run <name> [--confirm] [--family <name>] [--device <name>] [tool options]',

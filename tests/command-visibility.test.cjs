@@ -73,7 +73,8 @@ test('commands list --all exposes installed advanced commands', async () => {
   assert.ok(Array.isArray(listed));
   assert.ok(listed.includes('help'));
   assert.ok(listed.includes('workflow'));
-  assert.ok(listed.includes('adapter'));
+  assert.ok(listed.includes('support'));
+  assert.ok(!listed.includes('adapter'));
   assert.ok(listed.includes('dispatch'));
   assert.ok(listed.includes('orchestrate'));
   assert.ok(listed.includes('attach'));
@@ -100,6 +101,14 @@ test('commands show keeps hidden advanced workflow command accessible', async ()
 
   assert.equal(shown.name, 'workflow');
   assert.match(shown.content, /project-local workflow authoring/);
+});
+
+test('commands show keeps adapter compatibility alias accessible', async () => {
+  const shown = await captureCliJson(['commands', 'show', 'adapter']);
+
+  assert.equal(shown.name, 'adapter');
+  assert.equal(shown.path, 'commands/emb/support.md');
+  assert.match(shown.content, /Compatibility alias: `adapter` remains accepted/);
 });
 
 test('agents list and show resolve source-layout markdown files', async () => {
@@ -261,7 +270,8 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /Workflow and scaffold authoring:/);
   assert.match(advanced, /Delegation and chip support runtime:/);
   assert.match(advanced, /Inspection and discovery:/);
-  assert.match(advanced, /adapter source add/);
+  assert.match(advanced, /support source add/);
+  assert.doesNotMatch(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
   assert.match(advanced, /ingest schematic --file <path>/);
   assert.match(advanced, /doc lookup \[--chip <name>/);

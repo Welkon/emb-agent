@@ -83,9 +83,11 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.ok(installedCommandFiles.includes('verify.md'));
     assert.ok(!installedCommandFiles.includes('workflow.md'));
     assert.ok(!installedCommandFiles.includes('adapter.md'));
+    assert.ok(!installedCommandFiles.includes('support.md'));
     assert.ok(!installedCommandFiles.includes('init-project.md'));
     assert.ok(internalCommandDocs.includes('workflow.md'));
-    assert.ok(internalCommandDocs.includes('adapter.md'));
+    assert.ok(!internalCommandDocs.includes('adapter.md'));
+    assert.ok(internalCommandDocs.includes('support.md'));
     assert.ok(internalCommandDocs.includes('init-project.md'));
     assert.match(fs.readFileSync(path.join(tempHome, '.env.example'), 'utf8'), /MINERU_API_KEY=/);
     assert.match(
@@ -108,7 +110,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(stdout, /Installed 14 Codex skills under:/);
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
-    assert.match(stdout, /Default adapter source: git@github\.com:Welkon\/emb-agent-adapters\.git/);
+    assert.match(stdout, /Default chip support source: git@github\.com:Welkon\/emb-agent-adapters\.git/);
     assert.match(stdout, /Advanced scaffold assets were skipped in core profile/);
     assert.match(stdout, /Startup automation is installed automatically\./);
     assert.match(stdout, /Sub-agent bridge: node \/tmp\/emb-subagent-bridge\.cjs --stdio-json \(timeout: 25000 ms\)/);
