@@ -116,7 +116,7 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.ok(report.checks.some(item => item.key === 'hardware_identity' && item.status === 'warn'));
     assert.ok(report.checks.some(item => item.key === 'szlcsc_integration' && item.status === 'pass'));
     assert.ok(Array.isArray(report.next_commands));
-    assert.ok(report.next_commands.some(item => item.cli.includes('adapter source add default-pack')));
+    assert.ok(report.next_commands.some(item => item.cli.includes('support source add default-pack')));
     assert.equal(report.quickstart.stage, 'fill-hardware-identity');
     assert.equal(report.quickstart.display_stage, 'complete-project-facts');
     assert.match(report.quickstart.user_summary, /Hardware identity is incomplete/);
@@ -257,7 +257,7 @@ test('health uses configured default adapter source from environment', () => {
     stdout = '';
     cli.main(['health']);
     const report = JSON.parse(stdout);
-    const adapterCommand = report.next_commands.find(item => item.cli.includes('adapter source add default-pack'));
+    const adapterCommand = report.next_commands.find(item => item.cli.includes('support source add default-pack'));
 
     assert.ok(adapterCommand);
     assert.match(adapterCommand.cli, /git@github\.com:Welkon\/emb-agent-adapters\.git/);
@@ -516,16 +516,16 @@ test('health reports adapter registration and sync readiness', async () => {
     let report = JSON.parse(stdout);
     assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'warn');
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'info');
-    assert.ok(report.next_commands.some(item => item.cli.includes('adapter bootstrap')));
+    assert.ok(report.next_commands.some(item => item.cli.includes('support bootstrap')));
     assert.equal(report.quickstart.stage, 'bootstrap-then-next');
     assert.equal(report.action_card.action, 'Ready to continue');
     assert.equal(report.action_card.stage, 'chip-support');
     assert.equal(report.action_card.first_instruction, '');
-    assert.ok(report.action_card.first_cli.includes('adapter bootstrap'));
+    assert.ok(report.action_card.first_cli.includes('support bootstrap'));
     assert.ok(report.action_card.then_cli.endsWith(' next'));
     assert.equal(report.bootstrap.current_stage, 'adapter-bootstrap');
-    assert.ok(report.bootstrap.next_stage.cli.includes('adapter bootstrap'));
-    assert.ok(report.quickstart.steps[0].cli.includes('adapter bootstrap'));
+    assert.ok(report.bootstrap.next_stage.cli.includes('support bootstrap'));
+    assert.ok(report.quickstart.steps[0].cli.includes('support bootstrap'));
     assert.ok(report.quickstart.steps[1].cli.endsWith(' next'));
 
     stdout = '';
@@ -550,7 +550,7 @@ test('health reports adapter registration and sync readiness', async () => {
     report = JSON.parse(stdout);
     assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'warn');
-    assert.ok(report.next_commands.some(item => item.cli.includes('adapter bootstrap default-pack')));
+    assert.ok(report.next_commands.some(item => item.cli.includes('support bootstrap default-pack')));
 
     stdout = '';
     await cli.main(['bootstrap', 'run']);
@@ -578,7 +578,7 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.adapter_health.primary.tool, 'timer-calc');
     assert.equal(report.adapter_health.primary.grade, 'usable');
     assert.equal(report.adapter_health.primary.executable, true);
-    assert.ok(report.recommendations.every(item => !item.includes('adapter sync default-pack')));
+    assert.ok(report.recommendations.every(item => !item.includes('support sync default-pack')));
     assert.ok(report.next_commands.some(item => item.cli.includes('tool run timer-calc')));
   } finally {
     if (previousTrust === undefined) {
@@ -727,14 +727,14 @@ test('health routes from applied hardware doc to adapter derive when synced adap
     assert.equal(report.checks.find(item => item.key === 'adapter_match').status, 'warn');
     assert.equal(report.checks.find(item => item.key === 'adapter_derive_candidate').status, 'warn');
     assert.ok(report.next_commands.some(item => item.key === 'adapter-derive-from-doc'));
-    assert.ok(report.next_commands.some(item => item.cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`)));
+    assert.ok(report.next_commands.some(item => item.cli.includes(`support derive --from-project --from-doc ${ingested.doc_id}`)));
     assert.equal(report.quickstart.stage, 'derive-then-next');
     assert.equal(report.action_card.stage, 'chip-support-from-document');
     assert.equal(report.action_card.action, 'Ready to continue');
     assert.equal(report.action_card.first_instruction, '');
-    assert.ok(report.action_card.first_cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`));
+    assert.ok(report.action_card.first_cli.includes(`support derive --from-project --from-doc ${ingested.doc_id}`));
     assert.equal(report.bootstrap.current_stage, 'adapter-derive');
-    assert.ok(report.quickstart.steps[0].cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`));
+    assert.ok(report.quickstart.steps[0].cli.includes(`support derive --from-project --from-doc ${ingested.doc_id}`));
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;

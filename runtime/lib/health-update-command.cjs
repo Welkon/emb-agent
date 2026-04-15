@@ -10,7 +10,7 @@ const workflowRegistry = require('./workflow-registry.cjs');
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI =
-  `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'bootstrap'])}`;
+  `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['support', 'bootstrap'])}`;
 const NEXT_CLI = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next']);
 const HEALTH_CLI = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['health']);
 
@@ -43,12 +43,17 @@ function createHealthUpdateCommandHelpers(deps) {
     return defaultAdapterSourceHelpers.resolveDefaultAdapterSource(RUNTIME_CONFIG, process && process.env);
   }
 
+  function buildSupportCli(args) {
+    const command = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, args);
+    return command.replace(' emb-agent.cjs adapter ', ' emb-agent.cjs support ');
+  }
+
   function buildDefaultAdapterSourceAddCommand() {
     const source = getDefaultAdapterSource();
     const sourceArgs = defaultAdapterSourceHelpers.buildDefaultAdapterSourceArgs(source);
 
     return {
-      cli: `${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'source', 'add', source.name])} ${sourceArgs.join(' ')}`,
+      cli: `${buildSupportCli(['support', 'source', 'add', source.name])} ${sourceArgs.join(' ')}`,
       argv: ['adapter', 'source', 'add', source.name, ...sourceArgs]
     };
   }
@@ -619,8 +624,8 @@ function createHealthUpdateCommandHelpers(deps) {
       return '';
     }
 
-    return runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [
-      'adapter',
+    return buildSupportCli([
+      'support',
       'derive',
       '--from-project',
       '--from-doc',
@@ -1099,8 +1104,8 @@ function createHealthUpdateCommandHelpers(deps) {
           hardwareIdentity.model ? 'adapter-bootstrap' : 'adapter-sync',
           hardwareIdentity.model ? 'Install matching chip support into the current project' : 'Install registered chip support into the current project',
           hardwareIdentity.model
-            ? runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'bootstrap', enabledSources[0].name])
-            : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'sync', enabledSources[0].name]),
+            ? buildSupportCli(['support', 'bootstrap', enabledSources[0].name])
+            : buildSupportCli(['support', 'sync', enabledSources[0].name]),
           'adapter',
           {
             argv: hardwareIdentity.model

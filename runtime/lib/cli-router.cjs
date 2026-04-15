@@ -206,7 +206,7 @@ function createCliRouter(deps) {
           emitJson({
             executed: false,
             reason: 'network-bootstrap-required',
-            summary: 'Default adapter bootstrap requires an explicit source or manual network-enabled execution',
+            summary: 'Default chip support install requires an explicit source or manual network-enabled execution',
             stage,
             bootstrap
           });

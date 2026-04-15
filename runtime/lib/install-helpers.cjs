@@ -77,11 +77,11 @@ function createInstallHelpers(deps) {
         '  --subagent-bridge-timeout-ms <ms>',
         '                          Set host sub-agent bridge timeout in milliseconds',
         '  --default-adapter-source-location <url>',
-        '                          Persist the default git adapter source location for bootstrap/health',
+        '                          Persist the default git chip support source location for bootstrap/health',
         '  --default-adapter-source-branch <name>',
-        '                          Optional default branch for the adapter source',
+        '                          Optional default branch for the chip support source',
         '  --default-adapter-source-subdir <path>',
-        '                          Optional subdirectory under the adapter source repository',
+        '                          Optional subdirectory under the chip support source repository',
         '  --uninstall             Remove emb-agent managed files from the target',
         '  --force                 Overwrite existing emb-agent runtime',
         '  --help                  Show this help'
@@ -1387,7 +1387,7 @@ function createInstallHelpers(deps) {
         ? [`Sub-agent bridge: ${args.subagentBridgeCmd} (timeout: ${args.subagentBridgeTimeoutMs} ms)`]
         : []),
       ...(args.defaultAdapterSourceLocation
-        ? [`Default adapter source: ${args.defaultAdapterSourceLocation}`]
+        ? [`Default chip support source: ${args.defaultAdapterSourceLocation}`]
         : []),
       ...(projectBootstrap
         ? [

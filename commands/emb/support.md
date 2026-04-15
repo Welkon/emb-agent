@@ -1,5 +1,5 @@
 ---
-name: emb-adapter
+name: emb-support
 description: Manage chip support sources, discovery, derivation, and quality status.
 allowed-tools:
   - Read
@@ -11,7 +11,7 @@ allowed-tools:
   - SlashCommand
 ---
 
-# emb-adapter
+# emb-support
 
 ## Purpose
 
@@ -19,6 +19,7 @@ allowed-tools:
 
 ## Usage
 
-- Run `$emb-adapter` when this command matches the current problem.
+- Run `$emb-support` when the issue is chip-support maintenance rather than normal project bootstrap.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
 - This is an advanced maintenance surface, not part of the default firmware-project path.
+- Compatibility alias: `adapter` remains accepted, but `support` is the preferred command name.

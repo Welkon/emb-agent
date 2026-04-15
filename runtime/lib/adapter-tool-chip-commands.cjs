@@ -18,37 +18,39 @@ function createAdapterToolChipCommandHelpers(deps) {
   } = deps;
 
   function handleAdapterToolChipCommands(cmd, subcmd, rest) {
-    if (cmd === 'adapter' && subcmd === 'status') {
+    const isChipSupportCommand = cmd === 'adapter' || cmd === 'support';
+
+    if (isChipSupportCommand && subcmd === 'status') {
       return buildAdapterStatus(rest[0] || '');
     }
 
-    if (cmd === 'adapter' && subcmd === 'source' && rest[0] === 'list') {
+    if (isChipSupportCommand && subcmd === 'source' && rest[0] === 'list') {
       return buildAdapterStatus();
     }
 
-    if (cmd === 'adapter' && subcmd === 'source' && rest[0] === 'show') {
+    if (isChipSupportCommand && subcmd === 'source' && rest[0] === 'show') {
       if (!rest[1]) throw new Error('Missing source name');
       return buildAdapterStatus(rest[1]);
     }
 
-    if (cmd === 'adapter' && subcmd === 'source' && rest[0] === 'add') {
+    if (isChipSupportCommand && subcmd === 'source' && rest[0] === 'add') {
       if (!rest[1]) throw new Error('Missing source name');
       return addAdapterSource(rest[1], rest.slice(2));
     }
 
-    if (cmd === 'adapter' && subcmd === 'source' && rest[0] === 'remove') {
+    if (isChipSupportCommand && subcmd === 'source' && rest[0] === 'remove') {
       if (!rest[1]) throw new Error('Missing source name');
       return removeAdapterSource(rest[1], rest.slice(2));
     }
 
-    if (cmd === 'adapter' && subcmd === 'bootstrap') {
+    if (isChipSupportCommand && subcmd === 'bootstrap') {
       if (rest[0] && !rest[0].startsWith('--')) {
         return bootstrapAdapterSource(rest[0], rest.slice(1));
       }
       return bootstrapAdapterSource('', rest);
     }
 
-    if (cmd === 'adapter' && subcmd === 'sync') {
+    if (isChipSupportCommand && subcmd === 'sync') {
       if (rest[0] === '--all') {
         return syncAllAdapterSources(parseAdapterSyncArgs(rest));
       }
@@ -60,11 +62,11 @@ function createAdapterToolChipCommandHelpers(deps) {
       return syncNamedAdapterSource(rest[0], parseAdapterSyncArgs(rest.slice(1)));
     }
 
-    if (cmd === 'adapter' && subcmd === 'derive') {
+    if (isChipSupportCommand && subcmd === 'derive') {
       return runAdapterDerive(rest);
     }
 
-    if (cmd === 'adapter' && subcmd === 'generate') {
+    if (isChipSupportCommand && subcmd === 'generate') {
       return runAdapterGenerate(rest);
     }
 

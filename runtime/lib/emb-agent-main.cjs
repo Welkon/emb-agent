@@ -230,10 +230,18 @@ function loadMarkdown(dirPath, name, kind) {
 }
 
 function loadCommandMarkdown(name) {
-  const fileName = `${name}.md`;
+  const aliases = {
+    adapter: 'support'
+  };
+  const resolvedName = aliases[name] || name;
+  const fileName = `${resolvedName}.md`;
   const publicPath = path.join(COMMANDS_DIR, fileName);
   if (fs.existsSync(publicPath)) {
-    return loadMarkdown(COMMANDS_DIR, name, 'Command');
+    const command = loadMarkdown(COMMANDS_DIR, resolvedName, 'Command');
+    return {
+      ...command,
+      name
+    };
   }
 
   const hiddenPath = path.join(COMMAND_DOCS_DIR, fileName);
