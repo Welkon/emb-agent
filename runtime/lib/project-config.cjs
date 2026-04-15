@@ -67,9 +67,11 @@ function createProjectConfigHelpers(deps) {
         : [];
 
     if (toolRecommendations.length > 0) {
+      const health = adapterQualityHelpers.summarizeAdapterHealth(toolRecommendations, recommendedSources);
       return {
         mode: 'session-aware',
-        ...adapterQualityHelpers.summarizeAdapterHealth(toolRecommendations, recommendedSources)
+        ...health,
+        reusability: adapterQualityHelpers.summarizeAdapterReusability(health)
       };
     }
 
@@ -788,9 +790,11 @@ function createProjectConfigHelpers(deps) {
         : [];
 
     if (toolRecommendations.length > 0) {
+      const health = adapterQualityHelpers.summarizeAdapterHealth(toolRecommendations, recommendedSources);
       return {
         mode: 'session-aware',
-        ...adapterQualityHelpers.summarizeAdapterHealth(toolRecommendations, recommendedSources)
+        ...health,
+        reusability: adapterQualityHelpers.summarizeAdapterReusability(health)
       };
     }
 
@@ -806,13 +810,26 @@ function createProjectConfigHelpers(deps) {
       })
       .filter(Boolean);
 
-    return {
+    const selectionOnly = {
       mode: 'selection-only',
       status: matched.length > 0 ? 'info' : 'warn',
       summary: matched.length > 0
         ? 'Matched adapter files already exist, but the project side still cannot form a complete trust score.'
         : 'There are still not enough matched adapters available for quality evaluation.',
       matched_tools: runtime.unique(matched)
+    };
+
+    return {
+      ...selectionOnly,
+      reusability: matched.length > 0
+        ? {
+            status: 'project-only',
+            reusable: false,
+            review_required: false,
+            summary: 'Matched chip support exists, but reuse readiness is still unknown until trust can be evaluated.',
+            recommended_action: 're-run-health-or-next'
+          }
+        : adapterQualityHelpers.summarizeAdapterReusability(null)
     };
   }
 

@@ -1232,6 +1232,7 @@ function createHealthUpdateCommandHelpers(deps) {
       toolRecommendations,
       recommendedSources
     );
+    const adapterReusability = adapterQualityHelpers.summarizeAdapterReusability(adapterHealth);
     const primaryRecommendation = adapterHealth.primary
       ? toolRecommendations.find(item => item.tool === adapterHealth.primary.tool) || toolRecommendations[0]
       : toolRecommendations[0];
@@ -1297,6 +1298,28 @@ function createHealthUpdateCommandHelpers(deps) {
             : 'Add a register summary to source_refs to make later timer/pwm/comparator tools much easier to verify.'
         )
       );
+
+      checks.push(
+        createCheck(
+          'chip_support_reusability',
+          adapterReusability.status === 'reusable' ? 'pass' : adapterReusability.status === 'reusable-candidate' ? 'warn' : 'info',
+          adapterReusability.status === 'reusable'
+            ? 'Current chip support is reusable across projects'
+            : adapterReusability.status === 'reusable-candidate'
+              ? 'Current chip support looks reusable after review'
+              : 'Current chip support should stay project-local for now',
+          [
+            `status=${adapterReusability.status}`,
+            `action=${adapterReusability.recommended_action}`,
+            adapterReusability.primary_tool ? `tool=${adapterReusability.primary_tool}` : ''
+          ].filter(Boolean),
+          adapterReusability.status === 'reusable'
+            ? ''
+            : adapterReusability.status === 'reusable-candidate'
+              ? 'Keep this as a reusable candidate and let a maintainer review it before publishing into a shared catalog.'
+              : 'Finish the chip-support evidence and bindings locally before treating it as reusable.'
+        )
+      );
     }
 
     if (primaryToolExecution && primaryToolExecution.cli) {
@@ -1340,7 +1363,10 @@ function createHealthUpdateCommandHelpers(deps) {
       checks,
       startup_automation: buildStartupAutomationSummary(workspaceTrust),
       subagent_bridge: subagentBridge,
-      chip_support_health: adapterHealth,
+      chip_support_health: {
+        ...adapterHealth,
+        reusability: adapterReusability
+      },
       next_commands: nextCommands,
       quickstart: buildQuickstartHint(workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, projectRoot),
       bootstrap,

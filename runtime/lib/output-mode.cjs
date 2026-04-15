@@ -215,6 +215,7 @@ function relevantHealthCheckKeys(stage) {
         'chip_support_sync_project',
         'chip_support_match',
         'chip_support_quality',
+        'chip_support_reusability',
         'binding_quality',
         'register_summary_available'
       ];
