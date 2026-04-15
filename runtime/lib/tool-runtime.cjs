@@ -247,7 +247,7 @@ function loadExternalAdapter(rootDir, toolName) {
 
     const adapter = require(filePath);
     if (!adapter || typeof adapter.runTool !== 'function') {
-      throw new Error(`Tool adapter must export runTool(): ${filePath}`);
+      throw new Error(`Tool chip support module must export runTool(): ${filePath}`);
     }
 
     return {
