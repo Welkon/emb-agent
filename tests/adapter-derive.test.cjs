@@ -67,6 +67,8 @@ test('adapter derive creates extension registries and profile skeletons', () => 
 
     assert.equal(result.status, 'ok');
     assert.deepEqual(result.tools, ['timer-calc', 'pwm-calc', 'adc-scale']);
+    assert.equal(result.reusability.status, 'project-only');
+    assert.equal(result.reusability.recommended_action, 'keep-project-local');
     assert.equal(result.trust.safe_to_execute, false);
     assert.equal(result.trust.primary.tool, 'timer-calc');
     assert.equal(result.trust.primary.grade, 'draft');
@@ -224,6 +226,9 @@ test('adapter derive can infer family device chip and tools from project truth',
     assert.equal(result.family, 'scmcu-sc8f072');
     assert.equal(result.device, 'sc8f072');
     assert.equal(result.chip, 'sc8f072sop8');
+    assert.equal(result.reusability.status, 'reusable-candidate');
+    assert.equal(result.reusability.recommended_action, 'review-for-catalog');
+    assert.ok(result.reusability.reasons.includes('source-mode=project'));
     assert.equal(result.trust.primary.recommended_action, 'complete-chip-support');
     assert.deepEqual(result.tools, ['timer-calc', 'pwm-calc', 'adc-scale']);
     assert.equal(result.inferred.from_project, true);
@@ -449,6 +454,9 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
     assert.equal(result.family, 'padauk-pms150g');
     assert.equal(result.device, 'pms150g');
     assert.equal(result.chip, 'pms150gsop8');
+    assert.equal(result.reusability.status, 'reusable-candidate');
+    assert.equal(result.reusability.recommended_action, 'review-for-catalog');
+    assert.ok(result.reusability.reasons.includes('source-mode=doc'));
     assert.equal(result.trust.safe_to_execute, false);
     assert.equal(result.trust.primary.recommended_action, 'complete-chip-support');
     assert.deepEqual(
@@ -561,6 +569,8 @@ test('adapter generate can write emb-style output to arbitrary root', () => {
     assert.equal(result.target, 'path');
     assert.equal(result.output_root, tempOutput);
     assert.equal(result.emb_root, tempOutput);
+    assert.equal(result.reusability.status, 'reusable-candidate');
+    assert.equal(result.reusability.publish, 'maintainer-review-only');
     assert.equal(fs.existsSync(path.join(tempOutput, 'extensions', 'tools', 'families', 'scmcu-sc8f072.json')), true);
     assert.equal(fs.existsSync(path.join(tempOutput, 'extensions', 'tools', 'devices', 'sc8f072.json')), true);
     assert.equal(fs.existsSync(path.join(tempOutput, 'extensions', 'chips', 'profiles', 'sc8f072sop8.json')), true);
