@@ -1,6 +1,6 @@
 ---
 name: emb-ingest
-description: Write new facts into truth files or import external documents.
+description: Write new facts into truth files or import source documents.
 allowed-tools:
   - Read
   - Write
@@ -15,7 +15,7 @@ allowed-tools:
 
 ## Purpose
 
-- Write new facts into truth files or import external documents.
+- Write new facts into truth files or import source documents.
 - Pull durable project truth out of manuals, schematics, and other evidence when the answer is not already known.
 
 ## Usage

@@ -8,7 +8,7 @@ The core should own workflow, truth layers, state continuity, and tool contracts
 
 Core responsibilities:
 
-- `init`, `declare hardware`, `next`, and the default embedded workflow
+- `start`, `declare hardware`, `next`, and the default embedded workflow
 - project truth files such as `hw.yaml` and `req.yaml`
 - task manifests and task-local context
 - session continuity and pause/resume

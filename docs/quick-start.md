@@ -5,19 +5,10 @@ This is the shortest recommended path for getting emb-agent running in a real em
 ## 1. Install into the repo
 
 ```bash
-npx emb-agent --codex --local --developer your-name
+npx emb-agent
 ```
 
-Replace `--codex` with `--claude` or `--cursor` for the host you actually use. Local install also creates `AGENTS.md` and bootstraps `.emb-agent/`.
-
-If a host skill or external driver needs a fixed machine-readable protocol, prefer the fixed driver commands:
-
-```bash
-node ./.emb-agent/runtime/bin/emb-agent.cjs external start
-node ./.emb-agent/runtime/bin/emb-agent.cjs external next
-node ./.emb-agent/runtime/bin/emb-agent.cjs external health
-node ./.emb-agent/runtime/bin/emb-agent.cjs external dispatch-next
-```
+The installer will guide you through runtime selection and local setup. It also creates `AGENTS.md` and bootstraps `.emb-agent/`.
 
 Use `--profile workflow` only if you are authoring scaffold assets rather than using emb-agent day to day.
 
@@ -29,7 +20,7 @@ For Codex, hooks may still require manual enablement in `~/.codex/config.toml`. 
 start
 ```
 
-`start` is the single repository entrypoint. On the first run it initializes the repo automatically, then tells you whether the shortest path is `resume`, a bootstrap step, `task add`, or `next`.
+Start with `start`. On the first run it initializes the repo automatically, then tells you the shortest next step.
 
 ## 3. If the MCU is already known
 
@@ -76,7 +67,7 @@ Review the result, apply staged truth if needed, then return to `next`.
 
 The public command surface is intentionally small:
 
-- Start: `start`, `init`, `ingest`, `next`, `task`
+- Start: `start`, `ingest`, `next`, `task`
 - Execute: `scan`, `plan`, `do`, `debug`
 - Close: `review`, `verify`, `pause`, `resume`
 
