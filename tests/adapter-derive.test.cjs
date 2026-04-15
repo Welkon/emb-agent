@@ -70,8 +70,8 @@ test('adapter derive creates extension registries and profile skeletons', () => 
     assert.equal(result.trust.safe_to_execute, false);
     assert.equal(result.trust.primary.tool, 'timer-calc');
     assert.equal(result.trust.primary.grade, 'draft');
-    assert.equal(result.trust.primary.recommended_action, 'implement-adapter');
-    assert.ok(result.notes.some(item => item.includes('draft adapter')));
+    assert.equal(result.trust.primary.recommended_action, 'complete-chip-support');
+    assert.ok(result.notes.some(item => item.includes('draft chip support')));
     assert.ok(result.notes.some(item => item.includes('do not treat tool output as ground truth')));
 
     const toolRegistry = JSON.parse(
@@ -131,14 +131,14 @@ test('adapter derive creates extension registries and profile skeletons', () => 
     assert.equal(deviceProfile.bindings['pwm-calc'].algorithm, 'sc8f072-pwm-calc');
     assert.equal(deviceProfile.bindings['adc-scale'].draft, true);
     assert.equal(deviceProfile.bindings['adc-scale'].algorithm, 'sc8f072-adc-scale');
-    assert.equal(routeResult.status, 'draft-adapter');
-    assert.equal(routeResult.implementation, 'external-adapter-draft');
+    assert.equal(routeResult.status, 'draft-chip-support');
+    assert.equal(routeResult.implementation, 'external-chip-support-draft');
     assert.equal(routeResult.binding.algorithm, 'sc8f072-timer-calc');
-    assert.equal(pwmRouteResult.status, 'draft-adapter');
-    assert.equal(pwmRouteResult.implementation, 'external-adapter-draft');
+    assert.equal(pwmRouteResult.status, 'draft-chip-support');
+    assert.equal(pwmRouteResult.implementation, 'external-chip-support-draft');
     assert.equal(pwmRouteResult.binding.algorithm, 'sc8f072-pwm-calc');
-    assert.equal(adcRouteResult.status, 'draft-adapter');
-    assert.equal(adcRouteResult.implementation, 'external-adapter-draft');
+    assert.equal(adcRouteResult.status, 'draft-chip-support');
+    assert.equal(adcRouteResult.implementation, 'external-chip-support-draft');
     assert.equal(adcRouteResult.binding.algorithm, 'sc8f072-adc-scale');
     assert.equal(chipProfile.packages[0].name, 'sop8');
     assert.equal(chipProfile.packages[0].pin_count, 8);
@@ -224,7 +224,7 @@ test('adapter derive can infer family device chip and tools from project truth',
     assert.equal(result.family, 'scmcu-sc8f072');
     assert.equal(result.device, 'sc8f072');
     assert.equal(result.chip, 'sc8f072sop8');
-    assert.equal(result.trust.primary.recommended_action, 'implement-adapter');
+    assert.equal(result.trust.primary.recommended_action, 'complete-chip-support');
     assert.deepEqual(result.tools, ['timer-calc', 'pwm-calc', 'adc-scale']);
     assert.equal(result.inferred.from_project, true);
     assert.equal(result.inferred.source_mode, 'project');
@@ -450,7 +450,7 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
     assert.equal(result.device, 'pms150g');
     assert.equal(result.chip, 'pms150gsop8');
     assert.equal(result.trust.safe_to_execute, false);
-    assert.equal(result.trust.primary.recommended_action, 'implement-adapter');
+    assert.equal(result.trust.primary.recommended_action, 'complete-chip-support');
     assert.deepEqual(
       result.tools,
       ['timer-calc', 'pwm-calc', 'adc-scale', 'comparator-threshold']
@@ -481,8 +481,8 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
     assert.equal(deviceProfile.bindings['timer-calc'].params.default_timer, 'Timer16');
     assert.equal(deviceProfile.bindings['comparator-threshold'].draft, true);
     assert.equal(deviceProfile.bindings['adc-scale'].draft, true);
-    assert.equal(comparatorRouteResult.status, 'draft-adapter');
-    assert.equal(comparatorRouteResult.implementation, 'external-adapter-draft');
+    assert.equal(comparatorRouteResult.status, 'draft-chip-support');
+    assert.equal(comparatorRouteResult.implementation, 'external-chip-support-draft');
     assert.equal(comparatorRouteResult.binding.algorithm, 'pms150g-comparator-threshold');
   } finally {
     process.chdir(currentCwd);

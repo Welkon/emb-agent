@@ -1,6 +1,7 @@
 'use strict';
 
 const adapterQualityHelpers = require('./adapter-quality.cjs');
+const chipSupportStatusHelpers = require('./chip-support-status.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
@@ -406,23 +407,24 @@ function createToolSuggestionHelpers(deps) {
     const trustSummary = trust
       ? `Trust ${trust.score}/100 (${trust.grade})`
       : '';
+    const normalizedStatus = chipSupportStatusHelpers.normalizeChipSupportStatus(tool.status);
 
-    if (tool.status === 'draft-adapter') {
+    if (normalizedStatus === 'draft-chip-support') {
       const base = bindingInfo.binding
-        ? 'A draft route and profile binding have been generated, but the route still lacks a real formula implementation.'
-        : 'A draft route has been generated, but there is no matching binding yet; add device/family bindings first.';
+        ? 'A draft chip-support route and profile binding have been generated, but the route still lacks a real formula implementation.'
+        : 'A draft chip-support route has been generated, but there is no matching binding yet; add device/family bindings first.';
       return trustSummary ? `${base} ${trustSummary}` : base;
     }
 
-    if (tool.status !== 'ready') {
+    if (normalizedStatus !== 'ready') {
       const base = bindingInfo.binding
-        ? 'A profile binding was identified, but runtime still has no external adapter; install or sync the adapter repository first.'
-        : 'Only the abstract tool spec exists right now; an external adapter is required to execute the tool.';
+        ? 'A profile binding was identified, but runtime still has no installed chip support; install or sync the chip support package first.'
+        : 'Only the abstract tool spec exists right now; installed chip support is required to execute the tool.';
       return trustSummary ? `${base} ${trustSummary}` : base;
     }
 
     if (!bindingInfo.binding) {
-      const base = 'An external adapter exists, but the current chip/device/family still does not declare an executable binding.';
+      const base = 'Installed chip support exists, but the current chip/device/family still does not declare an executable binding.';
       return trustSummary ? `${base} ${trustSummary}` : base;
     }
 
@@ -431,12 +433,14 @@ function createToolSuggestionHelpers(deps) {
   }
 
   function buildRecommendationStatus(tool, bindingInfo) {
-    if (tool.status === 'draft-adapter') {
-      return 'draft-adapter';
+    const normalizedStatus = chipSupportStatusHelpers.normalizeChipSupportStatus(tool.status);
+
+    if (normalizedStatus === 'draft-chip-support') {
+      return 'draft-chip-support';
     }
 
-    if (tool.status !== 'ready') {
-      return 'adapter-required';
+    if (normalizedStatus !== 'ready') {
+      return 'chip-support-required';
     }
 
     return bindingInfo.binding ? 'ready' : 'route-required';
@@ -484,10 +488,10 @@ function createToolSuggestionHelpers(deps) {
           const spec = toolCatalog.loadToolSpec(ROOT, toolName);
           const adapter = toolRuntime.loadExternalAdapter(ROOT, toolName);
           const adapterStatus = adapter
-            ? (adapter.adapter && adapter.adapter.draft === true ? 'draft-adapter' : 'ready')
-            : 'adapter-required';
+            ? (adapter.adapter && adapter.adapter.draft === true ? 'draft-chip-support' : 'ready')
+            : 'chip-support-required';
           const implementation = adapter
-            ? (adapter.adapter && adapter.adapter.draft === true ? 'external-adapter-draft' : 'external-adapter')
+            ? (adapter.adapter && adapter.adapter.draft === true ? 'external-chip-support-draft' : 'external-chip-support')
             : 'abstract-only';
 
           return {

@@ -264,7 +264,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
       '--target-us',
       '560'
     ]);
-    assert.equal(timerResult.status, 'adapter-required');
+    assert.equal(timerResult.status, 'chip-support-required');
     const pwmResult = installedCli.toolRuntime.runTool(runtimeRoot, 'pwm-calc', [
       '--family',
       'vendor-family',
@@ -273,7 +273,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
       '--target-duty',
       '50'
     ]);
-    assert.equal(pwmResult.status, 'adapter-required');
+    assert.equal(pwmResult.status, 'chip-support-required');
     installedCli.main(['focus', 'set', 'review ota rollback path']);
     installedCli.main(['prefs', 'set', 'review_mode', 'always']);
     installedCli.main(['profile', 'set', 'rtos-iot']);

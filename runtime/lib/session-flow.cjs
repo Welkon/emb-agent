@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const runtimeHostHelpers = require('./runtime-host.cjs');
+const chipSupportStatusHelpers = require('./chip-support-status.cjs');
 const permissionGateHelpers = require('./permission-gates.cjs');
 const projectInputState = require('./project-input-state.cjs');
 const qualityGateHelpers = require('./quality-gates.cjs');
@@ -662,11 +663,11 @@ function createSessionFlowHelpers(deps) {
   }
 
   function getToolRecommendationScore(item) {
-    const status = item && item.status ? item.status : '';
+    const status = chipSupportStatusHelpers.normalizeChipSupportStatus(item && item.status ? item.status : '');
     if (status === 'ready') return 0;
-    if (status === 'draft-adapter') return 1;
+    if (status === 'draft-chip-support') return 1;
     if (status === 'route-required') return 2;
-    if (status === 'adapter-required') return 3;
+    if (status === 'chip-support-required') return 3;
     return 9;
   }
 

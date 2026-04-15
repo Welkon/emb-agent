@@ -1,5 +1,7 @@
 'use strict';
 
+const chipSupportStatusHelpers = require('./chip-support-status.cjs');
+
 function hasArrayItems(value) {
   return Array.isArray(value) && value.length > 0;
 }
@@ -91,11 +93,11 @@ function buildRecommendedAction(input) {
   if (!chipProfile) {
     return 'map-chip-profile';
   }
-  if (toolStatus === 'adapter-required') {
-    return 'sync-adapter';
+  if (chipSupportStatusHelpers.normalizeChipSupportStatus(toolStatus) === 'chip-support-required') {
+    return 'install-chip-support';
   }
-  if (toolStatus === 'draft-adapter' || (bindingInfo.binding && bindingInfo.binding.draft === true)) {
-    return 'implement-adapter';
+  if (chipSupportStatusHelpers.normalizeChipSupportStatus(toolStatus) === 'draft-chip-support' || (bindingInfo.binding && bindingInfo.binding.draft === true)) {
+    return 'complete-chip-support';
   }
   if (!bindingInfo.binding) {
     return 'add-binding';
@@ -121,8 +123,8 @@ function evaluateToolRecommendationTrust(input) {
     : { source: 'none', binding: null };
   const tool = input && input.tool ? input.tool : {};
   const toolName = String(input && input.toolName ? input.toolName : tool.name || '').trim();
-  const toolStatus = String(tool.status || '').trim() || 'adapter-required';
-  const implementation = String(tool.implementation || '').trim();
+  const toolStatus = chipSupportStatusHelpers.normalizeChipSupportStatus(String(tool.status || '').trim() || 'chip-support-required');
+  const implementation = chipSupportStatusHelpers.normalizeChipSupportImplementation(String(tool.implementation || '').trim());
   const signals = [];
   const gaps = [];
   let score = 0;
@@ -234,16 +236,16 @@ function evaluateToolRecommendationTrust(input) {
   if (toolStatus === 'ready') {
     score += 14;
     uniquePush(signals, 'runtime-adapter-ready');
-  } else if (toolStatus === 'draft-adapter') {
+  } else if (toolStatus === 'draft-chip-support') {
     score += 4;
     uniquePush(signals, 'runtime-draft-adapter');
-    uniquePush(gaps, 'runtime adapter is still draft');
+    uniquePush(gaps, 'runtime chip support is still draft');
   } else {
     score -= 8;
-    uniquePush(gaps, 'missing executable runtime adapter');
+    uniquePush(gaps, 'missing executable chip support');
   }
 
-  if (implementation === 'external-adapter') {
+  if (implementation === 'external-chip-support') {
     score += 2;
   }
   if (tool.adapter_path) {

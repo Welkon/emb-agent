@@ -532,8 +532,8 @@ test('orchestrator keeps tool step non-required when adapter trust is not yet ex
         '    const options = context.parseLongOptions(context.tokens || []);',
         '    return {',
         "      tool: context.toolName,",
-        "      status: 'draft-adapter',",
-        "      implementation: 'external-adapter-draft',",
+        "      status: 'draft-chip-support',",
+        "      implementation: 'external-chip-support-draft',",
         '      inputs: { options }',
         '    };',
         '  }',
@@ -549,16 +549,16 @@ test('orchestrator keeps tool step non-required when adapter trust is not yet ex
     assert.equal(next.health.chip_support_health.primary.tool, 'timer-calc');
     assert.equal(next.health.chip_support_health.primary.executable, false);
     assert.ok(next.next_actions.some(item => item.includes('Chip support trust reminder')));
-    assert.ok(next.next_actions.some(item => item.includes('implement-adapter')));
+    assert.ok(next.next_actions.some(item => item.includes('complete-chip-support')));
 
     assert.equal(orchestrator.resolved_action, 'scan');
     assert.equal(orchestrator.workflow.tool_first, false);
-    assert.equal(orchestrator.chip_support_health.primary.recommended_action, 'implement-adapter');
+    assert.equal(orchestrator.chip_support_health.primary.recommended_action, 'complete-chip-support');
     const runToolStep = orchestrator.orchestrator_steps.find(item => item.id === 'run-tool');
     assert.ok(runToolStep);
     assert.equal(runToolStep.required, false);
     assert.equal(runToolStep.trust.executable, false);
-    assert.equal(runToolStep.recommended_action, 'implement-adapter');
+    assert.equal(runToolStep.recommended_action, 'complete-chip-support');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

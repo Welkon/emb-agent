@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const runtime = require('./runtime.cjs');
 const toolCatalog = require('./tool-catalog.cjs');
+const chipSupportStatusHelpers = require('./chip-support-status.cjs');
 const permissionGateHelpers = require('./permission-gates.cjs');
 
 const HIGH_RISK_KEYWORDS = [
@@ -265,7 +266,7 @@ function buildAdapterRequiredResult(rootDir, toolName, tokens) {
 
   return {
     tool: spec.name,
-    status: 'adapter-required',
+    status: 'chip-support-required',
     implementation: 'abstract-only',
     inputs: {
       raw_tokens: tokens || [],
@@ -274,7 +275,7 @@ function buildAdapterRequiredResult(rootDir, toolName, tokens) {
     adapter_search_paths: searchPaths,
     notes: [
       'emb-agent core only provides abstract tool specs and does not include any vendor family/device/chip bindings.',
-      'To run this tool for real, provide an external adapter under runtime or the project directory.',
+      'To run this tool for real, install chip support under runtime or the project directory.',
       'Vendor/chip-specific formulas, register boundaries, and evidence sources should live in separate extensions rather than emb core.'
     ]
   };
@@ -322,14 +323,14 @@ function runTool(rootDir, toolName, tokens) {
     );
   }
 
-  const result = loaded.adapter.runTool({
+  const result = chipSupportStatusHelpers.normalizeToolExecutionResult(loaded.adapter.runTool({
     rootDir,
     toolName: name,
     tokens: tokenList,
     spec: toolCatalog.loadToolSpec(rootDir, name),
     adapterPath: loaded.file_path,
     parseLongOptions
-  });
+  }));
 
   return permissionGateHelpers.applyPermissionDecision(
     attachPermissionGates(attachHighRiskClarity(result, name, tokenList)),

@@ -29,7 +29,7 @@ async function captureStdout(run) {
   return stdout;
 }
 
-test('tool runtime stays abstract-only without external adapter', () => {
+test('tool runtime stays abstract-only without installed chip support', () => {
   const result = toolRuntime.runTool(runtimeRoot, 'timer-calc', [
     '--family',
     'vendor-family',
@@ -39,14 +39,14 @@ test('tool runtime stays abstract-only without external adapter', () => {
     '560'
   ]);
 
-  assert.equal(result.status, 'adapter-required');
+  assert.equal(result.status, 'chip-support-required');
   assert.equal(result.implementation, 'abstract-only');
   assert.equal(result.tool, 'timer-calc');
   assert.equal(result.inputs.options.family, 'vendor-family');
   assert.ok(result.adapter_search_paths.some(item => item.endsWith('timer-calc.cjs')));
 });
 
-test('cli tool run emits adapter-required json when no adapter exists', async () => {
+test('cli tool run emits chip-support-required json when no support exists', async () => {
   const stdout = await captureStdout(() =>
     cli.main([
       'tool',
@@ -60,7 +60,7 @@ test('cli tool run emits adapter-required json when no adapter exists', async ()
   );
   const result = JSON.parse(stdout);
 
-  assert.equal(result.status, 'adapter-required');
+  assert.equal(result.status, 'chip-support-required');
   assert.equal(result.implementation, 'abstract-only');
   assert.equal(result.tool, 'timer-calc');
 });
@@ -94,7 +94,7 @@ test('tool runtime allows confirmed high-risk execution to continue to normal re
     '--force'
   ]);
 
-  assert.equal(result.status, 'adapter-required');
+  assert.equal(result.status, 'chip-support-required');
   assert.ok(result.permission_decision);
   assert.equal(result.permission_decision.decision, 'allow');
   assert.equal(result.permission_decision.reason_code, 'explicit-confirmed');
@@ -102,7 +102,7 @@ test('tool runtime allows confirmed high-risk execution to continue to normal re
   assert.equal(result.permission_gates[0].kind, 'explicit-confirmation');
 });
 
-test('pwm-calc also requires external adapter by default', () => {
+test('pwm-calc also requires installed chip support by default', () => {
   const result = toolRuntime.runTool(runtimeRoot, 'pwm-calc', [
     '--family',
     'vendor-family',
@@ -112,12 +112,12 @@ test('pwm-calc also requires external adapter by default', () => {
     '50'
   ]);
 
-  assert.equal(result.status, 'adapter-required');
+  assert.equal(result.status, 'chip-support-required');
   assert.equal(result.tool, 'pwm-calc');
   assert.equal(result.inputs.options.family, 'vendor-family');
 });
 
-test('tool runtime loads project external adapter when available', () => {
+test('tool runtime loads project chip support when available', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-tool-runtime-'));
   const currentCwd = process.cwd();
   const sharedPath = path.join(tempProject, '.emb-agent', 'adapters', 'core', 'shared.cjs');
@@ -153,7 +153,7 @@ test('tool runtime loads project external adapter when available', () => {
         '    return {',
         "      tool: context.toolName,",
         "      status: 'ok',",
-        "      implementation: 'external-adapter',",
+        "      implementation: 'external-chip-support',",
         '      adapter_path: context.adapterPath,',
         '      spec_name: context.spec.name,',
         '      options',
@@ -179,7 +179,7 @@ test('tool runtime loads project external adapter when available', () => {
     ]);
 
     assert.equal(result.status, 'ok');
-    assert.equal(result.implementation, 'external-adapter');
+    assert.equal(result.implementation, 'external-chip-support');
     assert.equal(result.adapter_path, adapterPath);
     assert.equal(result.spec_name, 'timer-calc');
     assert.equal(result.options.family, 'vendor-family');
@@ -347,7 +347,7 @@ test('generated draft timer route can execute first-pass timer search', () => {
     ]);
 
     assert.equal(result.status, 'ok');
-    assert.equal(result.implementation, 'external-adapter-draft');
+    assert.equal(result.implementation, 'external-chip-support-draft');
     assert.equal(result.timer.name, 'Timer16');
     assert.equal(result.best_candidate.actual_us, 64);
     assert.equal(result.best_candidate.error_us, 0);
@@ -491,7 +491,7 @@ test('generated draft pwm route can execute first-pass pwm search', () => {
     ]);
 
     assert.equal(result.status, 'ok');
-    assert.equal(result.implementation, 'external-adapter-draft');
+    assert.equal(result.implementation, 'external-chip-support-draft');
     assert.equal(result.pwm.name, 'PWM');
     assert.equal(result.pwm.output_pin, 'PA3');
     assert.equal(result.best_candidate.actual_hz, 3906.25);
@@ -642,7 +642,7 @@ test('generated draft adc route can execute first-pass adc scaling', () => {
     ]);
 
     assert.equal(result.status, 'ok');
-    assert.equal(result.implementation, 'external-adapter-draft');
+    assert.equal(result.implementation, 'external-chip-support-draft');
     assert.equal(result.adc.channel, 'PA0');
     assert.equal(result.adc.reference_source, 'vdd');
     assert.equal(result.adc.reference_voltage, 5);
@@ -792,7 +792,7 @@ test('generated draft comparator route can execute first-pass threshold feasibil
     ]);
 
     assert.equal(result.status, 'ok');
-    assert.equal(result.implementation, 'external-adapter-draft');
+    assert.equal(result.implementation, 'external-chip-support-draft');
     assert.equal(result.comparator.positive_source, 'PA0');
     assert.equal(result.comparator.negative_source, 'vref_ladder');
     assert.equal(result.comparator.target_threshold_v, 2.5);
