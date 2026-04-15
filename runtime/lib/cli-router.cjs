@@ -165,14 +165,10 @@ function createCliRouter(deps) {
       }
 
       if (subcmd === 'next') {
-        const session = updateSession(current => {
+        updateSession(current => {
           current.last_command = 'next';
         });
-        const protocol = buildExternalNextProtocol();
-        if (protocol && protocol.next) {
-          protocol.next.last_command = session.last_command || '';
-        }
-        emitJson(protocol);
+        emitJson(buildExternalNextProtocol());
         return;
       }
 

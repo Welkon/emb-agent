@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 
 const runtimeHostHelpers = require('./runtime-host.cjs');
-const externalAgentHelpers = require('./external-agent.cjs');
 const chipSupportStatusHelpers = require('./chip-support-status.cjs');
 const permissionGateHelpers = require('./permission-gates.cjs');
 const projectInputState = require('./project-input-state.cjs');
@@ -82,10 +81,6 @@ function createSessionFlowHelpers(deps) {
     enrichWithToolSuggestions,
     getActiveTask
   } = deps;
-  const externalAgent = externalAgentHelpers.createExternalAgentHelpers({
-    runtime,
-    runtimeHostHelpers
-  });
   const blankSelectionModeCache = new Map();
 
   function isBlankProjectSelectionMode(resolved) {
@@ -1206,15 +1201,6 @@ function createSessionFlowHelpers(deps) {
         schematic_analysis: guidance.schematic_analysis,
         tool_recommendation: guidance.primary_tool_recommendation
       },
-      external_agent: externalAgent.buildNextDriver(RUNTIME_HOST, {
-        next: {
-          command: nextCommand.command,
-          cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [nextCommand.command])
-        },
-        source_of_truth_files: activeTask
-          ? [activeTask.path || '', activeTask.worktree_path || '']
-          : []
-      }),
       workflow_stage: workflowStage,
       context_hygiene: contextHygiene,
       next_actions: nextActions
@@ -1307,12 +1293,6 @@ function createSessionFlowHelpers(deps) {
         resolved.session && resolved.session.diagnostics && resolved.session.diagnostics.delegation_runtime
           ? resolved.session.diagnostics.delegation_runtime
           : null,
-      external_agent: externalAgent.buildStatusDriver(runtimeHost, {
-        next_command: handoff ? 'start' : 'next',
-        source_of_truth_files: activeTask
-          ? [activeTask.path || '', activeTask.worktree_path || '']
-          : []
-      }),
       memory_summary: buildMemorySummaryView(memorySummary),
       quality_gates: qualityGates,
       permission_gates: permissionGates,

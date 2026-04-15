@@ -398,7 +398,7 @@ function buildExternalAgentGuide() {
     '## Preferred CLI Resolution',
     '',
     `1. If \`./${runtime.getProjectAssetRelativePath('runtime', 'bin', 'emb-agent.cjs')}\` exists, prefer: \`node ./${runtime.getProjectAssetRelativePath('runtime', 'bin', 'emb-agent.cjs')}\``,
-    '2. Otherwise read the current `external_agent.runtime_cli` field from `start` or `next` output and use that exact CLI prefix.',
+    '2. Otherwise run `external start` once and use the returned `runtime_cli` value as the exact CLI prefix.',
     '',
     '## Default Loop',
     '',

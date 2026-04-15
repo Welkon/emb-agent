@@ -1,7 +1,6 @@
 'use strict';
 
 const projectInputState = require('./project-input-state.cjs');
-const externalAgentHelpers = require('./external-agent.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 
 function createCliEntryHelpers(deps) {
@@ -23,23 +22,6 @@ function createCliEntryHelpers(deps) {
     ingestDocCli,
     ingestSchematicCli
   } = deps;
-  const externalAgent = externalAgentHelpers.createExternalAgentHelpers({
-    runtime,
-    runtimeHostHelpers
-  });
-
-  function resolveExternalRuntimeHost() {
-    if (!ROOT || !runtime || typeof runtime.getProjectAssetRelativePath !== 'function') {
-      return {
-        name: 'external',
-        label: 'External Agent',
-        cliCommand: 'node ./.emb-agent/runtime/bin/emb-agent.cjs'
-      };
-    }
-
-    return runtimeHostHelpers.resolveRuntimeHost(ROOT);
-  }
-
   function parseScalar(content, key) {
     const line = String(content || '')
       .split(/\r?\n/)
@@ -880,15 +862,7 @@ function createCliEntryHelpers(deps) {
         active_packs: session.active_packs,
         developer: session.developer,
         bootstrap_task: guidance.bootstrap_task || null,
-        bootstrap,
-        external_agent: externalAgent.buildInitDriver(resolveExternalRuntimeHost(), {
-          bootstrap,
-          source_of_truth_files: [
-            runtime.getProjectAssetRelativePath('project.json'),
-            runtime.getProjectAssetRelativePath('hw.yaml'),
-            runtime.getProjectAssetRelativePath('req.yaml')
-          ]
-        })
+        bootstrap
       };
     }
 
@@ -911,14 +885,6 @@ function createCliEntryHelpers(deps) {
       init_alias: aliasUsed || 'init',
       bootstrap_task: guidance.bootstrap_task || null,
       bootstrap,
-      external_agent: externalAgent.buildInitDriver(resolveExternalRuntimeHost(), {
-        bootstrap,
-        source_of_truth_files: [
-          runtime.getProjectAssetRelativePath('project.json'),
-          runtime.getProjectAssetRelativePath('hw.yaml'),
-          runtime.getProjectAssetRelativePath('req.yaml')
-        ]
-      }),
       session: {
         project_profile: session.project_profile,
         active_packs: session.active_packs,

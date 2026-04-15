@@ -41,13 +41,6 @@ test('applyOutputMode builds brief next context payload', () => {
         cli_draft: 'tool run timer-calc --target-us 500'
       }
     },
-    external_agent: {
-      protocol_file: '.emb-agent/external-agent.md',
-      runtime_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs',
-      preferred_local_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
-      recommended_command: 'plan',
-      recommended_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs plan'
-    },
     workflow_stage: {
       name: 'planning',
       why: 'complex task',
@@ -126,8 +119,7 @@ test('applyOutputMode builds brief next context payload', () => {
   assert.equal(output.context_hygiene.compress_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress');
   assert.equal(output.next_actions.length, 5);
   assert.equal(output.tool_recommendation.tool, 'timer-calc');
-  assert.equal(output.external_agent.protocol_file, '.emb-agent/external-agent.md');
-  assert.equal(output.external_agent.recommended_command, 'plan');
+  assert.equal(output.external_agent, undefined);
 });
 
 test('applyOutputMode builds brief start context payload with external driver hints', () => {
@@ -158,21 +150,13 @@ test('applyOutputMode builds brief start context payload with external driver hi
       command: 'scan',
       reason: 'selection mode is already closed',
       cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs scan'
-    },
-    external_agent: {
-      protocol_file: '.emb-agent/external-agent.md',
-      runtime_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs',
-      preferred_local_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
-      recommended_command: 'task add <summary>',
-      recommended_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs task add <summary>'
     }
   }, true);
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.entry, 'start');
   assert.equal(output.immediate.command, 'task add <summary>');
-  assert.equal(output.external_agent.protocol_file, '.emb-agent/external-agent.md');
-  assert.equal(output.external_agent.preferred_local_cli, 'node ./.emb-agent/runtime/bin/emb-agent.cjs');
+  assert.equal(output.external_agent, undefined);
 });
 
 test('applyOutputMode builds brief init output with external driver hints', () => {
@@ -190,20 +174,13 @@ test('applyOutputMode builds brief init output with external driver hints', () =
       stage: 'define-project-constraints',
       command: 'next',
       summary: 'Project facts are still open.'
-    },
-    external_agent: {
-      protocol_file: '.emb-agent/external-agent.md',
-      runtime_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
-      preferred_local_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
-      recommended_command: 'next',
-      recommended_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs next'
     }
   }, true);
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.initialized, true);
   assert.equal(output.bootstrap.command, 'next');
-  assert.equal(output.external_agent.recommended_cli, 'node ./.emb-agent/runtime/bin/emb-agent.cjs next');
+  assert.equal(output.external_agent, undefined);
 });
 
 test('applyOutputMode builds brief tool output with permission gates', () => {
@@ -309,25 +286,17 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
   assert.equal(dispatchOutput.delegation_runtime.review.redispatch_required, false);
 });
 
-test('applyOutputMode keeps external driver summary in brief status output', () => {
+test('applyOutputMode omits external driver summary in brief status output', () => {
   const output = outputMode.applyOutputMode({
     session_version: 1,
     runtime_host: 'external',
     project_root: '/tmp/demo',
     project_profile: 'baremetal-8bit',
-    context_hygiene: { level: 'ok' },
-    external_agent: {
-      protocol_file: '.emb-agent/external-agent.md',
-      runtime_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
-      preferred_local_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs',
-      recommended_command: 'next',
-      recommended_cli: 'node ./.emb-agent/runtime/bin/emb-agent.cjs next'
-    }
+    context_hygiene: { level: 'ok' }
   }, true);
 
   assert.equal(output.output_mode, 'brief');
-  assert.equal(output.external_agent.protocol_file, '.emb-agent/external-agent.md');
-  assert.equal(output.external_agent.recommended_command, 'next');
+  assert.equal(output.external_agent, undefined);
 });
 
 test('applyOutputMode hides internal trust details in brief health/bootstrap outputs', () => {

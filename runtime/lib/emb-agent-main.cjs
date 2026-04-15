@@ -927,14 +927,6 @@ function buildStartContext() {
           cli: nextContext.next.cli
         }
       : null,
-    external_agent: externalAgent.buildStartDriver(getRuntimeHost(), {
-      immediate: {
-        command: immediateCommand
-      },
-      source_of_truth_files: activeTask
-        ? [activeTask.path || '', activeTask.worktree_path || '']
-        : []
-    }),
     resume: resumeContext
       ? {
           context_hygiene: resumeContext.context_hygiene,
@@ -946,15 +938,15 @@ function buildStartContext() {
 }
 
 function buildExternalStartProtocol() {
-  return externalAgent.buildStartProtocol(buildStartContext());
+  return externalAgent.buildStartProtocol(getRuntimeHost(), buildStartContext());
 }
 
 function buildExternalNextProtocol() {
-  return externalAgent.buildNextProtocol(buildNextContext());
+  return externalAgent.buildNextProtocol(getRuntimeHost(), buildNextContext());
 }
 
 function buildExternalStatusProtocol() {
-  return externalAgent.buildStatusProtocol(buildStatus());
+  return externalAgent.buildStatusProtocol(getRuntimeHost(), buildStatus());
 }
 
 function buildExternalHealthProtocol() {
@@ -967,7 +959,7 @@ function buildExternalDispatchNextProtocol() {
 
 function buildExternalInitProtocol(tokens, aliasUsed) {
   const initialized = runInitCommand(tokens, aliasUsed);
-  return initialized ? externalAgent.buildInitProtocol(initialized) : null;
+  return initialized ? externalAgent.buildInitProtocol(getRuntimeHost(), initialized) : null;
 }
 
 const referenceLookupCli = {

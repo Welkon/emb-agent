@@ -210,11 +210,9 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const startBeforeContext = installedCli.buildStartContext();
     assert.equal(nextBeforeContext.next.command, 'scan');
     assert.equal(nextBeforeContext.next.gated_by_health, false);
-    assert.equal(nextBeforeContext.external_agent.protocol_file, '.emb-agent/external-agent.md');
-    assert.match(nextBeforeContext.external_agent.recommended_cli, / scan$/);
-    assert.equal(statusBeforeContext.external_agent.protocol_file, '.emb-agent/external-agent.md');
-    assert.match(statusBeforeContext.external_agent.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
-    assert.equal(startBeforeContext.external_agent.protocol_file, '.emb-agent/external-agent.md');
+    assert.equal(nextBeforeContext.external_agent, undefined);
+    assert.equal(statusBeforeContext.external_agent, undefined);
+    assert.equal(startBeforeContext.external_agent, undefined);
     assert.match(startBeforeContext.immediate.cli, / next$/);
     assert.ok(nextBeforeContext.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(nextBeforeContext.workflow_stage.name, 'selection');
