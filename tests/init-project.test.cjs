@@ -71,7 +71,7 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.deepEqual(projectConfig.arch_review.trigger_patterns, []);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'docs')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), true);
@@ -93,15 +93,11 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'RELEASE-NOTES.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'DEBUG-NOTES.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), false);
-    assert.match(
-      fs.readFileSync(path.join(tempProject, '.emb-agent', 'external-agent.md'), 'utf8'),
-      /Always enter through `start` first\./
-    );
     assert.equal(bootstrapTask.title, 'Bootstrap project notes');
     assert.equal(bootstrapTask.dev_type, 'docs');
     assert.ok(bootstrapTask.relatedFiles.includes('.emb-agent/hw.yaml'));
     assert.ok(bootstrapTask.relatedFiles.includes('.emb-agent/req.yaml'));
-    assert.ok(bootstrapTask.relatedFiles.includes('.emb-agent/external-agent.md'));
+    assert.ok(!bootstrapTask.relatedFiles.includes('.emb-agent/external-agent.md'));
     assert.ok(bootstrapTask.relatedFiles.includes('docs/MCU-FOUNDATION-CHECKLIST.md'));
     assert.ok(bootstrapTask.relatedFiles.includes('docs/CONNECTIVITY.md'));
     assert.ok(bootstrapTask.relatedFiles.includes('docs/RELEASE-NOTES.md'));

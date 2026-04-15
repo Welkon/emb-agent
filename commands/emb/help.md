@@ -15,7 +15,6 @@ Output the emb-agent help summary below and nothing else.
 
 - Run these as Codex, Claude Code, or Cursor session commands.
 - Use `start` first. It is the single repository entrypoint.
-- Treat `init` as manual bootstrap or recovery, not the default first step after a local install.
 - Use `next` for the default continuation once bootstrap and task context are in place.
 - Use `help advanced` or `help --all` only when you need the full installed surface.
 
@@ -26,7 +25,6 @@ The public command surface is intentionally small.
 ### Start
 
 - `$emb-start`
-- `$emb-init`
 - `$emb-ingest`
 - `$emb-next`
 - `$emb-task`

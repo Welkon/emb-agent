@@ -27,7 +27,7 @@ async function captureCliJson(args) {
   return JSON.parse(stdout);
 }
 
-test('external start exposes minimal driver protocol before init', async () => {
+test('external start auto-initializes and exposes the next driver step', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-external-start-'));
   const currentCwd = process.cwd();
 
@@ -39,11 +39,12 @@ test('external start exposes minimal driver protocol before init', async () => {
     assert.equal(start.protocol, 'emb-agent.external/1');
     assert.equal(start.entrypoint, 'start');
     assert.match(start.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
-    assert.equal(start.status, 'needs-init');
-    assert.match(start.next.cli, / init$/);
+    assert.equal(start.status, 'ready');
+    assert.match(start.next.cli, / next$/);
     assert.equal('initialized' in start, false);
     assert.equal('immediate' in start, false);
     assert.equal('bootstrap' in start, false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), false);
   } finally {
     process.chdir(currentCwd);
   }
@@ -61,7 +62,7 @@ test('external health exposes fixed bootstrap protocol before init', async () =>
     assert.equal(health.protocol, 'emb-agent.external/1');
     assert.equal(health.entrypoint, 'health');
     assert.match(health.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
-    assert.match(health.next.cli, / init$/);
+    assert.match(health.next.cli, / start$/);
     assert.equal(health.status, 'fail');
     assert.ok(Array.isArray(health.blocking_checks));
     assert.ok(health.blocking_checks.length > 0);
@@ -78,7 +79,7 @@ test('external init and next expose fixed driver payload for external agents', a
   try {
     process.chdir(tempProject);
 
-    const initialized = await captureCliJson(['external', 'init', '--runtime', 'external', '--user', 'welkon']);
+    const initialized = await captureCliJson(['external', 'init', '--user', 'welkon']);
     const next = await captureCliJson(['external', 'next']);
     const status = await captureCliJson(['external', 'status']);
 
@@ -89,7 +90,7 @@ test('external init and next expose fixed driver payload for external agents', a
     assert.match(initialized.next.cli, / next$/);
     assert.equal('initialized' in initialized, false);
     assert.equal('bootstrap' in initialized, false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), false);
 
     assert.equal(next.protocol, 'emb-agent.external/1');
     assert.equal(next.entrypoint, 'next');
@@ -116,7 +117,7 @@ test('external dispatch-next exposes minimal execution decision protocol', async
   try {
     process.chdir(tempProject);
 
-    await captureCliJson(['external', 'init', '--runtime', 'external', '--user', 'welkon']);
+    await captureCliJson(['external', 'init', '--user', 'welkon']);
     const dispatch = await captureCliJson(['external', 'dispatch-next']);
 
     assert.equal(dispatch.protocol, 'emb-agent.external/1');

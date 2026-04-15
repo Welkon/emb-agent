@@ -10,19 +10,10 @@ npx emb-agent --codex --local --developer your-name
 
 Replace `--codex` with `--claude` or `--cursor` for the host you actually use.
 
-For hostless external-agent setups, use:
-
-```bash
-npx emb-agent --external --local --developer your-name
-```
-
-This installs the runtime under `.emb-agent/runtime` and generates `.emb-agent/external-agent.md` for external driver loops.
-
-If the caller is a generic external agent, prefer the fixed driver protocol commands:
+If a host skill or external driver needs a fixed machine-readable protocol, prefer the fixed driver commands:
 
 ```bash
 node ./.emb-agent/runtime/bin/emb-agent.cjs external start
-node ./.emb-agent/runtime/bin/emb-agent.cjs external init --runtime external --user your-name
 node ./.emb-agent/runtime/bin/emb-agent.cjs external next
 node ./.emb-agent/runtime/bin/emb-agent.cjs external health
 node ./.emb-agent/runtime/bin/emb-agent.cjs external dispatch-next
@@ -38,7 +29,7 @@ For Codex, hooks may still require manual enablement in `~/.codex/config.toml`. 
 start
 ```
 
-`start` is the single repository entrypoint. It tells you whether the shortest path is `resume`, a bootstrap step, `task add`, or `next`.
+`start` is the single repository entrypoint. On the first run it initializes the repo automatically, then tells you whether the shortest path is `resume`, a bootstrap step, `task add`, or `next`.
 
 ## 3. If the MCU is already known
 

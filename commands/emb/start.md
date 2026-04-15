@@ -11,4 +11,5 @@ allowed-tools:
 
 - Use `$emb-start` at the beginning of a session or after a major context switch.
 - It is the single repository entrypoint.
+- On the first run, it should initialize the repository automatically before routing forward.
 - It should route to `resume`, the next bootstrap step, `task add`, or `next`.

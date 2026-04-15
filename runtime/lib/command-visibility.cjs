@@ -3,7 +3,6 @@
 const PUBLIC_COMMAND_NAMES = [
   'help',
   'start',
-  'init',
   'ingest',
   'next',
   'task',

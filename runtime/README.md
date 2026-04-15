@@ -2,7 +2,6 @@
 
 This directory contains the installed emb-agent runtime that lives under the host configuration directory.
 Officially supported host-integrated runtimes are `Codex` and `Claude Code`.
-`External Agent` is also supported as a hostless local runtime under `.emb-agent/runtime` for agents that only need a direct CLI.
 
 ## Host Conventions
 
@@ -107,11 +106,10 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs memory audit
 
 `pause` also performs one auto-memory extraction pass so reusable conclusions can be reviewed later instead of being lost in session-only state.
 
-For hostless external-agent driving, prefer the fixed driver protocol:
+If a host skill or external driver needs a fixed protocol, prefer:
 
 ```bash
 node ./.emb-agent/runtime/bin/emb-agent.cjs external start
-node ./.emb-agent/runtime/bin/emb-agent.cjs external init --runtime external --user your-name
 node ./.emb-agent/runtime/bin/emb-agent.cjs external next
 node ./.emb-agent/runtime/bin/emb-agent.cjs external health
 node ./.emb-agent/runtime/bin/emb-agent.cjs external dispatch-next

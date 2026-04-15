@@ -64,7 +64,7 @@ test('interactive no-args install can resolve local codex choice through prompt 
   };
 
   const helper = createHelper(fakeProcess, async targets => {
-    assert.deepEqual(targets.map(item => item.name), ['codex', 'claude', 'cursor', 'external']);
+    assert.deepEqual(targets.map(item => item.name), ['codex', 'claude', 'cursor']);
     return {
       runtime: 'codex',
       location: 'local',
@@ -150,7 +150,7 @@ test('parseArgs keeps Claude installs global by default', () => {
   assert.equal(args.global, false);
 });
 
-test('parseArgs accepts external runtime shorthand and keeps it local by default', () => {
+test('parseArgs rejects removed external runtime shorthand', () => {
   const fakeProcess = {
     cwd: () => repoRoot,
     env: {},
@@ -163,11 +163,10 @@ test('parseArgs accepts external runtime shorthand and keeps it local by default
   };
 
   const helper = createHelper(fakeProcess);
-  const args = helper.parseArgs(['--external', '--developer', 'welkon']);
-
-  assert.equal(args.runtime, 'external');
-  assert.equal(args.local, true);
-  assert.equal(args.global, false);
+  assert.throws(
+    () => helper.parseArgs(['--external', '--developer', 'welkon']),
+    /Install flag "--external" has been removed/
+  );
 });
 
 test('parseArgs accepts default adapter source overrides', () => {
