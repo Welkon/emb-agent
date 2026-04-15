@@ -95,46 +95,6 @@ function createExternalAgentHelpers() {
       : [];
   }
 
-  function summarizePermissionGates(gates) {
-    return Array.isArray(gates)
-      ? gates
-          .filter(item => item && typeof item === 'object')
-          .map(item =>
-            compactObject({
-              kind: item.kind || '',
-              state: item.state || '',
-              summary: item.summary || ''
-            })
-          )
-      : [];
-  }
-
-  function summarizeExecutorSignal(signal) {
-    const source = signal && typeof signal === 'object' && !Array.isArray(signal) ? signal : {};
-
-    return compactObject({
-      failed: source.failed === undefined ? undefined : Boolean(source.failed),
-      summary: source.summary || '',
-      recommended_action: source.recommended_action || ''
-    });
-  }
-
-  function summarizeHealthGate(runtimeHost, health) {
-    const source = health && typeof health === 'object' && !Array.isArray(health) ? health : {};
-    const quickstart = source.quickstart && typeof source.quickstart === 'object' && !Array.isArray(source.quickstart)
-      ? source.quickstart
-      : {};
-    const nextCommand =
-      Array.isArray(source.next_commands) && source.next_commands.length > 0
-        ? source.next_commands[0]
-        : null;
-
-    return compactObject({
-      status: source.status || '',
-      next_cli: resolveStepCli(runtimeHost, nextCommand) || quickstart.first_cli || ''
-    });
-  }
-
   function buildStartProtocol(runtimeHost, context) {
     const source = context && typeof context === 'object' && !Array.isArray(context) ? context : {};
     const summary = source.summary && typeof source.summary === 'object' && !Array.isArray(source.summary)
@@ -148,14 +108,10 @@ function createExternalAgentHelpers() {
       : {};
 
     return buildEnvelope('start', runtimeHost, {
-      initialized: summary.initialized === undefined ? undefined : Boolean(summary.initialized),
+      status: summary.initialized ? 'ready' : 'needs-init',
       summary: immediate.reason || bootstrap.summary || '',
-      immediate: compactObject({
+      next: compactObject({
         cli: immediate.cli || ''
-      }),
-      bootstrap: compactObject({
-        status: bootstrap.status || '',
-        stage: bootstrap.stage || ''
       })
     });
   }
@@ -170,11 +126,8 @@ function createExternalAgentHelpers() {
       : {};
 
     return buildEnvelope('next', runtimeHost, {
+      status: stage.name || 'next',
       summary: next.reason || '',
-      workflow_stage: compactObject({
-        name: stage.name || '',
-        primary_command: stage.primary_command || ''
-      }),
       next: compactObject({
         cli: next.cli || '',
         gated_by_health: next.gated_by_health ? true : undefined
@@ -190,12 +143,8 @@ function createExternalAgentHelpers() {
     const nextCommand = String(bootstrap.command || '').trim();
 
     return buildEnvelope('init', runtimeHost, {
-      initialized: source.initialized === undefined ? undefined : Boolean(source.initialized),
+      status: bootstrap.status || (source.initialized ? 'ready' : 'init'),
       summary: bootstrap.summary || '',
-      bootstrap: compactObject({
-        status: bootstrap.status || '',
-        stage: bootstrap.stage || ''
-      }),
       next: compactObject({
         cli: buildRecommendedCli(runtimeHost, '', nextCommand)
       })
@@ -204,6 +153,8 @@ function createExternalAgentHelpers() {
 
   function buildStatusProtocol(runtimeHost) {
     return buildEnvelope('status', runtimeHost, {
+      status: 'inspection',
+      summary: 'Use next to continue the workflow.',
       next: {
         cli: buildRecommendedCli(runtimeHost, '', 'next')
       }
@@ -230,11 +181,6 @@ function createExternalAgentHelpers() {
       status: source.status || '',
       summary: quickstart.summary || bootstrap.summary || '',
       blocking_checks: summarizeHealthChecks(source.checks),
-      bootstrap: compactObject({
-        status: bootstrap.status || '',
-        stage: actionCard.stage || bootstrap.display_current_stage || bootstrap.stage || quickstart.stage || '',
-        summary: bootstrap.summary || ''
-      }),
       next: compactObject({
         cli:
           actionCard.first_cli ||
@@ -252,44 +198,28 @@ function createExternalAgentHelpers() {
     const agentExecution = source.agent_execution && typeof source.agent_execution === 'object' && !Array.isArray(source.agent_execution)
       ? source.agent_execution
       : {};
-    const stage = source.workflow_stage && typeof source.workflow_stage === 'object' && !Array.isArray(source.workflow_stage)
-      ? source.workflow_stage
-      : {};
     const recommendedKind =
       toolExecution.available && toolExecution.recommended
         ? 'tool'
         : 'action';
+    const mode =
+      recommendedKind === 'tool'
+        ? 'tool-first'
+        : agentExecution.recommended
+          ? agentExecution.mode || 'agent'
+          : 'inline';
     const recommendedCli =
       toolExecution.available && toolExecution.recommended
         ? resolveStepCli(runtimeHost, toolExecution)
         : resolveStepCli(runtimeHost, { cli: source.cli || '', command: source.resolved_action || '' });
 
     return buildEnvelope('dispatch-next', runtimeHost, {
+      status: mode,
       summary: source.reason || '',
-      workflow_stage: compactObject({
-        name: stage.name || '',
-        primary_command: stage.primary_command || ''
-      }),
       next: compactObject({
         kind: recommendedKind,
         cli: recommendedCli
       }),
-      execution: compactObject({
-        mode: recommendedKind === 'tool'
-          ? 'tool-first'
-          : agentExecution.recommended
-            ? agentExecution.mode || 'agent'
-            : 'inline',
-        dispatch_ready: source.dispatch_ready ? true : undefined
-      }),
-      health: source.health
-        ? summarizeHealthGate(runtimeHost, source.health)
-        : null,
-      permission_gates: summarizePermissionGates(source.permission_gates),
-      executor_signal:
-        source.executor_signal && source.executor_signal.failed
-          ? summarizeExecutorSignal(source.executor_signal)
-          : null
     });
   }
 
