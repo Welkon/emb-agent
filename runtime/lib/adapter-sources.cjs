@@ -526,7 +526,9 @@ function buildSyncSelection(projectRoot, options) {
   const inferred = inferProjectChipCandidates(projectRoot);
   if (inferred.chips.length === 0) {
     return {
-      filtered: false,
+      filtered: true,
+      skipped: true,
+      skip_reason: 'missing-project-chip',
       inferred_from_project: false,
       hardware: inferred.hardware,
       selectors: {
@@ -589,6 +591,43 @@ function scanLocalRequires(layoutRoot, selectedPaths) {
 }
 
 function analyzeSourceSelection(layoutRoot, files, selection) {
+  if (selection && selection.skipped) {
+    return {
+      selection: {
+        filtered: true,
+        skipped: true,
+        skip_reason: selection.skip_reason || '',
+        inferred_from_project: false,
+        hardware: selection.hardware || {
+          vendor: '',
+          model: '',
+          package: ''
+        },
+        requested: selection.selectors || {
+          tools: [],
+          families: [],
+          devices: [],
+          chips: []
+        },
+        matched: {
+          tools: [],
+          families: [],
+          devices: [],
+          chips: []
+        },
+        total_files: files.length,
+        selected_files: 0
+      },
+      selected_relative_paths: new Set(),
+      matched_tools: [],
+      matched_families: [],
+      matched_devices: [],
+      matched_chips: [],
+      selected_source_refs: [],
+      selected_algorithms: []
+    };
+  }
+
   if (!selection || !selection.filtered) {
     return {
       selection: {
@@ -914,6 +953,13 @@ function buildGitSelectionSparsePatterns(checkoutRoot, layoutRoot, analysis) {
 function filterSourceFiles(layoutRoot, files, selection) {
   const analysis = analyzeSourceSelection(layoutRoot, files, selection);
 
+  if (analysis.selection.skipped) {
+    return {
+      files: [],
+      selection: analysis.selection
+    };
+  }
+
   if (!analysis.selection.filtered) {
     return {
       files,
@@ -1031,6 +1077,38 @@ function syncAdapterSource(rootDir, projectRoot, source, options) {
   const previousEntry = manifest.entries[entryKey] || null;
   const ownedByOthers = buildOwnedPathMap(manifest, entryKey);
   const selectionRequest = buildSyncSelection(projectRoot, options || {});
+
+  if (selectionRequest.skipped) {
+    return {
+      name: source.name,
+      target,
+      status: 'skipped',
+      reason: selectionRequest.skip_reason || 'skipped',
+      source_type: source.type,
+      checkout_root: previousEntry && previousEntry.checkout_root ? previousEntry.checkout_root : '',
+      source_root: previousEntry && previousEntry.source_root ? previousEntry.source_root : '',
+      selection: {
+        filtered: true,
+        skipped: true,
+        skip_reason: selectionRequest.skip_reason || '',
+        inferred_from_project: false,
+        hardware: selectionRequest.hardware,
+        requested: selectionRequest.selectors,
+        matched: {
+          tools: [],
+          families: [],
+          devices: [],
+          chips: []
+        },
+        total_files: 0,
+        selected_files: 0
+      },
+      files: [],
+      generated: [],
+      manifest: getManifestPath(rootDir, projectRoot, target)
+    };
+  }
+
   const metadataPatterns =
     source.type === 'git' && selectionRequest.filtered ? buildGitMetadataSparsePatterns(source) : null;
   let resolved = resolveSourceRoot(rootDir, projectRoot, source, target, metadataPatterns);

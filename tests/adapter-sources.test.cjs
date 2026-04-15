@@ -399,7 +399,7 @@ test('adapter source add and sync install project adapters from path source', as
     assert.equal(addResult.source.type, 'path');
 
     const syncResult = JSON.parse(
-      await captureStdout(() => cli.main(['support', 'sync', 'vendor-pack']))
+      await captureStdout(() => cli.main(['support', 'sync', 'vendor-pack', '--no-match-project']))
     );
 
     assert.equal(syncResult.status, 'synced');
@@ -619,7 +619,7 @@ test('adapter source sync supports git source and remove cleans project artifact
     );
 
     const syncResult = JSON.parse(
-      await captureStdout(() => cli.main(['support', 'sync', 'git-pack']))
+      await captureStdout(() => cli.main(['support', 'sync', 'git-pack', '--no-match-project']))
     );
 
     assert.equal(syncResult.status, 'synced');
@@ -732,6 +732,56 @@ test('adapter sync auto-filters files by project hardware identity', async () =>
     );
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'profiles', 'pms150g.json')),
+      false
+    );
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('adapter sync skips extraction when project chip is still unknown', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-skip-project-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-adapter-skip-source-'));
+  const currentCwd = process.cwd();
+
+  try {
+    createFilteredAdapterSource(tempSource);
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    await captureStdout(() =>
+      cli.main([
+        'support',
+        'source',
+        'add',
+        'filtered-pack',
+        '--type',
+        'path',
+        '--location',
+        tempSource
+      ])
+    );
+
+    const syncResult = JSON.parse(
+      await captureStdout(() => cli.main(['support', 'sync', 'filtered-pack']))
+    );
+
+    assert.equal(syncResult.status, 'skipped');
+    assert.equal(syncResult.reason, 'missing-project-chip');
+    assert.equal(syncResult.selection.skipped, true);
+    assert.equal(syncResult.selection.skip_reason, 'missing-project-chip');
+    assert.deepEqual(syncResult.selection.matched.chips, []);
+    assert.deepEqual(syncResult.selection.matched.tools, []);
+    assert.equal(syncResult.selection.selected_files, 0);
+    assert.equal(syncResult.quality.mode, 'selection-only');
+    assert.equal(syncResult.quality.next_action, 'fill-hw-or-run-sync-with-project-match');
+    assert.equal(
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
+      false
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices', 'sc8f072.json')),
       false
     );
   } finally {
