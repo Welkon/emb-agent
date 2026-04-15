@@ -1,8 +1,8 @@
-# Adapter Model
+# Chip Support Model
 
 emb-agent core stays abstract on purpose.
 
-The core should own workflow, truth layers, state continuity, and tool contracts. Vendor-, family-, and chip-specific formulas should live in adapters.
+The core should own workflow, truth layers, state continuity, and tool contracts. Vendor-, family-, and chip-specific formulas should live in chip support packs.
 
 ## What belongs in core
 
@@ -16,9 +16,9 @@ Core responsibilities:
 
 Core should not pretend every embedded vendor stack shares the same build, flash, or debug implementation.
 
-## What belongs in adapters
+## What belongs in chip support
 
-Adapters should own:
+Chip support should own:
 
 - family/device/chip-specific formulas
 - tool routes and algorithm implementations
@@ -33,7 +33,7 @@ Examples:
 
 ## Why this split matters
 
-Without adapters, embedded AI workflows tend to mix:
+Without chip support packs, embedded AI workflows tend to mix:
 
 - durable project truth
 - vendor-specific knowledge
@@ -48,7 +48,7 @@ Trust should come from the full evidence chain:
 - project truth
 - imported document facts
 - chip profile coverage
-- adapter bindings
+- chip support bindings
 - runtime execution readiness
 
-This keeps adapter output grounded in evidence instead of letting it behave like opaque magic.
+This keeps chip-specific output grounded in evidence instead of letting it behave like opaque magic.

@@ -343,14 +343,14 @@ test('applyOutputMode prioritizes brief health checks around the current action 
     checks: [
       { key: 'project_root', status: 'pass', summary: 'Project root is accessible' },
       { key: 'project_config_valid', status: 'pass', summary: 'project.json validation passed' },
-      { key: 'adapter_match', status: 'warn', summary: 'No adapter matches the current chip yet' },
-      { key: 'adapter_sources_registered', status: 'warn', summary: 'No adapter source is registered yet' },
+      { key: 'adapter_match', status: 'warn', summary: 'Installed chip support does not cover the current chip yet' },
+      { key: 'adapter_sources_registered', status: 'warn', summary: 'No chip support source is registered yet' },
       { key: 'subagent_bridge', status: 'info', summary: 'Host sub-agent bridge is not configured' },
       { key: 'hardware_identity', status: 'pass', summary: 'The chip model is mapped to a chip profile' }
     ],
     recommendations: [
-      'Adapters are available but not bootstrapped into the project yet; finish adapter bootstrap before continuing.',
-      'Register the default adapter source before retrying adapter bootstrap.'
+      'Chip support is available but not installed in the project yet; install it before continuing.',
+      'Register the default chip support source before retrying chip support install.'
     ],
     next_commands: [
       {
@@ -360,21 +360,21 @@ test('applyOutputMode prioritizes brief health checks around the current action 
     ],
     action_card: {
       status: 'ready-to-run',
-      stage: 'adapter-setup',
+      stage: 'chip-support',
       action: 'Ready to continue',
-      summary: 'Adapters are available but not bootstrapped into the project yet; finish adapter bootstrap before continuing.',
+      summary: 'Chip support is available but not installed in the project yet; install it before continuing.',
       first_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter bootstrap'
     },
     quickstart: {
-      stage: 'bootstrap-adapters-then-next',
-      display_stage: 'bootstrap-adapters-then-next',
-      user_summary: 'Adapters are available but not bootstrapped into the project yet; finish adapter bootstrap before continuing.',
+      stage: 'install-chip-support-then-next',
+      display_stage: 'install-chip-support-then-next',
+      user_summary: 'Chip support is available but not installed in the project yet; install it before continuing.',
       steps: []
     }
   }, true);
 
   assert.deepEqual(output.checks.map(item => item.key), ['adapter_match', 'adapter_sources_registered']);
-  assert.deepEqual(output.recommendations, ['Register the default adapter source before retrying adapter bootstrap.']);
+  assert.deepEqual(output.recommendations, ['Register the default chip support source before retrying chip support install.']);
   assert.equal(output.primary_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter bootstrap');
 });
 
@@ -387,13 +387,13 @@ test('applyOutputMode limits brief health checks to three non-info items when ac
     checks: [
       { key: 'startup_automation', status: 'warn', summary: 'Startup automation is not ready yet' },
       { key: 'hardware_identity', status: 'warn', summary: 'hw.yaml does not contain the chip identity yet' },
-      { key: 'adapter_sources_registered', status: 'warn', summary: 'No adapter source is registered yet' },
+      { key: 'adapter_sources_registered', status: 'warn', summary: 'No chip support source is registered yet' },
       { key: 'subagent_bridge', status: 'info', summary: 'Host sub-agent bridge is not configured' },
       { key: 'project_root', status: 'pass', summary: 'Project root is accessible' }
     ],
     recommendations: [
       'Startup hooks are not active in the current host session; restart the host once, then rerun health.',
-      'Register the default adapter source before retrying adapter bootstrap.'
+      'Register the default chip support source before retrying chip support install.'
     ],
     next_commands: [
       {
@@ -417,7 +417,7 @@ test('applyOutputMode limits brief health checks to three non-info items when ac
 
   assert.equal(output.checks.length, 3);
   assert.ok(output.checks.every(item => item.status !== 'info'));
-  assert.deepEqual(output.recommendations, ['Register the default adapter source before retrying adapter bootstrap.']);
+  assert.deepEqual(output.recommendations, ['Register the default chip support source before retrying chip support install.']);
   assert.equal(output.primary_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git');
 });
 

@@ -519,7 +519,7 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.ok(report.next_commands.some(item => item.cli.includes('adapter bootstrap')));
     assert.equal(report.quickstart.stage, 'bootstrap-then-next');
     assert.equal(report.action_card.action, 'Ready to continue');
-    assert.equal(report.action_card.stage, 'adapter-setup');
+    assert.equal(report.action_card.stage, 'chip-support');
     assert.equal(report.action_card.first_instruction, '');
     assert.ok(report.action_card.first_cli.includes('adapter bootstrap'));
     assert.ok(report.action_card.then_cli.endsWith(' next'));
@@ -729,7 +729,7 @@ test('health routes from applied hardware doc to adapter derive when synced adap
     assert.ok(report.next_commands.some(item => item.key === 'adapter-derive-from-doc'));
     assert.ok(report.next_commands.some(item => item.cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`)));
     assert.equal(report.quickstart.stage, 'derive-then-next');
-    assert.equal(report.action_card.stage, 'adapter-from-document');
+    assert.equal(report.action_card.stage, 'chip-support-from-document');
     assert.equal(report.action_card.action, 'Ready to continue');
     assert.equal(report.action_card.first_instruction, '');
     assert.ok(report.action_card.first_cli.includes(`adapter derive --from-project --from-doc ${ingested.doc_id}`));
