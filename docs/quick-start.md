@@ -51,6 +51,12 @@ next
 
 If you already know signals or peripherals, record them with additional `declare hardware` flags instead of re-explaining them in chat.
 
+When `health` or `next` starts talking about chip support, read the reuse state first:
+
+- `reusable`
+- `reusable-candidate`
+- `project-only`
+
 ## 4. If the MCU is still unknown
 
 - Leave `.emb-agent/hw.yaml` unknown.

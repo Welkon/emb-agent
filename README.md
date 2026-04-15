@@ -18,6 +18,12 @@ emb-agent is a lightweight workflow layer for embedded development.
 
 It keeps hardware truth in the repo, keeps the default command flow small, and gives the agent one consistent path from "what chip is this?" to "what should I do next?".
 
+When chip support appears in `health`, `next`, `support status`, or reports, read it in this order:
+
+- `reusable`: already suitable for reuse across projects
+- `reusable-candidate`: looks shareable after review
+- `project-only`: keep it local until evidence and bindings improve
+
 ## Quick Start
 
 ### 1. Install into the repo

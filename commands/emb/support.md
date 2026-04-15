@@ -1,6 +1,6 @@
 ---
 name: emb-support
-description: Manage chip support sources, discovery, derivation, and quality status.
+description: Manage chip support sources, discovery, derivation, and reuse status.
 allowed-tools:
   - Read
   - Write
@@ -15,7 +15,8 @@ allowed-tools:
 
 ## Purpose
 
-- Manage chip support sources, discovery, derivation, and quality status.
+- Manage chip support sources, discovery, derivation, and reuse status.
+- Prefer surfacing whether support is `reusable`, `reusable-candidate`, or `project-only` before reading trust details.
 
 ## Usage
 

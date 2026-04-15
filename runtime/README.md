@@ -81,7 +81,13 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs dispatch next
 
 For peripheral-formula, pin, or register-location problems, check whether `next` / `dispatch next` already provides `tool_recommendation` or `tool_execution`.
 
-If `health` / `next` / `support status` already exposes `chip_support_health`, `quality_overview`, or tool `trust`, follow `recommended_action` first before treating tool output as ground truth.
+If `health` / `next` / `support status` already exposes `chip_support_health` or `quality_overview`, read the reuse state first:
+
+- `reusable`: current chip support is ready to reuse across projects
+- `reusable-candidate`: current chip support looks shareable after review
+- `project-only`: keep the current chip support local for now
+
+Then use `recommended_action` and tool `trust` as the second layer before treating tool output as ground truth.
 
 Close down context:
 
