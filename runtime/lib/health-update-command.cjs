@@ -642,8 +642,8 @@ function createHealthUpdateCommandHelpers(deps) {
     const reqPath = path.join(projectExtDir, 'req.yaml');
     const docsDir = path.join(projectRoot, 'docs');
     const docCacheDir = path.join(projectExtDir, 'cache', 'docs');
-    const adapterCacheDir = path.join(projectExtDir, 'cache', 'adapter-sources');
-    const adaptersDir = path.join(projectExtDir, 'adapters');
+    const adapterCacheDir = path.join(projectExtDir, 'cache', 'chip-support-sources');
+    const adaptersDir = path.join(projectExtDir, 'chip-support');
     const statePaths = getProjectStatePaths();
     const checks = [];
     const nextCommands = [];
@@ -758,8 +758,8 @@ function createHealthUpdateCommandHelpers(deps) {
       ['req_truth', reqPath, 'req.yaml exists', 'req.yaml is missing', `Complete ${runtime.getProjectAssetRelativePath('req.yaml')} first to record goals / features / acceptance.`],
       ['docs_dir', docsDir, 'docs directory exists', 'docs directory is missing', 'Create the docs directory first so later document ingestion and durable report persistence have a place to land.'],
       ['doc_cache_dir', docCacheDir, 'Document cache directory exists', 'Document cache directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('cache', 'docs')}.`],
-      ['chip_support_cache_dir', adapterCacheDir, 'Chip support cache directory exists', 'Chip support cache directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('cache', 'adapter-sources')}.`],
-      ['chip_support_dir', adaptersDir, 'Chip support directory exists', 'Chip support directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('adapters')}.`]
+      ['chip_support_cache_dir', adapterCacheDir, 'Chip support cache directory exists', 'Chip support cache directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('cache', 'chip-support-sources')}.`],
+      ['chip_support_dir', adaptersDir, 'Chip support directory exists', 'Chip support directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('chip-support')}.`]
     ].forEach(([key, targetPath, passSummary, failSummary, recommendation]) => {
       const exists = fs.existsSync(targetPath);
       checks.push(

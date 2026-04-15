@@ -26,7 +26,7 @@ If the repository root README explains what emb-agent is, the docs directory sho
 
 - [Product Boundaries](./product-boundaries.md)
   Why this repository contains several layers, while still remaining one embedded product.
-- [Chip Support Model](./adapter-model.md)
+- [Chip Support Model](./chip-support-model.md)
   What belongs in core and what belongs in chip support.
 - [Task Model](./task-model.md)
   How task manifests are structured and when to use them.

@@ -503,7 +503,7 @@ function createToolSuggestionHelpers(deps) {
             discovered_from: 'chip-profile',
             status: adapterStatus,
             implementation,
-            adapter_path: adapter ? adapter.file_path : ''
+            chip_support_path: adapter ? adapter.file_path : ''
           };
         } catch {
           return null;
@@ -543,7 +543,7 @@ function createToolSuggestionHelpers(deps) {
         tool: tool.name,
         description: tool.description,
         status: buildRecommendationStatus(tool, bindingInfo),
-        adapter_status: tool.status,
+        chip_support_status: tool.status,
         binding_source: bindingInfo.source,
         binding_algorithm: bindingInfo.binding && bindingInfo.binding.algorithm
           ? bindingInfo.binding.algorithm

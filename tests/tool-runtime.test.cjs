@@ -43,7 +43,7 @@ test('tool runtime stays abstract-only without installed chip support', () => {
   assert.equal(result.implementation, 'abstract-only');
   assert.equal(result.tool, 'timer-calc');
   assert.equal(result.inputs.options.family, 'vendor-family');
-  assert.ok(result.adapter_search_paths.some(item => item.endsWith('timer-calc.cjs')));
+  assert.ok(result.chip_support_search_paths.some(item => item.endsWith('timer-calc.cjs')));
 });
 
 test('cli tool run emits chip-support-required json when no support exists', async () => {
@@ -120,8 +120,8 @@ test('pwm-calc also requires installed chip support by default', () => {
 test('tool runtime loads project chip support when available', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-tool-runtime-'));
   const currentCwd = process.cwd();
-  const sharedPath = path.join(tempProject, '.emb-agent', 'adapters', 'core', 'shared.cjs');
-  const adapterPath = path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs');
+  const sharedPath = path.join(tempProject, '.emb-agent', 'chip-support', 'core', 'shared.cjs');
+  const adapterPath = path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs');
 
   try {
     fs.mkdirSync(path.dirname(sharedPath), { recursive: true });
@@ -154,7 +154,7 @@ test('tool runtime loads project chip support when available', () => {
         "      tool: context.toolName,",
         "      status: 'ok',",
         "      implementation: 'external-chip-support',",
-        '      adapter_path: context.adapterPath,',
+        '      chip_support_path: context.adapterPath,',
         '      spec_name: context.spec.name,',
         '      options',
         '    };',
@@ -180,7 +180,7 @@ test('tool runtime loads project chip support when available', () => {
 
     assert.equal(result.status, 'ok');
     assert.equal(result.implementation, 'external-chip-support');
-    assert.equal(result.adapter_path, adapterPath);
+    assert.equal(result.chip_support_path, adapterPath);
     assert.equal(result.spec_name, 'timer-calc');
     assert.equal(result.options.family, 'vendor-family');
     assert.equal(result.options.device, 'vendor-device');
@@ -236,7 +236,7 @@ test('generated draft timer route can execute first-pass timer search', () => {
 
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes'), { recursive: true });
     fs.writeFileSync(
       path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'),
       JSON.stringify({
@@ -286,7 +286,7 @@ test('generated draft timer route can execute first-pass timer search', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs'),
+      path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs'),
       [
         "'use strict';",
         '',
@@ -378,7 +378,7 @@ test('generated draft pwm route can execute first-pass pwm search', () => {
 
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes'), { recursive: true });
     fs.writeFileSync(
       path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'),
       JSON.stringify({
@@ -428,7 +428,7 @@ test('generated draft pwm route can execute first-pass pwm search', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs'),
+      path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'pwm-calc.cjs'),
       [
         "'use strict';",
         '',
@@ -525,7 +525,7 @@ test('generated draft adc route can execute first-pass adc scaling', () => {
 
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes'), { recursive: true });
     fs.writeFileSync(
       path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'),
       JSON.stringify({
@@ -585,7 +585,7 @@ test('generated draft adc route can execute first-pass adc scaling', () => {
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'adc-scale.cjs'),
+      path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'adc-scale.cjs'),
       [
         "'use strict';",
         '',
@@ -673,7 +673,7 @@ test('generated draft comparator route can execute first-pass threshold feasibil
 
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes'), { recursive: true });
     fs.writeFileSync(
       path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'registry.json'),
       JSON.stringify({
@@ -733,7 +733,7 @@ test('generated draft comparator route can execute first-pass threshold feasibil
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'comparator-threshold.cjs'),
+      path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'comparator-threshold.cjs'),
       [
         "'use strict';",
         '',

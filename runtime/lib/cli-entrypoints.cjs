@@ -416,7 +416,7 @@ function createCliEntryHelpers(deps) {
       }
 
       agentActions.push({
-        kind: 'bootstrap-adapters',
+        kind: 'bootstrap-chip-support',
         status: adapterSourceReady ? 'blocked' : 'unconfigured',
         blocked_by: blankProject
           ? adapterSourceReady
@@ -458,7 +458,7 @@ function createCliEntryHelpers(deps) {
       );
 
       agentActions.push({
-        kind: 'bootstrap-adapters',
+        kind: 'bootstrap-chip-support',
         status: adapterSourceReady ? 'ready' : 'unconfigured',
         blocked_by: adapterSourceReady ? [] : ['chip_support_source'],
         summary: adapterSourceReady

@@ -86,9 +86,9 @@ test('adapter derive creates extension registries and profile skeletons', () => 
     const chipProfile = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'profiles', 'sc8f072ad608sp.json'), 'utf8')
     );
-    const timerRoutePath = path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs');
-    const pwmRoutePath = path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs');
-    const adcRoutePath = path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'adc-scale.cjs');
+    const timerRoutePath = path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs');
+    const pwmRoutePath = path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'pwm-calc.cjs');
+    const adcRoutePath = path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'adc-scale.cjs');
     const loadedChip = cli.chipCatalog.loadChip(runtimeRoot, 'sc8f072ad608sp');
     const routeResult = cli.toolRuntime.runTool(runtimeRoot, 'timer-calc', [
       '--family',
@@ -433,7 +433,7 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
     const chipProfile = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'extensions', 'chips', 'profiles', 'pms150gsop8.json'), 'utf8')
     );
-    const comparatorRoutePath = path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'comparator-threshold.cjs');
+    const comparatorRoutePath = path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'comparator-threshold.cjs');
     const comparatorRouteResult = cli.toolRuntime.runTool(runtimeRoot, 'comparator-threshold', [
       '--family',
       'padauk-pms150g',
@@ -564,8 +564,8 @@ test('adapter generate can write emb-style output to arbitrary root', () => {
     assert.equal(fs.existsSync(path.join(tempOutput, 'extensions', 'tools', 'families', 'scmcu-sc8f072.json')), true);
     assert.equal(fs.existsSync(path.join(tempOutput, 'extensions', 'tools', 'devices', 'sc8f072.json')), true);
     assert.equal(fs.existsSync(path.join(tempOutput, 'extensions', 'chips', 'profiles', 'sc8f072sop8.json')), true);
-    assert.equal(fs.existsSync(path.join(tempOutput, 'adapters', 'routes', 'timer-calc.cjs')), true);
-    assert.equal(fs.existsSync(path.join(tempOutput, 'adapters', 'routes', 'pwm-calc.cjs')), true);
+    assert.equal(fs.existsSync(path.join(tempOutput, 'chip-support', 'routes', 'timer-calc.cjs')), true);
+    assert.equal(fs.existsSync(path.join(tempOutput, 'chip-support', 'routes', 'pwm-calc.cjs')), true);
   } finally {
     process.chdir(currentCwd);
   }

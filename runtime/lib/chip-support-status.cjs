@@ -48,6 +48,23 @@ function normalizeToolExecutionResult(result) {
     ...result
   };
 
+  if (Object.prototype.hasOwnProperty.call(normalized, 'adapter_name')) {
+    normalized.chip_support_name = normalized.adapter_name;
+    delete normalized.adapter_name;
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, 'adapter_path')) {
+    normalized.chip_support_path = normalized.adapter_path;
+    delete normalized.adapter_path;
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, 'adapter_search_paths')) {
+    normalized.chip_support_search_paths = normalized.adapter_search_paths;
+    delete normalized.adapter_search_paths;
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, 'adapter_status')) {
+    normalized.chip_support_status = normalizeChipSupportStatus(normalized.adapter_status);
+    delete normalized.adapter_status;
+  }
+
   if (Object.prototype.hasOwnProperty.call(normalized, 'status')) {
     normalized.status = normalizeChipSupportStatus(normalized.status);
   }

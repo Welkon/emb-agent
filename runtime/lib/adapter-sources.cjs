@@ -30,11 +30,11 @@ function getTargetEmbDir(rootDir, projectRoot, target) {
 }
 
 function getTargetCacheDir(rootDir, projectRoot, target) {
-  return path.join(getTargetEmbDir(rootDir, projectRoot, target), 'cache', 'adapter-sources');
+  return path.join(getTargetEmbDir(rootDir, projectRoot, target), 'cache', 'chip-support-sources');
 }
 
 function getManifestPath(rootDir, projectRoot, target) {
-  return path.join(getTargetEmbDir(rootDir, projectRoot, target), 'cache', 'adapter-sync-manifest.json');
+  return path.join(getTargetEmbDir(rootDir, projectRoot, target), 'cache', 'chip-support-sync-manifest.json');
 }
 
 function emptyManifest(target) {
@@ -127,7 +127,7 @@ function pathExists(filePath) {
 
 function hasLayoutContent(layoutRoot) {
   return (
-    pathExists(path.join(layoutRoot, 'adapters')) ||
+    pathExists(path.join(layoutRoot, 'chip-support')) ||
     pathExists(path.join(layoutRoot, 'extensions', 'tools')) ||
     pathExists(path.join(layoutRoot, 'extensions', 'chips'))
   );
@@ -170,7 +170,7 @@ function buildGitMetadataSparsePatterns(source) {
   const patterns = new Set();
   const layoutPrefixes = buildCandidateLayoutPrefixes(source);
   const relativePaths = [
-    'adapters/core/**',
+    'chip-support/core/**',
     'extensions/tools/specs/**',
     'extensions/tools/families/**',
     'extensions/tools/devices/**',
@@ -340,7 +340,7 @@ function collectSourceFiles(layoutRoot) {
     });
   };
 
-  addFiles(path.join(layoutRoot, 'adapters'), '.cjs', ['adapters'], true);
+  addFiles(path.join(layoutRoot, 'chip-support'), '.cjs', ['chip-support'], true);
   addFiles(path.join(layoutRoot, 'extensions', 'tools'), '.cjs', ['extensions', 'tools'], true);
   addFiles(path.join(layoutRoot, 'extensions', 'tools', 'specs'), '.json', ['extensions', 'tools', 'specs']);
   addFiles(path.join(layoutRoot, 'extensions', 'tools', 'families'), '.json', [
@@ -669,7 +669,7 @@ function analyzeSourceSelection(layoutRoot, files, selection) {
       return;
     }
 
-    if (relativePathStartsWith(item.relativePath, ['adapters', 'routes'])) {
+    if (relativePathStartsWith(item.relativePath, ['chip-support', 'routes'])) {
       routeFiles.set(fileName, item);
       return;
     }
@@ -682,7 +682,7 @@ function analyzeSourceSelection(layoutRoot, files, selection) {
       return;
     }
 
-    if (relativePathStartsWith(item.relativePath, ['adapters'])) {
+    if (relativePathStartsWith(item.relativePath, ['chip-support'])) {
       adapterFiles.push(item);
     }
   });
@@ -829,13 +829,13 @@ function analyzeSourceSelection(layoutRoot, files, selection) {
   matchedDevices.forEach(name => collectAlgorithmsFromBindings(toolDevices.get(name).json.bindings));
 
   adapterFiles.forEach(item => {
-    if (relativePathStartsWith(item.relativePath, ['adapters', 'core'])) {
+    if (relativePathStartsWith(item.relativePath, ['chip-support', 'core'])) {
       selectedRelativePaths.add(item.relativePath);
       return;
     }
 
     if (
-      relativePathStartsWith(item.relativePath, ['adapters', 'algorithms']) &&
+      relativePathStartsWith(item.relativePath, ['chip-support', 'algorithms']) &&
       selectedAlgorithms.has(fileBaseName(item.relativePath))
     ) {
       selectedRelativePaths.add(item.relativePath);
@@ -893,12 +893,12 @@ function buildGitSelectionSparsePatterns(checkoutRoot, layoutRoot, analysis) {
     }
   };
 
-  add('adapters/core/**');
-  (analysis.selected_algorithms || []).forEach(name => add(`adapters/algorithms/${name}.cjs`));
+  add('chip-support/core/**');
+  (analysis.selected_algorithms || []).forEach(name => add(`chip-support/algorithms/${name}.cjs`));
 
   matched.tools.forEach(name => {
     add(`extensions/tools/specs/${name}.json`);
-    add(`adapters/routes/${name}.cjs`);
+    add(`chip-support/routes/${name}.cjs`);
   });
   matched.families.forEach(name => add(`extensions/tools/families/${name}.json`));
   matched.devices.forEach(name => add(`extensions/tools/devices/${name}.json`));

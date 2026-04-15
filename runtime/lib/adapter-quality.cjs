@@ -248,9 +248,9 @@ function evaluateToolRecommendationTrust(input) {
   if (implementation === 'external-chip-support') {
     score += 2;
   }
-  if (tool.adapter_path) {
+  if (tool.chip_support_path) {
     score += 2;
-    uniquePush(signals, 'adapter-path');
+    uniquePush(signals, 'chip-support-path');
   }
 
   score = Math.max(0, Math.min(100, score));

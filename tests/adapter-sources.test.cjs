@@ -42,7 +42,7 @@ function writeText(filePath, content) {
 
 function createPathAdapterSource(rootDir) {
   writeText(
-    path.join(rootDir, 'adapters', 'core', 'shared.cjs'),
+    path.join(rootDir, 'chip-support', 'core', 'shared.cjs'),
     [
       "'use strict';",
       '',
@@ -56,7 +56,7 @@ function createPathAdapterSource(rootDir) {
   );
 
   writeText(
-    path.join(rootDir, 'adapters', 'routes', 'timer-calc.cjs'),
+    path.join(rootDir, 'chip-support', 'routes', 'timer-calc.cjs'),
     [
       "'use strict';",
       '',
@@ -69,7 +69,7 @@ function createPathAdapterSource(rootDir) {
       "      tool: context.toolName,",
       "      status: 'ok',",
       "      implementation: 'external-chip-support',",
-      "      adapter_path: context.adapterPath,",
+      "      chip_support_path: context.adapterPath,",
       "      family: options.family || '',",
       "      device: options.device || ''",
       '    };',
@@ -117,7 +117,7 @@ function createGitAdapterSource(rootDir) {
   const layoutRoot = path.join(rootDir, 'emb-agent');
 
   writeText(
-    path.join(layoutRoot, 'adapters', 'core', 'shared.cjs'),
+    path.join(layoutRoot, 'chip-support', 'core', 'shared.cjs'),
     [
       "'use strict';",
       '',
@@ -131,7 +131,7 @@ function createGitAdapterSource(rootDir) {
   );
 
   writeText(
-    path.join(layoutRoot, 'adapters', 'routes', 'pwm-calc.cjs'),
+    path.join(layoutRoot, 'chip-support', 'routes', 'pwm-calc.cjs'),
     [
       "'use strict';",
       '',
@@ -144,7 +144,7 @@ function createGitAdapterSource(rootDir) {
       "      tool: context.toolName,",
       "      status: 'ok',",
       "      implementation: 'external-chip-support',",
-      "      adapter_path: context.adapterPath,",
+      "      chip_support_path: context.adapterPath,",
       "      duty: options['target-duty'] || ''",
       '    };',
       '  }',
@@ -203,7 +203,7 @@ function createFilteredGitAdapterSource(rootDir) {
 
 function createFilteredAdapterSource(rootDir) {
   writeText(
-    path.join(rootDir, 'adapters', 'core', 'shared.cjs'),
+    path.join(rootDir, 'chip-support', 'core', 'shared.cjs'),
     [
       "'use strict';",
       '',
@@ -217,7 +217,7 @@ function createFilteredAdapterSource(rootDir) {
   );
 
   writeText(
-    path.join(rootDir, 'adapters', 'algorithms', 'scmcu-timer.cjs'),
+    path.join(rootDir, 'chip-support', 'algorithms', 'scmcu-timer.cjs'),
     [
       "'use strict';",
       '',
@@ -229,7 +229,7 @@ function createFilteredAdapterSource(rootDir) {
   );
 
   writeText(
-    path.join(rootDir, 'adapters', 'algorithms', 'padauk-tm2-pwm.cjs'),
+    path.join(rootDir, 'chip-support', 'algorithms', 'padauk-tm2-pwm.cjs'),
     [
       "'use strict';",
       '',
@@ -241,7 +241,7 @@ function createFilteredAdapterSource(rootDir) {
   );
 
   writeText(
-    path.join(rootDir, 'adapters', 'routes', 'timer-calc.cjs'),
+    path.join(rootDir, 'chip-support', 'routes', 'timer-calc.cjs'),
     [
       "'use strict';",
       '',
@@ -257,7 +257,7 @@ function createFilteredAdapterSource(rootDir) {
   );
 
   writeText(
-    path.join(rootDir, 'adapters', 'routes', 'pwm-calc.cjs'),
+    path.join(rootDir, 'chip-support', 'routes', 'pwm-calc.cjs'),
     [
       "'use strict';",
       '',
@@ -403,9 +403,9 @@ test('adapter source add and sync install project adapters from path source', as
     );
 
     assert.equal(syncResult.status, 'synced');
-    assert.ok(syncResult.files.includes(path.join('adapters', 'routes', 'timer-calc.cjs')));
+    assert.ok(syncResult.files.includes(path.join('chip-support', 'routes', 'timer-calc.cjs')));
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
       true
     );
 
@@ -492,7 +492,7 @@ test('adapter bootstrap adds source and syncs matching project adapters in one s
     assert.equal(bootstrap.sync.quality.primary.tool, 'timer-calc');
     assert.ok(!bootstrap.sync.quality.primary.executable);
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
       true
     );
     assert.equal(
@@ -533,7 +533,7 @@ test('adapter bootstrap uses default adapter source overrides when no source arg
     assert.equal(bootstrap.source.location, tempSource);
     assert.equal(bootstrap.sync.status, 'synced');
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
       true
     );
   } finally {
@@ -625,7 +625,7 @@ test('adapter source sync supports git source and remove cleans project artifact
     assert.equal(syncResult.status, 'synced');
     assert.ok(syncResult.source_root.endsWith(path.join('repo', 'emb-agent')));
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'pwm-calc.cjs')),
       true
     );
 
@@ -644,7 +644,7 @@ test('adapter source sync supports git source and remove cleans project artifact
 
     assert.equal(removeResult.action, 'removed');
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'pwm-calc.cjs')),
       false
     );
     assert.deepEqual(
@@ -703,11 +703,11 @@ test('adapter sync auto-filters files by project hardware identity', async () =>
     assert.equal(syncResult.quality.primary.tool, 'timer-calc');
     assert.equal(syncResult.quality.primary.executable, true);
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'pwm-calc.cjs')),
       false
     );
     assert.equal(
@@ -786,11 +786,11 @@ test('adapter sync supports explicit chip and tool filters', async () => {
     assert.deepEqual(syncResult.quality.matched_tools, ['pwm-calc']);
     assert.equal(syncResult.quality.next_action, 'fill-hw-or-run-sync-with-project-match');
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'pwm-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'pwm-calc.cjs')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
       false
     );
     assert.equal(
@@ -843,7 +843,7 @@ test('adapter sync keeps git source checkout scoped to matching chip files', asy
       tempProject,
       '.emb-agent',
       'cache',
-      'adapter-sources',
+      'chip-support-sources',
       'git-filtered-pack',
       'repo'
     );
@@ -859,19 +859,19 @@ test('adapter sync keeps git source checkout scoped to matching chip files', asy
       false
     );
     assert.equal(
-      fs.existsSync(path.join(cachedLayoutRoot, 'adapters', 'routes', 'timer-calc.cjs')),
+      fs.existsSync(path.join(cachedLayoutRoot, 'chip-support', 'routes', 'timer-calc.cjs')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(cachedLayoutRoot, 'adapters', 'routes', 'pwm-calc.cjs')),
+      fs.existsSync(path.join(cachedLayoutRoot, 'chip-support', 'routes', 'pwm-calc.cjs')),
       false
     );
     assert.equal(
-      fs.existsSync(path.join(cachedLayoutRoot, 'adapters', 'algorithms', 'scmcu-timer.cjs')),
+      fs.existsSync(path.join(cachedLayoutRoot, 'chip-support', 'algorithms', 'scmcu-timer.cjs')),
       true
     );
     assert.equal(
-      fs.existsSync(path.join(cachedLayoutRoot, 'adapters', 'algorithms', 'padauk-tm2-pwm.cjs')),
+      fs.existsSync(path.join(cachedLayoutRoot, 'chip-support', 'algorithms', 'padauk-tm2-pwm.cjs')),
       false
     );
     assert.equal(

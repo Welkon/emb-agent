@@ -72,8 +72,8 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'docs')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.developer')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.current-task')), true);
     assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
@@ -286,8 +286,8 @@ test('init preserves existing docs files without force', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'adapter-sources')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'adapters')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.current-task')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), false);

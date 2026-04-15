@@ -1170,7 +1170,7 @@ function buildDraftAdapterRoute(toolName, config) {
     "        status: 'route-required',",
     "        implementation: 'external-chip-support-draft',",
     '        adapter_name: ADAPTER_NAME,',
-    '        adapter_path: context.adapterPath,',
+    '        chip_support_path: context.adapterPath,',
     '        inputs: {',
     '          raw_tokens: context.tokens || [],',
     '          options',
@@ -1191,7 +1191,7 @@ function buildDraftAdapterRoute(toolName, config) {
     "      status: 'draft-chip-support',",
     "      implementation: 'external-chip-support-draft',",
     '      adapter_name: ADAPTER_NAME,',
-    '      adapter_path: context.adapterPath,',
+    '      chip_support_path: context.adapterPath,',
     '      inputs: {',
     '        raw_tokens: context.tokens || [],',
     '        options',
@@ -1325,7 +1325,7 @@ function buildDerivedTrustReport(config, embRoot, projectRoot) {
         name: toolName,
         status: 'draft-chip-support',
         implementation: 'external-chip-support-draft',
-        adapter_path: path.relative(projectRoot, path.join(embRoot, 'adapters', 'routes', `${toolName}.cjs`)) || `${toolName}.cjs`
+        chip_support_path: path.relative(projectRoot, path.join(embRoot, 'chip-support', 'routes', `${toolName}.cjs`)) || `${toolName}.cjs`
       },
       bindingInfo: {
         source: binding ? 'device' : 'none',
@@ -1388,7 +1388,7 @@ function deriveProfiles(argv, options) {
   const embRoot = resolveEmbOutputRoot(runtimeRoot, projectRoot, config);
   const toolExtRoot = path.join(embRoot, 'extensions', 'tools');
   const chipExtRoot = path.join(embRoot, 'extensions', 'chips');
-  const adapterRoutesRoot = path.join(embRoot, 'adapters', 'routes');
+  const adapterRoutesRoot = path.join(embRoot, 'chip-support', 'routes');
 
   runtime.ensureDir(path.join(toolExtRoot, 'families'));
   runtime.ensureDir(path.join(toolExtRoot, 'devices'));

@@ -116,9 +116,9 @@
       "default_output": ".emb-agent/tasks/{{SLUG}}/task.json"
     },
     {
-      "name": "tool-adapter",
-      "source": "templates/tool-adapter.cjs.tpl",
-      "description": "Generate a tool adapter skeleton.",
+      "name": "tool-chip-support",
+      "source": "templates/tool-chip-support.cjs.tpl",
+      "description": "Generate a tool chip-support skeleton.",
       "default_output": ".emb-agent/extensions/tools/{{TOOL_NAME}}.cjs"
     },
     {

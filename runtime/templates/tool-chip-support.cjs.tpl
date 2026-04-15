@@ -7,15 +7,15 @@ module.exports = {
     return {
       tool: context.toolName,
       status: 'ok',
-      implementation: 'external-adapter',
-      adapter_name: '{{ADAPTER_NAME}}',
-      adapter_path: context.adapterPath,
+      implementation: 'external-chip-support',
+      chip_support_name: '{{ADAPTER_NAME}}',
+      chip_support_path: context.adapterPath,
       inputs: {
         raw_tokens: context.tokens || [],
         options
       },
       notes: [
-        'This is a project-level external adapter template output. Implement the real formulas and register guidance here.',
+        'This is a project-level external chip-support template output. Implement the real formulas and register guidance here.',
         'Do not write vendor/chip bindings back into emb-agent core.'
       ]
     };

@@ -459,7 +459,7 @@ test('orchestrator keeps tool step non-required when adapter trust is not yet ex
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
-    fs.mkdirSync(path.join(projectEmbDir, 'adapters', 'routes'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'chip-support', 'routes'), { recursive: true });
     fs.writeFileSync(
       path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
       JSON.stringify({ devices: ['vendor-chip'] }, null, 2) + '\n',
@@ -522,7 +522,7 @@ test('orchestrator keeps tool step non-required when adapter trust is not yet ex
       'utf8'
     );
     fs.writeFileSync(
-      path.join(projectEmbDir, 'adapters', 'routes', 'timer-calc.cjs'),
+      path.join(projectEmbDir, 'chip-support', 'routes', 'timer-calc.cjs'),
       [
         "'use strict';",
         '',
