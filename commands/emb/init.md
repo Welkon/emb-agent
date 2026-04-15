@@ -34,7 +34,7 @@ allowed-tools:
   `declare hardware --mcu <name> --package <name>`
 - If the project is still at concept stage, do not guess a chip.
   Keep `hw.yaml` unknown, record goals and constraints in `req.yaml`, then run `next`.
-- If external evidence still holds the truth, continue with:
+- If the truth still lives in project documents, continue with:
   `ingest doc --file <path> --kind datasheet --to hardware`
   or
   `ingest schematic --file <path>`

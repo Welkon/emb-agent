@@ -6,12 +6,13 @@ This page only covers platform-specific setup differences. The canonical onboard
 
 | Runtime | Install | Runtime dir | Command surface | Extra manual step |
 | --- | --- | --- | --- | --- |
-| Codex | `npx emb-agent --codex --local --developer your-name` | `./.codex/` | project skills under `./.codex/skills/` | Hooks may still require `multi_agent = true` and `codex_hooks = true` in `~/.codex/config.toml` |
-| Claude Code | `npx emb-agent --claude --local --developer your-name` | `./.claude/` | slash commands under `./.claude/commands/emb/` | none |
-| Cursor | `npx emb-agent --cursor --local --developer your-name` | `./.cursor/` | command wrappers under `./.cursor/commands/` | none |
+| Codex | `npx emb-agent` | `./.codex/` | project skills under `./.codex/skills/` | Hooks may still require `multi_agent = true` and `codex_hooks = true` in `~/.codex/config.toml` |
+| Claude Code | `npx emb-agent` | `./.claude/` | slash commands under `./.claude/commands/emb/` | none |
+| Cursor | `npx emb-agent` | `./.cursor/` | command wrappers under `./.cursor/commands/` | none |
 
 ## Common behavior
 
+- Start with `npx emb-agent`, then choose the runtime in the installer.
 - Local install bootstraps `.emb-agent/` in the current repository.
 - Host-specific runtime state stays under the selected runtime directory.
 - Use `--profile workflow` only when authoring scaffold assets.

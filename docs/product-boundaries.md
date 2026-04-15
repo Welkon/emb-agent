@@ -17,7 +17,7 @@ The embedded workflow is the part most firmware users should feel first.
 It owns:
 
 - project truth such as `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, and `.emb-agent/project.json`
-- the default session flow: `init`, `declare hardware`, `next`, `scan`, `plan`, `do`, `debug`, `review`, `verify`
+- the default session flow: `start`, `declare hardware`, `next`, `scan`, `plan`, `do`, `debug`, `review`, `verify`
 - task/session continuity
 - document ingestion and truth promotion
 - abstract routing contracts for chip- and tool-specific work
@@ -59,7 +59,7 @@ The embedded workflow should stay abstract. Chip support should absorb vendor- a
 For most users, the first path should stay:
 
 1. install into the host runtime
-2. `init`
+2. `start`
 3. `declare hardware`
 4. `next`
 5. follow `scan/plan/do/debug/review/verify`

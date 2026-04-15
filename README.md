@@ -29,25 +29,16 @@ When chip support appears in `health`, `next`, `support status`, or reports, rea
 ### 1. Install into the repo
 
 ```bash
-npx emb-agent --codex --local --developer your-name
+npx emb-agent
 ```
 
-Replace `--codex` with `--claude` or `--cursor` for the host you use. Local install wires the runtime, creates `AGENTS.md`, and bootstraps `.emb-agent/` in the current repository.
-
-If a host skill or external driver wants a fixed machine-readable protocol, call the runtime's `external` entrypoints directly:
-
-```bash
-node ./.emb-agent/runtime/bin/emb-agent.cjs external start
-node ./.emb-agent/runtime/bin/emb-agent.cjs external next
-node ./.emb-agent/runtime/bin/emb-agent.cjs external health
-node ./.emb-agent/runtime/bin/emb-agent.cjs external dispatch-next
-```
+The installer will guide you through runtime selection and local setup. It creates `AGENTS.md` and bootstraps `.emb-agent/` in the current repository.
 
 Use `--profile workflow` only when you are authoring scaffolds instead of using emb-agent day to day.
 
 ### 2. Open a session and run `start`
 
-`start` is the single repository entrypoint. On the first run it initializes the repo automatically, then routes to `resume`, the next bootstrap step, `task add`, or `next`.
+Start with `start`. On the first run it initializes the repo automatically, then tells you the shortest next step.
 
 ### 3. Continue with the shortest hardware path
 
