@@ -825,6 +825,9 @@ const {
 });
 
 const {
+  buildInitGuidance,
+  buildBootstrapSummary,
+  buildStartWorkflow,
   usage,
   runInitCommand,
   runIngestCommand
@@ -846,6 +849,82 @@ const {
     ingestDocCli,
     ingestSchematicCli
 });
+
+function buildStartContext() {
+  const projectRoot = resolveProjectRoot();
+  const initialized = fs.existsSync(runtime.resolveProjectDataPath(projectRoot, 'project.json'));
+  const initGuidance = buildInitGuidance(projectRoot);
+  const bootstrap = buildBootstrapSummary(initGuidance);
+  const nextContext = initialized ? buildNextContext() : null;
+  const resumeContext = initialized ? buildResumeContext() : null;
+  const activeTask = getActiveTask();
+  const handoff = loadHandoff();
+  const immediateCommand = handoff
+    ? 'resume'
+    : initialized && bootstrap.status !== 'ready-for-next'
+      ? bootstrap.command
+    : activeTask
+      ? 'next'
+      : initialized
+        ? 'task add <summary>'
+        : 'init';
+  const immediateReason = handoff
+    ? 'An unconsumed handoff exists and should be restored before any new work.'
+    : initialized && bootstrap.status !== 'ready-for-next'
+      ? bootstrap.summary
+    : activeTask
+      ? 'An active task already exists, so the shortest path is to continue the task loop.'
+      : initialized
+        ? 'Project bootstrap exists; create and activate a task before execution.'
+        : 'The repository is not initialized for emb-agent yet.';
+
+  return {
+    entry: 'start',
+    summary: {
+      project_root: projectRoot,
+      initialized,
+      active_task: activeTask
+        ? {
+            name: activeTask.name,
+            title: activeTask.title,
+            status: activeTask.status,
+            worktree_path: activeTask.worktree_path,
+            prd_path: `.emb-agent/tasks/${activeTask.name}/prd.md`
+          }
+        : null,
+      handoff_present: Boolean(handoff),
+      hardware_identity: initGuidance.selected_identity
+    },
+    immediate: {
+      command: immediateCommand,
+      reason: immediateReason
+    },
+    workflow: {
+      mode: 'linear-default',
+      steps: buildStartWorkflow(initGuidance, {
+        initialized,
+        activeTask,
+        hasHandoff: Boolean(handoff)
+      })
+    },
+    bootstrap,
+    next: nextContext
+      ? {
+          command: nextContext.next.command,
+          reason: nextContext.next.reason,
+          workflow_stage: nextContext.workflow_stage,
+          cli: nextContext.next.cli
+        }
+      : null,
+    resume: resumeContext
+      ? {
+          context_hygiene: resumeContext.context_hygiene,
+          handoff: resumeContext.handoff,
+          task: resumeContext.task
+        }
+      : null
+  };
+}
 
 const referenceLookupCli = {
   lookupDocs(projectRoot, args) {
@@ -968,6 +1047,7 @@ const {
   printJson,
   runInitCommand,
   runIngestCommand,
+  buildStartContext,
   buildStatus,
   buildBootstrapReport,
   updateSession,
@@ -1015,6 +1095,7 @@ module.exports = {
   buildOrchestratorContext,
   buildContextHygiene,
   buildGuidance,
+  buildStartContext,
   buildNextContext,
   buildPausePayload,
   buildCompressContextSummary,

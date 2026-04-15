@@ -295,12 +295,14 @@ test('start returns a linear default workflow for project and task execution', a
 
     assert.equal(start.entry, 'start');
     assert.equal(start.summary.initialized, true);
-    assert.equal(start.immediate.command, 'task add <summary>');
+    assert.equal(start.immediate.command, 'next');
     assert.equal(start.workflow.mode, 'linear-default');
     assert.ok(Array.isArray(start.workflow.steps));
     assert.equal(start.workflow.steps[0].title, 'Project bootstrap');
     assert.equal(start.workflow.steps[1].title, 'Task bootstrap');
     assert.equal(start.workflow.steps[2].title, 'Execution loop');
+    assert.equal(start.bootstrap.status, 'needs-project-definition');
+    assert.equal(start.bootstrap.stage, 'define-project-constraints');
     assert.equal(start.next.command, 'scan');
   } finally {
     process.stdout.write = originalWrite;

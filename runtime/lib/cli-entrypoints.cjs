@@ -536,16 +536,17 @@ function createCliEntryHelpers(deps) {
       'emb-agent usage:',
       'Global option: --brief outputs compact JSON (recommended for action commands such as next/plan/review/verify)',
       'Core workflow:',
+      '  start',
       '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude|cursor>|--codex|--claude|--cursor] [--user <name>|-u <name>] [--force]',
       '  declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
       '    [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>]',
+      '  task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
+      '  task activate [--confirm] <name>',
       '  next [run]',
       '  ingest doc --file <path> [--provider mineru] [--kind datasheet] [--title <text>] [--pages <range>] [--language ch|en] [--ocr] [--force] [--to hardware|requirements]',
       '  ingest schematic --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force]',
-      '  task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
       '  task show <name>',
-      '  task activate [--confirm] <name>',
       '  task resolve [--confirm] <name> [note]',
       '',
       'Useful follow-ups:',
@@ -721,6 +722,96 @@ function createCliEntryHelpers(deps) {
     );
   }
 
+  function buildStartWorkflow(initGuidance, options) {
+    const settings = options || {};
+    const activeTask = settings.activeTask || null;
+    const hasHandoff = settings.hasHandoff === true;
+    const initialized = settings.initialized !== false;
+    const workflow = [
+      {
+        id: 'project-bootstrap',
+        title: 'Project bootstrap',
+        commands: initialized
+          ? ['init (already complete)', 'declare hardware / ingest doc / ingest schematic as needed', 'next']
+          : ['init', 'declare hardware / ingest doc / ingest schematic as needed', 'next'],
+        outcome: 'Project truth is explicit enough for task work.'
+      },
+      {
+        id: 'task-bootstrap',
+        title: 'Task bootstrap',
+        commands: activeTask
+          ? [`task activate ${activeTask.name} (already active)`]
+          : ['task add <summary>', 'task activate <name>'],
+        outcome: 'The current change has an isolated task context and PRD.'
+      },
+      {
+        id: 'execution-loop',
+        title: 'Execution loop',
+        commands: hasHandoff
+          ? ['resume', 'next', 'do/debug', 'verify', 'task aar scan', 'task resolve']
+          : ['next', 'do/debug', 'verify', 'task aar scan', 'task resolve'],
+        outcome: 'The active task is implemented, verified, and closed with AAR.'
+      }
+    ];
+
+    if (initGuidance && initGuidance.project_definition_required) {
+      workflow[0].note = `Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until req/constraints are explicit.`;
+    } else if (initGuidance && initGuidance.hardware_confirmation_required) {
+      workflow[0].note = `Confirm the real MCU/package in ${runtime.getProjectAssetRelativePath('hw.yaml')} before execution.`;
+    }
+
+    return workflow;
+  }
+
+  function buildBootstrapSummary(initGuidance) {
+    const guidance = initGuidance && typeof initGuidance === 'object' ? initGuidance : {};
+    const actions = Array.isArray(guidance.agent_actions) ? guidance.agent_actions : [];
+    const primaryAction =
+      actions.find(item => item && ['required', 'recommended', 'ready'].includes(item.status)) ||
+      actions.find(item => item && ['unconfigured', 'blocked', 'optional'].includes(item.status)) ||
+      null;
+
+    if (guidance.project_definition_required) {
+      return {
+        status: 'needs-project-definition',
+        stage: 'define-project-constraints',
+        summary: `Project facts are still open; keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown and record goals in ${runtime.getProjectAssetRelativePath('req.yaml')} first.`,
+        command: primaryAction && primaryAction.cli_fallback ? primaryAction.cli_fallback : 'next',
+        bootstrap_task: guidance.bootstrap_task || null
+      };
+    }
+
+    if (guidance.hardware_confirmation_required) {
+      return {
+        status: 'needs-hardware-identity',
+        stage: 'confirm-hardware-identity',
+        summary: `Hardware identity is not confirmed yet; write the real MCU and package into ${runtime.getProjectAssetRelativePath('hw.yaml')} before execution.`,
+        command: primaryAction && primaryAction.cli_fallback
+          ? primaryAction.cli_fallback
+          : 'declare hardware --mcu <name> --package <name>',
+        bootstrap_task: guidance.bootstrap_task || null
+      };
+    }
+
+    if (primaryAction) {
+      return {
+        status: primaryAction.status === 'unconfigured' ? 'needs-adapter-source' : 'ready-for-next',
+        stage: primaryAction.kind,
+        summary: String(primaryAction.summary || '').trim() || 'Project bootstrap can continue with next.',
+        command: primaryAction.cli_fallback || 'next',
+        bootstrap_task: guidance.bootstrap_task || null
+      };
+    }
+
+    return {
+      status: 'ready-for-next',
+      stage: 'continue-with-next',
+      summary: 'Project bootstrap is explicit enough to continue with next.',
+      command: 'next',
+      bootstrap_task: guidance.bootstrap_task || null
+    };
+  }
+
   function runInitCommand(tokens, aliasUsed) {
     const rest = tokens || [];
     if (rest.includes('--help') || rest.includes('-h')) {
@@ -756,6 +847,7 @@ function createCliEntryHelpers(deps) {
         current.developer = developer;
       });
       const guidance = buildInitGuidance(resolveProjectRoot());
+      const bootstrap = buildBootstrapSummary(guidance);
       return {
         initialized: true,
         reused_existing: true,
@@ -766,8 +858,8 @@ function createCliEntryHelpers(deps) {
         project_profile: session.project_profile,
         active_packs: session.active_packs,
         developer: session.developer,
-        onboarding: guidance,
-        next_steps: guidance.next_steps
+        bootstrap_task: guidance.bootstrap_task || null,
+        bootstrap
       };
     }
 
@@ -782,13 +874,14 @@ function createCliEntryHelpers(deps) {
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
     const guidance = buildInitGuidance(resolveProjectRoot());
+    const bootstrap = buildBootstrapSummary(guidance);
 
     return {
       ...attached,
       initialized: true,
       init_alias: aliasUsed || 'init',
-      onboarding: guidance,
-      next_steps: guidance.next_steps,
+      bootstrap_task: guidance.bootstrap_task || null,
+      bootstrap,
       session: {
         project_profile: session.project_profile,
         active_packs: session.active_packs,
@@ -852,6 +945,9 @@ function createCliEntryHelpers(deps) {
   }
 
   return {
+    buildInitGuidance,
+    buildBootstrapSummary,
+    buildStartWorkflow,
     usage,
     runInitCommand,
     runIngestCommand

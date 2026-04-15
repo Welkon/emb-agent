@@ -88,7 +88,7 @@ test('workflow new pack authors project-local assets and init defers them into t
     );
     assert.deepEqual(projectConfig.active_packs, ['smart-pillbox']);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md')), false);
-    assert.equal(initialized.onboarding.bootstrap_task.name, '00-bootstrap-project');
+    assert.equal(initialized.bootstrap.bootstrap_task.name, '00-bootstrap-project');
     assert.ok(bootstrapTask.relatedFiles.includes('docs/MEDICATION-FLOW.md'));
   } finally {
     process.chdir(currentCwd);
