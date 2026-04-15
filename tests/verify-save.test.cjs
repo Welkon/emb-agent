@@ -87,7 +87,7 @@ test('verify save creates verification report and appends structured entry', () 
     assert.match(content, /Retest under low battery condition/);
     assert.match(content, /Next command: plan/);
     assert.match(content, /Tool recommendation: -/);
-    assert.match(content, /Adapter health: -/);
+    assert.match(content, /Chip support health: -/);
     assert.match(content, /Latest executor: bench ok, exit=0, risk=high, duration=1800ms/);
     assert.match(content, /Latest executor argv: node scripts\/bench-runner\.cjs --case wakeup/);
     assert.match(content, /Latest executor evidence hint: docs\/VERIFICATION\.md/);

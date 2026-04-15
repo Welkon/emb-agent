@@ -207,7 +207,7 @@ test('session-report records tool recommendation when scan tool is ready', async
     assert.match(content, /tool_recommendation: timer-calc/);
     assert.match(content, /tool_status: ready/);
     assert.match(content, /tool_trust: usable \(74\/100\), executable=yes/);
-    assert.match(content, /chip_support_health: timer-calc usable \(74\/100\), executable=yes, action=add-source-refs/);
+    assert.match(content, /chip_support_health: reuse=reusable, tool=timer-calc, trust=usable \(74\/100\), executable=yes, action=add-source-refs/);
     assert.match(content, /tool run timer-calc/);
     assert.match(content, /clock-hz, target-us or target-hz/);
   } finally {
