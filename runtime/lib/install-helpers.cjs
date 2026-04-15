@@ -1409,7 +1409,7 @@ function createInstallHelpers(deps) {
       ...(projectBootstrap
         ? [
             `Bootstrapped emb-agent project in: ${projectBootstrap.project_root}`,
-            'Project truth files: .emb-agent/project.json, .emb-agent/hw.yaml, .emb-agent/req.yaml',
+            'Project entry files: AGENTS.md, .emb-agent/project.json, .emb-agent/hw.yaml, .emb-agent/req.yaml',
             `Bootstrap task: ${path.join(projectBootstrap.project_root, projectBootstrap.bootstrap_task.path)}`
           ]
         : []),

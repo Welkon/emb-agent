@@ -383,12 +383,13 @@ function createCliEntryHelpers(deps) {
           kind: 'define-project-constraints',
           status: 'required',
           target_file: runtime.getProjectAssetRelativePath('req.yaml'),
-          summary: `Ask the agent to record goals, constraints, and any known interfaces in ${runtime.getProjectAssetRelativePath('req.yaml')} first. Leave ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a chip candidate is chosen.`,
+          summary: `Ask the agent to define the project in ${runtime.getProjectAssetRelativePath('req.yaml')} first: record the project type, intended inputs/outputs, interfaces, and constraints. Leave ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a chip candidate or hardware reference is real.`,
           cli_fallback: 'next'
         });
 
-        nextSteps.push(`Let the agent record goals, constraints, and any known interfaces in ${runtime.getProjectAssetRelativePath('req.yaml')} before selecting a chip.`);
+        nextSteps.push(`Let the agent fill ${runtime.getProjectAssetRelativePath('req.yaml')} with the project type, intended inputs/outputs, interfaces, and constraints before selecting a chip.`);
         nextSteps.push(`Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until you have a real chip candidate or hardware reference.`);
+        nextSteps.push('If you already have materials, add datasheets/manuals under docs/ and schematics/BOM/board photos under hardware/ or docs/.');
       } else {
         agentActions.push({
           kind: 'confirm-hardware-identity',
@@ -484,7 +485,7 @@ function createCliEntryHelpers(deps) {
     }
 
     if (meaningfulInputCount === 0) {
-      nextSteps.push('If the repo is still empty, add any datasheet/manual under docs/ (recommended, not required), any schematic under hardware/ or docs/, and any firmware tree under src/ or the project root.');
+      nextSteps.push('Optional evidence boost: add any datasheet/manual under docs/, any schematic/BOM/board photo under hardware/ or docs/, and any firmware tree under src/ or the project root.');
     }
 
     if (bootstrapTask) {
@@ -774,7 +775,7 @@ function createCliEntryHelpers(deps) {
       return {
         status: 'needs-project-definition',
         stage: 'define-project-constraints',
-        summary: `Project facts are still open; keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown and record goals in ${runtime.getProjectAssetRelativePath('req.yaml')} first.`,
+        summary: `Define the project in ${runtime.getProjectAssetRelativePath('req.yaml')} first: write the project type, intended inputs/outputs, interfaces, and constraints. Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until you have a real chip or board reference.`,
         command: primaryAction && primaryAction.cli_fallback ? primaryAction.cli_fallback : 'next',
         bootstrap_task: guidance.bootstrap_task || null
       };

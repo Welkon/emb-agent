@@ -173,7 +173,7 @@ test('applyOutputMode builds brief init output with external driver hints', () =
       status: 'needs-project-definition',
       stage: 'define-project-constraints',
       command: 'next',
-      summary: 'Project facts are still open.'
+      summary: 'Define the project in .emb-agent/req.yaml first: write the project type, intended inputs/outputs, interfaces, and constraints.'
     }
   }, true);
 

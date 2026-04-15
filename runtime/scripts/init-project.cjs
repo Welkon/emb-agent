@@ -14,6 +14,7 @@ const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
 const BOOTSTRAP_TASK_NAME = '00-bootstrap-project';
 const BOOTSTRAP_TASK_CHANNELS = ['implement', 'check', 'debug'];
+const PROJECT_AGENTS_PATH = 'AGENTS.md';
 function usage() {
   process.stdout.write(
     [
@@ -378,6 +379,57 @@ function buildTruthPlan() {
   ];
 }
 
+function buildProjectAgentsGuide() {
+  return [
+    '<!-- EMB-AGENT:START -->',
+    '# emb-agent Instructions',
+    '',
+    'These instructions are for AI assistants working in this project.',
+    '',
+    'Use the `start` command when starting a new session to:',
+    '- Initialize the project if needed',
+    '- Understand current project truth',
+    '- Get the shortest next step',
+    '',
+    'Use `.emb-agent/` to learn:',
+    '- Project truth (`project.json`, `hw.yaml`, `req.yaml`)',
+    '- Task workflow (`tasks/`)',
+    '- Project-local specs (`specs/`)',
+    '',
+    "If you're using Codex, project-scoped helpers may also live in:",
+    '- `.codex/skills/` for emb-agent command mirrors',
+    '- `.codex/agents/` for optional custom agents',
+    '',
+    "Keep this managed block so future emb-agent updates can refresh the instructions.",
+    '',
+    '<!-- EMB-AGENT:END -->',
+    ''
+  ].join('\n');
+}
+
+function ensureProjectAgentsGuide(projectRoot, force) {
+  const filePath = path.join(projectRoot, PROJECT_AGENTS_PATH);
+  const existedBefore = fs.existsSync(filePath);
+
+  if (existedBefore && !force) {
+    return {
+      path: PROJECT_AGENTS_PATH,
+      created: false,
+      updated: false,
+      reused: true
+    };
+  }
+
+  fs.writeFileSync(filePath, buildProjectAgentsGuide(), 'utf8');
+
+  return {
+    path: PROJECT_AGENTS_PATH,
+    created: !existedBefore,
+    updated: existedBefore && force,
+    reused: false
+  };
+}
+
 function buildBootstrapDocsPlan(projectRoot, projectConfig, registry) {
   return [
     { output: path.join('docs', 'MCU-FOUNDATION-CHECKLIST.md'), template: 'mcu-foundation-checklist' },
@@ -670,6 +722,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   const templateIndex = buildTemplateIndex(workflowCatalog);
   const truthPlan = buildTruthPlan();
   const bootstrapDocsPlan = buildBootstrapDocsPlan(projectRoot, effectiveProjectConfig, workflowCatalog);
+  const projectAgentsGuide = ensureProjectAgentsGuide(projectRoot, force);
 
   for (const item of truthPlan) {
     const outputPath = path.join(projectRoot, item.output);
@@ -678,6 +731,14 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     } else {
       reused.push(path.relative(projectRoot, outputPath));
     }
+  }
+
+  if (projectAgentsGuide.created) {
+    created.push(projectAgentsGuide.path);
+  } else if (projectAgentsGuide.updated) {
+    updated.push(projectAgentsGuide.path);
+  } else {
+    reused.push(projectAgentsGuide.path);
   }
 
   const bootstrapTask = ensureBootstrapTask(projectRoot, effectiveProjectConfig, bootstrapDocsPlan, force);

@@ -8,7 +8,7 @@ This is the shortest recommended path for getting emb-agent running in a real em
 npx emb-agent --codex --local --developer your-name
 ```
 
-Replace `--codex` with `--claude` or `--cursor` for the host you actually use.
+Replace `--codex` with `--claude` or `--cursor` for the host you actually use. Local install also creates `AGENTS.md` and bootstraps `.emb-agent/`.
 
 If a host skill or external driver needs a fixed machine-readable protocol, prefer the fixed driver commands:
 
