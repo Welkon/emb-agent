@@ -581,6 +581,8 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.chip_support_health.primary.executable, true);
     assert.equal(report.chip_support_health.reusability.status, 'reusable');
     assert.equal(report.chip_support_health.reusability.reusable, true);
+    assert.match(report.quickstart.summary, /reusable across projects/);
+    assert.match(report.action_card.summary, /reusable across projects/);
     assert.ok(report.recommendations.every(item => !item.includes('support sync default-pack')));
     assert.ok(report.next_commands.some(item => item.cli.includes('tool run timer-calc')));
   } finally {
