@@ -124,7 +124,7 @@ test('applyOutputMode builds brief next context payload', () => {
 test('applyOutputMode builds brief tool output with permission gates', () => {
   const input = {
     tool: 'timer-calc',
-    status: 'adapter-required',
+    status: 'chip-support-required',
     implementation: 'abstract-only',
     high_risk_clarity: {
       enabled: true,

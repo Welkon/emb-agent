@@ -9,7 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
-test('fixed chip model auto-discovers suggested tools and adapter readiness', () => {
+test('fixed chip model auto-discovers suggested tools and chip support readiness', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-tool-discovery-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -127,7 +127,7 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
       status.suggested_tools.map(item => ({ name: item.name, status: item.status })),
       [
         { name: 'timer-calc', status: 'ready' },
-        { name: 'pwm-calc', status: 'adapter-required' }
+        { name: 'pwm-calc', status: 'chip-support-required' }
       ]
     );
     assert.equal(status.tool_recommendations.length, 2);
@@ -141,7 +141,7 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
     assert.match(status.tool_recommendations[0].cli_draft, /--device vendor-chip/);
     assert.match(status.tool_recommendations[0].cli_draft, /--timer tm16/);
     assert.deepEqual(status.tool_recommendations[0].missing_inputs, ['clock-hz', 'target-us or target-hz']);
-    assert.equal(status.tool_recommendations[1].status, 'adapter-required');
+    assert.equal(status.tool_recommendations[1].status, 'chip-support-required');
     assert.equal(status.tool_recommendations[1].trust.executable, false);
     assert.match(status.tool_recommendations[1].cli_draft, /tool run pwm-calc/);
     assert.deepEqual(status.tool_recommendations[1].missing_inputs, ['clock-hz', 'target-hz']);
@@ -160,7 +160,7 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
     assert.equal(plan.recommended_sources[0].id, 'mcu/vendor-chip-registers');
     assert.equal(plan.suggested_tools[0].chip, 'vendor-chip');
     assert.equal(plan.tool_recommendations[0].binding_algorithm, 'vendor-timer16');
-    assert.equal(plan.suggested_tools[0].implementation, 'external-adapter');
+    assert.equal(plan.suggested_tools[0].implementation, 'external-chip-support');
     assert.equal(plan.suggested_tools[1].implementation, 'abstract-only');
   } finally {
     process.chdir(currentCwd);
@@ -168,7 +168,7 @@ test('fixed chip model auto-discovers suggested tools and adapter readiness', ()
   }
 });
 
-test('draft adapter route is discoverable but not treated as ready', () => {
+test('draft chip support route is discoverable but not treated as ready', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-tool-draft-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -260,8 +260,8 @@ test('draft adapter route is discoverable but not treated as ready', () => {
         '    const options = context.parseLongOptions(context.tokens || []);',
         '    return {',
         "      tool: context.toolName,",
-        "      status: 'draft-adapter',",
-        "      implementation: 'external-adapter-draft',",
+        "      status: 'draft-chip-support',",
+        "      implementation: 'external-chip-support-draft',",
         '      inputs: { options }',
         '    };',
         '  }',
@@ -277,14 +277,14 @@ test('draft adapter route is discoverable but not treated as ready', () => {
     assert.deepEqual(
       status.suggested_tools.map(item => ({ name: item.name, status: item.status, implementation: item.implementation })),
       [
-        { name: 'timer-calc', status: 'draft-adapter', implementation: 'external-adapter-draft' }
+        { name: 'timer-calc', status: 'draft-chip-support', implementation: 'external-chip-support-draft' }
       ]
     );
-    assert.equal(status.tool_recommendations[0].status, 'draft-adapter');
+    assert.equal(status.tool_recommendations[0].status, 'draft-chip-support');
     assert.equal(status.tool_recommendations[0].binding_source, 'device');
     assert.equal(status.tool_recommendations[0].trust.grade, 'draft');
     assert.equal(status.tool_recommendations[0].trust.executable, false);
-    assert.equal(next.next.tool_recommendation.status, 'draft-adapter');
+    assert.equal(next.next.tool_recommendation.status, 'draft-chip-support');
     assert.equal(next.next.tool_recommendation.tool, 'timer-calc');
   } finally {
     process.chdir(currentCwd);
