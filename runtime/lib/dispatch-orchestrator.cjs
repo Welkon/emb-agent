@@ -381,13 +381,13 @@ function createDispatchHelpers(deps) {
       context_hygiene: dispatch.context_hygiene || null,
       next_actions: dispatch.next_actions || guidance.next_actions,
       tool_execution: toolExecution,
-      adapter_health:
-        dispatch.health && dispatch.health.adapter_health
-          ? dispatch.health.adapter_health
+      chip_support_health:
+        dispatch.health && (dispatch.health.chip_support_health || dispatch.health.adapter_health)
+          ? (dispatch.health.chip_support_health || dispatch.health.adapter_health)
           : dispatch.source === 'next' &&
             dispatch.action_context &&
             dispatch.action_context.health
-            ? dispatch.action_context.health.adapter_health || null
+            ? dispatch.action_context.health.chip_support_health || dispatch.action_context.health.adapter_health || null
             : null,
       dispatch_contract: execution.dispatch_contract || null,
       action_context: dispatch.action_context || null

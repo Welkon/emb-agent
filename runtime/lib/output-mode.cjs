@@ -211,6 +211,10 @@ function relevantHealthCheckKeys(stage) {
       return ['doc_apply_backlog'];
     case 'chip-support':
       return [
+        'chip_support_sources_registered',
+        'chip_support_sync_project',
+        'chip_support_match',
+        'chip_support_quality',
         'adapter_sources_registered',
         'adapter_sync_project',
         'adapter_match',
@@ -219,7 +223,7 @@ function relevantHealthCheckKeys(stage) {
         'register_summary_available'
       ];
     case 'chip-support-from-document':
-      return ['adapter_derive_candidate', 'adapter_match'];
+      return ['chip_support_derive_candidate', 'chip_support_match', 'adapter_derive_candidate', 'adapter_match'];
     default:
       return [];
   }
