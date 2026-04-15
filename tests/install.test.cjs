@@ -110,7 +110,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'scaffolds', 'registry.json')), false);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'default-session.json')), true);
-    assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'projects')), false);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'projects')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'VERSION')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'command-docs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'tools', 'registry.json')), true);
@@ -749,13 +749,11 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', '00-bootstrap-project', 'task.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'default-session.json')), true);
-    assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'projects')), false);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'projects')), true);
     assert.equal(configData.project_state_dir, 'state/projects');
     assert.equal(configData.legacy_project_state_dir, 'state/projects');
 
     installedCli.main(['init']);
-
-    assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'projects')), true);
     assert.match(stdout, /Installed 14 Codex skills under:/);
     assert.match(stdout, /\.codex\/skills/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
