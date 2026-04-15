@@ -31,7 +31,7 @@ test('session start hook points the user back to start instead of replaying the 
     const empty = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
     assert.match(empty, /Emb-Agent Session Reminder/);
     assert.match(empty, /Primary entrypoint: start/);
-    assert.match(empty, /Current shortest command: task add <summary>/);
+    assert.match(empty, /Current shortest command: next/);
     assert.doesNotMatch(empty, /Task bootstrap:/);
     assert.doesNotMatch(empty, /Execution loop:/);
 
