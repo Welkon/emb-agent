@@ -317,6 +317,31 @@ function createHealthUpdateCommandHelpers(deps) {
     return '';
   }
 
+  function buildChipSupportReuseSummary(adapterReusability) {
+    const reusability =
+      adapterReusability && typeof adapterReusability === 'object' && !Array.isArray(adapterReusability)
+        ? adapterReusability
+        : null;
+
+    if (!reusability) {
+      return '';
+    }
+
+    if (reusability.status === 'reusable') {
+      return 'Current chip support is already reusable across projects; continue with the recommended next stage.';
+    }
+
+    if (reusability.status === 'reusable-candidate') {
+      return 'Current chip support looks reusable after review; continue with the recommended next stage and keep it as a reusable candidate.';
+    }
+
+    if (reusability.status === 'project-only') {
+      return 'Current chip support should stay project-local for now; continue with the recommended next stage after local verification.';
+    }
+
+    return '';
+  }
+
   function buildActionCardFromBootstrap(bootstrap) {
     const plan = bootstrap && typeof bootstrap === 'object' ? bootstrap : {};
     const quickstart = plan.quickstart && typeof plan.quickstart === 'object' ? plan.quickstart : {};
@@ -342,7 +367,7 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
-  function buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks) {
+  function buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, adapterReusability) {
     const commands = Array.isArray(nextCommands) ? nextCommands : [];
     const allChecks = Array.isArray(checks) ? checks : [];
     const findCommand = (...keys) => commands.find(item => keys.includes(item.key));
@@ -528,21 +553,31 @@ function createHealthUpdateCommandHelpers(deps) {
           ]
         : [])
     ];
+    const reuseSummary = buildChipSupportReuseSummary(adapterReusability);
     const quickstartSummary = nextStage
-      ? nextStage.summary || nextStage.label
-      : 'Bootstrap prerequisites are already closed; run next directly';
-    const quickstartUserSummary = getQuickstartUserSummary(quickstartStage, quickstartSummary);
+      ? nextStage.id === 'next-step' && reuseSummary
+        ? reuseSummary
+        : nextStage.summary || nextStage.label
+      : reuseSummary || 'Bootstrap prerequisites are already closed; run next directly';
+    const quickstartUserSummary =
+      nextStage && nextStage.id === 'next-step' && reuseSummary
+        ? reuseSummary
+        : getQuickstartUserSummary(quickstartStage, quickstartSummary);
     const quickstartFollowup = getQuickstartFollowup(nextStage, quickstartStage);
 
     const actionCard = buildActionCardFromBootstrap({
       status: nextStage ? (nextStage.status === 'manual' ? 'manual' : 'ready') : 'complete',
       display_status: nextStage ? getBootstrapStatusDisplay(nextStage.status) : 'done',
       summary: nextStage
-        ? nextStage.summary || nextStage.label
-        : 'Bootstrap prerequisites are already closed',
+        ? nextStage.id === 'next-step' && reuseSummary
+          ? reuseSummary
+          : nextStage.summary || nextStage.label
+        : reuseSummary || 'Bootstrap prerequisites are already closed',
       display_summary: nextStage
-        ? getQuickstartUserSummary(quickstartStage, nextStage.summary || nextStage.label)
-        : 'Bootstrap prerequisites are closed; enter the recommended next stage.',
+        ? nextStage.id === 'next-step' && reuseSummary
+          ? reuseSummary
+          : getQuickstartUserSummary(quickstartStage, nextStage.summary || nextStage.label)
+        : reuseSummary || 'Bootstrap prerequisites are closed; enter the recommended next stage.',
       current_stage: nextStage ? nextStage.id : '',
       display_current_stage: nextStage ? nextStage.display_id : 'continue-with-next',
       next_stage: nextStage,
@@ -563,11 +598,15 @@ function createHealthUpdateCommandHelpers(deps) {
       status: nextStage ? (nextStage.status === 'manual' ? 'manual' : 'ready') : 'complete',
       display_status: nextStage ? getBootstrapStatusDisplay(nextStage.status) : 'done',
       summary: nextStage
-        ? nextStage.summary || nextStage.label
-        : 'Bootstrap prerequisites are already closed',
+        ? nextStage.id === 'next-step' && reuseSummary
+          ? reuseSummary
+          : nextStage.summary || nextStage.label
+        : reuseSummary || 'Bootstrap prerequisites are already closed',
       display_summary: nextStage
-        ? getQuickstartUserSummary(quickstartStage, nextStage.summary || nextStage.label)
-        : 'Bootstrap prerequisites are closed; enter the recommended next stage.',
+        ? nextStage.id === 'next-step' && reuseSummary
+          ? reuseSummary
+          : getQuickstartUserSummary(quickstartStage, nextStage.summary || nextStage.label)
+        : reuseSummary || 'Bootstrap prerequisites are closed; enter the recommended next stage.',
       current_stage: nextStage ? nextStage.id : '',
       display_current_stage: nextStage ? nextStage.display_id : 'continue-with-next',
       next_stage: nextStage,
@@ -594,8 +633,8 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
-  function buildQuickstartHint(workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, projectRoot) {
-    const bootstrap = buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks);
+  function buildQuickstartHint(workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, projectRoot, adapterReusability) {
+    const bootstrap = buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, adapterReusability);
     return bootstrap.quickstart;
   }
 
@@ -1352,7 +1391,15 @@ function createHealthUpdateCommandHelpers(deps) {
       );
     }
 
-    const bootstrap = buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks);
+    const bootstrap = buildBootstrapPlan(
+      projectRoot,
+      workspaceTrust,
+      hardwareIdentity,
+      nextCommands,
+      pendingDocApply,
+      checks,
+      adapterReusability
+    );
 
     return {
       command: 'health',
@@ -1368,7 +1415,15 @@ function createHealthUpdateCommandHelpers(deps) {
         reusability: adapterReusability
       },
       next_commands: nextCommands,
-      quickstart: buildQuickstartHint(workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, projectRoot),
+      quickstart: buildQuickstartHint(
+        workspaceTrust,
+        hardwareIdentity,
+        nextCommands,
+        pendingDocApply,
+        checks,
+        projectRoot,
+        adapterReusability
+      ),
       bootstrap,
       action_card: bootstrap.action_card || buildActionCardFromBootstrap(bootstrap),
       recommendations: runtime.unique(

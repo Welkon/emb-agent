@@ -683,18 +683,31 @@ function createSessionFlowHelpers(deps) {
         ? healthReport.chip_support_health
         : null;
     const primary = adapterHealth && adapterHealth.primary ? adapterHealth.primary : null;
+    const reusability =
+      adapterHealth && adapterHealth.reusability && typeof adapterHealth.reusability === 'object'
+        ? adapterHealth.reusability
+        : null;
 
     if (!primary) {
       return [];
     }
 
+    const reuseFirst =
+      reusability && reusability.status === 'reusable'
+        ? 'Chip support status: reusable across projects'
+        : reusability && reusability.status === 'reusable-candidate'
+          ? 'Chip support status: reusable candidate after review'
+          : 'Chip support status: project-only for now';
+
     if (primary.executable) {
       return [
+        reuseFirst,
         `Chip support trust: ${primary.tool} ${primary.grade} (${primary.score}/100)`
       ];
     }
 
     return [
+      reuseFirst,
       `Chip support trust reminder: ${primary.tool} is currently ${primary.grade} (${primary.score}/100)`,
       `Handle the chip-support gap first: ${primary.recommended_action}`,
       primaryToolRecommendation && primaryToolRecommendation.cli_draft
