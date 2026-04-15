@@ -664,14 +664,14 @@ test('adapter source add/remove and sync honor write rules before mutating share
       config.permissions.writes.ask = ['support-sync-project'];
     });
 
-    const blockedSync = await captureJson(['support', 'sync', 'vendor-pack']);
+    const blockedSync = await captureJson(['support', 'sync', 'vendor-pack', '--no-match-project']);
     assert.equal(blockedSync.status, 'permission-pending');
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
       false
     );
 
-    const allowedSync = await captureJson(['support', 'sync', 'vendor-pack', '--confirm']);
+    const allowedSync = await captureJson(['support', 'sync', 'vendor-pack', '--confirm', '--no-match-project']);
     assert.equal(allowedSync.permission_decision.decision, 'allow');
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
@@ -741,7 +741,13 @@ test('adapter bootstrap honors write ask rules before adding source and syncing 
     ]);
     assert.equal(allowed.permission_decision.decision, 'allow');
     assert.equal(allowed.source.name, 'vendor-pack');
-    assert.equal(allowed.sync.status, 'synced');
+    assert.equal(allowed.sync.status, 'skipped');
+    assert.equal(allowed.sync.reason, 'missing-project-chip');
+    assert.equal(allowed.sync.selection.skipped, true);
+    assert.equal(
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support', 'routes', 'timer-calc.cjs')),
+      false
+    );
   } finally {
     process.chdir(currentCwd);
   }

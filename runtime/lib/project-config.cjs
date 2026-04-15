@@ -76,6 +76,18 @@ function createProjectConfigHelpers(deps) {
     const selection = syncResult && syncResult.selection ? syncResult.selection : {};
     const matched = selection && selection.matched ? selection.matched : {};
 
+    if (selection && selection.skipped) {
+      return {
+        mode: 'selection-only',
+        status: 'warn',
+        summary: 'Chip support sync was skipped because the project chip is still unknown.',
+        matched_chips: matched.chips || [],
+        matched_tools: matched.tools || [],
+        inferred_from_project: false,
+        next_action: 'fill-hw-or-run-sync-with-project-match'
+      };
+    }
+
     return {
       mode: 'selection-only',
       status: 'info',
