@@ -1039,6 +1039,32 @@ function createNoteReportHelpers(deps) {
     return (argv || []).map(item => String(item)).join(' ').trim();
   }
 
+  function formatChipSupportHealthSummary(chipSupportHealth) {
+    if (!chipSupportHealth || typeof chipSupportHealth !== 'object') {
+      return '-';
+    }
+
+    const primary =
+      chipSupportHealth.primary && typeof chipSupportHealth.primary === 'object'
+        ? chipSupportHealth.primary
+        : null;
+    const reusability =
+      chipSupportHealth.reusability && typeof chipSupportHealth.reusability === 'object'
+        ? chipSupportHealth.reusability
+        : null;
+
+    if (!primary) {
+      return '-';
+    }
+
+    const reuseLabel =
+      reusability && reusability.status
+        ? `reuse=${reusability.status}`
+        : 'reuse=unknown';
+
+    return `${reuseLabel}, tool=${primary.tool}, trust=${primary.grade} (${primary.score}/100), executable=${primary.executable ? 'yes' : 'no'}, action=${primary.recommended_action}`;
+  }
+
   function buildVerifyEntry(verifyOutput, verifyInput, latestExecutor) {
     const timestamp = new Date().toISOString();
     const next = typeof buildNextContext === 'function' ? buildNextContext() : null;
@@ -1051,9 +1077,8 @@ function createNoteReportHelpers(deps) {
     const chipSupportHealth =
       next &&
       next.health &&
-      next.health.chip_support_health &&
-      next.health.chip_support_health.primary
-        ? next.health.chip_support_health.primary
+      next.health.chip_support_health
+        ? next.health.chip_support_health
         : null;
     const lines = [
       `### ${timestamp}`,
@@ -1068,9 +1093,7 @@ function createNoteReportHelpers(deps) {
       `- Tool trust: ${toolRecommendation && toolRecommendation.trust
         ? `${toolRecommendation.trust.grade} (${toolRecommendation.trust.score}/100), executable=${toolRecommendation.trust.executable ? 'yes' : 'no'}`
         : '-'}`,
-      `- Chip support health: ${chipSupportHealth
-        ? `${chipSupportHealth.tool} ${chipSupportHealth.grade} (${chipSupportHealth.score}/100), executable=${chipSupportHealth.executable ? 'yes' : 'no'}, action=${chipSupportHealth.recommended_action}`
-        : '-'}`,
+      `- Chip support health: ${formatChipSupportHealthSummary(chipSupportHealth)}`,
       `- Latest executor: ${latestExecutor
         ? `${latestExecutor.name} ${latestExecutor.status}, exit=${latestExecutor.exit_code === null ? '-' : latestExecutor.exit_code}, risk=${latestExecutor.risk || '-'}, duration=${latestExecutor.duration_ms === null ? '-' : latestExecutor.duration_ms}ms`
         : '-'}`

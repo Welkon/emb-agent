@@ -115,6 +115,32 @@ function createSessionReportCommandHelpers(deps) {
     };
   }
 
+  function formatChipSupportHealthSummary(chipSupportHealth) {
+    if (!chipSupportHealth || typeof chipSupportHealth !== 'object') {
+      return '(none)';
+    }
+
+    const primary =
+      chipSupportHealth.primary && typeof chipSupportHealth.primary === 'object'
+        ? chipSupportHealth.primary
+        : null;
+    const reusability =
+      chipSupportHealth.reusability && typeof chipSupportHealth.reusability === 'object'
+        ? chipSupportHealth.reusability
+        : null;
+
+    if (!primary) {
+      return '(none)';
+    }
+
+    const reuseLabel =
+      reusability && reusability.status
+        ? `reuse=${reusability.status}`
+        : 'reuse=unknown';
+
+    return `${reuseLabel}, tool=${primary.tool}, trust=${primary.grade} (${primary.score}/100), executable=${primary.executable ? 'yes' : 'no'}, action=${primary.recommended_action}`;
+  }
+
   function buildSessionReport(summaryText) {
     const resolved = resolveSession();
     const handoff = loadHandoff();
@@ -285,9 +311,7 @@ function createSessionReportCommandHelpers(deps) {
         : '(none)'}`
     );
     lines.push(
-      `- chip_support_health: ${report.chip_support_health && report.chip_support_health.primary
-        ? `${report.chip_support_health.primary.tool} ${report.chip_support_health.primary.grade} (${report.chip_support_health.primary.score}/100), executable=${report.chip_support_health.primary.executable ? 'yes' : 'no'}, action=${report.chip_support_health.primary.recommended_action}`
-        : '(none)'}`
+      `- chip_support_health: ${formatChipSupportHealthSummary(report.chip_support_health)}`
     );
     lines.push(`- suggested_flow: ${report.next.current.suggested_flow || ''}`);
     lines.push(`- context_hygiene: ${report.next.context_hygiene.level}`);
