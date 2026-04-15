@@ -10,7 +10,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const sessionStartHook = require(path.join(repoRoot, 'runtime', 'hooks', 'emb-session-start.js'));
 
-test('session start hook only reminds when an unconsumed handoff exists', () => {
+test('session start hook points the user back to start instead of replaying the full workflow', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-start-'));
   const currentCwd = process.cwd();
   const previousSkip = process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
@@ -29,11 +29,17 @@ test('session start hook only reminds when an unconsumed handoff exists', () => 
     cli.main(['init']);
 
     const empty = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
-    assert.equal(empty, '');
+    assert.match(empty, /Emb-Agent Session Reminder/);
+    assert.match(empty, /Primary entrypoint: start/);
+    assert.match(empty, /Current shortest command: task add <summary>/);
+    assert.doesNotMatch(empty, /Task bootstrap:/);
+    assert.doesNotMatch(empty, /Execution loop:/);
 
     cli.main(['pause', 'resume irq race first']);
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
     assert.match(reminder, /Emb-Agent Session Reminder/);
+    assert.match(reminder, /Primary entrypoint: start/);
+    assert.match(reminder, /Current shortest command: resume/);
     assert.match(reminder, /Found an unconsumed handoff/);
     assert.match(reminder, /node ~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs resume/);
     assert.match(reminder, /resume irq race first/);
@@ -145,13 +151,16 @@ test('session start hook reminds active task context after clearable resume path
     cli.main(['task', 'activate', taskName]);
 
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
+    assert.match(reminder, /Primary entrypoint: start/);
     assert.match(reminder, /Current active task:/);
     assert.match(reminder, /Investigate PMS150G comparator timing/);
+    assert.match(reminder, /Re-read the task PRD first:/);
     assert.match(reminder, /task implement context/);
     assert.match(reminder, /emb-agent\/hw\.yaml/);
     assert.match(reminder, /Auto-injected specs:/);
     assert.match(reminder, /project-local/);
     assert.match(reminder, /task-execution/);
+    assert.doesNotMatch(reminder, /Default loop:/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;

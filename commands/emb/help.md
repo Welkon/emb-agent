@@ -11,38 +11,24 @@ allowed-tools:
 
 Output the emb-agent help summary below and nothing else.
 
-## Default Flow
+## Fast Path
 
-- Runtime integration:
-  Run these as Codex, Claude Code, or Cursor session commands.
-  Runtime invocation details are handled by the host integration.
-- First time in a project:
-  `init`
-  If MCU/package are already known:
-  `declare hardware --mcu <name> --package <name>`
-  If MCU/package are still unknown:
-  keep `.emb-agent/hw.yaml` unknown, record goals and constraints in `.emb-agent/req.yaml`, then continue
-  `next`
-  If automatic bootstrap seems blocked unexpectedly, run `health` first to inspect host readiness and truth readiness.
-- Continuing work:
-  `next`
-  `next run` (optional one-step mode: directly enter the recommended stage)
-- Process direction:
-  `scan` before editing when entry/truth is not explicit
-  `plan` when scope or risk is not obvious
-  `do/debug` for execution
-  `review/verify` for closure
-  If project `quality_gates.required_executors` is configured, keep `verify` active until required `executor run <name>` checks pass
-  If project `quality_gates.required_signoffs` is configured, the engineer closes them with `verify confirm <name>` or `verify reject <name>`
+- Run these as Codex, Claude Code, or Cursor session commands.
+- Use `start` first. It is the single repository entrypoint and tells you whether to `resume`, `task add`, `declare hardware`, `next`, or repair with `init`.
+- Treat `init` as a manual bootstrap or recovery command, not the default first step after a local install.
+- Use `next` for the default continuation once project truth and task context are in place.
+- Use `help advanced` or `help --all` only when you need the full installed surface.
 
 ## Public Commands
 
-The public command surface is intentionally small. Users should only need these 13 commands.
+The public command surface is intentionally small. Users should only need these 14 commands.
 In Codex, this surface is mirrored as skills such as `emb-init`.
 In slash-command hosts, the same surface can appear as `$emb-*`.
 
 ### Start
 
+- `$emb-start`
+  Summarize the current project/task state and return the shortest default workflow to continue.
 - `$emb-init`
   Initialize the current project with emb-agent defaults and truth layers. This is the official initialization flow.
 - `$emb-ingest`
@@ -74,32 +60,15 @@ In slash-command hosts, the same surface can appear as `$emb-*`.
 - `$emb-resume`
   Restore project context after pause or context clearing.
 
-## Hardware And Manual Work
+## Notes
 
 - If the engineer already knows the chip, package, pin map, or peripheral usage, prefer `declare hardware` first.
 - If the MCU is not chosen yet, do not guess. Keep `hw.yaml` unknown, record product constraints in `req.yaml`, and let `next` stay on the concept-stage path.
-- If the truth still lives in a PDF or manual, use:
-  `ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
-- If the chip is known but the PDF is still missing, use:
-  `doc lookup --chip <name> --vendor <name>`
-- If a schematic already carries datasheet links, use:
-  `doc lookup --file <schematic> --ref <designator>`
-- If the board truth still lives in an Altium schematic or export, use:
-  `ingest schematic --file <path>`
-- `declare hardware` writes `hw.yaml` directly and returns `write_mode: truth-write`.
-- `ingest doc` returns `write_mode: staged-truth` when the parsed document can be applied into `hw.yaml` or `req.yaml`; use `apply_ready` to move from parsed evidence to truth.
-- After `ingest schematic`, let the agent analyze the normalized `parsed.json` / hardware draft first; do not copy inferred controller or signals straight into `hw.yaml`.
-- `ingest schematic` returns `write_mode: analysis-only`, `truth_write.direct: false`, and `apply_ready: null` to make that deferred handoff explicit.
-- If you want normalized supplier-search inputs from a schematic, use:
-  `component lookup --file <schematic>`
-- If you want explicit supplier candidates from 立创商城, use:
-  `component lookup --file <schematic> --provider szlcsc`
-- `doc lookup` and `component lookup` return `result_mode: candidate-only`; they help collect evidence, not write project truth.
-- If the response already includes `apply_ready`, run it first and then return to `next`.
+- If the truth still lives outside the repo, use `ingest doc`, `ingest schematic`, `doc lookup`, or `component lookup` to collect evidence before writing project truth.
+- `declare hardware` writes truth directly; document and schematic intake stay evidence-first and should return to `next` after review or apply.
 
 ## Advanced Help
 
-- If you are just trying to move an embedded project forward, you can usually stop before this section.
 - Use `help advanced` or `help --all` to show the full command surface.
 - Use `commands list` to inspect the default public command surface.
 - Use `commands list --all` when you explicitly want the full installed command inventory.

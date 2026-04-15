@@ -71,88 +71,25 @@ See [docs/product-boundaries.md](./docs/product-boundaries.md) for the explicit 
 
 ## Quick Start
 
-### 1. Install emb-agent and bootstrap the repo
-
-For Codex:
+### 1. Install emb-agent in your repo
 
 ```bash
 npx emb-agent --codex --local --developer your-name
 ```
 
-This uses the default `core` install profile. It keeps the runtime lean and skips advanced scaffold-authoring assets that are not needed for normal day-to-day use.
+Replace `--codex` with `--claude` or `--cursor` if that is your host. Local install wires the host integration and bootstraps `.emb-agent/` in the current repository.
 
-If you are actively authoring or extending shared workflow scaffolds, reinstall with:
+Use `--profile workflow` only when you are authoring scaffold assets rather than using emb-agent day to day.
 
-```bash
-npx emb-agent --codex --local --developer your-name --profile workflow
-```
+If you are installing for Codex, hooks may still require manual enablement in `~/.codex/config.toml`. See [docs/platforms.md](./docs/platforms.md) for host-specific setup differences.
 
-This installs:
+### 2. Open a session and run `start`
 
-- project-scoped runtime files under `./.codex/emb-agent/`
-- project-scoped Codex agents under `./.codex/agents/`
-- project-scoped Codex-discoverable public emb skills under `./.codex/skills/`
-- project-scoped emb-agent truth under `./.emb-agent/`
-
-As of Codex CLI `v0.116.0` on `2026-03-24`, hooks are still experimental and must be enabled manually in `~/.codex/config.toml` unless your team config already enables them:
-
-```toml
-[features]
-multi_agent = true
-codex_hooks = true
-```
-
-emb-agent does not write these feature flags automatically. If Codex later enables hooks by default, this manual step may no longer be required.
-
-For Claude Code:
-
-```bash
-npx emb-agent --claude --local --developer your-name
-```
-
-This installs Claude integration into the repository under `./.claude/`, including:
-
-- project-scoped runtime files under `./.claude/emb-agent/`
-- project-scoped agents under `./.claude/agents/`
-- project-scoped command wrappers under `./.claude/commands/emb/`
-- project-scoped hook configuration in `./.claude/settings.json`
-- project-scoped emb-agent truth under `./.emb-agent/`
-
-For Cursor:
-
-```bash
-npx emb-agent --cursor --local --developer your-name
-```
-
-This installs Cursor integration into the repository under `./.cursor/`, including:
-
-- project-scoped runtime files under `./.cursor/emb-agent/`
-- project-scoped agents under `./.cursor/agents/`
-- project-scoped command wrappers under `./.cursor/commands/`
-- project-scoped hook configuration in `./.cursor/settings.json`
-- project-scoped emb-agent truth under `./.emb-agent/`
-
-`--developer` is required during install. For local installs it is also written into the bootstrapped project, so the repo is ready before the first session command.
-
-`--profile` is optional. `core` is the default and is recommended for normal usage. Use `--profile workflow` when you need built-in scaffold authoring assets in the installed runtime.
-
-### 2. Use emb-agent inside the session
-
-You do not need to run any internal CLI path yourself.
-
-After install, open the project in Codex, Claude Code, or Cursor and use emb-agent directly in the session. The host integration handles runtime invocation for you, and local installs have already created the minimum `.emb-agent/` skeleton.
+`start` is the linear entrypoint for the current repository. It tells the agent whether to keep bootstrapping project truth, activate a task, resume a handoff, or continue with `next`.
 
 If a workflow is product-specific instead of broadly reusable, keep it as a project-local extension under `.emb-agent/` and load it with `init --pack <project-local-pack>` rather than adding it to built-in runtime packs. See [docs/workflow-layering.md](./docs/workflow-layering.md) and the [smart pillbox example](./examples/project-extensions/smart-pillbox/README.md).
 
-The shortest onboarding path and session command flow are documented in [docs/quick-start.md](./docs/quick-start.md) and [commands/emb/help.md](./commands/emb/help.md).
-
-The public command surface is intentionally kept small. In Codex it is mirrored as skills such as `emb-init` and `emb-next`; in slash-command hosts the same surface can appear as `$emb-*` commands:
-
-- Start: `init`, `ingest`, `next`, `task`
-- Execute: `scan`, `plan`, `do`, `debug`
-- Close: `review`, `verify`, `pause`, `resume`
-
-Everything else is treated as advanced runtime surface rather than default user-facing slash commands.
+The canonical onboarding path is documented in [docs/quick-start.md](./docs/quick-start.md). Platform-specific setup differences live in [docs/platforms.md](./docs/platforms.md). The command index lives in [commands/emb/help.md](./commands/emb/help.md).
 
 If the MCU is already known, the shortest path after install is:
 

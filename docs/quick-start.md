@@ -6,15 +6,15 @@ This guide is intentionally embedded-workflow first. It does not try to teach ev
 
 ## 1. Install into a supported runtime and bootstrap the repo
 
-For Codex:
-
 ```bash
 npx emb-agent --codex --local --developer your-name
 ```
 
-This uses the default `core` install profile, which keeps the runtime lean, skips advanced scaffold-authoring assets, and creates the minimum `.emb-agent/` project skeleton in the current repository.
+Replace `--codex` with `--claude` or `--cursor` for the host you actually use.
 
-If you need the built-in scaffold authoring layer, reinstall with:
+This creates the minimum `.emb-agent/` project skeleton in the current repository and installs the matching host-side wiring under `./.codex/`, `./.claude/`, or `./.cursor/`.
+
+Use `--profile workflow` only if you are authoring scaffold assets:
 
 ```bash
 npx emb-agent --codex --local --developer your-name --profile workflow
@@ -30,25 +30,9 @@ codex_hooks = true
 
 emb-agent does not add these flags automatically. If a future Codex release enables hooks by default, this extra configuration may no longer be needed.
 
-For Claude Code:
+`--developer` is required during install. For local installs it is also written into the bootstrapped project.
 
-```bash
-npx emb-agent --claude --local --developer your-name
-```
-
-This writes project-scoped Claude assets under `./.claude/` and bootstraps `.emb-agent/` in the repo.
-`--developer` is required during install. The value is stored in runtime config and written into the bootstrapped project.
-`--profile` is optional. `core` is the default; use `--profile workflow` only when you need scaffold authoring assets.
-
-For Cursor:
-
-```bash
-npx emb-agent --cursor --local --developer your-name
-```
-
-This writes project-scoped Cursor assets under `./.cursor/`, including `commands/` wrappers and `settings.json` hooks, and bootstraps `.emb-agent/` in the repo.
-`--developer` is required during install. The value is stored in runtime config and written into the bootstrapped project.
-`--profile` is optional. `core` is the default; use `--profile workflow` only when you need scaffold authoring assets.
+Platform-specific wiring differences live in [platforms.md](./platforms.md).
 
 ## 2. Open the project in Codex, Claude Code, or Cursor
 
@@ -56,7 +40,15 @@ Use emb-agent from inside the session.
 
 These are session commands. You do not need to run internal runtime files manually.
 
-## 3. Confirm the bootstrapped project skeleton
+## 3. Run `start`
+
+```bash
+start
+```
+
+Use `start` as the single entrypoint for the current repository. It tells you whether the shortest path is `resume`, `task add`, `declare hardware`, `next`, or a repair `init`.
+
+## 4. Confirm the bootstrapped project skeleton
 
 After local install, emb-agent has already prepared:
 
@@ -65,7 +57,7 @@ After local install, emb-agent has already prepared:
 - `.emb-agent/req.yaml`
 - a bootstrap task under `.emb-agent/tasks/00-bootstrap-project/`
 
-## 4. Lock hardware truth early
+## 5. Lock hardware truth early
 
 If you already know the target MCU and package:
 
@@ -91,7 +83,7 @@ If the project is still at concept stage and the MCU is not chosen yet:
 
 You do not need to invent a fake MCU just to continue.
 
-## 5. Continue from the default command
+## 6. Continue from the default command
 
 ```bash
 next
@@ -101,7 +93,7 @@ This keeps command choice minimal. You should not need to memorize the full surf
 
 The public command surface is intentionally small and grouped like this:
 
-- Start: `init`, `ingest`, `next`, `task`
+- Start: `start`, `init`, `ingest`, `next`, `task`
 - Execute: `scan`, `plan`, `do`, `debug`
 - Close: `review`, `verify`, `pause`, `resume`
 
@@ -127,7 +119,7 @@ If your project sets `quality_gates.required_executors` in `.emb-agent/project.j
 
 If your project sets `quality_gates.required_signoffs`, the engineer closes those board-level checks with `verify confirm <name>` or `verify reject <name>`.
 
-## 6. Pull truth out of documents only when needed
+## 7. Pull truth out of documents only when needed
 
 If the answer still lives in a datasheet or manual:
 
@@ -147,7 +139,7 @@ ingest schematic --file <path>
 
 `ingest schematic` is analysis-only: it prepares normalized artifacts for agent review and does not directly update truth files.
 
-## 7. Use optional support surfaces only when they add leverage
+## 8. Use optional support surfaces only when they add leverage
 
 Most embedded projects can ignore this section at first.
 

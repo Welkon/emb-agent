@@ -491,6 +491,13 @@ test('installer workflow profile includes scaffold assets', async () => {
   }
 });
 
+test('installer rejects removed full install profile alias', async () => {
+  await assert.rejects(
+    () => installer.main(['--codex', '--global', '--config-dir', '/tmp/emb-agent-full', '--developer', 'welkon', '--profile', 'full']),
+    /Unsupported install profile: full/
+  );
+});
+
 test('installer rejects declared but unsupported runtime targets', () => {
   return assert.rejects(
     () => installer.main(['--runtime', 'windsurf', '--global', '--config-dir', '/tmp/emb-agent-windsurf', '--developer', 'welkon']),
