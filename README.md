@@ -85,7 +85,7 @@ Host-specific runtime state stays outside the repo. That keeps project truth col
 - [Platforms](./docs/platforms.md)
 - [Scenarios](./docs/scenarios.md)
 - [Product Boundaries](./docs/product-boundaries.md)
-- [Adapter Model](./docs/adapter-model.md)
+- [Chip Support Model](./docs/adapter-model.md)
 - [Task Model](./docs/task-model.md)
 - [Workflow Layering](./docs/workflow-layering.md)
 - [Command Help](./commands/emb/help.md)

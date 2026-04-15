@@ -1,6 +1,6 @@
 ---
 name: emb-adapter
-description: Manage adapter sources, discovery, derivation, and quality status.
+description: Manage chip support sources, discovery, derivation, and quality status.
 allowed-tools:
   - Read
   - Write
@@ -15,9 +15,10 @@ allowed-tools:
 
 ## Purpose
 
-- Manage adapter sources, discovery, derivation, and quality status.
+- Manage chip support sources, discovery, derivation, and quality status.
 
 ## Usage
 
 - Run `$emb-adapter` when this command matches the current problem.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
+- This is an advanced maintenance surface, not part of the default firmware-project path.
