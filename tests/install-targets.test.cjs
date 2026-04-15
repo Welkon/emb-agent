@@ -41,7 +41,7 @@ test('install target registry keeps future runtimes declared but disabled', () =
   const cursor = targets.resolveInstallTarget('cursor');
   const knownTargets = targets.listInstallTargets().map(item => item.name).sort();
 
-  assert.deepEqual(knownTargets, ['augment', 'claude', 'codex', 'copilot', 'cursor', 'gemini', 'windsurf']);
+  assert.deepEqual(knownTargets, ['augment', 'claude', 'codex', 'copilot', 'cursor', 'external', 'gemini', 'windsurf']);
   assert.equal(claude.supported, true);
   assert.equal(claude.configFileName, 'settings.json');
   assert.equal(claude.agentMode, 'markdown');
