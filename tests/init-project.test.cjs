@@ -510,6 +510,21 @@ test('init accepts runtime and developer identity flags and persists updates', (
     assert.equal(developerMarker.name, 'felix');
     assert.equal(developerMarker.runtime, 'claude');
     assert.deepEqual(status.developer, { name: 'felix', runtime: 'claude' });
+
+    cli.main(['init', '--cursor', '-u', 'cursor-dev']);
+
+    projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+    developerMarker = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', '.developer'), 'utf8')
+    );
+    status = cli.buildStatus();
+
+    assert.deepEqual(projectConfig.developer, { name: 'cursor-dev', runtime: 'cursor' });
+    assert.equal(developerMarker.name, 'cursor-dev');
+    assert.equal(developerMarker.runtime, 'cursor');
+    assert.deepEqual(status.developer, { name: 'cursor-dev', runtime: 'cursor' });
     assert.match(
       fs.readFileSync(path.join(tempProject, '.gitignore'), 'utf8'),
       /\.emb-agent\/\.developer/

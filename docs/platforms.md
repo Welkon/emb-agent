@@ -77,16 +77,16 @@ node ./.cursor/emb-agent/bin/emb-agent.cjs
 
 ## Shared workflow
 
-Regardless of runtime, the default project path stays the same:
+Regardless of runtime, the default local-install path stays the same:
 
 ```text
-install -> init -> declare hardware -> next
+install -> declare hardware -> next
 ```
 
 If MCU choice is still open, the parallel concept-stage path is:
 
 ```text
-install -> init -> record goals/constraints in req.yaml -> next
+install -> record goals/constraints in req.yaml -> next
 ```
 
 The runtime changes where host-side state is stored, not how project truth is modeled.

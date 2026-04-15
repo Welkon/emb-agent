@@ -16,7 +16,8 @@ function createInstallHelpers(deps) {
     agentsSrc,
     runtimeSrc,
     runtimeHooksSrc,
-    packageVersion
+    packageVersion,
+    initProject
   } = deps;
 
   const MANAGED_MARKER_START = '# EMB-AGENT managed start';
@@ -25,6 +26,20 @@ function createInstallHelpers(deps) {
   const TEXT_FILE_EXTENSIONS = new Set(['.cjs', '.js', '.json', '.md', '.txt', '.tpl', '.yaml', '.yml']);
   const DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS =
     Number(runtimeHost && runtimeHost.DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS) || 15000;
+  const INSTALL_PROFILES = Object.freeze({
+    core: {
+      name: 'core',
+      includeScaffolds: false
+    },
+    workflow: {
+      name: 'workflow',
+      includeScaffolds: true
+    },
+    full: {
+      name: 'full',
+      includeScaffolds: true
+    }
+  });
   const SANDBOX_BY_AGENT = {
     'emb-fw-doer': 'workspace-write',
     'emb-bug-hunter': 'workspace-write',
@@ -58,7 +73,8 @@ function createInstallHelpers(deps) {
         '  --runtime <name>        Select runtime target (codex, claude, cursor; others reserved)',
         '  --developer <name>      Required developer name to seed new projects',
         '  --global                Install to runtime config home',
-        '  --local                 Install to current project runtime dir (recommended for Codex)',
+        '  --local                 Install to current project runtime dir and bootstrap .emb-agent/',
+        '  --profile <name>        Install profile: core (default), workflow, full',
         '  --config-dir <path>     Override target runtime directory',
         '  --subagent-bridge-cmd <command>',
         '                          Configure host sub-agent bridge command',
@@ -110,12 +126,32 @@ function createInstallHelpers(deps) {
     return runtime === 'claude' || runtime === 'codex' || runtime === 'cursor' ? 'local' : 'global';
   }
 
+  function normalizeInstallProfile(value, flagName) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      if (flagName) {
+        throw new Error(`Missing value after ${flagName}`);
+      }
+      return 'core';
+    }
+    if (!Object.prototype.hasOwnProperty.call(INSTALL_PROFILES, normalized)) {
+      throw new Error(`Unsupported install profile: ${value}`);
+    }
+    return normalized;
+  }
+
+  function getInstallProfile(args) {
+    const profileName = normalizeInstallProfile(args && args.profile, '');
+    return INSTALL_PROFILES[profileName];
+  }
+
   function parseArgs(argv) {
     const result = {
       global: false,
       local: false,
       runtime: '',
       developer: '',
+      profile: 'core',
       configDir: '',
       subagentBridgeCmd: '',
       subagentBridgeTimeoutMs: DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
@@ -175,6 +211,11 @@ function createInstallHelpers(deps) {
         index += 1;
         continue;
       }
+      if (token === '--profile') {
+        result.profile = normalizeInstallProfile(argv[index + 1], '--profile');
+        index += 1;
+        continue;
+      }
       if (token === '--uninstall' || token === '-u') {
         result.uninstall = true;
         continue;
@@ -221,6 +262,9 @@ function createInstallHelpers(deps) {
     }
     if (argv.includes('--developer') && !result.developer) {
       throw new Error('Missing name after --developer');
+    }
+    if (argv.includes('--profile') && !result.profile) {
+      throw new Error('Missing value after --profile');
     }
     if (argv.includes('--subagent-bridge-cmd') && !result.subagentBridgeCmd) {
       throw new Error('Missing command after --subagent-bridge-cmd');
@@ -339,6 +383,7 @@ function createInstallHelpers(deps) {
         prompted && prompted.location ? prompted.location : getDefaultInstallLocation(runtime)
       ).trim().toLowerCase();
       const developer = String(prompted && prompted.developer ? prompted.developer : '').trim();
+      const profile = normalizeInstallProfile(prompted && prompted.profile ? prompted.profile : 'core', '');
       const subagentBridgeCmd = String(prompted && prompted.subagentBridgeCmd ? prompted.subagentBridgeCmd : '').trim();
       const subagentBridgeTimeoutProvided =
         prompted && prompted.subagentBridgeTimeoutMs !== undefined && prompted.subagentBridgeTimeoutMs !== null;
@@ -354,12 +399,16 @@ function createInstallHelpers(deps) {
         local: location === 'local',
         runtime,
         developer,
+        profile,
         configDir: '',
         subagentBridgeCmd,
         subagentBridgeTimeoutMs:
           subagentBridgeTimeoutProvided
             ? parsePositiveInteger(prompted.subagentBridgeTimeoutMs, 'subagentBridgeTimeoutMs')
             : DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
+        defaultAdapterSourceLocation: '',
+        defaultAdapterSourceBranch: '',
+        defaultAdapterSourceSubdir: '',
         uninstall: false,
         force: false,
         help: false
@@ -387,9 +436,13 @@ function createInstallHelpers(deps) {
       local: isLocal,
       runtime: target.name,
       developer,
+      profile: 'core',
       configDir: '',
       subagentBridgeCmd: '',
       subagentBridgeTimeoutMs: DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
+      defaultAdapterSourceLocation: '',
+      defaultAdapterSourceBranch: '',
+      defaultAdapterSourceSubdir: '',
       uninstall: false,
       force: false,
       help: false
@@ -1084,6 +1137,7 @@ function createInstallHelpers(deps) {
   }
 
   function installRuntime(targetDir, target, args) {
+    const installProfile = getInstallProfile(args);
     const runtimeDir = path.join(targetDir, target.runtimeDirName);
     const runtimeCommandsDir = path.join(runtimeDir, 'commands');
     const runtimeCommandDocsDir = path.join(runtimeDir, 'command-docs');
@@ -1110,7 +1164,9 @@ function createInstallHelpers(deps) {
     }
     copyDirWithReplacement(path.join(runtimeSrc, 'lib'), path.join(runtimeDir, 'lib'), targetDir, target);
     copyDirWithReplacement(path.join(runtimeSrc, 'scripts'), path.join(runtimeDir, 'scripts'), targetDir, target);
-    copyDirWithReplacement(path.join(runtimeSrc, 'scaffolds'), path.join(runtimeDir, 'scaffolds'), targetDir, target);
+    if (installProfile.includeScaffolds) {
+      copyDirWithReplacement(path.join(runtimeSrc, 'scaffolds'), path.join(runtimeDir, 'scaffolds'), targetDir, target);
+    }
     copyDirWithReplacement(path.join(runtimeSrc, 'templates'), path.join(runtimeDir, 'templates'), targetDir, target);
     copyDir(path.join(runtimeSrc, 'registry'), path.join(runtimeDir, 'registry'));
     copyDir(path.join(runtimeSrc, 'profiles'), path.join(runtimeDir, 'profiles'));
@@ -1118,7 +1174,11 @@ function createInstallHelpers(deps) {
     copyDir(path.join(runtimeSrc, 'specs'), path.join(runtimeDir, 'specs'));
     copyDir(path.join(runtimeSrc, 'tools'), runtimeToolsDir);
     copyDir(path.join(runtimeSrc, 'chips'), runtimeChipsDir);
-    copyDir(path.join(runtimeSrc, 'state'), path.join(runtimeDir, 'state'));
+    ensureDir(path.join(runtimeDir, 'state'));
+    fs.copyFileSync(
+      path.join(runtimeSrc, 'state', 'default-session.json'),
+      path.join(runtimeDir, 'state', 'default-session.json')
+    );
     fs.copyFileSync(path.join(runtimeSrc, 'config.json'), path.join(runtimeDir, 'config.json'));
     const runtimeConfigPath = path.join(runtimeDir, 'config.json');
     const runtimeConfig = readJsonObject(runtimeConfigPath);
@@ -1189,6 +1249,26 @@ function createInstallHelpers(deps) {
 
     fs.writeFileSync(filePath, buildEnvExampleContent(), 'utf8');
     return true;
+  }
+
+  function bootstrapProjectIfNeeded(args) {
+    if (!args || !args.local || !initProject) {
+      return null;
+    }
+
+    const projectRoot = process.cwd();
+    const initArgs = ['--project', projectRoot];
+
+    if (args.runtime) {
+      initArgs.push('--runtime', args.runtime);
+    }
+    if (args.developer) {
+      initArgs.push('--user', args.developer);
+    }
+
+    const parsedInitArgs = initProject.parseArgs(initArgs);
+    const projectConfig = initProject.buildProjectConfig(projectRoot, parsedInitArgs);
+    return initProject.scaffoldProject(projectRoot, projectConfig, false, parsedInitArgs);
   }
 
   function buildEnvHintLines(envExamplePath) {
@@ -1289,9 +1369,12 @@ function createInstallHelpers(deps) {
     const cursorCommandCount = installCursorCommands(targetDir, target, runtimeDir);
     const envExamplePath = path.join(args.local ? process.cwd() : targetDir, '.env.example');
     const envExampleCreated = installEnvExample(envExamplePath);
+    const projectBootstrap = bootstrapProjectIfNeeded(args);
     const envHintLines = buildEnvHintLines(envExamplePath);
+    const installProfile = getInstallProfile(args);
     const lines = [
       `Installed emb-agent runtime for ${target.label} to: ${runtimeDir}`,
+      `Install profile: ${installProfile.name}`,
       `Installed ${agentCount} ${target.agentLabel || `${target.label} agents`} under: ${path.join(targetDir, target.agentsDirName || 'agents')}`,
       ...(codexSkillCount > 0
         ? [`Installed ${codexSkillCount} Codex skills under: ${path.join(targetDir, 'skills')}`]
@@ -1310,13 +1393,23 @@ function createInstallHelpers(deps) {
       ...(args.defaultAdapterSourceLocation
         ? [`Default adapter source: ${args.defaultAdapterSourceLocation}`]
         : []),
+      ...(projectBootstrap
+        ? [
+            `Bootstrapped emb-agent project in: ${projectBootstrap.project_root}`,
+            'Project truth files: .emb-agent/project.json, .emb-agent/hw.yaml, .emb-agent/req.yaml',
+            `Bootstrap task: ${path.join(projectBootstrap.project_root, projectBootstrap.bootstrap_task.path)}`
+          ]
+        : []),
       `${envExampleCreated ? 'Created' : 'Kept'} env example: ${envExamplePath}`,
       ...envHintLines,
-      'Startup automation is installed automatically. If it does not seem active yet, restart the host once and rerun init/next. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.',
+      ...(!installProfile.includeScaffolds
+        ? ['Advanced scaffold assets were skipped in core profile. Reinstall with --profile workflow to include them.']
+        : []),
+      `Startup automation is installed automatically. If it does not seem active yet, restart the host once and rerun ${projectBootstrap ? 'next' : 'init/next'}. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.`,
       'Next steps:',
       `  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`,
-      `  In a project repo, open a ${target.label} session and run: init`,
-      '  Then continue with: next'
+      `  In a project repo, open a ${target.label} session and run: ${projectBootstrap ? 'next' : 'init'}`,
+      `  ${projectBootstrap ? 'Review .emb-agent/tasks/00-bootstrap-project before broadening the workflow.' : 'Then continue with: next'}`
     ];
 
     process.stdout.write(lines.join('\n') + '\n');
@@ -1333,6 +1426,7 @@ function createInstallHelpers(deps) {
     resolveArgs,
     getRuntimeTarget,
     getTargetDir,
+    getInstallProfile,
     installRuntime,
     installEnvExample,
     installAgents,

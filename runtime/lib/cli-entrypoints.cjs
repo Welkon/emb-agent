@@ -536,7 +536,7 @@ function createCliEntryHelpers(deps) {
       'emb-agent usage:',
       'Global option: --brief outputs compact JSON (recommended for action commands such as next/plan/review/verify)',
       'Core workflow:',
-      '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude>|--codex|--claude] [--user <name>|-u <name>] [--force]',
+      '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <codex|claude|cursor>|--codex|--claude|--cursor] [--user <name>|-u <name>] [--force]',
       '  declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
       '    [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>]',
@@ -740,6 +740,7 @@ function createCliEntryHelpers(deps) {
         '--runtime',
         '--codex',
         '--claude',
+        '--cursor',
         '--user',
         '-u',
         '--force'
