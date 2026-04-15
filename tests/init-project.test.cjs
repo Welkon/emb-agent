@@ -328,25 +328,13 @@ test('init returns onboarding guidance for adapter setup', () => {
     assert.deepEqual(result.session.active_packs, []);
     assert.equal(projectConfig.project_profile, '');
     assert.deepEqual(projectConfig.active_packs, []);
-    assert.equal(result.onboarding.hardware_identity_present, false);
-    assert.equal(result.onboarding.existing_project_detected, false);
-    assert.equal(result.onboarding.adapter_sources_registered, 0);
-    assert.equal(result.onboarding.hardware_confirmation_required, false);
-    assert.equal(result.onboarding.project_definition_required, true);
-    assert.equal(result.onboarding.bootstrap_task.name, '00-bootstrap-project');
-    assert.ok(result.next_steps.some(item => item.includes('Let the agent record goals, constraints, and any known interfaces in .emb-agent/req.yaml')));
-    assert.ok(result.next_steps.some(item => item.includes('Keep .emb-agent/hw.yaml unknown until you have a real chip candidate')));
-    assert.ok(result.next_steps.some(item => item.includes('Run next after the requirements are recorded so the agent can help narrow chip candidates.')));
-    assert.ok(result.next_steps.some(item => item.includes('docs/ (recommended, not required)')));
+    assert.equal(result.bootstrap.status, 'needs-project-definition');
+    assert.equal(result.bootstrap.stage, 'define-project-constraints');
+    assert.equal(result.bootstrap.command, 'next');
+    assert.match(result.bootstrap.summary, /Project facts are still open/);
+    assert.equal(result.bootstrap.bootstrap_task.name, '00-bootstrap-project');
+    assert.equal(result.bootstrap_task.name, '00-bootstrap-project');
     assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
-    assert.ok(result.next_steps.some(item => item.includes('Optional: inspect deferred note targets with task show 00-bootstrap-project')));
-    assert.ok(Array.isArray(result.onboarding.agent_actions));
-    assert.ok(result.onboarding.agent_actions.some(item => item.kind === 'define-project-constraints'));
-    assert.ok(
-      result.onboarding.agent_actions.some(
-        item => item.kind === 'bootstrap-adapters' && item.status === 'unconfigured'
-      )
-    );
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -374,21 +362,10 @@ test('init scans existing project inputs and suggests hardware confirmation befo
     const result = JSON.parse(stdout);
 
     assert.equal(result.initialized, true);
-    assert.equal(result.onboarding.existing_project_detected, true);
-    assert.equal(result.onboarding.hardware_confirmation_required, true);
-    assert.equal(result.onboarding.project_definition_required, false);
-    assert.deepEqual(result.onboarding.hardware_candidates, []);
-    assert.equal(result.onboarding.selected_identity, null);
-    assert.equal(result.onboarding.doc_parse_suggestion.suggested, true);
-    assert.equal(result.onboarding.doc_parse_suggestion.requires_hardware_confirmation, true);
-    assert.ok(result.onboarding.doc_parse_suggestion.candidate_docs.includes('docs/PMS150G.pdf'));
-    assert.ok(result.next_steps.some(item => item.includes('Let the agent confirm which chip and package this board uses in .emb-agent/hw.yaml')));
-    assert.ok(result.next_steps.some(item => item.includes('let the agent inspect docs/PMS150G.pdf')));
-    assert.ok(
-      result.onboarding.agent_actions.some(
-        item => item.kind === 'inspect-hardware-doc' && item.cli_fallback.includes('ingest doc --file docs/PMS150G.pdf')
-      )
-    );
+    assert.equal(result.bootstrap.status, 'needs-hardware-identity');
+    assert.equal(result.bootstrap.stage, 'confirm-hardware-identity');
+    assert.ok(result.bootstrap.command.includes('declare hardware --mcu <name> --package <name>'));
+    assert.match(result.bootstrap.summary, /Hardware identity is not confirmed yet/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -452,20 +429,10 @@ test('init can show pin summary from confirmed chip profile without parsing docs
     const result = JSON.parse(stdout);
 
     assert.equal(result.initialized, true);
-    assert.equal(result.onboarding.hardware_confirmation_required, false);
-    assert.equal(result.onboarding.project_definition_required, false);
-    assert.equal(result.onboarding.chip_profile.name, 'vendor-chip');
-    assert.equal(result.onboarding.pin_summary.package, 'sop8');
-    assert.ok(result.onboarding.pin_summary.usable_pins.some(item => item.signal === 'PA3'));
-    assert.ok(result.onboarding.pin_summary.reserved_pins.some(item => item.signal === 'VDD'));
-    assert.equal(result.onboarding.doc_parse_suggestion.suggested, false);
-    assert.ok(result.next_steps.some(item => item.includes('Let the agent map board pins/peripherals into .emb-agent/hw.yaml')));
-    assert.ok(result.next_steps.some(item => item.includes('Configure an adapter source, then run next')));
-    assert.ok(
-      result.onboarding.agent_actions.some(
-        item => item.kind === 'declare-board-pins' && item.cli_fallback.includes('declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin')
-      )
-    );
+    assert.equal(result.bootstrap.status, 'ready-for-next');
+    assert.equal(result.bootstrap.stage, 'declare-board-pins');
+    assert.ok(result.bootstrap.command.includes('declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin'));
+    assert.match(result.bootstrap.summary, /map board signals into .emb-agent\/hw\.yaml/i);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
