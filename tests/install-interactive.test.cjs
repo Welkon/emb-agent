@@ -78,6 +78,7 @@ test('interactive no-args install can resolve local codex choice through prompt 
   assert.equal(args.global, false);
   assert.equal(args.local, true);
   assert.equal(args.developer, 'welkon');
+  assert.equal(args.profile, 'core');
   assert.equal(args.subagentBridgeCmd, '');
   assert.equal(args.subagentBridgeTimeoutMs, runtimeHost.DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS);
 });
@@ -177,6 +178,24 @@ test('parseArgs accepts default adapter source overrides', () => {
   assert.equal(args.defaultAdapterSourceLocation, 'git@github.com:Welkon/emb-agent-adapters.git');
   assert.equal(args.defaultAdapterSourceBranch, 'main');
   assert.equal(args.defaultAdapterSourceSubdir, 'emb-agent');
+});
+
+test('parseArgs accepts install profile override', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+  const args = helper.parseArgs(['--global', '--developer', 'welkon', '--profile', 'workflow']);
+
+  assert.equal(args.profile, 'workflow');
 });
 
 test('parseArgs rejects sub-agent bridge timeout without command', () => {

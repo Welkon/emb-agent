@@ -858,6 +858,70 @@ function createTaskCommandHelpers(deps) {
     return path.join(getTaskDir(name), 'auto-specs.md');
   }
 
+  function getTaskPrdPath(name) {
+    return path.join(getTaskDir(name), 'prd.md');
+  }
+
+  function buildTaskPrdContent(task) {
+    const taskLike = task || {};
+    const bindings = taskLike.bindings || {};
+    const hardware = bindings.hardware && bindings.hardware.identity ? bindings.hardware.identity : {};
+    const references = Array.isArray(taskLike.references) ? taskLike.references.filter(Boolean) : [];
+    const openQuestions = Array.isArray(taskLike.open_questions) ? taskLike.open_questions.filter(Boolean) : [];
+    const knownRisks = Array.isArray(taskLike.known_risks) ? taskLike.known_risks.filter(Boolean) : [];
+    const constraints = [];
+
+    if (hardware.model || hardware.package) {
+      constraints.push(`${hardware.model || 'unknown MCU'} ${hardware.package || ''}`.trim());
+    }
+
+    return [
+      `# ${taskLike.title || taskLike.name || 'Task PRD'}`,
+      '',
+      '## Goal',
+      '',
+      taskLike.goal || taskLike.description || taskLike.title || 'Define the smallest durable outcome for this task.',
+      '',
+      '## Scope',
+      '',
+      `- Type: ${taskLike.type || 'implement'}`,
+      `- Priority: ${taskLike.priority || 'P2'}`,
+      `- Status: ${taskLike.status || 'planning'}`,
+      '',
+      '## Constraints',
+      '',
+      ...(constraints.length > 0 ? constraints.map(item => `- ${item}`) : ['- Keep the change narrow and tied to project truth/evidence.']),
+      '',
+      '## Acceptance Checklist',
+      '',
+      '- [ ] Relevant truth and evidence were re-read before changing code or docs',
+      '- [ ] The minimal required implementation or analysis result is produced',
+      '- [ ] Verification evidence is captured explicitly',
+      '- [ ] AAR scan is completed before task resolve',
+      '',
+      '## References',
+      '',
+      ...(references.length > 0 ? references.map(item => `- ${item}`) : ['- None yet']),
+      '',
+      '## Open Questions',
+      '',
+      ...(openQuestions.length > 0 ? openQuestions.map(item => `- ${item}`) : ['- None recorded']),
+      '',
+      '## Known Risks',
+      '',
+      ...(knownRisks.length > 0 ? knownRisks.map(item => `- ${item}`) : ['- None recorded']),
+      ''
+    ].join('\n');
+  }
+
+  function ensureTaskPrd(taskLike) {
+    const task = taskLike || {};
+    const prdPath = getTaskPrdPath(task.name);
+    runtime.ensureDir(path.dirname(prdPath));
+    fs.writeFileSync(prdPath, buildTaskPrdContent(task), 'utf8');
+    return path.relative(resolveProjectRoot(), prdPath).replace(/\\/g, '/');
+  }
+
   function buildTaskAutoSpecsArtifact(taskName, taskLike, session) {
     const injected = buildInjectedSpecContext(taskLike, session);
     const lines = [
@@ -1438,6 +1502,17 @@ function createTaskCommandHelpers(deps) {
       },
       injected_specs: Array.isArray(manifest.injected_specs) ? manifest.injected_specs : [],
       aar: normalizeTaskAar(manifest.aar),
+      artifacts: {
+        prd: fs.existsSync(getTaskPrdPath(name))
+          ? path.relative(resolveProjectRoot(), getTaskPrdPath(name)).replace(/\\/g, '/')
+          : '',
+        auto_specs: fs.existsSync(getTaskAutoSpecsPath(name))
+          ? path.relative(resolveProjectRoot(), getTaskAutoSpecsPath(name)).replace(/\\/g, '/')
+          : '',
+        aar: fs.existsSync(getTaskAarArtifactPath(name))
+          ? path.relative(resolveProjectRoot(), getTaskAarArtifactPath(name)).replace(/\\/g, '/')
+          : ''
+      },
       context_files: manifest.context || {},
       created_at: String(manifest.created_at || createdAt),
       updated_at: updatedAt,
@@ -1483,6 +1558,13 @@ function createTaskCommandHelpers(deps) {
     const manifest = buildTaskManifest(name, parsed, parsed.type, session, bindings);
 
     writeTask(name, manifest);
+    const prdPath = ensureTaskPrd({
+      ...manifest,
+      name,
+      title: parsed.summary,
+      status: 'planning',
+      type: parsed.type
+    });
     const injected = ensureTaskInjectedSpecContext(name, {
       name,
       title: parsed.summary,
@@ -1497,6 +1579,11 @@ function createTaskCommandHelpers(deps) {
             kind: 'file',
             path: injected.path,
             reason: 'Auto-injected task specs'
+          },
+          {
+            kind: 'file',
+            path: prdPath,
+            reason: 'Task goal, constraints, and acceptance checklist'
           },
           ...buildBindingContextEntries(channel, bindings),
           ...buildDefaultContextEntries(channel, session)
@@ -1545,6 +1632,20 @@ function createTaskCommandHelpers(deps) {
     const workspace = ensureTaskWorkspace(task);
     const manifest = runtime.readJson(getTaskManifestPath(input.name));
     const session = loadSession();
+    const prdPath = ensureTaskPrd({
+      ...manifest,
+      name: task.name,
+      title: task.title,
+      status: 'in_progress',
+      type: task.type,
+      goal: task.goal,
+      description: task.description,
+      bindings: task.bindings,
+      references: task.references,
+      open_questions: task.open_questions,
+      known_risks: task.known_risks,
+      priority: task.priority
+    });
     const injected = ensureTaskInjectedSpecContext(input.name, {
       name: task.name,
       title: task.title,
@@ -1558,6 +1659,17 @@ function createTaskCommandHelpers(deps) {
       worktree_path: workspace.path,
       injected_specs: injected.specs
     }));
+    CONTEXT_CHANNELS.forEach(channel => {
+      const next = uniqueContextEntries([
+        {
+          kind: 'file',
+          path: prdPath,
+          reason: 'Task goal, constraints, and acceptance checklist'
+        },
+        ...readJsonl(getTaskContextPath(input.name, channel))
+      ]);
+      writeJsonl(getTaskContextPath(input.name, channel), next);
+    });
 
     updateSession(current => {
       current.last_command = 'task activate';

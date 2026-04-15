@@ -9,6 +9,7 @@ function createCliRouter(deps) {
     printJson,
     runInitCommand,
     runIngestCommand,
+    buildStartContext,
     buildStatus,
     buildBootstrapReport,
     updateSession,
@@ -128,6 +129,11 @@ function createCliRouter(deps) {
       if (initialized) {
         emitJson(initialized);
       }
+      return;
+    }
+
+    if (cmd === 'start') {
+      emitJson(buildStartContext());
       return;
     }
 

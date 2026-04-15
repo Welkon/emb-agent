@@ -221,6 +221,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(fs.existsSync(path.join(taskDir, 'implement.jsonl')), true);
     assert.equal(fs.existsSync(path.join(taskDir, 'check.jsonl')), true);
     assert.equal(fs.existsSync(path.join(taskDir, 'debug.jsonl')), true);
+    assert.equal(fs.existsSync(path.join(taskDir, 'prd.md')), true);
     assert.equal(fs.existsSync(path.join(taskDir, 'auto-specs.md')), true);
     assert.match(manifest.id, /^\d{2}-\d{2}-implement-tm2-pwm-adapter/);
     assert.equal(manifest.status, 'planning');
@@ -245,7 +246,9 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.ok(created.task.context.implement.some(item => item.path === '.emb-agent/hw.yaml'));
     assert.ok(created.task.context.implement.some(item => item.path === 'docs/HARDWARE-LOGIC.md'));
     assert.ok(created.task.context.implement.some(item => item.path.includes('cache/docs/')));
+    assert.ok(created.task.context.implement.some(item => item.path === `.emb-agent/tasks/${taskName}/prd.md`));
     assert.ok(created.task.context.implement.some(item => item.path === autoSpecsPath));
+    assert.equal(created.task.artifacts.prd, `.emb-agent/tasks/${taskName}/prd.md`);
 
     const activated = await captureCliJson(['task', 'activate', taskName]);
     assert.equal(activated.activated, true);
@@ -253,6 +256,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(fs.existsSync(activated.workspace.path), true);
     assert.equal(activated.task.worktree_path, activated.workspace.path);
     assert.ok(activated.task.injected_specs.some(item => item.name === 'project-local'));
+    assert.equal(activated.task.artifacts.prd, `.emb-agent/tasks/${taskName}/prd.md`);
     assert.equal(fs.existsSync(path.join(activated.workspace.path, 'docs', 'SC8F072.pdf')), true);
     assert.equal(cli.loadSession().active_task.name, taskName);
     assert.equal(cli.loadSession().active_task.status, 'in_progress');
@@ -281,6 +285,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     const resume = await captureCliJson(['resume']);
     assert.equal(resume.task.name, taskName);
     assert.equal(resume.task.worktree_path, activated.workspace.path);
+    assert.equal(resume.task.artifacts.prd, `.emb-agent/tasks/${taskName}/prd.md`);
     assert.ok(resume.task.context.implement.some(item => item.path === 'src/timer.c'));
     assert.ok(resume.injected_specs.some(item => item.name === 'project-local'));
     assert.ok(resume.task.injected_specs.some(item => item.name === 'project-local'));

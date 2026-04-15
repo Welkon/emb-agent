@@ -91,7 +91,7 @@ test('dispatch next follows next routing and returns debug contract when questio
 
   try {
     process.chdir(tempProject);
-    cli.main(['init']);
+    cli.main(['init', '--mcu', 'vendor-chip', '--package', 'sop8']);
     cli.main(['question', 'add', 'why irq misses']);
 
     const dispatch = cli.buildDispatchContext('next');

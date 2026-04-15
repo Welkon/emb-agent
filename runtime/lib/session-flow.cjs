@@ -1065,6 +1065,7 @@ function createSessionFlowHelpers(deps) {
             type: activeTask.type,
             path: activeTask.path,
             worktree_path: activeTask.worktree_path,
+            artifacts: activeTask.artifacts,
             context_files: activeTask.context_files,
             context: activeTask.context,
             injected_specs:
@@ -1156,6 +1157,7 @@ function createSessionFlowHelpers(deps) {
             type: activeTask.type,
             path: activeTask.path,
             worktree_path: activeTask.worktree_path,
+            artifacts: activeTask.artifacts,
             context_files: activeTask.context_files,
             injected_specs:
               Array.isArray(activeTask.injected_specs) && activeTask.injected_specs.length > 0
@@ -1299,6 +1301,7 @@ function createSessionFlowHelpers(deps) {
             type: activeTask.type,
             path: activeTask.path,
             worktree_path: activeTask.worktree_path,
+            artifacts: activeTask.artifacts,
             context_files: activeTask.context_files,
             injected_specs:
               Array.isArray(activeTask.injected_specs) && activeTask.injected_specs.length > 0
