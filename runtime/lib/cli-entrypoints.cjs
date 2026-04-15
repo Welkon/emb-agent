@@ -494,7 +494,7 @@ function createCliEntryHelpers(deps) {
     return {
       hardware_identity_present: Boolean(hardware.model),
       package_present: Boolean(hardware.package),
-      adapter_sources_registered: sources.length,
+      chip_support_sources_registered: sources.length,
       existing_project_detected: meaningfulInputCount > 0,
       hardware_confirmation_required: !hardwareReady && !blankProject,
       project_definition_required: blankProject,

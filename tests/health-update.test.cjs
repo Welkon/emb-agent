@@ -514,8 +514,8 @@ test('health reports adapter registration and sync readiness', async () => {
     stdout = '';
     cli.main(['health']);
     let report = JSON.parse(stdout);
-    assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'warn');
-    assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'info');
+    assert.equal(report.checks.find(item => item.key === 'chip_support_sources_registered').status, 'warn');
+    assert.equal(report.checks.find(item => item.key === 'chip_support_sync_project').status, 'info');
     assert.ok(report.next_commands.some(item => item.cli.includes('support bootstrap')));
     assert.equal(report.quickstart.stage, 'bootstrap-then-next');
     assert.equal(report.action_card.action, 'Ready to continue');
@@ -523,7 +523,7 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.action_card.first_instruction, '');
     assert.ok(report.action_card.first_cli.includes('support bootstrap'));
     assert.ok(report.action_card.then_cli.endsWith(' next'));
-    assert.equal(report.bootstrap.current_stage, 'adapter-bootstrap');
+    assert.equal(report.bootstrap.current_stage, 'support-bootstrap');
     assert.ok(report.bootstrap.next_stage.cli.includes('support bootstrap'));
     assert.ok(report.quickstart.steps[0].cli.includes('support bootstrap'));
     assert.ok(report.quickstart.steps[1].cli.endsWith(' next'));
@@ -532,14 +532,14 @@ test('health reports adapter registration and sync readiness', async () => {
     await cli.main(['bootstrap']);
     let bootstrapView = JSON.parse(stdout);
     assert.equal(bootstrapView.command, 'bootstrap');
-    assert.equal(bootstrapView.current_stage, 'adapter-bootstrap');
+    assert.equal(bootstrapView.current_stage, 'support-bootstrap');
     assert.ok(bootstrapView.stages.some(item => item.id === 'next-step'));
 
     stdout = '';
     await cli.main(['bootstrap', 'run']);
     let bootstrapRun = JSON.parse(stdout);
     assert.equal(bootstrapRun.executed, false);
-    assert.equal(bootstrapRun.stage.id, 'adapter-bootstrap');
+    assert.equal(bootstrapRun.stage.id, 'support-bootstrap');
     assert.equal(bootstrapRun.reason, 'network-bootstrap-required');
 
     stdout = '';
@@ -548,15 +548,15 @@ test('health reports adapter registration and sync readiness', async () => {
     stdout = '';
     cli.main(['health']);
     report = JSON.parse(stdout);
-    assert.equal(report.checks.find(item => item.key === 'adapter_sources_registered').status, 'pass');
-    assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'warn');
+    assert.equal(report.checks.find(item => item.key === 'chip_support_sources_registered').status, 'pass');
+    assert.equal(report.checks.find(item => item.key === 'chip_support_sync_project').status, 'warn');
     assert.ok(report.next_commands.some(item => item.cli.includes('support bootstrap default-pack')));
 
     stdout = '';
     await cli.main(['bootstrap', 'run']);
     bootstrapRun = JSON.parse(stdout);
     assert.equal(bootstrapRun.executed, true);
-    assert.equal(bootstrapRun.stage.id, 'adapter-bootstrap');
+    assert.equal(bootstrapRun.stage.id, 'support-bootstrap');
     assert.equal(bootstrapRun.result.sync.status, 'synced');
     assert.equal(bootstrapRun.bootstrap_after.current_stage, 'next-step');
 
@@ -570,14 +570,14 @@ test('health reports adapter registration and sync readiness', async () => {
     stdout = '';
     cli.main(['health']);
     report = JSON.parse(stdout);
-    assert.equal(report.checks.find(item => item.key === 'adapter_sync_project').status, 'pass');
-    assert.equal(report.checks.find(item => item.key === 'adapter_match').status, 'pass');
-    assert.equal(report.checks.find(item => item.key === 'adapter_quality').status, 'pass');
+    assert.equal(report.checks.find(item => item.key === 'chip_support_sync_project').status, 'pass');
+    assert.equal(report.checks.find(item => item.key === 'chip_support_match').status, 'pass');
+    assert.equal(report.checks.find(item => item.key === 'chip_support_quality').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'binding_quality').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'register_summary_available').status, 'warn');
-    assert.equal(report.adapter_health.primary.tool, 'timer-calc');
-    assert.equal(report.adapter_health.primary.grade, 'usable');
-    assert.equal(report.adapter_health.primary.executable, true);
+    assert.equal(report.chip_support_health.primary.tool, 'timer-calc');
+    assert.equal(report.chip_support_health.primary.grade, 'usable');
+    assert.equal(report.chip_support_health.primary.executable, true);
     assert.ok(report.recommendations.every(item => !item.includes('support sync default-pack')));
     assert.ok(report.next_commands.some(item => item.cli.includes('tool run timer-calc')));
   } finally {
@@ -660,7 +660,7 @@ test('health surfaces pending doc apply as quickstart before generic next', asyn
     assert.equal(bootstrapRun.executed, true);
     assert.equal(bootstrapRun.stage.id, 'doc-truth-sync');
     assert.equal(Boolean(bootstrapRun.result.applied), true);
-    assert.equal(bootstrapRun.bootstrap_after.current_stage, 'adapter-bootstrap');
+    assert.equal(bootstrapRun.bootstrap_after.current_stage, 'support-bootstrap');
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
@@ -724,16 +724,16 @@ test('health routes from applied hardware doc to adapter derive when synced adap
     cli.main(['health']);
     const report = JSON.parse(stdout);
 
-    assert.equal(report.checks.find(item => item.key === 'adapter_match').status, 'warn');
-    assert.equal(report.checks.find(item => item.key === 'adapter_derive_candidate').status, 'warn');
-    assert.ok(report.next_commands.some(item => item.key === 'adapter-derive-from-doc'));
+    assert.equal(report.checks.find(item => item.key === 'chip_support_match').status, 'warn');
+    assert.equal(report.checks.find(item => item.key === 'chip_support_derive_candidate').status, 'warn');
+    assert.ok(report.next_commands.some(item => item.key === 'support-derive-from-doc'));
     assert.ok(report.next_commands.some(item => item.cli.includes(`support derive --from-project --from-doc ${ingested.doc_id}`)));
     assert.equal(report.quickstart.stage, 'derive-then-next');
     assert.equal(report.action_card.stage, 'chip-support-from-document');
     assert.equal(report.action_card.action, 'Ready to continue');
     assert.equal(report.action_card.first_instruction, '');
     assert.ok(report.action_card.first_cli.includes(`support derive --from-project --from-doc ${ingested.doc_id}`));
-    assert.equal(report.bootstrap.current_stage, 'adapter-derive');
+    assert.equal(report.bootstrap.current_stage, 'support-derive');
     assert.ok(report.quickstart.steps[0].cli.includes(`support derive --from-project --from-doc ${ingested.doc_id}`));
   } finally {
     if (previousTrust === undefined) {

@@ -314,14 +314,14 @@ test('bootstrap run surfaces permission ask and supports --confirm for gated ada
     const blocked = await captureJson(['bootstrap', 'run']);
     assert.equal(blocked.executed, false);
     assert.equal(blocked.reason, 'permission-pending');
-    assert.equal(blocked.stage.id, 'adapter-bootstrap');
+    assert.equal(blocked.stage.id, 'support-bootstrap');
     assert.equal(blocked.result.status, 'permission-pending');
     assert.equal(blocked.result.permission_decision.decision, 'ask');
-    assert.equal(blocked.bootstrap_after.current_stage, 'adapter-bootstrap');
+    assert.equal(blocked.bootstrap_after.current_stage, 'support-bootstrap');
 
     const allowed = await captureJson(['bootstrap', 'run', '--confirm']);
     assert.equal(allowed.executed, true);
-    assert.equal(allowed.stage.id, 'adapter-bootstrap');
+    assert.equal(allowed.stage.id, 'support-bootstrap');
     assert.equal(allowed.result.permission_decision.decision, 'allow');
     assert.equal(allowed.result.permission_decision.reason_code, 'explicit-confirmed');
     assert.equal(allowed.result.sync.status, 'synced');

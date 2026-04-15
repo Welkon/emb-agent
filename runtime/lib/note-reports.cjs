@@ -1048,12 +1048,12 @@ function createNoteReportHelpers(deps) {
       next.next.tool_recommendation
         ? next.next.tool_recommendation
         : null;
-    const adapterHealth =
+    const chipSupportHealth =
       next &&
       next.health &&
-      next.health.adapter_health &&
-      next.health.adapter_health.primary
-        ? next.health.adapter_health.primary
+      (next.health.chip_support_health || next.health.adapter_health) &&
+      (next.health.chip_support_health || next.health.adapter_health).primary
+        ? (next.health.chip_support_health || next.health.adapter_health).primary
         : null;
     const lines = [
       `### ${timestamp}`,
@@ -1068,8 +1068,8 @@ function createNoteReportHelpers(deps) {
       `- Tool trust: ${toolRecommendation && toolRecommendation.trust
         ? `${toolRecommendation.trust.grade} (${toolRecommendation.trust.score}/100), executable=${toolRecommendation.trust.executable ? 'yes' : 'no'}`
         : '-'}`,
-      `- Adapter health: ${adapterHealth
-        ? `${adapterHealth.tool} ${adapterHealth.grade} (${adapterHealth.score}/100), executable=${adapterHealth.executable ? 'yes' : 'no'}, action=${adapterHealth.recommended_action}`
+      `- Chip support health: ${chipSupportHealth
+        ? `${chipSupportHealth.tool} ${chipSupportHealth.grade} (${chipSupportHealth.score}/100), executable=${chipSupportHealth.executable ? 'yes' : 'no'}, action=${chipSupportHealth.recommended_action}`
         : '-'}`,
       `- Latest executor: ${latestExecutor
         ? `${latestExecutor.name} ${latestExecutor.status}, exit=${latestExecutor.exit_code === null ? '-' : latestExecutor.exit_code}, risk=${latestExecutor.risk || '-'}, duration=${latestExecutor.duration_ms === null ? '-' : latestExecutor.duration_ms}ms`
@@ -1169,7 +1169,7 @@ function createNoteReportHelpers(deps) {
       followups: verifyInput.followups,
       latest_executor: null,
       tool_recommendation: null,
-      adapter_health: null
+      chip_support_health: null
     }, 'verify-save', verifyInput.explicit_confirmation);
 
     if (permissionCheck.permission.decision !== 'allow') {
@@ -1211,9 +1211,9 @@ function createNoteReportHelpers(deps) {
         next && next.next && next.next.tool_recommendation
           ? next.next.tool_recommendation
           : null,
-      adapter_health:
-        next && next.health && next.health.adapter_health
-          ? next.health.adapter_health
+      chip_support_health:
+        next && next.health && (next.health.chip_support_health || next.health.adapter_health)
+          ? (next.health.chip_support_health || next.health.adapter_health)
           : null
     }, permissionCheck.permission);
   }

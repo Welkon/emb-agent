@@ -191,7 +191,7 @@ function createSessionFlowHelpers(deps) {
       ? healthReport.next_commands.some(item => [
           ...(blankSelectionMode
             ? ['init', 'doc-apply']
-            : ['init', 'adapter-source-add', 'adapter-sync', 'adapter-bootstrap', 'adapter-derive-from-doc', 'doc-apply'])
+            : ['init', 'support-source-add', 'support-sync', 'support-bootstrap', 'support-derive-from-doc', 'adapter-source-add', 'adapter-sync', 'adapter-bootstrap', 'adapter-derive-from-doc', 'doc-apply'])
         ].includes(item.key))
       : false;
 
@@ -677,7 +677,10 @@ function createSessionFlowHelpers(deps) {
   }
 
   function buildAdapterHealthHints(healthReport, primaryToolRecommendation) {
-    const adapterHealth = healthReport && healthReport.adapter_health ? healthReport.adapter_health : null;
+    const adapterHealth =
+      healthReport && (healthReport.chip_support_health || healthReport.adapter_health)
+        ? (healthReport.chip_support_health || healthReport.adapter_health)
+        : null;
     const primary = adapterHealth && adapterHealth.primary ? adapterHealth.primary : null;
 
     if (!primary) {
@@ -1182,7 +1185,7 @@ function createSessionFlowHelpers(deps) {
         ? {
             status: health.status,
             summary: health.summary,
-            adapter_health: health.adapter_health || null,
+            chip_support_health: health.chip_support_health || health.adapter_health || null,
             next_commands: health.next_commands || [],
             quickstart: health.quickstart || null
           }

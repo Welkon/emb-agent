@@ -343,8 +343,8 @@ test('applyOutputMode prioritizes brief health checks around the current action 
     checks: [
       { key: 'project_root', status: 'pass', summary: 'Project root is accessible' },
       { key: 'project_config_valid', status: 'pass', summary: 'project.json validation passed' },
-      { key: 'adapter_match', status: 'warn', summary: 'Installed chip support does not cover the current chip yet' },
-      { key: 'adapter_sources_registered', status: 'warn', summary: 'No chip support source is registered yet' },
+      { key: 'chip_support_match', status: 'warn', summary: 'Installed chip support does not cover the current chip yet' },
+      { key: 'chip_support_sources_registered', status: 'warn', summary: 'No chip support source is registered yet' },
       { key: 'subagent_bridge', status: 'info', summary: 'Host sub-agent bridge is not configured' },
       { key: 'hardware_identity', status: 'pass', summary: 'The chip model is mapped to a chip profile' }
     ],
@@ -354,7 +354,7 @@ test('applyOutputMode prioritizes brief health checks around the current action 
     ],
     next_commands: [
       {
-        key: 'adapter-source-add',
+        key: 'support-source-add',
         cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git'
       }
     ],
@@ -373,7 +373,7 @@ test('applyOutputMode prioritizes brief health checks around the current action 
     }
   }, true);
 
-  assert.deepEqual(output.checks.map(item => item.key), ['adapter_match', 'adapter_sources_registered']);
+  assert.deepEqual(output.checks.map(item => item.key), ['chip_support_match', 'chip_support_sources_registered']);
   assert.deepEqual(output.recommendations, ['Register the default chip support source before retrying chip support install.']);
   assert.equal(output.primary_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs support bootstrap');
 });
@@ -387,7 +387,7 @@ test('applyOutputMode limits brief health checks to three non-info items when ac
     checks: [
       { key: 'startup_automation', status: 'warn', summary: 'Startup automation is not ready yet' },
       { key: 'hardware_identity', status: 'warn', summary: 'hw.yaml does not contain the chip identity yet' },
-      { key: 'adapter_sources_registered', status: 'warn', summary: 'No chip support source is registered yet' },
+      { key: 'chip_support_sources_registered', status: 'warn', summary: 'No chip support source is registered yet' },
       { key: 'subagent_bridge', status: 'info', summary: 'Host sub-agent bridge is not configured' },
       { key: 'project_root', status: 'pass', summary: 'Project root is accessible' }
     ],
@@ -397,7 +397,7 @@ test('applyOutputMode limits brief health checks to three non-info items when ac
     ],
     next_commands: [
       {
-        key: 'adapter-source-add',
+        key: 'support-source-add',
         cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git'
       }
     ],

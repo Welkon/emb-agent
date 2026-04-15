@@ -126,11 +126,11 @@ function createSessionReportCommandHelpers(deps) {
       next.next.tool_recommendation
         ? next.next.tool_recommendation
         : null;
-    const adapterHealth =
+    const chipSupportHealth =
       next &&
       next.health &&
-      next.health.adapter_health
-        ? next.health.adapter_health
+      (next.health.chip_support_health || next.health.adapter_health)
+        ? (next.health.chip_support_health || next.health.adapter_health)
         : null;
     const latestExecutor = getLatestExecutor(resolved.session);
     const latestForensics = getLatestForensics(resolved.session);
@@ -163,7 +163,7 @@ function createSessionReportCommandHelpers(deps) {
       },
       executor_signal: executorSignal,
       tool_recommendation: toolRecommendation,
-      adapter_health: adapterHealth,
+      chip_support_health: chipSupportHealth,
       next,
       resume
     };
@@ -285,8 +285,8 @@ function createSessionReportCommandHelpers(deps) {
         : '(none)'}`
     );
     lines.push(
-      `- adapter_health: ${report.adapter_health && report.adapter_health.primary
-        ? `${report.adapter_health.primary.tool} ${report.adapter_health.primary.grade} (${report.adapter_health.primary.score}/100), executable=${report.adapter_health.primary.executable ? 'yes' : 'no'}, action=${report.adapter_health.primary.recommended_action}`
+      `- chip_support_health: ${report.chip_support_health && report.chip_support_health.primary
+        ? `${report.chip_support_health.primary.tool} ${report.chip_support_health.primary.grade} (${report.chip_support_health.primary.score}/100), executable=${report.chip_support_health.primary.executable ? 'yes' : 'no'}, action=${report.chip_support_health.primary.recommended_action}`
         : '(none)'}`
     );
     lines.push(`- suggested_flow: ${report.next.current.suggested_flow || ''}`);
@@ -338,7 +338,7 @@ function createSessionReportCommandHelpers(deps) {
       delegation_runtime: report.diagnostics.delegation_runtime,
       executor_signal: report.executor_signal,
       tool_recommendation: report.tool_recommendation,
-      adapter_health: report.adapter_health,
+      chip_support_health: report.chip_support_health,
       handoff_present: Boolean(report.handoff),
       auto_memory: autoMemory
     }, blocked.permission);

@@ -192,9 +192,9 @@ function createHealthUpdateCommandHelpers(deps) {
         return 'project-facts';
       case 'doc-truth-sync':
         return 'apply-document-facts';
-      case 'adapter-bootstrap':
+      case 'support-bootstrap':
         return 'chip-support';
-      case 'adapter-derive':
+      case 'support-derive':
         return 'chip-support-from-document';
       case 'next-step':
         return 'continue-with-next';
@@ -211,8 +211,8 @@ function createHealthUpdateCommandHelpers(deps) {
         return 'Needs project facts';
       case 'doc-truth-sync':
         return 'Needs document apply';
-      case 'adapter-bootstrap':
-      case 'adapter-derive':
+      case 'support-bootstrap':
+      case 'support-derive':
       case 'next-step':
         return 'Ready to continue';
       case 'init-project':
@@ -355,8 +355,8 @@ function createHealthUpdateCommandHelpers(deps) {
       'req_truth',
       'docs_dir',
       'doc_cache_dir',
-      'adapter_cache_dir',
-      'adapters_dir'
+      'chip_support_cache_dir',
+      'chip_support_dir'
     ].every(key => {
       const check = findCheck(key);
       return check && check.status === 'pass';
@@ -371,8 +371,8 @@ function createHealthUpdateCommandHelpers(deps) {
           argv: pendingDocApply.argv || []
         }
       : null;
-    const bootstrap = findCommand('adapter-bootstrap', 'adapter-sync');
-    const derive = findCommand('adapter-derive-from-doc');
+    const bootstrap = findCommand('support-bootstrap', 'support-sync', 'adapter-bootstrap', 'adapter-sync');
+    const derive = findCommand('support-derive-from-doc', 'adapter-derive-from-doc');
     const next = findCommand('next');
     const stages = [];
 
@@ -453,7 +453,7 @@ function createHealthUpdateCommandHelpers(deps) {
       const command = bootstrap || derive;
       stages.push(
         createBootstrapStage(
-          bootstrap ? 'adapter-bootstrap' : 'adapter-derive',
+          bootstrap ? 'support-bootstrap' : 'support-derive',
           !initReady || !trustReady || !hardwareReady || Boolean(docApply) ? 'pending' : 'ready',
           bootstrap ? 'Install matching chip support' : 'Draft chip support from hardware document',
           {
@@ -468,7 +468,7 @@ function createHealthUpdateCommandHelpers(deps) {
     } else {
       stages.push(
         createBootstrapStage(
-          'adapter-bootstrap',
+          'support-bootstrap',
           !initReady || !trustReady || !hardwareReady || Boolean(docApply) ? 'pending' : 'completed',
           'Install matching chip support',
           {
@@ -504,9 +504,9 @@ function createHealthUpdateCommandHelpers(deps) {
           ? 'restart-host-hooks'
         : nextStage.id === 'doc-truth-sync'
           ? 'doc-apply-then-next'
-          : nextStage.id === 'adapter-derive'
+          : nextStage.id === 'support-derive'
             ? 'derive-then-next'
-            : nextStage.id === 'adapter-bootstrap'
+            : nextStage.id === 'support-bootstrap'
               ? 'bootstrap-then-next'
               : 'next'
       : 'next';
@@ -735,7 +735,7 @@ function createHealthUpdateCommandHelpers(deps) {
             ? [
                 `profile=${projectConfig.project_profile || '(default)'}`,
                 `packs=${(projectConfig.active_packs || []).join(',') || '(none)'}`,
-                `adapter_sources=${(projectConfig.adapter_sources || []).length}`
+                `chip_support_sources=${(projectConfig.adapter_sources || []).length}`
               ]
             : [path.relative(projectRoot, projectConfigPath)],
           projectConfig ? '' : 'Run init first to write the minimal project configuration.'
@@ -758,8 +758,8 @@ function createHealthUpdateCommandHelpers(deps) {
       ['req_truth', reqPath, 'req.yaml exists', 'req.yaml is missing', `Complete ${runtime.getProjectAssetRelativePath('req.yaml')} first to record goals / features / acceptance.`],
       ['docs_dir', docsDir, 'docs directory exists', 'docs directory is missing', 'Create the docs directory first so later document ingestion and durable report persistence have a place to land.'],
       ['doc_cache_dir', docCacheDir, 'Document cache directory exists', 'Document cache directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('cache', 'docs')}.`],
-      ['adapter_cache_dir', adapterCacheDir, 'Adapter cache directory exists', 'Adapter cache directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('cache', 'adapter-sources')}.`],
-      ['adapters_dir', adaptersDir, 'Adapter directory exists', 'Adapter directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('adapters')}.`]
+      ['chip_support_cache_dir', adapterCacheDir, 'Chip support cache directory exists', 'Chip support cache directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('cache', 'adapter-sources')}.`],
+      ['chip_support_dir', adaptersDir, 'Chip support directory exists', 'Chip support directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('adapters')}.`]
     ].forEach(([key, targetPath, passSummary, failSummary, recommendation]) => {
       const exists = fs.existsSync(targetPath);
       checks.push(
@@ -1048,7 +1048,7 @@ function createHealthUpdateCommandHelpers(deps) {
 
       checks.push(
         createCheck(
-          'adapter_sources_registered',
+          'chip_support_sources_registered',
           enabledSources.length > 0 ? 'pass' : 'warn',
           enabledSources.length > 0 ? 'Chip support sources are registered' : 'No chip support source is registered yet',
           enabledSources.length > 0
@@ -1063,7 +1063,7 @@ function createHealthUpdateCommandHelpers(deps) {
         const addCommand = buildDefaultAdapterSourceAddCommand();
         pushNextCommand(
           nextCommands,
-          hardwareIdentity.model ? 'adapter-bootstrap' : 'adapter-source-add',
+          hardwareIdentity.model ? 'support-bootstrap' : 'support-source-add',
           hardwareIdentity.model ? 'Register the default chip support source and install matching support into the project' : 'Register the default chip support source',
           hardwareIdentity.model
             ? DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI
@@ -1079,7 +1079,7 @@ function createHealthUpdateCommandHelpers(deps) {
 
       checks.push(
         createCheck(
-          'adapter_sync_project',
+          'chip_support_sync_project',
           syncedProjectSources.length > 0 ? 'pass' : enabledSources.length > 0 ? 'warn' : 'info',
           syncedProjectSources.length > 0
             ? 'Chip support has been installed into the project directory'
@@ -1101,7 +1101,7 @@ function createHealthUpdateCommandHelpers(deps) {
       if (enabledSources.length > 0 && syncedProjectSources.length === 0) {
         pushNextCommand(
           nextCommands,
-          hardwareIdentity.model ? 'adapter-bootstrap' : 'adapter-sync',
+          hardwareIdentity.model ? 'support-bootstrap' : 'support-sync',
           hardwareIdentity.model ? 'Install matching chip support into the current project' : 'Install registered chip support into the current project',
           hardwareIdentity.model
             ? buildSupportCli(['support', 'bootstrap', enabledSources[0].name])
@@ -1118,7 +1118,7 @@ function createHealthUpdateCommandHelpers(deps) {
       if (hardwareIdentity.model) {
         checks.push(
           createCheck(
-            'adapter_match',
+            'chip_support_match',
             matchedProjectSources.length > 0 ? 'pass' : syncedProjectSources.length > 0 ? 'warn' : 'info',
             matchedProjectSources.length > 0
               ? 'Installed chip support matches the current hardware'
@@ -1158,7 +1158,7 @@ function createHealthUpdateCommandHelpers(deps) {
       ) {
         checks.push(
           createCheck(
-            'adapter_derive_candidate',
+            'chip_support_derive_candidate',
             'warn',
             `The latest hardware document ${latestHardwareDoc.doc_id} can be used directly to draft chip support`,
             [
@@ -1171,7 +1171,7 @@ function createHealthUpdateCommandHelpers(deps) {
         );
         pushNextCommand(
           nextCommands,
-          'adapter-derive-from-doc',
+          'support-derive-from-doc',
           `Draft chip support for current hardware from document ${latestHardwareDoc.doc_id}`,
           buildAdapterDeriveCli(latestHardwareDoc),
           'adapter',
@@ -1243,7 +1243,7 @@ function createHealthUpdateCommandHelpers(deps) {
     if (toolRecommendations.length > 0) {
       checks.push(
         createCheck(
-          'adapter_quality',
+          'chip_support_quality',
           adapterHealth.status,
           adapterHealth.primary && adapterHealth.primary.executable
             ? `Preferred tool ${adapterHealth.primary.tool} has reached executable trust level`
@@ -1340,7 +1340,7 @@ function createHealthUpdateCommandHelpers(deps) {
       checks,
       startup_automation: buildStartupAutomationSummary(workspaceTrust),
       subagent_bridge: subagentBridge,
-      adapter_health: adapterHealth,
+      chip_support_health: adapterHealth,
       next_commands: nextCommands,
       quickstart: buildQuickstartHint(workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, projectRoot),
       bootstrap,

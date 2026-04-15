@@ -241,8 +241,8 @@ test('orchestrator exposes tool-first step when scan has ready tool recommendati
     assert.equal(orchestrator.workflow.strategy, 'inline-tool-first');
     assert.equal(orchestrator.workflow.tool_first, true);
     assert.equal(orchestrator.tool_execution.tool, 'timer-calc');
-    assert.equal(orchestrator.adapter_health.primary.tool, 'timer-calc');
-    assert.equal(orchestrator.adapter_health.primary.executable, true);
+    assert.equal(orchestrator.chip_support_health.primary.tool, 'timer-calc');
+    assert.equal(orchestrator.chip_support_health.primary.executable, true);
     const runToolStep = orchestrator.orchestrator_steps.find(item => item.id === 'run-tool');
     assert.ok(runToolStep);
     assert.equal(runToolStep.trust.grade, 'usable');
@@ -546,14 +546,14 @@ test('orchestrator keeps tool step non-required when adapter trust is not yet ex
     const next = cli.buildNextContext();
     const orchestrator = cli.buildOrchestratorContext('next');
 
-    assert.equal(next.health.adapter_health.primary.tool, 'timer-calc');
-    assert.equal(next.health.adapter_health.primary.executable, false);
+    assert.equal(next.health.chip_support_health.primary.tool, 'timer-calc');
+    assert.equal(next.health.chip_support_health.primary.executable, false);
     assert.ok(next.next_actions.some(item => item.includes('Chip support trust reminder')));
     assert.ok(next.next_actions.some(item => item.includes('implement-adapter')));
 
     assert.equal(orchestrator.resolved_action, 'scan');
     assert.equal(orchestrator.workflow.tool_first, false);
-    assert.equal(orchestrator.adapter_health.primary.recommended_action, 'implement-adapter');
+    assert.equal(orchestrator.chip_support_health.primary.recommended_action, 'implement-adapter');
     const runToolStep = orchestrator.orchestrator_steps.find(item => item.id === 'run-tool');
     assert.ok(runToolStep);
     assert.equal(runToolStep.required, false);
