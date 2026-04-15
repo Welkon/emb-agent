@@ -127,6 +127,9 @@ test('installer lays down config/lib and runtime commands work', async () => {
 
     assert.equal(fs.existsSync(sessionPath), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'AGENTS.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'CLAUDE.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, 'CODEX.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
@@ -167,12 +170,14 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const nextBeforeContext = installedCli.buildNextContext();
     const statusBeforeContext = installedCli.buildStatus();
     const startBeforeContext = installedCli.buildStartContext();
+    assert.match(fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'), /# emb-agent Instructions/);
     assert.equal(nextBeforeContext.next.command, 'scan');
     assert.equal(nextBeforeContext.next.gated_by_health, false);
     assert.equal(nextBeforeContext.external_agent, undefined);
     assert.equal(statusBeforeContext.external_agent, undefined);
     assert.equal(startBeforeContext.external_agent, undefined);
     assert.match(startBeforeContext.immediate.cli, / next$/);
+    assert.match(startBeforeContext.bootstrap.summary, /project type, intended inputs\/outputs, interfaces, and constraints/);
     assert.ok(nextBeforeContext.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(nextBeforeContext.workflow_stage.name, 'selection');
     assert.equal(nextBeforeContext.workflow_stage.primary_command, 'scan');

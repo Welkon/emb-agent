@@ -32,7 +32,7 @@ When chip support appears in `health`, `next`, `support status`, or reports, rea
 npx emb-agent --codex --local --developer your-name
 ```
 
-Replace `--codex` with `--claude` or `--cursor` for the host you use. Local install wires the runtime and bootstraps `.emb-agent/` in the current repository.
+Replace `--codex` with `--claude` or `--cursor` for the host you use. Local install wires the runtime, creates `AGENTS.md`, and bootstraps `.emb-agent/` in the current repository.
 
 If a host skill or external driver wants a fixed machine-readable protocol, call the runtime's `external` entrypoints directly:
 

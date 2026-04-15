@@ -69,6 +69,9 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(projectConfig.integrations.szlcsc.currency, '');
     assert.equal(projectConfig.integrations.szlcsc.timeout_ms, 15000);
     assert.deepEqual(projectConfig.arch_review.trigger_patterns, []);
+    assert.equal(fs.existsSync(path.join(tempProject, 'AGENTS.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'CLAUDE.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, 'CODEX.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), false);
@@ -93,6 +96,8 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'RELEASE-NOTES.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'DEBUG-NOTES.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), false);
+    assert.match(fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'), /<!-- EMB-AGENT:START -->/);
+    assert.match(fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'), /Use the `start` command when starting a new session/);
     assert.equal(bootstrapTask.title, 'Bootstrap project notes');
     assert.equal(bootstrapTask.dev_type, 'docs');
     assert.ok(bootstrapTask.relatedFiles.includes('.emb-agent/hw.yaml'));
@@ -333,7 +338,7 @@ test('init returns onboarding guidance for chip support setup', () => {
     assert.equal(result.bootstrap.status, 'needs-project-definition');
     assert.equal(result.bootstrap.stage, 'define-project-constraints');
     assert.equal(result.bootstrap.command, 'next');
-    assert.match(result.bootstrap.summary, /Project facts are still open/);
+    assert.match(result.bootstrap.summary, /Define the project in \.emb-agent\/req\.yaml first/);
     assert.equal(result.bootstrap.bootstrap_task.name, '00-bootstrap-project');
     assert.equal(result.bootstrap_task.name, '00-bootstrap-project');
     assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
