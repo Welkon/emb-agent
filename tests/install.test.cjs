@@ -9,49 +9,6 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const installer = require(path.join(repoRoot, 'bin', 'install.js'));
 
-test('installer supports hostless external local runtime for generic external agents', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-external-proj-'));
-  const currentCwd = process.cwd();
-  const originalWrite = process.stdout.write;
-  let stdout = '';
-
-  process.stdout.write = chunk => {
-    stdout += String(chunk);
-    return true;
-  };
-
-  try {
-    process.chdir(tempProject);
-    await installer.main([
-      '--external',
-      '--local',
-      '--developer',
-      'welkon'
-    ]);
-
-    const runtimeRoot = path.join(tempProject, '.emb-agent', 'runtime');
-    const runtimeHost = require(path.join(runtimeRoot, 'lib', 'runtime-host.cjs'));
-    const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
-    const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
-
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'runtime', 'bin', 'emb-agent.cjs')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'agents')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'skills')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.json')), false);
-    assert.equal(hostMetadata.name, 'external');
-    assert.equal(resolvedHost.name, 'external');
-    assert.match(resolvedHost.cliPath, /\.emb-agent\/runtime\/bin\/emb-agent\.cjs$/);
-    assert.match(stdout, /Installed emb-agent runtime for External Agent to:/);
-    assert.match(stdout, /Host automation was not installed because the external runtime target is hostless/);
-    assert.match(stdout, /Point your external agent at:/);
-  } finally {
-    process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
-  }
-});
-
 test('installer lays down config/lib and runtime commands work', async () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-home-'));
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-proj-'));
@@ -96,7 +53,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const internalCommandDocs = fs.readdirSync(path.join(runtimeRoot, 'command-docs')).filter(name => name.endsWith('.md')).sort();
 
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.toml')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-init', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-start', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-init', 'SKILL.md')), false);
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'config.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
@@ -120,9 +78,10 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'scheduler.cjs')), true);
     assert.equal(fs.existsSync(cliPath), true);
     assert.equal(fs.existsSync(path.join(tempHome, '.env.example')), true);
-    assert.equal(installedCommandFiles.length, 14);
+    assert.equal(installedCommandFiles.length, 13);
     assert.ok(installedCommandFiles.includes('help.md'));
-    assert.ok(installedCommandFiles.includes('init.md'));
+    assert.ok(installedCommandFiles.includes('start.md'));
+    assert.ok(!installedCommandFiles.includes('init.md'));
     assert.ok(installedCommandFiles.includes('verify.md'));
     assert.ok(!installedCommandFiles.includes('workflow.md'));
     assert.ok(!installedCommandFiles.includes('adapter.md'));
@@ -134,12 +93,12 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.ok(internalCommandDocs.includes('init-project.md'));
     assert.match(fs.readFileSync(path.join(tempHome, '.env.example'), 'utf8'), /MINERU_API_KEY=/);
     assert.match(
-      fs.readFileSync(path.join(tempHome, 'skills', 'emb-init', 'SKILL.md'), 'utf8'),
-      /This Codex skill mirrors the emb-agent public command `init`\./
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-start', 'SKILL.md'), 'utf8'),
+      /This Codex skill mirrors the emb-agent public command `start`\./
     );
     assert.match(
-      fs.readFileSync(path.join(tempHome, 'skills', 'emb-init', 'SKILL.md'), 'utf8'),
-      /node .*emb-agent\/bin\/emb-agent\.cjs init/
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-start', 'SKILL.md'), 'utf8'),
+      /node .*emb-agent\/bin\/emb-agent\.cjs start/
     );
     const codexConfig = fs.readFileSync(path.join(tempHome, 'config.toml'), 'utf8');
     assert.match(codexConfig, /\[features\][\s\S]*codex_hooks = true/);
@@ -150,7 +109,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.doesNotMatch(fs.readFileSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js'), 'utf8'), /\{\{EMB_VERSION\}\}/);
     assert.match(stdout, /Install profile: core/);
     assert.match(stdout, /Created env example:/);
-    assert.match(stdout, /Installed 14 Codex skills under:/);
+    assert.match(stdout, /Installed 13 Codex skills under:/);
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
     assert.match(stdout, /Default chip support source: git@github\.com:Welkon\/emb-agent-adapters\.git/);
@@ -158,13 +117,13 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(stdout, /Startup automation is installed automatically\./);
     assert.match(stdout, /Sub-agent bridge: node \/tmp\/emb-subagent-bridge\.cjs --stdio-json \(timeout: 25000 ms\)/);
     assert.match(stdout, /Next steps:/);
-    assert.match(stdout, /open a Codex session and run: init/);
+    assert.match(stdout, /open a Codex session and run: start/);
     assert.match(stdout, /Then continue with: next/);
 
     process.chdir(tempProject);
     const sessionPath = path.join(tempHome, 'state', 'emb-agent', 'projects');
     assert.equal(fs.existsSync(sessionPath), false);
-    installedCli.main(['init']);
+    installedCli.main(['start']);
 
     assert.equal(fs.existsSync(sessionPath), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs')), true);
@@ -577,7 +536,8 @@ test('installer lays down claude agents and settings hooks', async () => {
     const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
 
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'commands', 'emb', 'init.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'commands', 'emb', 'start.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'commands', 'emb', 'init.md')), false);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
@@ -587,8 +547,8 @@ test('installer lays down claude agents and settings hooks', async () => {
     assert.match(JSON.stringify(settings.hooks.SessionStart), /emb-session-start\.js/);
     assert.match(JSON.stringify(settings.hooks.PostToolUse), /emb-context-monitor\.js/);
     assert.match(
-      fs.readFileSync(path.join(tempHome, 'commands', 'emb', 'init.md'), 'utf8'),
-      /When this command matches the user intent, run `node .*emb-agent\/bin\/emb-agent\.cjs init`/
+      fs.readFileSync(path.join(tempHome, 'commands', 'emb', 'start.md'), 'utf8'),
+      /When this command matches the user intent, run `node .*emb-agent\/bin\/emb-agent\.cjs start`/
     );
     const sessionFlowContent = fs.readFileSync(path.join(runtimeRoot, 'lib', 'session-flow.cjs'), 'utf8');
     assert.doesNotMatch(sessionFlowContent, /~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs/);
@@ -601,7 +561,7 @@ test('installer lays down claude agents and settings hooks', async () => {
     assert.equal(resolvedHost.subagentBridge.available, false);
     assert.equal(resolvedHost.subagentBridge.mode, 'disabled');
     assert.equal(resolvedHost.subagentBridge.source, 'none');
-    assert.match(stdout, /Installed 14 Claude commands under:/);
+    assert.match(stdout, /Installed 13 Claude commands under:/);
     assert.match(stdout, /Updated Claude Code config:/);
   } finally {
     process.stdout.write = originalWrite;
@@ -627,9 +587,10 @@ test('installer defaults Claude to project-scoped .claude layout', async () => {
 
     assert.equal(fs.existsSync(path.join(claudeRoot, 'emb-agent', 'bin', 'emb-agent.cjs')), true);
     assert.equal(fs.existsSync(path.join(claudeRoot, 'agents', 'emb-arch-reviewer.md')), true);
-    assert.equal(fs.existsSync(path.join(claudeRoot, 'commands', 'emb', 'init.md')), true);
+    assert.equal(fs.existsSync(path.join(claudeRoot, 'commands', 'emb', 'start.md')), true);
+    assert.equal(fs.existsSync(path.join(claudeRoot, 'commands', 'emb', 'init.md')), false);
     assert.equal(fs.existsSync(path.join(claudeRoot, 'settings.json')), true);
-    assert.match(stdout, /Installed 14 Claude commands under:/);
+    assert.match(stdout, /Installed 13 Claude commands under:/);
     assert.match(stdout, /\.claude\/commands\/emb/);
   } finally {
     process.chdir(currentCwd);
@@ -658,7 +619,8 @@ test('installer lays down cursor commands and settings hooks', async () => {
     const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
 
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.md')), true);
-    assert.equal(fs.existsSync(path.join(tempHome, 'commands', 'emb-init.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'commands', 'emb-start.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'commands', 'emb-init.md')), false);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
@@ -668,8 +630,8 @@ test('installer lays down cursor commands and settings hooks', async () => {
     assert.match(JSON.stringify(settings.hooks.SessionStart), /emb-session-start\.js/);
     assert.match(JSON.stringify(settings.hooks.PostToolUse), /emb-context-monitor\.js/);
     assert.match(
-      fs.readFileSync(path.join(tempHome, 'commands', 'emb-init.md'), 'utf8'),
-      /When this command matches the user intent, run `node .*emb-agent\/bin\/emb-agent\.cjs init`/
+      fs.readFileSync(path.join(tempHome, 'commands', 'emb-start.md'), 'utf8'),
+      /When this command matches the user intent, run `node .*emb-agent\/bin\/emb-agent\.cjs start`/
     );
     assert.equal(hostMetadata.name, 'cursor');
     assert.equal(hostMetadata.subagent_bridge, undefined);
@@ -679,7 +641,7 @@ test('installer lays down cursor commands and settings hooks', async () => {
     assert.equal(resolvedHost.subagentBridge.available, false);
     assert.equal(resolvedHost.subagentBridge.mode, 'disabled');
     assert.equal(resolvedHost.subagentBridge.source, 'none');
-    assert.match(stdout, /Installed 14 Cursor commands under:/);
+    assert.match(stdout, /Installed 13 Cursor commands under:/);
     assert.match(stdout, /Updated Cursor config:/);
   } finally {
     process.stdout.write = originalWrite;
@@ -705,12 +667,13 @@ test('installer defaults Cursor to project-scoped .cursor layout', async () => {
 
     assert.equal(fs.existsSync(path.join(cursorRoot, 'emb-agent', 'bin', 'emb-agent.cjs')), true);
     assert.equal(fs.existsSync(path.join(cursorRoot, 'agents', 'emb-arch-reviewer.md')), true);
-    assert.equal(fs.existsSync(path.join(cursorRoot, 'commands', 'emb-init.md')), true);
+    assert.equal(fs.existsSync(path.join(cursorRoot, 'commands', 'emb-start.md')), true);
+    assert.equal(fs.existsSync(path.join(cursorRoot, 'commands', 'emb-init.md')), false);
     assert.equal(fs.existsSync(path.join(cursorRoot, 'settings.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
-    assert.match(stdout, /Installed 14 Cursor commands under:/);
+    assert.match(stdout, /Installed 13 Cursor commands under:/);
     assert.match(stdout, /\.cursor\/commands/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /run: next/);
@@ -743,7 +706,8 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     const configData = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'config.json'), 'utf8'));
     const installedCli = require(path.join(runtimeRoot, 'bin', 'emb-agent.cjs'));
 
-    assert.equal(fs.existsSync(path.join(codexRoot, 'skills', 'emb-init', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(codexRoot, 'skills', 'emb-start', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(codexRoot, 'skills', 'emb-init', 'SKILL.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
@@ -753,8 +717,8 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     assert.equal(configData.project_state_dir, 'state/projects');
     assert.equal(configData.legacy_project_state_dir, 'state/projects');
 
-    installedCli.main(['init']);
-    assert.match(stdout, /Installed 14 Codex skills under:/);
+    installedCli.main(['start']);
+    assert.match(stdout, /Installed 13 Codex skills under:/);
     assert.match(stdout, /\.codex\/skills/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /Bootstrap task:/);

@@ -862,6 +862,9 @@ const {
 
 function buildStartContext() {
   const projectRoot = resolveProjectRoot();
+  if (!fs.existsSync(runtime.resolveProjectDataPath(projectRoot, 'project.json'))) {
+    runInitCommand([], 'start');
+  }
   const initialized = fs.existsSync(runtime.resolveProjectDataPath(projectRoot, 'project.json'));
   const initGuidance = buildInitGuidance(projectRoot);
   const bootstrap = buildBootstrapSummary(initGuidance);
@@ -877,7 +880,7 @@ function buildStartContext() {
       ? 'next'
       : initialized
         ? 'task add <summary>'
-        : 'init';
+        : 'start';
   const immediateReason = handoff
     ? 'An unconsumed handoff exists and should be restored before any new work.'
     : initialized && bootstrap.status !== 'ready-for-next'
@@ -886,7 +889,7 @@ function buildStartContext() {
       ? 'An active task already exists, so the shortest path is to continue the task loop.'
       : initialized
         ? 'Project bootstrap exists; create and activate a task before execution.'
-        : 'The repository is not initialized for emb-agent yet.';
+        : 'The repository has just been initialized for emb-agent.';
 
   return {
     entry: 'start',

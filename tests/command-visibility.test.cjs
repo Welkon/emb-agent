@@ -56,11 +56,11 @@ test('commands list hides legacy attach alias', async () => {
   const listed = await captureCliJson(['commands', 'list']);
 
   assert.ok(Array.isArray(listed));
-  assert.equal(listed.length, 14);
+  assert.equal(listed.length, 13);
   assert.ok(listed.includes('help'));
   assert.ok(listed.includes('start'));
-  assert.ok(listed.includes('init'));
   assert.ok(listed.includes('review'));
+  assert.ok(!listed.includes('init'));
   assert.ok(!listed.includes('workflow'));
   assert.ok(!listed.includes('attach'));
   assert.ok(!listed.includes('init-project'));
@@ -136,9 +136,9 @@ test('help markdown stays focused on core workflow commands', async () => {
 
   assert.match(content, /## Fast Path/);
   assert.match(content, /\$emb-start/);
-  assert.match(content, /\$emb-init/);
   assert.match(content, /\$emb-next/);
   assert.match(content, /\$emb-task/);
+  assert.doesNotMatch(content, /\$emb-init/);
   assert.doesNotMatch(content, /\$emb-orchestrate/);
   assert.doesNotMatch(content, /emb-agent\.cjs/);
   assert.doesNotMatch(content, /<runtime-cli>/);

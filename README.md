@@ -34,19 +34,10 @@ npx emb-agent --codex --local --developer your-name
 
 Replace `--codex` with `--claude` or `--cursor` for the host you use. Local install wires the runtime and bootstraps `.emb-agent/` in the current repository.
 
-If you are driving emb-agent from an external agent runtime instead of a host-integrated client, install with:
-
-```bash
-npx emb-agent --external --local --developer your-name
-```
-
-That writes the runtime to `.emb-agent/runtime` and creates `.emb-agent/external-agent.md` so a generic external agent can follow emb-agent's command loop without guessing.
-
-External agents can also skip the full session payloads and use the fixed driver protocol directly:
+If a host skill or external driver wants a fixed machine-readable protocol, call the runtime's `external` entrypoints directly:
 
 ```bash
 node ./.emb-agent/runtime/bin/emb-agent.cjs external start
-node ./.emb-agent/runtime/bin/emb-agent.cjs external init --runtime external --user your-name
 node ./.emb-agent/runtime/bin/emb-agent.cjs external next
 node ./.emb-agent/runtime/bin/emb-agent.cjs external health
 node ./.emb-agent/runtime/bin/emb-agent.cjs external dispatch-next
@@ -56,7 +47,7 @@ Use `--profile workflow` only when you are authoring scaffolds instead of using 
 
 ### 2. Open a session and run `start`
 
-`start` is the single repository entrypoint. It routes to `resume`, the next bootstrap step, `task add`, or `next`.
+`start` is the single repository entrypoint. On the first run it initializes the repo automatically, then routes to `resume`, the next bootstrap step, `task add`, or `next`.
 
 ### 3. Continue with the shortest hardware path
 

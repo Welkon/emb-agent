@@ -48,13 +48,11 @@ function createInstallHelpers(deps) {
     process.stdout.write(
       [
         'emb-agent usage:',
-        '  emb-agent --external --local',
         '  emb-agent --global',
         '  emb-agent --local',
         '  emb-agent --claude --local',
         '  emb-agent --codex --local',
         '  emb-agent --cursor --local',
-        '  emb-agent --runtime external --local',
         '  emb-agent --runtime claude --local',
         '  emb-agent --runtime codex --local',
         '  emb-agent --runtime cursor --local',
@@ -65,11 +63,10 @@ function createInstallHelpers(deps) {
         '  emb-agent --help',
         '',
         'Options:',
-        '  --external              Install a hostless runtime for external agents (for example GenericAgent)',
         '  --claude                Install for Claude Code explicitly',
         '  --codex                 Install for Codex explicitly (default)',
         '  --cursor                Install for Cursor explicitly',
-        '  --runtime <name>        Select runtime target (external, codex, claude, cursor; others reserved)',
+        '  --runtime <name>        Select runtime target (codex, claude, cursor; others reserved)',
         '  --developer <name>      Required developer name to seed new projects',
         '  --global                Install to runtime config home',
         '  --local                 Install to current project runtime dir and bootstrap .emb-agent/',
@@ -122,7 +119,7 @@ function createInstallHelpers(deps) {
 
   function getDefaultInstallLocation(runtimeName) {
     const runtime = String(runtimeName || '').trim().toLowerCase();
-    return runtime === 'external' || runtime === 'claude' || runtime === 'codex' || runtime === 'cursor'
+    return runtime === 'claude' || runtime === 'codex' || runtime === 'cursor'
       ? 'local'
       : 'global';
   }
@@ -190,10 +187,6 @@ function createInstallHelpers(deps) {
         setRuntime('claude');
         continue;
       }
-      if (token === '--external') {
-        setRuntime('external');
-        continue;
-      }
       if (token === '--codex') {
         setRuntime('codex');
         continue;
@@ -207,9 +200,15 @@ function createInstallHelpers(deps) {
         if (!runtime) {
           throw new Error('Missing runtime name after --runtime');
         }
+        if (runtime === 'external') {
+          throw new Error('Runtime target "external" is no longer installable');
+        }
         setRuntime(runtime);
         index += 1;
         continue;
+      }
+      if (token === '--external') {
+        throw new Error('Install flag "--external" has been removed');
       }
       if (token === '--developer') {
         result.developer = (argv[index + 1] || '').trim();
@@ -1419,16 +1418,10 @@ function createInstallHelpers(deps) {
       ...(!installProfile.includeScaffolds
         ? ['Advanced scaffold assets were skipped in core profile. Reinstall with --profile workflow to include them.']
         : []),
-      ...(target.managesHostConfig === false
-        ? ['Host automation was not installed because the external runtime target is hostless. Drive the CLI directly from the external agent.']
-        : [`Startup automation is installed automatically. If it does not seem active yet, restart the host once and rerun ${projectBootstrap ? 'next' : 'init/next'}. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.`]),
+      `Startup automation is installed automatically. If it does not seem active yet, restart the host once and rerun ${projectBootstrap ? 'next' : 'start'}. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.`,
       'Next steps:',
-      ...(target.managesHostConfig === false
-        ? [`  Point your external agent at: ${installedRuntimeHost.cliCommand}`]
-        : [`  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`]),
-      ...(target.managesHostConfig === false
-        ? [`  In the project repo, have the external agent run: ${projectBootstrap ? 'next' : 'init'}`]
-        : [`  In a project repo, open a ${target.label} session and run: ${projectBootstrap ? 'next' : 'init'}`]),
+      `  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`,
+      `  In a project repo, open a ${target.label} session and run: ${projectBootstrap ? 'next' : 'start'}`,
       `  ${projectBootstrap ? 'Review .emb-agent/tasks/00-bootstrap-project before broadening the workflow.' : 'Then continue with: next'}`
     ];
 

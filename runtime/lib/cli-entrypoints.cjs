@@ -537,7 +537,6 @@ function createCliEntryHelpers(deps) {
       'Global option: --brief outputs compact JSON (recommended for action commands such as next/plan/review/verify)',
       'Core workflow:',
       '  start',
-      '  init [--profile <name>] [--pack <name>] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [--user <name>|-u <name>] [--force]',
       '  declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
       '    [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
       '    [--peripheral <name> --usage <text>]',
@@ -558,7 +557,7 @@ function createCliEntryHelpers(deps) {
       '  bootstrap [run [--confirm]]',
       '  pause [note]',
       '  resume',
-      '  external <start|init|status|next|health|dispatch-next>',
+      '  external <start|status|next|health|dispatch-next>',
       '',
       'Show the full command set:',
       '  help advanced',
@@ -589,7 +588,7 @@ function createCliEntryHelpers(deps) {
       '  status',
       '  bootstrap [run [--confirm]]',
       '  health',
-      '  external <start|init|status|next|health|dispatch-next>',
+      '  external <start|status|next|health|dispatch-next>',
       '  update [check]',
       '  project show [--effective] [--field <path>]',
       '  project set [--confirm] --field <path> --value <json-or-string>',
@@ -733,9 +732,7 @@ function createCliEntryHelpers(deps) {
       {
         id: 'project-bootstrap',
         title: 'Project bootstrap',
-        commands: initialized
-          ? ['init (already complete)', 'declare hardware / ingest doc / ingest schematic as needed', 'next']
-          : ['init', 'declare hardware / ingest doc / ingest schematic as needed', 'next'],
+        commands: ['declare hardware / ingest doc / ingest schematic as needed', 'next'],
         outcome: 'Project truth is explicit enough for task work.'
       },
       {

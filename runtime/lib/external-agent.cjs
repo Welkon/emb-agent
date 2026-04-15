@@ -108,7 +108,7 @@ function createExternalAgentHelpers() {
       : {};
 
     return buildEnvelope('start', runtimeHost, {
-      status: summary.initialized ? 'ready' : 'needs-init',
+      status: summary.initialized ? 'ready' : 'start',
       summary: immediate.reason || bootstrap.summary || '',
       next: compactObject({
         cli: immediate.cli || ''

@@ -410,9 +410,9 @@ function createHealthUpdateCommandHelpers(deps) {
           summary: initReady
             ? 'Project skeleton and base caches already exist'
             : 'Create or rebuild .emb-agent skeleton before later bootstrap stages',
-          cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['init']),
+          cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['start']),
           kind: 'command',
-          argv: ['init'],
+          argv: ['start'],
           evidence: [runtime.getProjectAssetRelativePath()]
         }
       )
@@ -847,17 +847,17 @@ function createHealthUpdateCommandHelpers(deps) {
           'warn',
           'No session state file has been found yet',
           [path.relative(projectRoot, statePaths.sessionPath)],
-          'Run init, next, or resume once so emb-agent can establish project session state.'
+          'Run start, next, or resume once so emb-agent can establish project session state.'
         )
       );
       pushNextCommand(
         nextCommands,
-        'init',
+        'start',
         'Initialize or rebuild the emb-agent skeleton for the current project',
-        runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['init']),
+        runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['start']),
         'command',
         {
-          argv: ['init']
+          argv: ['start']
         }
       );
     }

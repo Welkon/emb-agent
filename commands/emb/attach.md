@@ -14,4 +14,4 @@ This command is a legacy alias kept for compatibility with older usage.
 ## Purpose
 
 - Preserve backward compatibility for existing users and scripts.
-- Prefer `$emb-init` for the official initialization flow.
+- Prefer `$emb-start` for the official entry flow.
