@@ -638,3 +638,174 @@ test('hardware model plus package can resolve derived chip slug automatically', 
     process.stdout.write = originalWrite;
   }
 });
+
+test('exact pwm target on a known pin can prefer lpwmg over generic pwm route', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-lpwmg-prefer-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({ devices: ['vendor-chip'] }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'qfp32',
+        architecture: '8-bit',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        source_refs: ['mcu/vendor-chip-registers'],
+        component_refs: [],
+        summary: {},
+        capabilities: ['pwm', 'lpwmg'],
+        docs: [],
+        related_tools: ['pwm-calc', 'lpwmg-calc'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'pwm-calc.cjs'),
+      [
+        "'use strict';",
+        '',
+        'module.exports = {',
+        '  runTool() {',
+        "    return { status: 'ok', route: 'pwm' };",
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'lpwmg-calc.cjs'),
+      [
+        "'use strict';",
+        '',
+        'module.exports = {',
+        '  runTool() {',
+        "    return { status: 'ok', route: 'lpwmg' };",
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['pwm-calc', 'lpwmg-calc'],
+        source_refs: [],
+        component_refs: [],
+        clock_sources: ['sysclk'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        family: 'vendor-family',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['pwm-calc', 'lpwmg-calc'],
+        source_refs: ['mcu/vendor-chip-registers'],
+        component_refs: [],
+        bindings: {
+          'pwm-calc': {
+            algorithm: 'vendor-pwm',
+            params: {
+              default_clock_source: 'sysclk',
+              default_output_pin: 'pa3',
+              clock_sources: {
+                sysclk: {}
+              },
+              output_pins: {
+                pa3: {}
+              }
+            }
+          },
+          'lpwmg-calc': {
+            algorithm: 'vendor-lpwmg',
+            params: {
+              default_clock_source: 'sysclk',
+              default_channel: 'lpwmg2',
+              clock_sources: {
+                sysclk: {}
+              },
+              channels: {
+                lpwmg2: {
+                  output_pins: ['pa3']
+                }
+              }
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    await cli.main([
+      'declare', 'hardware', '--confirm',
+      '--mcu', 'vendor-chip',
+      '--package', 'qfp32',
+      '--signal', 'PWM_OUT',
+      '--pin', 'PA3',
+      '--dir', 'output',
+      '--note', 'exact 20kHz 50% PWM output on PA3',
+      '--confirmed', 'true',
+      '--peripheral', 'PWM',
+      '--usage', '20kHz 50% exact output demo'
+    ]);
+    await cli.main([
+      'task', 'add', '--confirm',
+      'Bring up exact 20kHz 50% PWM on PA3',
+      '--type', 'implement',
+      '--scope', 'pwm',
+      '--priority', 'P1'
+    ]);
+    await cli.main(['task', 'activate', 'bring-up-exact-20khz-50-pwm-on-pa3', '--confirm']);
+
+    const next = cli.buildNextContext();
+
+    assert.equal(next.next.tool_recommendation.tool, 'lpwmg-calc');
+    assert.match(next.next.reason, /lpwmg-calc/);
+    assert.match(next.next.tool_recommendation.cli_draft, /tool run lpwmg-calc/);
+    assert.match(next.next.tool_recommendation.cli_draft, /--channel lpwmg2/);
+    assert.match(next.next.tool_recommendation.cli_draft, /--output-pin pa3/);
+    assert.match(next.next.tool_recommendation.cli_draft, /--clock-source sysclk/);
+    assert.match(next.next.tool_recommendation.cli_draft, /--target-hz 20000/);
+    assert.match(next.next.tool_recommendation.cli_draft, /--target-duty 50/);
+    assert.deepEqual(next.next.tool_recommendation.missing_inputs, ['clock frequency']);
+  } finally {
+    process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
+  }
+});

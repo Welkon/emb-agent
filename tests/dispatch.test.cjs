@@ -283,7 +283,7 @@ test('dispatch next exposes direct tool execution when scan has ready recommenda
   }
 });
 
-test('dispatch run executes the recommended tool when tool-first routing is ready', async () => {
+test('dispatch run returns a structured draft when recommended tool still needs inputs', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-run-tool-'));
   const currentCwd = process.cwd();
   const projectEmbDir = path.join(tempProject, '.emb-agent');
@@ -390,10 +390,129 @@ test('dispatch run executes the recommended tool when tool-first routing is read
     assert.equal(run.source, 'next');
     assert.equal(run.resolved_action, 'scan');
     assert.equal(run.execution.kind, 'tool');
-    assert.equal(run.status, 'ok');
-    assert.equal(run.options.family, 'vendor-family');
-    assert.equal(run.options.device, 'vendor-chip');
-    assert.equal(run.options.timer, 'tm16');
+    assert.equal(run.status, 'needs-input');
+    assert.equal(run.executed, false);
+    assert.equal(run.reason, 'missing-tool-inputs');
+    assert.equal(run.tool, 'timer-calc');
+    assert.deepEqual(run.missing_inputs, ['clock-hz', 'target-us or target-hz']);
+    assert.match(run.cli_draft, /tool run timer-calc/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('dispatch run returns missing tool inputs instead of throwing when tool-first routing lacks parameters', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-run-tool-missing-'));
+  const currentCwd = process.cwd();
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init', '--mcu', 'vendor-chip']);
+    await cli.main(['question', 'add', 'how should tm2 prescaler and pwm formulas be calculated']);
+
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({ devices: ['vendor-chip'] }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'qfp32',
+        architecture: '8-bit',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        source_refs: ['mcu/vendor-chip-registers'],
+        component_refs: [],
+        summary: {},
+        capabilities: ['timer16'],
+        docs: [],
+        related_tools: ['timer-calc'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'timer-calc.cjs'),
+      [
+        "'use strict';",
+        '',
+        'module.exports = {',
+        '  runTool(context) {',
+        '    const options = context.parseLongOptions(context.tokens || []);',
+        "    if (!options['clock-hz']) throw new Error('clock-hz must be a finite number');",
+        '    return {',
+        "      status: 'ok',",
+        '      options',
+        '    };',
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc'],
+        source_refs: [],
+        component_refs: [],
+        clock_sources: ['sysclk'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        family: 'vendor-family',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['timer-calc'],
+        source_refs: ['mcu/vendor-chip-registers'],
+        component_refs: [],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-timer16',
+            params: {
+              default_timer: 'tm16',
+              default_clock_source: 'sysclk',
+              prescalers: [1, 4, 16],
+              interrupt_bits: [8, 9]
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    const run = await captureCliJson(['dispatch', 'run', 'next']);
+
+    assert.equal(run.execution.kind, 'tool');
+    assert.equal(run.status, 'needs-input');
+    assert.equal(run.executed, false);
+    assert.equal(run.reason, 'missing-tool-inputs');
+    assert.equal(run.tool, 'timer-calc');
+    assert.deepEqual(run.missing_inputs, ['clock-hz', 'target-us or target-hz']);
+    assert.match(run.summary, /still needs inputs/i);
   } finally {
     process.chdir(currentCwd);
   }

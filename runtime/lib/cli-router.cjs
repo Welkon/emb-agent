@@ -826,6 +826,48 @@ function createCliRouter(deps) {
       return nextStage;
     }
 
+    function resolveBootstrapRunStage(bootstrap, stage) {
+      const nextStage = stage && typeof stage === 'object' && !Array.isArray(stage) ? stage : null;
+      if (!nextStage) {
+        return null;
+      }
+
+      if (nextStage.id !== 'startup-hooks' || nextStage.manual !== true) {
+        return nextStage;
+      }
+
+      const stages = Array.isArray(bootstrap && bootstrap.stages) ? bootstrap.stages : [];
+      const blockingStage = stages.find(item =>
+        item &&
+        item.id !== 'startup-hooks' &&
+        item.id !== 'next-step' &&
+        ['ready', 'manual'].includes(String(item.status || ''))
+      );
+      if (blockingStage) {
+        return nextStage;
+      }
+
+      const continueStage = stages.find(item =>
+        item &&
+        item.id === 'next-step' &&
+        Array.isArray(item.argv) &&
+        item.argv.length > 0
+      );
+      if (!continueStage) {
+        return nextStage;
+      }
+
+      return {
+        ...continueStage,
+        status: 'ready',
+        bypassed_manual_stage: {
+          id: nextStage.id || '',
+          label: nextStage.label || '',
+          summary: nextStage.summary || ''
+        }
+      };
+    }
+
     function buildBootstrapRunResponse(stage, result) {
       const payload = result && typeof result === 'object' && !Array.isArray(result) ? result : {};
       const blocked =
@@ -1011,7 +1053,10 @@ function createCliRouter(deps) {
       if (subcmd === 'run') {
         const bootstrap = buildBootstrapReport();
         const runOptions = parseBootstrapRunOptions(rest);
-        const stage = applyBootstrapRunOptions(bootstrap.next_stage || null, runOptions);
+        const stage = applyBootstrapRunOptions(
+          resolveBootstrapRunStage(bootstrap, bootstrap.next_stage || null),
+          runOptions
+        );
 
         if (!stage) {
           emitJson({

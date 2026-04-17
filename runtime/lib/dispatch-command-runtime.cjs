@@ -316,6 +316,26 @@ function createDispatchCommandRuntimeHelpers(deps) {
       throw new Error(`Unsupported tool execution argv: ${argv.join(' ')}`);
     }
 
+    const missingInputs = Array.isArray(execution.missing_inputs)
+      ? execution.missing_inputs.filter(Boolean)
+      : [];
+    if (missingInputs.length > 0) {
+      return {
+        argv,
+        result: {
+          status: 'needs-input',
+          executed: false,
+          reason: 'missing-tool-inputs',
+          summary: `Tool ${execution.tool} still needs inputs before it can run: ${missingInputs.join(', ')}`,
+          tool: execution.tool,
+          cli_draft: execution.cli || '',
+          missing_inputs: missingInputs,
+          defaults_applied: execution.defaults_applied || {},
+          trust: execution.trust || null
+        }
+      };
+    }
+
     return {
       argv,
       result: handleAdapterToolChipCommands('tool', 'run', argv.slice(2))

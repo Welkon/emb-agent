@@ -38,6 +38,13 @@ function createToolSuggestionHelpers(deps) {
     return Object.keys(value)[0] || '';
   }
 
+  function normalizeToken(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_\s-]+/g, '');
+  }
+
   function addDraftArg(parts, key, value) {
     if (value === undefined || value === null) {
       return;
@@ -373,6 +380,169 @@ function createToolSuggestionHelpers(deps) {
     };
   }
 
+  function collectHardwareIntentTexts(hardwareIdentity) {
+    const identity = hardwareIdentity && typeof hardwareIdentity === 'object' ? hardwareIdentity : {};
+    const signals = Array.isArray(identity.signals) ? identity.signals : [];
+    const peripherals = Array.isArray(identity.peripherals) ? identity.peripherals : [];
+
+    return runtime.unique([
+      ...signals.flatMap(item => [
+        item && item.name ? item.name : '',
+        item && item.pin ? item.pin : '',
+        item && item.direction ? item.direction : '',
+        item && item.note ? item.note : ''
+      ]),
+      ...peripherals.flatMap(item => [
+        item && item.name ? item.name : '',
+        item && item.usage ? item.usage : ''
+      ])
+    ]).filter(Boolean);
+  }
+
+  function findExactPwmTarget(texts) {
+    const joined = (Array.isArray(texts) ? texts : []).join(' ');
+    const frequencyMatch = joined.match(/\b(\d+(?:\.\d+)?)\s*(k?hz)\b/i);
+    const dutyMatch = joined.match(/\b(\d+(?:\.\d+)?)\s*%/);
+    const target = {
+      target_hz: '',
+      target_duty: ''
+    };
+
+    if (frequencyMatch) {
+      const raw = Number(frequencyMatch[1]);
+      if (Number.isFinite(raw) && raw > 0) {
+        target.target_hz = frequencyMatch[2].toLowerCase() === 'khz'
+          ? String(raw * 1000)
+          : String(raw);
+      }
+    }
+
+    if (dutyMatch) {
+      const raw = Number(dutyMatch[1]);
+      if (Number.isFinite(raw) && raw >= 0 && raw <= 100) {
+        target.target_duty = String(raw);
+      }
+    }
+
+    return target;
+  }
+
+  function findPreferredOutputPin(hardwareIdentity) {
+    const identity = hardwareIdentity && typeof hardwareIdentity === 'object' ? hardwareIdentity : {};
+    const signals = Array.isArray(identity.signals) ? identity.signals : [];
+    const preferred = signals.find(item => {
+      const text = `${item && item.name ? item.name : ''} ${item && item.note ? item.note : ''}`.toLowerCase();
+      return String(item && item.direction ? item.direction : '').toLowerCase() === 'output' &&
+        /pwm|lpwmg/.test(text) &&
+        item && item.pin;
+    });
+    if (preferred && preferred.pin) {
+      return String(preferred.pin).trim().toLowerCase();
+    }
+
+    const fallback = signals.find(item =>
+      String(item && item.direction ? item.direction : '').toLowerCase() === 'output' &&
+      item && item.pin
+    );
+    return fallback && fallback.pin
+      ? String(fallback.pin).trim().toLowerCase()
+      : '';
+  }
+
+  function channelHasOutputPin(channelParams, normalizedPin) {
+    if (!channelParams || !normalizedPin) {
+      return false;
+    }
+
+    const outputPins = channelParams.output_pins;
+    if (Array.isArray(outputPins)) {
+      return outputPins.some(item => normalizeToken(item) === normalizedPin);
+    }
+
+    if (outputPins && typeof outputPins === 'object') {
+      return Object.keys(outputPins).some(key => normalizeToken(key) === normalizedPin);
+    }
+
+    return false;
+  }
+
+  function resolveLpwmgChannel(params, preferredOutputPin) {
+    const channels = params && params.channels && typeof params.channels === 'object' ? params.channels : {};
+    const normalizedPin = normalizeToken(preferredOutputPin);
+
+    if (normalizedPin) {
+      const matches = Object.entries(channels)
+        .filter(([, channelParams]) => channelHasOutputPin(channelParams, normalizedPin))
+        .map(([name]) => name);
+      if (matches.length === 1) {
+        return matches[0];
+      }
+    }
+
+    return params.default_channel || firstObjectKey(channels) || '';
+  }
+
+  function resolveLpwmgOutputPin(params, channelName, preferredOutputPin) {
+    const channels = params && params.channels && typeof params.channels === 'object' ? params.channels : {};
+    const channelParams = channelName && channels[channelName] ? channels[channelName] : {};
+    const normalizedPin = normalizeToken(preferredOutputPin);
+
+    if (normalizedPin && channelHasOutputPin(channelParams, normalizedPin)) {
+      return preferredOutputPin;
+    }
+
+    if (channelParams.default_output_pin) {
+      return channelParams.default_output_pin;
+    }
+
+    const outputPins = channelParams.output_pins;
+    if (Array.isArray(outputPins)) {
+      return outputPins[0] || '';
+    }
+    if (outputPins && typeof outputPins === 'object') {
+      return firstObjectKey(outputPins);
+    }
+
+    return '';
+  }
+
+  function buildLpwmgDraft(toolName, chipProfile, deviceProfile, familyProfile, binding, hardwareIdentity) {
+    const params = (binding && binding.params) || {};
+    const missing = [];
+    const parts = ['tool', 'run', toolName];
+    const texts = collectHardwareIntentTexts(hardwareIdentity);
+    const inferredTarget = findExactPwmTarget(texts);
+    const preferredOutputPin = findPreferredOutputPin(hardwareIdentity);
+    const channel = resolveLpwmgChannel(params, preferredOutputPin);
+    const outputPin = resolveLpwmgOutputPin(params, channel, preferredOutputPin);
+    const clockSource = params.default_clock_source || firstObjectKey(params.clock_sources) || '';
+
+    addIdentityArgs(parts, chipProfile, deviceProfile, familyProfile);
+    addDraftArg(parts, 'channel', channel || 'CHANNEL');
+    addDraftArg(parts, 'output-pin', outputPin || 'OUTPUT_PIN');
+    addDraftArg(parts, 'clock-source', clockSource || 'CLOCK_SOURCE');
+    addDraftArg(parts, 'clock-hz', '<CLOCK_HZ>');
+    addUniqueMissing(missing, 'clock frequency');
+    addDraftArg(parts, 'target-hz', inferredTarget.target_hz || '<TARGET_HZ>');
+    if (!inferredTarget.target_hz) {
+      addUniqueMissing(missing, 'target pwm frequency');
+    }
+    addDraftArg(parts, 'target-duty', inferredTarget.target_duty || '50');
+
+    return {
+      argv: parts.slice(),
+      cli_draft: finalizeDraft(parts),
+      missing_inputs: missing,
+      defaults_applied: {
+        channel: channel || '',
+        output_pin: outputPin || '',
+        clock_source: clockSource || '',
+        target_hz: inferredTarget.target_hz || '',
+        target_duty: inferredTarget.target_duty || '50'
+      }
+    };
+  }
+
   function buildGenericDraft(toolName, chipProfile, deviceProfile, familyProfile, spec) {
     const missing = (spec.inputs || []).map(item => String(item));
     const parts = ['tool', 'run', toolName];
@@ -386,7 +556,7 @@ function createToolSuggestionHelpers(deps) {
     };
   }
 
-  function buildDraft(toolName, chipProfile, deviceProfile, familyProfile, spec, binding) {
+  function buildDraft(toolName, chipProfile, deviceProfile, familyProfile, spec, binding, hardwareIdentity) {
     if (toolName === 'timer-calc') {
       return buildTimerDraft(toolName, chipProfile, deviceProfile, familyProfile, binding);
     }
@@ -398,6 +568,9 @@ function createToolSuggestionHelpers(deps) {
     }
     if (toolName === 'adc-scale') {
       return buildAdcDraft(toolName, chipProfile, deviceProfile, familyProfile, binding);
+    }
+    if (toolName === 'lpwmg-calc') {
+      return buildLpwmgDraft(toolName, chipProfile, deviceProfile, familyProfile, binding, hardwareIdentity);
     }
 
     return buildGenericDraft(toolName, chipProfile, deviceProfile, familyProfile, spec);
@@ -512,7 +685,7 @@ function createToolSuggestionHelpers(deps) {
       .filter(Boolean);
   }
 
-  function buildToolRecommendations(chipProfile, suggestedTools) {
+  function buildToolRecommendations(chipProfile, suggestedTools, hardwareIdentity) {
     if (!chipProfile || !Array.isArray(suggestedTools) || suggestedTools.length === 0) {
       return [];
     }
@@ -528,7 +701,8 @@ function createToolSuggestionHelpers(deps) {
         profiles.device,
         profiles.family,
         spec || { inputs: [] },
-        bindingInfo.binding
+        bindingInfo.binding,
+        hardwareIdentity
       );
       const trust = adapterQualityHelpers.evaluateToolRecommendationTrust({
         toolName: tool.name,
