@@ -15,6 +15,7 @@ const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
 const BOOTSTRAP_TASK_NAME = '00-bootstrap-project';
 const BOOTSTRAP_TASK_CHANNELS = ['implement', 'check', 'debug'];
 const PROJECT_AGENTS_PATH = 'AGENTS.md';
+const WORKTREE_CONFIG_PATH = path.join('.emb-agent', 'worktree.yaml');
 function usage() {
   process.stdout.write(
     [
@@ -430,6 +431,50 @@ function ensureProjectAgentsGuide(projectRoot, force) {
   };
 }
 
+function buildDefaultWorktreeConfig() {
+  return [
+    '# emb-agent task worktree configuration',
+    '# Relative paths are resolved from the project root',
+    '',
+    '# Worktree storage directory',
+    'worktree_dir: ../emb-agent-worktrees',
+    '',
+    '# Files or directories to copy into each created worktree',
+    'copy:',
+    '  - .emb-agent/.developer',
+    '',
+    '# Commands to run after creating a worktree',
+    'post_create:',
+    '  # - npm install',
+    '  # - pnpm install --frozen-lockfile',
+    ''
+  ].join('\n');
+}
+
+function ensureWorktreeConfig(projectRoot, force) {
+  const filePath = path.join(projectRoot, WORKTREE_CONFIG_PATH);
+  const existedBefore = fs.existsSync(filePath);
+
+  if (existedBefore && !force) {
+    return {
+      path: WORKTREE_CONFIG_PATH,
+      created: false,
+      updated: false,
+      reused: true
+    };
+  }
+
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, buildDefaultWorktreeConfig(), 'utf8');
+
+  return {
+    path: WORKTREE_CONFIG_PATH,
+    created: !existedBefore,
+    updated: existedBefore && force,
+    reused: false
+  };
+}
+
 function buildBootstrapDocsPlan(projectRoot, projectConfig, registry) {
   return [
     { output: path.join('docs', 'MCU-FOUNDATION-CHECKLIST.md'), template: 'mcu-foundation-checklist' },
@@ -723,6 +768,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   const truthPlan = buildTruthPlan();
   const bootstrapDocsPlan = buildBootstrapDocsPlan(projectRoot, effectiveProjectConfig, workflowCatalog);
   const projectAgentsGuide = ensureProjectAgentsGuide(projectRoot, force);
+  const worktreeConfig = ensureWorktreeConfig(projectRoot, force);
 
   for (const item of truthPlan) {
     const outputPath = path.join(projectRoot, item.output);
@@ -739,6 +785,14 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     updated.push(projectAgentsGuide.path);
   } else {
     reused.push(projectAgentsGuide.path);
+  }
+
+  if (worktreeConfig.created) {
+    created.push(worktreeConfig.path);
+  } else if (worktreeConfig.updated) {
+    updated.push(worktreeConfig.path);
+  } else {
+    reused.push(worktreeConfig.path);
   }
 
   const bootstrapTask = ensureBootstrapTask(projectRoot, effectiveProjectConfig, bootstrapDocsPlan, force);

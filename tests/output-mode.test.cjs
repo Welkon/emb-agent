@@ -10,15 +10,23 @@ const outputMode = require(path.join(repoRoot, 'runtime', 'lib', 'output-mode.cj
 test('parseOutputModeArgs supports next --brief and keeps tool-local --brief', () => {
   const next = outputMode.parseOutputModeArgs(['next', '--brief']);
   assert.equal(next.brief, true);
+  assert.equal(next.json, false);
   assert.deepEqual(next.args, ['next']);
 
   const toolLocal = outputMode.parseOutputModeArgs(['tool', 'run', 'timer-calc', '--brief']);
   assert.equal(toolLocal.brief, false);
+  assert.equal(toolLocal.json, false);
   assert.deepEqual(toolLocal.args, ['tool', 'run', 'timer-calc', '--brief']);
 
   const mixed = outputMode.parseOutputModeArgs(['--brief', 'tool', 'run', 'timer-calc', '--brief']);
   assert.equal(mixed.brief, true);
+  assert.equal(mixed.json, false);
   assert.deepEqual(mixed.args, ['tool', 'run', 'timer-calc', '--brief']);
+
+  const jsonMixed = outputMode.parseOutputModeArgs(['--json', 'next', '--brief']);
+  assert.equal(jsonMixed.brief, true);
+  assert.equal(jsonMixed.json, true);
+  assert.deepEqual(jsonMixed.args, ['next']);
 });
 
 test('applyOutputMode builds brief next context payload', () => {

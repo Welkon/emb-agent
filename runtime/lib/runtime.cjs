@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const workflowRegistry = require('./workflow-registry.cjs');
 
@@ -38,6 +39,181 @@ function moveFile(sourcePath, targetPath) {
     }
     throw error;
   }
+}
+
+function copyFileIfMissing(sourcePath, targetPath) {
+  if (!sourcePath || !targetPath) {
+    return;
+  }
+  if (!fs.existsSync(sourcePath) || fs.existsSync(targetPath)) {
+    return;
+  }
+
+  ensureDir(path.dirname(targetPath));
+  fs.copyFileSync(sourcePath, targetPath);
+}
+
+function isReadonlyStateError(error) {
+  return Boolean(
+    error &&
+    ['EROFS', 'EACCES', 'EPERM'].includes(error.code)
+  );
+}
+
+function buildProjectStateFilePaths(stateDir, projectKey) {
+  return {
+    stateDir,
+    sessionPath: path.join(stateDir, `${projectKey}.json`),
+    handoffPath: path.join(stateDir, `${projectKey}.handoff.json`),
+    contextSummaryPath: path.join(stateDir, `${projectKey}.context-summary.json`),
+    lockPath: path.join(stateDir, `${projectKey}.lock`)
+  };
+}
+
+function applyProjectStateDir(paths, stateDir, storageMode) {
+  const next = buildProjectStateFilePaths(stateDir, paths.projectKey);
+  paths.stateDir = next.stateDir;
+  paths.sessionPath = next.sessionPath;
+  paths.handoffPath = next.handoffPath;
+  paths.contextSummaryPath = next.contextSummaryPath;
+  paths.lockPath = next.lockPath;
+  paths.storageMode = storageMode || paths.storageMode || 'primary';
+  return paths;
+}
+
+function getFallbackProjectStateDir(rootDir) {
+  const override = String(process.env.EMB_AGENT_PROJECT_STATE_FALLBACK_DIR || '').trim();
+  if (override) {
+    return path.resolve(override);
+  }
+
+  const runtimeKey = crypto.createHash('sha1').update(path.resolve(rootDir)).digest('hex').slice(0, 12);
+  return path.join(os.tmpdir(), 'emb-agent-state', runtimeKey, 'projects');
+}
+
+function getLatestExistingStateEntry(entries) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter(entry => entry && entry.filePath && fs.existsSync(entry.filePath))
+    .map(entry => {
+      let mtimeMs = 0;
+      try {
+        mtimeMs = fs.statSync(entry.filePath).mtimeMs || 0;
+      } catch {
+        mtimeMs = 0;
+      }
+      return {
+        ...entry,
+        mtimeMs
+      };
+    })
+    .sort((left, right) => {
+      if (right.mtimeMs !== left.mtimeMs) {
+        return right.mtimeMs - left.mtimeMs;
+      }
+      return 0;
+    })[0] || null;
+}
+
+function getStatePathForMode(paths, mode, type) {
+  const normalizedMode = String(mode || 'primary').trim();
+  const normalizedType = String(type || 'session').trim();
+
+  if (normalizedMode === 'fallback') {
+    if (normalizedType === 'handoff') return paths.fallbackHandoffPath;
+    if (normalizedType === 'context-summary') return paths.fallbackContextSummaryPath;
+    if (normalizedType === 'lock') return paths.fallbackLockPath;
+    return paths.fallbackSessionPath;
+  }
+
+  if (normalizedMode === 'legacy') {
+    if (normalizedType === 'handoff') return paths.legacyHandoffPath;
+    if (normalizedType === 'lock') return paths.legacyLockPath;
+    return paths.legacySessionPath;
+  }
+
+  if (normalizedType === 'handoff') return paths.primaryHandoffPath || paths.handoffPath;
+  if (normalizedType === 'context-summary') {
+    return paths.primaryContextSummaryPath || paths.contextSummaryPath;
+  }
+  if (normalizedType === 'lock') return paths.primaryLockPath || paths.lockPath;
+  return paths.primarySessionPath || paths.sessionPath;
+}
+
+function resolveProjectStateInspection(paths) {
+  const sessionEntry = getLatestExistingStateEntry([
+    { mode: 'fallback', filePath: paths.fallbackSessionPath },
+    { mode: 'primary', filePath: paths.primarySessionPath || paths.sessionPath },
+    { mode: 'legacy', filePath: paths.legacySessionPath }
+  ]);
+  const handoffEntry = getLatestExistingStateEntry([
+    { mode: 'fallback', filePath: paths.fallbackHandoffPath },
+    { mode: 'primary', filePath: paths.primaryHandoffPath || paths.handoffPath },
+    { mode: 'legacy', filePath: paths.legacyHandoffPath }
+  ]);
+  const contextSummaryEntry = getLatestExistingStateEntry([
+    { mode: 'fallback', filePath: paths.fallbackContextSummaryPath },
+    { mode: 'primary', filePath: paths.primaryContextSummaryPath || paths.contextSummaryPath }
+  ]);
+  const storageMode =
+    (sessionEntry && sessionEntry.mode) ||
+    (handoffEntry && handoffEntry.mode) ||
+    (contextSummaryEntry && contextSummaryEntry.mode) ||
+    paths.storageMode ||
+    'primary';
+
+  return {
+    storageMode,
+    sessionPath: (sessionEntry && sessionEntry.filePath) || getStatePathForMode(paths, storageMode, 'session'),
+    sessionStorageMode: (sessionEntry && sessionEntry.mode) || storageMode,
+    handoffPath: (handoffEntry && handoffEntry.filePath) || getStatePathForMode(paths, storageMode, 'handoff'),
+    handoffStorageMode: (handoffEntry && handoffEntry.mode) || storageMode,
+    contextSummaryPath:
+      (contextSummaryEntry && contextSummaryEntry.filePath) || getStatePathForMode(paths, storageMode, 'context-summary'),
+    contextSummaryStorageMode: (contextSummaryEntry && contextSummaryEntry.mode) || storageMode
+  };
+}
+
+function normalizeStateDisplayPath(projectRoot, filePath) {
+  const resolvedPath = path.resolve(filePath || '');
+  if (!projectRoot) {
+    return resolvedPath;
+  }
+
+  const relativePath = path.relative(projectRoot, resolvedPath);
+  if (
+    relativePath &&
+    relativePath !== '.' &&
+    !relativePath.startsWith('..') &&
+    !path.isAbsolute(relativePath)
+  ) {
+    return relativePath;
+  }
+
+  return resolvedPath;
+}
+
+function buildSessionStateView(paths, options = {}) {
+  const inspection = resolveProjectStateInspection(paths);
+  const projectRoot = options.projectRoot || paths.projectRoot || '';
+
+  return {
+    storage_mode: inspection.storageMode || paths.storageMode || 'primary',
+    session: {
+      storage_mode: inspection.sessionStorageMode || inspection.storageMode || 'primary',
+      path: normalizeStateDisplayPath(projectRoot, inspection.sessionPath),
+      exists: fs.existsSync(inspection.sessionPath)
+    },
+    handoff: {
+      storage_mode: inspection.handoffStorageMode || inspection.storageMode || 'primary',
+      path: normalizeStateDisplayPath(projectRoot, inspection.handoffPath),
+      exists: fs.existsSync(inspection.handoffPath)
+    },
+    context_summary: {
+      storage_mode: inspection.contextSummaryStorageMode || inspection.storageMode || 'primary',
+      path: normalizeStateDisplayPath(projectRoot, inspection.contextSummaryPath),
+      exists: fs.existsSync(inspection.contextSummaryPath)
+    }
+  };
 }
 
 function copyPathRecursive(sourcePath, targetPath) {
@@ -1176,49 +1352,87 @@ function getProjectStatePaths(rootDir, cwd, runtimeConfig) {
     rootDir,
     runtimeConfig.legacy_project_state_dir || 'state/projects'
   );
+  const fallbackStateDir = getFallbackProjectStateDir(rootDir);
+  const primaryPaths = buildProjectStateFilePaths(stateDir, projectKey);
+  const legacyPaths = buildProjectStateFilePaths(legacyStateDir, projectKey);
+  const fallbackPaths = buildProjectStateFilePaths(fallbackStateDir, projectKey);
 
   return {
     projectRoot,
     projectKey,
-    stateDir,
+    stateDir: primaryPaths.stateDir,
     legacyStateDir,
-    sessionPath: path.join(stateDir, `${projectKey}.json`),
-    handoffPath: path.join(stateDir, `${projectKey}.handoff.json`),
-    contextSummaryPath: path.join(stateDir, `${projectKey}.context-summary.json`),
-    lockPath: path.join(stateDir, `${projectKey}.lock`),
-    legacySessionPath: path.join(legacyStateDir, `${projectKey}.json`),
-    legacyHandoffPath: path.join(legacyStateDir, `${projectKey}.handoff.json`),
-    legacyLockPath: path.join(legacyStateDir, `${projectKey}.lock`)
+    sessionPath: primaryPaths.sessionPath,
+    handoffPath: primaryPaths.handoffPath,
+    contextSummaryPath: primaryPaths.contextSummaryPath,
+    lockPath: primaryPaths.lockPath,
+    legacySessionPath: legacyPaths.sessionPath,
+    legacyHandoffPath: legacyPaths.handoffPath,
+    legacyLockPath: legacyPaths.lockPath,
+    fallbackStateDir: fallbackPaths.stateDir,
+    fallbackSessionPath: fallbackPaths.sessionPath,
+    fallbackHandoffPath: fallbackPaths.handoffPath,
+    fallbackContextSummaryPath: fallbackPaths.contextSummaryPath,
+    fallbackLockPath: fallbackPaths.lockPath,
+    primaryStateDir: primaryPaths.stateDir,
+    primarySessionPath: primaryPaths.sessionPath,
+    primaryHandoffPath: primaryPaths.handoffPath,
+    primaryContextSummaryPath: primaryPaths.contextSummaryPath,
+    primaryLockPath: primaryPaths.lockPath,
+    storageMode: 'primary'
   };
 }
 
 function ensureProjectStateStorage(paths) {
+  try {
+    ensureDir(paths.stateDir);
+
+    const migrations = [
+      [paths.legacySessionPath, paths.sessionPath],
+      [paths.legacyHandoffPath, paths.handoffPath],
+      [paths.legacyLockPath, paths.lockPath]
+    ];
+
+    for (const [legacyPath, currentPath] of migrations) {
+      if (!legacyPath || legacyPath === currentPath) {
+        continue;
+      }
+      if (!fs.existsSync(legacyPath) || fs.existsSync(currentPath)) {
+        continue;
+      }
+      moveFile(legacyPath, currentPath);
+    }
+
+    if (
+      paths.legacyStateDir &&
+      paths.legacyStateDir !== paths.stateDir &&
+      fs.existsSync(paths.legacyStateDir) &&
+      fs.readdirSync(paths.legacyStateDir).length === 0
+    ) {
+      fs.rmSync(paths.legacyStateDir, { recursive: true, force: true });
+    }
+
+    return paths;
+  } catch (error) {
+    if (!isReadonlyStateError(error) || !paths.fallbackStateDir) {
+      throw error;
+    }
+  }
+
+  applyProjectStateDir(paths, paths.fallbackStateDir, 'fallback');
   ensureDir(paths.stateDir);
 
-  const migrations = [
+  [
+    [paths.primarySessionPath, paths.sessionPath],
+    [paths.primaryHandoffPath, paths.handoffPath],
+    [paths.primaryContextSummaryPath, paths.contextSummaryPath],
     [paths.legacySessionPath, paths.sessionPath],
-    [paths.legacyHandoffPath, paths.handoffPath],
-    [paths.legacyLockPath, paths.lockPath]
-  ];
+    [paths.legacyHandoffPath, paths.handoffPath]
+  ].forEach(([sourcePath, targetPath]) => {
+    copyFileIfMissing(sourcePath, targetPath);
+  });
 
-  for (const [legacyPath, currentPath] of migrations) {
-    if (!legacyPath || legacyPath === currentPath) {
-      continue;
-    }
-    if (!fs.existsSync(legacyPath) || fs.existsSync(currentPath)) {
-      continue;
-    }
-    moveFile(legacyPath, currentPath);
-  }
-
-  if (
-    paths.legacyStateDir &&
-    paths.legacyStateDir !== paths.stateDir &&
-    fs.existsSync(paths.legacyStateDir) &&
-    fs.readdirSync(paths.legacyStateDir).length === 0
-  ) {
-    fs.rmSync(paths.legacyStateDir, { recursive: true, force: true });
-  }
+  return paths;
 }
 
 function normalizeSession(session, paths, runtimeConfig, projectConfig) {
@@ -1436,10 +1650,12 @@ module.exports = {
   cleanupStaleLock,
   ensureDir,
   ensureProjectStateStorage,
+  buildSessionStateView,
   getLegacyProjectExtDir,
   getProjectAssetRelativePath,
   getProjectExtDir,
   getProjectKey,
+  resolveProjectStateInspection,
   getProjectStatePaths,
   initProjectLayout,
   listNames,

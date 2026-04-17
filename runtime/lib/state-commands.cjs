@@ -23,6 +23,7 @@ function createStateCommandHelpers(deps) {
     loadMarkdown,
     loadSession,
     updateSession,
+    getProjectStatePaths,
     getPreferences,
     getProjectConfig,
     requireRestText,
@@ -98,7 +99,16 @@ function createStateCommandHelpers(deps) {
     }
 
     if (cmd === 'session' && subcmd === 'show') {
-      return loadSession();
+      const session = loadSession();
+      const statePaths = typeof getProjectStatePaths === 'function' ? getProjectStatePaths() : null;
+      return {
+        ...session,
+        session_state: statePaths
+          ? runtime.buildSessionStateView(statePaths, {
+              projectRoot: session.project_root
+            })
+          : null
+      };
     }
 
     if (cmd === 'skills' && subcmd === 'list') {

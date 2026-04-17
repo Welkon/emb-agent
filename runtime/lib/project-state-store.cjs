@@ -22,11 +22,23 @@ function createProjectStateStoreHelpers(deps) {
     );
   }
 
-  function loadSessionReadonly(paths) {
-    if (fs.existsSync(paths.sessionPath)) {
-      return normalizeSession(runtime.readJson(paths.sessionPath), paths);
+  function resolveStatePaths(paths, allowReadonly = false) {
+    try {
+      return runtime.ensureProjectStateStorage(paths);
+    } catch (error) {
+      if (allowReadonly && isReadonlyStateError(error)) {
+        return paths;
+      }
+      throw error;
     }
-    return normalizeSession(readDefaultSession(paths), paths);
+  }
+
+  function loadSessionReadonly(paths) {
+    const resolvedPaths = resolveStatePaths(paths, true);
+    if (fs.existsSync(resolvedPaths.sessionPath)) {
+      return normalizeSession(runtime.readJson(resolvedPaths.sessionPath), resolvedPaths);
+    }
+    return normalizeSession(readDefaultSession(resolvedPaths), resolvedPaths);
   }
 
   function acquireLock(lockPath) {
@@ -63,7 +75,7 @@ function createProjectStateStoreHelpers(deps) {
   }
 
   function withProjectLock(work) {
-    const paths = getProjectStatePaths();
+    const paths = resolveStatePaths(getProjectStatePaths());
     const lockFd = acquireLock(paths.lockPath);
 
     try {
@@ -76,7 +88,7 @@ function createProjectStateStoreHelpers(deps) {
   function ensureSession() {
     const paths = getProjectStatePaths();
     try {
-      runtime.ensureProjectStateStorage(paths);
+      resolveStatePaths(paths);
     } catch (error) {
       if (isReadonlyStateError(error)) {
         return loadSessionReadonly(paths);
@@ -114,16 +126,14 @@ function createProjectStateStoreHelpers(deps) {
   }
 
   function saveSession(session) {
-    const paths = getProjectStatePaths();
-    runtime.ensureProjectStateStorage(paths);
+    const paths = resolveStatePaths(getProjectStatePaths());
     const next = normalizeSession(session, paths);
     next.updated_at = new Date().toISOString();
     runtime.writeJson(paths.sessionPath, next);
   }
 
   function loadHandoff() {
-    const paths = getProjectStatePaths();
-    runtime.ensureProjectStateStorage(paths);
+    const paths = resolveStatePaths(getProjectStatePaths());
     if (!fs.existsSync(paths.handoffPath)) {
       return null;
     }
@@ -131,14 +141,12 @@ function createProjectStateStoreHelpers(deps) {
   }
 
   function saveHandoff(handoff) {
-    const paths = getProjectStatePaths();
-    runtime.ensureProjectStateStorage(paths);
+    const paths = resolveStatePaths(getProjectStatePaths());
     runtime.writeJson(paths.handoffPath, runtime.validateHandoff(handoff, RUNTIME_CONFIG));
   }
 
   function loadContextSummary() {
-    const paths = getProjectStatePaths();
-    runtime.ensureProjectStateStorage(paths);
+    const paths = resolveStatePaths(getProjectStatePaths());
     if (!fs.existsSync(paths.contextSummaryPath)) {
       return null;
     }
@@ -146,22 +154,19 @@ function createProjectStateStoreHelpers(deps) {
   }
 
   function saveContextSummary(summary) {
-    const paths = getProjectStatePaths();
-    runtime.ensureProjectStateStorage(paths);
+    const paths = resolveStatePaths(getProjectStatePaths());
     runtime.writeJson(paths.contextSummaryPath, runtime.validateContextSummary(summary, RUNTIME_CONFIG));
   }
 
   function clearHandoff() {
-    const paths = getProjectStatePaths();
-    runtime.ensureProjectStateStorage(paths);
+    const paths = resolveStatePaths(getProjectStatePaths());
     if (fs.existsSync(paths.handoffPath)) {
       fs.unlinkSync(paths.handoffPath);
     }
   }
 
   function clearContextSummary() {
-    const paths = getProjectStatePaths();
-    runtime.ensureProjectStateStorage(paths);
+    const paths = resolveStatePaths(getProjectStatePaths());
     if (fs.existsSync(paths.contextSummaryPath)) {
       fs.unlinkSync(paths.contextSummaryPath);
     }

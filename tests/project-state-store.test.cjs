@@ -232,3 +232,132 @@ test('project state store falls back to readonly session mode when lock file can
   assert.deepEqual(updated.last_files, ['main.c']);
   assert.equal(fs.existsSync(runtime.getProjectStatePaths(tempRoot, tempProject, runtimeConfig).lockPath), false);
 });
+
+test('project state store falls back to writable temp state dir when primary state storage is readonly', () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-store-fb-root-'));
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-store-fb-proj-'));
+  const fallbackStateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-store-fb-state-'));
+  const runtimeConfig = {
+    project_state_dir: 'state/projects',
+    legacy_project_state_dir: 'state/legacy-projects',
+    lock_timeout_ms: 200,
+    lock_stale_ms: 200,
+    max_last_files: 12
+  };
+  const previousFallbackDir = process.env.EMB_AGENT_PROJECT_STATE_FALLBACK_DIR;
+  const realMkdirSync = fs.mkdirSync;
+  const realWriteFileSync = fs.writeFileSync;
+  const realOpenSync = fs.openSync;
+
+  process.env.EMB_AGENT_PROJECT_STATE_FALLBACK_DIR = fallbackStateDir;
+
+  const expectedPaths = runtime.getProjectStatePaths(tempRoot, tempProject, runtimeConfig);
+  const readonlyPrefix = `${path.resolve(expectedPaths.primaryStateDir)}${path.sep}`;
+
+  function isReadonlyPrimaryPath(filePath) {
+    const normalized = path.resolve(String(filePath));
+    return normalized === path.resolve(expectedPaths.primaryStateDir) || normalized.startsWith(readonlyPrefix);
+  }
+
+  fs.mkdirSync = function patchedMkdirSync(filePath, options) {
+    if (isReadonlyPrimaryPath(filePath)) {
+      const error = new Error('read-only primary state dir');
+      error.code = 'EROFS';
+      throw error;
+    }
+    return realMkdirSync.call(this, filePath, options);
+  };
+
+  fs.writeFileSync = function patchedWriteFileSync(filePath, data, options) {
+    if (isReadonlyPrimaryPath(filePath)) {
+      const error = new Error('read-only primary state dir');
+      error.code = 'EROFS';
+      throw error;
+    }
+    return realWriteFileSync.call(this, filePath, data, options);
+  };
+
+  fs.openSync = function patchedOpenSync(filePath, flags, mode) {
+    if (isReadonlyPrimaryPath(filePath)) {
+      const error = new Error('read-only primary state dir');
+      error.code = 'EROFS';
+      throw error;
+    }
+    return realOpenSync.call(this, filePath, flags, mode);
+  };
+
+  try {
+    const store = storeHelpers.createProjectStateStoreHelpers({
+      fs,
+      path,
+      runtime,
+      RUNTIME_CONFIG: runtimeConfig,
+      getProjectStatePaths() {
+        return runtime.getProjectStatePaths(tempRoot, tempProject, runtimeConfig);
+      },
+      normalizeSession(session, paths) {
+        return {
+          session_version: 1,
+          project_root: paths.projectRoot,
+          project_key: paths.projectKey,
+          project_name: path.basename(paths.projectRoot),
+          project_profile: session.project_profile || '',
+          active_packs: session.active_packs || [],
+          preferences: session.preferences || {},
+          focus: session.focus || '',
+          last_files: session.last_files || [],
+          open_questions: session.open_questions || [],
+          known_risks: session.known_risks || [],
+          last_command: session.last_command || '',
+          paused_at: session.paused_at || '',
+          last_resumed_at: session.last_resumed_at || '',
+          created_at: session.created_at || new Date().toISOString(),
+          updated_at: session.updated_at || new Date().toISOString()
+        };
+      },
+      readDefaultSession(paths) {
+        return {
+          session_version: 1,
+          project_root: paths.projectRoot,
+          project_key: paths.projectKey,
+          project_name: path.basename(paths.projectRoot),
+          project_profile: '',
+          active_packs: [],
+          preferences: {},
+          focus: '',
+          last_files: [],
+          open_questions: [],
+          known_risks: [],
+          last_command: '',
+          paused_at: '',
+          last_resumed_at: '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+      }
+    });
+
+    const updated = store.updateSession(current => {
+      current.last_command = 'prefs set';
+      current.preferences = { truth_source_mode: 'hardware_first' };
+    });
+
+    assert.equal(updated.last_command, 'prefs set');
+    assert.deepEqual(updated.preferences, { truth_source_mode: 'hardware_first' });
+    assert.equal(fs.existsSync(expectedPaths.primarySessionPath), false);
+    assert.equal(fs.existsSync(expectedPaths.fallbackSessionPath), true);
+
+    const reloaded = store.loadSession();
+    assert.equal(reloaded.last_command, 'prefs set');
+    assert.deepEqual(reloaded.preferences, { truth_source_mode: 'hardware_first' });
+  } finally {
+    fs.mkdirSync = realMkdirSync;
+    fs.writeFileSync = realWriteFileSync;
+    fs.openSync = realOpenSync;
+    if (previousFallbackDir === undefined) {
+      delete process.env.EMB_AGENT_PROJECT_STATE_FALLBACK_DIR;
+    } else {
+      process.env.EMB_AGENT_PROJECT_STATE_FALLBACK_DIR = previousFallbackDir;
+    }
+  }
+});
