@@ -582,7 +582,9 @@ function createToolSuggestionHelpers(deps) {
           file: runtime.getProjectAssetRelativePath('hw.yaml'),
           vendor: '',
           model: '',
-          package: ''
+          package: '',
+          signals: [],
+          peripherals: []
         },
         chip_profile: chipProfile
           ? {

@@ -29,6 +29,10 @@ async function captureStdout(run) {
   return stdout;
 }
 
+async function suppressStdout(run) {
+  await captureStdout(run);
+}
+
 test('tool runtime stays abstract-only without installed chip support', () => {
   const result = toolRuntime.runTool(runtimeRoot, 'timer-calc', [
     '--family',
@@ -196,16 +200,18 @@ test('tool runtime honors project permission deny rules before adapter execution
 
   try {
     process.chdir(tempProject);
-    await cli.main(['init']);
-    await cli.main([
-      'project',
-      'set',
-      '--confirm',
-      '--field',
-      'permissions.tools.deny',
-      '--value',
-      JSON.stringify(['timer-calc'])
-    ]);
+    await suppressStdout(() => cli.main(['init']));
+    await suppressStdout(() =>
+      cli.main([
+        'project',
+        'set',
+        '--confirm',
+        '--field',
+        'permissions.tools.deny',
+        '--value',
+        JSON.stringify(['timer-calc'])
+      ])
+    );
 
     const result = toolRuntime.runTool(runtimeRoot, 'timer-calc', ['--target-us', '560']);
     assert.equal(result.status, 'permission-denied');
@@ -220,19 +226,16 @@ test('tool runtime honors project permission deny rules before adapter execution
   }
 });
 
-test('generated draft timer route can execute first-pass timer search', () => {
+test('generated draft timer route can execute first-pass timer search', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-tool-runtime-generated-'));
   const currentCwd = process.cwd();
   const repoRoot = path.resolve(__dirname, '..');
   const runtimeRoot = path.join(repoRoot, 'runtime');
   const cli = require(path.join(runtimeRoot, 'bin', 'emb-agent.cjs'));
-  const originalWrite = process.stdout.write;
 
   try {
     process.chdir(tempProject);
-    process.stdout.write = () => true;
-    cli.main(['init']);
-    process.stdout.write = originalWrite;
+    await suppressStdout(() => cli.main(['init']));
 
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
@@ -358,23 +361,19 @@ test('generated draft timer route can execute first-pass timer search', () => {
     );
   } finally {
     process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
   }
 });
 
-test('generated draft pwm route can execute first-pass pwm search', () => {
+test('generated draft pwm route can execute first-pass pwm search', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-tool-runtime-generated-pwm-'));
   const currentCwd = process.cwd();
   const repoRoot = path.resolve(__dirname, '..');
   const runtimeRoot = path.join(repoRoot, 'runtime');
   const cli = require(path.join(runtimeRoot, 'bin', 'emb-agent.cjs'));
-  const originalWrite = process.stdout.write;
 
   try {
     process.chdir(tempProject);
-    process.stdout.write = () => true;
-    cli.main(['init']);
-    process.stdout.write = originalWrite;
+    await suppressStdout(() => cli.main(['init']));
 
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
@@ -505,23 +504,19 @@ test('generated draft pwm route can execute first-pass pwm search', () => {
     );
   } finally {
     process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
   }
 });
 
-test('generated draft adc route can execute first-pass adc scaling', () => {
+test('generated draft adc route can execute first-pass adc scaling', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-tool-runtime-generated-adc-'));
   const currentCwd = process.cwd();
   const repoRoot = path.resolve(__dirname, '..');
   const runtimeRoot = path.join(repoRoot, 'runtime');
   const cli = require(path.join(runtimeRoot, 'bin', 'emb-agent.cjs'));
-  const originalWrite = process.stdout.write;
 
   try {
     process.chdir(tempProject);
-    process.stdout.write = () => true;
-    cli.main(['init']);
-    process.stdout.write = originalWrite;
+    await suppressStdout(() => cli.main(['init']));
 
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
@@ -653,23 +648,19 @@ test('generated draft adc route can execute first-pass adc scaling', () => {
     assert.equal(result.conversion.lsb_voltage, 0.004887586);
   } finally {
     process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
   }
 });
 
-test('generated draft comparator route can execute first-pass threshold feasibility', () => {
+test('generated draft comparator route can execute first-pass threshold feasibility', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-tool-runtime-generated-cmp-'));
   const currentCwd = process.cwd();
   const repoRoot = path.resolve(__dirname, '..');
   const runtimeRoot = path.join(repoRoot, 'runtime');
   const cli = require(path.join(runtimeRoot, 'bin', 'emb-agent.cjs'));
-  const originalWrite = process.stdout.write;
 
   try {
     process.chdir(tempProject);
-    process.stdout.write = () => true;
-    cli.main(['init']);
-    process.stdout.write = originalWrite;
+    await suppressStdout(() => cli.main(['init']));
 
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'families'), { recursive: true });
     fs.mkdirSync(path.join(tempProject, '.emb-agent', 'extensions', 'tools', 'devices'), { recursive: true });
@@ -803,6 +794,5 @@ test('generated draft comparator route can execute first-pass threshold feasibil
     assert.equal(result.negative_source.max_voltage, 4);
   } finally {
     process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
   }
 });

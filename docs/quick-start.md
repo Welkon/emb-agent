@@ -28,10 +28,13 @@ Write the hardware truth directly:
 
 ```bash
 declare hardware --mcu SC8F072 --package SOP8
-next
+bootstrap run --confirm
+next run
 ```
 
 If you already know signals or peripherals, record them with additional `declare hardware` flags instead of re-explaining them in chat.
+
+If you want direct control over chip-support registration/install, use `support bootstrap` instead of splitting `support source add` and `support sync` manually.
 
 When `health` or `next` starts talking about chip support, read the reuse state first:
 

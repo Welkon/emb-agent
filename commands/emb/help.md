@@ -15,6 +15,7 @@ Output the emb-agent help summary below and nothing else.
 
 - Run these as Codex, Claude Code, or Cursor session commands.
 - Use `start` first. It is the single repository entrypoint.
+- If the chip is already known, prefer `declare hardware`, then `bootstrap run --confirm`, then `next run`.
 - Use `next` for the default continuation once bootstrap and task context are in place.
 - Use `help advanced` or `help --all` only when you need the full installed surface.
 
@@ -46,6 +47,8 @@ The public command surface is intentionally small and grouped by default path.
 ## Notes
 
 - If the chip or pin map is already known, prefer `declare hardware` first.
+- Once hardware truth is explicit, prefer `bootstrap run --confirm` for the shortest guided bootstrap path.
+- Use `support bootstrap` when you want direct control over chip-support registration/install in one step.
 - If the MCU is not chosen yet, keep `hw.yaml` unknown, record constraints in `req.yaml`, then return to `next`.
 - If the truth still lives outside the repo, use `ingest doc` or `ingest schematic` before writing truth directly.
 

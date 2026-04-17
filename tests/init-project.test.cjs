@@ -84,7 +84,7 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'README.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', 'archive')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workspace')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), true);
@@ -297,7 +297,7 @@ test('init preserves existing docs files without force', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.current-task')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workspace')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'templates')), true);
@@ -379,7 +379,7 @@ test('init scans existing project inputs and suggests hardware confirmation befo
   }
 });
 
-test('init can show pin summary from confirmed chip profile without parsing docs', () => {
+test('init prioritizes chip support bootstrap for confirmed chip before board pin declaration', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-pins-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -436,10 +436,10 @@ test('init can show pin summary from confirmed chip profile without parsing docs
     const result = JSON.parse(stdout);
 
     assert.equal(result.initialized, true);
-    assert.equal(result.bootstrap.status, 'ready-for-next');
-    assert.equal(result.bootstrap.stage, 'declare-board-pins');
-    assert.ok(result.bootstrap.command.includes('declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin'));
-    assert.match(result.bootstrap.summary, /map board signals into .emb-agent\/hw\.yaml/i);
+    assert.equal(result.bootstrap.status, 'needs-chip-support-source');
+    assert.equal(result.bootstrap.stage, 'bootstrap-chip-support');
+    assert.equal(result.bootstrap.command, 'support bootstrap');
+    assert.match(result.bootstrap.summary, /chip support source/i);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

@@ -1,5 +1,6 @@
 'use strict';
 
+const hardwareTruthHelpers = require('./hardware-truth.cjs');
 const projectInputState = require('./project-input-state.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 
@@ -27,38 +28,14 @@ function createCliEntryHelpers(deps) {
     return Array.isArray(value) ? value : [];
   }
 
-  function parseScalar(content, key) {
-    const line = String(content || '')
-      .split(/\r?\n/)
-      .find(item => item.trim().startsWith(`${key}:`));
-
-    if (!line) {
-      return '';
-    }
-
-    return line
-      .split(':')
-      .slice(1)
-      .join(':')
-      .trim()
-      .replace(/^['"]|['"]$/g, '');
-  }
-
-  function loadInitHardwareIdentity(projectRoot) {
-    const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
-    if (!fs.existsSync(hwPath)) {
-      return {
-        vendor: '',
-        model: '',
-        package: ''
-      };
-    }
-
-    const content = runtime.readText(hwPath);
+  function loadInitHardwareTruth(projectRoot) {
+    const truth = hardwareTruthHelpers.loadHardwareTruth(runtime, projectRoot);
     return {
-      vendor: parseScalar(content, 'vendor'),
-      model: parseScalar(content, 'model'),
-      package: parseScalar(content, 'package')
+      vendor: truth.vendor,
+      model: truth.model,
+      package: truth.package,
+      signals: Array.isArray(truth.signals) ? truth.signals : [],
+      peripherals: Array.isArray(truth.peripherals) ? truth.peripherals : []
     };
   }
 
@@ -345,7 +322,7 @@ function createCliEntryHelpers(deps) {
 
   function buildInitGuidance(projectRoot, context) {
     const initContext = context || {};
-    const hardware = loadInitHardwareIdentity(projectRoot);
+    const hardware = loadInitHardwareTruth(projectRoot);
     const configPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
     const projectConfig = fs.existsSync(configPath) ? runtime.readJson(configPath) : { chip_support_sources: [] };
     const sources = Array.isArray(projectConfig.chip_support_sources) ? projectConfig.chip_support_sources : [];
@@ -376,7 +353,11 @@ function createCliEntryHelpers(deps) {
       : 'declare hardware --mcu <name> --package <name>';
     const adapterBootstrapCommand = buildAdapterBootstrapCommand(sources);
     const adapterSourceReady = sources.length > 0 || hasConfiguredDefaultAdapterSource();
+    const bootstrapFastPathCommand = adapterSourceReady ? 'bootstrap run --confirm' : adapterBootstrapCommand;
     const agentActions = [];
+    const declaredIntentPresent =
+      (Array.isArray(hardware.signals) && hardware.signals.some(item => item && (item.name || item.pin || item.note))) ||
+      (Array.isArray(hardware.peripherals) && hardware.peripherals.some(item => item && (item.name || item.usage)));
     const firstUsablePin =
       pinSummary && Array.isArray(pinSummary.usable_pins) && pinSummary.usable_pins.length > 0
         ? pinSummary.usable_pins[0]
@@ -448,30 +429,41 @@ function createCliEntryHelpers(deps) {
           : 'Configure a chip support source, then run next after the chip is identified.');
     } else {
       agentActions.push({
-        kind: 'declare-board-pins',
-        status: 'recommended',
-        target_file: runtime.getProjectAssetRelativePath('hw.yaml'),
-        summary: firstUsablePin
-          ? `Ask the agent to map board signals into ${runtime.getProjectAssetRelativePath('hw.yaml')} with auto-selected pins (first candidate ${firstUsablePin.signal}).`
-          : `Ask the agent to map board signals into ${runtime.getProjectAssetRelativePath('hw.yaml')} with auto-selected pins.`,
-        cli_fallback: 'declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin'
-      });
-
-      nextSteps.push(
-        firstUsablePin
-          ? `Let the agent map board pins/peripherals into ${runtime.getProjectAssetRelativePath('hw.yaml')} (first candidate ${firstUsablePin.signal}).`
-          : `Let the agent map board pins/peripherals into ${runtime.getProjectAssetRelativePath('hw.yaml')}.`
-      );
-
-      agentActions.push({
         kind: 'bootstrap-chip-support',
         status: adapterSourceReady ? 'ready' : 'unconfigured',
         blocked_by: adapterSourceReady ? [] : ['chip_support_source'],
         summary: adapterSourceReady
-          ? 'Chip support install is ready. Let next continue and auto-run it when health and permissions allow.'
-          : 'Configure a chip support source before chip support can be installed.',
-        cli_fallback: adapterBootstrapCommand
+          ? declaredIntentPresent
+            ? 'Chip support install is ready. Prefer bootstrap run so emb-agent can continue the known-chip path directly.'
+            : 'Chip support install is ready. Prefer bootstrap run so emb-agent can continue the known-chip path directly.'
+          : 'Configure or bootstrap a chip support source before chip support can be installed.',
+        cli_fallback: bootstrapFastPathCommand
       });
+
+      agentActions.push({
+        kind: 'declare-board-pins',
+        status: declaredIntentPresent ? 'optional' : 'recommended',
+        target_file: runtime.getProjectAssetRelativePath('hw.yaml'),
+        summary: declaredIntentPresent
+          ? `Board signals/peripherals already exist in ${runtime.getProjectAssetRelativePath('hw.yaml')}. Add more pin mappings only when the next tool result needs them.`
+          : firstUsablePin
+            ? `Ask the agent to map board signals into ${runtime.getProjectAssetRelativePath('hw.yaml')} with auto-selected pins (first candidate ${firstUsablePin.signal}).`
+            : `Ask the agent to map board signals into ${runtime.getProjectAssetRelativePath('hw.yaml')} with auto-selected pins.`,
+        cli_fallback: 'declare hardware --signal SIGNAL_NAME --dir input|output --auto-pin'
+      });
+
+      nextSteps.push(
+        adapterSourceReady
+          ? 'Prefer `bootstrap run --confirm` for the shortest guided path. It will execute the current bootstrap step directly, then hand you back to next.'
+          : 'Use `support bootstrap` to register and install matching chip support in one step instead of splitting `source add` and `sync` manually.'
+      );
+      nextSteps.push(
+        declaredIntentPresent
+          ? `The current ${runtime.getProjectAssetRelativePath('hw.yaml')} already contains signals/peripherals, so you can move straight into chip support bootstrap first.`
+          : firstUsablePin
+            ? `Then let the agent map board pins/peripherals into ${runtime.getProjectAssetRelativePath('hw.yaml')} (first candidate ${firstUsablePin.signal}).`
+            : `Then let the agent map board pins/peripherals into ${runtime.getProjectAssetRelativePath('hw.yaml')}.`
+      );
 
       if (candidateDocs.length > 0) {
         agentActions.push({
@@ -485,8 +477,8 @@ function createCliEntryHelpers(deps) {
       }
 
       nextSteps.push(adapterSourceReady
-        ? 'Run next to continue the agent-guided bootstrap. Chip support install can proceed automatically when allowed.'
-        : 'Configure a chip support source, then run next to continue the agent-guided bootstrap.');
+        ? 'After bootstrap completes, run `next` or `next run` to enter the recommended execution stage.'
+        : 'After chip support is available, run `next` or `next run` to continue the guided path.');
     }
 
     if (meaningfulInputCount === 0) {
@@ -500,6 +492,7 @@ function createCliEntryHelpers(deps) {
     return {
       hardware_identity_present: Boolean(hardware.model),
       package_present: Boolean(hardware.package),
+      declared_intent_present: Boolean(declaredIntentPresent),
       chip_support_sources_registered: sources.length,
       existing_project_detected: meaningfulInputCount > 0,
       hardware_confirmation_required: !hardwareReady && !blankProject,
@@ -543,6 +536,7 @@ function createCliEntryHelpers(deps) {
         title: 'Start here',
         entries: [
           'start',
+          'bootstrap [run [--confirm]]',
           'next [run]',
           'task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
           'task activate [--confirm] <name>',
@@ -824,11 +818,18 @@ function createCliEntryHelpers(deps) {
     const activeTask = settings.activeTask || null;
     const hasHandoff = settings.hasHandoff === true;
     const initialized = settings.initialized !== false;
+    const knownChipPath = Boolean(initGuidance && initGuidance.hardware_identity_present);
     const workflow = [
       {
         id: 'project-bootstrap',
         title: 'Project bootstrap',
-        commands: ['declare hardware / ingest doc / ingest schematic as needed', 'next'],
+        commands: knownChipPath
+          ? [
+              'declare hardware / ingest doc / ingest schematic as needed',
+              'bootstrap run --confirm (or support bootstrap for direct control)',
+              'next [run]'
+            ]
+          : ['declare hardware / ingest doc / ingest schematic as needed', 'next'],
         outcome: 'Project truth is explicit enough for task work.'
       },
       {
@@ -853,6 +854,8 @@ function createCliEntryHelpers(deps) {
       workflow[0].note = `Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until req/constraints are explicit.`;
     } else if (initGuidance && initGuidance.hardware_confirmation_required) {
       workflow[0].note = `Confirm the real MCU/package in ${runtime.getProjectAssetRelativePath('hw.yaml')} before execution.`;
+    } else if (knownChipPath) {
+      workflow[0].note = 'When the chip is already known, prefer guided bootstrap first so emb-agent can install matching chip support before deeper task work.';
     }
 
     return workflow;

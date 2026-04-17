@@ -36,11 +36,10 @@ emb-agent --json declare hardware \
   --peripheral PWM \
   --usage "20kHz 50% output demo"
 
-emb-agent --json support source add local-pack \
+emb-agent --json support bootstrap local-pack \
+  --confirm \
   --type path \
   --location /path/to/emb-agent-adapters
-
-emb-agent --json support sync local-pack --confirm
 
 emb-agent --json task add \
   --confirm \
@@ -50,6 +49,13 @@ emb-agent --json task add \
   --priority P1
 
 emb-agent --json task activate bring-up-pmb180b-pwm-on-pa3-at-20khz-50-duty --confirm
+```
+
+If the chip support source is already registered, the shortest guided path is:
+
+```bash
+emb-agent --json bootstrap run --confirm
+emb-agent --json next run
 ```
 
 ## TM2 path
