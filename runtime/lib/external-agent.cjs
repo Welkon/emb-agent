@@ -1,5 +1,7 @@
 'use strict';
 
+const runtimeEventHelpers = require('./runtime-events.cjs');
+
 function createExternalAgentHelpers() {
   const PROTOCOL_VERSION = 'emb-agent.external/1';
 
@@ -95,6 +97,10 @@ function createExternalAgentHelpers() {
       : [];
   }
 
+  function summarizeProtocolRuntimeEvents(source) {
+    return runtimeEventHelpers.summarizeRuntimeEvents(source && source.runtime_events);
+  }
+
   function buildStartProtocol(runtimeHost, context) {
     const source = context && typeof context === 'object' && !Array.isArray(context) ? context : {};
     const summary = source.summary && typeof source.summary === 'object' && !Array.isArray(source.summary)
@@ -110,6 +116,7 @@ function createExternalAgentHelpers() {
     return buildEnvelope('start', runtimeHost, {
       status: summary.initialized ? 'ready' : 'start',
       summary: immediate.reason || bootstrap.summary || '',
+      runtime_events: summarizeProtocolRuntimeEvents(source),
       next: compactObject({
         cli: immediate.cli || ''
       })
@@ -128,6 +135,7 @@ function createExternalAgentHelpers() {
     return buildEnvelope('next', runtimeHost, {
       status: stage.name || 'next',
       summary: next.reason || '',
+      runtime_events: summarizeProtocolRuntimeEvents(source),
       next: compactObject({
         cli: next.cli || '',
         gated_by_health: next.gated_by_health ? true : undefined
@@ -145,6 +153,7 @@ function createExternalAgentHelpers() {
     return buildEnvelope('init', runtimeHost, {
       status: bootstrap.status || (source.initialized ? 'ready' : 'init'),
       summary: bootstrap.summary || '',
+      runtime_events: summarizeProtocolRuntimeEvents(source),
       next: compactObject({
         cli: buildRecommendedCli(runtimeHost, '', nextCommand)
       })
@@ -157,6 +166,7 @@ function createExternalAgentHelpers() {
     return buildEnvelope('status', runtimeHost, {
       status: 'inspection',
       summary: 'Use next to continue the workflow.',
+      runtime_events: summarizeProtocolRuntimeEvents(source),
       session_state:
         source.session_state && typeof source.session_state === 'object' && !Array.isArray(source.session_state)
           ? source.session_state
@@ -187,6 +197,7 @@ function createExternalAgentHelpers() {
       status: source.status || '',
       summary: quickstart.summary || bootstrap.summary || '',
       blocking_checks: summarizeHealthChecks(source.checks),
+      runtime_events: summarizeProtocolRuntimeEvents(source),
       next: compactObject({
         cli:
           actionCard.first_cli ||
@@ -222,6 +233,7 @@ function createExternalAgentHelpers() {
     return buildEnvelope('dispatch-next', runtimeHost, {
       status: mode,
       summary: source.reason || '',
+      runtime_events: summarizeProtocolRuntimeEvents(source),
       next: compactObject({
         kind: recommendedKind,
         cli: recommendedCli
