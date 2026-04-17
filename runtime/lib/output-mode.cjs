@@ -1,6 +1,7 @@
 'use strict';
 
 const permissionGateHelpers = require('./permission-gates.cjs');
+const runtimeEventHelpers = require('./runtime-events.cjs');
 
 function isObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -483,6 +484,7 @@ function buildBriefNextContext(value) {
     action_card: summarizeActionCard(value.action_card),
     quality_gates: summarizeQualityGates(value.quality_gates),
     permission_gates: summarizePermissionGates(value.permission_gates),
+    runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),
     tool_recommendation: summarizeToolRecommendation(next.tool_recommendation || value.tool_recommendation),
     memory_summary: summarizeMemorySummary(value.memory_summary),
     context_hygiene: summarizeContextHygiene(value.context_hygiene),
@@ -515,6 +517,7 @@ function buildBriefStartContext(value) {
       command: value.bootstrap && value.bootstrap.command || '',
       summary: value.bootstrap && value.bootstrap.summary || ''
     }),
+    runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),
     next: isObject(value.next)
       ? compactObject({
           command: value.next.command || '',
@@ -544,7 +547,8 @@ function buildBriefInitOutput(value) {
       stage: bootstrap.stage || '',
       command: bootstrap.command || '',
       summary: bootstrap.summary || ''
-    })
+    }),
+    runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events)
   });
 }
 
@@ -799,6 +803,7 @@ function buildBriefDispatchOrchestrateOutput(value) {
     subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
     delegation_runtime: summarizeDelegationRuntime(value.delegation_runtime),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
+    runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),
     context_hygiene: summarizeContextHygiene(value.context_hygiene)
   });
 }
@@ -818,6 +823,7 @@ function buildBriefStatusOutput(value) {
     delegation_runtime: summarizeDelegationRuntime(value.delegation_runtime),
     memory_summary: summarizeMemorySummary(value.memory_summary),
     permission_gates: summarizePermissionGates(value.permission_gates),
+    runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),
     context_hygiene: summarizeContextHygiene(value.context_hygiene)
   });
 }

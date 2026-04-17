@@ -102,6 +102,20 @@ test('applyOutputMode builds brief next context payload', () => {
       compress_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress',
       handoff_ready: false
     },
+    runtime_events: [
+      {
+        type: 'workflow-next',
+        category: 'workflow',
+        status: 'pending',
+        summary: 'complex tasks should converge first'
+      },
+      {
+        type: 'permission-evaluated',
+        category: 'human-signoff',
+        status: 'pending',
+        summary: 'Waiting for engineer confirmation: board-bench'
+      }
+    ],
     next_actions: ['a', 'b', 'c', 'd', 'e', 'f'],
     health: {
       status: 'ok',
@@ -127,6 +141,8 @@ test('applyOutputMode builds brief next context payload', () => {
   assert.equal(output.context_hygiene.compress_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress');
   assert.equal(output.next_actions.length, 5);
   assert.equal(output.tool_recommendation.tool, 'timer-calc');
+  assert.equal(output.runtime_events.status, 'pending');
+  assert.deepEqual(output.runtime_events.types, ['workflow-next', 'permission-evaluated']);
   assert.equal(output.external_agent, undefined);
 });
 
@@ -154,6 +170,14 @@ test('applyOutputMode builds brief start context payload with external driver hi
       command: 'next',
       summary: 'Project bootstrap is explicit enough to continue with next.'
     },
+    runtime_events: [
+      {
+        type: 'workflow-start',
+        category: 'workflow',
+        status: 'ok',
+        summary: 'Project bootstrap exists; create and activate a task before execution.'
+      }
+    ],
     next: {
       command: 'scan',
       reason: 'selection mode is already closed',
@@ -164,6 +188,8 @@ test('applyOutputMode builds brief start context payload with external driver hi
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.entry, 'start');
   assert.equal(output.immediate.command, 'task add <summary>');
+  assert.equal(output.runtime_events.status, 'ok');
+  assert.deepEqual(output.runtime_events.types, ['workflow-start']);
   assert.equal(output.external_agent, undefined);
 });
 
@@ -182,12 +208,21 @@ test('applyOutputMode builds brief init output with external driver hints', () =
       stage: 'define-project-constraints',
       command: 'next',
       summary: 'Define the project in .emb-agent/req.yaml first: write the project type, intended inputs/outputs, interfaces, and constraints.'
-    }
+    },
+    runtime_events: [
+      {
+        type: 'workflow-start',
+        category: 'workflow',
+        status: 'pending',
+        summary: 'Define the project in .emb-agent/req.yaml first.'
+      }
+    ]
   }, true);
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.initialized, true);
   assert.equal(output.bootstrap.command, 'next');
+  assert.equal(output.runtime_events.status, 'pending');
   assert.equal(output.external_agent, undefined);
 });
 
@@ -251,7 +286,15 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
         stage_a: { status: 'passed' },
         stage_b: { status: 'main-thread-review-required' }
       }
-    }
+    },
+    runtime_events: [
+      {
+        type: 'workflow-status',
+        category: 'workflow',
+        status: 'ok',
+        summary: 'Reported session status.'
+      }
+    ]
   }, true);
 
   const dispatchOutput = outputMode.applyOutputMode({
@@ -279,12 +322,21 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
         stage_a: { status: 'passed' },
         stage_b: { status: 'main-thread-review-required' }
       }
-    }
+    },
+    runtime_events: [
+      {
+        type: 'workflow-next',
+        category: 'workflow',
+        status: 'pending',
+        summary: 'complex task'
+      }
+    ]
   }, true);
 
   assert.equal(statusOutput.runtime_host, 'codex');
   assert.equal(statusOutput.subagent_bridge.mode, 'mock');
   assert.equal(statusOutput.delegation_runtime.pattern, 'coordinator');
+  assert.equal(statusOutput.runtime_events.status, 'ok');
   assert.equal(statusOutput.external_agent, undefined);
   assert.deepEqual(statusOutput.delegation_runtime.worker_results, ['emb-hw-scout:ok']);
   assert.equal(statusOutput.delegation_runtime.review.stage_a, 'passed');
@@ -292,6 +344,7 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
   assert.equal(dispatchOutput.subagent_bridge.status, 'ok');
   assert.equal(dispatchOutput.delegation_runtime.synthesis.status, 'ready');
   assert.equal(dispatchOutput.delegation_runtime.review.redispatch_required, false);
+  assert.equal(dispatchOutput.runtime_events.status, 'pending');
 });
 
 test('applyOutputMode omits external driver summary in brief status output', () => {

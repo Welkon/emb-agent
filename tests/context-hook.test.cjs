@@ -21,7 +21,9 @@ test('context monitor hook emits only when session context is heavy', () => {
     cli.main(['init']);
 
     const light = contextMonitor.runHook({ cwd: tempProject, event: 'PostToolUse' });
-    assert.equal(light, '');
+    assert.equal(light.trusted, true);
+    assert.equal(light.status, 'ok');
+    assert.equal(light.output, '');
 
     for (let index = 1; index <= 5; index += 1) {
       const fileName = `src/h${index}.c`;
@@ -36,8 +38,11 @@ test('context monitor hook emits only when session context is heavy', () => {
     cli.main(['risk', 'add', 'debounce path overlaps wake edge']);
 
     const heavy = contextMonitor.runHook({ cwd: tempProject, event: 'PostToolUse' });
-    assert.notEqual(heavy.trim(), '');
-    const payload = JSON.parse(heavy);
+    assert.equal(heavy.trusted, true);
+    assert.equal(heavy.status, 'ok');
+    assert.notEqual(heavy.output.trim(), '');
+    assert.equal(heavy.runtime_events[0].type, 'hook-dispatch');
+    const payload = JSON.parse(heavy.output);
     assert.equal(payload.hookSpecificOutput.hookEventName, 'PostToolUse');
     assert.match(payload.hookSpecificOutput.additionalContext, /EMB CONTEXT WARNING|EMB CONTEXT NOTICE/);
     assert.match(payload.hookSpecificOutput.additionalContext, /pause -> clear -> resume/);
@@ -61,7 +66,7 @@ test('context monitor prioritizes live context metrics and warns to pause', () =
     process.chdir(tempProject);
     cli.main(['init']);
 
-    const output = contextMonitor.runHook({
+    const result = contextMonitor.runHook({
       cwd: tempProject,
       event: 'PostToolUse',
       context_window: {
@@ -69,8 +74,9 @@ test('context monitor prioritizes live context metrics and warns to pause', () =
       }
     });
 
-    assert.notEqual(output.trim(), '');
-    const payload = JSON.parse(output);
+    assert.equal(result.trusted, true);
+    assert.notEqual(result.output.trim(), '');
+    const payload = JSON.parse(result.output);
     assert.match(payload.hookSpecificOutput.additionalContext, /EMB CONTEXT CRITICAL/);
     assert.match(payload.hookSpecificOutput.additionalContext, /pause/);
     assert.match(payload.hookSpecificOutput.additionalContext, /clear -> resume|pause -> clear -> resume/);
@@ -104,7 +110,7 @@ test('context monitor skips all output when workspace trust is not established',
     process.chdir(tempProject);
     cli.main(['init']);
 
-    const output = contextMonitor.runHook({
+    const result = contextMonitor.runHook({
       cwd: tempProject,
       event: 'PostToolUse',
       workspace: {
@@ -115,7 +121,9 @@ test('context monitor skips all output when workspace trust is not established',
       }
     });
 
-    assert.equal(output, '');
+    assert.equal(result.trusted, false);
+    assert.equal(result.status, 'skipped');
+    assert.equal(result.output, '');
   } finally {
     process.chdir(currentCwd);
   }

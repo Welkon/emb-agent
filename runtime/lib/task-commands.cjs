@@ -3,6 +3,7 @@
 const os = require('os');
 
 const permissionGateHelpers = require('./permission-gates.cjs');
+const runtimeEventHelpers = require('./runtime-events.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
 
 function createTaskCommandHelpers(deps) {
@@ -1747,6 +1748,64 @@ function createTaskCommandHelpers(deps) {
     }
   }
 
+  function classifyTaskWorktreeState(input) {
+    const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+
+    if (!source.path) {
+      return {
+        state: 'detached',
+        attention: 'info',
+        summary: 'No task worktree is attached.'
+      };
+    }
+
+    if (!source.exists) {
+      return {
+        state: 'missing',
+        attention: 'warn',
+        summary: 'A worktree path is recorded but the workspace directory is missing.'
+      };
+    }
+
+    if (!source.managed) {
+      return {
+        state: 'external',
+        attention: 'warn',
+        summary: 'The workspace exists but is not recognized as a managed emb-agent task worktree.'
+      };
+    }
+
+    if (Number(source.dirty_files || 0) > 0) {
+      return {
+        state: 'dirty',
+        attention: 'warn',
+        summary: `The worktree has ${Number(source.dirty_files || 0)} uncommitted file(s).`
+      };
+    }
+
+    if (source.current_task && source.current_task !== source.task_name) {
+      return {
+        state: 'misaligned',
+        attention: 'warn',
+        summary: `The workspace current task pointer is ${source.current_task}, not ${source.task_name}.`
+      };
+    }
+
+    if (source.active) {
+      return {
+        state: 'active',
+        attention: 'ok',
+        summary: 'The task worktree exists and matches the current active task.'
+      };
+    }
+
+    return {
+      state: 'ready',
+      attention: 'ok',
+      summary: 'The task worktree exists and is ready for use.'
+    };
+  }
+
   function buildTaskWorktreeState(task, registryEntry) {
     const pathFromTask = String(task && task.worktree_path ? task.worktree_path : '').trim();
     const pathFromRegistry = String(registryEntry && registryEntry.worktree_path ? registryEntry.worktree_path : '').trim();
@@ -1761,6 +1820,15 @@ function createTaskCommandHelpers(deps) {
     ).trim() || 'copy';
     const currentTask = exists ? readWorkspaceCurrentTaskPointer(workspacePath) : '';
     const dirty_files = countWorkspaceDirtyFiles(workspacePath, mode);
+    const classification = classifyTaskWorktreeState({
+      task_name: task.name,
+      path: workspacePath,
+      exists,
+      managed: workspacePath ? isManagedTaskWorkspace(workspacePath) : false,
+      active: Boolean(loadSession().active_task && loadSession().active_task.name === task.name),
+      current_task: currentTask,
+      dirty_files
+    });
 
     return {
       task_name: task.name,
@@ -1775,6 +1843,9 @@ function createTaskCommandHelpers(deps) {
       active: Boolean(loadSession().active_task && loadSession().active_task.name === task.name),
       current_task: currentTask,
       dirty_files,
+      workspace_state: classification.state,
+      attention: classification.attention,
+      summary: classification.summary,
       registry: registryEntry || null
     };
   }
@@ -1792,22 +1863,47 @@ function createTaskCommandHelpers(deps) {
       .map(task => buildTaskWorktreeState(task, registryMap.get(task.name)))
       .sort((left, right) => String(right.task_name).localeCompare(String(left.task_name)));
 
-    return {
+    return runtimeEventHelpers.appendRuntimeEvent({
       worktrees,
+      summary: {
+        total: worktrees.length,
+        active: worktrees.filter(item => item.active).length,
+        missing: worktrees.filter(item => item.workspace_state === 'missing').length,
+        dirty: worktrees.filter(item => item.workspace_state === 'dirty').length,
+        attention_required: worktrees.filter(item => item.attention === 'warn').length
+      },
       registry_path: path.relative(resolveProjectRoot(), getTaskWorktreeRegistryPath()).replace(/\\/g, '/')
-    };
+    }, {
+      type: 'task-worktree-status',
+      category: 'task-worktree',
+      status: worktrees.some(item => item.attention === 'warn') ? 'pending' : 'ok',
+      severity: worktrees.some(item => item.attention === 'warn') ? 'normal' : 'info',
+      summary: worktrees.length > 0
+        ? `Reported ${worktrees.length} task worktree(s).`
+        : 'No task worktrees are currently attached.',
+      source: 'task-commands'
+    });
   }
 
   function showTaskWorktree(name) {
     const task = readTask(name);
     const registry = readTaskWorktreeRegistry();
-    return {
-      worktree: buildTaskWorktreeState(
-        task,
-        registry.worktrees.find(item => item.task_name === task.name) || null
-      ),
+    const worktree = buildTaskWorktreeState(
+      task,
+      registry.worktrees.find(item => item.task_name === task.name) || null
+    );
+    return runtimeEventHelpers.appendRuntimeEvent({
+      worktree,
       task
-    };
+    }, {
+      type: 'task-worktree-status',
+      category: 'task-worktree',
+      status: worktree.attention === 'warn' ? 'pending' : 'ok',
+      severity: worktree.attention === 'warn' ? 'normal' : 'info',
+      summary: worktree.summary || `Reported task worktree state for ${task.name}.`,
+      action: task.name,
+      source: 'task-commands'
+    });
   }
 
   function createTaskWorktreeCommand(rest) {
@@ -1837,12 +1933,24 @@ function createTaskCommandHelpers(deps) {
 
     const nextTask = readTask(input.name);
     const registryEntry = upsertTaskWorktreeRegistry(nextTask, workspace);
-    return permissionGateHelpers.applyPermissionDecision({
+    return permissionGateHelpers.applyPermissionDecision(runtimeEventHelpers.appendRuntimeEvent({
       created: true,
       task: nextTask,
       workspace,
       worktree: buildTaskWorktreeState(nextTask, registryEntry)
-    }, blocked.permission);
+    }, {
+      type: 'task-worktree-transition',
+      category: 'task-worktree',
+      status: 'ok',
+      severity: 'info',
+      summary: `Created task worktree for ${nextTask.name}.`,
+      action: nextTask.name,
+      source: 'task-commands',
+      details: {
+        mode: workspace.mode || '',
+        path: workspace.path || ''
+      }
+    }), blocked.permission);
   }
 
   function cleanupTaskWorktreeCommand(rest) {
@@ -1868,11 +1976,25 @@ function createTaskCommandHelpers(deps) {
       worktree_path: null
     }));
 
-    return permissionGateHelpers.applyPermissionDecision({
+    return permissionGateHelpers.applyPermissionDecision(runtimeEventHelpers.appendRuntimeEvent({
       cleaned: true,
       task: readTask(input.name),
       workspace_cleanup: workspaceCleanup
-    }, blocked.permission);
+    }, {
+      type: 'task-worktree-transition',
+      category: 'task-worktree',
+      status: workspaceCleanup.cleaned ? 'ok' : 'failed',
+      severity: workspaceCleanup.cleaned ? 'info' : 'normal',
+      summary: workspaceCleanup.cleaned
+        ? `Cleaned task worktree for ${input.name}.`
+        : `Task worktree cleanup did not remove a workspace for ${input.name}.`,
+      action: input.name,
+      source: 'task-commands',
+      details: {
+        path: workspaceCleanup.path || '',
+        error: workspaceCleanup.error || ''
+      }
+    }), blocked.permission);
   }
 
   function getTaskWorktreeStatus(name) {

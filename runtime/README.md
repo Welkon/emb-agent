@@ -67,6 +67,33 @@ Project state is stored by default at:
 - `VERSION`
   Installed runtime version.
 
+## Hook Contract
+
+Runtime hook helpers use one structured dispatch contract only.
+
+- `runtime/lib/hook-dispatch.cjs`
+  `runHookWithProjectContext(rawInput, handler)` returns a structured result with:
+  `trusted`, `status`, `event`, `cwd`, `project_root`, `output`, `runtime_events`
+- Hook scripts should compute their real host-facing payload inside `result.output`
+- Hook modules may return the full structured result; `runHookCli(entrypoint)` unwraps `result.output`
+- `runHookCli(entrypoint)` automatically unwraps `result.output` before writing to `stdout`
+- Untrusted workspaces do not execute hook handlers; they return `status = skipped` and empty `output`
+
+Practical pattern:
+
+```js
+function runHook(rawInput) {
+  return hookDispatch.runHookWithProjectContext(rawInput, ({ data, projectRoot }) => {
+    return JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: data.hook_event_name || data.event || 'PostToolUse',
+        additionalContext: `Project root: ${projectRoot}`
+      }
+    });
+  });
+}
+```
+
 ## Minimum Maintenance Commands
 
 Initialize or attach a project:

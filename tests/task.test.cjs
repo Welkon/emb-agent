@@ -419,6 +419,11 @@ test('task worktree create and cleanup expose trellis-style workspace lifecycle 
     assert.equal(provisioned.created, true);
     assert.equal(provisioned.task.status, 'planning');
     assert.equal(provisioned.worktree.exists, true);
+    assert.equal(provisioned.worktree.workspace_state, 'dirty');
+    assert.equal(provisioned.worktree.attention, 'warn');
+    assert.match(provisioned.worktree.summary, /uncommitted/i);
+    assert.ok(provisioned.runtime_events.some(item => item.type === 'permission-evaluated'));
+    assert.ok(provisioned.runtime_events.some(item => item.type === 'task-worktree-transition'));
     assert.equal(
       fs.existsSync(path.join(provisioned.workspace.path, '.emb-agent', 'tasks', taskName, 'task.json')),
       true
@@ -436,11 +441,29 @@ test('task worktree create and cleanup expose trellis-style workspace lifecycle 
     assert.equal(shown.worktree.task_name, taskName);
     assert.equal(shown.worktree.exists, true);
     assert.equal(shown.worktree.current_task, taskName);
+    assert.equal(shown.worktree.workspace_state, 'dirty');
+    assert.equal(shown.runtime_events[0].type, 'task-worktree-status');
+
+    const listed = await captureCliJson(['task', 'worktree', 'list']);
+    assert.equal(listed.summary.total, 1);
+    assert.equal(listed.summary.active, 0);
+    assert.equal(listed.summary.dirty, 1);
+    assert.equal(listed.worktrees[0].task_name, taskName);
+    assert.equal(listed.worktrees[0].workspace_state, 'dirty');
+    assert.equal(listed.runtime_events[0].type, 'task-worktree-status');
 
     const cleaned = await captureCliJson(['task', 'worktree', 'cleanup', taskName]);
     assert.equal(cleaned.cleaned, true);
     assert.equal(cleaned.task.worktree_path, null);
+    assert.equal(cleaned.workspace_cleanup.cleaned, true);
+    assert.equal(cleaned.workspace_cleanup.path, provisioned.workspace.path);
+    assert.ok(cleaned.runtime_events.some(item => item.type === 'permission-evaluated'));
+    assert.ok(cleaned.runtime_events.some(item => item.type === 'task-worktree-transition'));
     assert.equal(fs.existsSync(provisioned.workspace.path), false);
+
+    const shownAfterCleanup = await captureCliJson(['task', 'worktree', 'show', taskName]);
+    assert.equal(shownAfterCleanup.worktree.workspace_state, 'detached');
+    assert.equal(shownAfterCleanup.worktree.attention, 'info');
 
     const registryAfter = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
     assert.equal(registryAfter.worktrees.some(item => item.task_name === taskName), false);

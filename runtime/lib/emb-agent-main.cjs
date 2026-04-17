@@ -33,6 +33,7 @@ const docCache = require(path.join(ROOT, 'lib', 'doc-cache.cjs'));
 const permissionGateHelpers = require(path.join(ROOT, 'lib', 'permission-gates.cjs'));
 const noteReportHelpers = require(path.join(ROOT, 'lib', 'note-reports.cjs'));
 const dispatchHelpers = require(path.join(ROOT, 'lib', 'dispatch-orchestrator.cjs'));
+const runtimeEventHelpers = require(path.join(ROOT, 'lib', 'runtime-events.cjs'));
 const sessionFlowHelpers = require(path.join(ROOT, 'lib', 'session-flow.cjs'));
 const referenceLookupHelpers = require(path.join(ROOT, 'lib', 'reference-lookup.cjs'));
 const hardwareTruthHelpers = require(path.join(ROOT, 'lib', 'hardware-truth.cjs'));
@@ -881,7 +882,7 @@ function buildStartContext() {
         ? 'Project bootstrap exists; create and activate a task before execution.'
         : 'The repository has just been initialized for emb-agent.';
 
-  return {
+  return runtimeEventHelpers.appendRuntimeEvent({
     entry: 'start',
     summary: {
       project_root: projectRoot,
@@ -934,7 +935,21 @@ function buildStartContext() {
           task: resumeContext.task
         }
       : null
-  };
+  }, {
+    type: 'workflow-start',
+    category: 'workflow',
+    status: bootstrapCommand ? 'pending' : 'ok',
+    severity: bootstrapCommand ? 'normal' : 'info',
+    summary: immediateReason,
+    action: immediateCommand,
+    command: `${getRuntimeHost().cliCommand} ${immediateCommand}`,
+    source: 'emb-agent-main',
+    details: {
+      initialized,
+      handoff_present: Boolean(handoff),
+      active_task: activeTask ? activeTask.name : ''
+    }
+  });
 }
 
 function buildExternalStartProtocol() {

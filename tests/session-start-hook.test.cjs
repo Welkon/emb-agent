@@ -29,20 +29,23 @@ test('session start hook points the user back to start instead of replaying the 
     cli.main(['init']);
 
     const empty = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
-    assert.match(empty, /Emb-Agent Session Reminder/);
-    assert.match(empty, /Primary entrypoint: start/);
-    assert.match(empty, /Current shortest command: next/);
-    assert.doesNotMatch(empty, /Task bootstrap:/);
-    assert.doesNotMatch(empty, /Execution loop:/);
+    assert.equal(empty.trusted, true);
+    assert.match(empty.output, /Emb-Agent Session Reminder/);
+    assert.match(empty.output, /Primary entrypoint: start/);
+    assert.match(empty.output, /Current shortest command: next/);
+    assert.doesNotMatch(empty.output, /Task bootstrap:/);
+    assert.doesNotMatch(empty.output, /Execution loop:/);
 
     cli.main(['pause', 'resume irq race first']);
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
-    assert.match(reminder, /Emb-Agent Session Reminder/);
-    assert.match(reminder, /Primary entrypoint: start/);
-    assert.match(reminder, /Current shortest command: resume/);
-    assert.match(reminder, /Found an unconsumed handoff/);
-    assert.match(reminder, /node ~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs resume/);
-    assert.match(reminder, /resume irq race first/);
+    assert.equal(reminder.trusted, true);
+    assert.equal(reminder.runtime_events[0].type, 'hook-dispatch');
+    assert.match(reminder.output, /Emb-Agent Session Reminder/);
+    assert.match(reminder.output, /Primary entrypoint: start/);
+    assert.match(reminder.output, /Current shortest command: resume/);
+    assert.match(reminder.output, /Found an unconsumed handoff/);
+    assert.match(reminder.output, /node ~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs resume/);
+    assert.match(reminder.output, /resume irq race first/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
@@ -98,8 +101,8 @@ test('session start hook surfaces cached update and stale install notices', () =
     process.chdir(tempProject);
     cli.main(['init']);
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
-    assert.match(reminder, /Found a newer emb-agent version: 0.2.0 -> 0.3.0/);
-    assert.match(reminder, /Detected stale install/);
+    assert.match(reminder.output, /Found a newer emb-agent version: 0.2.0 -> 0.3.0/);
+    assert.match(reminder.output, /Detected stale install/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
@@ -151,16 +154,16 @@ test('session start hook reminds active task context after clearable resume path
     cli.main(['task', 'activate', taskName]);
 
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
-    assert.match(reminder, /Primary entrypoint: start/);
-    assert.match(reminder, /Current active task:/);
-    assert.match(reminder, /Investigate PMS150G comparator timing/);
-    assert.match(reminder, /Re-read the task PRD first:/);
-    assert.match(reminder, /task implement context/);
-    assert.match(reminder, /emb-agent\/hw\.yaml/);
-    assert.match(reminder, /Auto-injected specs:/);
-    assert.match(reminder, /project-local/);
-    assert.match(reminder, /task-execution/);
-    assert.doesNotMatch(reminder, /Default loop:/);
+    assert.match(reminder.output, /Primary entrypoint: start/);
+    assert.match(reminder.output, /Current active task:/);
+    assert.match(reminder.output, /Investigate PMS150G comparator timing/);
+    assert.match(reminder.output, /Re-read the task PRD first:/);
+    assert.match(reminder.output, /task implement context/);
+    assert.match(reminder.output, /emb-agent\/hw\.yaml/);
+    assert.match(reminder.output, /Auto-injected specs:/);
+    assert.match(reminder.output, /project-local/);
+    assert.match(reminder.output, /task-execution/);
+    assert.doesNotMatch(reminder.output, /Default loop:/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
@@ -201,7 +204,9 @@ test('session start hook skips all output when workspace trust is not establishe
       workspace_trusted: false
     });
 
-    assert.equal(reminder, '');
+    assert.equal(reminder.trusted, false);
+    assert.equal(reminder.status, 'skipped');
+    assert.equal(reminder.output, '');
   } finally {
     if (previousSkip === undefined) {
       delete process.env.EMB_AGENT_SKIP_UPDATE_CHECK;

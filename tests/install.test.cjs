@@ -173,8 +173,11 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'), /# emb-agent Instructions/);
     assert.equal(nextBeforeContext.next.command, 'scan');
     assert.equal(nextBeforeContext.next.gated_by_health, false);
+    assert.equal(nextBeforeContext.runtime_events[0].type, 'workflow-next');
     assert.equal(nextBeforeContext.external_agent, undefined);
+    assert.equal(statusBeforeContext.runtime_events[0].type, 'workflow-status');
     assert.equal(statusBeforeContext.external_agent, undefined);
+    assert.equal(startBeforeContext.runtime_events[0].type, 'workflow-start');
     assert.equal(startBeforeContext.external_agent, undefined);
     assert.match(startBeforeContext.immediate.cli, / next$/);
     assert.match(startBeforeContext.bootstrap.summary, /project type, intended inputs\/outputs, interfaces, and constraints/);

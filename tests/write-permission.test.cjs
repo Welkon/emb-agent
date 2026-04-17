@@ -144,9 +144,16 @@ test('project set honors write deny rules before mutating config', async () => {
     assert.equal(blocked.status, 'permission-denied');
     assert.equal(blocked.permission_decision.decision, 'deny');
     assert.equal(blocked.permission_decision.reason_code, 'policy-deny');
+    assert.equal(blocked.permission_decision.category, 'project-policy');
+    assert.equal(blocked.permission_decision.severity, 'high');
+    assert.match(blocked.permission_decision.operator_guidance, /project policy/i);
+    assert.ok(blocked.permission_decision.remediation.length > 0);
+    assert.ok(blocked.permission_decision.prechecks.length > 0);
     assert.ok(Array.isArray(blocked.permission_gates));
     assert.equal(blocked.permission_gates[0].kind, 'permission-rule');
     assert.equal(blocked.permission_gates[0].state, 'blocked');
+    assert.equal(blocked.runtime_events[0].type, 'permission-evaluated');
+    assert.equal(blocked.runtime_events[0].status, 'blocked');
 
     const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
     const config = runtime.loadProjectConfig(tempProject, runtimeConfig);
@@ -208,8 +215,14 @@ test('ingest apply doc honors write ask rules until explicit confirmation is pro
     assert.equal(blocked.status, 'permission-pending');
     assert.equal(blocked.permission_decision.decision, 'ask');
     assert.equal(blocked.permission_decision.reason_code, 'policy-ask');
+    assert.equal(blocked.permission_decision.category, 'truth-promotion');
+    assert.equal(blocked.permission_decision.severity, 'normal');
+    assert.ok(blocked.permission_decision.remediation.length > 0);
+    assert.ok(blocked.permission_decision.prechecks.length > 0);
     assert.ok(Array.isArray(blocked.permission_gates));
     assert.ok(blocked.permission_gates.some(item => item.kind === 'permission-rule' && item.state === 'pending'));
+    assert.equal(blocked.runtime_events[0].type, 'permission-evaluated');
+    assert.equal(blocked.runtime_events[0].status, 'pending');
 
     const hwBefore = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
     assert.match(hwBefore, /model: ""/);
@@ -222,6 +235,8 @@ test('ingest apply doc honors write ask rules until explicit confirmation is pro
 
     assert.equal(allowed.permission_decision.decision, 'allow');
     assert.equal(allowed.permission_decision.reason_code, 'explicit-confirmed');
+    assert.equal(allowed.permission_decision.category, 'truth-promotion');
+    assert.ok(allowed.runtime_events.some(item => item.type === 'permission-evaluated' && item.status === 'ok'));
     const hwAfter = fs.readFileSync(path.join(tempProject, '.emb-agent', 'hw.yaml'), 'utf8');
     assert.match(hwAfter, /model: "PMS150G"/);
   } finally {
@@ -258,6 +273,8 @@ test('verify confirm honors write ask rules before updating human signoffs', asy
 
     const beforeConfirm = cli.buildNextContext();
     assert.deepEqual(beforeConfirm.quality_gates.pending_signoffs, ['board-bench']);
+    assert.equal(beforeConfirm.runtime_events[0].type, 'workflow-next');
+    assert.equal(beforeConfirm.runtime_events[0].status, 'pending');
 
     const allowed = JSON.parse(await captureStdout(() => cli.main([
       'verify',
@@ -270,9 +287,12 @@ test('verify confirm honors write ask rules before updating human signoffs', asy
     assert.equal(allowed.status, 'confirmed');
     assert.equal(allowed.permission_decision.decision, 'allow');
     assert.equal(allowed.permission_decision.reason_code, 'explicit-confirmed');
+    assert.equal(allowed.permission_decision.category, 'human-signoff');
+    assert.ok(allowed.runtime_events.some(item => item.type === 'permission-evaluated' && item.status === 'ok'));
 
     const afterConfirm = cli.buildNextContext();
     assert.deepEqual(afterConfirm.quality_gates.confirmed_signoffs, ['board-bench']);
+    assert.equal(afterConfirm.runtime_events[0].type, 'workflow-next');
   } finally {
     process.chdir(currentCwd);
   }
