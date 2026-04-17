@@ -518,12 +518,16 @@ function createSessionFlowHelpers(deps) {
     }
 
     if (shouldSuggestScanTool(resolved)) {
+      const primaryToolRecommendation = selectPrimaryToolRecommendation(
+        (resolved.effective && resolved.effective.tool_recommendations) || [],
+        resolved
+      );
       const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
-      const firstTool = suggestedTools[0];
+      const firstTool = primaryToolRecommendation || suggestedTools[0];
       return {
         command: 'scan',
         reason: firstTool
-          ? `This looks more like hardware/formula/tool triage; run scan and evaluate ${firstTool.name} first`
+          ? `This looks more like hardware/formula/tool triage; run scan and evaluate ${firstTool.tool || firstTool.name} first`
           : 'This looks more like hardware truth, register, pin, or formula triage; run scan before deciding whether to enter tool'
       };
     }
@@ -694,8 +698,13 @@ function createSessionFlowHelpers(deps) {
     const identity = hardware && hardware.identity ? hardware.identity : hardware;
     const signals = Array.isArray(identity && identity.signals) ? identity.signals : [];
     const peripherals = Array.isArray(identity && identity.peripherals) ? identity.peripherals : [];
+    const session = resolved && resolved.session ? resolved.session : {};
+    const activeTask = getActiveTask ? getActiveTask() : null;
 
     return normalizeIntentText(runtime.unique([
+      session && session.focus ? session.focus : '',
+      session && session.active_task && session.active_task.title ? session.active_task.title : '',
+      activeTask && activeTask.title ? activeTask.title : '',
       identity && identity.model ? identity.model : '',
       identity && identity.package ? identity.package : '',
       ...signals.flatMap(item => [
@@ -717,9 +726,55 @@ function createSessionFlowHelpers(deps) {
     return Boolean(normalizedHaystack && normalizedKeyword && normalizedHaystack.includes(normalizedKeyword));
   }
 
+  function hasExactPwmTargetIntent(haystack) {
+    const normalizedHaystack = normalizeIntentText(haystack);
+    if (!normalizedHaystack) {
+      return false;
+    }
+
+    const hasFrequencyTarget =
+      /\b\d+(?:\.\d+)?\s*(?:k?hz|khz)\b/.test(normalizedHaystack) ||
+      includesIntentKeyword(normalizedHaystack, 'target hz');
+    const hasDutyTarget =
+      /\b\d+(?:\.\d+)?\s*%\b/.test(normalizedHaystack) ||
+      includesIntentKeyword(normalizedHaystack, 'duty');
+
+    return hasFrequencyTarget && hasDutyTarget;
+  }
+
+  function hasStructuredExactPwmIntent(resolved) {
+    const hardware = resolved && resolved.hardware ? resolved.hardware : {};
+    const identity = hardware && hardware.identity ? hardware.identity : hardware;
+    const signals = Array.isArray(identity && identity.signals) ? identity.signals : [];
+    const peripherals = Array.isArray(identity && identity.peripherals) ? identity.peripherals : [];
+    const session = resolved && resolved.session ? resolved.session : {};
+    const activeTask = getActiveTask ? getActiveTask() : null;
+    const texts = runtime.unique([
+      session && session.focus ? session.focus : '',
+      session && session.active_task && session.active_task.title ? session.active_task.title : '',
+      activeTask && activeTask.title ? activeTask.title : '',
+      ...signals.flatMap(item => [
+        item && item.name ? item.name : '',
+        item && item.note ? item.note : ''
+      ]),
+      ...peripherals.flatMap(item => [
+        item && item.name ? item.name : '',
+        item && item.usage ? item.usage : ''
+      ])
+    ]).filter(Boolean);
+
+    const joined = texts.join(' ');
+    const hasPwm = /\bpwm\b/i.test(joined) || texts.some(text => /pwm/i.test(String(text || '')));
+    const hasFrequency = /\b\d+(?:\.\d+)?\s*k?hz\b/i.test(joined) || /\b\d+(?:\.\d+)?\s*hz\b/i.test(joined);
+    const hasDuty = /\b\d+(?:\.\d+)?\s*%/.test(joined) || /\bduty\b/i.test(joined);
+
+    return hasPwm && hasFrequency && hasDuty;
+  }
+
   function getToolIntentScore(item, resolved) {
     const tool = String(item && item.tool ? item.tool : '').trim().toLowerCase();
     const haystack = buildHardwareIntentHaystack(resolved);
+    const exactPwmTarget = hasExactPwmTargetIntent(haystack);
 
     if (!tool || !haystack) {
       return 0;
@@ -731,12 +786,14 @@ function createSessionFlowHelpers(deps) {
       if (includesIntentKeyword(haystack, 'pwm')) score += 60;
       if (includesIntentKeyword(haystack, 'duty')) score += 18;
       if (includesIntentKeyword(haystack, 'hz') || includesIntentKeyword(haystack, 'khz')) score += 10;
+      if (exactPwmTarget) score -= 6;
       if (includesIntentKeyword(haystack, 'lpwmg')) score -= 8;
     } else if (tool === 'lpwmg-calc') {
       if (includesIntentKeyword(haystack, 'lpwmg')) score += 80;
       if (includesIntentKeyword(haystack, 'pwm')) score += 34;
       if (includesIntentKeyword(haystack, 'duty')) score += 18;
       if (includesIntentKeyword(haystack, 'hz') || includesIntentKeyword(haystack, 'khz')) score += 10;
+      if (exactPwmTarget) score += 40;
       if (includesIntentKeyword(haystack, 'exact') || includesIntentKeyword(haystack, 'precise')) score += 12;
     } else if (tool === 'timer-calc') {
       if (includesIntentKeyword(haystack, 'timer')) score += 36;
@@ -770,12 +827,24 @@ function createSessionFlowHelpers(deps) {
         ? healthReport.chip_support_health
         : null;
     const primary = adapterHealth && adapterHealth.primary ? adapterHealth.primary : null;
+    const preferredTrustTool =
+      primaryToolRecommendation &&
+      primaryToolRecommendation.trust &&
+      primaryToolRecommendation.trust.executable
+        ? {
+            tool: primaryToolRecommendation.tool,
+            grade: primaryToolRecommendation.trust.grade,
+            score: primaryToolRecommendation.trust.score,
+            executable: primaryToolRecommendation.trust.executable,
+            recommended_action: primaryToolRecommendation.trust.recommended_action || ''
+          }
+        : primary;
     const reusability =
       adapterHealth && adapterHealth.reusability && typeof adapterHealth.reusability === 'object'
         ? adapterHealth.reusability
         : null;
 
-    if (!primary) {
+    if (!preferredTrustTool) {
       return [];
     }
 
@@ -786,27 +855,61 @@ function createSessionFlowHelpers(deps) {
           ? 'Chip support status: reusable candidate after review'
           : 'Chip support status: project-only for now';
 
-    if (primary.executable) {
+    if (preferredTrustTool.executable) {
       return [
         reuseFirst,
-        `Chip support trust: ${primary.tool} ${primary.grade} (${primary.score}/100)`
+        `Chip support trust: ${preferredTrustTool.tool} ${preferredTrustTool.grade} (${preferredTrustTool.score}/100)`
       ];
     }
 
     return [
       reuseFirst,
-      `Chip support trust reminder: ${primary.tool} is currently ${primary.grade} (${primary.score}/100)`,
-      `Handle the chip-support gap first: ${primary.recommended_action}`,
+      `Chip support trust reminder: ${preferredTrustTool.tool} is currently ${preferredTrustTool.grade} (${preferredTrustTool.score}/100)`,
+      `Handle the chip-support gap first: ${preferredTrustTool.recommended_action}`,
       primaryToolRecommendation && primaryToolRecommendation.cli_draft
         ? `Use the current tool draft for calibration first; do not treat it as ground truth yet: ${primaryToolRecommendation.cli_draft}`
         : 'Use the current tool output for calibration first; do not treat it as ground truth yet'
     ];
   }
 
+  function selectExactPwmToolRecommendation(toolRecommendations, resolved) {
+    const items = Array.isArray(toolRecommendations) ? toolRecommendations : [];
+    const haystack = buildHardwareIntentHaystack(resolved);
+
+    if (
+      (!hasStructuredExactPwmIntent(resolved) && !hasExactPwmTargetIntent(haystack)) ||
+      !includesIntentKeyword(haystack, 'pwm')
+    ) {
+      return null;
+    }
+
+    const lpwmg = items.find(item =>
+      item &&
+      item.tool === 'lpwmg-calc' &&
+      Boolean(item.trust && item.trust.executable)
+    );
+    const pwm = items.find(item =>
+      item &&
+      item.tool === 'pwm-calc' &&
+      Boolean(item.trust && item.trust.executable)
+    );
+
+    if (!lpwmg || !pwm) {
+      return null;
+    }
+
+    return lpwmg;
+  }
+
   function selectPrimaryToolRecommendation(toolRecommendations, resolved) {
     const items = Array.isArray(toolRecommendations) ? toolRecommendations.slice() : [];
     if (items.length === 0) {
       return null;
+    }
+
+    const exactPwmTool = selectExactPwmToolRecommendation(items, resolved);
+    if (exactPwmTool) {
+      return exactPwmTool;
     }
 
     return items

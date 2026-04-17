@@ -333,7 +333,7 @@ function resolveSession() {
   const chipProfile = findChipProfileByModel(hardwareIdentity.model, hardwareIdentity.package);
   const recommendedSources = buildRecommendedSources(chipProfile);
   const suggestedTools = buildSuggestedTools(chipProfile);
-  const toolRecommendations = buildToolRecommendations(chipProfile, suggestedTools);
+  const toolRecommendations = buildToolRecommendations(chipProfile, suggestedTools, hardwareIdentity);
   const agents = runtime.unique([
     ...(profile.default_agents || []),
     ...packs.flatMap(pack => pack.default_agents || [])

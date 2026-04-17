@@ -496,6 +496,60 @@ test('installed codex runtime uses enabled hooks config as authorization signal'
   }
 });
 
+test('bootstrap run bypasses startup-hooks when host readiness is the only remaining blocker', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-bootstrap-run-bypass-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const previousWorkspaceTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  let stdout = '';
+
+  try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '0';
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    await cli.main(['init']);
+    await cli.main([
+      'declare', 'hardware', '--confirm',
+      '--mcu', 'PMB180B',
+      '--package', 'esop8',
+      '--signal', 'PWM_OUT',
+      '--pin', 'PA3',
+      '--dir', 'output',
+      '--note', 'PA3 PWM demo',
+      '--confirmed', 'true',
+      '--peripheral', 'PWM',
+      '--usage', '20kHz 50% output demo'
+    ]);
+    await cli.main([
+      'support', 'bootstrap', 'local-pack',
+      '--confirm',
+      '--type', 'path',
+      '--location', path.resolve(repoRoot, '..', 'emb-agent-adapters')
+    ]);
+
+    stdout = '';
+    await cli.main(['bootstrap', 'run', '--confirm']);
+    const report = JSON.parse(stdout);
+
+    assert.equal(report.executed, true);
+    assert.equal(report.stage.id, 'next-step');
+    assert.equal(report.stage.bypassed_manual_stage.id, 'startup-hooks');
+    assert.equal(report.result.resolved_action, 'scan');
+  } finally {
+    if (previousWorkspaceTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousWorkspaceTrust;
+    }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('update reports stale install and cached newer version', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-update-'));
   const currentCwd = process.cwd();
