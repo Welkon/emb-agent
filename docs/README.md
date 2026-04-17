@@ -30,6 +30,8 @@ If the repository root README explains what emb-agent is, the docs directory sho
   What belongs in core and what belongs in chip support.
 - [Task Model](./task-model.md)
   How task manifests are structured and when to use them.
+- [Automation Output Contract](./automation-contract.md)
+  The stable machine-readable surfaces for `--brief`, `external`, and `task worktree`.
 - [Workflow Layering](./workflow-layering.md)
   How to decide between built-in packs/specs and project-local workflow extensions.
 

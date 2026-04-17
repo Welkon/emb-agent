@@ -121,6 +121,37 @@ async function captureCliJson(args) {
   return JSON.parse(stdout);
 }
 
+async function captureCliTtyOutput(args) {
+  const originalStdoutWrite = process.stdout.write;
+  const originalStderrWrite = process.stderr.write;
+  const originalStdoutIsTty = process.stdout.isTTY;
+  const originalStderrIsTty = process.stderr.isTTY;
+  let stdout = '';
+  let stderr = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+  process.stderr.write = chunk => {
+    stderr += String(chunk);
+    return true;
+  };
+  process.stdout.isTTY = true;
+  process.stderr.isTTY = true;
+
+  try {
+    await cli.main(args);
+  } finally {
+    process.stdout.write = originalStdoutWrite;
+    process.stderr.write = originalStderrWrite;
+    process.stdout.isTTY = originalStdoutIsTty;
+    process.stderr.isTTY = originalStderrIsTty;
+  }
+
+  return { stdout, stderr };
+}
+
 test('task commands create activate manage context and resolve lightweight tasks', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-'));
   const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-source-'));
@@ -467,6 +498,32 @@ test('task worktree create and cleanup expose trellis-style workspace lifecycle 
 
     const registryAfter = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
     assert.equal(registryAfter.worktrees.some(item => item.task_name === taskName), false);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task worktree status surfaces user-facing tty summary and events', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-worktree-tty-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    writeText(path.join(tempProject, 'src', 'main.c'), '// main\n');
+    await cli.main(['init']);
+    writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: .task-worktrees\n');
+    initGitRepo(tempProject);
+
+    const created = await captureCliJson(['task', 'add', 'Inspect worktree tty status']);
+    const taskName = created.task.name;
+
+    await captureCliJson(['task', 'worktree', 'create', taskName]);
+    const output = await captureCliTtyOutput(['task', 'worktree', 'status', taskName]);
+
+    assert.match(output.stderr, new RegExp(`Task: ${taskName}`));
+    assert.match(output.stderr, /State: dirty/);
+    assert.match(output.stderr, /Summary: The worktree has \d+ uncommitted file\(s\)\./);
+    assert.match(output.stderr, /Events: pending \/ 1 \(task-worktree-status\)/);
   } finally {
     process.chdir(currentCwd);
   }

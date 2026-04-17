@@ -226,6 +226,35 @@ test('applyOutputMode builds brief init output with external driver hints', () =
   assert.equal(output.external_agent, undefined);
 });
 
+test('applyOutputMode keeps runtime event summaries compact for automation callers', () => {
+  const output = outputMode.applyOutputMode({
+    current: {
+      profile: 'baremetal-8bit'
+    },
+    next: {
+      command: 'scan',
+      reason: 'selection is still open',
+      cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs scan'
+    },
+    runtime_events: [
+      {
+        type: 'workflow-next',
+        category: 'workflow',
+        status: 'pending',
+        summary: 'selection is still open'
+      }
+    ],
+    next_actions: []
+  }, true);
+
+  assert.equal(output.output_mode, 'brief');
+  assert.equal(Array.isArray(output.runtime_events), false);
+  assert.equal(output.runtime_events.status, 'pending');
+  assert.equal(output.runtime_events.total, 1);
+  assert.deepEqual(output.runtime_events.types, ['workflow-next']);
+  assert.equal(output.runtime_events[0], undefined);
+});
+
 test('applyOutputMode builds brief tool output with permission gates', () => {
   const input = {
     tool: 'timer-calc',

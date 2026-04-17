@@ -432,6 +432,114 @@ function createCliRouter(deps) {
         return appendRuntimeEventsSummary(lines, payload);
       }
 
+      if (cmd === 'task' && subcmd === 'worktree') {
+        const worktree =
+          payload.worktree && typeof payload.worktree === 'object' && !Array.isArray(payload.worktree)
+            ? payload.worktree
+            : {};
+        const worktreeSummary =
+          payload.summary && typeof payload.summary === 'object' && !Array.isArray(payload.summary)
+            ? payload.summary
+            : {};
+
+        if (payload.created === true) {
+          lines.push(terminalUi.renderKeyValue('Created', 'yes', 'success'));
+          if (payload.task && payload.task.name) {
+            lines.push(terminalUi.renderKeyValue('Task', payload.task.name, 'info'));
+          }
+          if (worktree.workspace_state) {
+            lines.push(
+              terminalUi.renderKeyValue(
+                'State',
+                worktree.workspace_state,
+                worktree.attention === 'warn' ? 'warning' : 'success'
+              )
+            );
+          }
+          if (payload.workspace && payload.workspace.mode) {
+            lines.push(terminalUi.renderKeyValue('Mode', payload.workspace.mode, 'muted'));
+          }
+          if (payload.workspace && payload.workspace.path) {
+            lines.push(terminalUi.renderKeyValue('Path', payload.workspace.path, 'muted'));
+          }
+          if (worktree.summary) {
+            lines.push(terminalUi.renderKeyValue('Summary', worktree.summary, 'muted'));
+          }
+          return appendRuntimeEventsSummary(lines, payload);
+        }
+
+        if (payload.cleaned === true) {
+          lines.push(
+            terminalUi.renderKeyValue(
+              'Cleaned',
+              payload.workspace_cleanup && payload.workspace_cleanup.cleaned ? 'yes' : 'no',
+              payload.workspace_cleanup && payload.workspace_cleanup.cleaned ? 'success' : 'warning'
+            )
+          );
+          if (payload.task && payload.task.name) {
+            lines.push(terminalUi.renderKeyValue('Task', payload.task.name, 'info'));
+          }
+          if (payload.workspace_cleanup && payload.workspace_cleanup.path) {
+            lines.push(terminalUi.renderKeyValue('Path', payload.workspace_cleanup.path, 'muted'));
+          }
+          if (payload.workspace_cleanup && payload.workspace_cleanup.error) {
+            lines.push(terminalUi.renderKeyValue('Error', payload.workspace_cleanup.error, 'error'));
+          }
+          return appendRuntimeEventsSummary(lines, payload);
+        }
+
+        if (Object.keys(worktree).length > 0) {
+          if (worktree.task_name) {
+            lines.push(terminalUi.renderKeyValue('Task', worktree.task_name, 'info'));
+          }
+          if (worktree.workspace_state) {
+            lines.push(
+              terminalUi.renderKeyValue(
+                'State',
+                worktree.workspace_state,
+                worktree.attention === 'warn' ? 'warning' : 'success'
+              )
+            );
+          }
+          if (worktree.path) {
+            lines.push(terminalUi.renderKeyValue('Path', worktree.path, 'muted'));
+          }
+          if (worktree.summary) {
+            lines.push(terminalUi.renderKeyValue('Summary', worktree.summary, 'muted'));
+          }
+          return appendRuntimeEventsSummary(lines, payload);
+        }
+
+        if (Array.isArray(payload.worktrees)) {
+          lines.push(terminalUi.renderKeyValue('Worktrees', String(payload.worktrees.length), 'info'));
+          if (typeof worktreeSummary.active === 'number') {
+            lines.push(terminalUi.renderKeyValue('Active', String(worktreeSummary.active), 'success'));
+          }
+          if (typeof worktreeSummary.dirty === 'number') {
+            lines.push(
+              terminalUi.renderKeyValue(
+                'Dirty',
+                String(worktreeSummary.dirty),
+                worktreeSummary.dirty > 0 ? 'warning' : 'success'
+              )
+            );
+          }
+          if (typeof worktreeSummary.attention_required === 'number') {
+            lines.push(
+              terminalUi.renderKeyValue(
+                'Attention',
+                String(worktreeSummary.attention_required),
+                worktreeSummary.attention_required > 0 ? 'warning' : 'success'
+              )
+            );
+          }
+          if (payload.registry_path) {
+            lines.push(terminalUi.renderKeyValue('Registry', payload.registry_path, 'muted'));
+          }
+          return appendRuntimeEventsSummary(lines, payload);
+        }
+      }
+
       if (cmd === 'executor' && subcmd === 'run') {
         lines.push(terminalUi.renderKeyValue('Executor', payload.executor, 'info'));
         lines.push(
@@ -1185,6 +1293,20 @@ function createCliRouter(deps) {
 
     const stateCommandResult = handleCatalogAndStateCommands(cmd, subcmd, rest);
     if (stateCommandResult !== undefined) {
+      if (cmd === 'task' && subcmd === 'worktree') {
+        const worktreeAction = rest[0] || 'list';
+        const interactiveAction = worktreeAction === 'create' || worktreeAction === 'cleanup' || worktreeAction === 'remove';
+        emitJson(runWithTerminalUi({
+          cmd,
+          subcmd,
+          text: buildOperationText(cmd, `${subcmd} ${worktreeAction}`.trim(), rest.slice(1)),
+          success_text: `task worktree ${worktreeAction}`.trim() + ' updated',
+          failure_text: `task worktree ${worktreeAction}`.trim() + ' failed',
+          activity: interactiveAction
+        }, () => stateCommandResult));
+        return;
+      }
+
       emitJson(stateCommandResult);
       return;
     }

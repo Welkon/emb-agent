@@ -123,6 +123,7 @@ That means emb-agent should be understood as embedded project infrastructure, no
 - [Product Boundaries](./docs/product-boundaries.md)
 - [Chip Support Model](./docs/chip-support-model.md)
 - [Task Model](./docs/task-model.md)
+- [Automation Output Contract](./docs/automation-contract.md)
 - [Workflow Layering](./docs/workflow-layering.md)
 - [Command Help](./commands/emb/help.md)
 - [Release Notes](./RELEASE.md)
