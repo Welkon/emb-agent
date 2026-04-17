@@ -36,5 +36,4 @@ If the repository root README explains what emb-agent is, the docs directory sho
 ## Examples
 
 - [Smart Pillbox Project Extension](../examples/project-extensions/smart-pillbox/README.md)
-- [SC8F072 PWM Bring-up](../examples/sc8f072-pwm/README.md)
-- [Brownfield Repo Onboarding](../examples/brownfield-repo-onboarding/README.md)
+- [PMB180B PWM Bring-up](../examples/pmb180b-pwm/README.md)
