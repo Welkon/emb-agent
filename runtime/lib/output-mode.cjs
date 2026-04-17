@@ -480,6 +480,7 @@ function buildBriefNextContext(value) {
       gated_by_health: Boolean(next.gated_by_health)
     }),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
+    action_card: summarizeActionCard(value.action_card),
     quality_gates: summarizeQualityGates(value.quality_gates),
     permission_gates: summarizePermissionGates(value.permission_gates),
     tool_recommendation: summarizeToolRecommendation(next.tool_recommendation || value.tool_recommendation),
@@ -591,6 +592,8 @@ function buildBriefPlanOutput(value) {
     risks: truncateList(value.risks, 5),
     steps: truncateList(value.steps, 5),
     verification: truncateList(value.verification, 4),
+    action_card: summarizeActionCard(value.action_card),
+    next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
 }
@@ -608,6 +611,8 @@ function buildBriefDoOutput(value) {
       suggested_steps: truncateList(executionBrief.suggested_steps, 4),
       supporting_agents: truncateList(executionBrief.supporting_agents, 3)
     }),
+    action_card: summarizeActionCard(value.action_card),
+    next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
 }
@@ -619,6 +624,8 @@ function buildBriefScanOutput(value) {
     key_facts: truncateList(value.key_facts, 6),
     open_questions: truncateList(value.open_questions, 4),
     next_reads: truncateList(value.next_reads, 5),
+    action_card: summarizeActionCard(value.action_card),
+    next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
 }
@@ -630,6 +637,8 @@ function buildBriefDebugOutput(value) {
     hypotheses: truncateList(value.hypotheses, 4),
     checks: truncateList(value.checks, 4),
     next_step: value.next_step || '',
+    action_card: summarizeActionCard(value.action_card),
+    next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
 }
@@ -649,6 +658,8 @@ function buildBriefReviewOutput(value) {
     axes: truncateList(value.axes, 6),
     required_checks: truncateList(value.required_checks, 5),
     review_agents: truncateList(value.review_agents, 4),
+    action_card: summarizeActionCard(value.action_card),
+    next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
 }
@@ -671,6 +682,8 @@ function buildBriefVerifyOutput(value) {
     quality_gates: summarizeQualityGates(value.quality_gates),
     permission_gates: summarizePermissionGates(value.permission_gates),
     verification_focus: truncateList(value.verification_focus, 4),
+    action_card: summarizeActionCard(value.action_card),
+    next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
 }
@@ -916,16 +929,25 @@ function parseOutputModeArgs(tokens) {
   const args = Array.isArray(tokens) ? tokens : [];
   const cleaned = [];
   let firstNonFlagIndex = 0;
-  while (firstNonFlagIndex < args.length && args[firstNonFlagIndex] === '--brief') {
+  while (
+    firstNonFlagIndex < args.length &&
+    (args[firstNonFlagIndex] === '--brief' || args[firstNonFlagIndex] === '--json')
+  ) {
     firstNonFlagIndex += 1;
   }
 
   const isToolRunCommand = args[firstNonFlagIndex] === 'tool' && args[firstNonFlagIndex + 1] === 'run';
   const preserveFromIndex = isToolRunCommand ? firstNonFlagIndex + 3 : Number.POSITIVE_INFINITY;
   let brief = false;
+  let json = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
+
+    if (token === '--json') {
+      json = true;
+      continue;
+    }
 
     if (token === '--brief') {
       const canUseAsGlobal = index < preserveFromIndex;
@@ -940,7 +962,8 @@ function parseOutputModeArgs(tokens) {
 
   return {
     args: cleaned,
-    brief
+    brief,
+    json
   };
 }
 

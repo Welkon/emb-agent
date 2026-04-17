@@ -239,12 +239,60 @@ function createTaskCommandHelpers(deps) {
     return path.join(getTasksDir(), name);
   }
 
-  function getManagedTaskWorkspaceRoot() {
-    return path.join(os.tmpdir(), 'emb-agent-task-worktrees', runtime.getProjectKey(resolveProjectRoot()));
+  function getTaskWorktreeConfigPath() {
+    return path.join(getProjectExtDir(), 'worktree.yaml');
   }
 
-  function getDefaultTaskWorkspacePath(name) {
-    return path.join(getManagedTaskWorkspaceRoot(), name);
+  function getTaskWorktreeRegistryPath() {
+    return path.join(getProjectExtDir(), 'registry', 'worktrees.json');
+  }
+
+  function getDefaultTaskWorktreeConfig() {
+    return {
+      worktree_dir: '../emb-agent-worktrees',
+      copy: ['.emb-agent/.developer'],
+      post_create: []
+    };
+  }
+
+  function readTaskWorktreeConfig() {
+    const configPath = getTaskWorktreeConfigPath();
+    const defaults = getDefaultTaskWorktreeConfig();
+
+    if (!fs.existsSync(configPath)) {
+      return defaults;
+    }
+
+    const parsed = runtime.parseSimpleYaml(configPath) || {};
+    return {
+      worktree_dir: String(parsed.worktree_dir || defaults.worktree_dir).trim() || defaults.worktree_dir,
+      copy: Array.isArray(parsed.copy)
+        ? parsed.copy.map(item => String(item || '').trim()).filter(Boolean)
+        : defaults.copy.slice(),
+      post_create: Array.isArray(parsed.post_create)
+        ? parsed.post_create.map(item => String(item || '').trim()).filter(Boolean)
+        : defaults.post_create.slice()
+    };
+  }
+
+  function getManagedTaskWorkspaceRoot() {
+    const configured = String(readTaskWorktreeConfig().worktree_dir || '').trim();
+    if (!configured) {
+      return path.resolve(resolveProjectRoot(), getDefaultTaskWorktreeConfig().worktree_dir);
+    }
+
+    return path.isAbsolute(configured)
+      ? configured
+      : path.resolve(resolveProjectRoot(), configured);
+  }
+
+  function getDefaultTaskWorkspacePath(taskOrName) {
+    const task = typeof taskOrName === 'object' && taskOrName !== null
+      ? taskOrName
+      : { name: taskOrName };
+    const branchName = String(task.branch || '').trim();
+    const leaf = branchName || String(task.name || '').trim();
+    return path.join(getManagedTaskWorkspaceRoot(), leaf || `task-${Date.now()}`);
   }
 
   function getTaskManifestPath(name) {
@@ -262,6 +310,200 @@ function createTaskCommandHelpers(deps) {
   function syncCurrentTaskPointer(name) {
     const normalized = String(name || '').trim();
     fs.writeFileSync(getCurrentTaskPointerPath(), normalized ? `${normalized}\n` : '', 'utf8');
+  }
+
+  function getWorkspaceCurrentTaskPointerPath(workspacePath) {
+    const projectExtRelative = path.relative(resolveProjectRoot(), getProjectExtDir());
+    return path.join(workspacePath, projectExtRelative, '.current-task');
+  }
+
+  function syncWorkspaceCurrentTaskPointer(workspacePath, name) {
+    const pointerPath = getWorkspaceCurrentTaskPointerPath(workspacePath);
+    runtime.ensureDir(path.dirname(pointerPath));
+    const normalized = String(name || '').trim();
+    fs.writeFileSync(pointerPath, normalized ? `${normalized}\n` : '', 'utf8');
+  }
+
+  function readWorkspaceCurrentTaskPointer(workspacePath) {
+    const pointerPath = getWorkspaceCurrentTaskPointerPath(workspacePath);
+    if (!fs.existsSync(pointerPath)) {
+      return '';
+    }
+    return String(fs.readFileSync(pointerPath, 'utf8') || '').trim();
+  }
+
+  function ensureTaskWorktreeRegistry() {
+    const registryPath = getTaskWorktreeRegistryPath();
+    runtime.ensureDir(path.dirname(registryPath));
+    if (!fs.existsSync(registryPath)) {
+      runtime.writeJson(registryPath, { worktrees: [] });
+    }
+    return registryPath;
+  }
+
+  function readTaskWorktreeRegistry() {
+    const registryPath = getTaskWorktreeRegistryPath();
+    if (!fs.existsSync(registryPath)) {
+      return {
+        worktrees: []
+      };
+    }
+
+    const raw = runtime.readJson(registryPath);
+    const entries = raw && Array.isArray(raw.worktrees) ? raw.worktrees : [];
+    return {
+      worktrees: entries
+        .filter(item => item && typeof item === 'object')
+        .map(item => ({
+          task_name: String(item.task_name || '').trim(),
+          task_title: String(item.task_title || '').trim(),
+          task_status: normalizeTaskStatus(item.task_status || 'planning'),
+          branch: String(item.branch || '').trim(),
+          base_branch: String(item.base_branch || '').trim(),
+          worktree_path: String(item.worktree_path || '').trim(),
+          mode: String(item.mode || '').trim(),
+          created_at: String(item.created_at || item.updated_at || '').trim(),
+          updated_at: String(item.updated_at || item.created_at || '').trim()
+        }))
+        .filter(item => item.task_name && item.worktree_path)
+    };
+  }
+
+  function writeTaskWorktreeRegistry(registry) {
+    const registryPath = ensureTaskWorktreeRegistry();
+    runtime.writeJson(registryPath, {
+      worktrees: Array.isArray(registry && registry.worktrees) ? registry.worktrees : []
+    });
+    return registryPath;
+  }
+
+  function upsertTaskWorktreeRegistry(task, workspace) {
+    const registry = readTaskWorktreeRegistry();
+    const now = new Date().toISOString();
+    const existing = registry.worktrees.find(item => item.task_name === task.name);
+    const nextEntry = {
+      task_name: task.name,
+      task_title: task.title,
+      task_status: normalizeTaskStatus(task.status || 'planning'),
+      branch: String(task.branch || '').trim(),
+      base_branch: String(task.base_branch || '').trim(),
+      worktree_path: String(workspace.path || '').trim(),
+      mode: String(workspace.mode || '').trim(),
+      created_at: existing ? existing.created_at : now,
+      updated_at: now
+    };
+
+    registry.worktrees = [
+      ...registry.worktrees.filter(item => item.task_name !== task.name && item.worktree_path !== nextEntry.worktree_path),
+      nextEntry
+    ];
+    writeTaskWorktreeRegistry(registry);
+    return nextEntry;
+  }
+
+  function removeTaskWorktreeRegistry(task) {
+    const registryPath = getTaskWorktreeRegistryPath();
+    if (!fs.existsSync(registryPath)) {
+      return false;
+    }
+
+    const registry = readTaskWorktreeRegistry();
+    const before = registry.worktrees.length;
+    registry.worktrees = registry.worktrees.filter(item => item.task_name !== task.name);
+    writeTaskWorktreeRegistry(registry);
+    return registry.worktrees.length !== before;
+  }
+
+  function copyPathRecursive(sourcePath, targetPath) {
+    const stat = fs.lstatSync(sourcePath);
+
+    if (stat.isSymbolicLink()) {
+      const linkTarget = fs.readlinkSync(sourcePath);
+      if (fs.existsSync(targetPath)) {
+        fs.rmSync(targetPath, { recursive: true, force: true });
+      }
+      runtime.ensureDir(path.dirname(targetPath));
+      fs.symlinkSync(linkTarget, targetPath);
+      return;
+    }
+
+    if (stat.isDirectory()) {
+      runtime.ensureDir(targetPath);
+      fs.readdirSync(sourcePath).forEach(entry => {
+        copyPathRecursive(path.join(sourcePath, entry), path.join(targetPath, entry));
+      });
+      return;
+    }
+
+    runtime.ensureDir(path.dirname(targetPath));
+    fs.copyFileSync(sourcePath, targetPath);
+  }
+
+  function copyWorktreeConfiguredItems(targetPath) {
+    const projectRoot = resolveProjectRoot();
+    const items = readTaskWorktreeConfig().copy || [];
+    const copied = [];
+
+    items.forEach(item => {
+      const normalized = String(item || '').trim();
+      if (!normalized) {
+        return;
+      }
+
+      const sourcePath = path.resolve(projectRoot, normalized);
+      if (!fs.existsSync(sourcePath)) {
+        return;
+      }
+
+      const workspaceRelative = normalized.replace(/^[/\\]+/, '');
+      const destinationPath = path.join(targetPath, workspaceRelative);
+      fs.rmSync(destinationPath, { recursive: true, force: true });
+      copyPathRecursive(sourcePath, destinationPath);
+      copied.push(workspaceRelative.replace(/\\/g, '/'));
+    });
+
+    return copied;
+  }
+
+  function copyTaskDirectoryToWorkspace(task, workspacePath) {
+    const sourceDir = getTaskDir(task.name);
+    if (!fs.existsSync(sourceDir)) {
+      return '';
+    }
+
+    const relativeTaskDir = path.relative(resolveProjectRoot(), sourceDir).replace(/\\/g, '/');
+    const targetDir = path.join(workspacePath, relativeTaskDir);
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    copyPathRecursive(sourceDir, targetDir);
+    return relativeTaskDir;
+  }
+
+  function runTaskWorktreePostCreateHooks(workspacePath) {
+    const hooks = readTaskWorktreeConfig().post_create || [];
+    const executed = [];
+
+    hooks.forEach(command => {
+      const trimmed = String(command || '').trim();
+      if (!trimmed) {
+        return;
+      }
+
+      const result = childProcess.spawnSync(trimmed, {
+        cwd: workspacePath,
+        encoding: 'utf8',
+        shell: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      if (result.status !== 0) {
+        const detail = String(result.stderr || result.stdout || `exit ${result.status}`).trim();
+        throw new Error(`post_create hook failed: ${trimmed}${detail ? ` (${detail})` : ''}`);
+      }
+
+      executed.push(trimmed);
+    });
+
+    return executed;
   }
 
   function ensureContextChannel(channel) {
@@ -333,7 +575,7 @@ function createTaskCommandHelpers(deps) {
       creator: '',
       assignee: '',
       branch: '',
-      baseBranch: 'main',
+      baseBranch: resolveDefaultBaseBranch(),
       worktreePath: '',
       notes: ''
     };
@@ -406,7 +648,7 @@ function createTaskCommandHelpers(deps) {
     result.devType = normalizeTaskDevType(result.devType);
     result.priority = normalizeTaskPriority(result.priority);
     result.scope = normalizeTaskSlug(result.scope);
-    result.baseBranch = String(result.baseBranch || '').trim() || 'main';
+    result.baseBranch = String(result.baseBranch || '').trim() || resolveDefaultBaseBranch();
     result.branch = String(result.branch || '').trim();
     result.creator = String(result.creator || '').trim();
     result.assignee = String(result.assignee || '').trim();
@@ -1180,6 +1422,7 @@ function createTaskCommandHelpers(deps) {
     const references = runtime.unique(session.last_files || []);
     const status = 'planning';
     const slug = String(name || normalizeTaskSlug(title));
+    const defaultBranch = hasGitRoot(resolveProjectRoot()) ? `task/${slug}` : '';
 
     return {
       id: buildTaskId(now, slug),
@@ -1194,8 +1437,8 @@ function createTaskCommandHelpers(deps) {
       assignee,
       createdAt: now,
       completedAt: null,
-      branch: parsedSummary.branch || '',
-      base_branch: parsedSummary.baseBranch || 'main',
+      branch: parsedSummary.branch || defaultBranch,
+      base_branch: parsedSummary.baseBranch || resolveDefaultBaseBranch(),
       worktree_path: parsedSummary.worktreePath || null,
       current_phase: deriveCurrentPhase(status),
       next_action: DEFAULT_TASK_PHASES.map(item => ({ ...item })),
@@ -1257,6 +1500,22 @@ function createTaskCommandHelpers(deps) {
     }
   }
 
+  function getCurrentGitBranch(projectRoot) {
+    if (!hasGitRoot(projectRoot)) {
+      return '';
+    }
+
+    try {
+      return String(runGit(['branch', '--show-current'], projectRoot, 'git branch --show-current') || '').trim();
+    } catch {
+      return '';
+    }
+  }
+
+  function resolveDefaultBaseBranch() {
+    return getCurrentGitBranch(resolveProjectRoot()) || 'main';
+  }
+
   function hasGitRoot(projectRoot) {
     return fs.existsSync(path.join(projectRoot, '.git'));
   }
@@ -1304,7 +1563,14 @@ function createTaskCommandHelpers(deps) {
   }
 
   function copyProjectTree(sourceRoot, targetRoot) {
-    const skipTopLevel = new Set(['.git', '.emb-agent']);
+    const skipTopLevel = new Set(['.git']);
+    const relativeTarget = path.relative(sourceRoot, targetRoot);
+    if (relativeTarget && !relativeTarget.startsWith('..') && !path.isAbsolute(relativeTarget)) {
+      const topLevelTarget = relativeTarget.split(path.sep).filter(Boolean)[0];
+      if (topLevelTarget) {
+        skipTopLevel.add(topLevelTarget);
+      }
+    }
 
     function copyRecursive(currentSource, currentTarget, depth) {
       runtime.ensureDir(currentTarget);
@@ -1342,12 +1608,19 @@ function createTaskCommandHelpers(deps) {
     const projectRoot = resolveProjectRoot();
     const targetPath = resolveTaskWorkspacePath(task);
     const created = !fs.existsSync(targetPath);
+    const copied = [];
+    let task_dir = '';
+    let post_create = [];
 
     if (!created) {
+      syncWorkspaceCurrentTaskPointer(targetPath, task.name);
       return {
         mode: hasGitRoot(projectRoot) ? 'git-worktree' : 'copy',
         created: false,
-        path: targetPath
+        path: targetPath,
+        copied,
+        task_dir,
+        post_create
       };
     }
 
@@ -1381,24 +1654,41 @@ function createTaskCommandHelpers(deps) {
         );
       }
 
+      copied.push(...copyWorktreeConfiguredItems(targetPath));
+      task_dir = copyTaskDirectoryToWorkspace(task, targetPath);
+      syncWorkspaceCurrentTaskPointer(targetPath, task.name);
+      post_create = runTaskWorktreePostCreateHooks(targetPath);
+
       return {
         mode: 'git-worktree',
         created: true,
-        path: targetPath
+        path: targetPath,
+        copied,
+        task_dir,
+        post_create
       };
     }
 
     copyProjectTree(projectRoot, targetPath);
+    copied.push(...copyWorktreeConfiguredItems(targetPath));
+    task_dir = copyTaskDirectoryToWorkspace(task, targetPath);
+    syncWorkspaceCurrentTaskPointer(targetPath, task.name);
+    post_create = runTaskWorktreePostCreateHooks(targetPath);
+
     return {
       mode: 'copy',
       created: true,
-      path: targetPath
+      path: targetPath,
+      copied,
+      task_dir,
+      post_create
     };
   }
 
   function cleanupTaskWorkspace(task) {
     const targetPath = resolveTaskWorkspacePath(task);
     if (!targetPath || !fs.existsSync(targetPath)) {
+      removeTaskWorktreeRegistry(task);
       return {
         cleaned: false,
         path: targetPath
@@ -1408,6 +1698,7 @@ function createTaskCommandHelpers(deps) {
     if (hasGitRoot(resolveProjectRoot())) {
       try {
         runGit(['worktree', 'remove', '--force', targetPath], resolveProjectRoot(), `git worktree remove for task ${task.name}`);
+        removeTaskWorktreeRegistry(task);
         return {
           cleaned: true,
           path: targetPath
@@ -1425,6 +1716,7 @@ function createTaskCommandHelpers(deps) {
 
     try {
       removePathIfManaged(targetPath);
+      removeTaskWorktreeRegistry(task);
       return {
         cleaned: true,
         path: targetPath
@@ -1436,6 +1728,168 @@ function createTaskCommandHelpers(deps) {
         error: error.message
       };
     }
+  }
+
+  function countWorkspaceDirtyFiles(workspacePath, mode) {
+    if (!workspacePath || !fs.existsSync(workspacePath) || mode !== 'git-worktree') {
+      return 0;
+    }
+
+    try {
+      const output = String(runGit(['status', '--short'], workspacePath, 'git status --short') || '');
+      return output
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .length;
+    } catch {
+      return 0;
+    }
+  }
+
+  function buildTaskWorktreeState(task, registryEntry) {
+    const pathFromTask = String(task && task.worktree_path ? task.worktree_path : '').trim();
+    const pathFromRegistry = String(registryEntry && registryEntry.worktree_path ? registryEntry.worktree_path : '').trim();
+    const rawPath = pathFromTask || pathFromRegistry;
+    const workspacePath = rawPath
+      ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(resolveProjectRoot(), rawPath))
+      : '';
+    const exists = Boolean(workspacePath) && fs.existsSync(workspacePath);
+    const mode = String(
+      (registryEntry && registryEntry.mode) ||
+      (task && hasGitRoot(resolveProjectRoot()) ? 'git-worktree' : 'copy')
+    ).trim() || 'copy';
+    const currentTask = exists ? readWorkspaceCurrentTaskPointer(workspacePath) : '';
+    const dirty_files = countWorkspaceDirtyFiles(workspacePath, mode);
+
+    return {
+      task_name: task.name,
+      task_title: task.title,
+      task_status: task.status,
+      branch: String(task.branch || '').trim(),
+      base_branch: String(task.base_branch || '').trim(),
+      mode,
+      path: workspacePath,
+      exists,
+      managed: workspacePath ? isManagedTaskWorkspace(workspacePath) : false,
+      active: Boolean(loadSession().active_task && loadSession().active_task.name === task.name),
+      current_task: currentTask,
+      dirty_files,
+      registry: registryEntry || null
+    };
+  }
+
+  function listTaskWorktrees() {
+    const registry = readTaskWorktreeRegistry();
+    const registryMap = new Map(
+      registry.worktrees
+        .filter(item => item.task_name)
+        .map(item => [item.task_name, item])
+    );
+
+    const worktrees = listTasks().tasks
+      .filter(task => task.worktree_path || registryMap.has(task.name))
+      .map(task => buildTaskWorktreeState(task, registryMap.get(task.name)))
+      .sort((left, right) => String(right.task_name).localeCompare(String(left.task_name)));
+
+    return {
+      worktrees,
+      registry_path: path.relative(resolveProjectRoot(), getTaskWorktreeRegistryPath()).replace(/\\/g, '/')
+    };
+  }
+
+  function showTaskWorktree(name) {
+    const task = readTask(name);
+    const registry = readTaskWorktreeRegistry();
+    return {
+      worktree: buildTaskWorktreeState(
+        task,
+        registry.worktrees.find(item => item.task_name === task.name) || null
+      ),
+      task
+    };
+  }
+
+  function createTaskWorktreeCommand(rest) {
+    const input = parseNamedTaskWriteArgs(rest, 'task worktree create');
+    const task = readTask(input.name);
+    const blocked = applyTaskWritePermission({
+      created: false,
+      task: {
+        name: task.name,
+        title: task.title,
+        status: task.status
+      }
+    }, 'task-worktree-create', input.explicit_confirmation);
+
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    const workspace = ensureTaskWorkspace(task);
+    const manifest = runtime.readJson(getTaskManifestPath(input.name));
+    const baseBranch = String(manifest.base_branch || '').trim() || resolveDefaultBaseBranch();
+    writeTask(input.name, updateTaskTimestamps({
+      ...manifest,
+      base_branch: baseBranch,
+      worktree_path: workspace.path
+    }));
+
+    const nextTask = readTask(input.name);
+    const registryEntry = upsertTaskWorktreeRegistry(nextTask, workspace);
+    return permissionGateHelpers.applyPermissionDecision({
+      created: true,
+      task: nextTask,
+      workspace,
+      worktree: buildTaskWorktreeState(nextTask, registryEntry)
+    }, blocked.permission);
+  }
+
+  function cleanupTaskWorktreeCommand(rest) {
+    const input = parseNamedTaskWriteArgs(rest, 'task worktree cleanup');
+    const task = readTask(input.name);
+    const blocked = applyTaskWritePermission({
+      cleaned: false,
+      task: {
+        name: task.name,
+        title: task.title,
+        status: task.status
+      }
+    }, 'task-worktree-cleanup', input.explicit_confirmation);
+
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    const manifest = runtime.readJson(getTaskManifestPath(input.name));
+    const workspaceCleanup = cleanupTaskWorkspace(task);
+    writeTask(input.name, updateTaskTimestamps({
+      ...manifest,
+      worktree_path: null
+    }));
+
+    return permissionGateHelpers.applyPermissionDecision({
+      cleaned: true,
+      task: readTask(input.name),
+      workspace_cleanup: workspaceCleanup
+    }, blocked.permission);
+  }
+
+  function getTaskWorktreeStatus(name) {
+    if (name) {
+      return showTaskWorktree(name);
+    }
+
+    const listed = listTaskWorktrees();
+    return {
+      status: {
+        total: listed.worktrees.length,
+        active: listed.worktrees.filter(item => item.active).length,
+        existing: listed.worktrees.filter(item => item.exists).length,
+        dirty: listed.worktrees.filter(item => item.dirty_files > 0).length
+      },
+      ...listed
+    };
   }
 
   function readTask(name) {
@@ -1632,6 +2086,7 @@ function createTaskCommandHelpers(deps) {
     const workspace = ensureTaskWorkspace(task);
     const manifest = runtime.readJson(getTaskManifestPath(input.name));
     const session = loadSession();
+    const baseBranch = String(manifest.base_branch || '').trim() || resolveDefaultBaseBranch();
     const prdPath = ensureTaskPrd({
       ...manifest,
       name: task.name,
@@ -1656,9 +2111,15 @@ function createTaskCommandHelpers(deps) {
       ...manifest,
       status: 'in_progress',
       current_phase: 1,
+      base_branch: baseBranch,
       worktree_path: workspace.path,
       injected_specs: injected.specs
     }));
+    const activatedTask = readTask(input.name);
+    const registryEntry = upsertTaskWorktreeRegistry(activatedTask, {
+      ...workspace,
+      path: workspace.path
+    });
     CONTEXT_CHANNELS.forEach(channel => {
       const next = uniqueContextEntries([
         {
@@ -1692,8 +2153,9 @@ function createTaskCommandHelpers(deps) {
 
     return permissionGateHelpers.applyPermissionDecision({
       activated: true,
-      task: readTask(input.name),
-      workspace
+      task: activatedTask,
+      workspace,
+      worktree: buildTaskWorktreeState(activatedTask, registryEntry)
     }, blocked.permission);
   }
 
@@ -1976,6 +2438,27 @@ function createTaskCommandHelpers(deps) {
 
     if (subcmd === 'resolve') {
       return resolveTask(rest);
+    }
+
+    if (subcmd === 'worktree' && (!rest[0] || rest[0] === 'list')) {
+      return listTaskWorktrees();
+    }
+
+    if (subcmd === 'worktree' && rest[0] === 'status') {
+      return getTaskWorktreeStatus(rest[1] || '');
+    }
+
+    if (subcmd === 'worktree' && rest[0] === 'show') {
+      if (!rest[1]) throw new Error('Missing task name');
+      return showTaskWorktree(rest[1]);
+    }
+
+    if (subcmd === 'worktree' && rest[0] === 'create') {
+      return createTaskWorktreeCommand(rest.slice(1));
+    }
+
+    if (subcmd === 'worktree' && (rest[0] === 'cleanup' || rest[0] === 'remove')) {
+      return cleanupTaskWorktreeCommand(rest.slice(1));
     }
 
     if (subcmd === 'aar' && (!rest[0] || rest[0] === 'help')) {

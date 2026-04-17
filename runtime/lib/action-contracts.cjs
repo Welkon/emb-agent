@@ -22,6 +22,208 @@ function createActionContractHelpers(deps) {
     getActiveTask
   } = deps;
 
+  function buildCli(args) {
+    return runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, Array.isArray(args) ? args : []);
+  }
+
+  function buildActionFollowup(action, resolved, activeTask) {
+    const blankSelection = resolved && resolved.session
+      ? Boolean(
+          resolved.hardware &&
+            resolved.hardware.selection_mode === 'blank-project'
+        )
+      : false;
+
+    if (action === 'scan') {
+      const nextAction = blankSelection ? 'plan' : 'do';
+      return {
+        label: blankSelection ? 'Continue with plan' : 'Continue with do',
+        cli: buildCli([nextAction]),
+        followup: `Then: ${buildCli(['verify'])}`
+      };
+    }
+
+    if (action === 'plan') {
+      return {
+        label: 'Continue with do',
+        cli: buildCli(['do']),
+        followup: `Then: ${buildCli(['verify'])}`
+      };
+    }
+
+    if (action === 'do') {
+      return {
+        label: 'Continue with verify',
+        cli: buildCli(['verify']),
+        followup: activeTask && activeTask.name
+          ? `Then: ${buildCli(['task', 'aar', 'scan', activeTask.name])}`
+          : ''
+      };
+    }
+
+    if (action === 'debug') {
+      return {
+        label: 'Return to do once the branch is clear',
+        cli: buildCli(['do']),
+        followup: `Then: ${buildCli(['verify'])}`
+      };
+    }
+
+    if (action === 'review') {
+      return {
+        label: 'Continue with do after structural risks are explicit',
+        cli: buildCli(['do']),
+        followup: `Then: ${buildCli(['verify'])}`
+      };
+    }
+
+    if (action === 'verify') {
+      if (activeTask && activeTask.name) {
+        return {
+          label: 'Record the task AAR scan',
+          cli: buildCli(['task', 'aar', 'scan', activeTask.name]),
+          followup: `Then: ${buildCli(['task', 'resolve', activeTask.name])}`
+        };
+      }
+
+      return {
+        label: 'Review remaining closure work',
+        cli: buildCli(['next']),
+        followup: ''
+      };
+    }
+
+    if (action === 'forensics') {
+      return {
+        label: 'Return to debug with the narrowed evidence',
+        cli: buildCli(['debug']),
+        followup: `Then: ${buildCli(['do'])}`
+      };
+    }
+
+    if (action === 'note') {
+      return {
+        label: 'Continue with the default next step',
+        cli: buildCli(['next']),
+        followup: ''
+      };
+    }
+
+    return {
+      label: '',
+      cli: '',
+      followup: ''
+    };
+  }
+
+  function buildActionSummary(action) {
+    switch (action) {
+      case 'scan':
+        return 'Lock the real change surface before mutation.';
+      case 'plan':
+        return 'Lock truth, constraints, and the smallest executable order before mutation.';
+      case 'do':
+        return 'Execute the smallest durable change and keep verification debt explicit.';
+      case 'debug':
+        return 'Eliminate hypotheses one by one before patching.';
+      case 'review':
+        return 'Inspect structural risk without collapsing into style review.';
+      case 'verify':
+        return 'Close evidence item by item and surface any failed or untested gates.';
+      case 'forensics':
+        return 'Converge the problem statement and evidence before choosing the return path.';
+      case 'note':
+        return 'Record stable conclusions only and keep temporary session fragments out.';
+      default:
+        return '';
+    }
+  }
+
+  function buildActionReason(action, output, resolved) {
+    if (action === 'plan') {
+      return output.goal || '';
+    }
+    if (action === 'do' || action === 'debug') {
+      return output.chosen_agent ? `Primary agent: ${output.chosen_agent}` : '';
+    }
+    if (action === 'review') {
+      return Array.isArray(output.axes) && output.axes.length > 0
+        ? `Primary review axis: ${output.axes[0]}`
+        : '';
+    }
+    if (action === 'verify') {
+      return output.closure_status || output.next_step || '';
+    }
+    if (action === 'scan') {
+      return Array.isArray(output.key_facts) && output.key_facts.length > 0
+        ? output.key_facts[0]
+        : '';
+    }
+    if (action === 'forensics' || action === 'note') {
+      return output.next_step || output.problem || output.chosen_agent || '';
+    }
+    return resolved && resolved.session && resolved.session.focus
+      ? resolved.session.focus
+      : '';
+  }
+
+  function buildActionInstruction(action, output) {
+    if (action === 'scan') {
+      return (output.next_reads && output.next_reads[0]) || (output.open_questions && output.open_questions[0]) || '';
+    }
+    if (action === 'plan') {
+      return (output.steps && output.steps[0]) || (output.verification && output.verification[0]) || '';
+    }
+    if (action === 'do') {
+      return (output.execution_brief && output.execution_brief.suggested_steps && output.execution_brief.suggested_steps[0]) ||
+        (output.prerequisites && output.prerequisites[0]) ||
+        '';
+    }
+    if (action === 'debug') {
+      return (output.checks && output.checks[0]) || output.next_step || '';
+    }
+    if (action === 'review') {
+      return (output.required_checks && output.required_checks[0]) || (output.findings_template && output.findings_template[0]) || '';
+    }
+    if (action === 'verify') {
+      return (output.checklist && output.checklist[0]) || output.next_step || '';
+    }
+    if (action === 'forensics') {
+      return (output.evidence_sources && output.evidence_sources[0]) || output.next_step || '';
+    }
+    if (action === 'note') {
+      return (output.recordable_items && output.recordable_items[0]) || '';
+    }
+    return '';
+  }
+
+  function buildActionCard(action, output, resolved, activeTask) {
+    const followup = buildActionFollowup(action, resolved, activeTask);
+    const instruction = buildActionInstruction(action, output);
+
+    return {
+      status: 'ready-to-run',
+      stage: action,
+      action: followup.label || `Continue with ${action}`,
+      summary: buildActionSummary(action),
+      reason: buildActionReason(action, output, resolved),
+      first_step_label: followup.label || '',
+      first_instruction: instruction,
+      first_cli: followup.cli || '',
+      then_cli: '',
+      followup: followup.followup || ''
+    };
+  }
+
+  function buildActionNextActions(actionCard, output) {
+    return runtime.unique([
+      actionCard && actionCard.first_instruction ? `First: ${actionCard.first_instruction}` : '',
+      actionCard && actionCard.first_cli ? `Suggested next command: ${actionCard.first_cli}` : '',
+      actionCard && actionCard.followup ? actionCard.followup : '',
+      output && output.next_step ? `Keep this as the next decision point: ${output.next_step}` : ''
+    ]);
+  }
+
   function normalizeStringArray(value, fallback) {
     const items = Array.isArray(value)
       ? value.map(item => String(item || '').trim()).filter(Boolean)
@@ -170,8 +372,12 @@ function createActionContractHelpers(deps) {
       context_hygiene: buildContextHygiene(resolved, handoff, action)
     }, resolved);
 
+    const actionCard = buildActionCard(action, enriched, resolved, activeTask);
+
     return {
       ...enriched,
+      action_card: actionCard,
+      next_actions: buildActionNextActions(actionCard, enriched),
       permission_gates: permissionGateHelpers.buildPermissionGates(enriched)
     };
   }

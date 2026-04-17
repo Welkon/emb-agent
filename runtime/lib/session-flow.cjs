@@ -74,6 +74,7 @@ function createSessionFlowHelpers(deps) {
     DEFAULT_ARCH_REVIEW_PATTERNS,
     getRuntimeHost,
     resolveSession,
+    getProjectStatePaths,
     getHealthReport,
     getProjectConfig,
     loadHandoff,
@@ -1105,6 +1106,50 @@ function createSessionFlowHelpers(deps) {
     }, resolved);
   }
 
+  function buildNextActionCard(nextCommand, workflowStage, nextActions, health, activeTask) {
+    const command = nextCommand && typeof nextCommand === 'object' ? nextCommand : {};
+    const stage = workflowStage && typeof workflowStage === 'object' ? workflowStage : {};
+    const quickstart = command.health_quickstart && typeof command.health_quickstart === 'object'
+      ? command.health_quickstart
+      : {};
+    const firstQuickstartStep = Array.isArray(quickstart.steps) && quickstart.steps.length > 0
+      ? quickstart.steps[0]
+      : null;
+    const followupCli = String(quickstart.followup || '').replace(/^Then:\s*/i, '').trim();
+    const actionName = command.gated_by_health
+      ? 'Close health blockers'
+      : `Continue with ${command.command || 'next'}`;
+    const firstLabel = command.gated_by_health
+      ? (firstQuickstartStep && firstQuickstartStep.label ? firstQuickstartStep.label : 'Run health closure first')
+      : `Run ${command.command || 'next'}`;
+    const firstInstruction = command.gated_by_health
+      ? (quickstart.user_summary || nextActions[0] || '')
+      : (nextActions[0] || '');
+    const firstCli = firstQuickstartStep && firstQuickstartStep.cli
+      ? firstQuickstartStep.cli
+      : (command.cli || '');
+    const followup = command.gated_by_health
+      ? (quickstart.followup || nextActions[1] || '')
+      : (
+          activeTask && activeTask.name && command.command === 'verify'
+            ? `Then: ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['task', 'aar', 'scan', activeTask.name])}`
+            : (nextActions[1] || '')
+        );
+
+    return {
+      status: command.gated_by_health ? 'blocked-by-health' : 'ready-to-run',
+      stage: stage.name || command.command || '',
+      action: actionName,
+      summary: command.reason || stage.why || '',
+      reason: stage.why || '',
+      first_step_label: firstLabel,
+      first_instruction: firstInstruction,
+      first_cli: firstCli,
+      then_cli: followupCli || '',
+      followup
+    };
+  }
+
   function buildNextContext() {
     const resolved = resolveSession();
     const handoff = loadHandoff();
@@ -1214,6 +1259,11 @@ function createSessionFlowHelpers(deps) {
         schematic_analysis: guidance.schematic_analysis,
         tool_recommendation: guidance.primary_tool_recommendation
       },
+      action_card: buildNextActionCard({
+        ...nextCommand,
+        cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [nextCommand.command]),
+        gated_by_health: gatedByHealth
+      }, workflowStage, nextActions, health, activeTask),
       workflow_stage: workflowStage,
       context_hygiene: contextHygiene,
       next_actions: nextActions
@@ -1282,6 +1332,12 @@ function createSessionFlowHelpers(deps) {
       quality_gates: qualityGates
     });
     const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
+    const statePaths = typeof getProjectStatePaths === 'function' ? getProjectStatePaths() : null;
+    const sessionState = statePaths
+      ? runtime.buildSessionStateView(statePaths, {
+          projectRoot: resolved.session.project_root
+        })
+      : null;
 
     return enrichWithToolSuggestions({
       session_version: resolved.session.session_version,
@@ -1307,6 +1363,7 @@ function createSessionFlowHelpers(deps) {
           ? resolved.session.diagnostics.delegation_runtime
           : null,
       memory_summary: buildMemorySummaryView(memorySummary),
+      session_state: sessionState,
       quality_gates: qualityGates,
       permission_gates: permissionGates,
       injected_specs: injectedSpecs,

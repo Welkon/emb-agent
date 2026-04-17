@@ -545,6 +545,15 @@ function buildDraftFacts(identity, args, markdown) {
   };
 }
 
+function emitUiEvent(options, event, payload) {
+  const ui = options && options.ui;
+  if (!ui || typeof ui.emit !== 'function') {
+    return;
+  }
+
+  ui.emit(event, payload || {});
+}
+
 async function ingestDoc(argv, options) {
   const args = parseArgs(argv || []);
   if (args.help) {
@@ -588,6 +597,10 @@ async function ingestDoc(argv, options) {
     fs.existsSync(markdownPath) &&
     fs.existsSync(metadataPath)
   ) {
+    emitUiEvent(options, 'doc-cache-hit', {
+      doc_id: identity.doc_id,
+      provider: args.provider
+    });
     return withDocIngestSemantics(cached, {
       domain: 'doc',
       cached: true,
@@ -608,6 +621,10 @@ async function ingestDoc(argv, options) {
     });
   }
 
+  emitUiEvent(options, 'doc-parse-start', {
+    doc_id: identity.doc_id,
+    provider: args.provider
+  });
   const parsed = await provider.parseDocument(
     {
       file_path: identity.absolute_path,
@@ -621,6 +638,10 @@ async function ingestDoc(argv, options) {
     integration,
     options || {}
   );
+  emitUiEvent(options, 'doc-parse-finished', {
+    doc_id: identity.doc_id,
+    provider: args.provider
+  });
 
   const draftArtifacts = buildDraftFacts(identity, {
     ...args,
@@ -629,6 +650,9 @@ async function ingestDoc(argv, options) {
   const serializedDraftArtifacts = serializeDraftArtifacts(draftArtifacts);
   const draftJsonArtifacts = buildDraftJsonArtifacts(draftArtifacts);
 
+  emitUiEvent(options, 'doc-cache-write', {
+    doc_id: identity.doc_id
+  });
   docCache.writeDocumentArtifacts(projectRoot, identity.doc_id, {
     'source.json': {
       provider: args.provider,
@@ -671,6 +695,9 @@ async function ingestDoc(argv, options) {
       : ''
   };
 
+  emitUiEvent(options, 'doc-index-update', {
+    doc_id: identity.doc_id
+  });
   docCache.upsertDocumentIndex(projectRoot, {
     doc_id: identity.doc_id,
     provider: args.provider,
@@ -1458,6 +1485,10 @@ async function applyDoc(argv, options) {
     return blocked;
   }
 
+  emitUiEvent(options, 'doc-apply-start', {
+    doc_id: args.docId,
+    to: resolvedApply.to
+  });
   if (shouldSkipApply(entry, resolvedApply.to, selectedFields, resolvedApply.force)) {
     return applyDocPermission({
       ...buildDocApplySemantics(resolvedApply.to, truthFile, false, 'already-applied'),

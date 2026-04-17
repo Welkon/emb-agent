@@ -22,6 +22,11 @@ function createCliEntryHelpers(deps) {
     ingestDocCli,
     ingestSchematicCli
   } = deps;
+
+  function toArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
   function parseScalar(content, key) {
     const line = String(content || '')
       .split(/\r?\n/)
@@ -531,197 +536,287 @@ function createCliEntryHelpers(deps) {
     };
   }
 
-  function usage(options) {
+  function buildUsagePayload(options) {
     const advanced = Boolean(options && options.advanced);
-    const coreLines = [
-      'emb-agent usage:',
-      'Global option: --brief outputs compact JSON (recommended for action commands such as next/plan/review/verify)',
-      'Core workflow:',
-      '  start',
-      '  declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
-      '    [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
-      '    [--peripheral <name> --usage <text>]',
-      '  task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
-      '  task activate [--confirm] <name>',
-      '  next [run]',
-      '  ingest doc --file <path> [--provider mineru] [--kind datasheet] [--title <text>] [--pages <range>] [--language ch|en] [--ocr] [--force] [--to hardware|requirements]',
-      '  ingest schematic --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force]',
-      '  task show <name>',
-      '  task resolve [--confirm] <name> [note]',
-      '',
-      'Useful follow-ups:',
-      '  scan',
-      '  plan',
-      '  do',
-      '  debug',
-      '  verify',
-      '  bootstrap [run [--confirm]]',
-      '  pause [note]',
-      '  resume',
-      '  external <start|status|next|health|dispatch-next>',
-      '',
-      'Show the full command set:',
-      '  help advanced',
-      '  help --all',
-      '  --help --all'
+    const compactSections = [
+      {
+        title: 'Start here',
+        entries: [
+          'start',
+          'next [run]',
+          'task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
+          'task activate [--confirm] <name>',
+          'task worktree <list|status|show|create|cleanup> [name]'
+        ]
+      },
+      {
+        title: 'Import truth',
+        entries: [
+          'declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
+          '  [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
+          '  [--peripheral <name> --usage <text>]',
+          'ingest doc --file <path> [--provider mineru] [--kind datasheet] [--title <text>] [--pages <range>] [--language ch|en] [--ocr] [--force] [--to hardware|requirements]',
+          'ingest schematic --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force]'
+        ]
+      },
+      {
+        title: 'Execute current work',
+        entries: [
+          'scan',
+          'plan',
+          'do',
+          'debug'
+        ]
+      },
+      {
+        title: 'Close and hand off',
+        entries: [
+          'review',
+          'verify',
+          'bootstrap [run [--confirm]]',
+          'task show <name>',
+          'task resolve [--confirm] <name> [note]',
+          'pause [note]',
+          'resume',
+          'external <start|status|next|health|dispatch-next>'
+        ]
+      }
     ];
 
-    const advancedLines = [
-      'Advanced commands:',
-      '',
-      'Truth and document intake:',
-      '  ingest hardware [--confirm] [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
-      '    [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
-      '    [--peripheral <name> --usage <text>]',
-      '  ingest requirements [--confirm] [--goal <text>] [--feature <text>] [--constraint <text>] [--accept <text>] [--failure <text>] [--unknown <text>] [--source <path>]',
-      '  ingest apply doc <doc-id> [--confirm] --to hardware|requirements [--only field1,field2] [--force]',
-      '  ingest apply doc <doc-id> --from-last-diff',
-      '  ingest apply doc <doc-id> --preset <name>',
-      '  ingest schematic --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force]',
-      '  doc list',
-      '  doc lookup [--chip <name>] [--vendor <name>] [--package <name>] [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--limit <n>]',
-      '  doc fetch --url <http(s)-url> [--output <path>] [--confirm]',
-      '  doc show <doc-id> [--preset <name>] [--apply-ready]',
-      '  doc diff [--confirm] <doc-id> --to hardware|requirements [--only field1,field2] [--force] [--save-as <name>]',
-      '  component lookup [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--provider local|szlcsc] [--limit <n>]',
-      '',
-      'Bootstrap and project state:',
-      '  status',
-      '  bootstrap [run [--confirm]]',
-      '  health',
-      '  external <start|status|next|health|dispatch-next>',
-      '  update [check]',
-      '  project show [--effective] [--field <path>]',
-      '  project set [--confirm] --field <path> --value <json-or-string>',
-      '  settings show',
-      '  settings set <key> <value>',
-      '  settings reset',
-      '  config show',
-      '  session show',
-      '  session-report [--confirm] [summary]',
-      '',
-      'Execution support and closure:',
-      '  context compress [note]',
-      '  context show',
-      '  context clear',
-      '  executor list',
-      '  executor show <name>',
-      '  executor run <name> [--confirm] [-- <args...>]',
-      '  scan save [--confirm] <target> <summary> [--fact <text>] [--question <text>] [--read <text>]',
-      '  plan save [--confirm] <summary> [--target <target>] [--risk <text>] [--step <text>] [--verify <text>]',
-      '  arch-review',
-      '  review',
-      '  review context',
-      '  review axes',
-      '  review save [--confirm] <summary> [--scope <text>] [--finding <text>] [--check <text>]',
-      '  verify save [--confirm] <summary> [--target <target>] [--check <text>] [--result <text>] [--evidence <text>] [--followup <text>]',
-      '  verify confirm [--confirm] <name> [note]',
-      '  verify reject [--confirm] <name> [note]',
-      '  note',
-      '  note targets',
-      '  note add [--confirm] <target> <summary> [--kind <kind>] [--evidence <text>] [--unverified <text>]',
-      '  resolve',
-      '',
-      'Task, skills, and memory:',
-      '  task list',
-      '  task context list <name> [implement|check|debug|all]',
-      '  task context add [--confirm] <name> <implement|check|debug> <path> [reason]',
-      '  pause show',
-      '  pause clear',
-      '  skills list',
-      '  skills show <name>',
-      '  skills run <name> [--isolated] [input]',
-      '  memory stack',
-      '  memory list',
-      '  memory show <entry>',
-      '  memory remember [--confirm] --type <user|feedback|project|reference> <summary> [--detail <text>]',
-      '  memory extract [--confirm] [note]',
-      '  memory audit',
-      '  memory promote [--confirm] <entry> --to <organization|user|project|local>',
-      '',
-      'Workflow and scaffold authoring:',
-      '  spec list',
-      '  spec show <name>',
-      '  workflow init [--force]',
-      '  workflow list',
-      '  workflow show registry',
-      '  workflow show <pack|spec|template> <name>',
-      '  workflow new pack <name> [--with-spec [<name>]] [--with-template [<name>]] [--output <path>] [--force]',
-      '  workflow new spec <name> [--pack <name>|--always] [--force]',
-      '  workflow new template <name> [--output <path>] [--force]',
-      '  scaffold list',
-      '  scaffold show <name>',
-      '  scaffold install <name> [output] [--force] [KEY=VALUE ...]',
-      '  profile list',
-      '  profile show <name>',
-      '  profile set <name>',
-      '  pack list',
-      '  pack show <name>',
-      '  pack add <name>',
-      '  pack remove <name>',
-      '  pack clear',
-      '',
-      'Delegation and chip support runtime:',
-      '  dispatch show <action>',
-      '  dispatch next',
-      '  dispatch launch [next|<action>]',
-      '  dispatch collect',
-      '  dispatch run [next|<action>]',
-      '  schedule show <action>',
-      '  orchestrate [next]',
-      '  orchestrate launch [next|<action>]',
-      '  orchestrate collect',
-      '  orchestrate run [next|<action>]',
-      '  orchestrate show <action>',
-      '  prefs show',
-      '  prefs set <key> <value>',
-      '  prefs reset',
-      '  support status [<name>]',
-      '  support source list',
-      '  support source show <name>',
-      '  support source add <name> [--confirm] --type path|git --location <path-or-url> [--branch <name>] [--subdir <path>] [--disabled]',
-      '  support source remove <name> [--confirm]',
-      '  support bootstrap [<name>] [--confirm] [--type path|git --location <path-or-url>] [--branch <name>] [--subdir <path>] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
-      '  support sync <name> [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
-      '  support sync --all [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
-      '  support derive [--confirm] [--from-project] [--from-doc <doc-id>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',
-      '  support generate [--confirm] [--from-project] [--from-doc <doc-id>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] --output-root <path> [--force]',
-      '  tool list',
-      '  tool show <name>',
-      '  tool run <name> [--confirm] [--family <name>] [--device <name>] [tool options]',
-      '  tool family list',
-      '  tool family show <name>',
-      '  tool device list',
-      '  tool device show <name>',
-      '  chip list',
-      '  chip show <name>',
-      '',
-      'Inspection and discovery:',
-      '  agents list',
-      '  agents show <name>',
-      '  commands list',
-      '  commands list --all',
-      '  commands show <name>',
-      '  focus get',
-      '  focus set <text>',
-      '  last-files list',
-      '  last-files add <path>',
-      '  last-files remove <path>',
-      '  last-files clear',
-      '  question list',
-      '  question add <text>',
-      '  question remove <text>',
-      '  question clear',
-      '  risk list',
-      '  risk add <text>',
-      '  risk remove <text>',
-      '  risk clear',
-      '  help'
+    const advancedSections = [
+      {
+        title: 'Truth and document intake',
+        entries: [
+          'ingest hardware [--confirm] [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
+          '  [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
+          '  [--peripheral <name> --usage <text>]',
+          'ingest requirements [--confirm] [--goal <text>] [--feature <text>] [--constraint <text>] [--accept <text>] [--failure <text>] [--unknown <text>] [--source <path>]',
+          'ingest apply doc <doc-id> [--confirm] --to hardware|requirements [--only field1,field2] [--force]',
+          'ingest apply doc <doc-id> --from-last-diff',
+          'ingest apply doc <doc-id> --preset <name>',
+          'ingest schematic --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force]',
+          'doc list',
+          'doc lookup [--chip <name>] [--vendor <name>] [--package <name>] [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--limit <n>]',
+          'doc fetch --url <http(s)-url> [--output <path>] [--confirm]',
+          'doc show <doc-id> [--preset <name>] [--apply-ready]',
+          'doc diff [--confirm] <doc-id> --to hardware|requirements [--only field1,field2] [--force] [--save-as <name>]',
+          'component lookup [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--provider local|szlcsc] [--limit <n>]'
+        ]
+      },
+      {
+        title: 'Bootstrap and project state',
+        entries: [
+          'status',
+          'bootstrap [run [--confirm]]',
+          'health',
+          'external <start|status|next|health|dispatch-next>',
+          'update [check]',
+          'project show [--effective] [--field <path>]',
+          'project set [--confirm] --field <path> --value <json-or-string>',
+          'settings show',
+          'settings set <key> <value>',
+          'settings reset',
+          'config show',
+          'session show',
+          'session-report [--confirm] [summary]'
+        ]
+      },
+      {
+        title: 'Execution support and closure',
+        entries: [
+          'context compress [note]',
+          'context show',
+          'context clear',
+          'executor list',
+          'executor show <name>',
+          'executor run <name> [--confirm] [-- <args...>]',
+          'scan save [--confirm] <target> <summary> [--fact <text>] [--question <text>] [--read <text>]',
+          'plan save [--confirm] <summary> [--target <target>] [--risk <text>] [--step <text>] [--verify <text>]',
+          'arch-review',
+          'review',
+          'review context',
+          'review axes',
+          'review save [--confirm] <summary> [--scope <text>] [--finding <text>] [--check <text>]',
+          'verify save [--confirm] <summary> [--target <target>] [--check <text>] [--result <text>] [--evidence <text>] [--followup <text>]',
+          'verify confirm [--confirm] <name> [note]',
+          'verify reject [--confirm] <name> [note]',
+          'note',
+          'note targets',
+          'note add [--confirm] <target> <summary> [--kind <kind>] [--evidence <text>] [--unverified <text>]',
+          'resolve'
+        ]
+      },
+      {
+        title: 'Task, skills, and memory',
+        entries: [
+          'task list',
+          'task context list <name> [implement|check|debug|all]',
+          'task context add [--confirm] <name> <implement|check|debug> <path> [reason]',
+          'pause show',
+          'pause clear',
+          'skills list',
+          'skills show <name>',
+          'skills run <name> [--isolated] [input]',
+          'memory stack',
+          'memory list',
+          'memory show <entry>',
+          'memory remember [--confirm] --type <user|feedback|project|reference> <summary> [--detail <text>]',
+          'memory extract [--confirm] [note]',
+          'memory audit',
+          'memory promote [--confirm] <entry> --to <organization|user|project|local>'
+        ]
+      },
+      {
+        title: 'Workflow and scaffold authoring',
+        entries: [
+          'spec list',
+          'spec show <name>',
+          'workflow init [--force]',
+          'workflow list',
+          'workflow show registry',
+          'workflow show <pack|spec|template> <name>',
+          'workflow new pack <name> [--with-spec [<name>]] [--with-template [<name>]] [--output <path>] [--force]',
+          'workflow new spec <name> [--pack <name>|--always] [--force]',
+          'workflow new template <name> [--output <path>] [--force]',
+          'scaffold list',
+          'scaffold show <name>',
+          'scaffold install <name> [output] [--force] [KEY=VALUE ...]',
+          'profile list',
+          'profile show <name>',
+          'profile set <name>',
+          'pack list',
+          'pack show <name>',
+          'pack add <name>',
+          'pack remove <name>',
+          'pack clear'
+        ]
+      },
+      {
+        title: 'Delegation and chip support runtime',
+        entries: [
+          'dispatch show <action>',
+          'dispatch next',
+          'dispatch launch [next|<action>]',
+          'dispatch collect',
+          'dispatch run [next|<action>]',
+          'schedule show <action>',
+          'orchestrate [next]',
+          'orchestrate launch [next|<action>]',
+          'orchestrate collect',
+          'orchestrate run [next|<action>]',
+          'orchestrate show <action>',
+          'prefs show',
+          'prefs set <key> <value>',
+          'prefs reset',
+          'support status [<name>]',
+          'support source list',
+          'support source show <name>',
+          'support source add <name> [--confirm] --type path|git --location <path-or-url> [--branch <name>] [--subdir <path>] [--disabled]',
+          'support source remove <name> [--confirm]',
+          'support bootstrap [<name>] [--confirm] [--type path|git --location <path-or-url>] [--branch <name>] [--subdir <path>] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
+          'support sync <name> [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
+          'support sync --all [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
+          'support derive [--confirm] [--from-project] [--from-doc <doc-id>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',
+          'support generate [--confirm] [--from-project] [--from-doc <doc-id>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] --output-root <path> [--force]',
+          'tool list',
+          'tool show <name>',
+          'tool run <name> [--confirm] [--family <name>] [--device <name>] [tool options]',
+          'tool family list',
+          'tool family show <name>',
+          'tool device list',
+          'tool device show <name>',
+          'chip list',
+          'chip show <name>'
+        ]
+      },
+      {
+        title: 'Inspection and discovery',
+        entries: [
+          'agents list',
+          'agents show <name>',
+          'commands list',
+          'commands list --all',
+          'commands show <name>',
+          'focus get',
+          'focus set <text>',
+          'last-files list',
+          'last-files add <path>',
+          'last-files remove <path>',
+          'last-files clear',
+          'question list',
+          'question add <text>',
+          'question remove <text>',
+          'question clear',
+          'risk list',
+          'risk add <text>',
+          'risk remove <text>',
+          'risk clear',
+          'help'
+        ]
+      }
     ];
 
-    process.stdout.write(
-      [...coreLines, ...(advanced ? ['', ...advancedLines] : [])].join('\n') + '\n'
+    return {
+      entry: 'help',
+      mode: advanced ? 'advanced' : 'compact',
+      global_options: [
+        {
+          flag: '--json',
+          description: 'outputs structured JSON for help/usage and keeps command responses explicit for automation'
+        },
+        {
+          flag: '--brief',
+          description: 'outputs compact JSON (recommended for action commands such as next/plan/review/verify)'
+        }
+      ],
+      sections: advanced ? advancedSections : compactSections,
+      followups: advanced
+        ? []
+        : ['help advanced', 'help --all', '--help --all']
+    };
+  }
+
+  function renderUsageText(payload) {
+    const helpPayload = payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload
+      : buildUsagePayload();
+    const lines = [
+      'emb-agent usage:'
+    ];
+
+    if (helpPayload.mode === 'advanced') {
+      lines.push('Advanced commands:');
+    }
+
+    lines.push(
+      ...toArray(helpPayload.global_options).map(item => `Global option: ${item.flag} ${item.description}`)
     );
+
+    toArray(helpPayload.sections).forEach(section => {
+      lines.push(section.title + ':');
+      toArray(section.entries).forEach(entry => {
+        lines.push(entry.startsWith('  ') ? entry : `  ${entry}`);
+      });
+      lines.push('');
+    });
+
+    if (toArray(helpPayload.followups).length > 0) {
+      lines.push('Show the full command set:');
+      toArray(helpPayload.followups).forEach(entry => {
+        lines.push(`  ${entry}`);
+      });
+      lines.push('');
+    }
+
+    while (lines.length > 0 && lines[lines.length - 1] === '') {
+      lines.pop();
+    }
+
+    return lines.join('\n') + '\n';
+  }
+
+  function usage(options) {
+    process.stdout.write(renderUsageText(buildUsagePayload(options)));
   }
 
   function buildStartWorkflow(initGuidance, options) {
@@ -949,6 +1044,7 @@ function createCliEntryHelpers(deps) {
     buildInitGuidance,
     buildBootstrapSummary,
     buildStartWorkflow,
+    buildUsagePayload,
     usage,
     runInitCommand,
     runIngestCommand

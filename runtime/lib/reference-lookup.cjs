@@ -767,7 +767,15 @@ function requestWithRedirect(url, redirectsLeft) {
   });
 }
 
-async function fetchDocument(projectRootInput, argv) {
+function emitUiEvent(options, event, payload) {
+  const ui = options && options.ui;
+  if (!ui || typeof ui.emit !== 'function') {
+    return;
+  }
+  ui.emit(event, payload || {});
+}
+
+async function fetchDocument(projectRootInput, argv, options) {
   const args = Array.isArray(argv) ? parseDocFetchArgs(argv) : (argv || {});
   if (args.help) {
     return {
@@ -780,12 +788,22 @@ async function fetchDocument(projectRootInput, argv) {
   const outputPath = resolveFetchOutput(projectRoot, args);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
+  emitUiEvent(options, 'doc-fetch-start', {
+    url: args.url,
+    output: normalizePath(path.relative(projectRoot, outputPath))
+  });
   const { url, response } = await requestWithRedirect(args.url, 5);
+  emitUiEvent(options, 'doc-fetch-response', {
+    url
+  });
   const tempPath = `${outputPath}.part`;
 
   try {
     await new Promise((resolve, reject) => {
       const stream = fs.createWriteStream(tempPath);
+      emitUiEvent(options, 'doc-fetch-write', {
+        output: normalizePath(path.relative(projectRoot, outputPath))
+      });
       response.pipe(stream);
       response.on('error', reject);
       stream.on('error', reject);
@@ -800,6 +818,10 @@ async function fetchDocument(projectRootInput, argv) {
   }
 
   const relativeOutput = normalizePath(path.relative(projectRoot, outputPath));
+  emitUiEvent(options, 'doc-fetch-finished', {
+    output: relativeOutput,
+    size_bytes: fs.statSync(outputPath).size
+  });
   return {
     command: 'doc fetch',
     downloaded: true,

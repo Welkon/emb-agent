@@ -151,10 +151,16 @@ function createExternalAgentHelpers() {
     });
   }
 
-  function buildStatusProtocol(runtimeHost) {
+  function buildStatusProtocol(runtimeHost, payload) {
+    const source = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+
     return buildEnvelope('status', runtimeHost, {
       status: 'inspection',
       summary: 'Use next to continue the workflow.',
+      session_state:
+        source.session_state && typeof source.session_state === 'object' && !Array.isArray(source.session_state)
+          ? source.session_state
+          : undefined,
       next: {
         cli: buildRecommendedCli(runtimeHost, '', 'next')
       }

@@ -46,5 +46,9 @@
     "bench:brief": "node benchmarks/brief-benchmark.cjs",
     "pack:dry-run": "npm pack --dry-run",
     "release:check": "node scripts/release-check.cjs"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "ora": "^5.4.1"
   }
 }

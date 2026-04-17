@@ -12,41 +12,102 @@ function normalizeArgv(argv) {
   return Array.isArray(argv) ? argv.map(item => String(item)) : [];
 }
 
-function resolveHelpMode(argv) {
+function resolveHelpRequest(argv) {
   const args = normalizeArgv(argv);
-  if (args.length === 0) {
-    return 'compact';
+  const filtered = [];
+  let json = false;
+
+  args.forEach(arg => {
+    if (arg === '--json') {
+      json = true;
+      return;
+    }
+    filtered.push(arg);
+  });
+
+  if (filtered.length === 0) {
+    return {
+      mode: 'compact',
+      json
+    };
   }
 
-  if (args.length === 1 && (args[0] === 'help' || args[0] === '--help')) {
-    return 'compact';
+  if (filtered.length === 1 && (filtered[0] === 'help' || filtered[0] === '--help')) {
+    return {
+      mode: 'compact',
+      json
+    };
   }
 
   if (
-    args.length === 2 &&
-    ((args[0] === 'help' && (args[1] === 'advanced' || args[1] === '--all')) ||
-      (args[0] === '--help' && args[1] === '--all'))
+    filtered.length === 2 &&
+    ((filtered[0] === 'help' && (filtered[1] === 'advanced' || filtered[1] === '--all')) ||
+      (filtered[0] === '--help' && filtered[1] === '--all'))
   ) {
-    return 'advanced';
+    return {
+      mode: 'advanced',
+      json
+    };
   }
 
-  return '';
+  return {
+    mode: '',
+    json
+  };
 }
 
-function renderUsage(mode) {
+function resolveHelpMode(argv) {
+  return resolveHelpRequest(argv).mode;
+}
+
+function renderUsage(mode, options) {
+  const settings = options && typeof options === 'object' ? options : {};
   const cliEntryHelpers = require(path.join(ROOT, 'lib', 'cli-entrypoints.cjs'));
-  const { usage } = cliEntryHelpers.createCliEntryHelpers({ process });
+  const {
+    usage,
+    buildUsagePayload
+  } = cliEntryHelpers.createCliEntryHelpers({ process });
+
+  if (settings.json) {
+    process.stdout.write(JSON.stringify(buildUsagePayload({ advanced: mode === 'advanced' }), null, 2) + '\n');
+    return;
+  }
+
   usage({ advanced: mode === 'advanced' });
 }
 
 function runFastPath(argv) {
-  const mode = resolveHelpMode(argv);
-  if (!mode) {
+  const request = resolveHelpRequest(argv);
+  if (!request.mode) {
     return false;
   }
 
-  renderUsage(mode);
+  renderUsage(request.mode, {
+    json: request.json
+  });
   return true;
+}
+
+function isJsonOutputRequested(argv) {
+  const outputModeHelpers = require(path.join(ROOT, 'lib', 'output-mode.cjs'));
+  return outputModeHelpers.parseOutputModeArgs(normalizeArgv(argv)).json === true;
+}
+
+function writeJsonError(error, argv) {
+  process.stdout.write(
+    JSON.stringify(
+      {
+        status: 'error',
+        error: {
+          message: error && error.message ? error.message : String(error || 'Unknown error'),
+          code: error && error.code ? error.code : '',
+          command: normalizeArgv(argv)
+        }
+      },
+      null,
+      2
+    ) + '\n'
+  );
 }
 
 function loadMainModule() {
@@ -70,7 +131,8 @@ const exported = new Proxy(
     main,
     runFastPath,
     loadMainModule,
-    resolveHelpMode
+    resolveHelpMode,
+    resolveHelpRequest
   },
   {
     get(target, prop, receiver) {
@@ -105,6 +167,11 @@ module.exports = exported;
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(error => {
+    if (isJsonOutputRequested(process.argv.slice(2))) {
+      writeJsonError(error, process.argv.slice(2));
+      process.exit(1);
+      return;
+    }
     process.stderr.write(`emb-agent error: ${error.message}\n`);
     process.exit(1);
   });

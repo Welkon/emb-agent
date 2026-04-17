@@ -120,6 +120,19 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
+  function formatStateEvidencePath(projectRoot, filePath) {
+    const relativePath = path.relative(projectRoot, filePath || '');
+    if (
+      relativePath &&
+      relativePath !== '.' &&
+      !relativePath.startsWith('..') &&
+      !path.isAbsolute(relativePath)
+    ) {
+      return relativePath;
+    }
+    return path.resolve(filePath || '');
+  }
+
   function buildStartupAutomationSummary(workspaceTrust) {
     const trust = workspaceTrust || {};
     return {
@@ -684,6 +697,15 @@ function createHealthUpdateCommandHelpers(deps) {
     const adapterCacheDir = path.join(projectExtDir, 'cache', 'chip-support-sources');
     const adaptersDir = path.join(projectExtDir, 'chip-support');
     const statePaths = getProjectStatePaths();
+    const stateInspection = runtime.resolveProjectStateInspection
+      ? runtime.resolveProjectStateInspection(statePaths)
+      : {
+          storageMode: statePaths.storageMode || 'primary',
+          sessionPath: statePaths.sessionPath,
+          sessionStorageMode: statePaths.storageMode || 'primary',
+          handoffPath: statePaths.handoffPath,
+          handoffStorageMode: statePaths.storageMode || 'primary'
+        };
     const checks = [];
     const nextCommands = [];
     let projectConfig = null;
@@ -812,9 +834,9 @@ function createHealthUpdateCommandHelpers(deps) {
       );
     });
 
-    if (fs.existsSync(statePaths.sessionPath)) {
+    if (fs.existsSync(stateInspection.sessionPath)) {
       try {
-        rawSession = runtime.readJson(statePaths.sessionPath);
+        rawSession = runtime.readJson(stateInspection.sessionPath);
         normalizedSession = normalizeSession(rawSession, statePaths);
         checks.push(
           createCheck(
@@ -822,7 +844,8 @@ function createHealthUpdateCommandHelpers(deps) {
             'pass',
             'Session state file is readable',
             [
-              path.relative(projectRoot, statePaths.sessionPath),
+              formatStateEvidencePath(projectRoot, stateInspection.sessionPath),
+              `storage_mode=${stateInspection.sessionStorageMode || stateInspection.storageMode || 'primary'}`,
               `last_command=${normalizedSession.last_command || '(empty)'}`,
               `last_files=${(normalizedSession.last_files || []).length}`
             ],
@@ -835,7 +858,11 @@ function createHealthUpdateCommandHelpers(deps) {
             'session_state',
             'fail',
             'Session state file is corrupted',
-            [error.message],
+            [
+              formatStateEvidencePath(projectRoot, stateInspection.sessionPath),
+              `storage_mode=${stateInspection.sessionStorageMode || stateInspection.storageMode || 'primary'}`,
+              error.message
+            ],
             'Delete the corrupted session state, or run init/resume again so emb-agent can rebuild session state.'
           )
         );
@@ -846,7 +873,10 @@ function createHealthUpdateCommandHelpers(deps) {
           'session_state',
           'warn',
           'No session state file has been found yet',
-          [path.relative(projectRoot, statePaths.sessionPath)],
+          [
+            formatStateEvidencePath(projectRoot, stateInspection.sessionPath),
+            `storage_mode=${stateInspection.sessionStorageMode || stateInspection.storageMode || 'primary'}`
+          ],
           'Run start, next, or resume once so emb-agent can establish project session state.'
         )
       );
@@ -862,16 +892,17 @@ function createHealthUpdateCommandHelpers(deps) {
       );
     }
 
-    if (fs.existsSync(statePaths.handoffPath)) {
+    if (fs.existsSync(stateInspection.handoffPath)) {
       try {
-        handoff = runtime.validateHandoff(runtime.readJson(statePaths.handoffPath), RUNTIME_CONFIG);
+        handoff = runtime.validateHandoff(runtime.readJson(stateInspection.handoffPath), RUNTIME_CONFIG);
         checks.push(
           createCheck(
             'handoff_state',
             'warn',
             'An unconsumed handoff exists',
             [
-              path.relative(projectRoot, statePaths.handoffPath),
+              formatStateEvidencePath(projectRoot, stateInspection.handoffPath),
+              `storage_mode=${stateInspection.handoffStorageMode || stateInspection.storageMode || 'primary'}`,
               `next_action=${handoff.next_action || '(empty)'}`,
               `resume_cli=${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume'])}`
             ],
@@ -894,7 +925,11 @@ function createHealthUpdateCommandHelpers(deps) {
             'handoff_state',
             'fail',
             'Handoff state file is corrupted',
-            [error.message],
+            [
+              formatStateEvidencePath(projectRoot, stateInspection.handoffPath),
+              `storage_mode=${stateInspection.handoffStorageMode || stateInspection.storageMode || 'primary'}`,
+              error.message
+            ],
             'Fix or remove the corrupted handoff file so resume does not restore the wrong context.'
           )
         );
@@ -1438,6 +1473,7 @@ function createHealthUpdateCommandHelpers(deps) {
   function buildUpdateView(forceCheck) {
     const projectRoot = resolveProjectRoot();
     const projectExtDir = getProjectExtDir();
+    const statePaths = getProjectStatePaths();
     const projectDataPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
     const hadProjectLayout = fs.existsSync(projectExtDir) || fs.existsSync(projectDataPath);
     const workflowLayout = hadProjectLayout
@@ -1491,6 +1527,9 @@ function createHealthUpdateCommandHelpers(deps) {
     return {
       command: 'update',
       runtime_host: RUNTIME_HOST.name,
+      session_state: runtime.buildSessionStateView(statePaths, {
+        projectRoot
+      }),
       installed_version: installed || '',
       hook_version: hookVersion || '',
       stale_install: staleInstall,
