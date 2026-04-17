@@ -71,6 +71,18 @@ Key fields include:
 task add -> task activate -> task context add -> task aar scan -> task aar record? -> task resolve
 ```
 
+Worktree operations are now available as a first-class companion flow:
+
+```text
+task worktree list
+task worktree status [task-name]
+task worktree show <task-name>
+task worktree create <task-name>
+task worktree cleanup <task-name>
+```
+
+`task activate` and `task resolve` still create and cleanup the task workspace automatically, but the worktree lifecycle can now be managed independently when you need Trellis-style inspection or pre-provisioning.
+
 Example:
 
 ```bash

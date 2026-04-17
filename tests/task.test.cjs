@@ -130,6 +130,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     createAdapterSource(tempSource);
     process.chdir(tempProject);
     await cli.main(['init']);
+    writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: .task-worktrees\n');
     await cli.main(['focus', 'set', 'SC8F072 timer and pwm bring-up']);
     fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
     fs.writeFileSync(path.join(tempProject, 'docs', 'SC8F072.pdf'), 'fake pdf content', 'utf8');
@@ -255,9 +256,19 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(activated.workspace.mode, 'copy');
     assert.equal(fs.existsSync(activated.workspace.path), true);
     assert.equal(activated.task.worktree_path, activated.workspace.path);
+    assert.equal(
+      fs.existsSync(path.join(activated.workspace.path, '.emb-agent', 'tasks', taskName, 'task.json')),
+      true
+    );
+    assert.equal(
+      fs.readFileSync(path.join(activated.workspace.path, '.emb-agent', '.current-task'), 'utf8').trim(),
+      taskName
+    );
     assert.ok(activated.task.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(activated.task.artifacts.prd, `.emb-agent/tasks/${taskName}/prd.md`);
     assert.equal(fs.existsSync(path.join(activated.workspace.path, 'docs', 'SC8F072.pdf')), true);
+    assert.equal(activated.worktree.exists, true);
+    assert.equal(activated.worktree.current_task, taskName);
     assert.equal(cli.loadSession().active_task.name, taskName);
     assert.equal(cli.loadSession().active_task.status, 'in_progress');
     assert.equal(
@@ -281,6 +292,14 @@ test('task commands create activate manage context and resolve lightweight tasks
     const listedContext = await captureCliJson(['task', 'context', 'list', taskName, 'implement']);
     assert.equal(listedContext.channel, 'implement');
     assert.ok(listedContext.entries.some(item => item.path === 'src/timer.c'));
+
+    const listedWorktrees = await captureCliJson(['task', 'worktree', 'list']);
+    assert.ok(listedWorktrees.worktrees.some(item => item.task_name === taskName && item.exists === true));
+
+    const worktreeStatus = await captureCliJson(['task', 'worktree', 'status', taskName]);
+    assert.equal(worktreeStatus.worktree.task_name, taskName);
+    assert.equal(worktreeStatus.worktree.exists, true);
+    assert.equal(worktreeStatus.worktree.current_task, taskName);
 
     const resume = await captureCliJson(['resume']);
     assert.equal(resume.task.name, taskName);
@@ -333,6 +352,9 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(fs.existsSync(activated.workspace.path), false);
     assert.equal(cli.loadSession().active_task.name, '');
     assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
+
+    const listedAfterResolve = await captureCliJson(['task', 'worktree', 'list']);
+    assert.equal(listedAfterResolve.worktrees.some(item => item.task_name === taskName), false);
   } finally {
     process.chdir(currentCwd);
   }
@@ -346,6 +368,7 @@ test('task activate creates a real git worktree when the project is a git reposi
     process.chdir(tempProject);
     writeText(path.join(tempProject, 'src', 'main.c'), '// main\n');
     await cli.main(['init']);
+    writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: .task-worktrees\n');
     initGitRepo(tempProject);
 
     const created = await captureCliJson(['task', 'add', 'Investigate irq race']);
@@ -378,6 +401,54 @@ test('task activate creates a real git worktree when the project is a git reposi
   }
 });
 
+test('task worktree create and cleanup expose trellis-style workspace lifecycle for git projects', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-worktree-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    writeText(path.join(tempProject, 'src', 'main.c'), '// main\n');
+    await cli.main(['init']);
+    writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: .task-worktrees\n');
+    initGitRepo(tempProject);
+
+    const created = await captureCliJson(['task', 'add', 'Inspect worktree lifecycle']);
+    const taskName = created.task.name;
+
+    const provisioned = await captureCliJson(['task', 'worktree', 'create', taskName]);
+    assert.equal(provisioned.created, true);
+    assert.equal(provisioned.task.status, 'planning');
+    assert.equal(provisioned.worktree.exists, true);
+    assert.equal(
+      fs.existsSync(path.join(provisioned.workspace.path, '.emb-agent', 'tasks', taskName, 'task.json')),
+      true
+    );
+    assert.equal(
+      fs.readFileSync(path.join(provisioned.workspace.path, '.emb-agent', '.current-task'), 'utf8').trim(),
+      taskName
+    );
+
+    const registryPath = path.join(tempProject, '.emb-agent', 'registry', 'worktrees.json');
+    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    assert.ok(registry.worktrees.some(item => item.task_name === taskName));
+
+    const shown = await captureCliJson(['task', 'worktree', 'show', taskName]);
+    assert.equal(shown.worktree.task_name, taskName);
+    assert.equal(shown.worktree.exists, true);
+    assert.equal(shown.worktree.current_task, taskName);
+
+    const cleaned = await captureCliJson(['task', 'worktree', 'cleanup', taskName]);
+    assert.equal(cleaned.cleaned, true);
+    assert.equal(cleaned.task.worktree_path, null);
+    assert.equal(fs.existsSync(provisioned.workspace.path), false);
+
+    const registryAfter = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    assert.equal(registryAfter.worktrees.some(item => item.task_name === taskName), false);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('task aar record is required when the scan finds a new lesson', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-aar-'));
   const currentCwd = process.cwd();
@@ -386,6 +457,7 @@ test('task aar record is required when the scan finds a new lesson', async () =>
     process.chdir(tempProject);
     writeText(path.join(tempProject, 'src', 'main.c'), '// main\n');
     await cli.main(['init']);
+    writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: .task-worktrees\n');
 
     const created = await captureCliJson(['task', 'add', 'Document timer gotcha']);
     const taskName = created.task.name;

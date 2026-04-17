@@ -451,6 +451,7 @@ const {
   DEFAULT_ARCH_REVIEW_PATTERNS,
   getRuntimeHost: () => runtimeHost.resolveRuntimeHost(ROOT),
   resolveSession,
+  getProjectStatePaths,
   getHealthReport: () => buildHealthReport(),
   getProjectConfig,
   loadHandoff,
@@ -623,6 +624,7 @@ const {
   buildNextContext,
   buildResumeContext,
   getProjectExtDir,
+  getProjectStatePaths,
   updateSession,
   maybeAutoExtractOnSessionReport
 });
@@ -679,6 +681,7 @@ const {
   loadMarkdown,
   loadSession,
   updateSession,
+  getProjectStatePaths,
   getPreferences,
   getProjectConfig,
   requireRestText,
@@ -838,6 +841,7 @@ const {
   buildInitGuidance,
   buildBootstrapSummary,
   buildStartWorkflow,
+  buildUsagePayload,
   usage,
   runInitCommand,
   runIngestCommand
@@ -979,8 +983,8 @@ const referenceLookupCli = {
       ingestSchematicCli
     });
   },
-  fetchDocument(projectRoot, args) {
-    return referenceLookupHelpers.fetchDocument(projectRoot, args);
+  fetchDocument(projectRoot, args, options) {
+    return referenceLookupHelpers.fetchDocument(projectRoot, args, options);
   }
 };
 
@@ -1082,6 +1086,7 @@ const {
   run: runCliRouter
 } = cliRouterHelpers.createCliRouter({
   process,
+  buildUsagePayload,
   usage,
   printJson,
   runInitCommand,

@@ -20,23 +20,23 @@ Output the emb-agent help summary below and nothing else.
 
 ## Public Commands
 
-The public command surface is intentionally small.
+The public command surface is intentionally small and grouped by default path.
 
-### Start
+### Start Here
 
 - `$emb-start`
+- `$emb-task`
 - `$emb-ingest`
 - `$emb-next`
-- `$emb-task`
 
-### Execute
+### Execute Current Work
 
 - `$emb-scan`
 - `$emb-plan`
 - `$emb-do`
 - `$emb-debug`
 
-### Close
+### Close And Handoff
 
 - `$emb-review`
 - `$emb-verify`

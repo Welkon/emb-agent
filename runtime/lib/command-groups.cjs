@@ -53,7 +53,7 @@ function createCommandGroupHelpers(deps) {
     });
   }
 
-  function handleDocCommands(cmd, subcmd, rest) {
+  function handleDocCommands(cmd, subcmd, rest, options) {
     if (cmd === 'doc' && subcmd === 'list') {
       const docs = ingestDocCli.listDocs(resolveProjectRoot());
       updateSession(current => {
@@ -74,7 +74,7 @@ function createCommandGroupHelpers(deps) {
     }
 
     if (cmd === 'doc' && subcmd === 'fetch') {
-      return referenceLookupCli.fetchDocument(resolveProjectRoot(), rest).then(result => {
+      return referenceLookupCli.fetchDocument(resolveProjectRoot(), rest, options).then(result => {
         rememberDocFiles([result.output], 'doc fetch');
         return result;
       });

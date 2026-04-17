@@ -247,7 +247,10 @@ test('default help stays concise and advanced help exposes the full surface', as
   const advanced = await captureCliText(['help', 'advanced']);
   const allFlag = await captureCliText(['--help', '--all']);
 
-  assert.match(compact, /Core workflow:/);
+  assert.match(compact, /Start here:/);
+  assert.match(compact, /Import truth:/);
+  assert.match(compact, /Execute current work:/);
+  assert.match(compact, /Close and hand off:/);
   assert.match(compact, /start/);
   assert.match(compact, /declare hardware/);
   assert.match(compact, /next \[run\]/);
@@ -288,6 +291,51 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /commands list/);
   assert.match(advanced, /commands list --all/);
   assert.equal(advanced, allFlag);
+});
+
+test('help supports explicit json output mode', async () => {
+  const compact = await captureCliJson(['help', '--json']);
+  const advanced = await captureCliJson(['--json', 'help', 'advanced']);
+
+  assert.equal(compact.entry, 'help');
+  assert.equal(compact.mode, 'compact');
+  assert.ok(Array.isArray(compact.global_options));
+  assert.ok(compact.global_options.some(item => item.flag === '--json'));
+  assert.ok(Array.isArray(compact.sections));
+  assert.equal(compact.sections[0].title, 'Start here');
+  assert.ok(compact.followups.includes('help advanced'));
+
+  assert.equal(advanced.entry, 'help');
+  assert.equal(advanced.mode, 'advanced');
+  assert.ok(advanced.sections.some(section => section.title === 'Delegation and chip support runtime'));
+  assert.ok(
+    advanced.sections.some(
+      section => section.title === 'Inspection and discovery' && section.entries.includes('commands list --all')
+    )
+  );
+});
+
+test('explicit --json keeps command payloads machine-readable', async () => {
+  const start = await captureCliJson(['--json', 'start']);
+
+  assert.equal(start.entry, 'start');
+  assert.ok(start.summary);
+  assert.ok(start.workflow);
+});
+
+test('unknown command returns structured json when --json is requested', async () => {
+  const originalExitCode = process.exitCode;
+  try {
+    const payload = await captureCliJson(['--json', 'not-a-command']);
+
+    assert.equal(process.exitCode, 1);
+    assert.equal(payload.entry, 'help');
+    assert.equal(payload.status, 'error');
+    assert.equal(payload.error.code, 'unknown-command');
+    assert.match(payload.error.message, /Unknown command/);
+  } finally {
+    process.exitCode = originalExitCode;
+  }
 });
 
 test('start returns a linear default workflow for project and task execution', async () => {
@@ -331,6 +379,7 @@ test('help fast path does not eagerly load emb-agent-main', async () => {
   assert.equal(require.cache[require.resolve(mainPath)], undefined);
 
   await captureCliText(['help'], freshCli);
+  await captureCliJson(['help', '--json'], freshCli);
 
   assert.equal(require.cache[require.resolve(mainPath)], undefined);
 });
