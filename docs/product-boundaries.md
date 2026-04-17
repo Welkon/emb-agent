@@ -10,6 +10,20 @@ The useful split is not "core vs miscellaneous", and it is also not "multiple un
 
 emb-agent is still one product, and it is primarily for embedded work.
 
+The most useful mental model is:
+
+- emb-agent is an embedded workflow layer
+- chip support is an executable domain runtime
+- skills / commands / hooks are host integration surfaces
+
+What emb-agent is **not**:
+
+- not a standalone skill pack
+- not just a prompt library
+- not a generic agent harness with embedded examples attached
+
+Those distinctions matter because the product should be explained from project truth and workflow first, not from whatever host-specific shell happens to expose it.
+
 ## Embedded Workflow
 
 The embedded workflow is the part most firmware users should feel first.
@@ -40,6 +54,8 @@ It includes:
 
 These are valuable, but they are not a separate product and they are not the default mental model for every firmware user.
 
+This is also where most people can get confused and start calling emb-agent a "skill system". That framing is too small. The support layers help deliver emb-agent into hosts, but they do not define the product boundary.
+
 If the repository feels like it is doing too many things at once, it is usually because the embedded workflow and its support layers are both visible at the same time.
 
 ## Chip Support
@@ -53,6 +69,25 @@ It owns:
 - chip profiles, package details, and derived hardware constraints
 
 The embedded workflow should stay abstract. Chip support should absorb vendor- and chip-specific logic. See [Chip Support Model](./chip-support-model.md).
+
+This is why chip support should be treated as runtime infrastructure, not as documentation garnish and not as a reusable "skill". It carries executable embedded knowledge.
+
+## Host Integration Surface
+
+emb-agent can be installed into different AI coding hosts and surfaced through:
+
+- skills
+- slash commands
+- hooks
+- shell entry files such as `AGENTS.md`
+
+These are important, but they are adapters. They answer "how does emb-agent show up inside this host?" rather than "what is emb-agent?".
+
+If a host changed tomorrow, emb-agent should still be the same product:
+
+- the same repo truth model
+- the same embedded workflow
+- the same chip-support execution boundary
 
 ## What Should Dominate The Default Path
 
@@ -88,7 +123,8 @@ Without this layering, emb-agent can read like a grab-bag:
 The intended interpretation is:
 
 - embedded workflow solves project truth and session flow
+- chip support provides executable chip-specific behavior
 - support layers keep long-running agent setups structurally consistent
-- chip support isolates chip/tool specificity
+- host integration surfaces expose emb-agent inside Codex, Claude Code, Cursor, and similar tools
 
 That is still one embedded product, but only if the layers stay explicit in docs, help, and command posture.

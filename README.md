@@ -14,9 +14,11 @@
   <a href="./commands/emb/help.md">Command Help</a>
 </p>
 
-emb-agent is a lightweight workflow layer for embedded development.
+emb-agent is a hardware-first AI workflow layer for embedded firmware repositories.
 
 It keeps hardware truth in the repo, keeps the default command flow small, and gives the agent one consistent path from "what chip is this?" to "what should I do next?".
+
+emb-agent is not just a skill pack or prompt wrapper. Skills, commands, hooks, and `AGENTS.md` files are host integration surfaces for Codex, Claude Code, Cursor, and similar runtimes. The product itself is the embedded workflow plus the chip-support runtime behind it.
 
 When chip support appears in `health`, `next`, `support status`, or reports, read it in this order:
 
@@ -44,7 +46,7 @@ Start with `start`. On the first run it initializes the repo automatically, then
 
 If the MCU is already known:
 
-`declare hardware -> next`
+`declare hardware -> bootstrap run --confirm -> next run`
 
 If the MCU is still unknown:
 
@@ -74,6 +76,16 @@ emb-agent keeps shared project truth in visible repo files:
 - `tasks/`: task-local PRD, context, and lifecycle state.
 
 Host-specific runtime state stays outside the repo. That keeps project truth collaborative while leaving session continuity, hooks, and runtime metadata in the selected host runtime.
+
+## Positioning
+
+emb-agent has three layers:
+
+- **Embedded workflow**: the default project path built around `start`, `declare hardware`, `next`, task flow, and repo truth.
+- **Chip-support runtime**: family-, device-, and chip-specific formulas, bindings, routes, and executable tool logic.
+- **Host integration surface**: skills, commands, hooks, and shell entry files that adapt emb-agent to different AI coding hosts.
+
+That means emb-agent should be understood as embedded project infrastructure, not as a standalone skill library.
 
 ## Why emb-agent
 
