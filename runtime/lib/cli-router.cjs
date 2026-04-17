@@ -1,6 +1,7 @@
 'use strict';
 
 const outputModeHelpers = require('./output-mode.cjs');
+const runtimeEventHelpers = require('./runtime-events.cjs');
 const terminalUiHelpers = require('./terminal-ui.cjs');
 
 function createCliRouter(deps) {
@@ -151,6 +152,49 @@ function createCliRouter(deps) {
       }
     }
 
+    function resolveRuntimeEventsTone(status) {
+      if (status === 'blocked' || status === 'failed') {
+        return 'error';
+      }
+      if (status === 'pending') {
+        return 'warning';
+      }
+      if (status === 'ok') {
+        return 'success';
+      }
+      return 'muted';
+    }
+
+    function formatRuntimeEventsSummary(summary) {
+      if (!summary || typeof summary !== 'object' || summary.total < 1) {
+        return '';
+      }
+
+      const detailItems = Array.isArray(summary.types) && summary.types.length > 0
+        ? summary.types
+        : Array.isArray(summary.categories) && summary.categories.length > 0
+          ? summary.categories
+          : Array.isArray(summary.summaries)
+            ? summary.summaries
+            : [];
+      const visibleDetails = detailItems.slice(0, 2);
+      const overflow = detailItems.length > visibleDetails.length ? ', ...' : '';
+      const detailText = visibleDetails.length > 0 ? ` (${visibleDetails.join(', ')}${overflow})` : '';
+
+      return `${summary.status} / ${summary.total}${detailText}`;
+    }
+
+    function appendRuntimeEventsSummary(lines, payload) {
+      const summary = runtimeEventHelpers.summarizeRuntimeEvents(payload && payload.runtime_events);
+      const text = formatRuntimeEventsSummary(summary);
+      if (!text) {
+        return lines;
+      }
+
+      lines.push(terminalUi.renderKeyValue('Events', text, resolveRuntimeEventsTone(summary.status)));
+      return lines;
+    }
+
     function buildSummaryLines(cmd, subcmd, result) {
       const lines = [];
       const payload = result && typeof result === 'object' && !Array.isArray(result) ? result : {};
@@ -172,7 +216,7 @@ function createCliRouter(deps) {
         if (Array.isArray(payload.reused) && payload.reused.length > 0) {
           lines.push(terminalUi.renderKeyValue('Reused', String(payload.reused.length), 'muted'));
         }
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'status') {
@@ -189,7 +233,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Context', payload.context_hygiene.recommendation, 'muted'));
         }
         pushNextActions(lines, payload.next_actions);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'bootstrap' && (!subcmd || subcmd === 'show')) {
@@ -199,7 +243,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Next Stage', payload.next_stage.label, 'success'));
         }
         pushActionCardLines(lines, nestedActionCard);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'bootstrap' && subcmd === 'run') {
@@ -220,7 +264,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Resolved', payload.result.resolved_action, 'success'));
         }
         pushActionCardLines(lines, nestedActionCard);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'next' && !subcmd) {
@@ -235,7 +279,7 @@ function createCliRouter(deps) {
         }
         pushActionCardLines(lines, nestedActionCard);
         pushNextActions(lines, payload.next_actions);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'next' && subcmd === 'run') {
@@ -247,7 +291,7 @@ function createCliRouter(deps) {
         }
         pushActionCardLines(lines, nestedActionCard);
         pushNextActions(lines, payload.next_actions);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'ingest' && payload.domain === 'doc') {
@@ -259,7 +303,7 @@ function createCliRouter(deps) {
         if (payload.cache_dir) {
           lines.push(terminalUi.renderKeyValue('Cache Dir', payload.cache_dir, 'muted'));
         }
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'ingest' && subcmd === 'apply') {
@@ -270,7 +314,7 @@ function createCliRouter(deps) {
         if (Array.isArray(payload.applied_fields) && payload.applied_fields.length > 0) {
           lines.push(terminalUi.renderKeyValue('Fields', payload.applied_fields.join(', '), 'muted'));
         }
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'support' && subcmd === 'sync') {
@@ -283,7 +327,7 @@ function createCliRouter(deps) {
           if (skipped > 0) {
             lines.push(terminalUi.renderKeyValue('Skipped', String(skipped), 'warning'));
           }
-          return lines;
+          return appendRuntimeEventsSummary(lines, payload);
         }
 
         lines.push(terminalUi.renderKeyValue('Source', payload.name, 'info'));
@@ -292,7 +336,7 @@ function createCliRouter(deps) {
         if (Array.isArray(payload.files)) {
           lines.push(terminalUi.renderKeyValue('Files', String(payload.files.length), 'muted'));
         }
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'support' && subcmd === 'bootstrap') {
@@ -302,7 +346,7 @@ function createCliRouter(deps) {
         if (payload.sync && payload.sync.status) {
           lines.push(terminalUi.renderKeyValue('Sync', payload.sync.status, 'success'));
         }
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'doc' && subcmd === 'fetch') {
@@ -313,7 +357,7 @@ function createCliRouter(deps) {
         if (typeof payload.size_bytes === 'number') {
           lines.push(terminalUi.renderKeyValue('Bytes', String(payload.size_bytes), 'muted'));
         }
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'scan' && !subcmd) {
@@ -324,7 +368,7 @@ function createCliRouter(deps) {
         }
         pushActionCardLines(lines, nestedActionCard);
         pushNextActions(lines, payload.next_actions);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'plan' && !subcmd) {
@@ -335,7 +379,7 @@ function createCliRouter(deps) {
         }
         pushActionCardLines(lines, nestedActionCard);
         pushNextActions(lines, payload.next_actions);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'do' && !subcmd) {
@@ -348,7 +392,7 @@ function createCliRouter(deps) {
         }
         pushActionCardLines(lines, nestedActionCard);
         pushNextActions(lines, payload.next_actions);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'debug' && !subcmd) {
@@ -361,7 +405,7 @@ function createCliRouter(deps) {
         }
         pushActionCardLines(lines, nestedActionCard);
         pushNextActions(lines, payload.next_actions);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'review' && !subcmd) {
@@ -372,7 +416,7 @@ function createCliRouter(deps) {
         }
         pushActionCardLines(lines, nestedActionCard);
         pushNextActions(lines, payload.next_actions);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'verify' && !subcmd) {
@@ -385,7 +429,7 @@ function createCliRouter(deps) {
         }
         pushActionCardLines(lines, nestedActionCard);
         pushNextActions(lines, payload.next_actions);
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'executor' && subcmd === 'run') {
@@ -409,7 +453,7 @@ function createCliRouter(deps) {
         if (typeof payload.duration_ms === 'number') {
           lines.push(terminalUi.renderKeyValue('Duration', `${payload.duration_ms} ms`, 'muted'));
         }
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
       if (cmd === 'tool' && subcmd === 'run') {
@@ -426,10 +470,10 @@ function createCliRouter(deps) {
         if (payload.implementation) {
           lines.push(terminalUi.renderKeyValue('Implementation', payload.implementation, 'muted'));
         }
-        return lines;
+        return appendRuntimeEventsSummary(lines, payload);
       }
 
-      return lines;
+      return appendRuntimeEventsSummary(lines, payload);
     }
 
     function buildIngestProgressBridge(activity) {

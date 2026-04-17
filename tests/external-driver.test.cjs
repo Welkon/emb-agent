@@ -41,6 +41,8 @@ test('external start auto-initializes and exposes the next driver step', async (
     assert.match(start.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
     assert.equal(start.status, 'ready');
     assert.match(start.next.cli, / next$/);
+    assert.ok(start.runtime_events);
+    assert.ok(start.runtime_events.total >= 1);
     assert.equal('initialized' in start, false);
     assert.equal('immediate' in start, false);
     assert.equal('bootstrap' in start, false);
@@ -66,6 +68,8 @@ test('external health exposes fixed bootstrap protocol before init', async () =>
     assert.equal(health.status, 'fail');
     assert.ok(Array.isArray(health.blocking_checks));
     assert.ok(health.blocking_checks.length > 0);
+    assert.ok(health.runtime_events);
+    assert.equal(typeof health.runtime_events.total, 'number');
     assert.equal('bootstrap' in health, false);
   } finally {
     process.chdir(currentCwd);
@@ -88,6 +92,9 @@ test('external init and next expose fixed driver payload for external agents', a
     assert.match(initialized.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
     assert.equal(initialized.status, 'needs-project-definition');
     assert.match(initialized.next.cli, / next$/);
+    assert.ok(initialized.runtime_events);
+    assert.equal(typeof initialized.runtime_events.status, 'string');
+    assert.equal(typeof initialized.runtime_events.total, 'number');
     assert.equal('initialized' in initialized, false);
     assert.equal('bootstrap' in initialized, false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), false);
@@ -97,6 +104,8 @@ test('external init and next expose fixed driver payload for external agents', a
     assert.match(next.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
     assert.equal(next.status, 'selection');
     assert.match(next.next.cli, / scan$/);
+    assert.ok(next.runtime_events);
+    assert.ok(next.runtime_events.total >= 1);
     assert.equal('workflow_stage' in next, false);
 
     assert.equal(status.protocol, 'emb-agent.external/1');
@@ -108,6 +117,8 @@ test('external init and next expose fixed driver payload for external agents', a
     assert.equal(status.session_state.storage_mode, 'primary');
     assert.equal(status.session_state.session.exists, true);
     assert.match(status.next.cli, / next$/);
+    assert.ok(status.runtime_events);
+    assert.ok(status.runtime_events.total >= 1);
   } finally {
     process.chdir(currentCwd);
   }
@@ -129,6 +140,9 @@ test('external dispatch-next exposes minimal execution decision protocol', async
     assert.equal(dispatch.status, 'inline');
     assert.match(dispatch.next.cli, / scan$/);
     assert.equal(dispatch.next.kind, 'action');
+    assert.ok(dispatch.runtime_events);
+    assert.equal(typeof dispatch.runtime_events.status, 'string');
+    assert.equal(typeof dispatch.runtime_events.total, 'number');
     assert.equal('execution' in dispatch, false);
     assert.equal('workflow_stage' in dispatch, false);
     assert.equal('health' in dispatch, false);
