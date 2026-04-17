@@ -45,6 +45,37 @@ async function captureCliJson(args, cliImpl = cli) {
   return JSON.parse(stdout);
 }
 
+async function captureCliTtyOutput(args, cliImpl = cli) {
+  const originalStdoutWrite = process.stdout.write;
+  const originalStderrWrite = process.stderr.write;
+  const originalStdoutIsTty = process.stdout.isTTY;
+  const originalStderrIsTty = process.stderr.isTTY;
+  let stdout = '';
+  let stderr = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+  process.stderr.write = chunk => {
+    stderr += String(chunk);
+    return true;
+  };
+  process.stdout.isTTY = true;
+  process.stderr.isTTY = true;
+
+  try {
+    await cliImpl.main(args);
+  } finally {
+    process.stdout.write = originalStdoutWrite;
+    process.stderr.write = originalStderrWrite;
+    process.stdout.isTTY = originalStdoutIsTty;
+    process.stderr.isTTY = originalStderrIsTty;
+  }
+
+  return { stdout, stderr };
+}
+
 test('help markdown does not expose emb-attach as an official command', () => {
   const helpPath = path.join(repoRoot, 'commands', 'emb', 'help.md');
   const content = fs.readFileSync(helpPath, 'utf8');
@@ -144,6 +175,9 @@ test('help markdown stays focused on core workflow commands', async () => {
   assert.doesNotMatch(content, /<runtime-cli>/);
   assert.doesNotMatch(content, /## Default Flow/);
   assert.doesNotMatch(content, /doc lookup --chip/);
+  assert.match(content, /next --brief/);
+  assert.match(content, /external start\|next\|status\|health\|dispatch-next/);
+  assert.match(content, /task worktree status\|show/);
   assert.match(content, /help advanced/);
 });
 
@@ -256,6 +290,9 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(compact, /next \[run\]/);
   assert.match(compact, /ingest schematic --file <path>/);
   assert.match(compact, /bootstrap \[run \[--confirm\]\]/);
+  assert.match(compact, /task worktree <list\|status\|show\|create\|cleanup> \[name\]/);
+  assert.match(compact, /external <start\|status\|next\|health\|dispatch-next>/);
+  assert.match(compact, /Global option: --brief .*runtime_events/);
   assert.match(compact, /help advanced/);
   assert.doesNotMatch(compact, /adapter source add/);
   assert.doesNotMatch(compact, /workspace link/);
@@ -283,6 +320,8 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /context compress \[note\]/);
   assert.match(advanced, /skills list/);
   assert.match(advanced, /memory stack/);
+  assert.match(advanced, /external <start\|status\|next\|health\|dispatch-next>/);
+  assert.match(advanced, /Global option: --brief .*runtime_events/);
   assert.match(advanced, /spec list/);
   assert.match(advanced, /workflow init/);
   assert.match(advanced, /workflow new pack/);
@@ -364,6 +403,24 @@ test('start returns a linear default workflow for project and task execution', a
     assert.equal(start.next.command, 'scan');
   } finally {
     process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
+  }
+});
+
+test('text mode next surfaces runtime event summary in tty output', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-next-tty-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await captureCliJson(['init']);
+
+    const output = await captureCliTtyOutput(['next']);
+
+    assert.match(output.stderr, /Workflow: selection/);
+    assert.match(output.stderr, /Next: scan/);
+    assert.match(output.stderr, /Events: ok \/ 1 \(workflow-next\)/);
+  } finally {
     process.chdir(currentCwd);
   }
 });

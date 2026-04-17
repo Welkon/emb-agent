@@ -58,6 +58,24 @@ If the truth still lives in a datasheet or schematic:
 
 The full onboarding path is in [docs/quick-start.md](./docs/quick-start.md). Platform-specific setup differences are in [docs/platforms.md](./docs/platforms.md).
 
+## Automation Surfaces
+
+Use the smallest surface that matches the caller:
+
+- `next --brief`
+  Compact JSON for local automation or lightweight wrappers. It keeps the recommended command, action card, next actions, and summarized `runtime_events` without the full session payload.
+- `external <start|status|next|health|dispatch-next>`
+  Stable external-driver envelope for host skills, MCP-style bridges, or wrappers that only need `status`, `summary`, `next.cli`, and summarized `runtime_events`.
+- `task worktree status|show <name>`
+  Inspect isolated task workspaces before `create` or `cleanup`. These commands surface `workspace_state`, `attention`, and a plain-language `summary` so the operator can see whether the workspace is detached, dirty, missing, or ready.
+
+`runtime_events` are the shortest structured explanation of why the runtime is nudging the user. In practice:
+
+- `clear`: no notable runtime signal is active
+- `ok`: the runtime observed something useful but non-blocking
+- `pending`: there is still a recommended follow-up or operator attention point
+- `blocked` or `failed`: the flow should not continue blindly
+
 ## How It Works
 
 emb-agent keeps shared project truth in visible repo files:

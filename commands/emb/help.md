@@ -48,6 +48,9 @@ The public command surface is intentionally small and grouped by default path.
 
 - If the chip or pin map is already known, prefer `declare hardware` first.
 - Once hardware truth is explicit, prefer `bootstrap run --confirm` for the shortest guided bootstrap path.
+- Use `next --brief` when a local wrapper only needs compact JSON with summarized runtime signals.
+- Use `external start|next|status|health|dispatch-next` when a host or tool needs the stable external-driver envelope.
+- Use `task worktree status|show` before `create` or `cleanup` when you need to inspect isolated task workspace state first.
 - Use `support bootstrap` when you want direct control over chip-support registration/install in one step.
 - If the MCU is not chosen yet, keep `hw.yaml` unknown, record constraints in `req.yaml`, then return to `next`.
 - If the truth still lives outside the repo, use `ingest doc` or `ingest schematic` before writing truth directly.
