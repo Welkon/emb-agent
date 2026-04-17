@@ -1,5 +1,7 @@
 'use strict';
 
+const runtimeEventHelpers = require('./runtime-events.cjs');
+
 function toArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -99,7 +101,12 @@ function buildDecisionPermissionGate(permissionDecision) {
       action_kind: decision.action_kind || '',
       action_name: decision.action_name || '',
       matched_rule: decision.matched_rule || '',
-      reason_code: decision.reason_code || ''
+      reason_code: decision.reason_code || '',
+      category: decision.category || '',
+      severity: decision.severity || '',
+      operator_guidance: decision.operator_guidance || '',
+      remediation: unique(decision.remediation || []),
+      prechecks: unique(decision.prechecks || [])
     }
   };
 }
@@ -131,6 +138,144 @@ function describeAction(actionKind, actionName) {
     return `write operation ${actionName}`;
   }
   return `${actionKind} ${actionName}`;
+}
+
+function actionKindToCategory(actionKind) {
+  if (actionKind === 'write') {
+    return 'write';
+  }
+  if (actionKind === 'executor') {
+    return 'executor';
+  }
+  return 'tool';
+}
+
+function resolveActionProfile(actionKind, actionName, risk) {
+  const normalizedKind = String(actionKind || '').trim();
+  const normalizedName = String(actionName || '').trim();
+  const normalizedRisk = risk === 'high' ? 'high' : 'normal';
+  const defaults = {
+    category: actionKindToCategory(normalizedKind),
+    severity: normalizedRisk,
+    operator_guidance: '',
+    remediation: [],
+    prechecks: []
+  };
+
+  if (normalizedKind === 'write' && normalizedName === 'project-set') {
+    return {
+      ...defaults,
+      category: 'project-policy',
+      severity: 'high',
+      operator_guidance: 'Changing project policy can affect future execution behavior and safety posture.',
+      remediation: [
+        'Re-run with --confirm only after verifying the target field and project scope.',
+        'Use project show --effective to verify the resulting merged policy.'
+      ],
+      prechecks: [
+        'Confirm this policy change is intended for the current project only.',
+        'Confirm deny / ask / allow precedence still matches the intended safety posture.'
+      ]
+    };
+  }
+
+  if (normalizedKind === 'write' && normalizedName.startsWith('support-bootstrap')) {
+    return {
+      ...defaults,
+      category: 'chip-support-install',
+      operator_guidance: 'Chip-support bootstrap can write adapter files and change future tool execution behavior.',
+      remediation: [
+        'Review the selected support source and target before confirming.',
+        'Run support status after installation to verify the expected source and match.'
+      ],
+      prechecks: [
+        'Confirm the support source is the intended family/device/chip provider.',
+        'Confirm the write target is correct for this project.'
+      ]
+    };
+  }
+
+  if (normalizedKind === 'write' && (normalizedName === 'support-derive' || normalizedName === 'support-generate')) {
+    return {
+      ...defaults,
+      category: 'chip-support-generation',
+      operator_guidance: 'Generated chip support is draft infrastructure and should not be treated as final ground truth without review.',
+      remediation: [
+        'Review generated bindings, routes, and trust summaries before reuse.',
+        'Keep project-local output until evidence and runtime behavior are verified.'
+      ],
+      prechecks: [
+        'Confirm the source project/doc evidence is the intended basis for generation.',
+        'Confirm the target location is correct before overwriting existing artifacts.'
+      ]
+    };
+  }
+
+  if (normalizedKind === 'write' && normalizedName.startsWith('doc-apply-')) {
+    return {
+      ...defaults,
+      category: 'truth-promotion',
+      operator_guidance: 'Applying document-derived truth updates shared project facts and should remain evidence-driven.',
+      remediation: [
+        'Review the staged values before confirming.',
+        'Prefer preserving unknowns when the source evidence is incomplete.'
+      ],
+      prechecks: [
+        'Confirm the source document is the intended authority.',
+        'Confirm the target truth file and fields are correct.'
+      ]
+    };
+  }
+
+  if (normalizedKind === 'write' && normalizedName.startsWith('verify-')) {
+    return {
+      ...defaults,
+      category: 'human-signoff',
+      operator_guidance: 'Verification signoffs affect closure state and should reflect a real human review or bench result.',
+      remediation: [
+        'Record the human confirmation note explicitly when re-running with --confirm.',
+        'Use verify or next to confirm the remaining required signoffs.'
+      ],
+      prechecks: [
+        'Confirm the signoff reflects a real human validation outcome.',
+        'Confirm the target signoff name matches the required gate.'
+      ]
+    };
+  }
+
+  if (normalizedKind === 'write' && normalizedName.startsWith('task-worktree-')) {
+    return {
+      ...defaults,
+      category: 'task-worktree-lifecycle',
+      operator_guidance: 'Task worktree operations create or remove isolated execution directories and can affect task continuity.',
+      remediation: [
+        'Use task worktree show <name> to inspect state before retrying.',
+        'Confirm the task name and target worktree path are correct.'
+      ],
+      prechecks: [
+        'Confirm the task is the intended target.',
+        'Confirm no unsaved work remains in the worktree before cleanup.'
+      ]
+    };
+  }
+
+  if (normalizedKind === 'tool' && normalizedRisk === 'high') {
+    return {
+      ...defaults,
+      category: 'high-risk-tool',
+      severity: 'high',
+      operator_guidance: 'This tool path is marked high risk and requires an explicit user decision.',
+      remediation: [
+        'Re-run with --confirm only after checking the target and rollback plan.'
+      ],
+      prechecks: [
+        'Confirm the tool target is correct.',
+        'Confirm the expected side effects are acceptable.'
+      ]
+    };
+  }
+
+  return defaults;
 }
 
 function permissionBucketLabel(actionKind) {
@@ -169,6 +314,7 @@ function evaluateExecutionPermission(input) {
         : permissions.tools;
   const bucketLabel = permissionBucketLabel(actionKind);
   const actionLabel = describeAction(actionKind, actionName);
+  const actionProfile = resolveActionProfile(actionKind, actionName, risk);
 
   function buildDecision(decision, reasonCode, reasonText, matchedRule) {
     const next = {
@@ -181,6 +327,11 @@ function evaluateExecutionPermission(input) {
       matched_rule: matchedRule || '',
       reasons: unique([reasonText]),
       summary: buildPermissionDecisionSummary(decision, actionKind, actionName),
+      category: actionProfile.category,
+      severity: actionProfile.severity,
+      operator_guidance: actionProfile.operator_guidance,
+      remediation: unique(actionProfile.remediation),
+      prechecks: unique(actionProfile.prechecks),
       confirm_commands: decision === 'ask'
         ? [`Re-run with --confirm to allow ${actionLabel}`]
         : []
@@ -230,18 +381,36 @@ function applyPermissionDecision(result, permissionDecision) {
     return base;
   }
 
+  const event = {
+    type: 'permission-evaluated',
+    category: decision.category || actionKindToCategory(decision.action_kind),
+    status: decision.decision === 'allow' ? 'ok' : decision.decision === 'deny' ? 'blocked' : 'pending',
+    severity: decision.severity || decision.risk || 'normal',
+    summary: decision.summary || '',
+    action: decision.action_name || '',
+    source: 'permission-gates',
+    details: {
+      decision: decision.decision,
+      action_kind: decision.action_kind || '',
+      reason_code: decision.reason_code || '',
+      explicit_confirmation: decision.explicit_confirmation === true,
+      remediation: unique(decision.remediation || []),
+      prechecks: unique(decision.prechecks || [])
+    }
+  };
+
   if (decision.decision === 'allow') {
-    return {
+    return runtimeEventHelpers.appendRuntimeEvent({
       ...base,
       permission_decision: decision,
       permission_gates: buildPermissionGates({
         ...base,
         permission_decision: decision
       })
-    };
+    }, event);
   }
 
-  return {
+  return runtimeEventHelpers.appendRuntimeEvent({
     ...base,
     status: decision.decision === 'deny' ? 'permission-denied' : 'permission-pending',
     permission_decision: decision,
@@ -249,7 +418,7 @@ function applyPermissionDecision(result, permissionDecision) {
       ...base,
       permission_decision: decision
     })
-  };
+  }, event);
 }
 
 function buildPermissionGates(input) {

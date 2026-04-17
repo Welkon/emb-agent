@@ -8,6 +8,7 @@ const chipSupportStatusHelpers = require('./chip-support-status.cjs');
 const permissionGateHelpers = require('./permission-gates.cjs');
 const projectInputState = require('./project-input-state.cjs');
 const qualityGateHelpers = require('./quality-gates.cjs');
+const runtimeEventHelpers = require('./runtime-events.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -1280,9 +1281,10 @@ function createSessionFlowHelpers(deps) {
     const permissionGates = permissionGateHelpers.buildPermissionGates({
       quality_gates: qualityGates
     });
+    const permissionGateSummary = permissionGateHelpers.summarizePermissionGates(permissionGates);
     const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
-
-    return enrichWithToolSuggestions({
+    const nextCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [nextCommand.command]);
+    const result = enrichWithToolSuggestions({
       current: {
         project_root: resolved.session.project_root,
         profile: resolved.profile.name,
@@ -1338,7 +1340,7 @@ function createSessionFlowHelpers(deps) {
       next: {
         command: nextCommand.command,
         reason: nextCommand.reason,
-        cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [nextCommand.command]),
+        cli: nextCli,
         gated_by_health: gatedByHealth,
         health_next_commands: nextCommand.health_next_commands || [],
         health_quickstart: nextCommand.health_quickstart || null,
@@ -1347,13 +1349,40 @@ function createSessionFlowHelpers(deps) {
       },
       action_card: buildNextActionCard({
         ...nextCommand,
-        cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [nextCommand.command]),
+        cli: nextCli,
         gated_by_health: gatedByHealth
       }, workflowStage, nextActions, health, activeTask),
       workflow_stage: workflowStage,
       context_hygiene: contextHygiene,
       next_actions: nextActions
     }, resolved);
+
+    return runtimeEventHelpers.appendRuntimeEvent(result, {
+      type: 'workflow-next',
+      category: 'workflow',
+      status:
+        gatedByHealth || permissionGateSummary.status === 'pending'
+          ? 'pending'
+          : permissionGateSummary.status === 'blocked'
+            ? 'blocked'
+            : 'ok',
+      severity:
+        gatedByHealth || permissionGateSummary.status === 'pending'
+          ? 'normal'
+          : permissionGateSummary.status === 'blocked'
+            ? 'high'
+            : 'info',
+      summary: nextCommand.reason || workflowStage.why || '',
+      action: nextCommand.command || '',
+      command: nextCli,
+      source: 'session-flow',
+      details: {
+        workflow_stage: workflowStage.name || '',
+        gated_by_health: gatedByHealth,
+        permission_gates: permissionGateSummary.status || 'clear',
+        reason: nextCommand.reason || ''
+      }
+    });
   }
 
   function buildPausePayload(noteText) {
@@ -1417,6 +1446,7 @@ function createSessionFlowHelpers(deps) {
     const permissionGates = permissionGateHelpers.buildPermissionGates({
       quality_gates: qualityGates
     });
+    const permissionGateSummary = permissionGateHelpers.summarizePermissionGates(permissionGates);
     const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
     const statePaths = typeof getProjectStatePaths === 'function' ? getProjectStatePaths() : null;
     const sessionState = statePaths
@@ -1424,8 +1454,7 @@ function createSessionFlowHelpers(deps) {
           projectRoot: resolved.session.project_root
         })
       : null;
-
-    return enrichWithToolSuggestions({
+    const result = enrichWithToolSuggestions({
       session_version: resolved.session.session_version,
       runtime_host: runtimeHost.name || '',
       project_root: resolved.session.project_root,
@@ -1471,6 +1500,33 @@ function createSessionFlowHelpers(deps) {
         : null,
       context_hygiene: contextHygiene
     }, resolved);
+
+    return runtimeEventHelpers.appendRuntimeEvent(result, {
+      type: 'workflow-status',
+      category: 'workflow',
+      status:
+        permissionGateSummary.status === 'blocked'
+          ? 'blocked'
+          : permissionGateSummary.status === 'pending'
+            ? 'pending'
+            : 'ok',
+      severity:
+        permissionGateSummary.status === 'blocked'
+          ? 'high'
+          : permissionGateSummary.status === 'pending'
+            ? 'normal'
+            : 'info',
+      summary: activeTask
+        ? `Reported session status with active task ${activeTask.name}.`
+        : 'Reported session status.',
+      action: 'status',
+      source: 'session-flow',
+      details: {
+        project_root: resolved.session.project_root,
+        active_task: activeTask ? activeTask.name : '',
+        permission_gates: permissionGateSummary.status || 'clear'
+      }
+    });
   }
 
   return {
