@@ -11,7 +11,7 @@ const runtimeRoot = path.join(repoRoot, 'runtime');
 const initProject = require(path.join(runtimeRoot, 'scripts', 'init-project.cjs'));
 const cli = require(path.join(runtimeRoot, 'bin', 'emb-agent.cjs'));
 
-function captureJson(run) {
+async function captureJson(run) {
   const originalWrite = process.stdout.write;
   let stdout = '';
 
@@ -21,7 +21,7 @@ function captureJson(run) {
   };
 
   try {
-    run();
+    await run();
   } finally {
     process.stdout.write = originalWrite;
   }
@@ -29,16 +29,27 @@ function captureJson(run) {
   return JSON.parse(stdout);
 }
 
-test('adapter derive creates extension registries and profile skeletons', () => {
+async function suppressStdout(run) {
+  const originalWrite = process.stdout.write;
+  process.stdout.write = () => true;
+
+  try {
+    await run();
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+}
+
+test('adapter derive creates extension registries and profile skeletons', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-derive-'));
   const currentCwd = process.cwd();
 
   try {
-    initProject.main(['--project', tempProject]);
+    await suppressStdout(() => Promise.resolve(initProject.main(['--project', tempProject])));
     process.chdir(tempProject);
-    cli.main(['init']);
+    await suppressStdout(() => cli.main(['init']));
 
-    const result = captureJson(() =>
+    const result = await captureJson(() =>
       cli.main([
         'support',
         'derive',
@@ -152,14 +163,14 @@ test('adapter derive creates extension registries and profile skeletons', () => 
   }
 });
 
-test('adapter derive can infer family device chip and tools from project truth', () => {
+test('adapter derive can infer family device chip and tools from project truth', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-derive-truth-'));
   const currentCwd = process.cwd();
 
   try {
-    initProject.main(['--project', tempProject]);
+    await suppressStdout(() => Promise.resolve(initProject.main(['--project', tempProject])));
     process.chdir(tempProject);
-    cli.main(['init']);
+    await suppressStdout(() => cli.main(['init']));
 
     fs.writeFileSync(
       path.join(tempProject, '.emb-agent', 'hw.yaml'),
@@ -210,7 +221,7 @@ test('adapter derive can infer family device chip and tools from project truth',
       'utf8'
     );
 
-    const result = captureJson(() =>
+    const result = await captureJson(() =>
       cli.main([
         'support',
         'derive',
@@ -253,14 +264,14 @@ test('adapter derive can infer family device chip and tools from project truth',
   }
 });
 
-test('adapter derive drafts chip pins and richer bindings from project signals', () => {
+test('adapter derive drafts chip pins and richer bindings from project signals', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-derive-project-signals-'));
   const currentCwd = process.cwd();
 
   try {
-    initProject.main(['--project', tempProject]);
+    await suppressStdout(() => Promise.resolve(initProject.main(['--project', tempProject])));
     process.chdir(tempProject);
-    cli.main(['init']);
+    await suppressStdout(() => cli.main(['init']));
 
     fs.writeFileSync(
       path.join(tempProject, '.emb-agent', 'hw.yaml'),
@@ -330,7 +341,7 @@ test('adapter derive drafts chip pins and richer bindings from project signals',
       'utf8'
     );
 
-    const result = captureJson(() =>
+    const result = await captureJson(() =>
       cli.main([
         'support',
         'derive',
@@ -391,7 +402,7 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
   process.stdout.write = () => true;
 
   try {
-    initProject.main(['--project', tempProject]);
+    await suppressStdout(() => Promise.resolve(initProject.main(['--project', tempProject])));
     fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
     fs.writeFileSync(path.join(tempProject, 'docs', 'PMS150G.pdf'), 'fake pdf content', 'utf8');
 
@@ -424,7 +435,7 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
 
     process.stdout.write = originalWrite;
 
-    const result = captureJson(() =>
+    const result = await captureJson(() =>
       cli.main([
         'support',
         'derive',
@@ -498,15 +509,15 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
   }
 });
 
-test('adapter generate can write emb-style output to arbitrary root', () => {
+test('adapter generate can write emb-style output to arbitrary root', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-generate-project-'));
   const tempOutput = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-generate-output-'));
   const currentCwd = process.cwd();
 
   try {
-    initProject.main(['--project', tempProject]);
+    await suppressStdout(() => Promise.resolve(initProject.main(['--project', tempProject])));
     process.chdir(tempProject);
-    cli.main(['init']);
+    await suppressStdout(() => cli.main(['init']));
 
     fs.writeFileSync(
       path.join(tempProject, '.emb-agent', 'hw.yaml'),
@@ -555,7 +566,7 @@ test('adapter generate can write emb-style output to arbitrary root', () => {
       'utf8'
     );
 
-    const result = captureJson(() =>
+    const result = await captureJson(() =>
       cli.main([
         'support',
         'generate',

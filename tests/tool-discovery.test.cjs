@@ -292,6 +292,198 @@ test('draft chip support route is discoverable but not treated as ready', () => 
   }
 });
 
+test('known chip start path prefers guided bootstrap once a chip support source is configured', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-start-bootstrap-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['declare', 'hardware', '--confirm', '--mcu', 'vendor-chip', '--package', 'qfp32']);
+    await cli.main(['support', 'source', 'add', 'local-pack', '--type', 'path', '--location', tempProject]);
+
+    const start = cli.buildStartContext();
+
+    assert.equal(start.immediate.command, 'bootstrap run --confirm');
+    assert.match(start.immediate.cli, /bootstrap run --confirm$/);
+    assert.ok(Array.isArray(start.workflow.steps[0].commands));
+    assert.ok(start.workflow.steps[0].commands.some(item => item.includes('bootstrap run --confirm')));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('hardware PWM intent makes next prefer pwm-calc over generic timer-calc', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-tool-pwm-intent-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init', '--mcu', 'vendor-chip', '--package', 'qfp32']);
+
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({
+        devices: ['vendor-chip']
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'qfp32',
+        architecture: '8-bit',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        source_refs: ['mcu/vendor-chip', 'mcu/vendor-chip-registers'],
+        component_refs: [],
+        summary: {},
+        capabilities: ['timer16', 'pwm'],
+        docs: [],
+        related_tools: ['timer-calc', 'pwm-calc'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'timer-calc.cjs'),
+      [
+        "'use strict';",
+        '',
+        'module.exports = {',
+        '  runTool() {',
+        "    return { status: 'ok' };",
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'pwm-calc.cjs'),
+      [
+        "'use strict';",
+        '',
+        'module.exports = {',
+        '  runTool() {',
+        "    return { status: 'ok' };",
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc', 'pwm-calc'],
+        source_refs: ['mcu/vendor-family-overview'],
+        component_refs: [],
+        clock_sources: ['sysclk'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        family: 'vendor-family',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['timer-calc', 'pwm-calc'],
+        source_refs: ['mcu/vendor-chip-registers'],
+        component_refs: [],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-timer16',
+            params: {
+              chip: 'vendor-chip',
+              peripheral: 'tm16',
+              default_clock_source: 'sysclk',
+              prescalers: [1, 4, 16, 64],
+              interrupt_bits: [8, 9, 10]
+            }
+          },
+          'pwm-calc': {
+            algorithm: 'vendor-pwm',
+            params: {
+              chip: 'vendor-chip',
+              peripheral: 'pwm',
+              mode_macro: 'PWMCON',
+              scale_macro: 'PWMSCALE',
+              counter_register: 'PWMCNT',
+              period_register: 'PWMPER',
+              default_clock_source: 'sysclk',
+              default_output_pin: 'pa3',
+              default_resolution: 'auto',
+              prescalers: [1],
+              divider_min: 1,
+              divider_max: 16,
+              resolutions: [8, 7],
+              clock_sources: {
+                sysclk: { macro: 'SYSCLK' }
+              },
+              output_pins: {
+                pa3: { macro: 'PA3' }
+              }
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    await cli.main([
+      'declare', 'hardware', '--confirm',
+      '--mcu', 'vendor-chip',
+      '--package', 'qfp32',
+      '--signal', 'PWM_OUT',
+      '--pin', 'PA3',
+      '--dir', 'output',
+      '--note', '20kHz PWM output',
+      '--confirmed', 'true',
+      '--peripheral', 'PWM',
+      '--usage', '20kHz 50% duty output'
+    ]);
+
+    const next = cli.buildNextContext();
+
+    assert.equal(next.next.tool_recommendation.tool, 'pwm-calc');
+    assert.match(next.next.tool_recommendation.cli_draft, /tool run pwm-calc/);
+    assert.equal(next.hardware.mcu.signals[0].name, 'PWM_OUT');
+    assert.equal(next.hardware.mcu.peripherals[0].name, 'PWM');
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('hardware model plus package can resolve derived chip slug automatically', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-chip-slug-discovery-'));
   const currentCwd = process.cwd();

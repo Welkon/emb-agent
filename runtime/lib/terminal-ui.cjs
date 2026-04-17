@@ -123,6 +123,7 @@ function createTerminalUi(options = {}) {
       return {
         update() {},
         succeed() {},
+        warn() {},
         fail() {},
         stop() {}
       };

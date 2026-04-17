@@ -35,6 +35,7 @@ const noteReportHelpers = require(path.join(ROOT, 'lib', 'note-reports.cjs'));
 const dispatchHelpers = require(path.join(ROOT, 'lib', 'dispatch-orchestrator.cjs'));
 const sessionFlowHelpers = require(path.join(ROOT, 'lib', 'session-flow.cjs'));
 const referenceLookupHelpers = require(path.join(ROOT, 'lib', 'reference-lookup.cjs'));
+const hardwareTruthHelpers = require(path.join(ROOT, 'lib', 'hardware-truth.cjs'));
 const projectConfigHelpers = require(path.join(ROOT, 'lib', 'project-config.cjs'));
 const stateCommandHelpers = require(path.join(ROOT, 'lib', 'state-commands.cjs'));
 const actionContractHelpers = require(path.join(ROOT, 'lib', 'action-contracts.cjs'));
@@ -259,33 +260,6 @@ function loadCommandMarkdown(name) {
   throw new Error(`Command not found: ${name}`);
 }
 
-function readScalarLine(content, prefix) {
-  const line = String(content || '')
-    .split(/\r?\n/)
-    .find(item => item.startsWith(prefix));
-
-  if (!line) {
-    return '';
-  }
-
-  return line
-    .slice(prefix.length)
-    .trim()
-    .replace(/^['"]|['"]$/g, '');
-}
-
-function loadHardwareIdentity(projectRoot) {
-  const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
-  const content = fs.existsSync(hwPath) ? runtime.readText(hwPath) : '';
-
-  return {
-    file: runtime.getProjectAssetRelativePath('hw.yaml'),
-    vendor: readScalarLine(content, '  vendor: '),
-    model: readScalarLine(content, '  model: '),
-    package: readScalarLine(content, '  package: ')
-  };
-}
-
 function normalizeHardwareSlug(value) {
   return String(value || '')
     .trim()
@@ -354,7 +328,7 @@ function resolveSession() {
   const profile = loadProfile(effectiveProfileName);
   const packs = session.active_packs.map(loadPack);
   const projectConfig = getProjectConfig();
-  const hardwareIdentity = loadHardwareIdentity(session.project_root || resolveProjectRoot());
+  const hardwareIdentity = hardwareTruthHelpers.loadHardwareTruth(runtime, session.project_root || resolveProjectRoot());
   const chipProfile = findChipProfileByModel(hardwareIdentity.model, hardwareIdentity.package);
   const recommendedSources = buildRecommendedSources(chipProfile);
   const suggestedTools = buildSuggestedTools(chipProfile);
@@ -872,14 +846,26 @@ function buildStartContext() {
   const initialized = fs.existsSync(runtime.resolveProjectDataPath(projectRoot, 'project.json'));
   const initGuidance = buildInitGuidance(projectRoot);
   const bootstrap = buildBootstrapSummary(initGuidance);
+  const bootstrapReport = initialized ? buildBootstrapReport() : null;
   const nextContext = initialized ? buildNextContext() : null;
   const resumeContext = initialized ? buildResumeContext() : null;
   const activeTask = getActiveTask();
   const handoff = loadHandoff();
+  const bootstrapPending = Boolean(
+    initialized &&
+    bootstrap &&
+    (
+      bootstrap.status !== 'ready-for-next' ||
+      (bootstrap.command && bootstrap.command !== 'next')
+    )
+  );
+  const bootstrapCommand = bootstrapPending && bootstrap && bootstrap.command
+    ? bootstrap.command
+    : '';
   const immediateCommand = handoff
     ? 'resume'
-    : initialized && bootstrap.status !== 'ready-for-next'
-      ? bootstrap.command
+    : bootstrapCommand
+      ? bootstrapCommand
     : activeTask
       ? 'next'
       : initialized
@@ -887,7 +873,7 @@ function buildStartContext() {
         : 'start';
   const immediateReason = handoff
     ? 'An unconsumed handoff exists and should be restored before any new work.'
-    : initialized && bootstrap.status !== 'ready-for-next'
+    : bootstrapCommand
       ? bootstrap.summary
     : activeTask
       ? 'An active task already exists, so the shortest path is to continue the task loop.'
@@ -925,7 +911,14 @@ function buildStartContext() {
         hasHandoff: Boolean(handoff)
       })
     },
-    bootstrap,
+    bootstrap: bootstrapReport
+      ? {
+          ...bootstrap,
+          quickstart: bootstrapReport.quickstart || null,
+          next_stage: bootstrapReport.next_stage || null,
+          action_card: bootstrapReport.action_card || null
+        }
+      : bootstrap,
     next: nextContext
       ? {
           command: nextContext.next.command,

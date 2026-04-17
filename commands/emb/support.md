@@ -22,4 +22,4 @@ allowed-tools:
 
 - Run `$emb-support` when the issue is chip-support maintenance rather than normal project bootstrap.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
-- This is an advanced maintenance surface, not part of the default firmware-project path.
+- Most of this surface is advanced maintenance. The exception is `support bootstrap`, which is part of the known-chip fast path when you want direct control instead of `bootstrap run`.

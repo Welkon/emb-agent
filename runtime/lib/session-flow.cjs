@@ -678,6 +678,91 @@ function createSessionFlowHelpers(deps) {
       : 0;
   }
 
+  function normalizeIntentText(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/[^a-z0-9.%+/ ]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function buildHardwareIntentHaystack(resolved) {
+    const hardware = resolved && resolved.hardware ? resolved.hardware : {};
+    const identity = hardware && hardware.identity ? hardware.identity : hardware;
+    const signals = Array.isArray(identity && identity.signals) ? identity.signals : [];
+    const peripherals = Array.isArray(identity && identity.peripherals) ? identity.peripherals : [];
+
+    return normalizeIntentText(runtime.unique([
+      identity && identity.model ? identity.model : '',
+      identity && identity.package ? identity.package : '',
+      ...signals.flatMap(item => [
+        item && item.name ? item.name : '',
+        item && item.pin ? item.pin : '',
+        item && item.direction ? item.direction : '',
+        item && item.note ? item.note : ''
+      ]),
+      ...peripherals.flatMap(item => [
+        item && item.name ? item.name : '',
+        item && item.usage ? item.usage : ''
+      ])
+    ]).filter(Boolean).join(' '));
+  }
+
+  function includesIntentKeyword(haystack, keyword) {
+    const normalizedHaystack = normalizeIntentText(haystack);
+    const normalizedKeyword = normalizeIntentText(keyword);
+    return Boolean(normalizedHaystack && normalizedKeyword && normalizedHaystack.includes(normalizedKeyword));
+  }
+
+  function getToolIntentScore(item, resolved) {
+    const tool = String(item && item.tool ? item.tool : '').trim().toLowerCase();
+    const haystack = buildHardwareIntentHaystack(resolved);
+
+    if (!tool || !haystack) {
+      return 0;
+    }
+
+    let score = 0;
+
+    if (tool === 'pwm-calc') {
+      if (includesIntentKeyword(haystack, 'pwm')) score += 60;
+      if (includesIntentKeyword(haystack, 'duty')) score += 18;
+      if (includesIntentKeyword(haystack, 'hz') || includesIntentKeyword(haystack, 'khz')) score += 10;
+      if (includesIntentKeyword(haystack, 'lpwmg')) score -= 8;
+    } else if (tool === 'lpwmg-calc') {
+      if (includesIntentKeyword(haystack, 'lpwmg')) score += 80;
+      if (includesIntentKeyword(haystack, 'pwm')) score += 34;
+      if (includesIntentKeyword(haystack, 'duty')) score += 18;
+      if (includesIntentKeyword(haystack, 'hz') || includesIntentKeyword(haystack, 'khz')) score += 10;
+      if (includesIntentKeyword(haystack, 'exact') || includesIntentKeyword(haystack, 'precise')) score += 12;
+    } else if (tool === 'timer-calc') {
+      if (includesIntentKeyword(haystack, 'timer')) score += 36;
+      if (includesIntentKeyword(haystack, 'period')) score += 18;
+      if (includesIntentKeyword(haystack, 'delay')) score += 18;
+      if (includesIntentKeyword(haystack, 'timeout')) score += 18;
+      if (includesIntentKeyword(haystack, 'interrupt')) score += 14;
+      if (includesIntentKeyword(haystack, 'tick')) score += 14;
+      if (includesIntentKeyword(haystack, 'pwm')) score -= 20;
+    } else if (tool === 'comparator-threshold') {
+      if (includesIntentKeyword(haystack, 'comparator')) score += 50;
+      if (includesIntentKeyword(haystack, 'threshold')) score += 24;
+      if (includesIntentKeyword(haystack, 'bandgap')) score += 12;
+    } else if (tool === 'lvdc-threshold') {
+      if (includesIntentKeyword(haystack, 'lvdc')) score += 50;
+      if (includesIntentKeyword(haystack, 'low voltage')) score += 18;
+      if (includesIntentKeyword(haystack, 'battery')) score += 12;
+      if (includesIntentKeyword(haystack, 'threshold')) score += 16;
+    } else if (tool === 'charger-config') {
+      if (includesIntentKeyword(haystack, 'charger')) score += 50;
+      if (includesIntentKeyword(haystack, 'charge')) score += 24;
+      if (includesIntentKeyword(haystack, 'current')) score += 12;
+    }
+
+    return score;
+  }
+
   function buildAdapterHealthHints(healthReport, primaryToolRecommendation) {
     const adapterHealth =
       healthReport && healthReport.chip_support_health
@@ -717,7 +802,7 @@ function createSessionFlowHelpers(deps) {
     ];
   }
 
-  function selectPrimaryToolRecommendation(toolRecommendations) {
+  function selectPrimaryToolRecommendation(toolRecommendations, resolved) {
     const items = Array.isArray(toolRecommendations) ? toolRecommendations.slice() : [];
     if (items.length === 0) {
       return null;
@@ -727,6 +812,7 @@ function createSessionFlowHelpers(deps) {
       .map((item, index) => ({ item, index }))
       .sort((left, right) => {
         return getToolRecommendationScore(left.item) - getToolRecommendationScore(right.item) ||
+          getToolIntentScore(right.item, resolved) - getToolIntentScore(left.item, resolved) ||
           Number(Boolean(right.item && right.item.trust && right.item.trust.executable)) -
             Number(Boolean(left.item && left.item.trust && left.item.trust.executable)) ||
           getToolRecommendationTrustScore(right.item) - getToolRecommendationTrustScore(left.item) ||
@@ -861,7 +947,7 @@ function createSessionFlowHelpers(deps) {
     const recommendedSources = (resolved.effective && resolved.effective.recommended_sources) || [];
     const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
     const toolRecommendations = (resolved.effective && resolved.effective.tool_recommendations) || [];
-    const primaryToolRecommendation = selectPrimaryToolRecommendation(toolRecommendations);
+    const primaryToolRecommendation = selectPrimaryToolRecommendation(toolRecommendations, resolved);
     const primaryRegisterSource = recommendedSources.find(item => item.priority_group === 'register-summary') || null;
     const primarySource = primaryRegisterSource || recommendedSources[0] || null;
     const latestForensics =
