@@ -12,6 +12,7 @@ function createSessionReportCommandHelpers(deps) {
     buildNextContext,
     buildResumeContext,
     getProjectExtDir,
+    getProjectStatePaths,
     updateSession,
     maybeAutoExtractOnSessionReport
   } = deps;
@@ -59,6 +60,16 @@ function createSessionReportCommandHelpers(deps) {
 
   function ensureSessionReportsDir() {
     runtime.ensureDir(getSessionReportsDir());
+  }
+
+  function buildSessionStatePayload() {
+    const statePaths = typeof getProjectStatePaths === 'function' ? getProjectStatePaths() : null;
+    const resolved = resolveSession();
+    return statePaths
+      ? runtime.buildSessionStateView(statePaths, {
+          projectRoot: resolved && resolved.session ? resolved.session.project_root : process.cwd()
+        })
+      : null;
   }
 
   function buildTimestampSlug(date) {
@@ -332,7 +343,8 @@ function createSessionReportCommandHelpers(deps) {
       generated: false,
       report_file: '',
       summary: summaryText || '',
-      handoff_present: false
+      handoff_present: false,
+      session_state: buildSessionStatePayload()
     }, explicitConfirmation);
 
     if (blocked.permission.decision !== 'allow') {
@@ -357,6 +369,7 @@ function createSessionReportCommandHelpers(deps) {
       generated: true,
       report_file: path.relative(process.cwd(), filePath),
       summary: report.summary,
+      session_state: buildSessionStatePayload(),
       next: report.next.next,
       diagnostics: report.diagnostics,
       delegation_runtime: report.diagnostics.delegation_runtime,

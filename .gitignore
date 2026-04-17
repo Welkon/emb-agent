@@ -2,3 +2,4 @@
 emb-agent-*.tgz
 state/emb-agent/projects/*
 runtime/state/projects/*
+.emb-agent/.developer

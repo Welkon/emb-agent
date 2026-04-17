@@ -89,6 +89,9 @@ test('session-report also performs auto-memory extraction at session boundary', 
 
     const report = await captureJson(['session-report', 'capture closure summary']);
     assert.equal(report.generated, true);
+    assert.ok(report.session_state);
+    assert.equal(report.session_state.storage_mode, 'primary');
+    assert.equal(report.session_state.session.exists, true);
     assert.ok(report.auto_memory);
     assert.equal(report.auto_memory.remembered, true);
 

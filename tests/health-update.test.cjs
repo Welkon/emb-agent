@@ -10,6 +10,8 @@ const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const installer = require(path.join(repoRoot, 'bin', 'install.js'));
 const sessionStartHook = require(path.join(repoRoot, 'runtime', 'hooks', 'emb-session-start.js'));
+const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
+const packageVersion = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version;
 
 function writeText(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -152,6 +154,91 @@ test('health reports warn for incomplete hardware identity and fail for missing 
       delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
     } else {
       process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('health reports fallback session state path when primary state storage is readonly', { concurrency: false }, () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-fallback-'));
+  const fallbackStateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-fallback-state-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const previousFallbackDir = process.env.EMB_AGENT_PROJECT_STATE_FALLBACK_DIR;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+  const statePaths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), tempProject, runtimeConfig);
+  const readonlyPrefix = `${path.resolve(statePaths.primaryStateDir)}${path.sep}`;
+  const realMkdirSync = fs.mkdirSync;
+  const realWriteFileSync = fs.writeFileSync;
+  const realOpenSync = fs.openSync;
+  let stdout = '';
+
+  function isReadonlyPrimaryPath(filePath) {
+    const normalized = path.resolve(String(filePath));
+    return normalized === path.resolve(statePaths.primaryStateDir) || normalized.startsWith(readonlyPrefix);
+  }
+
+  try {
+    process.env.EMB_AGENT_PROJECT_STATE_FALLBACK_DIR = fallbackStateDir;
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
+    const resolvedStatePaths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), tempProject, runtimeConfig);
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+    fs.mkdirSync = function patchedMkdirSync(filePath, options) {
+      if (isReadonlyPrimaryPath(filePath)) {
+        const error = new Error('read-only primary state dir');
+        error.code = 'EROFS';
+        throw error;
+      }
+      return realMkdirSync.call(this, filePath, options);
+    };
+    fs.writeFileSync = function patchedWriteFileSync(filePath, data, options) {
+      if (isReadonlyPrimaryPath(filePath)) {
+        const error = new Error('read-only primary state dir');
+        error.code = 'EROFS';
+        throw error;
+      }
+      return realWriteFileSync.call(this, filePath, data, options);
+    };
+    fs.openSync = function patchedOpenSync(filePath, flags, mode) {
+      if (isReadonlyPrimaryPath(filePath)) {
+        const error = new Error('read-only primary state dir');
+        error.code = 'EROFS';
+        throw error;
+      }
+      return realOpenSync.call(this, filePath, flags, mode);
+    };
+
+    cli.main(['init']);
+    stdout = '';
+    cli.main(['health']);
+
+    const report = JSON.parse(stdout);
+    const sessionCheck = report.checks.find(item => item.key === 'session_state');
+
+    assert.ok(sessionCheck);
+    assert.equal(sessionCheck.status, 'pass');
+    assert.ok(sessionCheck.evidence.includes('storage_mode=fallback'));
+    assert.ok(sessionCheck.evidence.includes(resolvedStatePaths.fallbackSessionPath));
+    assert.equal(fs.existsSync(resolvedStatePaths.fallbackSessionPath), true);
+  } finally {
+    fs.mkdirSync = realMkdirSync;
+    fs.writeFileSync = realWriteFileSync;
+    fs.openSync = realOpenSync;
+    if (previousFallbackDir === undefined) {
+      delete process.env.EMB_AGENT_PROJECT_STATE_FALLBACK_DIR;
+    } else {
+      process.env.EMB_AGENT_PROJECT_STATE_FALLBACK_DIR = previousFallbackDir;
+    }
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
     }
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -452,13 +539,17 @@ test('update reports stale install and cached newer version', () => {
     const report = JSON.parse(stdout);
 
     assert.equal(report.command, 'update');
-    assert.equal(report.installed_version, '0.2.0');
+    assert.equal(report.installed_version, packageVersion);
     assert.equal(report.cache.latest, '0.3.0');
+    assert.equal(report.cache.installed, '0.2.0');
     assert.equal(report.cache.update_available, true);
-    assert.equal(report.stale_install.installed, '0.2.0');
+    assert.equal(report.stale_install.installed, packageVersion);
     assert.equal(report.stale_install.hook, '0.0.1');
     assert.equal(report.check.triggered, false);
     assert.equal(report.check.reason, 'skip-env');
+    assert.ok(report.session_state);
+    assert.equal(report.session_state.storage_mode, 'primary');
+    assert.equal(report.session_state.session.exists, true);
     assert.ok(report.recommendations.some(item => item.includes('hooks / runtime / agents')));
     assert.equal(report.workflow_layout.registry_path, 'registry/workflow.json');
     assert.ok(Array.isArray(report.workflow_layout.reused));

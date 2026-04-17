@@ -81,3 +81,40 @@ test('settings show includes runtime host bridge visibility', () => {
     process.stdout.write = originalWrite;
   }
 });
+
+test('status and session show expose session state paths', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-settings-session-state-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  try {
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    const status = cli.buildStatus();
+    assert.ok(status.session_state);
+    assert.equal(status.session_state.storage_mode, 'primary');
+    assert.equal(status.session_state.session.storage_mode, 'primary');
+    assert.equal(status.session_state.session.exists, true);
+    assert.match(status.session_state.session.path, /\.json$/);
+
+    stdout = '';
+    cli.main(['session', 'show']);
+    const sessionView = JSON.parse(stdout);
+
+    assert.ok(sessionView.session_state);
+    assert.equal(sessionView.session_state.storage_mode, 'primary');
+    assert.equal(sessionView.session_state.session.exists, true);
+    assert.equal(sessionView.session_state.session.path, status.session_state.session.path);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
