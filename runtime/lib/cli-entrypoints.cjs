@@ -760,7 +760,7 @@ function createCliEntryHelpers(deps) {
         },
         {
           flag: '--brief',
-          description: 'outputs compact JSON (recommended for action commands such as next/plan/review/verify)'
+          description: 'outputs compact JSON with summarized runtime_events (recommended for action commands such as start/next/status/plan/review/verify)'
         }
       ],
       sections: advanced ? advancedSections : compactSections,

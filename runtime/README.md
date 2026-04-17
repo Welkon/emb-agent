@@ -94,6 +94,71 @@ function runHook(rawInput) {
 }
 ```
 
+## Automation Output
+
+emb-agent exposes two machine-oriented user surfaces on top of the regular JSON payloads.
+
+- `--brief`
+  Compact JSON for action-oriented commands such as `start`, `next`, `status`, `health`, `bootstrap`, `dispatch`, `tool run`, and closure flows.
+- `external <start|status|next|health|dispatch-next>`
+  Stable protocol envelope for host runtimes, skills, and thin wrappers that do not want the full internal payload.
+
+Both surfaces expose summarized `runtime_events` instead of the raw event array:
+
+- `clear`
+  no active runtime signal
+- `ok`
+  informational signal only
+- `pending`
+  follow-up is still recommended
+- `blocked`
+  execution should pause until the blocker is closed
+- `failed`
+  the runtime observed a failed step
+
+Practical examples:
+
+```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs next --brief
+node <runtime-home>/emb-agent/bin/emb-agent.cjs external next
+node <runtime-home>/emb-agent/bin/emb-agent.cjs task worktree status <name>
+```
+
+Typical `brief` shape:
+
+```json
+{
+  "output_mode": "brief",
+  "next": {
+    "command": "scan",
+    "cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs scan"
+  },
+  "runtime_events": {
+    "status": "pending",
+    "total": 1,
+    "types": ["workflow-next"]
+  }
+}
+```
+
+Typical external-driver shape:
+
+```json
+{
+  "protocol": "emb-agent.external/1",
+  "entrypoint": "next",
+  "status": "selection",
+  "summary": "Project is still in definition and chip-selection mode.",
+  "runtime_events": {
+    "status": "pending",
+    "total": 1
+  },
+  "next": {
+    "cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs scan"
+  }
+}
+```
+
 ## Minimum Maintenance Commands
 
 Initialize or attach a project:
@@ -141,6 +206,14 @@ node ./.emb-agent/runtime/bin/emb-agent.cjs external next
 node ./.emb-agent/runtime/bin/emb-agent.cjs external health
 node ./.emb-agent/runtime/bin/emb-agent.cjs external dispatch-next
 node ./.emb-agent/runtime/bin/emb-agent.cjs external status
+```
+
+If a local wrapper only needs the shortest next-step JSON instead of the full protocol, prefer:
+
+```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs start --brief
+node <runtime-home>/emb-agent/bin/emb-agent.cjs next --brief
+node <runtime-home>/emb-agent/bin/emb-agent.cjs status --brief
 ```
 
 Check runtime update state:
