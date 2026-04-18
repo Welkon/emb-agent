@@ -52,9 +52,11 @@ The public command surface is intentionally small and grouped by default path.
 - Use `external start|next|status|health|dispatch-next` when a host or tool needs the stable external-driver envelope.
 - Use `task worktree status|show` before `create` or `cleanup` when you need to inspect isolated task workspace state first.
 - Use `support bootstrap` when you want direct control over chip-support registration/install in one step.
+- Shared chip-support sources are optional for ordinary project startup; use them when you need reusable support, not before you can begin.
 - If the MCU is not chosen yet, keep `hw.yaml` unknown, record constraints in `req.yaml`, then return to `next`.
 - If the truth still lives outside the repo, use `ingest doc` or `ingest schematic` before writing truth directly.
 - After `ingest doc`, prefer `support analysis init` and then `support derive --from-analysis` instead of treating raw documents as final chip support.
+- If support is still only valid for the current project, keep it `project-only` first and publish it to a shared adapters catalog only after review.
 
 ## Advanced Help
 

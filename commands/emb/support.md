@@ -17,15 +17,19 @@ allowed-tools:
 
 - Manage chip support sources, discovery, derivation, and reuse status.
 - Prefer surfacing whether support is `reusable`, `reusable-candidate`, or `project-only` before reading trust details.
+- Treat shared chip-support sources as a reuse/publish layer, not as the required starting point for normal project work.
 
 ## Usage
 
 - Run `$emb-support` when the issue is chip-support maintenance rather than normal project bootstrap.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
 - Most of this surface is advanced maintenance. The exception is `support bootstrap`, which is part of the known-chip fast path when you want direct control instead of `bootstrap run`.
-- 当你准备让 agent / AI 解析 datasheet 并沉淀为结构化草稿时，可先生成固定 artifact：
+- Normal users should be able to derive project-local support first and only think about shared sources later.
+- `support source add` / `support sync` are primarily for installing or maintaining shared reusable support catalogs.
+- When you want an agent / AI to interpret a datasheet and persist the result as a structured draft, initialize a fixed artifact first:
   `support analysis init --chip <name>`
-- 当 datasheet / 原理图需要先交给 agent 做语义解析时，可先让 agent 产出结构化 analysis artifact，再用：
+- When a datasheet or schematic needs semantic analysis before support can be derived, let the agent fill a structured analysis artifact first, then run:
   `support derive --from-analysis <path>`
-- `support analysis init` 会在 `.emb-agent/analysis/` 下生成带 schema 的草稿文件，方便本地 agent 继续补全。
-- `--from-analysis` 适合承接 AI 解析结果；最终落盘仍由 derive/generate 引擎完成，避免 agent 直接自由写 adapters。
+- `support analysis init` creates a schema-backed draft file under `.emb-agent/analysis/` so a local agent can keep filling it in safely.
+- `--from-analysis` is the right handoff for AI-produced interpretation; final adapter files are still written by the derive/generate engine so the agent does not freely author support files directly.
+- If the derived support is only valid for the current project, keep it `project-only`; only move it into a shared adapters repository after review confirms it is reusable across projects.

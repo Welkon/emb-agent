@@ -22,6 +22,8 @@ start
 
 Start with `start`. On the first run it initializes the repo automatically, then tells you the shortest next step.
 
+Do not treat a shared adapters repository as required setup before you can begin. The default flow should work inside the current project first.
+
 ## 3. If the MCU is already known
 
 Write the hardware truth directly:
@@ -35,6 +37,8 @@ next run
 If you already know signals or peripherals, record them with additional `declare hardware` flags instead of re-explaining them in chat.
 
 If you want direct control over chip-support registration/install, use `support bootstrap` instead of splitting `support source add` and `support sync` manually.
+
+Shared chip-support sources are the reuse layer. They are useful when support is already available or ready to be shared, but they are not the default entrypoint for a new project.
 
 When `health` or `next` starts talking about chip support, read the reuse state first:
 
@@ -73,6 +77,8 @@ ingest doc -> apply truth -> support analysis init -> let the agent fill the ana
 ```
 
 Do not treat `ingest doc` as if it already produced final chip support. It only stages facts and hands off to the analysis-artifact flow.
+
+If the derived support is only good enough for the current repository, keep it local first. Promote it into a shared adapters catalog only after review confirms it is reusable.
 
 ## 6. Keep the default flow small
 
