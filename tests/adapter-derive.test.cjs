@@ -40,6 +40,11 @@ async function suppressStdout(run) {
   }
 }
 
+function writeText(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
 test('adapter derive creates extension registries and profile skeletons', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-derive-'));
   const currentCwd = process.cwd();
@@ -259,6 +264,173 @@ test('adapter derive can infer family device chip and tools from project truth',
     assert.equal(deviceProfile.bindings['timer-calc'].params.default_timer, 'Timer16');
     assert.equal(deviceProfile.bindings['pwm-calc'].params.default_output_pin, 'PA3');
     assert.equal(deviceProfile.bindings['adc-scale'].draft, true);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('support promote copies reusable-candidate support into a shared path source', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-project-'));
+  const tempCatalog = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-catalog-'));
+  const currentCwd = process.cwd();
+
+  try {
+    await suppressStdout(() => Promise.resolve(initProject.main(['--project', tempProject])));
+    process.chdir(tempProject);
+    await suppressStdout(() => cli.main(['init']));
+    await suppressStdout(() =>
+      cli.main([
+        'support',
+        'source',
+        'add',
+        'shared-pack',
+        '--confirm',
+        '--type',
+        'path',
+        '--location',
+        tempCatalog
+      ])
+    );
+
+    writeText(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      [
+        'mcu:',
+        '  vendor: "SCMCU"',
+        '  model: "SC8F072"',
+        '  package: "SOP8"',
+        '',
+        'board:',
+        '  name: ""',
+        '  target: ""',
+        '',
+        'sources:',
+        '  datasheet:',
+        '    - "docs/SC8F072.pdf"',
+        '  schematic:',
+        '    - ""',
+        '  code:',
+        '    - ""',
+        '',
+        'signals:',
+        '  - name: "PWM_OUT"',
+        '    pin: "PA3"',
+        '    direction: "output"',
+        '    default_state: "low"',
+        '    confirmed: false',
+        '    note: ""',
+        '',
+        'peripherals:',
+        '  - name: "Timer16"',
+        '    usage: "time base"',
+        '  - name: "PWM"',
+        '    usage: "dimming"',
+        '  - name: "ADC"',
+        '    usage: "sampling"',
+        '',
+        'truths:',
+        '  - "Board uses SC8F072 SOP8"',
+        '',
+        'constraints:',
+        '  - "PA5 reserved for programming"',
+        '',
+        'unknowns:',
+        '  - ""',
+        ''
+      ].join('\n')
+    );
+
+    const derived = await captureJson(() =>
+      cli.main([
+        'support',
+        'derive',
+        '--from-project'
+      ])
+    );
+    const promoted = await captureJson(() =>
+      cli.main([
+        'support',
+        'promote',
+        'shared-pack',
+        '--confirm',
+        '--chip',
+        'sc8f072sop8'
+      ])
+    );
+
+    assert.equal(derived.reusability.status, 'reusable-candidate');
+    assert.equal(promoted.status, 'ok');
+    assert.equal(promoted.mode, 'source');
+    assert.equal(promoted.source.name, 'shared-pack');
+    assert.equal(promoted.chip, 'sc8f072sop8');
+    assert.equal(promoted.reusability.status, 'reusable-candidate');
+    assert.ok(promoted.promoted_files.includes('extensions/tools/devices/sc8f072.json'));
+    assert.ok(promoted.promoted_files.includes('extensions/chips/profiles/sc8f072sop8.json'));
+    assert.ok(promoted.promoted_files.includes('chip-support/routes/timer-calc.cjs'));
+    assert.ok(promoted.generated.includes('extensions/tools/registry.json'));
+    assert.ok(promoted.generated.includes('extensions/chips/registry.json'));
+    assert.equal(fs.existsSync(path.join(tempCatalog, 'extensions', 'tools', 'devices', 'sc8f072.json')), true);
+    assert.equal(fs.existsSync(path.join(tempCatalog, 'extensions', 'chips', 'profiles', 'sc8f072sop8.json')), true);
+    assert.equal(fs.existsSync(path.join(tempCatalog, 'chip-support', 'routes', 'timer-calc.cjs')), true);
+
+    const promotedToolRegistry = JSON.parse(
+      fs.readFileSync(path.join(tempCatalog, 'extensions', 'tools', 'registry.json'), 'utf8')
+    );
+    const promotedChipRegistry = JSON.parse(
+      fs.readFileSync(path.join(tempCatalog, 'extensions', 'chips', 'registry.json'), 'utf8')
+    );
+
+    assert.deepEqual(promotedToolRegistry.devices, ['sc8f072']);
+    assert.deepEqual(promotedChipRegistry.devices, ['sc8f072sop8']);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('support promote blocks project-only support unless --force is used', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-block-'));
+  const tempOutput = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-output-'));
+  const currentCwd = process.cwd();
+
+  try {
+    await suppressStdout(() => Promise.resolve(initProject.main(['--project', tempProject])));
+    process.chdir(tempProject);
+    await suppressStdout(() => cli.main(['init']));
+
+    const result = await captureJson(() =>
+      cli.main([
+        'support',
+        'derive',
+        '--family',
+        'scmcu-sc8f0xx',
+        '--device',
+        'sc8f072',
+        '--chip',
+        'sc8f072ad608sp',
+        '--tool',
+        'timer-calc',
+        '--vendor',
+        'SCMCU',
+        '--series',
+        'SC8F072',
+        '--package',
+        'sop8'
+      ])
+    );
+
+    assert.equal(result.reusability.status, 'project-only');
+    await assert.rejects(
+      () => cli.main([
+        'support',
+        'promote',
+        '--confirm',
+        '--chip',
+        'sc8f072ad608sp',
+        '--output-root',
+        tempOutput
+      ]),
+      /Derived support is project-only/
+    );
   } finally {
     process.chdir(currentCwd);
   }

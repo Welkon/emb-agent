@@ -442,6 +442,7 @@ const {
   parseProjectSetArgs,
   parseAdapterSourceAddArgs,
   parseAdapterSyncArgs,
+  parseAdapterPromoteArgs,
   parseAdapterBootstrapArgs,
   parseProjectValue,
   assignNestedField,
@@ -794,6 +795,42 @@ function runAdapterAnalysisInit(args) {
   }), blocked.permission);
 }
 
+function runAdapterPromote(args) {
+  const parsed = parseAdapterPromoteArgs(args || []);
+  const inspection = adapterDeriveCli.inspectDerivedSupport({
+    projectRoot: resolveProjectRoot(),
+    family: parsed.family,
+    device: parsed.device,
+    chip: parsed.chip
+  });
+  const actionName = parsed.output_root ? 'support-promote-path' : 'support-promote-source';
+  const blocked = applyAdapterWritePermission({
+    status: 'permission-pending',
+    target: parsed.output_root ? 'path' : 'source',
+    output_root: parsed.output_root || '',
+    family: inspection.family,
+    device: inspection.device,
+    chip: inspection.chip,
+    tools: inspection.tools || []
+  }, actionName, parsed.explicit_confirmation);
+
+  if (blocked.permission.decision !== 'allow') {
+    return blocked.result;
+  }
+
+  return permissionGateHelpers.applyPermissionDecision(adapterSources.promoteDerivedSupport(
+    ROOT,
+    resolveProjectRoot(),
+    getProjectConfig(),
+    {
+      sourceName: parsed.source_name,
+      outputRoot: parsed.output_root,
+      force: parsed.force,
+      inspection
+    }
+  ), blocked.permission);
+}
+
 const {
   parseNoteAddArgs,
   normalizeTargetAlias,
@@ -1107,6 +1144,7 @@ const {
   runAdapterDerive,
   runAdapterGenerate,
   runAdapterAnalysisInit,
+  runAdapterPromote,
   handleCatalogAndStateCommands,
   saveScanReport,
     savePlanReport,
@@ -1209,6 +1247,7 @@ module.exports = {
   runAdapterDerive,
   runAdapterGenerate,
   runAdapterAnalysisInit,
+  runAdapterPromote,
   parseProjectShowArgs,
   parseProjectSetArgs,
   parseAdapterSourceAddArgs,

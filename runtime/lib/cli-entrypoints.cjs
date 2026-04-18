@@ -712,6 +712,7 @@ function createCliEntryHelpers(deps) {
           'support sync --all [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
           'support analysis init --chip <name> [--model <name>] [--vendor <name>] [--series <name>] [--family <slug>] [--device <slug>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--output <path>] [--force]',
           'support derive [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',
+          'support promote [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
           'support generate [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] --output-root <path> [--force]',
           'tool list',
           'tool show <name>',
