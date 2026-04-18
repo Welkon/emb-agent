@@ -317,6 +317,30 @@ test('known chip start path prefers guided bootstrap once a chip support source 
   }
 });
 
+test('known chip start path prefers project-local derive before shared sources are configured', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-start-derive-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['declare', 'hardware', '--confirm', '--mcu', 'vendor-chip', '--package', 'qfp32']);
+
+    const start = cli.buildStartContext();
+
+    assert.equal(start.immediate.command, 'support derive --from-project');
+    assert.match(start.immediate.cli, /support derive --from-project$/);
+    assert.ok(Array.isArray(start.workflow.steps[0].commands));
+    assert.ok(start.workflow.steps[0].commands.some(item => item.includes('support derive --from-project')));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('hardware PWM intent makes next prefer pwm-calc over generic timer-calc', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-tool-pwm-intent-'));
   const currentCwd = process.cwd();

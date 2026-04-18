@@ -382,7 +382,7 @@ test('init scans existing project inputs and suggests hardware confirmation befo
   }
 });
 
-test('init prioritizes chip support bootstrap for confirmed chip before board pin declaration', () => {
+test('init prioritizes project-local chip support derive for confirmed chip before board pin declaration', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-pins-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -439,10 +439,10 @@ test('init prioritizes chip support bootstrap for confirmed chip before board pi
     const result = JSON.parse(stdout);
 
     assert.equal(result.initialized, true);
-    assert.equal(result.bootstrap.status, 'needs-chip-support-source');
+    assert.equal(result.bootstrap.status, 'ready-for-next');
     assert.equal(result.bootstrap.stage, 'bootstrap-chip-support');
-    assert.equal(result.bootstrap.command, 'support bootstrap');
-    assert.match(result.bootstrap.summary, /chip support source/i);
+    assert.equal(result.bootstrap.command, 'support derive --from-project');
+    assert.match(result.bootstrap.summary, /project-local draft chip support/i);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
