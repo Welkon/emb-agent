@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://emb-agent.dev/schemas/chip-support-analysis.schema.json",
+  "title": "emb-agent chip support analysis artifact",
+  "description": "Draft AI-assisted analysis artifact that feeds support derive/generate.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/payload"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "chip_support_analysis": {
+          "$ref": "#/$defs/payload"
+        }
+      },
+      "required": [
+        "chip_support_analysis"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "analysis": {
+          "$ref": "#/$defs/payload"
+        }
+      },
+      "required": [
+        "analysis"
+      ],
+      "additionalProperties": true
+    }
+  ],
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "doc": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "lookup_keys": {
+              "$ref": "#/$defs/stringList"
+            },
+            "notes": {
+              "$ref": "#/$defs/stringList"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "signal": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "pin": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string"
+        },
+        "default_state": {
+          "type": "string"
+        },
+        "confirmed": {
+          "type": "boolean"
+        },
+        "usage": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "peripheral": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "usage": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "binding": {
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object"
+        },
+        "evidence": {
+          "$ref": "#/$defs/stringList"
+        },
+        "notes": {
+          "$ref": "#/$defs/stringList"
+        }
+      },
+      "required": [
+        "algorithm"
+      ],
+      "additionalProperties": true
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "vendor": {
+          "type": "string"
+        },
+        "series": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "device": {
+          "type": "string"
+        },
+        "chip": {
+          "type": "string"
+        },
+        "package": {
+          "type": "string"
+        },
+        "pin_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "architecture": {
+          "type": "string"
+        },
+        "runtime_model": {
+          "type": "string"
+        },
+        "tools": {
+          "$ref": "#/$defs/stringList"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/stringList"
+        },
+        "docs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/doc"
+          }
+        },
+        "truths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "constraints": {
+          "$ref": "#/$defs/stringList"
+        },
+        "unknowns": {
+          "$ref": "#/$defs/stringList"
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/signal"
+          }
+        },
+        "peripherals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/peripheral"
+          }
+        },
+        "bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/binding"
+          }
+        },
+        "notes": {
+          "$ref": "#/$defs/stringList"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

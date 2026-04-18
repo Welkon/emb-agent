@@ -67,10 +67,20 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     assert.equal(first.truth_write.domain, 'hardware');
     assert.equal(first.truth_write.target, '.emb-agent/hw.yaml');
     assert.equal(first.truth_write.apply_via, 'ingest apply doc');
+    assert.equal(first.agent_analysis.recommended_agent, 'emb-hw-scout');
+    assert.equal(first.agent_analysis.status, 'agent-analysis-recommended');
+    assert.equal(first.agent_analysis.artifact_path, '.emb-agent/analysis/pms150g.json');
+    assert.match(first.agent_analysis.init_command, /support analysis init --chip PMS150G --package SOP8/);
+    assert.match(first.agent_analysis.derive_command, /support derive --from-analysis \.emb-agent\/analysis\/pms150g\.json/);
+    assert.equal(first.recommended_flow.id, 'doc-to-chip-support-analysis');
+    assert.equal(first.recommended_flow.mode, 'analysis-artifact-first');
+    assert.equal(first.handoff_protocol.protocol, 'emb-agent.chip-support-analysis/1');
+    assert.equal(first.handoff_protocol.artifact_path, '.emb-agent/analysis/pms150g.json');
     assert.equal(first.apply_ready.to, 'hardware');
     assert.match(first.apply_ready.command, /ingest apply doc .* --to hardware/);
     assert.equal(fs.existsSync(path.join(cacheDir, 'parse.md')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'parse.json')), true);
+    assert.equal(fs.existsSync(path.join(cacheDir, 'summary.json')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'source.json')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'facts.hardware.yaml')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'facts.hardware.json')), true);
@@ -101,6 +111,20 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     const docViewBeforeApply = ingestDocCli.showDoc(tempProject, first.doc_id);
     assert.equal(docViewBeforeApply.auto_apply_ready.to, 'hardware');
     assert.match(docViewBeforeApply.auto_apply_ready.command, /ingest apply doc .* --to hardware/);
+    assert.equal(docViewBeforeApply.summary_info.agent_analysis.artifact_path, '.emb-agent/analysis/pms150g.json');
+    assert.equal(docViewBeforeApply.summary_info.recommended_flow.id, 'doc-to-chip-support-analysis');
+    assert.equal(docViewBeforeApply.summary_info.handoff_protocol.protocol, 'emb-agent.chip-support-analysis/1');
+
+    const nextContext = cli.buildNextContext();
+    assert.equal(nextContext.hardware_doc_analysis.recommended_agent, 'emb-hw-scout');
+    assert.equal(nextContext.hardware_doc_analysis.artifact_path, '.emb-agent/analysis/pms150g.json');
+    assert.equal(nextContext.recommended_flow.id, 'doc-to-chip-support-analysis');
+    assert.equal(nextContext.handoff_protocol.protocol, 'emb-agent.chip-support-analysis/1');
+    assert.equal(nextContext.next.recommended_flow.id, 'doc-to-chip-support-analysis');
+    assert.equal(nextContext.next.handoff_protocol.artifact_path, '.emb-agent/analysis/pms150g.json');
+    assert.ok(nextContext.next_actions.some(item => item.includes('Analyze the latest hardware doc with emb-hw-scout first')));
+    assert.ok(nextContext.next_actions.some(item => item.includes('Initialize analysis artifact first:')));
+    assert.ok(nextContext.next_actions.some(item => item.includes('Derive draft adapters from analysis artifact:')));
 
     const second = await cli.runIngestCommand(
       'doc',
@@ -112,6 +136,7 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     assert.equal(parseCalls, 1);
     assert.equal(second.write_mode, 'staged-truth');
     assert.equal(second.truth_write.status, 'ready-to-apply');
+    assert.equal(second.agent_analysis.artifact_path, '.emb-agent/analysis/pms150g.json');
 
     const applied = await cli.runIngestCommand(
       'apply',

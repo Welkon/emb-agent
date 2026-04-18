@@ -136,6 +136,25 @@ function createExternalAgentHelpers() {
       status: stage.name || 'next',
       summary: next.reason || '',
       runtime_events: summarizeProtocolRuntimeEvents(source),
+      recommended_flow:
+        source.recommended_flow && typeof source.recommended_flow === 'object' && !Array.isArray(source.recommended_flow)
+          ? compactObject({
+              id: source.recommended_flow.id || '',
+              mode: source.recommended_flow.mode || '',
+              artifact_path:
+                Array.isArray(source.recommended_flow.steps)
+                  ? (source.recommended_flow.steps.find(step => step && step.artifact_path) || {}).artifact_path || ''
+                  : ''
+            })
+          : undefined,
+      handoff_protocol:
+        source.handoff_protocol && typeof source.handoff_protocol === 'object' && !Array.isArray(source.handoff_protocol)
+          ? compactObject({
+              protocol: source.handoff_protocol.protocol || '',
+              artifact_path: source.handoff_protocol.artifact_path || '',
+              recommended_agent: source.handoff_protocol.recommended_agent || ''
+            })
+          : undefined,
       next: compactObject({
         cli: next.cli || '',
         gated_by_health: next.gated_by_health ? true : undefined
@@ -198,6 +217,25 @@ function createExternalAgentHelpers() {
       summary: quickstart.summary || bootstrap.summary || '',
       blocking_checks: summarizeHealthChecks(source.checks),
       runtime_events: summarizeProtocolRuntimeEvents(source),
+      recommended_flow:
+        source.recommended_flow && typeof source.recommended_flow === 'object' && !Array.isArray(source.recommended_flow)
+          ? compactObject({
+              id: source.recommended_flow.id || '',
+              mode: source.recommended_flow.mode || '',
+              artifact_path:
+                Array.isArray(source.recommended_flow.steps)
+                  ? (source.recommended_flow.steps.find(step => step && step.artifact_path) || {}).artifact_path || ''
+                  : ''
+            })
+          : undefined,
+      handoff_protocol:
+        source.handoff_protocol && typeof source.handoff_protocol === 'object' && !Array.isArray(source.handoff_protocol)
+          ? compactObject({
+              protocol: source.handoff_protocol.protocol || '',
+              artifact_path: source.handoff_protocol.artifact_path || '',
+              recommended_agent: source.handoff_protocol.recommended_agent || ''
+            })
+          : undefined,
       next: compactObject({
         cli:
           actionCard.first_cli ||

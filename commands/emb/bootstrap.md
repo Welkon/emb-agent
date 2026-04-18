@@ -22,6 +22,7 @@ allowed-tools:
 - Run `bootstrap run [--confirm]` in runtime CLI to execute the first auto-runnable bootstrap stage.
 - If the next stage is the default remote chip support install, `bootstrap run` should stop and require an explicit source or manual network-enabled execution first.
 - Use `bootstrap run --confirm` when the current bootstrap stage is gated by write permissions or explicit confirmation.
+- If bootstrap points to document-driven chip support, expect a two-step quickstart: initialize the analysis artifact first, then derive from `--from-analysis`.
 
 ## Mental Model
 

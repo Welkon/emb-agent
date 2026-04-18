@@ -16,6 +16,18 @@ Core responsibilities:
 
 Core should not pretend every embedded vendor stack shares the same build, flash, or debug implementation.
 
+## Analysis artifact boundary
+
+When chip support needs to be derived from datasheets, manuals, or schematics, emb-agent should not jump from raw documents straight into ready support.
+
+Use a constrained middle layer instead:
+
+- document ingest extracts text and staged facts
+- an analysis artifact captures evidence-backed chip understanding
+- `support derive` / `support generate` turn that artifact into draft adapters
+
+This keeps AI useful without letting it freely write support as if it were already production truth.
+
 ## What belongs in chip support
 
 Chip support should own:
@@ -24,6 +36,7 @@ Chip support should own:
 - tool routes and algorithm implementations
 - chip profiles and package-specific pin information
 - vendor-specific derived constraints and binding rules
+- draft bindings generated from structured analysis artifacts
 
 Examples:
 
@@ -40,6 +53,12 @@ Without chip support packs, embedded AI workflows tend to mix:
 - one-off debugging guesses
 
 emb-agent keeps these separate so the workflow remains stable even when chip-specific logic changes.
+
+The intended chain is:
+
+```text
+documents -> staged truth / analysis artifact -> draft chip support -> reviewed reusable support
+```
 
 ## Reuse-first status
 

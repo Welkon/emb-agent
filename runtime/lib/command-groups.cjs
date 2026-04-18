@@ -32,6 +32,7 @@ function createCommandGroupHelpers(deps) {
     syncAllAdapterSources,
     runAdapterDerive,
     runAdapterGenerate,
+    runAdapterAnalysisInit,
     handleCatalogAndStateCommands,
     saveScanReport,
     savePlanReport,
@@ -276,7 +277,8 @@ function createCommandGroupHelpers(deps) {
     syncNamedAdapterSource,
     syncAllAdapterSources,
     runAdapterDerive,
-    runAdapterGenerate
+    runAdapterGenerate,
+    runAdapterAnalysisInit
   });
 
   const {

@@ -876,15 +876,32 @@ test('health routes from applied hardware doc to adapter derive when synced adap
 
     assert.equal(report.checks.find(item => item.key === 'chip_support_match').status, 'warn');
     assert.equal(report.checks.find(item => item.key === 'chip_support_derive_candidate').status, 'warn');
-    assert.ok(report.next_commands.some(item => item.key === 'support-derive-from-doc'));
-    assert.ok(report.next_commands.some(item => item.cli.includes(`support derive --from-project --from-doc ${ingested.doc_id}`)));
+    assert.ok(report.next_commands.some(item => item.key === 'support-analysis-init'));
+    assert.ok(report.next_commands.some(item => item.key === 'support-derive-from-analysis'));
+    assert.ok(report.next_commands.some(item => item.cli.includes('support analysis init --chip PMS150G --package SOP8')));
+    assert.ok(report.next_commands.some(item => item.cli.includes('support derive --from-analysis .emb-agent/analysis/pms150g.json')));
+    assert.equal(report.recommended_flow.id, 'doc-to-chip-support-analysis');
+    assert.equal(report.recommended_flow.mode, 'analysis-artifact-first');
+    assert.equal(report.handoff_protocol.protocol, 'emb-agent.chip-support-analysis/1');
+    assert.equal(report.handoff_protocol.artifact_path, '.emb-agent/analysis/pms150g.json');
+    assert.deepEqual(
+      report.next_commands.find(item => item.key === 'support-analysis-init').argv,
+      ['support', 'analysis', 'init', '--chip', 'PMS150G', '--package', 'SOP8']
+    );
+    assert.deepEqual(
+      report.next_commands.find(item => item.key === 'support-derive-from-analysis').argv,
+      ['support', 'derive', '--from-analysis', '.emb-agent/analysis/pms150g.json']
+    );
     assert.equal(report.quickstart.stage, 'derive-then-next');
-    assert.equal(report.action_card.stage, 'chip-support-from-document');
+    assert.equal(report.action_card.stage, 'chip-support-from-analysis');
     assert.equal(report.action_card.action, 'Ready to continue');
     assert.equal(report.action_card.first_instruction, '');
-    assert.ok(report.action_card.first_cli.includes(`support derive --from-project --from-doc ${ingested.doc_id}`));
+    assert.ok(report.action_card.first_cli.includes('support analysis init --chip PMS150G --package SOP8'));
+    assert.ok(report.action_card.then_cli.includes('support derive --from-analysis .emb-agent/analysis/pms150g.json'));
     assert.equal(report.bootstrap.current_stage, 'support-derive');
-    assert.ok(report.quickstart.steps[0].cli.includes(`support derive --from-project --from-doc ${ingested.doc_id}`));
+    assert.ok(report.quickstart.steps[0].cli.includes('support analysis init --chip PMS150G --package SOP8'));
+    assert.ok(report.quickstart.steps[1].cli.includes('support derive --from-analysis .emb-agent/analysis/pms150g.json'));
+    assert.ok(report.quickstart.steps[2].cli.endsWith(' next'));
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;

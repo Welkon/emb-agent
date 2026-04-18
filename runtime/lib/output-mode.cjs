@@ -160,6 +160,66 @@ function summarizeWalkthroughExecution(value) {
   });
 }
 
+function summarizeRecommendedFlow(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const steps = toArray(value.steps)
+    .filter(isObject)
+    .slice(0, 3)
+    .map(step => compactObject({
+      id: step.id || '',
+      kind: step.kind || '',
+      required: step.required === undefined ? undefined : Boolean(step.required),
+      cli: step.cli || '',
+      artifact_path: step.artifact_path || '',
+      recommended_agent: step.recommended_agent || ''
+    }));
+
+  return compactObject({
+    id: value.id || '',
+    mode: value.mode || '',
+    source_kind: value.source_kind || '',
+    summary: value.summary || '',
+    steps
+  });
+}
+
+function summarizeHandoffProtocol(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const commands = isObject(value.commands)
+    ? compactObject({
+        init: isObject(value.commands.init)
+          ? compactObject({
+              cli: value.commands.init.cli || '',
+              argv: truncateList(value.commands.init.argv, 6)
+            })
+          : null,
+        derive: isObject(value.commands.derive)
+          ? compactObject({
+              cli: value.commands.derive.cli || '',
+              argv: truncateList(value.commands.derive.argv, 6)
+            })
+          : null
+      })
+    : null;
+
+  return compactObject({
+    protocol: value.protocol || '',
+    source_kind: value.source_kind || '',
+    doc_id: value.doc_id || '',
+    artifact_path: value.artifact_path || '',
+    recommended_agent: value.recommended_agent || '',
+    commands,
+    confirmation_targets: truncateList(value.confirmation_targets, 4),
+    expected_output: truncateList(value.expected_output, 4)
+  });
+}
+
 function summarizeActionCard(value) {
   if (!isObject(value)) {
     return null;
@@ -269,6 +329,7 @@ function relevantHealthCheckKeys(stage) {
         'register_summary_available'
       ];
     case 'chip-support-from-document':
+    case 'chip-support-from-analysis':
       return ['chip_support_derive_candidate', 'chip_support_match'];
     default:
       return [];
@@ -540,6 +601,8 @@ function buildBriefNextContext(value) {
     walkthrough_execution: summarizeWalkthroughExecution(value.walkthrough_execution),
     memory_summary: summarizeMemorySummary(value.memory_summary),
     context_hygiene: summarizeContextHygiene(value.context_hygiene),
+    recommended_flow: summarizeRecommendedFlow(value.recommended_flow || next.recommended_flow),
+    handoff_protocol: summarizeHandoffProtocol(value.handoff_protocol || next.handoff_protocol),
     next_actions: truncateList(value.next_actions, 5),
     health: summarizeHealth(value.health)
   });
@@ -784,6 +847,8 @@ function buildBriefHealthOutput(value) {
     next_commands: truncateList(value.next_commands, 4),
     subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
     action_card: actionCard,
+    recommended_flow: summarizeRecommendedFlow(value.recommended_flow),
+    handoff_protocol: summarizeHandoffProtocol(value.handoff_protocol),
     quickstart: isObject(value.quickstart)
       ? compactObject({
           stage: quickstart.display_stage || quickstart.stage || '',

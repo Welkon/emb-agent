@@ -311,6 +311,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /Delegation and chip support runtime:/);
   assert.match(advanced, /Inspection and discovery:/);
   assert.match(advanced, /support source add/);
+  assert.match(advanced, /support analysis init --chip <name>/);
   assert.doesNotMatch(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
   assert.match(advanced, /ingest schematic --file <path>/);

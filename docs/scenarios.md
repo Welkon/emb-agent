@@ -64,7 +64,7 @@ Use this when the answer is not confidently known and must be derived from evide
 Flow:
 
 ```text
-ingest doc -> review/apply -> next
+ingest doc -> review/apply -> support analysis init -> agent fills analysis artifact -> support derive --from-analysis -> next
 ```
 
 Use:
@@ -72,6 +72,8 @@ Use:
 - `ingest doc --file <path> --kind datasheet --to hardware`
 - `write_mode: staged-truth` as the signal that document facts are ready to review and apply
 - apply-ready diff flows before implementation
+- `support analysis init` to create the structured chip-support analysis artifact
+- `support derive --from-analysis` to let derive/generate own the final draft adapter output
 
 Prefer this path when pin mux, timing limits, or register boundaries still need evidence.
 

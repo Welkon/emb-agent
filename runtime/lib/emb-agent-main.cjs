@@ -18,6 +18,7 @@ const MEMORY_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'memory') : path.join(
 const { TEMPLATES_DIR } = require(path.join(ROOT, 'lib', 'template-registry.cjs'));
 const templateCli = require(path.join(ROOT, 'scripts', 'template.cjs'));
 const adapterDeriveCli = require(path.join(ROOT, 'scripts', 'adapter-derive.cjs'));
+const supportAnalysisCli = require(path.join(ROOT, 'scripts', 'support-analysis.cjs'));
 const attachProjectCli = require(path.join(ROOT, 'scripts', 'attach-project.cjs'));
 const ingestTruthCli = require(path.join(ROOT, 'scripts', 'ingest-truth.cjs'));
 const ingestDocCli = require(path.join(ROOT, 'scripts', 'ingest-doc.cjs'));
@@ -766,6 +767,33 @@ function runAdapterGenerate(args) {
   }), blocked.permission);
 }
 
+function runAdapterAnalysisInit(args) {
+  const parsed = supportAnalysisCli.parseInitArgs(args || []);
+  if (parsed.help) {
+    return supportAnalysisCli.initAnalysis(args, {
+      projectRoot: resolveProjectRoot()
+    });
+  }
+
+  const blocked = applyAdapterWritePermission({
+    status: 'permission-pending',
+    target: 'project',
+    output_root: parsed.output || '',
+    family: parsed.family,
+    device: parsed.device,
+    chip: parsed.chip || parsed.model,
+    tools: []
+  }, 'support-analysis-init', true);
+
+  if (blocked.permission.decision !== 'allow') {
+    return blocked.result;
+  }
+
+  return permissionGateHelpers.applyPermissionDecision(supportAnalysisCli.initAnalysis(args, {
+    projectRoot: resolveProjectRoot()
+  }), blocked.permission);
+}
+
 const {
   parseNoteAddArgs,
   normalizeTargetAlias,
@@ -1078,6 +1106,7 @@ const {
   syncAllAdapterSources,
   runAdapterDerive,
   runAdapterGenerate,
+  runAdapterAnalysisInit,
   handleCatalogAndStateCommands,
   saveScanReport,
     savePlanReport,
@@ -1179,6 +1208,7 @@ module.exports = {
   syncAllAdapterSources,
   runAdapterDerive,
   runAdapterGenerate,
+  runAdapterAnalysisInit,
   parseProjectShowArgs,
   parseProjectSetArgs,
   parseAdapterSourceAddArgs,
