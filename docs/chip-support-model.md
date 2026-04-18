@@ -87,7 +87,8 @@ documents -> staged truth / analysis artifact -> draft chip support -> reviewed 
 So the operational rule is:
 
 - normal users should be able to finish project work without first wiring up a shared adapters repository
-- maintainers can later promote reviewed support into a shared catalog when it becomes reusable
+- users can export draft support into a private catalog when they want to keep personal or team-local snapshots
+- maintainers can later publish reviewed support into a shared catalog when it becomes reusable
 
 ## Reuse-first status
 

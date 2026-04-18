@@ -442,7 +442,8 @@ const {
   parseProjectSetArgs,
   parseAdapterSourceAddArgs,
   parseAdapterSyncArgs,
-  parseAdapterPromoteArgs,
+  parseAdapterExportArgs,
+  parseAdapterPublishArgs,
   parseAdapterBootstrapArgs,
   parseProjectValue,
   assignNestedField,
@@ -795,15 +796,19 @@ function runAdapterAnalysisInit(args) {
   }), blocked.permission);
 }
 
-function runAdapterPromote(args) {
-  const parsed = parseAdapterPromoteArgs(args || []);
-  const inspection = adapterDeriveCli.inspectDerivedSupport({
+function buildDerivedSupportTransferInspection(parsed) {
+  return adapterDeriveCli.inspectDerivedSupport({
     projectRoot: resolveProjectRoot(),
     family: parsed.family,
     device: parsed.device,
     chip: parsed.chip
   });
-  const actionName = parsed.output_root ? 'support-promote-path' : 'support-promote-source';
+}
+
+function runAdapterExport(args) {
+  const parsed = parseAdapterExportArgs(args || []);
+  const inspection = buildDerivedSupportTransferInspection(parsed);
+  const actionName = parsed.output_root ? 'support-export-path' : 'support-export-source';
   const blocked = applyAdapterWritePermission({
     status: 'permission-pending',
     target: parsed.output_root ? 'path' : 'source',
@@ -818,7 +823,38 @@ function runAdapterPromote(args) {
     return blocked.result;
   }
 
-  return permissionGateHelpers.applyPermissionDecision(adapterSources.promoteDerivedSupport(
+  return permissionGateHelpers.applyPermissionDecision(adapterSources.exportDerivedSupport(
+    ROOT,
+    resolveProjectRoot(),
+    getProjectConfig(),
+    {
+      sourceName: parsed.source_name,
+      outputRoot: parsed.output_root,
+      force: parsed.force,
+      inspection
+    }
+  ), blocked.permission);
+}
+
+function runAdapterPublish(args) {
+  const parsed = parseAdapterPublishArgs(args || []);
+  const inspection = buildDerivedSupportTransferInspection(parsed);
+  const actionName = parsed.output_root ? 'support-publish-path' : 'support-publish-source';
+  const blocked = applyAdapterWritePermission({
+    status: 'permission-pending',
+    target: parsed.output_root ? 'path' : 'source',
+    output_root: parsed.output_root || '',
+    family: inspection.family,
+    device: inspection.device,
+    chip: inspection.chip,
+    tools: inspection.tools || []
+  }, actionName, parsed.explicit_confirmation);
+
+  if (blocked.permission.decision !== 'allow') {
+    return blocked.result;
+  }
+
+  return permissionGateHelpers.applyPermissionDecision(adapterSources.publishDerivedSupport(
     ROOT,
     resolveProjectRoot(),
     getProjectConfig(),
@@ -1144,7 +1180,8 @@ const {
   runAdapterDerive,
   runAdapterGenerate,
   runAdapterAnalysisInit,
-  runAdapterPromote,
+  runAdapterExport,
+  runAdapterPublish,
   handleCatalogAndStateCommands,
   saveScanReport,
     savePlanReport,
@@ -1247,7 +1284,8 @@ module.exports = {
   runAdapterDerive,
   runAdapterGenerate,
   runAdapterAnalysisInit,
-  runAdapterPromote,
+  runAdapterExport,
+  runAdapterPublish,
   parseProjectShowArgs,
   parseProjectSetArgs,
   parseAdapterSourceAddArgs,

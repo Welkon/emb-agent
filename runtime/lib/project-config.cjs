@@ -363,7 +363,7 @@ function createProjectConfigHelpers(deps) {
     return result;
   }
 
-  function parseAdapterPromoteArgs(tokens) {
+  function parseAdapterTransferArgs(tokens) {
     const control = stripPermissionControlTokens(tokens);
     const argv = control.tokens;
     const result = {
@@ -433,6 +433,14 @@ function createProjectConfigHelpers(deps) {
     }
 
     return result;
+  }
+
+  function parseAdapterExportArgs(tokens) {
+    return parseAdapterTransferArgs(tokens);
+  }
+
+  function parseAdapterPublishArgs(tokens) {
+    return parseAdapterTransferArgs(tokens);
   }
 
   function parseAdapterBootstrapArgs(tokens, fallbackName) {
@@ -1240,7 +1248,8 @@ function createProjectConfigHelpers(deps) {
     parseProjectSetArgs,
     parseAdapterSourceAddArgs,
     parseAdapterSyncArgs,
-    parseAdapterPromoteArgs,
+    parseAdapterExportArgs,
+    parseAdapterPublishArgs,
     parseAdapterBootstrapArgs,
     parseProjectValue,
     assignNestedField,

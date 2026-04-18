@@ -115,8 +115,11 @@ function createCliRouter(deps) {
       if (cmd === 'support' && subcmd === 'analysis' && rest[0] === 'init') {
         return 'Initializing chip support analysis artifact';
       }
-      if (cmd === 'support' && subcmd === 'promote') {
-        return 'Promoting derived chip support into a shared catalog';
+      if (cmd === 'support' && subcmd === 'export') {
+        return 'Exporting derived chip support into a private target';
+      }
+      if (cmd === 'support' && subcmd === 'publish') {
+        return 'Publishing derived chip support into a shared catalog';
       }
       if (cmd === 'support' && (subcmd === 'derive' || subcmd === 'generate')) {
         return `Generating chip support artifacts via ${scope}`;

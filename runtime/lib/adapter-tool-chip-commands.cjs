@@ -16,7 +16,8 @@ function createAdapterToolChipCommandHelpers(deps) {
     runAdapterDerive,
     runAdapterGenerate,
     runAdapterAnalysisInit,
-    runAdapterPromote
+    runAdapterExport,
+    runAdapterPublish
   } = deps;
 
   function handleAdapterToolChipCommands(cmd, subcmd, rest) {
@@ -76,8 +77,12 @@ function createAdapterToolChipCommandHelpers(deps) {
       return runAdapterAnalysisInit(rest.slice(1));
     }
 
-    if (isChipSupportCommand && subcmd === 'promote') {
-      return runAdapterPromote(rest);
+    if (isChipSupportCommand && subcmd === 'export') {
+      return runAdapterExport(rest);
+    }
+
+    if (isChipSupportCommand && subcmd === 'publish') {
+      return runAdapterPublish(rest);
     }
 
     if (cmd === 'tool' && subcmd === 'list') {

@@ -312,7 +312,9 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /Inspection and discovery:/);
   assert.match(advanced, /support source add/);
   assert.match(advanced, /support analysis init --chip <name>/);
-  assert.match(advanced, /support promote \[<source>\]/);
+  assert.match(advanced, /support export \[<source>\]/);
+  assert.match(advanced, /support publish \[<source>\]/);
+  assert.doesNotMatch(advanced, /support promote \[<source>\]/);
   assert.doesNotMatch(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
   assert.match(advanced, /ingest schematic --file <path>/);

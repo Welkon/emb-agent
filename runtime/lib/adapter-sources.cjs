@@ -125,6 +125,76 @@ function pathExists(filePath) {
   return fs.existsSync(filePath);
 }
 
+function getMarkdownSectionBody(content, heading) {
+  const normalizedContent = String(content || '');
+  const normalizedHeading = String(heading || '').trim();
+  if (!normalizedContent || !normalizedHeading) {
+    return '';
+  }
+
+  const start = normalizedContent.indexOf(normalizedHeading);
+  if (start === -1) {
+    return '';
+  }
+
+  const afterHeading = normalizedContent.slice(start + normalizedHeading.length);
+  const nextSectionIndex = afterHeading.search(/\n##\s+/);
+  if (nextSectionIndex === -1) {
+    return afterHeading;
+  }
+  return afterHeading.slice(0, nextSectionIndex);
+}
+
+function inspectPromotionEvidence(projectRoot) {
+  const checks = [
+    {
+      key: 'review',
+      label: 'docs/REVIEW-REPORT.md',
+      filePath: path.join(projectRoot, 'docs', 'REVIEW-REPORT.md'),
+      sectionHeading: '## Emb-Agent Reviews'
+    },
+    {
+      key: 'verification',
+      label: 'docs/VERIFICATION.md',
+      filePath: path.join(projectRoot, 'docs', 'VERIFICATION.md'),
+      sectionHeading: '## Emb-Agent Verifications'
+    }
+  ];
+
+  const evidence = checks.map(item => {
+    if (!pathExists(item.filePath)) {
+      return {
+        key: item.key,
+        label: item.label,
+        present: false,
+        has_section: false,
+        has_entry: false
+      };
+    }
+
+    const content = runtime.readText(item.filePath);
+    const sectionBody = getMarkdownSectionBody(content, item.sectionHeading);
+    return {
+      key: item.key,
+      label: item.label,
+      present: true,
+      has_section: Boolean(sectionBody),
+      has_entry: /^###\s+/m.test(sectionBody)
+    };
+  });
+
+  const missing = evidence
+    .filter(item => !item.present || !item.has_section || !item.has_entry)
+    .map(item => item.label);
+
+  return {
+    passed: missing.length === 0,
+    required: checks.map(item => item.label),
+    missing_evidence: missing,
+    evidence
+  };
+}
+
 function hasLayoutContent(layoutRoot) {
   return (
     pathExists(path.join(layoutRoot, 'chip-support')) ||
@@ -1371,11 +1441,17 @@ function selectPromoteSource(projectConfig, sourceName) {
   throw new Error('Multiple enabled path-based chip support sources exist; specify the target source name explicitly');
 }
 
-function promoteDerivedSupport(rootDir, projectRoot, projectConfig, options) {
+function transferDerivedSupport(rootDir, projectRoot, projectConfig, options) {
   const settings = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
   const inspection = settings.inspection && typeof settings.inspection === 'object' ? settings.inspection : null;
+  const operation = settings.operation === 'export' ? 'export' : 'publish';
+  const requirePromotionGate = settings.requirePromotionGate !== false;
+  const verbLabel = operation === 'export' ? 'support export' : 'support publish';
+  const pastVerb = operation === 'export' ? 'Exported' : 'Published';
+  const conflictLabel = operation === 'export' ? 'Export conflict' : 'Publish conflict';
+  const targetLabel = operation === 'export' ? 'private target' : 'shared source';
   if (!inspection || inspection.status !== 'ok') {
-    throw new Error('support promote requires a valid derived support inspection result');
+    throw new Error(`${verbLabel} requires a valid derived support inspection result`);
   }
 
   const force = Boolean(settings.force);
@@ -1384,10 +1460,17 @@ function promoteDerivedSupport(rootDir, projectRoot, projectConfig, options) {
     inspection.review_summary && typeof inspection.review_summary === 'object'
       ? inspection.review_summary
       : {};
+  const promotionGate = inspectPromotionEvidence(projectRoot);
 
-  if (inspection.reusability && inspection.reusability.status !== 'reusable-candidate' && !force) {
+  if (requirePromotionGate && inspection.reusability && inspection.reusability.status !== 'reusable-candidate' && !force) {
     throw new Error(
-      `Derived support is ${inspection.reusability.status || 'not-promotable'}; only reusable-candidate can be promoted without --force`
+      `Derived support is ${inspection.reusability.status || 'not-promotable'}; only reusable-candidate can be published without --force`
+    );
+  }
+
+  if (requirePromotionGate && !promotionGate.passed && !force) {
+    throw new Error(
+      `${verbLabel} requires saved review and verification evidence before publishing shared support; missing: ${promotionGate.missing_evidence.join(', ')}`
     );
   }
 
@@ -1400,7 +1483,7 @@ function promoteDerivedSupport(rootDir, projectRoot, projectConfig, options) {
   } else {
     source = selectPromoteSource(projectConfig, settings.sourceName);
     if (source.type !== 'path') {
-      throw new Error('support promote currently supports only path-based shared sources; use --output-root for other targets');
+      throw new Error(`${verbLabel} currently supports only path-based sources; use --output-root for other targets`);
     }
     const sourceLocation = path.isAbsolute(source.location)
       ? source.location
@@ -1446,7 +1529,7 @@ function promoteDerivedSupport(rootDir, projectRoot, projectConfig, options) {
 
   if (conflicts.length > 0) {
     throw new Error(
-      `Promotion conflict at destination: ${conflicts.join(', ')}. Re-run with --force if overwrite is intended`
+      `${conflictLabel} at destination: ${conflicts.join(', ')}. Re-run with --force if overwrite is intended`
     );
   }
 
@@ -1468,11 +1551,20 @@ function promoteDerivedSupport(rootDir, projectRoot, projectConfig, options) {
     device: inspection.device || '',
     chip: inspection.chip || '',
     tools: Array.isArray(inspection.tools) ? inspection.tools : [],
+    operation,
+    transferred_files: copied,
     promoted_files: copied,
     overwritten_files: overwritten,
     unchanged_files: unchanged,
     generated,
     reusability: inspection.reusability || null,
+    promotion_gate: {
+      enabled: requirePromotionGate,
+      passed: requirePromotionGate ? promotionGate.passed : false,
+      forced: requirePromotionGate ? (!promotionGate.passed && force) : false,
+      missing_evidence: requirePromotionGate ? promotionGate.missing_evidence : [],
+      required: requirePromotionGate ? promotionGate.required : []
+    },
     trust: inspection.trust || null,
     review_summary: {
       recommended_action: reviewSummary.recommended_action || '',
@@ -1482,12 +1574,37 @@ function promoteDerivedSupport(rootDir, projectRoot, projectConfig, options) {
     },
     notes: runtime.unique([
       inspection.reusability && inspection.reusability.summary ? inspection.reusability.summary : '',
+      requirePromotionGate
+        ? (!promotionGate.passed && force
+          ? `Promotion evidence gate was overridden with --force (${promotionGate.missing_evidence.join(', ')}).`
+          : 'Promotion evidence gate passed with saved review and verification records.')
+        : 'Private export keeps current draft/reuse status and does not require promotion evidence.',
       source
-        ? `Promoted derived support into shared source ${source.name}.`
-        : 'Promoted derived support into the requested output root.',
+        ? `${pastVerb} derived support into ${targetLabel} ${source.name}.`
+        : `${pastVerb} derived support into the requested output root.`,
       generated.length > 0 ? 'Extension registries were rebuilt at the destination.' : ''
     ])
   };
+}
+
+function exportDerivedSupport(rootDir, projectRoot, projectConfig, options) {
+  return transferDerivedSupport(rootDir, projectRoot, projectConfig, {
+    ...(options || {}),
+    operation: 'export',
+    requirePromotionGate: false
+  });
+}
+
+function publishDerivedSupport(rootDir, projectRoot, projectConfig, options) {
+  return transferDerivedSupport(rootDir, projectRoot, projectConfig, {
+    ...(options || {}),
+    operation: 'publish',
+    requirePromotionGate: true
+  });
+}
+
+function promoteDerivedSupport(rootDir, projectRoot, projectConfig, options) {
+  return publishDerivedSupport(rootDir, projectRoot, projectConfig, options);
 }
 
 module.exports = {
@@ -1497,6 +1614,8 @@ module.exports = {
   getTargetEmbDir,
   listSourceStatus,
   loadManifest,
+  exportDerivedSupport,
+  publishDerivedSupport,
   promoteDerivedSupport,
   removeSyncedSource,
   resolveSourceRoot,
