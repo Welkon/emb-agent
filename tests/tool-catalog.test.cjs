@@ -28,6 +28,7 @@ test('tool catalog keeps built-in specs abstract and ships no bound profiles', (
   assert.equal(timer.kind, 'calculator');
   assert.equal(timer.sample, false);
   assert.equal(timer.status, 'abstract');
+  assert.deepEqual(timer.intent_profile.domains, ['timer']);
   assert.deepEqual(timer.family_profiles, []);
   assert.deepEqual(timer.device_profiles, []);
   assert.deepEqual(timer.source_modules, []);

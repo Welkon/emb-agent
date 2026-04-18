@@ -68,6 +68,9 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(projectConfig.integrations.szlcsc.only_available, false);
     assert.equal(projectConfig.integrations.szlcsc.currency, '');
     assert.equal(projectConfig.integrations.szlcsc.timeout_ms, 15000);
+    assert.equal(projectConfig.integrations.intent_router.enabled, true);
+    assert.equal(projectConfig.integrations.intent_router.mode, 'agent');
+    assert.equal(projectConfig.integrations.intent_router.provider, 'embedded-agent');
     assert.deepEqual(projectConfig.arch_review.trigger_patterns, []);
     assert.equal(fs.existsSync(path.join(tempProject, 'AGENTS.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'CLAUDE.md')), false);

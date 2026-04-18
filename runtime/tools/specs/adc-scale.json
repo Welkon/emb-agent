@@ -16,6 +16,15 @@
     "range warnings",
     "quantization notes"
   ],
+  "intent_profile": {
+    "domains": ["adc"],
+    "actions": ["measure", "sample", "convert", "calculate"],
+    "targets": ["voltage", "code", "reference"],
+    "keywords": ["adc", "sample voltage", "target voltage", "sample code", "reference voltage"],
+    "anti_keywords": ["pwm", "timer", "charger"],
+    "preference_signals": ["target-voltage", "sample-code", "reference-voltage"],
+    "anchor_preferences": ["pin", "channel", "reference"]
+  },
   "family_profiles": [],
   "source_modules": [],
   "notes": [

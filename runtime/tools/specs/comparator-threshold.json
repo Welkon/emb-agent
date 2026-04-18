@@ -17,6 +17,15 @@
     "input polarity guidance",
     "boundary warnings"
   ],
+  "intent_profile": {
+    "domains": ["comparator"],
+    "actions": ["threshold", "detect", "compare", "calculate"],
+    "targets": ["threshold", "voltage", "reference"],
+    "keywords": ["comparator", "bandgap", "cmp", "threshold"],
+    "anti_keywords": ["pwm", "timer", "charger"],
+    "preference_signals": ["target-voltage", "reference-voltage"],
+    "anchor_preferences": ["pin", "channel", "reference"]
+  },
   "family_profiles": [],
   "source_modules": [],
   "notes": [

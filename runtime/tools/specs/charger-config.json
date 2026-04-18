@@ -16,6 +16,15 @@
     "decoded charging state",
     "operating warnings"
   ],
+  "intent_profile": {
+    "domains": ["charger"],
+    "actions": ["configure", "decode", "calculate"],
+    "targets": ["current", "status"],
+    "keywords": ["charger", "charging", "charge current", "status bit"],
+    "anti_keywords": ["pwm", "adc", "timer"],
+    "preference_signals": ["status-bits"],
+    "anchor_preferences": []
+  },
   "family_profiles": [],
   "device_profiles": [],
   "source_modules": [],

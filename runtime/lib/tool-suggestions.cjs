@@ -278,8 +278,11 @@ function createToolSuggestionHelpers(deps) {
     };
   }
 
-  function buildPwmDraft(toolName, chipProfile, deviceProfile, familyProfile, binding) {
+  function buildPwmDraft(toolName, chipProfile, deviceProfile, familyProfile, binding, hardwareIdentity) {
     const params = (binding && binding.params) || {};
+    const texts = collectHardwareIntentTexts(hardwareIdentity);
+    const inferredTarget = findExactPwmTarget(texts);
+    const preferredOutputPin = findPreferredOutputPin(hardwareIdentity);
     const missing = [];
     const parts = ['tool', 'run', toolName];
 
@@ -287,7 +290,7 @@ function createToolSuggestionHelpers(deps) {
     addDraftArg(
       parts,
       'output-pin',
-      params.default_output_pin || firstObjectKey(params.output_pins) || 'OUTPUT_PIN'
+      preferredOutputPin || params.default_output_pin || firstObjectKey(params.output_pins) || 'OUTPUT_PIN'
     );
     addDraftArg(
       parts,
@@ -295,25 +298,54 @@ function createToolSuggestionHelpers(deps) {
       params.default_clock_source || firstObjectKey(params.clock_sources) || 'CLOCK_SOURCE'
     );
     addDraftArg(parts, 'clock-hz', '<CLOCK_HZ>');
-    addDraftArg(parts, 'target-hz', '<TARGET_HZ>');
-    addDraftArg(parts, 'target-duty', '50');
+    addDraftArg(parts, 'target-hz', inferredTarget.target_hz || '<TARGET_HZ>');
+    addDraftArg(parts, 'target-duty', inferredTarget.target_duty || '50');
     addUniqueMissing(missing, 'clock-hz');
-    addUniqueMissing(missing, 'target-hz');
+    if (!inferredTarget.target_hz) {
+      addUniqueMissing(missing, 'target-hz');
+    }
 
     return {
       argv: parts.slice(),
       cli_draft: finalizeDraft(parts),
       missing_inputs: missing,
       defaults_applied: {
-        output_pin: params.default_output_pin || '',
+        output_pin: preferredOutputPin || params.default_output_pin || '',
         clock_source: params.default_clock_source || '',
-        target_duty: 50
+        target_hz: inferredTarget.target_hz || '',
+        target_duty: inferredTarget.target_duty || '50'
       }
     };
   }
 
-  function buildComparatorDraft(toolName, chipProfile, deviceProfile, familyProfile, binding) {
+  function findPreferredSignalToken(hardwareIdentity, direction, pattern) {
+    const identity = hardwareIdentity && typeof hardwareIdentity === 'object' ? hardwareIdentity : {};
+    const signals = Array.isArray(identity.signals) ? identity.signals : [];
+    const regex = pattern instanceof RegExp ? pattern : null;
+    const expectedDirection = String(direction || '').trim().toLowerCase();
+
+    const match = signals.find(item => {
+      const signalDirection = String(item && item.direction ? item.direction : '').trim().toLowerCase();
+      const text = `${item && item.name ? item.name : ''} ${item && item.note ? item.note : ''}`.toLowerCase();
+      return (!expectedDirection || !signalDirection || signalDirection === expectedDirection) &&
+        regex &&
+        regex.test(text);
+    });
+
+    if (!match) {
+      return '';
+    }
+
+    return String(match.pin || match.name || '').trim();
+  }
+
+  function buildComparatorDraft(toolName, chipProfile, deviceProfile, familyProfile, binding, hardwareIdentity) {
     const params = (binding && binding.params) || {};
+    const preferredNegativeSource =
+      findPreferredSignalToken(hardwareIdentity, 'input', /(cmp|comparator|compare)/) ||
+      params.default_negative_source ||
+      firstObjectKey(params.negative_sources) ||
+      'NEGATIVE_SOURCE';
     const missing = [];
     const parts = ['tool', 'run', toolName];
 
@@ -328,7 +360,7 @@ function createToolSuggestionHelpers(deps) {
     addDraftArg(
       parts,
       'negative-source',
-      params.default_negative_source || firstObjectKey(params.negative_sources) || 'NEGATIVE_SOURCE'
+      preferredNegativeSource
     );
     addUniqueMissing(missing, 'vdd');
     addUniqueMissing(missing, 'target-threshold-v or target-ratio');
@@ -339,15 +371,20 @@ function createToolSuggestionHelpers(deps) {
       missing_inputs: missing,
       defaults_applied: {
         positive_source: params.default_positive_source || '',
-        negative_source: params.default_negative_source || ''
+        negative_source: preferredNegativeSource
       }
     };
   }
 
-  function buildAdcDraft(toolName, chipProfile, deviceProfile, familyProfile, binding) {
+  function buildAdcDraft(toolName, chipProfile, deviceProfile, familyProfile, binding, hardwareIdentity) {
     const params = (binding && binding.params) || {};
     const referenceKey = params.default_reference_source || firstObjectKey(params.reference_sources) || '';
     const reference = referenceKey ? ((params.reference_sources || {})[referenceKey] || {}) : {};
+    const preferredChannel =
+      findPreferredSignalToken(hardwareIdentity, 'input', /(adc|sample|voltage|analog)/) ||
+      params.default_channel ||
+      firstObjectKey(params.channels) ||
+      'CHANNEL';
     const missing = [];
     const parts = ['tool', 'run', toolName];
 
@@ -359,7 +396,7 @@ function createToolSuggestionHelpers(deps) {
       addUniqueMissing(missing, 'reference-v');
     }
 
-    addDraftArg(parts, 'channel', params.default_channel || firstObjectKey(params.channels) || 'CHANNEL');
+    addDraftArg(parts, 'channel', preferredChannel);
     addDraftArg(
       parts,
       'resolution',
@@ -374,7 +411,7 @@ function createToolSuggestionHelpers(deps) {
       missing_inputs: missing,
       defaults_applied: {
         reference_source: referenceKey || '',
-        channel: params.default_channel || '',
+        channel: preferredChannel,
         resolution: params.default_resolution || firstArrayItem(params.supported_resolutions) || ''
       }
     };
@@ -561,13 +598,13 @@ function createToolSuggestionHelpers(deps) {
       return buildTimerDraft(toolName, chipProfile, deviceProfile, familyProfile, binding);
     }
     if (toolName === 'pwm-calc') {
-      return buildPwmDraft(toolName, chipProfile, deviceProfile, familyProfile, binding);
+      return buildPwmDraft(toolName, chipProfile, deviceProfile, familyProfile, binding, hardwareIdentity);
     }
     if (toolName === 'comparator-threshold') {
-      return buildComparatorDraft(toolName, chipProfile, deviceProfile, familyProfile, binding);
+      return buildComparatorDraft(toolName, chipProfile, deviceProfile, familyProfile, binding, hardwareIdentity);
     }
     if (toolName === 'adc-scale') {
-      return buildAdcDraft(toolName, chipProfile, deviceProfile, familyProfile, binding);
+      return buildAdcDraft(toolName, chipProfile, deviceProfile, familyProfile, binding, hardwareIdentity);
     }
     if (toolName === 'lpwmg-calc') {
       return buildLpwmgDraft(toolName, chipProfile, deviceProfile, familyProfile, binding, hardwareIdentity);

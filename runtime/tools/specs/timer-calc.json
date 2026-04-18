@@ -18,6 +18,15 @@
     "absolute and relative error",
     "mode-specific notes"
   ],
+  "intent_profile": {
+    "domains": ["timer"],
+    "actions": ["calculate", "schedule"],
+    "targets": ["period", "frequency", "delay", "interrupt"],
+    "keywords": ["timer", "period", "delay", "timeout", "tick", "interrupt"],
+    "anti_keywords": ["pwm", "adc", "charger"],
+    "preference_signals": ["exact-frequency-target"],
+    "anchor_preferences": []
+  },
   "family_profiles": [],
   "device_profiles": [],
   "source_modules": [],
