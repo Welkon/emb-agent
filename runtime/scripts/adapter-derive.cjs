@@ -1878,6 +1878,217 @@ function buildDerivedReusability(config, trustReport) {
   };
 }
 
+function listNamesFromDir(dirPath, extension) {
+  if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) {
+    return [];
+  }
+
+  return fs.readdirSync(dirPath)
+    .filter(name => name.endsWith(extension))
+    .map(name => name.slice(0, -extension.length))
+    .sort();
+}
+
+function listRelativeFilesRecursive(baseDir, rootDir) {
+  if (!fs.existsSync(baseDir) || !fs.statSync(baseDir).isDirectory()) {
+    return [];
+  }
+
+  const result = [];
+  for (const entry of fs.readdirSync(baseDir, { withFileTypes: true })) {
+    const absolutePath = path.join(baseDir, entry.name);
+    if (entry.isDirectory()) {
+      result.push(...listRelativeFilesRecursive(absolutePath, rootDir));
+      continue;
+    }
+    result.push(path.relative(rootDir, absolutePath).replace(/\\/g, '/'));
+  }
+  return result.sort();
+}
+
+function resolveSingleName(explicitName, names, label) {
+  const normalized = String(explicitName || '').trim();
+  if (normalized) {
+    if (!names.includes(normalized)) {
+      throw new Error(`Derived ${label} not found: ${normalized}`);
+    }
+    return normalized;
+  }
+
+  if (names.length === 1) {
+    return names[0];
+  }
+
+  if (names.length === 0) {
+    throw new Error(`No derived ${label} is available in the current project`);
+  }
+
+  throw new Error(`Multiple derived ${label}s exist; specify --${label}`);
+}
+
+function inspectDerivedSupport(options) {
+  const settings = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+  const projectRoot = path.resolve(settings.projectRoot || process.cwd());
+  const embRoot = runtime.getProjectExtDir(projectRoot);
+  const toolExtRoot = path.join(embRoot, 'extensions', 'tools');
+  const chipExtRoot = path.join(embRoot, 'extensions', 'chips');
+  const routesRoot = path.join(embRoot, 'chip-support', 'routes');
+  const coreRoot = path.join(embRoot, 'chip-support', 'core');
+
+  const chipNames = listNamesFromDir(path.join(chipExtRoot, 'profiles'), '.json');
+  const chipName = resolveSingleName(settings.chip, chipNames, 'chip');
+  const chipPath = path.join(chipExtRoot, 'profiles', `${chipName}.json`);
+  const chipProfile = runtime.readJson(chipPath);
+
+  const familyNames = listNamesFromDir(path.join(toolExtRoot, 'families'), '.json');
+  const familyName = resolveSingleName(settings.family || chipProfile.family, familyNames, 'family');
+  const familyPath = path.join(toolExtRoot, 'families', `${familyName}.json`);
+  const familyProfile = runtime.readJson(familyPath);
+
+  const deviceNames = listNamesFromDir(path.join(toolExtRoot, 'devices'), '.json');
+  const familyMatchedDevices = deviceNames.filter(name => {
+    const filePath = path.join(toolExtRoot, 'devices', `${name}.json`);
+    if (!fs.existsSync(filePath)) {
+      return false;
+    }
+    try {
+      const profile = runtime.readJson(filePath);
+      return String(profile.family || '').trim() === familyName;
+    } catch {
+      return false;
+    }
+  });
+  const deviceName = resolveSingleName(
+    settings.device,
+    familyMatchedDevices.length > 0 ? familyMatchedDevices : deviceNames,
+    'device'
+  );
+  const devicePath = path.join(toolExtRoot, 'devices', `${deviceName}.json`);
+  const deviceProfile = runtime.readJson(devicePath);
+
+  const routeNames = listNamesFromDir(routesRoot, '.cjs');
+  const tools = runtime.unique([
+    ...(Array.isArray(chipProfile.related_tools) ? chipProfile.related_tools : []),
+    ...(Array.isArray(deviceProfile.supported_tools) ? deviceProfile.supported_tools : []),
+    ...Object.keys(deviceProfile.bindings || {}),
+    ...routeNames
+  ]).filter(Boolean);
+
+  const recommendations = tools.map(toolName => {
+    const binding = deviceProfile.bindings && deviceProfile.bindings[toolName]
+      ? deviceProfile.bindings[toolName]
+      : null;
+    const routePath = path.join(routesRoot, `${toolName}.cjs`);
+    const trust = adapterQualityHelpers.evaluateToolRecommendationTrust({
+      toolName,
+      chipProfile,
+      deviceProfile,
+      familyProfile,
+      tool: {
+        name: toolName,
+        status: 'draft-chip-support',
+        implementation: 'external-chip-support-draft',
+        chip_support_path: path.relative(projectRoot, routePath).replace(/\\/g, '/')
+      },
+      bindingInfo: {
+        source: binding ? 'device' : 'none',
+        binding
+      }
+    });
+
+    return {
+      tool: toolName,
+      status: 'draft-chip-support',
+      binding_source: binding ? 'device' : 'none',
+      trust
+    };
+  });
+
+  const summary = adapterQualityHelpers.summarizeAdapterHealth(recommendations, []);
+  const trustReport = {
+    status: summary.status,
+    overall_grade: summary.overall_grade,
+    safe_to_execute: summary.executable_tools > 0,
+    primary: summary.primary,
+    tools: recommendations.map(item => ({
+      tool: item.tool,
+      score: item.trust.score,
+      grade: item.trust.grade,
+      executable: item.trust.executable,
+      recommended_action: item.trust.recommended_action,
+      gaps: item.trust.gaps
+    }))
+  };
+
+  const reusability = buildDerivedReusability({
+    source_mode:
+      chipProfile &&
+      chipProfile.summary &&
+      typeof chipProfile.summary === 'object' &&
+      !Array.isArray(chipProfile.summary)
+        ? chipProfile.summary.source_mode
+        : 'manual',
+    docs: Array.isArray(chipProfile.docs) ? chipProfile.docs : [],
+    signals: Object.values(chipProfile.pins || {}),
+    tools,
+    bindings: deviceProfile.bindings || {}
+  }, trustReport);
+
+  const files = [
+    {
+      kind: 'tool-family',
+      path: path.relative(embRoot, familyPath).replace(/\\/g, '/')
+    },
+    {
+      kind: 'tool-device',
+      path: path.relative(embRoot, devicePath).replace(/\\/g, '/')
+    },
+    {
+      kind: 'chip-profile',
+      path: path.relative(embRoot, chipPath).replace(/\\/g, '/')
+    },
+    ...tools
+      .map(toolName => path.join(routesRoot, `${toolName}.cjs`))
+      .filter(filePath => fs.existsSync(filePath))
+      .map(filePath => ({
+        kind: 'route',
+        path: path.relative(embRoot, filePath).replace(/\\/g, '/')
+      })),
+    ...listRelativeFilesRecursive(coreRoot, embRoot).map(relativePath => ({
+      kind: 'core',
+      path: relativePath
+    }))
+  ];
+
+  return {
+    status: 'ok',
+    project_root: projectRoot,
+    emb_root: path.relative(projectRoot, embRoot).replace(/\\/g, '/') || path.basename(embRoot),
+    family: familyName,
+    device: deviceName,
+    chip: chipName,
+    vendor: chipProfile.vendor || familyProfile.vendor || '',
+    series: chipProfile.series || familyProfile.series || '',
+    package: chipProfile.package || '',
+    tools,
+    files,
+    reusability,
+    trust: trustReport,
+    review_summary: {
+      recommended_action: reusability.recommended_action,
+      review_required: Boolean(reusability.review_required),
+      reasons: Array.isArray(reusability.reasons) ? reusability.reasons : [],
+      blockers: Array.isArray(reusability.blockers) ? reusability.blockers : []
+    },
+    notes: [
+      reusability.summary,
+      trustReport && trustReport.primary
+        ? `Primary tool trust: ${trustReport.primary.tool} (${trustReport.primary.grade} ${trustReport.primary.score}/100).`
+        : 'No primary trust signal is available yet.'
+    ]
+  };
+}
+
 function deriveProfiles(argv, options) {
   const config = parseArgs(argv || []);
   if (config.help) {
@@ -2023,6 +2234,7 @@ function runAdapterDeriveCli(argv, options) {
 
 module.exports = {
   deriveProfiles,
+  inspectDerivedSupport,
   parseArgs,
   runAdapterDeriveCli,
   usage

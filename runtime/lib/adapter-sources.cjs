@@ -1316,6 +1316,180 @@ function syncAllAdapterSources(rootDir, projectRoot, projectConfig, options) {
   return sources.map(source => syncAdapterSource(rootDir, projectRoot, source, options));
 }
 
+function resolvePromoteLayoutRoot(baseRoot, subdir) {
+  const rootWithSubdir = subdir ? path.resolve(baseRoot, subdir) : path.resolve(baseRoot);
+  const candidates = [
+    rootWithSubdir,
+    path.join(rootWithSubdir, '.emb-agent'),
+    path.join(rootWithSubdir, 'emb-agent')
+  ];
+
+  for (const candidate of candidates) {
+    if (pathExists(candidate) && hasLayoutContent(candidate)) {
+      return candidate;
+    }
+  }
+
+  return rootWithSubdir;
+}
+
+function hasSameFileContent(sourcePath, targetPath) {
+  if (!pathExists(sourcePath) || !pathExists(targetPath)) {
+    return false;
+  }
+
+  const sourceStats = fs.statSync(sourcePath);
+  const targetStats = fs.statSync(targetPath);
+  if (sourceStats.size !== targetStats.size) {
+    return false;
+  }
+
+  return fs.readFileSync(sourcePath).equals(fs.readFileSync(targetPath));
+}
+
+function selectPromoteSource(projectConfig, sourceName) {
+  const sources = ((projectConfig && projectConfig.chip_support_sources) || [])
+    .filter(source => source && source.enabled !== false);
+  const normalizedName = String(sourceName || '').trim();
+
+  if (normalizedName) {
+    const matched = findSource(projectConfig, normalizedName);
+    if (!matched) {
+      throw new Error(`Adapter source not found: ${normalizedName}`);
+    }
+    return matched;
+  }
+
+  const pathSources = sources.filter(source => source.type === 'path');
+  if (pathSources.length === 1) {
+    return pathSources[0];
+  }
+  if (pathSources.length === 0) {
+    throw new Error('No enabled path-based chip support source is available; use --output-root or add a path source first');
+  }
+
+  throw new Error('Multiple enabled path-based chip support sources exist; specify the target source name explicitly');
+}
+
+function promoteDerivedSupport(rootDir, projectRoot, projectConfig, options) {
+  const settings = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
+  const inspection = settings.inspection && typeof settings.inspection === 'object' ? settings.inspection : null;
+  if (!inspection || inspection.status !== 'ok') {
+    throw new Error('support promote requires a valid derived support inspection result');
+  }
+
+  const force = Boolean(settings.force);
+  const embRoot = getProjectEmbDir(projectRoot);
+  const reviewSummary =
+    inspection.review_summary && typeof inspection.review_summary === 'object'
+      ? inspection.review_summary
+      : {};
+
+  if (inspection.reusability && inspection.reusability.status !== 'reusable-candidate' && !force) {
+    throw new Error(
+      `Derived support is ${inspection.reusability.status || 'not-promotable'}; only reusable-candidate can be promoted without --force`
+    );
+  }
+
+  let destinationRoot = '';
+  let source = null;
+  let destinationMode = 'output-root';
+
+  if (settings.outputRoot) {
+    destinationRoot = resolvePromoteLayoutRoot(settings.outputRoot, '');
+  } else {
+    source = selectPromoteSource(projectConfig, settings.sourceName);
+    if (source.type !== 'path') {
+      throw new Error('support promote currently supports only path-based shared sources; use --output-root for other targets');
+    }
+    const sourceLocation = path.isAbsolute(source.location)
+      ? source.location
+      : path.resolve(projectRoot, source.location);
+    destinationRoot = resolvePromoteLayoutRoot(sourceLocation, source.subdir || '');
+    destinationMode = 'source';
+  }
+
+  const conflicts = [];
+  const copied = [];
+  const overwritten = [];
+  const unchanged = [];
+  const files = Array.isArray(inspection.files) ? inspection.files : [];
+
+  files.forEach(item => {
+    const relativePath = normalizeRelativePath(item && item.path);
+    if (!relativePath) {
+      return;
+    }
+
+    const sourcePath = path.join(embRoot, relativePath);
+    const targetPath = path.join(destinationRoot, relativePath);
+    if (!pathExists(sourcePath)) {
+      throw new Error(`Derived support file is missing: ${relativePath}`);
+    }
+
+    if (pathExists(targetPath)) {
+      if (hasSameFileContent(sourcePath, targetPath)) {
+        unchanged.push(relativePath);
+        return;
+      }
+      if (!force) {
+        conflicts.push(relativePath);
+        return;
+      }
+      overwritten.push(relativePath);
+    }
+
+    runtime.ensureDir(path.dirname(targetPath));
+    fs.copyFileSync(sourcePath, targetPath);
+    copied.push(relativePath);
+  });
+
+  if (conflicts.length > 0) {
+    throw new Error(
+      `Promotion conflict at destination: ${conflicts.join(', ')}. Re-run with --force if overwrite is intended`
+    );
+  }
+
+  const generated = rebuildRegistries(destinationRoot);
+
+  return {
+    status: 'ok',
+    mode: destinationMode,
+    source: source
+      ? {
+          name: source.name,
+          type: source.type,
+          location: source.location,
+          subdir: source.subdir || ''
+        }
+      : null,
+    destination_root: destinationRoot,
+    family: inspection.family || '',
+    device: inspection.device || '',
+    chip: inspection.chip || '',
+    tools: Array.isArray(inspection.tools) ? inspection.tools : [],
+    promoted_files: copied,
+    overwritten_files: overwritten,
+    unchanged_files: unchanged,
+    generated,
+    reusability: inspection.reusability || null,
+    trust: inspection.trust || null,
+    review_summary: {
+      recommended_action: reviewSummary.recommended_action || '',
+      review_required: Boolean(reviewSummary.review_required),
+      reasons: Array.isArray(reviewSummary.reasons) ? reviewSummary.reasons : [],
+      blockers: Array.isArray(reviewSummary.blockers) ? reviewSummary.blockers : []
+    },
+    notes: runtime.unique([
+      inspection.reusability && inspection.reusability.summary ? inspection.reusability.summary : '',
+      source
+        ? `Promoted derived support into shared source ${source.name}.`
+        : 'Promoted derived support into the requested output root.',
+      generated.length > 0 ? 'Extension registries were rebuilt at the destination.' : ''
+    ])
+  };
+}
+
 module.exports = {
   buildSourceStatus,
   findSource,
@@ -1323,6 +1497,7 @@ module.exports = {
   getTargetEmbDir,
   listSourceStatus,
   loadManifest,
+  promoteDerivedSupport,
   removeSyncedSource,
   resolveSourceRoot,
   syncAdapterSource,

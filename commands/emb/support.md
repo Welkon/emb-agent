@@ -30,6 +30,9 @@ allowed-tools:
   `support analysis init --chip <name>`
 - When a datasheet or schematic needs semantic analysis before support can be derived, let the agent fill a structured analysis artifact first, then run:
   `support derive --from-analysis <path>`
+- When a project-local draft reaches `reusable-candidate`, use:
+  `support promote [<source>] --chip <slug>`
 - `support analysis init` creates a schema-backed draft file under `.emb-agent/analysis/` so a local agent can keep filling it in safely.
 - `--from-analysis` is the right handoff for AI-produced interpretation; final adapter files are still written by the derive/generate engine so the agent does not freely author support files directly.
 - If the derived support is only valid for the current project, keep it `project-only`; only move it into a shared adapters repository after review confirms it is reusable across projects.
+- `support promote` is the maintainer-side closure step. It copies the current project's derived family/device/chip files into a path-based shared catalog or an explicit output root and rebuilds destination registries.

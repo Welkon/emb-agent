@@ -363,6 +363,78 @@ function createProjectConfigHelpers(deps) {
     return result;
   }
 
+  function parseAdapterPromoteArgs(tokens) {
+    const control = stripPermissionControlTokens(tokens);
+    const argv = control.tokens;
+    const result = {
+      source_name: '',
+      output_root: '',
+      family: '',
+      device: '',
+      chip: '',
+      force: false,
+      explicit_confirmation: control.explicit_confirmation
+    };
+
+    for (let index = 0; index < argv.length; index += 1) {
+      const token = argv[index];
+
+      if (!token.startsWith('--') && !result.source_name) {
+        result.source_name = token;
+        continue;
+      }
+
+      if (token === '--output-root') {
+        result.output_root = argv[index + 1] || '';
+        index += 1;
+        if (!result.output_root) {
+          throw new Error('Missing value after --output-root');
+        }
+        continue;
+      }
+
+      if (token === '--family') {
+        result.family = argv[index + 1] || '';
+        index += 1;
+        if (!result.family) {
+          throw new Error('Missing value after --family');
+        }
+        continue;
+      }
+
+      if (token === '--device') {
+        result.device = argv[index + 1] || '';
+        index += 1;
+        if (!result.device) {
+          throw new Error('Missing value after --device');
+        }
+        continue;
+      }
+
+      if (token === '--chip') {
+        result.chip = argv[index + 1] || '';
+        index += 1;
+        if (!result.chip) {
+          throw new Error('Missing value after --chip');
+        }
+        continue;
+      }
+
+      if (token === '--force') {
+        result.force = true;
+        continue;
+      }
+
+      throw new Error(`Unknown argument: ${token}`);
+    }
+
+    if (!result.source_name && !result.output_root) {
+      result.source_name = '';
+    }
+
+    return result;
+  }
+
   function parseAdapterBootstrapArgs(tokens, fallbackName) {
     const control = stripPermissionControlTokens(tokens);
     const argv = control.tokens;
@@ -1168,6 +1240,7 @@ function createProjectConfigHelpers(deps) {
     parseProjectSetArgs,
     parseAdapterSourceAddArgs,
     parseAdapterSyncArgs,
+    parseAdapterPromoteArgs,
     parseAdapterBootstrapArgs,
     parseProjectValue,
     assignNestedField,
