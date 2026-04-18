@@ -391,6 +391,71 @@ test('task commands create activate manage context and resolve lightweight tasks
   }
 });
 
+test('task supports parent-child links and create-pr preview commands', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-parent-child-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    writeText(path.join(tempProject, 'src', 'main.c'), '// main\n');
+    await cli.main(['init']);
+
+    const parentCreated = await captureCliJson([
+      'task',
+      'add',
+      'Build peripheral exercise plan',
+      '--scope',
+      'planning',
+      '--priority',
+      'P1'
+    ]);
+    const parentName = parentCreated.task.name;
+
+    const childCreated = await captureCliJson([
+      'task',
+      'add',
+      'Implement pwm execution path',
+      '--scope',
+      'pwm',
+      '--parent',
+      parentName
+    ]);
+    const childName = childCreated.task.name;
+
+    assert.equal(childCreated.task.parent, parentName);
+
+    const parentShown = await captureCliJson(['task', 'show', parentName]);
+    assert.ok(parentShown.task.children.includes(childName));
+    assert.equal(parentShown.task.child_progress.total, 1);
+    assert.equal(parentShown.task.child_progress.completed, 0);
+
+    const branchUpdated = await captureCliJson(['task', 'set-branch', childName, 'feat/pwm-execution']);
+    assert.equal(branchUpdated.updated, true);
+    assert.equal(branchUpdated.task.branch, 'feat/pwm-execution');
+
+    const baseUpdated = await captureCliJson(['task', 'set-base-branch', childName, 'release/demo']);
+    assert.equal(baseUpdated.updated, true);
+    assert.equal(baseUpdated.task.base_branch, 'release/demo');
+
+    const preview = await captureCliJson(['task', 'create-pr', childName, '--dry-run']);
+    assert.equal(preview.ready, true);
+    assert.equal(preview.dry_run, true);
+    assert.equal(preview.pr.head, 'feat/pwm-execution');
+    assert.equal(preview.pr.base, 'release/demo');
+    assert.match(preview.pr.title, /^pwm: /);
+    assert.match(preview.pr.suggested_cli, /gh pr create/);
+
+    const linkedAgain = await captureCliJson(['task', 'subtask', 'remove', parentName, childName]);
+    assert.equal(linkedAgain.updated, true);
+    assert.equal(linkedAgain.child.parent, null);
+
+    const parentAfterUnlink = await captureCliJson(['task', 'show', parentName]);
+    assert.equal(parentAfterUnlink.task.children.includes(childName), false);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('task activate creates a real git worktree when the project is a git repository', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-git-'));
   const currentCwd = process.cwd();

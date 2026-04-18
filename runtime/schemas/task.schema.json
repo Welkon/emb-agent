@@ -24,6 +24,8 @@
     "commit",
     "pr_url",
     "subtasks",
+    "parent",
+    "children",
     "relatedFiles",
     "notes"
   ],
@@ -112,6 +114,15 @@
     "subtasks": {
       "type": "array",
       "items": {}
+    },
+    "parent": {
+      "type": ["string", "null"]
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "relatedFiles": {
       "type": "array",

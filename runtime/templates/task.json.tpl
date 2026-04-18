@@ -24,6 +24,8 @@
   "commit": "{{COMMIT}}",
   "pr_url": "{{PR_URL}}",
   "subtasks": [],
+  "parent": null,
+  "children": [],
   "relatedFiles": [],
   "notes": ""
 }

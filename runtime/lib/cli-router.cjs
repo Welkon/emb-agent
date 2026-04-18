@@ -33,6 +33,7 @@ function createCliRouter(deps) {
     buildPausePayload,
     buildPauseContextSummary,
     maybeAutoExtractOnPause,
+    buildContextOverview,
     buildCompressContextSummary,
     saveHandoff,
     saveContextSummary,
@@ -242,6 +243,25 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Context', payload.context_hygiene.recommendation, 'muted'));
         }
         pushNextActions(lines, payload.next_actions);
+        return appendRuntimeEventsSummary(lines, payload);
+      }
+
+      if (cmd === 'context' && subcmd === 'show') {
+        if (payload.summary && payload.summary.active_task && payload.summary.active_task.name) {
+          lines.push(terminalUi.renderKeyValue('Task', payload.summary.active_task.name, 'info'));
+        }
+        if (payload.next && payload.next.next && payload.next.next.command) {
+          lines.push(terminalUi.renderKeyValue('Next', payload.next.next.command, 'success'));
+        }
+        if (payload.health && payload.health.status) {
+          lines.push(terminalUi.renderKeyValue('Health', payload.health.status, 'success'));
+        }
+        if (payload.bootstrap && payload.bootstrap.display_current_stage) {
+          lines.push(terminalUi.renderKeyValue('Bootstrap', payload.bootstrap.display_current_stage, 'muted'));
+        }
+        if (payload.status && payload.status.context_hygiene && payload.status.context_hygiene.recommendation) {
+          lines.push(terminalUi.renderKeyValue('Context', payload.status.context_hygiene.recommendation, 'muted'));
+        }
         return appendRuntimeEventsSummary(lines, payload);
       }
 
@@ -1226,7 +1246,7 @@ function createCliRouter(deps) {
     }
 
     if (cmd === 'context' && subcmd === 'show') {
-      emitJson(loadContextSummary());
+      emitJson(buildContextOverview());
       return;
     }
 

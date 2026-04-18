@@ -15,6 +15,7 @@ allowed-tools:
 ## Purpose
 
 - Write a lightweight report for the current session.
+- Prefer `session record` for new usage; `session-report` remains as a compatibility alias.
 
 ## Usage
 

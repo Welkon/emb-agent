@@ -15,6 +15,7 @@ allowed-tools:
 
 - Manage task-local context tied to a precise file set.
 - Persist task manifests under `.emb-agent/tasks/<name>/task.json` with status, owner, priority, branch context, and related files.
+- Track parent/child relationships and branch / base-branch metadata so a task can close into a PR-ready handoff instead of ending as isolated local state.
 - Create a task-local `prd.md` so execution starts from an explicit goal, constraints, and closure checklist instead of chat-only state.
 - Treat task completion as a protocol: work verified, AAR scanned, and recorded when any new lesson is found.
 - Expose task worktrees as a first-class surface through `task worktree list/show/create/cleanup/status`.
@@ -24,6 +25,8 @@ allowed-tools:
 - Run `$emb-task` when this command matches the current problem.
 - Prefer the lightest subcommand that keeps facts, evidence, and project truth aligned.
 - Usually `start` should decide when you need `task add` or `task activate`; use `task` directly once the task lifecycle is already explicit.
+- Use `task add --parent <name>` or `task subtask add <parent> <child>` when larger work needs a visible task tree.
+- Use `task set-branch` and `task set-base-branch` before `task create-pr` if branch routing needs to differ from the defaults.
 - Use `task worktree create <name>` when you need the workspace before moving task status to `in_progress`.
 - Use `task worktree status` or `task worktree show <name>` to inspect workspace state, registry, and current-task pointers.
 - Prefer `task worktree status` or `task worktree show <name>` before `create` or `cleanup`; they expose `workspace_state`, `attention`, and a plain-language summary for the operator.

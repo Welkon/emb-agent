@@ -428,7 +428,7 @@ test('orchestrate run marks redispatch required when worker result fails stage A
     assert.equal(run.executed, false);
     assert.equal(run.execution.kind, 'action-blocked');
     assert.equal(run.worker_results.length, 1);
-    assert.equal(run.worker_results[0].status, 'bridge-error');
+    assert.equal(run.worker_results[0].status, 'failed');
     assert.equal(run.delegation_runtime.review.redispatch_required, true);
     assert.equal(run.delegation_runtime.review.stage_a.status, 'redispatch-required');
     assert.equal(run.delegation_runtime.review.stage_b.status, 'blocked-by-stage-a');
