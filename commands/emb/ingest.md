@@ -34,7 +34,7 @@ allowed-tools:
 - After schematic ingest, use the returned parsed artifacts as agent input and confirm controller/signals/peripherals before writing truth.
 - For normalized part-search inputs from a schematic, use:
   `component lookup --file <path>`
-- For explicit supplier candidates from 立创商城, use:
+- For explicit supplier candidates from SZLCSC / LCSC, use:
   `component lookup --file <path> --provider szlcsc`
 - `doc lookup` and `component lookup` return `result_mode: candidate-only`; they surface evidence or supplier candidates and never write truth by themselves.
 

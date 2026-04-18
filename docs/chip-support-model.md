@@ -44,6 +44,30 @@ Examples:
 - PWM output pin constraints for one device line
 - chip-specific peripheral availability
 
+## Repository roles
+
+emb-agent should treat chip support as a three-layer system:
+
+1. core workflow
+2. project-local draft support
+3. shared reusable support catalog
+
+In practice that means:
+
+- `emb-agent` core owns workflow, truth, routing, analysis artifacts, and derivation contracts
+- the current project can hold draft support that is only good enough for this repository
+- a separate chip-support / adapters repository should only hold support that is ready to be reused across projects
+
+This is why a separate adapters repository still makes sense, but it should no longer be the default user entrypoint.
+
+For most users, the intended path is:
+
+```text
+project truth -> analysis artifact -> project-local draft support -> review -> shared reusable support
+```
+
+The shared catalog exists for publication and reuse, not as a prerequisite before normal project work can begin.
+
 ## Why this split matters
 
 Without chip support packs, embedded AI workflows tend to mix:
@@ -60,6 +84,11 @@ The intended chain is:
 documents -> staged truth / analysis artifact -> draft chip support -> reviewed reusable support
 ```
 
+So the operational rule is:
+
+- normal users should be able to finish project work without first wiring up a shared adapters repository
+- maintainers can later promote reviewed support into a shared catalog when it becomes reusable
+
 ## Reuse-first status
 
 Read chip support in two layers:
@@ -68,6 +97,12 @@ Read chip support in two layers:
 - second: trust details such as score, evidence gaps, and `recommended_action`
 
 This keeps the user-facing decision simple: "can I reuse this?" comes before "why is the trust score like this?".
+
+Those states also map to repository boundaries:
+
+- `project-only`: keep it local to the current project
+- `reusable-candidate`: keep it reviewable and prepare it for promotion
+- `reusable`: safe to publish into a shared chip-support catalog
 
 ## Trust model
 
