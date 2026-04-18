@@ -112,6 +112,9 @@ function createCliRouter(deps) {
       if (cmd === 'support' && subcmd === 'bootstrap') {
         return 'Bootstrapping chip support source';
       }
+      if (cmd === 'support' && subcmd === 'analysis' && rest[0] === 'init') {
+        return 'Initializing chip support analysis artifact';
+      }
       if (cmd === 'support' && (subcmd === 'derive' || subcmd === 'generate')) {
         return `Generating chip support artifacts via ${scope}`;
       }
@@ -297,6 +300,12 @@ function createCliRouter(deps) {
       if (cmd === 'ingest' && payload.domain === 'doc') {
         lines.push(terminalUi.renderKeyValue('Doc', payload.doc_id || payload.title, 'info'));
         lines.push(terminalUi.renderKeyValue('Provider', payload.provider, 'muted'));
+        if (payload.truth_write && payload.truth_write.target) {
+          lines.push(terminalUi.renderKeyValue('Truth Target', payload.truth_write.target, 'success'));
+        }
+        if (payload.agent_analysis && payload.agent_analysis.artifact_path) {
+          lines.push(terminalUi.renderKeyValue('Analysis', payload.agent_analysis.artifact_path, 'warning'));
+        }
         if (payload.cached === true) {
           lines.push(terminalUi.renderKeyValue('Cache', 'hit', 'success'));
         }
@@ -1415,7 +1424,13 @@ function createCliRouter(deps) {
       return;
     }
 
-    if (cmd === 'support' && ['bootstrap', 'sync', 'derive', 'generate'].includes(subcmd || '')) {
+    if (
+      cmd === 'support' &&
+      (
+        ['bootstrap', 'sync', 'derive', 'generate'].includes(subcmd || '') ||
+        (subcmd === 'analysis' && rest[0] === 'init')
+      )
+    ) {
       emitJson(await runWithTerminalUi({
         cmd,
         subcmd,

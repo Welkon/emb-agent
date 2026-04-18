@@ -189,6 +189,7 @@ function createHealthUpdateCommandHelpers(deps) {
       cli: config.cli || '',
       kind: config.kind || '',
       argv: Array.isArray(config.argv) ? config.argv : [],
+      additional_steps: Array.isArray(config.additional_steps) ? config.additional_steps.filter(Boolean) : [],
       manual: status === 'manual',
       blocking: ['ready', 'manual'].includes(status),
       evidence: Array.isArray(config.evidence) ? config.evidence.filter(Boolean) : []
@@ -208,7 +209,7 @@ function createHealthUpdateCommandHelpers(deps) {
       case 'support-bootstrap':
         return 'chip-support';
       case 'support-derive':
-        return 'chip-support-from-document';
+        return 'chip-support-from-analysis';
       case 'next-step':
         return 'continue-with-next';
       default:
@@ -296,7 +297,7 @@ function createHealthUpdateCommandHelpers(deps) {
     }
 
     if (stageId === 'derive-then-next') {
-      return 'No installed chip support matches the recorded chip yet; draft support from the applied hardware document.';
+      return 'No installed chip support matches the recorded chip yet; initialize an analysis artifact, let the agent fill it, then derive draft support from that artifact.';
     }
 
     if (stageId === 'bootstrap-then-next') {
@@ -410,7 +411,8 @@ function createHealthUpdateCommandHelpers(deps) {
         }
       : null;
     const bootstrap = findCommand('support-bootstrap', 'support-sync');
-    const derive = findCommand('support-derive-from-doc');
+    const analysisInit = findCommand('support-analysis-init');
+    const derive = findCommand('support-derive-from-analysis', 'support-derive-from-doc');
     const next = findCommand('next');
     const stages = [];
 
@@ -487,18 +489,27 @@ function createHealthUpdateCommandHelpers(deps) {
       )
     );
 
-    if (bootstrap || derive) {
-      const command = bootstrap || derive;
+    if (bootstrap || analysisInit || derive) {
+      const command = bootstrap || analysisInit || derive;
       stages.push(
         createBootstrapStage(
           bootstrap ? 'support-bootstrap' : 'support-derive',
           !initReady || !trustReady || !hardwareReady || Boolean(docApply) ? 'pending' : 'ready',
-          bootstrap ? 'Install matching chip support' : 'Draft chip support from hardware document',
+          bootstrap ? 'Install matching chip support' : 'Prepare chip support via analysis artifact',
           {
             summary: command.summary || '',
             cli: command.cli || '',
             kind: command.kind || '',
             argv: command.argv || [],
+            additional_steps:
+              !bootstrap && analysisInit && derive
+                ? [
+                    {
+                      label: derive.summary || 'Derive draft chip support from the analysis artifact',
+                      cli: derive.cli || ''
+                    }
+                  ]
+                : [],
             evidence: [command.key || '']
           }
         )
@@ -557,6 +568,7 @@ function createHealthUpdateCommandHelpers(deps) {
             }
           ]
         : []),
+      ...((nextStage && Array.isArray(nextStage.additional_steps)) ? nextStage.additional_steps : []),
       ...(nextStage && nextStage.cli && nextStage.id !== 'next-step'
         ? [
             {
@@ -671,18 +683,40 @@ function createHealthUpdateCommandHelpers(deps) {
     }) || null;
   }
 
-  function buildAdapterDeriveCli(docEntry) {
-    if (!docEntry || !docEntry.doc_id) {
-      return '';
+  function buildDocAnalysisCommands(projectRoot, docEntry) {
+    if (!projectRoot || !docEntry || !docEntry.doc_id || !ingestDocCli || typeof ingestDocCli.showDoc !== 'function') {
+      return null;
     }
 
-    return buildSupportCli([
-      'support',
-      'derive',
-      '--from-project',
-      '--from-doc',
-      docEntry.doc_id
-    ]);
+    try {
+      const view = ingestDocCli.showDoc(projectRoot, docEntry.doc_id);
+      const summaryInfo = view && view.summary_info && typeof view.summary_info === 'object' ? view.summary_info : null;
+      const agentAnalysis = summaryInfo && summaryInfo.agent_analysis && typeof summaryInfo.agent_analysis === 'object'
+        ? summaryInfo.agent_analysis
+        : null;
+      const recommendedFlow = summaryInfo && summaryInfo.recommended_flow && typeof summaryInfo.recommended_flow === 'object'
+        ? summaryInfo.recommended_flow
+        : null;
+      const handoffProtocol = summaryInfo && summaryInfo.handoff_protocol && typeof summaryInfo.handoff_protocol === 'object'
+        ? summaryInfo.handoff_protocol
+        : null;
+      if (!agentAnalysis || !agentAnalysis.artifact_path) {
+        return null;
+      }
+
+      return {
+        artifact_path: agentAnalysis.artifact_path,
+        init_command: agentAnalysis.init_command || '',
+        init_argv: Array.isArray(agentAnalysis.init_argv) ? agentAnalysis.init_argv : [],
+        derive_command: agentAnalysis.derive_command || '',
+        derive_argv: Array.isArray(agentAnalysis.derive_argv) ? agentAnalysis.derive_argv : [],
+        cli_hint: agentAnalysis.cli_hint || '',
+        recommended_flow: recommendedFlow,
+        handoff_protocol: handoffProtocol
+      };
+    } catch {
+      return null;
+    }
   }
 
   function buildHealthReport() {
@@ -708,6 +742,7 @@ function createHealthUpdateCommandHelpers(deps) {
         };
     const checks = [];
     const nextCommands = [];
+    let latestHardwareDocProtocol = null;
     let projectConfig = null;
     let normalizedSession = null;
     let rawSession = null;
@@ -1230,29 +1265,46 @@ function createHealthUpdateCommandHelpers(deps) {
         matchedProjectSources.length === 0 &&
         latestHardwareDoc
       ) {
+        const analysisCommands = buildDocAnalysisCommands(projectRoot, latestHardwareDoc);
+        latestHardwareDocProtocol = analysisCommands;
         checks.push(
           createCheck(
             'chip_support_derive_candidate',
             'warn',
-            `The latest hardware document ${latestHardwareDoc.doc_id} can be used directly to draft chip support`,
+            `The latest hardware document ${latestHardwareDoc.doc_id} can seed a chip-support analysis artifact`,
             [
               latestHardwareDoc.title ? `title=${latestHardwareDoc.title}` : '',
               latestHardwareDoc.source ? `source=${latestHardwareDoc.source}` : '',
-              latestHardwareDoc.cached_at ? `cached_at=${latestHardwareDoc.cached_at}` : ''
+              latestHardwareDoc.cached_at ? `cached_at=${latestHardwareDoc.cached_at}` : '',
+              analysisCommands && analysisCommands.artifact_path ? `analysis=${analysisCommands.artifact_path}` : ''
             ],
-            'Draft chip support from the latest hardware document first, then run next; this is safer than guessing family/device/chip coverage manually.'
+            'Initialize a chip-support analysis artifact from the latest hardware document, let the agent fill it, then derive draft chip support; this is safer than guessing family/device/chip coverage manually.'
           )
         );
-        pushNextCommand(
-          nextCommands,
-          'support-derive-from-doc',
-          `Draft chip support for current hardware from document ${latestHardwareDoc.doc_id}`,
-          buildAdapterDeriveCli(latestHardwareDoc),
-          'support',
-          {
-            argv: ['support', 'derive', '--from-project', '--from-doc', latestHardwareDoc.doc_id]
-          }
-        );
+        if (analysisCommands && analysisCommands.init_command && analysisCommands.derive_command) {
+          pushNextCommand(
+            nextCommands,
+            'support-analysis-init',
+            `Initialize chip-support analysis artifact from document ${latestHardwareDoc.doc_id}`,
+            analysisCommands.init_command,
+            'support',
+            {
+              argv: analysisCommands.init_argv,
+              artifact_path: analysisCommands.artifact_path
+            }
+          );
+          pushNextCommand(
+            nextCommands,
+            'support-derive-from-analysis',
+            `Derive draft chip support from analysis artifact ${analysisCommands.artifact_path}`,
+            analysisCommands.derive_command,
+            'support',
+            {
+              argv: analysisCommands.derive_argv,
+              artifact_path: analysisCommands.artifact_path
+            }
+          );
+        }
       }
     }
 
@@ -1449,6 +1501,14 @@ function createHealthUpdateCommandHelpers(deps) {
         ...adapterHealth,
         reusability: adapterReusability
       },
+      recommended_flow:
+        latestHardwareDocProtocol && latestHardwareDocProtocol.recommended_flow
+          ? latestHardwareDocProtocol.recommended_flow
+          : null,
+      handoff_protocol:
+        latestHardwareDocProtocol && latestHardwareDocProtocol.handoff_protocol
+          ? latestHardwareDocProtocol.handoff_protocol
+          : null,
       next_commands: nextCommands,
       quickstart: buildQuickstartHint(
         workspaceTrust,

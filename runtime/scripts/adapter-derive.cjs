@@ -15,7 +15,7 @@ function usage() {
     [
       'adapter-derive usage:',
       '  node scripts/adapter-derive.cjs --family <slug> --device <slug> --chip <slug>',
-      '    [--from-project] [--from-doc <doc-id>]',
+      '    [--from-project] [--from-doc <doc-id>] [--from-analysis <path>]',
       '    [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>]',
       '    [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--confirm]',
       '    [--target project|runtime] [--output-root <path>] [--project <path>] [--force]'
@@ -49,6 +49,7 @@ function parseArgs(argv) {
     explicit_confirmation: false,
     fromProject: false,
     fromDoc: '',
+    fromAnalysis: '',
     tools: []
   };
 
@@ -85,6 +86,11 @@ function parseArgs(argv) {
     }
     if (token === '--from-doc') {
       result.fromDoc = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
+    if (token === '--from-analysis') {
+      result.fromAnalysis = argv[index + 1] || '';
       index += 1;
       continue;
     }
@@ -153,13 +159,16 @@ function parseArgs(argv) {
   result.target = ensureNonEmpty(result.target || 'project', '--target');
   result.outputRoot = String(result.outputRoot || '').trim();
 
-  if (!result.fromProject && !result.fromDoc) {
+  if (!result.fromProject && !result.fromDoc && !result.fromAnalysis) {
     result.family = ensureNonEmpty(result.family, '--family');
     result.device = ensureNonEmpty(result.device, '--device');
     result.chip = ensureNonEmpty(result.chip, '--chip');
   }
   if (result.fromDoc) {
     result.fromDoc = ensureNonEmpty(result.fromDoc, '--from-doc');
+  }
+  if (result.fromAnalysis) {
+    result.fromAnalysis = ensureNonEmpty(result.fromAnalysis, '--from-analysis');
   }
   if (!['project', 'runtime'].includes(result.target) && !result.outputRoot) {
     throw new Error('--target must be project or runtime');
@@ -342,6 +351,386 @@ function loadDocHardwareDraft(projectRoot, docId) {
     entry,
     path: relativePath,
     data: runtime.readJson(absolutePath)
+  };
+}
+
+function resolveProjectInputPath(projectRoot, inputPath) {
+  const normalized = ensureNonEmpty(inputPath, 'input path');
+  return path.isAbsolute(normalized) ? normalized : path.resolve(projectRoot, normalized);
+}
+
+function selectAnalysisPayload(rawArtifact) {
+  if (!rawArtifact || typeof rawArtifact !== 'object' || Array.isArray(rawArtifact)) {
+    throw new Error('Analysis artifact must be a JSON object');
+  }
+
+  if (rawArtifact.chip_support_analysis && typeof rawArtifact.chip_support_analysis === 'object') {
+    return rawArtifact.chip_support_analysis;
+  }
+
+  if (rawArtifact.analysis && typeof rawArtifact.analysis === 'object') {
+    return rawArtifact.analysis;
+  }
+
+  return rawArtifact;
+}
+
+function pushAnalysisValidationError(errors, field, message) {
+  errors.push(`${field} ${message}`);
+}
+
+function validateOptionalAnalysisString(container, key, errors) {
+  if (!container || !Object.prototype.hasOwnProperty.call(container, key)) {
+    return;
+  }
+  if (typeof container[key] !== 'string') {
+    pushAnalysisValidationError(errors, key, 'must be a string');
+  }
+}
+
+function validateOptionalAnalysisStringList(container, key, errors) {
+  if (!container || !Object.prototype.hasOwnProperty.call(container, key)) {
+    return;
+  }
+
+  const value = container[key];
+  if (!Array.isArray(value)) {
+    pushAnalysisValidationError(errors, key, 'must be an array of strings');
+    return;
+  }
+
+  value.forEach((item, index) => {
+    if (typeof item !== 'string') {
+      pushAnalysisValidationError(errors, `${key}[${index}]`, 'must be a string');
+    }
+  });
+}
+
+function validateAnalysisDocs(docs, errors) {
+  if (docs === undefined) {
+    return;
+  }
+  if (!Array.isArray(docs)) {
+    pushAnalysisValidationError(errors, 'docs', 'must be an array');
+    return;
+  }
+
+  docs.forEach((item, index) => {
+    if (typeof item === 'string') {
+      return;
+    }
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      pushAnalysisValidationError(errors, `docs[${index}]`, 'must be a string or object');
+      return;
+    }
+    if (typeof item.id !== 'string' || !String(item.id).trim()) {
+      pushAnalysisValidationError(errors, `docs[${index}].id`, 'must be a non-empty string');
+    }
+    validateOptionalAnalysisString(item, 'kind', errors);
+    validateOptionalAnalysisString(item, 'title', errors);
+    validateOptionalAnalysisStringList(item, 'lookup_keys', errors);
+    validateOptionalAnalysisStringList(item, 'notes', errors);
+  });
+}
+
+function validateAnalysisSignals(signals, errors) {
+  if (signals === undefined) {
+    return;
+  }
+  if (!Array.isArray(signals)) {
+    pushAnalysisValidationError(errors, 'signals', 'must be an array');
+    return;
+  }
+
+  signals.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      pushAnalysisValidationError(errors, `signals[${index}]`, 'must be an object');
+      return;
+    }
+    ['name', 'pin', 'direction', 'default_state', 'usage', 'note'].forEach(key => {
+      validateOptionalAnalysisString(item, key, errors);
+    });
+    if (Object.prototype.hasOwnProperty.call(item, 'confirmed') && typeof item.confirmed !== 'boolean') {
+      pushAnalysisValidationError(errors, `signals[${index}].confirmed`, 'must be a boolean');
+    }
+  });
+}
+
+function validateAnalysisPeripherals(peripherals, errors) {
+  if (peripherals === undefined) {
+    return;
+  }
+  if (!Array.isArray(peripherals)) {
+    pushAnalysisValidationError(errors, 'peripherals', 'must be an array');
+    return;
+  }
+
+  peripherals.forEach((item, index) => {
+    if (typeof item === 'string') {
+      return;
+    }
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      pushAnalysisValidationError(errors, `peripherals[${index}]`, 'must be a string or object');
+      return;
+    }
+    if (typeof item.name !== 'string' || !String(item.name).trim()) {
+      pushAnalysisValidationError(errors, `peripherals[${index}].name`, 'must be a non-empty string');
+    }
+    validateOptionalAnalysisString(item, 'usage', errors);
+  });
+}
+
+function validateAnalysisBindings(bindings, errors) {
+  if (bindings === undefined) {
+    return;
+  }
+  if (!bindings || typeof bindings !== 'object' || Array.isArray(bindings)) {
+    pushAnalysisValidationError(errors, 'bindings', 'must be an object');
+    return;
+  }
+
+  Object.entries(bindings).forEach(([toolName, binding]) => {
+    if (!binding || typeof binding !== 'object' || Array.isArray(binding)) {
+      pushAnalysisValidationError(errors, `bindings.${toolName}`, 'must be an object');
+      return;
+    }
+    if (typeof binding.algorithm !== 'string' || !String(binding.algorithm).trim()) {
+      pushAnalysisValidationError(errors, `bindings.${toolName}.algorithm`, 'must be a non-empty string');
+      return;
+    }
+    if (
+      String(binding.algorithm).trim() === 'unsupported' &&
+      (typeof binding.reason !== 'string' || !String(binding.reason).trim())
+    ) {
+      pushAnalysisValidationError(errors, `bindings.${toolName}.reason`, 'is required when algorithm is unsupported');
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(binding, 'params') &&
+      (!binding.params || typeof binding.params !== 'object' || Array.isArray(binding.params))
+    ) {
+      pushAnalysisValidationError(errors, `bindings.${toolName}.params`, 'must be an object');
+    }
+    validateOptionalAnalysisString(binding, 'reason', errors);
+    validateOptionalAnalysisStringList(binding, 'evidence', errors);
+    validateOptionalAnalysisStringList(binding, 'notes', errors);
+  });
+}
+
+function validateAnalysisArtifact(rawArtifact, payload, artifactPath) {
+  const errors = [];
+
+  if (Object.prototype.hasOwnProperty.call(rawArtifact, '$schema') && typeof rawArtifact.$schema !== 'string') {
+    pushAnalysisValidationError(errors, '$schema', 'must be a string');
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(rawArtifact, 'chip_support_analysis') &&
+    (!rawArtifact.chip_support_analysis || typeof rawArtifact.chip_support_analysis !== 'object' || Array.isArray(rawArtifact.chip_support_analysis))
+  ) {
+    pushAnalysisValidationError(errors, 'chip_support_analysis', 'must be an object');
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(rawArtifact, 'analysis') &&
+    (!rawArtifact.analysis || typeof rawArtifact.analysis !== 'object' || Array.isArray(rawArtifact.analysis))
+  ) {
+    pushAnalysisValidationError(errors, 'analysis', 'must be an object');
+  }
+
+  ['vendor', 'series', 'model', 'family', 'device', 'chip', 'package', 'architecture', 'runtime_model', 'runtimeModel']
+    .forEach(key => validateOptionalAnalysisString(payload, key, errors));
+  ['tools', 'capabilities', 'truths', 'constraints', 'unknowns', 'notes']
+    .forEach(key => validateOptionalAnalysisStringList(payload, key, errors));
+
+  const pinCountValue =
+    Object.prototype.hasOwnProperty.call(payload, 'pin_count')
+      ? payload.pin_count
+      : payload.pinCount;
+  if (pinCountValue !== undefined && (!Number.isInteger(pinCountValue) || pinCountValue < 0)) {
+    pushAnalysisValidationError(errors, 'pin_count', 'must be a non-negative integer');
+  }
+
+  validateAnalysisDocs(payload.docs, errors);
+  validateAnalysisSignals(payload.signals, errors);
+  validateAnalysisPeripherals(payload.peripherals, errors);
+  validateAnalysisBindings(payload.bindings, errors);
+
+  const identityFields = runtime.unique(
+    [payload.model, payload.device, payload.chip, payload.chip_model, payload.part]
+      .map(value => String(value || '').trim())
+      .filter(Boolean)
+  );
+  if (identityFields.length === 0) {
+    pushAnalysisValidationError(errors, 'identity', 'must provide at least one of model, device, or chip');
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Analysis artifact validation failed for ${artifactPath}: ${errors.slice(0, 8).join('; ')}`);
+  }
+}
+
+function normalizeAnalysisDocs(docs) {
+  return (Array.isArray(docs) ? docs : [])
+    .map(item => {
+      if (typeof item === 'string') {
+        const docId = String(item).trim();
+        if (!docId) {
+          return null;
+        }
+        return {
+          id: docId,
+          kind: 'analysis',
+          title: docId,
+          lookup_keys: [],
+          notes: []
+        };
+      }
+
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return null;
+      }
+
+      const docId = String(item.id || '').trim();
+      if (!docId) {
+        return null;
+      }
+
+      return {
+        id: docId,
+        kind: String(item.kind || 'analysis').trim() || 'analysis',
+        title: String(item.title || docId).trim() || docId,
+        lookup_keys: runtime.unique(
+          (Array.isArray(item.lookup_keys) ? item.lookup_keys : [])
+            .map(value => String(value || '').trim())
+            .filter(Boolean)
+        ),
+        notes: runtime.unique(
+          (Array.isArray(item.notes) ? item.notes : [])
+            .map(value => String(value || '').trim())
+            .filter(Boolean)
+        )
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizePeripherals(peripherals) {
+  return uniqueObjectsByName(
+    (Array.isArray(peripherals) ? peripherals : [])
+      .map(item => {
+        if (typeof item === 'string') {
+          const name = String(item).trim();
+          return name ? { name, usage: '' } : null;
+        }
+
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          return null;
+        }
+
+        const name = String(item.name || '').trim();
+        if (!name) {
+          return null;
+        }
+
+        return {
+          name,
+          usage: String(item.usage || '').trim()
+        };
+      })
+      .filter(Boolean)
+  );
+}
+
+function normalizeStringList(values) {
+  return runtime.unique(
+    (Array.isArray(values) ? values : [])
+      .map(value => String(value || '').trim())
+      .filter(Boolean)
+  );
+}
+
+function normalizeProvidedBindings(bindings, fallbackDevice) {
+  const input = bindings && typeof bindings === 'object' && !Array.isArray(bindings) ? bindings : {};
+  const output = {};
+
+  Object.entries(input).forEach(([toolName, rawBinding]) => {
+    const normalizedTool = String(toolName || '').trim();
+    if (!normalizedTool || !rawBinding || typeof rawBinding !== 'object' || Array.isArray(rawBinding)) {
+      return;
+    }
+
+    const algorithm = String(rawBinding.algorithm || '').trim();
+    if (!algorithm) {
+      return;
+    }
+
+    if (algorithm === 'unsupported') {
+      output[normalizedTool] = {
+        algorithm: 'unsupported',
+        reason: String(rawBinding.reason || '').trim() || 'Marked unsupported by analysis artifact.'
+      };
+      return;
+    }
+
+    output[normalizedTool] = {
+      algorithm: algorithm || `${fallbackDevice}-${slugSuffix(normalizedTool)}`,
+      draft: true,
+      params:
+        rawBinding.params && typeof rawBinding.params === 'object' && !Array.isArray(rawBinding.params)
+          ? rawBinding.params
+          : {},
+      evidence: normalizeStringList(rawBinding.evidence),
+      notes: buildBindingNotes(
+        normalizeStringList(rawBinding.notes),
+        ['Binding proposal imported from analysis artifact.']
+      )
+    };
+  });
+
+  return output;
+}
+
+function loadAnalysisArtifact(projectRoot, artifactPath) {
+  const absolutePath = resolveProjectInputPath(projectRoot, artifactPath);
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error(`Analysis artifact not found: ${artifactPath}`);
+  }
+
+  const rawArtifact = runtime.readJson(absolutePath);
+  const payload = selectAnalysisPayload(rawArtifact);
+  validateAnalysisArtifact(rawArtifact, payload, artifactPath);
+  const model = String(payload.model || payload.chip_model || payload.part || '').trim();
+  const packageName = String(payload.package || payload.package_name || '').trim();
+  const capabilities = normalizeStringList(payload.capabilities);
+  const peripherals = normalizePeripherals([
+    ...(Array.isArray(payload.peripherals) ? payload.peripherals : []),
+    ...capabilities
+  ]);
+  const bindings = normalizeProvidedBindings(payload.bindings, compactSlug(model || payload.device || 'vendor-chip'));
+
+  return {
+    path: path.relative(projectRoot, absolutePath).replace(/\\/g, '/'),
+    absolutePath,
+    data: {
+      vendor: String(payload.vendor || '').trim(),
+      series: String(payload.series || '').trim(),
+      model,
+      family: String(payload.family || '').trim(),
+      device: String(payload.device || '').trim(),
+      chip: String(payload.chip || '').trim(),
+      package: packageName,
+      pin_count: Number(payload.pin_count || payload.pinCount || 0) || 0,
+      architecture: String(payload.architecture || '').trim(),
+      runtime_model: String(payload.runtime_model || payload.runtimeModel || '').trim(),
+      tools: normalizeStringList(payload.tools),
+      docs: normalizeAnalysisDocs(payload.docs),
+      truths: normalizeStringList(payload.truths),
+      constraints: normalizeStringList(payload.constraints),
+      unknowns: normalizeStringList(payload.unknowns),
+      signals: Array.isArray(payload.signals) ? payload.signals : [],
+      peripherals,
+      capabilities,
+      bindings,
+      notes: normalizeStringList(payload.notes)
+    }
   };
 }
 
@@ -925,7 +1314,9 @@ function buildDraftBindings(config) {
 function resolveDerivedConfig(config, projectRoot) {
   let truthInfo = null;
   let docInfo = null;
+  let analysisInfo = null;
   let vendor = config.vendor || '';
+  let series = config.series || '';
   let model = '';
   let pkg = config.package || '';
   const signals = [];
@@ -934,6 +1325,13 @@ function resolveDerivedConfig(config, projectRoot) {
   const constraints = [];
   const unknowns = [];
   const notes = [];
+  const analysisDocs = [];
+  const providedBindings = {};
+  const artifactTools = [];
+  const artifactCapabilities = [];
+  let pinCount = config.pinCount || 0;
+  let architecture = config.architecture || '';
+  let runtimeModel = config.runtimeModel || '';
 
   if (config.fromProject) {
     truthInfo = loadProjectHardwareTruth(projectRoot);
@@ -960,15 +1358,52 @@ function resolveDerivedConfig(config, projectRoot) {
     notes.push(`Loaded document draft from ${docInfo.path}.`);
   }
 
+  if (config.fromAnalysis) {
+    analysisInfo = loadAnalysisArtifact(projectRoot, config.fromAnalysis);
+    vendor = vendor || analysisInfo.data.vendor || '';
+    series = series || analysisInfo.data.series || '';
+    model = model || analysisInfo.data.model || '';
+    pkg = pkg || analysisInfo.data.package || '';
+    pinCount = pinCount || analysisInfo.data.pin_count || 0;
+    architecture = architecture || analysisInfo.data.architecture || '';
+    runtimeModel = runtimeModel || analysisInfo.data.runtime_model || '';
+    signals.push(...(analysisInfo.data.signals || []));
+    peripherals.push(...(analysisInfo.data.peripherals || []));
+    truths.push(...(analysisInfo.data.truths || []));
+    constraints.push(...(analysisInfo.data.constraints || []));
+    unknowns.push(...(analysisInfo.data.unknowns || []));
+    analysisDocs.push(...(analysisInfo.data.docs || []));
+    artifactCapabilities.push(...(analysisInfo.data.capabilities || []));
+    artifactTools.push(...(analysisInfo.data.tools || []));
+    Object.assign(providedBindings, analysisInfo.data.bindings || {});
+    notes.push(`Loaded analysis artifact from ${analysisInfo.path}.`);
+    notes.push(...(analysisInfo.data.notes || []));
+  }
+
   const vendorResolved = vendor || 'VendorName';
-  const deviceResolved = config.device || compactSlug(model);
-  const seriesResolved = config.series || model || deviceResolved || 'SeriesName';
-  const familyResolved = config.family || normalizeSlug(`${vendorResolved}-${seriesResolved}`);
+  const deviceResolved = config.device || (analysisInfo && analysisInfo.data.device) || compactSlug(model);
+  const seriesResolved = series || model || deviceResolved || 'SeriesName';
+  const familyResolved =
+    config.family ||
+    (analysisInfo && analysisInfo.data.family) ||
+    normalizeSlug(`${vendorResolved}-${seriesResolved}`);
   const chipSeed = compactSlug(model || deviceResolved);
   const packageSeed = compactSlug(pkg);
-  const chipResolved = config.chip || compactSlug(`${chipSeed}${packageSeed}`);
+  const chipResolved =
+    config.chip ||
+    (analysisInfo && analysisInfo.data.chip) ||
+    compactSlug(`${chipSeed}${packageSeed}`);
   const inferredTools = inferTools(peripherals, [...truths, ...constraints, ...unknowns]);
-  const toolsResolved = config.tools.length > 0 ? config.tools.slice() : (inferredTools.length > 0 ? inferredTools : ['timer-calc']);
+  const supportedArtifactTools = Object.entries(providedBindings)
+    .filter(([, binding]) => binding && binding.algorithm !== 'unsupported')
+    .map(([toolName]) => toolName);
+  const toolsResolved = config.tools.length > 0
+    ? config.tools.slice()
+    : runtime.unique([
+        ...artifactTools,
+        ...supportedArtifactTools,
+        ...(inferredTools.length > 0 ? inferredTools : ['timer-calc'])
+      ]);
   const resolved = {
     vendor: vendorResolved,
     series: seriesResolved,
@@ -976,24 +1411,37 @@ function resolveDerivedConfig(config, projectRoot) {
     device: deviceResolved,
     chip: chipResolved,
     package: pkg,
-    pinCount: config.pinCount || inferPinCountFromPackage(pkg),
+    pinCount: pinCount || inferPinCountFromPackage(pkg),
+    architecture,
+    runtimeModel,
     tools: runtime.unique(toolsResolved),
-    capabilities: runtime.unique(peripherals.map(item => (item && item.name) || '')),
-    docs: buildDocReference(docInfo, model, pkg),
+    capabilities: runtime.unique([
+      ...peripherals.map(item => (item && item.name) || ''),
+      ...artifactCapabilities
+    ]),
+    docs: runtime.unique([
+      ...buildDocReference(docInfo, model, pkg),
+      ...analysisDocs
+    ]),
     signals: buildSignals(signals, [...truths, ...constraints, ...unknowns]),
     peripherals: uniqueObjectsByName(peripherals),
     notes: runtime.unique([
       ...notes,
       truthInfo ? `truths=${(truthInfo.data.truths || []).length}` : '',
-      docInfo ? `doc_id=${docInfo.entry.doc_id}` : ''
+      docInfo ? `doc_id=${docInfo.entry.doc_id}` : '',
+      analysisInfo ? `analysis=${analysisInfo.path}` : ''
     ])
   };
 
   return {
     truthInfo,
     docInfo,
+    analysisInfo,
     ...resolved,
-    bindings: buildDraftBindings(resolved)
+    bindings: {
+      ...buildDraftBindings(resolved),
+      ...providedBindings
+    }
   };
 }
 
@@ -1230,7 +1678,7 @@ function buildFamilyProfile(config) {
     series: config.series,
     sample: false,
     description: `External tool family profile for ${config.family}.`,
-      supported_tools: config.tools.slice(),
+      supported_tools: (config.supported_tools || config.tools).slice(),
       clock_sources: [],
       bindings: {},
       notes: [
@@ -1247,7 +1695,7 @@ function buildDeviceProfile(config) {
     family: config.family,
     sample: false,
     description: `External tool device profile for ${config.device}.`,
-      supported_tools: config.tools.slice(),
+      supported_tools: (config.supported_tools || config.tools).slice(),
       bindings: config.bindings || {},
       notes: [
         'Device draft generated by adapter derive.',
@@ -1298,7 +1746,7 @@ function buildChipProfile(config) {
     packages: buildChipPackages(config),
     pins: buildChipPinMap(config.signals || []),
     docs: (config.docs || []).slice(),
-    related_tools: config.tools.slice(),
+    related_tools: (config.supported_tools || config.tools).slice(),
     source_modules: [],
     notes: [
       'Chip draft generated by adapter derive.',
@@ -1448,14 +1896,24 @@ function deriveProfiles(argv, options) {
   config.chip = ensureNonEmpty(config.chip || derived.chip, '--chip');
   config.package = config.package || derived.package || '';
   config.pinCount = config.pinCount || derived.pinCount || 0;
+  config.architecture = config.architecture || derived.architecture || '';
+  config.runtimeModel = config.runtimeModel || derived.runtimeModel || config.runtimeModel;
   config.tools = derived.tools.slice();
+  config.supported_tools = config.tools.filter(toolName => {
+    const binding = derived.bindings && derived.bindings[toolName];
+    return !binding || binding.algorithm !== 'unsupported';
+  });
   config.capabilities = derived.capabilities.slice();
   config.docs = derived.docs.slice();
   config.signals = (derived.signals || []).slice();
   config.peripherals = (derived.peripherals || []).slice();
   config.bindings = { ...(derived.bindings || {}) };
   config.inference_notes = derived.notes.slice();
-  config.source_mode = config.fromDoc && config.fromProject ? 'project+doc' : config.fromDoc ? 'doc' : config.fromProject ? 'project' : 'manual';
+  config.source_mode = [
+    config.fromProject ? 'project' : '',
+    config.fromDoc ? 'doc' : '',
+    config.fromAnalysis ? 'analysis' : ''
+  ].filter(Boolean).join('+') || 'manual';
 
   const embRoot = resolveEmbOutputRoot(runtimeRoot, projectRoot, config);
   const toolExtRoot = path.join(embRoot, 'extensions', 'tools');
@@ -1527,6 +1985,7 @@ function deriveProfiles(argv, options) {
     inferred: {
       from_project: Boolean(config.fromProject),
       from_doc: config.fromDoc || '',
+      from_analysis: config.fromAnalysis || '',
       source_mode: config.source_mode,
       capabilities: config.capabilities,
       docs: config.docs.map(item => item.id),

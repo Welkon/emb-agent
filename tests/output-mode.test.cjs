@@ -122,6 +122,51 @@ test('applyOutputMode builds brief next context payload', () => {
       compress_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress',
       handoff_ready: false
     },
+    recommended_flow: {
+      id: 'doc-to-chip-support-analysis',
+      mode: 'analysis-artifact-first',
+      source_kind: 'hardware-document',
+      summary: 'Stage document truth first, then derive support from analysis.',
+      steps: [
+        {
+          id: 'support-analysis-init',
+          kind: 'command',
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support analysis init --chip PMS150G --package SOP8',
+          artifact_path: '.emb-agent/analysis/pms150g.json'
+        },
+        {
+          id: 'agent-fill-analysis-artifact',
+          kind: 'agent',
+          recommended_agent: 'emb-hw-scout',
+          artifact_path: '.emb-agent/analysis/pms150g.json'
+        },
+        {
+          id: 'support-derive-from-analysis',
+          kind: 'command',
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support derive --from-analysis .emb-agent/analysis/pms150g.json',
+          artifact_path: '.emb-agent/analysis/pms150g.json'
+        }
+      ]
+    },
+    handoff_protocol: {
+      protocol: 'emb-agent.chip-support-analysis/1',
+      source_kind: 'hardware-document',
+      doc_id: 'doc_pms150g',
+      artifact_path: '.emb-agent/analysis/pms150g.json',
+      recommended_agent: 'emb-hw-scout',
+      commands: {
+        init: {
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support analysis init --chip PMS150G --package SOP8',
+          argv: ['support', 'analysis', 'init', '--chip', 'PMS150G', '--package', 'SOP8']
+        },
+        derive: {
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support derive --from-analysis .emb-agent/analysis/pms150g.json',
+          argv: ['support', 'derive', '--from-analysis', '.emb-agent/analysis/pms150g.json']
+        }
+      },
+      confirmation_targets: ['mcu.model', 'mcu.package', 'peripherals[]'],
+      expected_output: ['family.json', 'device.json', 'chip.json']
+    },
     runtime_events: [
       {
         type: 'workflow-next',
@@ -172,6 +217,10 @@ test('applyOutputMode builds brief next context payload', () => {
   assert.equal(output.context_hygiene.level, 'consider-clearing');
   assert.equal(output.context_hygiene.compress_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress');
   assert.equal(output.next_actions.length, 5);
+  assert.equal(output.recommended_flow.id, 'doc-to-chip-support-analysis');
+  assert.equal(output.recommended_flow.steps.length, 3);
+  assert.equal(output.handoff_protocol.protocol, 'emb-agent.chip-support-analysis/1');
+  assert.equal(output.handoff_protocol.commands.init.argv.length, 6);
   assert.equal(output.tool_recommendation.tool, 'timer-calc');
   assert.equal(output.walkthrough_recommendation.kind, 'peripheral-walkthrough');
   assert.deepEqual(output.walkthrough_recommendation.ordered_tools, ['timer-calc', 'pwm-calc', 'adc-scale']);
@@ -462,6 +511,29 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
       then_cli: '',
       followup: 'After restarting the host, rerun: node ~/.codex/emb-agent/bin/emb-agent.cjs health'
     },
+    recommended_flow: {
+      id: 'doc-to-chip-support-analysis',
+      mode: 'analysis-artifact-first',
+      steps: [
+        {
+          id: 'support-analysis-init',
+          kind: 'command',
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support analysis init --chip PMS150G --package SOP8',
+          artifact_path: '.emb-agent/analysis/pms150g.json'
+        }
+      ]
+    },
+    handoff_protocol: {
+      protocol: 'emb-agent.chip-support-analysis/1',
+      artifact_path: '.emb-agent/analysis/pms150g.json',
+      recommended_agent: 'emb-hw-scout',
+      commands: {
+        derive: {
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support derive --from-analysis .emb-agent/analysis/pms150g.json',
+          argv: ['support', 'derive', '--from-analysis', '.emb-agent/analysis/pms150g.json']
+        }
+      }
+    },
     quickstart: {
       stage: 'restart-host-hooks',
       display_stage: 'restart-host-for-bootstrap',
@@ -534,6 +606,8 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
   assert.deepEqual(healthOutput.checks.map(item => item.key), ['startup_automation']);
   assert.deepEqual(healthOutput.recommendations, ['Configure EMB_AGENT_SUBAGENT_BRIDGE_CMD if you want dispatch/orchestrate to launch host sub-agents automatically.']);
   assert.equal('primary_cli' in healthOutput, false);
+  assert.equal(healthOutput.recommended_flow.id, 'doc-to-chip-support-analysis');
+  assert.equal(healthOutput.handoff_protocol.protocol, 'emb-agent.chip-support-analysis/1');
   assert.equal(bootstrapOutput.action_card.stage, 'host-readiness');
   assert.equal(bootstrapOutput.current_stage, 'host-readiness');
 });

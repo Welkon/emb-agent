@@ -12,6 +12,7 @@ const docCache = require(path.join(ROOT, 'lib', 'doc-cache.cjs'));
 const mineruProvider = require(path.join(ROOT, 'lib', 'doc-providers', 'mineru.cjs'));
 const permissionGateHelpers = require(path.join(ROOT, 'lib', 'permission-gates.cjs'));
 const ingestTruthCli = require(path.join(ROOT, 'scripts', 'ingest-truth.cjs'));
+const supportAnalysisCli = require(path.join(ROOT, 'scripts', 'support-analysis.cjs'));
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
 
 const DOC_LIST_PRESET_NAME_LIMIT = 3;
@@ -611,6 +612,7 @@ async function ingestDoc(argv, options) {
       title: cached.title || args.title || path.basename(identity.source_path),
       kind: cached.kind || args.kind,
       intended_to: cached.intended_to || args.to || '',
+      project_root: projectRoot,
       apply_ready: buildAutoApplyReadyHint(projectRoot, cached),
       artifacts: cached.artifacts || {},
       last_files: runtime.unique([
@@ -650,6 +652,42 @@ async function ingestDoc(argv, options) {
   const serializedDraftArtifacts = serializeDraftArtifacts(draftArtifacts);
   const draftJsonArtifacts = buildDraftJsonArtifacts(draftArtifacts);
 
+  const artifacts = {
+    summary: path.relative(projectRoot, path.join(cacheDir, 'summary.json')),
+    markdown: path.relative(projectRoot, markdownPath),
+    metadata: path.relative(projectRoot, metadataPath),
+    source: path.relative(projectRoot, path.join(cacheDir, 'source.json')),
+    hardware_facts: draftArtifacts['facts.hardware.yaml']
+      ? path.relative(projectRoot, path.join(cacheDir, 'facts.hardware.yaml'))
+      : '',
+    hardware_facts_json: draftArtifacts['facts.hardware.yaml']
+      ? path.relative(projectRoot, path.join(cacheDir, 'facts.hardware.json'))
+      : '',
+    requirements_facts: draftArtifacts['facts.requirements.yaml']
+      ? path.relative(projectRoot, path.join(cacheDir, 'facts.requirements.yaml'))
+      : '',
+    requirements_facts_json: draftArtifacts['facts.requirements.yaml']
+      ? path.relative(projectRoot, path.join(cacheDir, 'facts.requirements.json'))
+      : ''
+  };
+  const summaryEntry = {
+    doc_id: identity.doc_id,
+    title: args.title || path.basename(identity.source_path),
+    kind: args.kind,
+    intended_to: args.to || '',
+    source: identity.source_path
+  };
+  const applyReadyHint = buildAutoApplyReadyHint(projectRoot, summaryEntry);
+
+  const agentAnalysis = buildDocAgentAnalysis(
+    projectRoot,
+    summaryEntry,
+    artifacts,
+    draftArtifacts['facts.hardware.yaml'] || null
+  );
+  const recommendedFlow = buildDocRecommendedFlow(summaryEntry, agentAnalysis);
+  const handoffProtocol = buildDocHandoffProtocol(summaryEntry, agentAnalysis);
+
   emitUiEvent(options, 'doc-cache-write', {
     doc_id: identity.doc_id
   });
@@ -673,27 +711,22 @@ async function ingestDoc(argv, options) {
       task_id: parsed.task_id,
       metadata: parsed.metadata
     },
+    'summary.json': {
+      status: 'ok',
+      domain: 'doc',
+      doc_id: identity.doc_id,
+      title: args.title || path.basename(identity.source_path),
+      kind: args.kind,
+      intended_to: args.to || '',
+      source_path: identity.source_path,
+      truth_write: buildDocTruthSemantics(summaryEntry, artifacts, applyReadyHint).truth_write,
+      agent_analysis: agentAnalysis,
+      recommended_flow: recommendedFlow,
+      handoff_protocol: handoffProtocol
+    },
     ...serializedDraftArtifacts,
     ...draftJsonArtifacts
   });
-
-  const artifacts = {
-    markdown: path.relative(projectRoot, markdownPath),
-    metadata: path.relative(projectRoot, metadataPath),
-    source: path.relative(projectRoot, path.join(cacheDir, 'source.json')),
-    hardware_facts: draftArtifacts['facts.hardware.yaml']
-      ? path.relative(projectRoot, path.join(cacheDir, 'facts.hardware.yaml'))
-      : '',
-    hardware_facts_json: draftArtifacts['facts.hardware.yaml']
-      ? path.relative(projectRoot, path.join(cacheDir, 'facts.hardware.json'))
-      : '',
-    requirements_facts: draftArtifacts['facts.requirements.yaml']
-      ? path.relative(projectRoot, path.join(cacheDir, 'facts.requirements.yaml'))
-      : '',
-    requirements_facts_json: draftArtifacts['facts.requirements.yaml']
-      ? path.relative(projectRoot, path.join(cacheDir, 'facts.requirements.json'))
-      : ''
-  };
 
   emitUiEvent(options, 'doc-index-update', {
     doc_id: identity.doc_id
@@ -723,10 +756,12 @@ async function ingestDoc(argv, options) {
     kind: args.kind,
     intended_to: args.to || '',
     cache_dir: path.relative(projectRoot, cacheDir),
+    project_root: projectRoot,
     apply_ready: buildAutoApplyReadyHint(projectRoot, docCache.getCachedEntry(projectRoot, identity.doc_id)),
     artifacts,
     last_files: runtime.unique([
       artifacts.markdown,
+      artifacts.summary,
       artifacts.metadata,
       artifacts.hardware_facts,
       artifacts.requirements_facts,
@@ -1170,6 +1205,7 @@ function resolveTruthTarget(to) {
 
 function buildDocSourceArtifacts(artifacts) {
   return runtime.unique([
+    artifacts && artifacts.summary,
     artifacts && artifacts.markdown,
     artifacts && artifacts.metadata,
     artifacts && artifacts.hardware_facts,
@@ -1177,6 +1213,200 @@ function buildDocSourceArtifacts(artifacts) {
     artifacts && artifacts.requirements_facts,
     artifacts && artifacts.requirements_facts_json
   ].filter(Boolean));
+}
+
+function normalizeAnalysisSeed(value) {
+  const payload = supportAnalysisCli.buildArtifact({
+    chip: String(value || '').trim(),
+    model: '',
+    vendor: '',
+    series: '',
+    family: '',
+    device: '',
+    package: '',
+    pinCount: 0,
+    architecture: '',
+    runtimeModel: 'main_loop_plus_isr'
+  });
+  return payload && payload.chip_support_analysis && payload.chip_support_analysis.device
+    ? payload.chip_support_analysis.device
+    : 'chip';
+}
+
+function buildDocAnalysisArtifactPath(projectRoot, chipSeed) {
+  return path.join(
+    runtime.getProjectExtDir(projectRoot),
+    'analysis',
+    `${normalizeAnalysisSeed(chipSeed)}.json`
+  );
+}
+
+function buildDocAgentAnalysis(projectRoot, entry, artifacts, explicitHardwareFacts) {
+  if (!projectRoot || !entry) {
+    return null;
+  }
+
+  const intendedTo = String(entry.intended_to || '').trim();
+  const kind = String(entry.kind || '').trim().toLowerCase();
+  if (intendedTo !== 'hardware' && !['datasheet', 'manual', 'reference'].includes(kind)) {
+    return null;
+  }
+
+  let draft = null;
+  if (!explicitHardwareFacts) {
+    try {
+      draft = loadDraftFacts(projectRoot, entry, 'hardware');
+    } catch {
+      draft = null;
+    }
+  }
+
+  const hardwareFacts = explicitHardwareFacts || (draft && draft.data ? draft.data : {});
+  const model = String((hardwareFacts.mcu && hardwareFacts.mcu.model) || '').trim();
+  const packageName = String((hardwareFacts.mcu && hardwareFacts.mcu.package) || '').trim();
+  const chipSeed =
+    model ||
+    String(entry.title || '').replace(path.extname(String(entry.title || '')), '').trim() ||
+    path.basename(String(entry.source || ''), path.extname(String(entry.source || ''))) ||
+    entry.doc_id;
+  const artifactPath = path.relative(projectRoot, buildDocAnalysisArtifactPath(projectRoot, chipSeed)).replace(/\\/g, '/');
+  const initArgv = ['support', 'analysis', 'init', '--chip', chipSeed];
+  if (packageName) {
+    initArgv.push('--package', packageName);
+  }
+  const deriveArgv = ['support', 'derive', '--from-analysis', artifactPath];
+  const initCommand = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, initArgv);
+  const deriveCommand = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, deriveArgv);
+
+  return {
+    required: true,
+    status: 'agent-analysis-recommended',
+    recommended_agent: 'emb-hw-scout',
+    summary: 'Let emb-hw-scout convert the parsed hardware document into a chip-support analysis artifact before deriving adapters.',
+    inputs: runtime.unique([
+      artifacts && artifacts.markdown,
+      artifacts && artifacts.hardware_facts_json,
+      artifacts && artifacts.hardware_facts,
+      entry.source || ''
+    ].filter(Boolean)),
+    evidence: {
+      model: model || '',
+      package: packageName || '',
+      truths: Array.isArray(hardwareFacts.truths) ? hardwareFacts.truths.length : 0,
+      constraints: Array.isArray(hardwareFacts.constraints) ? hardwareFacts.constraints.length : 0,
+      peripherals: Array.isArray(hardwareFacts.peripherals) ? hardwareFacts.peripherals.length : 0
+    },
+    artifact_path: artifactPath,
+    init_command: initCommand,
+    init_argv: initArgv,
+    derive_command: deriveCommand,
+    derive_argv: deriveArgv,
+    confirmation_targets: [
+      'mcu.vendor',
+      'mcu.model',
+      'mcu.package',
+      'peripherals[]',
+      'signals[]',
+      'bindings.*'
+    ],
+    expected_output: [
+      'Extract only evidence-backed hardware facts into the analysis artifact.',
+      'Mark unsupported bindings explicitly with reason instead of inventing formulas.',
+      'Run support derive from the artifact after review so adapters stay draft and structured.'
+    ],
+    cli_hint:
+      `Run ${initCommand}, ask emb-hw-scout to fill ${artifactPath} from ${artifacts && artifacts.markdown ? artifacts.markdown : entry.source}, then run ${deriveCommand}.`
+  };
+}
+
+function buildDocRecommendedFlow(entry, agentAnalysis) {
+  const analysis = agentAnalysis && typeof agentAnalysis === 'object' && !Array.isArray(agentAnalysis)
+    ? agentAnalysis
+    : null;
+  const docId = entry && entry.doc_id ? entry.doc_id : '';
+  const intendedTo = entry && entry.intended_to ? entry.intended_to : '';
+
+  return {
+    id: 'doc-to-chip-support-analysis',
+    mode: 'analysis-artifact-first',
+    source_kind: intendedTo === 'hardware' ? 'hardware-document' : 'document',
+    summary: 'Stage document truth first, then initialize and fill a chip-support analysis artifact before deriving draft adapters.',
+    steps: [
+      {
+        id: 'ingest-doc',
+        kind: 'completed',
+        doc_id: docId,
+        target_domain: intendedTo || ''
+      },
+      {
+        id: 'apply-doc-truth',
+        kind: 'command',
+        required: intendedTo === 'hardware',
+        target: resolveTruthTarget(intendedTo),
+        cli: 'ingest apply doc',
+        notes: 'Apply staged truth before trusting chip identity-dependent support generation.'
+      },
+      {
+        id: 'support-analysis-init',
+        kind: 'command',
+        cli: analysis ? analysis.init_command : '',
+        argv: analysis ? analysis.init_argv : [],
+        artifact_path: analysis ? analysis.artifact_path : ''
+      },
+      {
+        id: 'agent-fill-analysis-artifact',
+        kind: 'agent',
+        recommended_agent: analysis ? analysis.recommended_agent : '',
+        artifact_path: analysis ? analysis.artifact_path : '',
+        inputs: analysis ? analysis.inputs : [],
+        expected_output: analysis ? analysis.expected_output : []
+      },
+      {
+        id: 'support-derive-from-analysis',
+        kind: 'command',
+        cli: analysis ? analysis.derive_command : '',
+        argv: analysis ? analysis.derive_argv : [],
+        artifact_path: analysis ? analysis.artifact_path : ''
+      },
+      {
+        id: 'next',
+        kind: 'command',
+        cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next']),
+        argv: ['next']
+      }
+    ]
+  };
+}
+
+function buildDocHandoffProtocol(entry, agentAnalysis) {
+  const analysis = agentAnalysis && typeof agentAnalysis === 'object' && !Array.isArray(agentAnalysis)
+    ? agentAnalysis
+    : null;
+  if (!analysis || !analysis.artifact_path) {
+    return null;
+  }
+
+  return {
+    protocol: 'emb-agent.chip-support-analysis/1',
+    source_kind: 'hardware-document',
+    doc_id: entry && entry.doc_id ? entry.doc_id : '',
+    artifact_path: analysis.artifact_path,
+    recommended_agent: analysis.recommended_agent || '',
+    commands: {
+      init: {
+        cli: analysis.init_command || '',
+        argv: analysis.init_argv || []
+      },
+      derive: {
+        cli: analysis.derive_command || '',
+        argv: analysis.derive_argv || []
+      }
+    },
+    inputs: Array.isArray(analysis.inputs) ? analysis.inputs : [],
+    confirmation_targets: Array.isArray(analysis.confirmation_targets) ? analysis.confirmation_targets : [],
+    expected_output: Array.isArray(analysis.expected_output) ? analysis.expected_output : [],
+    cli_hint: analysis.cli_hint || ''
+  };
 }
 
 function buildDocTruthSemantics(entry, artifacts, applyReady) {
@@ -1223,8 +1453,13 @@ function buildDocApplySemantics(to, target, performed, status) {
 function withDocIngestSemantics(entry, payload) {
   const base = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
   const applyReady = Object.prototype.hasOwnProperty.call(base, 'apply_ready') ? base.apply_ready : null;
+  const projectRoot = path.resolve(base.project_root || process.cwd());
+  const agentAnalysis = buildDocAgentAnalysis(projectRoot, entry, base.artifacts || {});
   return {
     ...buildDocTruthSemantics(entry, base.artifacts || {}, applyReady),
+    agent_analysis: agentAnalysis,
+    recommended_flow: buildDocRecommendedFlow(entry, agentAnalysis),
+    handoff_protocol: buildDocHandoffProtocol(entry, agentAnalysis),
     ...base
   };
 }
@@ -1270,6 +1505,10 @@ function showDoc(projectRoot, docId, options) {
   return {
     entry,
     cache_dir: path.relative(projectRoot, cacheDir),
+    summary_info:
+      artifacts.summary && fs.existsSync(path.join(projectRoot, artifacts.summary))
+        ? runtime.readJson(path.join(projectRoot, artifacts.summary))
+        : null,
     source_info: fs.existsSync(sourceInfoPath) ? runtime.readJson(sourceInfoPath) : null,
     parse_info: fs.existsSync(parseInfoPath) ? runtime.readJson(parseInfoPath) : null,
     artifact_state: artifactState,

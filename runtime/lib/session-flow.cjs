@@ -166,6 +166,60 @@ function createSessionFlowHelpers(deps) {
     };
   }
 
+  function getRecentHardwareDocAnalysis(resolved) {
+    const lastFiles =
+      resolved && resolved.session && Array.isArray(resolved.session.last_files)
+        ? resolved.session.last_files
+        : [];
+    const projectRoot = resolved && resolved.session ? resolved.session.project_root : '';
+    if (!projectRoot) {
+      return null;
+    }
+
+    const parseFiles = lastFiles.filter(file =>
+      /(?:^|\/)\.emb-agent\/cache\/docs\/[^/]+\/parse\.md$/i.test(String(file || ''))
+    );
+    const latestParse = parseFiles[0] || '';
+    if (!latestParse) {
+      return null;
+    }
+
+    const summaryFile = latestParse.replace(/parse\.md$/i, 'summary.json');
+    const summary = readJsonIfExists(path.join(projectRoot, summaryFile));
+    const agentAnalysis =
+      summary && summary.agent_analysis && typeof summary.agent_analysis === 'object'
+        ? summary.agent_analysis
+        : null;
+    const recommendedFlow =
+      summary && summary.recommended_flow && typeof summary.recommended_flow === 'object'
+        ? summary.recommended_flow
+        : null;
+    const handoffProtocol =
+      summary && summary.handoff_protocol && typeof summary.handoff_protocol === 'object'
+        ? summary.handoff_protocol
+        : null;
+    if (!agentAnalysis) {
+      return null;
+    }
+
+    return {
+      summary_file: summaryFile,
+      markdown_file: latestParse,
+      source_path: summary.source_path || '',
+      recommended_agent: agentAnalysis.recommended_agent || '',
+      summary: agentAnalysis.summary || '',
+      artifact_path: agentAnalysis.artifact_path || '',
+      init_command: agentAnalysis.init_command || '',
+      derive_command: agentAnalysis.derive_command || '',
+      confirmation_targets: Array.isArray(agentAnalysis.confirmation_targets)
+        ? agentAnalysis.confirmation_targets
+        : [],
+      cli_hint: agentAnalysis.cli_hint || '',
+      recommended_flow: recommendedFlow,
+      handoff_protocol: handoffProtocol
+    };
+  }
+
   function shouldGateNextWithHealth(resolved, handoff, nextCommand, healthReport) {
     if (!healthReport || nextCommand !== 'scan' || handoff) {
       return false;
@@ -199,7 +253,7 @@ function createSessionFlowHelpers(deps) {
       ? healthReport.next_commands.some(item => [
           ...(blankSelectionMode
             ? ['init', 'doc-apply']
-            : ['init', 'support-source-add', 'support-sync', 'support-bootstrap', 'support-derive-from-doc', 'doc-apply'])
+            : ['init', 'support-source-add', 'support-sync', 'support-bootstrap', 'support-analysis-init', 'support-derive-from-analysis', 'doc-apply'])
         ].includes(item.key))
       : false;
 
@@ -1098,11 +1152,13 @@ function createSessionFlowHelpers(deps) {
         ? memorySummary.known_risks
         : knownRisks;
     const schematicAnalysis = getRecentSchematicAnalysis(resolved);
+    const hardwareDocAnalysis = getRecentHardwareDocAnalysis(resolved);
 
     return {
       suggested_flow: suggestedFlow,
       next,
       schematic_analysis: schematicAnalysis,
+      hardware_doc_analysis: hardwareDocAnalysis,
       primary_tool_recommendation: primaryToolRecommendation,
       walkthrough_recommendation: walkthroughRecommendation,
       next_actions: runtime.unique([
@@ -1148,6 +1204,24 @@ function createSessionFlowHelpers(deps) {
           : '',
         schematicAnalysis && schematicAnalysis.cli_hint
           ? `Schematic handoff: ${schematicAnalysis.cli_hint}`
+          : '',
+        hardwareDocAnalysis && hardwareDocAnalysis.recommended_agent
+          ? `Analyze the latest hardware doc with ${hardwareDocAnalysis.recommended_agent} first: ${hardwareDocAnalysis.markdown_file}`
+          : '',
+        hardwareDocAnalysis && hardwareDocAnalysis.confirmation_targets.length > 0
+          ? `Confirm hardware-doc-derived fields before adapter generation: ${hardwareDocAnalysis.confirmation_targets.join(', ')}`
+          : '',
+        hardwareDocAnalysis && hardwareDocAnalysis.artifact_path
+          ? `Chip-support analysis artifact target: ${hardwareDocAnalysis.artifact_path}`
+          : '',
+        hardwareDocAnalysis && hardwareDocAnalysis.init_command
+          ? `Initialize analysis artifact first: ${hardwareDocAnalysis.init_command}`
+          : '',
+        hardwareDocAnalysis && hardwareDocAnalysis.derive_command
+          ? `Derive draft adapters from analysis artifact: ${hardwareDocAnalysis.derive_command}`
+          : '',
+        hardwareDocAnalysis && hardwareDocAnalysis.cli_hint
+          ? `Hardware doc handoff: ${hardwareDocAnalysis.cli_hint}`
           : '',
         primaryRegisterSource ? `Re-read the register summary first: ${primaryRegisterSource.path}` : '',
         !primaryRegisterSource && primarySource ? `Re-read the source summary first: ${primarySource.path}` : '',
@@ -1515,6 +1589,15 @@ function createSessionFlowHelpers(deps) {
         health_next_commands: nextCommand.health_next_commands || [],
         health_quickstart: nextCommand.health_quickstart || null,
         schematic_analysis: guidance.schematic_analysis,
+        hardware_doc_analysis: guidance.hardware_doc_analysis,
+        recommended_flow:
+          guidance.hardware_doc_analysis && guidance.hardware_doc_analysis.recommended_flow
+            ? guidance.hardware_doc_analysis.recommended_flow
+            : null,
+        handoff_protocol:
+          guidance.hardware_doc_analysis && guidance.hardware_doc_analysis.handoff_protocol
+            ? guidance.hardware_doc_analysis.handoff_protocol
+            : null,
         tool_recommendation: guidance.primary_tool_recommendation,
         walkthrough_recommendation: guidance.walkthrough_recommendation
       },
@@ -1526,6 +1609,15 @@ function createSessionFlowHelpers(deps) {
       workflow_stage: workflowStage,
       context_hygiene: contextHygiene,
       next_actions: nextActions,
+      hardware_doc_analysis: guidance.hardware_doc_analysis,
+      recommended_flow:
+        guidance.hardware_doc_analysis && guidance.hardware_doc_analysis.recommended_flow
+          ? guidance.hardware_doc_analysis.recommended_flow
+          : null,
+      handoff_protocol:
+        guidance.hardware_doc_analysis && guidance.hardware_doc_analysis.handoff_protocol
+          ? guidance.hardware_doc_analysis.handoff_protocol
+          : null,
       walkthrough_recommendation: guidance.walkthrough_recommendation,
       walkthrough_execution:
         resolved.session && resolved.session.diagnostics && resolved.session.diagnostics.walkthrough_runtime

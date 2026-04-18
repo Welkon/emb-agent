@@ -195,7 +195,10 @@ function resolveActionProfile(actionKind, actionName, risk) {
     };
   }
 
-  if (normalizedKind === 'write' && (normalizedName === 'support-derive' || normalizedName === 'support-generate')) {
+  if (
+    normalizedKind === 'write' &&
+    ['support-derive', 'support-generate', 'support-analysis-init'].includes(normalizedName)
+  ) {
     return {
       ...defaults,
       category: 'chip-support-generation',
