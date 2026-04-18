@@ -15,7 +15,7 @@ Output the emb-agent help summary below and nothing else.
 
 - Run these as Codex, Claude Code, or Cursor session commands.
 - Use `start` first. It is the single repository entrypoint.
-- If the chip is already known, prefer `declare hardware`, then `bootstrap run --confirm`, then `next run`.
+- If the chip is already known, prefer `declare hardware`, then let `next` or `health` route you into project-local chip support or execution.
 - Use `next` for the default continuation once bootstrap and task context are in place.
 - Use `help advanced` or `help --all` only when you need the full installed surface.
 
@@ -51,11 +51,12 @@ The public command surface is intentionally small and grouped by default path.
 - Use `next --brief` when a local wrapper only needs compact JSON with summarized runtime signals.
 - Use `external start|next|status|health|dispatch-next` when a host or tool needs the stable external-driver envelope.
 - Use `task worktree status|show` before `create` or `cleanup` when you need to inspect isolated task workspace state first.
-- Use `support bootstrap` when you want direct control over chip-support registration/install in one step.
+- Prefer project-local chip support first. Use `support bootstrap` only when you explicitly want source-backed install in one step.
 - Shared chip-support sources are optional for ordinary project startup; use them when you need reusable support, not before you can begin.
 - If the MCU is not chosen yet, keep `hw.yaml` unknown, record constraints in `req.yaml`, then return to `next`.
 - If the truth still lives outside the repo, use `ingest doc` or `ingest schematic` before writing truth directly.
 - After `ingest doc`, prefer `support analysis init` and then `support derive --from-analysis` instead of treating raw documents as final chip support.
+- If the chip is known and you only need support for the current project, prefer `support derive --from-project` before thinking about shared sources.
 - If support is still only valid for the current project, keep it `project-only` first and publish it to a shared adapters catalog only after review.
 
 ## Advanced Help

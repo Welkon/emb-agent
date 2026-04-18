@@ -354,6 +354,7 @@ function createCliEntryHelpers(deps) {
     const adapterBootstrapCommand = buildAdapterBootstrapCommand(sources);
     const adapterSourceReady = sources.length > 0 || hasConfiguredDefaultAdapterSource();
     const bootstrapFastPathCommand = adapterSourceReady ? 'bootstrap run --confirm' : adapterBootstrapCommand;
+    const projectDeriveCommand = 'support derive --from-project';
     const agentActions = [];
     const declaredIntentPresent =
       (Array.isArray(hardware.signals) && hardware.signals.some(item => item && (item.name || item.pin || item.note))) ||
@@ -430,14 +431,14 @@ function createCliEntryHelpers(deps) {
     } else {
       agentActions.push({
         kind: 'bootstrap-chip-support',
-        status: adapterSourceReady ? 'ready' : 'unconfigured',
-        blocked_by: adapterSourceReady ? [] : ['chip_support_source'],
+        status: 'ready',
+        blocked_by: [],
         summary: adapterSourceReady
           ? declaredIntentPresent
             ? 'Chip support install is ready. Prefer bootstrap run so emb-agent can continue the known-chip path directly.'
             : 'Chip support install is ready. Prefer bootstrap run so emb-agent can continue the known-chip path directly.'
-          : 'Configure or bootstrap a chip support source before chip support can be installed.',
-        cli_fallback: bootstrapFastPathCommand
+          : 'Project-local draft chip support can be derived now. Configure a source later only when you want reusable install.',
+        cli_fallback: adapterSourceReady ? bootstrapFastPathCommand : projectDeriveCommand
       });
 
       agentActions.push({
@@ -455,11 +456,13 @@ function createCliEntryHelpers(deps) {
       nextSteps.push(
         adapterSourceReady
           ? 'Prefer `bootstrap run --confirm` for the shortest guided path. It will execute the current bootstrap step directly, then hand you back to next.'
-          : 'Use `support bootstrap` to register and install matching chip support in one step instead of splitting `source add` and `sync` manually.'
+          : 'Prefer `support derive --from-project` first so the current project gets draft chip support without requiring any shared source.'
       );
       nextSteps.push(
         declaredIntentPresent
-          ? `The current ${runtime.getProjectAssetRelativePath('hw.yaml')} already contains signals/peripherals, so you can move straight into chip support bootstrap first.`
+          ? adapterSourceReady
+            ? `The current ${runtime.getProjectAssetRelativePath('hw.yaml')} already contains signals/peripherals, so you can move straight into chip support bootstrap first.`
+            : `The current ${runtime.getProjectAssetRelativePath('hw.yaml')} already contains signals/peripherals, so you can derive project-local chip support first.`
           : firstUsablePin
             ? `Then let the agent map board pins/peripherals into ${runtime.getProjectAssetRelativePath('hw.yaml')} (first candidate ${firstUsablePin.signal}).`
             : `Then let the agent map board pins/peripherals into ${runtime.getProjectAssetRelativePath('hw.yaml')}.`
@@ -822,16 +825,23 @@ function createCliEntryHelpers(deps) {
     const hasHandoff = settings.hasHandoff === true;
     const initialized = settings.initialized !== false;
     const knownChipPath = Boolean(initGuidance && initGuidance.hardware_identity_present);
+    const sourceReady = Boolean(initGuidance && initGuidance.chip_support_sources_registered > 0);
     const workflow = [
       {
         id: 'project-bootstrap',
         title: 'Project bootstrap',
         commands: knownChipPath
-          ? [
-              'declare hardware / ingest doc / ingest schematic as needed',
-              'bootstrap run --confirm (or support bootstrap for direct control)',
-              'next [run]'
-            ]
+          ? sourceReady
+            ? [
+                'declare hardware / ingest doc / ingest schematic as needed',
+                'bootstrap run --confirm (or support bootstrap for direct control)',
+                'next [run]'
+              ]
+            : [
+                'declare hardware / ingest doc / ingest schematic as needed',
+                'support derive --from-project (or support analysis init -> support derive --from-analysis)',
+                'next [run]'
+              ]
           : ['declare hardware / ingest doc / ingest schematic as needed', 'next'],
         outcome: 'Project truth is explicit enough for task work.'
       },
@@ -858,7 +868,9 @@ function createCliEntryHelpers(deps) {
     } else if (initGuidance && initGuidance.hardware_confirmation_required) {
       workflow[0].note = `Confirm the real MCU/package in ${runtime.getProjectAssetRelativePath('hw.yaml')} before execution.`;
     } else if (knownChipPath) {
-      workflow[0].note = 'When the chip is already known, prefer guided bootstrap first so emb-agent can install matching chip support before deeper task work.';
+      workflow[0].note = sourceReady
+        ? 'When reusable chip support is already configured, guided bootstrap can install it before deeper task work.'
+        : 'When the chip is already known, prefer project-local derive first. Configure or bootstrap a shared source later only if you want reusable install.';
     }
 
     return workflow;

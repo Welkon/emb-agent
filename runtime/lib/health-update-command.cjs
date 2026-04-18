@@ -58,6 +58,54 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
+  function buildProjectDeriveCommand() {
+    return {
+      cli: buildSupportCli(['support', 'derive', '--from-project']),
+      argv: ['support', 'derive', '--from-project']
+    };
+  }
+
+  function normalizeHardwareSlug(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  function compactHardwareSlug(value) {
+    return normalizeHardwareSlug(value).replace(/-/g, '');
+  }
+
+  function findProjectLocalChipSupport(model, packageName) {
+    const normalizedModel = String(model || '').trim();
+    const normalizedPackage = String(packageName || '').trim();
+    if (!normalizedModel) {
+      return null;
+    }
+
+    const profilesDir = path.join(getProjectExtDir(), 'extensions', 'chips', 'profiles');
+    const candidates = runtime.unique([
+      normalizedModel,
+      compactHardwareSlug(normalizedModel),
+      normalizedPackage ? compactHardwareSlug(`${normalizedModel}${normalizedPackage}`) : '',
+      normalizedPackage ? compactHardwareSlug(`${normalizedModel}-${normalizedPackage}`) : ''
+    ].filter(Boolean));
+
+    for (const candidate of candidates) {
+      const filePath = path.join(profilesDir, `${candidate}.json`);
+      if (!fs.existsSync(filePath)) {
+        continue;
+      }
+      return {
+        name: candidate,
+        path: filePath
+      };
+    }
+
+    return null;
+  }
+
   function readHookVersion() {
     const hookFile = path.join(RUNTIME_HOST.runtimeRoot, 'hooks', 'emb-session-start.js');
     if (!fs.existsSync(hookFile)) {
@@ -209,7 +257,7 @@ function createHealthUpdateCommandHelpers(deps) {
       case 'support-bootstrap':
         return 'chip-support';
       case 'support-derive':
-        return 'chip-support-from-analysis';
+        return 'chip-support-draft';
       case 'next-step':
         return 'continue-with-next';
       default:
@@ -297,7 +345,7 @@ function createHealthUpdateCommandHelpers(deps) {
     }
 
     if (stageId === 'derive-then-next') {
-      return 'No installed chip support matches the recorded chip yet; initialize an analysis artifact, let the agent fill it, then derive draft support from that artifact.';
+      return 'No project-local chip support covers the recorded chip yet; derive draft support in the current project first. If you have a hardware document, prefer analysis artifact -> derive.';
     }
 
     if (stageId === 'bootstrap-then-next') {
@@ -412,7 +460,7 @@ function createHealthUpdateCommandHelpers(deps) {
       : null;
     const bootstrap = findCommand('support-bootstrap', 'support-sync');
     const analysisInit = findCommand('support-analysis-init');
-    const derive = findCommand('support-derive-from-analysis', 'support-derive-from-doc');
+    const derive = findCommand('support-derive-from-project', 'support-derive-from-analysis', 'support-derive-from-doc');
     const next = findCommand('next');
     const stages = [];
 
@@ -495,7 +543,7 @@ function createHealthUpdateCommandHelpers(deps) {
         createBootstrapStage(
           bootstrap ? 'support-bootstrap' : 'support-derive',
           !initReady || !trustReady || !hardwareReady || Boolean(docApply) ? 'pending' : 'ready',
-          bootstrap ? 'Install matching chip support' : 'Prepare chip support via analysis artifact',
+          bootstrap ? 'Install matching chip support' : 'Prepare project-local chip support',
           {
             summary: command.summary || '',
             cli: command.cli || '',
@@ -505,7 +553,7 @@ function createHealthUpdateCommandHelpers(deps) {
               !bootstrap && analysisInit && derive
                 ? [
                     {
-                      label: derive.summary || 'Derive draft chip support from the analysis artifact',
+                      label: derive.summary || 'Derive draft chip support into the current project',
                       cli: derive.cli || ''
                     }
                   ]
@@ -1044,19 +1092,23 @@ function createHealthUpdateCommandHelpers(deps) {
       );
     } else {
       const chipProfile = findChipProfileByModel(hardwareIdentity.model, hardwareIdentity.package);
+      const localChipSupport = findProjectLocalChipSupport(hardwareIdentity.model, hardwareIdentity.package);
       checks.push(
         createCheck(
           'hardware_identity',
-          chipProfile ? 'pass' : 'warn',
-          chipProfile ? 'The chip model is mapped to a chip profile' : 'The chip model is not mapped to a chip profile yet',
-          chipProfile
+          chipProfile || localChipSupport ? 'pass' : 'warn',
+          chipProfile || localChipSupport
+            ? 'The chip model is mapped to a chip profile'
+            : 'The chip model is not mapped to a chip profile yet',
+          chipProfile || localChipSupport
             ? [
                 `model=${hardwareIdentity.model}`,
-                `chip_profile=${chipProfile.name}`,
-                `family=${chipProfile.family}`
+                chipProfile ? `chip_profile=${chipProfile.name}` : '',
+                chipProfile ? `family=${chipProfile.family}` : '',
+                localChipSupport ? `project_chip_profile=${path.relative(projectRoot, localChipSupport.path).replace(/\\/g, '/')}` : ''
               ]
             : [`model=${hardwareIdentity.model}`],
-          chipProfile ? '' : 'Tool auto-discovery can fully connect only after the adapter/chip profile is added.'
+          chipProfile || localChipSupport ? '' : 'Tool auto-discovery can fully connect only after the adapter/chip profile is added.'
         )
       );
     }
@@ -1143,6 +1195,10 @@ function createHealthUpdateCommandHelpers(deps) {
     }
 
     if (projectConfig) {
+      const latestHardwareDoc = findLatestHardwareDoc(projectRoot, pendingDocApply);
+      const localProjectSupport = hardwareIdentity.model
+        ? findProjectLocalChipSupport(hardwareIdentity.model, hardwareIdentity.package)
+        : null;
       const adapterSourceStatus = adapterSources.listSourceStatus(rootDir, projectRoot, projectConfig);
       const enabledSources = adapterSourceStatus.filter(item => item.enabled !== false);
       const syncedProjectSources = enabledSources.filter(
@@ -1158,56 +1214,99 @@ function createHealthUpdateCommandHelpers(deps) {
       checks.push(
         createCheck(
           'chip_support_sources_registered',
-          enabledSources.length > 0 ? 'pass' : 'warn',
+          enabledSources.length > 0 ? 'pass' : 'info',
           enabledSources.length > 0 ? 'Chip support sources are registered' : 'No chip support source is registered yet',
           enabledSources.length > 0
             ? enabledSources.map(item => `source=${item.name}`)
             : [`${runtime.getProjectAssetRelativePath('project.json')} -> chip_support_sources`],
           enabledSources.length > 0
             ? ''
-            : 'Register a chip support source first. Private git sources reuse the host git credentials that are already configured.'
+            : hardwareIdentity.model
+              ? 'Shared chip support sources are optional. Derive project-local support first; register a source later only when you want reusable catalog install.'
+              : 'Shared chip support sources are optional until the hardware identity is known or catalog reuse is explicitly needed.'
         )
       );
-      if (enabledSources.length === 0) {
-        const addCommand = buildDefaultAdapterSourceAddCommand();
-        pushNextCommand(
-          nextCommands,
-          hardwareIdentity.model ? 'support-bootstrap' : 'support-source-add',
-          hardwareIdentity.model ? 'Register the default chip support source and install matching support into the project' : 'Register the default chip support source',
-          hardwareIdentity.model
-            ? DEFAULT_ADAPTER_SOURCE_BOOTSTRAP_CLI
-            : addCommand.cli,
-          'support',
-          {
-            argv: hardwareIdentity.model
-              ? ['support', 'bootstrap']
-              : addCommand.argv
+      if (enabledSources.length === 0 && !localProjectSupport) {
+        if (hardwareIdentity.model && latestHardwareDoc) {
+          const analysisCommands = buildDocAnalysisCommands(projectRoot, latestHardwareDoc);
+          latestHardwareDocProtocol = analysisCommands;
+          if (analysisCommands && analysisCommands.init_command && analysisCommands.derive_command) {
+            pushNextCommand(
+              nextCommands,
+              'support-analysis-init',
+              `Initialize chip-support analysis artifact from document ${latestHardwareDoc.doc_id}`,
+              analysisCommands.init_command,
+              'support',
+              {
+                argv: analysisCommands.init_argv,
+                artifact_path: analysisCommands.artifact_path
+              }
+            );
+            pushNextCommand(
+              nextCommands,
+              'support-derive-from-analysis',
+              `Derive draft chip support from analysis artifact ${analysisCommands.artifact_path}`,
+              analysisCommands.derive_command,
+              'support',
+              {
+                argv: analysisCommands.derive_argv,
+                artifact_path: analysisCommands.artifact_path
+              }
+            );
+          } else {
+            const deriveCommand = buildProjectDeriveCommand();
+            pushNextCommand(
+              nextCommands,
+              'support-derive-from-project',
+              'Derive draft chip support directly from the current project truth',
+              deriveCommand.cli,
+              'support',
+              {
+                argv: deriveCommand.argv
+              }
+            );
           }
-        );
+        } else if (hardwareIdentity.model) {
+          const deriveCommand = buildProjectDeriveCommand();
+          pushNextCommand(
+            nextCommands,
+            'support-derive-from-project',
+            'Derive draft chip support directly from the current project truth',
+            deriveCommand.cli,
+            'support',
+            {
+              argv: deriveCommand.argv
+            }
+          );
+        }
       }
 
       checks.push(
         createCheck(
           'chip_support_sync_project',
-          syncedProjectSources.length > 0 ? 'pass' : enabledSources.length > 0 ? 'warn' : 'info',
-          syncedProjectSources.length > 0
+          localProjectSupport || syncedProjectSources.length > 0 ? 'pass' : enabledSources.length > 0 ? 'warn' : 'info',
+          localProjectSupport
+            ? 'Project-local chip support draft exists in the current project'
+            : syncedProjectSources.length > 0
             ? 'Chip support has been installed into the project directory'
             : enabledSources.length > 0
               ? 'The chip support source is registered but not installed yet'
               : 'There is no chip support source available yet',
-          syncedProjectSources.length > 0
+          localProjectSupport
+            ? [`chip=${localProjectSupport.name}`]
+            : syncedProjectSources.length > 0
             ? syncedProjectSources.map(item => `source=${item.name}, files=${item.targets.project.files_count}`)
             : enabledSources.length > 0
               ? enabledSources.map(item => `source=${item.name}`)
               : [],
-          syncedProjectSources.length > 0
+          localProjectSupport || syncedProjectSources.length > 0
             ? ''
             : enabledSources.length > 0
               ? 'Install matching chip support into the project first.'
               : ''
         )
       );
-      if (enabledSources.length > 0 && syncedProjectSources.length === 0) {
+      if (enabledSources.length > 0 && syncedProjectSources.length === 0 && !localProjectSupport) {
         pushNextCommand(
           nextCommands,
           hardwareIdentity.model ? 'support-bootstrap' : 'support-sync',
@@ -1228,8 +1327,8 @@ function createHealthUpdateCommandHelpers(deps) {
         checks.push(
           createCheck(
             'chip_support_match',
-            matchedProjectSources.length > 0 ? 'pass' : syncedProjectSources.length > 0 ? 'warn' : 'info',
-            matchedProjectSources.length > 0
+            matchedProjectSources.length > 0 || localProjectSupport ? 'pass' : syncedProjectSources.length > 0 ? 'warn' : 'info',
+            matchedProjectSources.length > 0 || localProjectSupport
               ? 'Installed chip support matches the current hardware'
               : syncedProjectSources.length > 0
                 ? 'Chip support is installed, but the current hardware is not covered yet'
@@ -1241,6 +1340,8 @@ function createHealthUpdateCommandHelpers(deps) {
                   const tools = (selection && selection.matched && selection.matched.tools) || [];
                   return `source=${item.name}, chips=${chips.join(',') || '(none)'}, tools=${tools.join(',') || '(none)'}`;
                 })
+              : localProjectSupport
+                ? [`chip=${localProjectSupport.name}`, `path=${path.relative(projectRoot, localProjectSupport.path).replace(/\\/g, '/')}`]
               : syncedProjectSources.length > 0
                 ? syncedProjectSources.map(item => {
                     const selection = item.targets.project.selection;
@@ -1249,7 +1350,7 @@ function createHealthUpdateCommandHelpers(deps) {
                       : `source=${item.name}, matched_chips=${((selection && selection.matched && selection.matched.chips) || []).join(',') || '(none)'}`;
                   })
                 : [`model=${hardwareIdentity.model}`, `package=${hardwareIdentity.package || '(empty)'}`],
-            matchedProjectSources.length > 0
+            matchedProjectSources.length > 0 || localProjectSupport
               ? ''
               : syncedProjectSources.length > 0
                 ? 'Check whether the chip model/package in hw.yaml is accurate, or add matching family/device/chip support definitions.'
@@ -1258,7 +1359,6 @@ function createHealthUpdateCommandHelpers(deps) {
         );
       }
 
-      const latestHardwareDoc = findLatestHardwareDoc(projectRoot, pendingDocApply);
       if (
         hardwareIdentity.model &&
         syncedProjectSources.length > 0 &&
