@@ -145,6 +145,18 @@ test('normalizeSession fills metadata and trims arrays', () => {
         }
       },
       updated_at: ''
+    },
+    walkthrough_runtime: {
+      kind: '',
+      status: '',
+      ordered_tools: [],
+      current_index: null,
+      completed_count: null,
+      total_steps: null,
+      last_tool: '',
+      last_summary: '',
+      steps: [],
+      updated_at: ''
     }
   });
   assert.equal(session.last_command, '');
@@ -547,6 +559,36 @@ test('project config accepts szlcsc integration settings', () => {
   assert.equal(projectConfig.integrations.szlcsc.only_available, true);
   assert.equal(projectConfig.integrations.szlcsc.currency, 'USD');
   assert.equal(projectConfig.integrations.szlcsc.timeout_ms, 9000);
+});
+
+test('project config accepts intent router integration settings', () => {
+  const config = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-project-intent-router-'));
+  const projectConfigDir = path.join(tempProject, '.emb-agent');
+  fs.mkdirSync(projectConfigDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(projectConfigDir, 'project.json'),
+    JSON.stringify(
+      {
+        integrations: {
+          intent_router: {
+            enabled: true,
+            mode: 'local',
+            provider: 'local-rules'
+          }
+        }
+      },
+      null,
+      2
+    ) + '\n',
+    'utf8'
+  );
+
+  const projectConfig = runtime.loadProjectConfig(tempProject, config);
+
+  assert.equal(projectConfig.integrations.intent_router.enabled, true);
+  assert.equal(projectConfig.integrations.intent_router.mode, 'local');
+  assert.equal(projectConfig.integrations.intent_router.provider, 'local-rules');
 });
 
 test('validators reject malformed profile/pack data', () => {

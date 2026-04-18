@@ -244,6 +244,171 @@ function createDispatchCommandRuntimeHelpers(deps) {
     });
   }
 
+  function loadWalkthroughRuntime() {
+    const currentSession = resolveSession();
+    return currentSession &&
+      currentSession.session &&
+      currentSession.session.diagnostics &&
+      isObject(currentSession.session.diagnostics.walkthrough_runtime)
+        ? currentSession.session.diagnostics.walkthrough_runtime
+        : null;
+  }
+
+  function persistWalkthroughRuntime(snapshot) {
+    const walkthroughRuntime = isObject(snapshot) ? snapshot : {
+      kind: '',
+      status: '',
+      ordered_tools: [],
+      current_index: 0,
+      completed_count: 0,
+      total_steps: 0,
+      last_tool: '',
+      last_summary: '',
+      steps: [],
+      updated_at: ''
+    };
+    updateSession(current => {
+      current.diagnostics = isObject(current.diagnostics) ? current.diagnostics : {};
+      current.diagnostics.walkthrough_runtime = walkthroughRuntime;
+    });
+  }
+
+  function buildWalkthroughRuntime(dispatch) {
+    const recommendation = isObject(dispatch && dispatch.walkthrough_recommendation)
+      ? dispatch.walkthrough_recommendation
+      : null;
+    if (!recommendation) {
+      return null;
+    }
+
+    const previous = loadWalkthroughRuntime();
+    const orderedTools = Array.isArray(recommendation.ordered_tools)
+      ? recommendation.ordered_tools.map(item => String(item))
+      : [];
+    const sequence = Array.isArray(recommendation.recommended_sequence)
+      ? recommendation.recommended_sequence
+      : [];
+    const sequenceMap = new Map(
+      sequence
+        .filter(item => isObject(item) && item.tool)
+        .map(item => [String(item.tool), item])
+    );
+    const matchesPrevious = Boolean(
+      previous &&
+      previous.kind === recommendation.kind &&
+      Array.isArray(previous.ordered_tools) &&
+      previous.ordered_tools.length === orderedTools.length &&
+      previous.ordered_tools.every((item, index) => item === orderedTools[index])
+    );
+    const previousSteps = matchesPrevious && Array.isArray(previous.steps) ? previous.steps : [];
+
+    const steps = orderedTools.map(toolName => {
+      const sequenceItem = sequenceMap.get(toolName) || {};
+      const previousStep = previousSteps.find(item => item && item.tool === toolName) || {};
+      const preservedStatus = ['ok', 'skipped', 'needs-input', 'error'].includes(String(previousStep.status || ''))
+        ? String(previousStep.status)
+        : 'pending';
+      return {
+        tool: toolName,
+        status: preservedStatus,
+        cli: sequenceItem.cli_draft ? String(sequenceItem.cli_draft) : String(previousStep.cli || ''),
+        argv: Array.isArray(sequenceItem.argv) && sequenceItem.argv.length > 0
+          ? sequenceItem.argv.map(item => String(item))
+          : (Array.isArray(previousStep.argv) ? previousStep.argv.map(item => String(item)) : []),
+        missing_inputs: Array.isArray(sequenceItem.missing_inputs)
+          ? sequenceItem.missing_inputs.map(item => String(item))
+          : [],
+        defaults_applied: isObject(sequenceItem.defaults_applied)
+          ? sequenceItem.defaults_applied
+          : (isObject(previousStep.defaults_applied) ? previousStep.defaults_applied : {}),
+        trust: isObject(sequenceItem.trust) ? sequenceItem.trust : (isObject(previousStep.trust) ? previousStep.trust : null),
+        summary: String(previousStep.summary || ''),
+        updated_at: String(previousStep.updated_at || '')
+      };
+    });
+
+    const completedCount = steps.filter(item => ['ok', 'skipped'].includes(item.status)).length;
+    const currentIndex = steps.findIndex(item => !['ok', 'skipped'].includes(item.status));
+    const normalizedIndex = currentIndex === -1 ? steps.length : currentIndex;
+    const currentStep = steps[normalizedIndex] || null;
+
+    return {
+      kind: String(recommendation.kind || ''),
+      status: steps.length === 0
+        ? 'idle'
+        : completedCount >= steps.length
+          ? 'completed'
+          : currentStep && ['needs-input', 'error'].includes(currentStep.status)
+            ? currentStep.status
+            : 'running',
+      ordered_tools: orderedTools,
+      current_index: normalizedIndex,
+      completed_count: completedCount,
+      total_steps: steps.length,
+      last_tool: matchesPrevious ? String(previous.last_tool || '') : '',
+      last_summary: matchesPrevious ? String(previous.last_summary || '') : '',
+      steps,
+      updated_at: matchesPrevious ? String(previous.updated_at || '') : ''
+    };
+  }
+
+  function summarizeWalkthroughRuntime(snapshot) {
+    const runtime = isObject(snapshot) ? snapshot : {};
+    const steps = Array.isArray(runtime.steps) ? runtime.steps : [];
+    const currentIndex = Number.isInteger(runtime.current_index) ? runtime.current_index : 0;
+    const currentStep = steps[currentIndex] || null;
+    return {
+      kind: runtime.kind || '',
+      status: runtime.status || '',
+      total_steps: Number.isInteger(runtime.total_steps) ? runtime.total_steps : steps.length,
+      completed_count: Number.isInteger(runtime.completed_count)
+        ? runtime.completed_count
+        : steps.filter(item => item && ['ok', 'skipped'].includes(item.status)).length,
+      current_index: currentIndex,
+      current_tool: currentStep && currentStep.tool ? currentStep.tool : '',
+      current_cli: currentStep && currentStep.cli ? currentStep.cli : '',
+      last_tool: runtime.last_tool || '',
+      last_summary: runtime.last_summary || '',
+      completed_steps: steps
+        .filter(item => item && ['ok', 'skipped'].includes(item.status))
+        .map(item => item.tool),
+      remaining_steps: steps
+        .filter(item => item && !['ok', 'skipped'].includes(item.status))
+        .map(item => item.tool),
+      updated_at: runtime.updated_at || ''
+    };
+  }
+
+  function buildToolExecutionFromWalkthroughStep(step) {
+    const safeStep = isObject(step) ? step : {};
+    return {
+      available: Boolean(safeStep.tool),
+      recommended: Boolean(safeStep.tool),
+      tool: safeStep.tool || '',
+      status: safeStep.status || 'ready',
+      argv: Array.isArray(safeStep.argv) ? safeStep.argv.map(item => String(item)) : [],
+      cli: safeStep.cli || '',
+      missing_inputs: Array.isArray(safeStep.missing_inputs) ? safeStep.missing_inputs.map(item => String(item)) : [],
+      defaults_applied: isObject(safeStep.defaults_applied) ? safeStep.defaults_applied : {},
+      trust: isObject(safeStep.trust) ? safeStep.trust : null
+    };
+  }
+
+  function summarizeWalkthroughStepResult(toolName, result, stepStatus) {
+    const safeResult = isObject(result) ? result : {};
+    if (safeResult.summary) {
+      return String(safeResult.summary);
+    }
+    if (stepStatus === 'ok') {
+      return `Walkthrough step ${toolName} completed.`;
+    }
+    if (stepStatus === 'needs-input') {
+      const missingInputs = Array.isArray(safeResult.missing_inputs) ? safeResult.missing_inputs : [];
+      return `Walkthrough step ${toolName} is blocked by missing inputs: ${missingInputs.join(', ')}`;
+    }
+    return `Walkthrough step ${toolName} stopped with status ${stepStatus}.`;
+  }
+
   function buildDelegationCollectionResult(collected, enteredVia) {
     const currentSession = resolveSession();
     const currentRuntime =
@@ -373,6 +538,15 @@ function createDispatchCommandRuntimeHelpers(deps) {
     if (executionMeta.tool_execution && payload.tool_execution === undefined) {
       payload.tool_execution = executionMeta.tool_execution;
     }
+    if (executionMeta.walkthrough_recommendation && payload.walkthrough_recommendation === undefined) {
+      payload.walkthrough_recommendation = executionMeta.walkthrough_recommendation;
+    }
+    if (executionMeta.walkthrough_execution && payload.walkthrough_execution === undefined) {
+      payload.walkthrough_execution = executionMeta.walkthrough_execution;
+    }
+    if (executionMeta.walkthrough_runtime && payload.walkthrough_runtime === undefined) {
+      payload.walkthrough_runtime = executionMeta.walkthrough_runtime;
+    }
     if (executionMeta.context_hygiene && payload.context_hygiene === undefined) {
       payload.context_hygiene = executionMeta.context_hygiene;
     }
@@ -406,6 +580,151 @@ function createDispatchCommandRuntimeHelpers(deps) {
     }
 
     return payload;
+  }
+
+  function executeWalkthroughStep(dispatch, enteredVia, persistRuntime) {
+    const walkthroughRuntime = buildWalkthroughRuntime(dispatch);
+    if (!walkthroughRuntime) {
+      throw new Error('Missing walkthrough runtime');
+    }
+
+    const currentIndex = Number.isInteger(walkthroughRuntime.current_index)
+      ? walkthroughRuntime.current_index
+      : 0;
+    const currentStep = walkthroughRuntime.steps[currentIndex] || null;
+    const executionMeta = {
+      source: dispatch.source,
+      requested_action: dispatch.requested_action,
+      resolved_action: dispatch.resolved_action,
+      entered_via: enteredVia,
+      kind: 'walkthrough-tool',
+      cli: currentStep && currentStep.cli ? currentStep.cli : '',
+      workflow_stage: dispatch.workflow_stage || null,
+      dispatch_contract:
+        dispatch.agent_execution && dispatch.agent_execution.dispatch_contract
+          ? dispatch.agent_execution.dispatch_contract
+          : null,
+      agent_execution: dispatch.agent_execution || null,
+      tool_execution: currentStep ? buildToolExecutionFromWalkthroughStep(currentStep) : null,
+      walkthrough_recommendation: dispatch.walkthrough_recommendation || null,
+      context_hygiene: dispatch.context_hygiene || null,
+      next_actions: dispatch.next_actions || [],
+      handoff: dispatch.handoff || null,
+      permission_gates: dispatch.permission_gates || [],
+      executor_signal: dispatch.executor_signal || null
+    };
+    const delegationRuntime = buildDelegationRuntimeSnapshot(dispatch, executionMeta);
+
+    if (!currentStep) {
+      walkthroughRuntime.status = 'completed';
+      walkthroughRuntime.current_index = walkthroughRuntime.total_steps || walkthroughRuntime.steps.length;
+      walkthroughRuntime.updated_at = new Date().toISOString();
+      if (persistRuntime) {
+        persistDelegationRuntime(delegationRuntime);
+        persistWalkthroughRuntime(walkthroughRuntime);
+      }
+      return annotateExecutionResult({
+        status: 'completed',
+        executed: false,
+        summary: walkthroughRuntime.last_summary || 'Walkthrough already completed.',
+        walkthrough_step: null,
+        completed_steps: summarizeWalkthroughRuntime(walkthroughRuntime).completed_steps,
+        remaining_steps: []
+      }, {
+        ...executionMeta,
+        delegation_runtime: delegationRuntime,
+        walkthrough_execution: summarizeWalkthroughRuntime(walkthroughRuntime),
+        walkthrough_runtime: walkthroughRuntime
+      });
+    }
+
+    const toolExecution = buildToolExecutionFromWalkthroughStep(currentStep);
+    const toolRun = executeRecommendedTool(toolExecution);
+    const result = isObject(toolRun.result) ? { ...toolRun.result } : { result: toolRun.result };
+    const now = new Date().toISOString();
+    const nextRuntime = {
+      ...walkthroughRuntime,
+      steps: walkthroughRuntime.steps.map((step, index) => {
+        if (index !== currentIndex) {
+          return step;
+        }
+
+        const stepStatus =
+          result.status === 'needs-input'
+            ? 'needs-input'
+            : ['failed', 'error', 'blocked'].includes(String(result.status || ''))
+              ? 'error'
+              : 'ok';
+        return {
+          ...step,
+          cli: toolRun.argv.join(' '),
+          argv: toolRun.argv.slice(),
+          missing_inputs: Array.isArray(result.missing_inputs)
+            ? result.missing_inputs.map(item => String(item))
+            : (Array.isArray(step.missing_inputs) ? step.missing_inputs : []),
+          summary: summarizeWalkthroughStepResult(step.tool, result, stepStatus),
+          status: stepStatus,
+          updated_at: now
+        };
+      }),
+      last_tool: currentStep.tool,
+      updated_at: now
+    };
+
+    nextRuntime.completed_count = nextRuntime.steps.filter(item => ['ok', 'skipped'].includes(item.status)).length;
+    const nextIndex = nextRuntime.steps.findIndex(item => !['ok', 'skipped'].includes(item.status));
+    nextRuntime.current_index = nextIndex === -1 ? nextRuntime.steps.length : nextIndex;
+    const nextStep = nextRuntime.steps[nextRuntime.current_index] || null;
+    const latestStep = nextRuntime.steps[currentIndex] || currentStep;
+    nextRuntime.last_summary = latestStep.summary || '';
+    nextRuntime.status = nextRuntime.steps.length === 0
+      ? 'idle'
+      : nextRuntime.completed_count >= nextRuntime.steps.length
+        ? 'completed'
+        : latestStep.status === 'needs-input'
+          ? 'needs-input'
+          : latestStep.status === 'error'
+            ? 'error'
+            : 'running';
+
+    if (persistRuntime) {
+      persistDelegationRuntime(delegationRuntime);
+      persistWalkthroughRuntime(nextRuntime);
+    }
+
+    const walkthroughExecution = summarizeWalkthroughRuntime(nextRuntime);
+    const recommendedNextStep = nextRuntime.status === 'completed'
+      ? ''
+      : nextStep && Array.isArray(nextStep.missing_inputs) && nextStep.missing_inputs.length > 0
+        ? `Provide inputs for ${nextStep.tool}: ${nextStep.missing_inputs.join(', ')}`
+        : nextStep && nextStep.cli
+          ? nextStep.cli
+          : '';
+
+    return annotateExecutionResult({
+      ...result,
+      summary: latestStep.summary || result.summary || '',
+      walkthrough_step: {
+        tool: currentStep.tool,
+        status: latestStep.status,
+        cli: toolRun.argv.join(' '),
+        summary: latestStep.summary || '',
+        index: currentIndex + 1
+      },
+      completed_steps: walkthroughExecution.completed_steps,
+      remaining_steps: walkthroughExecution.remaining_steps,
+      recommended_next_step: recommendedNextStep
+    }, {
+      ...executionMeta,
+      cli: toolRun.argv.join(' '),
+      tool_execution: {
+        ...toolExecution,
+        argv: toolRun.argv
+      },
+      delegation_runtime: delegationRuntime,
+      walkthrough_execution: walkthroughExecution,
+      walkthrough_runtime: nextRuntime
+    });
   }
 
   function buildRedispatchBlockedResult(dispatch, executionMeta, delegationRuntime, bridgeExecution) {
@@ -455,6 +774,16 @@ function createDispatchCommandRuntimeHelpers(deps) {
         ? runOptions.delegation_context
         : dispatch;
 
+    if (
+      dispatch.walkthrough_recommendation &&
+      dispatch.walkthrough_execution &&
+      dispatch.tool_execution &&
+      dispatch.tool_execution.available &&
+      dispatch.tool_execution.recommended
+    ) {
+      return executeWalkthroughStep(dispatch, enteredVia, persistRuntime);
+    }
+
     if (dispatch.tool_execution && dispatch.tool_execution.available && dispatch.tool_execution.recommended) {
       const toolRun = executeRecommendedTool(dispatch.tool_execution);
       const executionMeta = {
@@ -474,6 +803,8 @@ function createDispatchCommandRuntimeHelpers(deps) {
           ...dispatch.tool_execution,
           argv: toolRun.argv
         },
+        walkthrough_recommendation: dispatch.walkthrough_recommendation || null,
+        walkthrough_execution: dispatch.walkthrough_execution || null,
         context_hygiene: dispatch.context_hygiene || null,
         next_actions: dispatch.next_actions || [],
         handoff: dispatch.handoff || null,
@@ -504,6 +835,8 @@ function createDispatchCommandRuntimeHelpers(deps) {
           : null,
       agent_execution: dispatch.agent_execution || null,
       tool_execution: dispatch.tool_execution || null,
+      walkthrough_recommendation: dispatch.walkthrough_recommendation || null,
+      walkthrough_execution: dispatch.walkthrough_execution || null,
       context_hygiene: dispatch.context_hygiene || null,
       next_actions: dispatch.next_actions || [],
       handoff: dispatch.handoff || null,
@@ -631,6 +964,9 @@ function createDispatchCommandRuntimeHelpers(deps) {
     });
     const delegationRuntime = executed.delegation_runtime || buildDelegationRuntimeSnapshot(orchestrator, executed.execution || {});
     persistDelegationRuntime(delegationRuntime);
+    if (executed.walkthrough_runtime) {
+      persistWalkthroughRuntime(executed.walkthrough_runtime);
+    }
 
     return {
       ...executed,

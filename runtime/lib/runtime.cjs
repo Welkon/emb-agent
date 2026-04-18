@@ -601,6 +601,10 @@ function normalizeDiagnostics(value) {
     !source.delegation_runtime || typeof source.delegation_runtime !== 'object' || Array.isArray(source.delegation_runtime)
       ? {}
       : source.delegation_runtime;
+  const walkthroughRuntimeSource =
+    !source.walkthrough_runtime || typeof source.walkthrough_runtime !== 'object' || Array.isArray(source.walkthrough_runtime)
+      ? {}
+      : source.walkthrough_runtime;
 
   function normalizeExecutorDiagnostic(entry, label, fallbackName) {
     const safeEntry = !entry || typeof entry !== 'object' || Array.isArray(entry) ? {} : entry;
@@ -809,6 +813,19 @@ function normalizeDiagnostics(value) {
     };
   }
 
+  function normalizeWalkthroughStep(value, label) {
+    const safeValue = !value || typeof value !== 'object' || Array.isArray(value) ? {} : value;
+    return {
+      tool: ensureOptionalString(safeValue.tool, `${label}.tool`),
+      status: ensureOptionalString(safeValue.status, `${label}.status`),
+      cli: ensureOptionalString(safeValue.cli, `${label}.cli`),
+      argv: ensureStringArray(safeValue.argv || [], `${label}.argv`),
+      missing_inputs: ensureStringArray(safeValue.missing_inputs || [], `${label}.missing_inputs`),
+      summary: ensureOptionalString(safeValue.summary, `${label}.summary`),
+      updated_at: ensureOptionalString(safeValue.updated_at, `${label}.updated_at`)
+    };
+  }
+
   function normalizeObjectArray(value, label, normalizer) {
     const list = Array.isArray(value) ? value : [];
     return list.map((entry, index) => normalizer(entry, `${label}.${index}`));
@@ -862,6 +879,40 @@ function normalizeDiagnostics(value) {
       'diagnostics.delegation_runtime.updated_at'
     )
   };
+  const walkthroughRuntime = {
+    kind: ensureOptionalString(walkthroughRuntimeSource.kind, 'diagnostics.walkthrough_runtime.kind'),
+    status: ensureOptionalString(walkthroughRuntimeSource.status, 'diagnostics.walkthrough_runtime.status'),
+    ordered_tools: ensureStringArray(
+      walkthroughRuntimeSource.ordered_tools || [],
+      'diagnostics.walkthrough_runtime.ordered_tools'
+    ),
+    current_index: ensureOptionalInteger(
+      walkthroughRuntimeSource.current_index,
+      'diagnostics.walkthrough_runtime.current_index'
+    ),
+    completed_count: ensureOptionalInteger(
+      walkthroughRuntimeSource.completed_count,
+      'diagnostics.walkthrough_runtime.completed_count'
+    ),
+    total_steps: ensureOptionalInteger(
+      walkthroughRuntimeSource.total_steps,
+      'diagnostics.walkthrough_runtime.total_steps'
+    ),
+    last_tool: ensureOptionalString(walkthroughRuntimeSource.last_tool, 'diagnostics.walkthrough_runtime.last_tool'),
+    last_summary: ensureOptionalString(
+      walkthroughRuntimeSource.last_summary,
+      'diagnostics.walkthrough_runtime.last_summary'
+    ),
+    steps: normalizeObjectArray(
+      walkthroughRuntimeSource.steps,
+      'diagnostics.walkthrough_runtime.steps',
+      normalizeWalkthroughStep
+    ),
+    updated_at: ensureOptionalString(
+      walkthroughRuntimeSource.updated_at,
+      'diagnostics.walkthrough_runtime.updated_at'
+    )
+  };
 
   return {
     latest_forensics: {
@@ -878,7 +929,8 @@ function normalizeDiagnostics(value) {
     latest_executor: normalizeExecutorDiagnostic(latestExecutorSource, 'diagnostics.latest_executor', ''),
     executor_history: executorHistory,
     human_signoffs: humanSignoffs,
-    delegation_runtime: delegationRuntime
+    delegation_runtime: delegationRuntime,
+    walkthrough_runtime: walkthroughRuntime
   };
 }
 
@@ -1051,13 +1103,28 @@ function validateSzlcscIntegration(config) {
   };
 }
 
+function validateIntentRouterIntegration(config) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, 'integrations.intent_router');
+  const mode = ensureChoice(source.mode, 'integrations.intent_router.mode', ['agent', 'local'], 'agent');
+
+  return {
+    enabled: ensureBoolean(source.enabled, 'integrations.intent_router.enabled', true),
+    mode,
+    provider:
+      ensureOptionalString(source.provider, 'integrations.intent_router.provider') ||
+      (mode === 'agent' ? 'embedded-agent' : 'local-rules')
+  };
+}
+
 function validateIntegrations(config) {
   const source = config === undefined || config === null ? {} : config;
   expectObject(source, 'integrations');
 
   return {
     mineru: validateMineruIntegration(source.mineru),
-    szlcsc: validateSzlcscIntegration(source.szlcsc || source.lcsc)
+    szlcsc: validateSzlcscIntegration(source.szlcsc || source.lcsc),
+    intent_router: validateIntentRouterIntegration(source.intent_router)
   };
 }
 

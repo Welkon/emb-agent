@@ -112,6 +112,54 @@ function summarizeToolRecommendation(value) {
   });
 }
 
+function summarizeWalkthroughRecommendation(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    kind: value.kind || '',
+    summary: value.summary || '',
+    tool_count: Number.isFinite(value.tool_count) ? value.tool_count : undefined,
+    ordered_tools: truncateList(value.ordered_tools, 8),
+    first_tool: value.first_tool || '',
+    first_cli: value.first_cli || '',
+    recommended_sequence: truncateList(
+      toArray(value.recommended_sequence).map(item => summarizeToolRecommendation(item)),
+      5
+    )
+  });
+}
+
+function summarizeWalkthroughExecution(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const steps = toArray(value.steps).filter(isObject);
+  const currentIndex = Number.isInteger(value.current_index) ? value.current_index : 0;
+  const currentStep = steps[currentIndex] || null;
+  const completedSteps = Array.isArray(value.completed_steps)
+    ? value.completed_steps
+    : steps.filter(item => ['ok', 'skipped'].includes(item.status)).map(item => item.tool || '');
+  const remainingSteps = Array.isArray(value.remaining_steps)
+    ? value.remaining_steps
+    : steps.filter(item => !['ok', 'skipped'].includes(item.status)).map(item => item.tool || '');
+
+  return compactObject({
+    kind: value.kind || '',
+    status: value.status || '',
+    total_steps: Number.isFinite(value.total_steps) ? value.total_steps : undefined,
+    completed_count: Number.isFinite(value.completed_count) ? value.completed_count : undefined,
+    current_tool: value.current_tool || (currentStep && currentStep.tool ? currentStep.tool : ''),
+    current_cli: value.current_cli || (currentStep && currentStep.cli ? currentStep.cli : ''),
+    last_tool: value.last_tool || '',
+    last_summary: value.last_summary || '',
+    completed_steps: truncateList(completedSteps, 6),
+    remaining_steps: truncateList(remainingSteps, 6)
+  });
+}
+
 function summarizeActionCard(value) {
   if (!isObject(value)) {
     return null;
@@ -486,6 +534,10 @@ function buildBriefNextContext(value) {
     permission_gates: summarizePermissionGates(value.permission_gates),
     runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),
     tool_recommendation: summarizeToolRecommendation(next.tool_recommendation || value.tool_recommendation),
+    walkthrough_recommendation: summarizeWalkthroughRecommendation(
+      next.walkthrough_recommendation || value.walkthrough_recommendation
+    ),
+    walkthrough_execution: summarizeWalkthroughExecution(value.walkthrough_execution),
     memory_summary: summarizeMemorySummary(value.memory_summary),
     context_hygiene: summarizeContextHygiene(value.context_hygiene),
     next_actions: truncateList(value.next_actions, 5),
@@ -800,6 +852,7 @@ function buildBriefDispatchOrchestrateOutput(value) {
           cli: value.tool_execution.cli || ''
         })
       : null,
+    walkthrough_execution: summarizeWalkthroughExecution(value.walkthrough_execution),
     subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
     delegation_runtime: summarizeDelegationRuntime(value.delegation_runtime),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
@@ -821,6 +874,7 @@ function buildBriefStatusOutput(value) {
     runtime_host: value.runtime_host || '',
     subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
     delegation_runtime: summarizeDelegationRuntime(value.delegation_runtime),
+    walkthrough_execution: summarizeWalkthroughExecution(value.walkthrough_execution),
     memory_summary: summarizeMemorySummary(value.memory_summary),
     permission_gates: summarizePermissionGates(value.permission_gates),
     runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),

@@ -24,6 +24,51 @@ function createDispatchHelpers(deps) {
       : { latest_forensics: {}, latest_executor: {}, executor_history: {}, human_signoffs: {} };
   }
 
+  function getWalkthroughRuntime(session) {
+    const diagnostics = getDiagnostics(session);
+    return diagnostics && diagnostics.walkthrough_runtime && typeof diagnostics.walkthrough_runtime === 'object'
+      ? diagnostics.walkthrough_runtime
+      : null;
+  }
+
+  function buildWalkthroughExecutionSummary(recommendation, walkthroughRuntime) {
+    if (!recommendation || typeof recommendation !== 'object') {
+      return null;
+    }
+
+    const runtime = walkthroughRuntime && typeof walkthroughRuntime === 'object'
+      ? walkthroughRuntime
+      : {};
+    const orderedTools = Array.isArray(recommendation.ordered_tools) ? recommendation.ordered_tools.slice() : [];
+    const totalSteps = orderedTools.length > 0
+      ? orderedTools.length
+      : Number.isFinite(recommendation.tool_count)
+        ? Number(recommendation.tool_count)
+        : 0;
+    const currentIndex = Number.isInteger(runtime.current_index)
+      ? Math.max(0, runtime.current_index)
+      : 0;
+    const completedCount = Number.isInteger(runtime.completed_count)
+      ? Math.max(0, runtime.completed_count)
+      : 0;
+    const steps = Array.isArray(runtime.steps) ? runtime.steps : [];
+    const currentStep = steps[currentIndex] || null;
+
+    return {
+      kind: recommendation.kind || '',
+      status: runtime.status || 'pending',
+      total_steps: totalSteps,
+      completed_count: completedCount,
+      current_index: currentIndex,
+      current_tool: currentStep && currentStep.tool ? currentStep.tool : recommendation.first_tool || '',
+      current_cli: currentStep && currentStep.cli ? currentStep.cli : recommendation.first_cli || '',
+      last_tool: runtime.last_tool || '',
+      last_summary: runtime.last_summary || '',
+      remaining_tools: orderedTools.slice(Math.min(currentIndex, orderedTools.length)),
+      updated_at: runtime.updated_at || ''
+    };
+  }
+
   function buildExecutorSignal(latestExecutor) {
     const signal = latestExecutor && latestExecutor.name ? latestExecutor : null;
     const failed = Boolean(signal && ['failed', 'error'].includes(signal.status));
@@ -53,8 +98,17 @@ function createDispatchHelpers(deps) {
     if (action === 'next') {
       const next = buildNextContext();
       const resolvedAction = next.next.command;
-      const diagnostics = getDiagnostics(resolveSession().session);
+      const resolvedSession = resolveSession();
+      const diagnostics = getDiagnostics(resolvedSession.session);
       const executorSignal = buildExecutorSignal(diagnostics.latest_executor);
+      const walkthroughRecommendation =
+        next && next.next && next.next.walkthrough_recommendation
+          ? next.next.walkthrough_recommendation
+          : null;
+      const walkthroughExecution = buildWalkthroughExecutionSummary(
+        walkthroughRecommendation,
+        getWalkthroughRuntime(resolvedSession.session)
+      );
 
       if (resolvedAction === 'arch-review') {
         const archDispatch = buildArchReviewDispatchContext();
@@ -74,7 +128,9 @@ function createDispatchHelpers(deps) {
           executor_signal: executorSignal,
           permission_gates: archDispatch.permission_gates || [],
           handoff: next.handoff,
-          action_context: archDispatch.action_context
+          action_context: archDispatch.action_context,
+          walkthrough_recommendation: walkthroughRecommendation,
+          walkthrough_execution: walkthroughExecution
         };
       }
 
@@ -101,7 +157,9 @@ function createDispatchHelpers(deps) {
         permission_gates: next.permission_gates || output.permission_gates || [],
         handoff: next.handoff,
         tool_execution: toolExecution,
-        action_context: output
+        action_context: output,
+        walkthrough_recommendation: walkthroughRecommendation,
+        walkthrough_execution: walkthroughExecution
       };
     }
 
@@ -381,6 +439,8 @@ function createDispatchHelpers(deps) {
       context_hygiene: dispatch.context_hygiene || null,
       next_actions: dispatch.next_actions || guidance.next_actions,
       tool_execution: toolExecution,
+      walkthrough_recommendation: dispatch.walkthrough_recommendation || null,
+      walkthrough_execution: dispatch.walkthrough_execution || null,
       chip_support_health:
         dispatch.health && dispatch.health.chip_support_health
           ? dispatch.health.chip_support_health

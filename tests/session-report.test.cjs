@@ -219,6 +219,225 @@ test('session-report records tool recommendation when scan tool is ready', async
   }
 });
 
+test('session-report records walkthrough recommendation for broad peripheral exercise', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-walkthrough-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init', '--mcu', 'vendor-chip', '--package', 'qfp32']);
+
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({ devices: ['vendor-chip'] }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'qfp32',
+        architecture: '8-bit',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        summary: {},
+        capabilities: ['timer', 'pwm', 'comparator', 'adc'],
+        docs: [],
+        related_tools: ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale'].forEach(toolName => {
+      fs.writeFileSync(
+        path.join(projectEmbDir, 'extensions', 'tools', `${toolName}.cjs`),
+        [
+          "'use strict';",
+          '',
+          'module.exports = {',
+          '  runTool() {',
+          "    return { status: 'ok' };",
+          '  }',
+          '};',
+          ''
+        ].join('\n'),
+        'utf8'
+      );
+    });
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        family: 'vendor-family',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale'],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-timer',
+            params: {
+              default_timer: 'tmr0',
+              default_clock_source: 'sysclk',
+              prescalers: [1]
+            }
+          },
+          'pwm-calc': {
+            algorithm: 'vendor-pwm',
+            params: {
+              default_output_pin: 'pa3',
+              default_clock_source: 'sysclk',
+              output_pins: {
+                pa3: { pin: 'pa3' }
+              },
+              clock_sources: {
+                sysclk: { label: 'SYSCLK' }
+              }
+            }
+          },
+          'comparator-threshold': {
+            algorithm: 'vendor-cmp',
+            params: {
+              default_positive_source: 'vr',
+              default_negative_source: 'cmp0n',
+              positive_sources: {
+                vr: {}
+              },
+              negative_sources: {
+                cmp0n: {}
+              }
+            }
+          },
+          'adc-scale': {
+            algorithm: 'vendor-adc',
+            params: {
+              default_reference_source: 'vdd',
+              default_channel: 'an0',
+              default_resolution: 12,
+              supported_resolutions: [12],
+              reference_sources: {
+                vdd: { label: 'VDD' }
+              },
+              channels: {
+                an0: { name: 'AN0' }
+              }
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    await cli.main([
+      'declare', 'hardware', '--confirm',
+      '--mcu', 'vendor-chip',
+      '--package', 'qfp32',
+      '--signal', 'PWM_OUT',
+      '--pin', 'PA3',
+      '--dir', 'output',
+      '--note', '20kHz PWM output',
+      '--confirmed', 'true',
+      '--signal', 'ADC_IN',
+      '--pin', 'PA0',
+      '--dir', 'input',
+      '--note', 'ADC sampling input',
+      '--confirmed', 'true',
+      '--peripheral', 'PWM',
+      '--usage', '20kHz 50% duty output',
+      '--peripheral', 'Comparator',
+      '--usage', 'Threshold compare',
+      '--peripheral', 'ADC',
+      '--usage', 'Voltage sampling'
+    ]);
+    await cli.main([
+      'task', 'add', '--confirm',
+      'Exercise all supported vendor-chip peripherals',
+      '--type', 'implement',
+      '--scope', 'peripherals',
+      '--priority', 'P1'
+    ]);
+    await cli.main(['task', 'activate', '--confirm', 'exercise-all-supported-vendor-chip-peripherals']);
+
+    const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+    const statePaths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), tempProject, runtimeConfig);
+    const session = runtime.readJson(statePaths.sessionPath);
+    session.diagnostics.walkthrough_runtime = {
+      kind: 'peripheral-walkthrough',
+      status: 'running',
+      ordered_tools: ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale'],
+      current_index: 1,
+      completed_count: 1,
+      total_steps: 4,
+      last_tool: 'timer-calc',
+      last_summary: 'Walkthrough step timer-calc completed.',
+      steps: [
+        {
+          tool: 'timer-calc',
+          status: 'ok',
+          cli: 'tool run timer-calc --target-us 50',
+          argv: ['tool', 'run', 'timer-calc', '--target-us', '50'],
+          missing_inputs: [],
+          summary: 'Walkthrough step timer-calc completed.',
+          updated_at: '2026-04-17T10:00:00.000Z'
+        },
+        {
+          tool: 'pwm-calc',
+          status: 'pending',
+          cli: 'tool run pwm-calc --target-hz 20000 --duty 50',
+          argv: ['tool', 'run', 'pwm-calc', '--target-hz', '20000', '--duty', '50'],
+          missing_inputs: [],
+          summary: '',
+          updated_at: ''
+        }
+      ],
+      updated_at: '2026-04-17T10:00:00.000Z'
+    };
+    runtime.writeJson(statePaths.sessionPath, session);
+    await cli.main(['session-report', 'capture peripheral walkthrough']);
+
+    const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
+    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
+    assert.equal(reports.length, 1);
+
+    const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
+    assert.match(content, /walkthrough_mode: peripheral-walkthrough/);
+    assert.match(content, /walkthrough_tools: timer-calc -> pwm-calc -> comparator-threshold -> adc-scale/);
+    assert.match(content, /walkthrough_status: running/);
+    assert.match(content, /walkthrough_progress: 1\/4/);
+    assert.match(content, /walkthrough_current: pwm-calc/);
+    assert.match(content, /walkthrough_last: Walkthrough step timer-calc completed\./);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('session-report records latest executor summary and routes failed executor to review', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-executor-'));
   const currentCwd = process.cwd();
