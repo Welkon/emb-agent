@@ -16,6 +16,15 @@
     "actual threshold and error",
     "status bit interpretation"
   ],
+  "intent_profile": {
+    "domains": ["lvdc"],
+    "actions": ["threshold", "detect", "calculate"],
+    "targets": ["threshold", "voltage", "battery", "status"],
+    "keywords": ["lvdc", "brownout", "battery", "low voltage"],
+    "anti_keywords": ["pwm", "adc", "charger"],
+    "preference_signals": ["target-voltage", "reference-voltage", "status-bits"],
+    "anchor_preferences": ["reference"]
+  },
   "family_profiles": [],
   "device_profiles": [],
   "source_modules": [],

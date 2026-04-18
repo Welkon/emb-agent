@@ -19,6 +19,15 @@
     "frequency and duty error",
     "channel register hints"
   ],
+  "intent_profile": {
+    "domains": ["lpwmg", "pwm"],
+    "actions": ["generate", "calculate"],
+    "targets": ["frequency", "duty"],
+    "keywords": ["lpwmg", "long period pwm", "low frequency pwm", "exact pwm", "precise pwm"],
+    "anti_keywords": ["adc", "charger"],
+    "preference_signals": ["exact-frequency-target", "exact-duty-target", "exact-pwm-target"],
+    "anchor_preferences": ["pin", "channel"]
+  },
   "family_profiles": [],
   "device_profiles": [],
   "source_modules": [],

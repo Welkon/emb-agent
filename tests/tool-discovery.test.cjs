@@ -476,8 +476,389 @@ test('hardware PWM intent makes next prefer pwm-calc over generic timer-calc', a
 
     assert.equal(next.next.tool_recommendation.tool, 'pwm-calc');
     assert.match(next.next.tool_recommendation.cli_draft, /tool run pwm-calc/);
+    assert.match(next.next.tool_recommendation.cli_draft, /--output-pin pa3/);
+    assert.match(next.next.tool_recommendation.cli_draft, /--target-hz 20000/);
+    assert.match(next.next.tool_recommendation.cli_draft, /--target-duty 50/);
     assert.equal(next.hardware.mcu.signals[0].name, 'PWM_OUT');
     assert.equal(next.hardware.mcu.peripherals[0].name, 'PWM');
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('hardware ADC intent makes next prefer adc-scale over generic timer-calc', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-tool-adc-intent-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init', '--mcu', 'vendor-chip', '--package', 'qfp32']);
+
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({
+        devices: ['vendor-chip']
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'qfp32',
+        architecture: '8-bit',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        source_refs: ['mcu/vendor-chip', 'mcu/vendor-chip-registers'],
+        component_refs: [],
+        summary: {},
+        capabilities: ['timer16', 'adc'],
+        docs: [],
+        related_tools: ['timer-calc', 'adc-scale'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'timer-calc.cjs'),
+      [
+        "'use strict';",
+        '',
+        'module.exports = {',
+        '  runTool() {',
+        "    return { status: 'ok' };",
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'adc-scale.cjs'),
+      [
+        "'use strict';",
+        '',
+        'module.exports = {',
+        '  runTool() {',
+        "    return { status: 'ok' };",
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc', 'adc-scale'],
+        source_refs: ['mcu/vendor-family-overview'],
+        component_refs: [],
+        clock_sources: ['sysclk'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        family: 'vendor-family',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['timer-calc', 'adc-scale'],
+        source_refs: ['mcu/vendor-chip-registers'],
+        component_refs: [],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-timer16',
+            params: {
+              chip: 'vendor-chip',
+              peripheral: 'tm16',
+              default_clock_source: 'sysclk',
+              prescalers: [1, 4, 16, 64],
+              interrupt_bits: [8, 9, 10]
+            }
+          },
+          'adc-scale': {
+            algorithm: 'vendor-adc',
+            params: {
+              chip: 'vendor-chip',
+              peripheral: 'adc',
+              default_reference_source: 'vdd',
+              default_resolution: 12,
+              supported_resolutions: [12],
+              reference_sources: {
+                vdd: {
+                  label: 'VDD'
+                }
+              },
+              channel_aliases: {
+                pa0: 'an0'
+              },
+              channels: {
+                an0: {
+                  name: 'AN0'
+                }
+              }
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    await cli.main([
+      'declare', 'hardware', '--confirm',
+      '--mcu', 'vendor-chip',
+      '--package', 'qfp32',
+      '--signal', 'ADC_IN',
+      '--pin', 'PA0',
+      '--dir', 'input',
+      '--note', 'Voltage sampling input on PA0',
+      '--confirmed', 'true',
+      '--peripheral', 'ADC',
+      '--usage', 'Sample input voltage on PA0'
+    ]);
+
+    const next = cli.buildNextContext();
+
+    assert.equal(next.next.tool_recommendation.tool, 'adc-scale');
+    assert.match(next.next.reason, /adc-scale/);
+    assert.match(next.next.tool_recommendation.cli_draft, /tool run adc-scale/);
+    assert.match(next.next.tool_recommendation.cli_draft, /--channel PA0/);
+    assert.equal(next.hardware.mcu.signals[0].name, 'ADC_IN');
+    assert.equal(next.hardware.mcu.peripherals[0].name, 'ADC');
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('broad peripheral exercise keeps next in walkthrough mode instead of single-tool tunnel vision', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-tool-peripheral-walkthrough-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init', '--mcu', 'vendor-chip', '--package', 'qfp32']);
+
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({
+        devices: ['vendor-chip']
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        series: 'SeriesName',
+        package: 'qfp32',
+        architecture: '8-bit',
+        runtime_model: 'main_loop_plus_isr',
+        description: 'External chip profile.',
+        source_refs: ['mcu/vendor-chip', 'mcu/vendor-chip-registers'],
+        component_refs: [],
+        summary: {},
+        capabilities: ['timer', 'pwm', 'comparator', 'adc'],
+        docs: [],
+        related_tools: ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale'],
+        source_modules: [],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale'].forEach(toolName => {
+      fs.writeFileSync(
+        path.join(projectEmbDir, 'extensions', 'tools', `${toolName}.cjs`),
+        [
+          "'use strict';",
+          '',
+          'module.exports = {',
+          '  runTool() {',
+          "    return { status: 'ok' };",
+          '  }',
+          '};',
+          ''
+        ].join('\n'),
+        'utf8'
+      );
+    });
+
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale'],
+        source_refs: ['mcu/vendor-family-overview'],
+        component_refs: [],
+        clock_sources: ['sysclk'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'vendor-chip.json'),
+      JSON.stringify({
+        name: 'vendor-chip',
+        family: 'vendor-family',
+        sample: false,
+        description: 'External tool device profile.',
+        supported_tools: ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale'],
+        source_refs: ['mcu/vendor-chip-registers'],
+        component_refs: [],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'vendor-timer',
+            params: {
+              chip: 'vendor-chip',
+              peripheral: 'tmr0',
+              default_timer: 'tmr0',
+              default_clock_source: 'sysclk',
+              prescalers: [1]
+            }
+          },
+          'pwm-calc': {
+            algorithm: 'vendor-pwm',
+            params: {
+              chip: 'vendor-chip',
+              peripheral: 'pwm',
+              default_output_pin: 'pa3',
+              default_clock_source: 'sysclk',
+              output_pins: {
+                pa3: { pin: 'pa3' }
+              },
+              clock_sources: {
+                sysclk: { label: 'SYSCLK' }
+              }
+            }
+          },
+          'comparator-threshold': {
+            algorithm: 'vendor-cmp',
+            params: {
+              chip: 'vendor-chip',
+              peripheral: 'cmp',
+              default_positive_source: 'vr',
+              default_negative_source: 'cmp0n',
+              positive_sources: {
+                vr: {}
+              },
+              negative_sources: {
+                cmp0n: {}
+              }
+            }
+          },
+          'adc-scale': {
+            algorithm: 'vendor-adc',
+            params: {
+              chip: 'vendor-chip',
+              peripheral: 'adc',
+              default_reference_source: 'vdd',
+              default_channel: 'an0',
+              default_resolution: 12,
+              supported_resolutions: [12],
+              reference_sources: {
+                vdd: { label: 'VDD' }
+              },
+              channels: {
+                an0: { name: 'AN0' }
+              }
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    await cli.main([
+      'declare', 'hardware', '--confirm',
+      '--mcu', 'vendor-chip',
+      '--package', 'qfp32',
+      '--signal', 'PWM_OUT',
+      '--pin', 'PA3',
+      '--dir', 'output',
+      '--note', '20kHz PWM output',
+      '--confirmed', 'true',
+      '--signal', 'CMP_IN',
+      '--pin', 'PA1',
+      '--dir', 'input',
+      '--note', 'Comparator input',
+      '--confirmed', 'true',
+      '--signal', 'ADC_IN',
+      '--pin', 'PA0',
+      '--dir', 'input',
+      '--note', 'ADC sampling input',
+      '--confirmed', 'true',
+      '--peripheral', 'PWM',
+      '--usage', '20kHz 50% duty output',
+      '--peripheral', 'Comparator',
+      '--usage', 'Threshold compare',
+      '--peripheral', 'ADC',
+      '--usage', 'Voltage sampling'
+    ]);
+    await cli.main([
+      'task', 'add', '--confirm',
+      'Exercise all supported vendor-chip peripherals',
+      '--type', 'implement',
+      '--scope', 'peripherals',
+      '--priority', 'P1'
+    ]);
+    await cli.main(['task', 'activate', '--confirm', 'exercise-all-supported-vendor-chip-peripherals']);
+
+    const next = cli.buildNextContext();
+
+    assert.equal(next.next.command, 'scan');
+    assert.match(next.next.reason, /broad peripheral exercise/i);
+    assert.equal(next.next.walkthrough_recommendation.kind, 'peripheral-walkthrough');
+    assert.deepEqual(
+      next.next.walkthrough_recommendation.ordered_tools,
+      ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale']
+    );
+    assert.equal(next.walkthrough_recommendation.kind, 'peripheral-walkthrough');
+    assert.match(next.action_card.first_instruction, /Ready tool checklist:/);
+    assert.match(next.action_card.followup, /Run scan first, then walk each ready tool once/);
+    assert.ok(next.next_actions.some(item => item.includes('do not stop at the first matching tool')));
+    assert.ok(next.next_actions.some(item => item.includes('Ready tool checklist: 1. timer-calc | 2. pwm-calc | 3. comparator-threshold | 4. adc-scale')));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

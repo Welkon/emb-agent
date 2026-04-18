@@ -19,6 +19,15 @@
     "frequency and duty error",
     "register or code hints"
   ],
+  "intent_profile": {
+    "domains": ["pwm"],
+    "actions": ["generate", "calculate"],
+    "targets": ["frequency", "duty"],
+    "keywords": ["pwm", "duty", "pwm output"],
+    "anti_keywords": ["adc", "charger"],
+    "preference_signals": [],
+    "anchor_preferences": ["pin", "channel"]
+  },
   "family_profiles": [],
   "device_profiles": [],
   "source_modules": [],

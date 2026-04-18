@@ -57,6 +57,31 @@ function ensureOptionalNamedObjectMap(value, label) {
   return normalized;
 }
 
+function ensureOptionalIntentProfile(value, label) {
+  if (value === undefined || value === null) {
+    return {
+      domains: [],
+      actions: [],
+      targets: [],
+      keywords: [],
+      anti_keywords: [],
+      preference_signals: [],
+      anchor_preferences: []
+    };
+  }
+
+  ensureObject(value, label);
+  return {
+    domains: ensureOptionalStringArray(value.domains, `${label}.domains`),
+    actions: ensureOptionalStringArray(value.actions, `${label}.actions`),
+    targets: ensureOptionalStringArray(value.targets, `${label}.targets`),
+    keywords: ensureOptionalStringArray(value.keywords, `${label}.keywords`),
+    anti_keywords: ensureOptionalStringArray(value.anti_keywords, `${label}.anti_keywords`),
+    preference_signals: ensureOptionalStringArray(value.preference_signals, `${label}.preference_signals`),
+    anchor_preferences: ensureOptionalStringArray(value.anchor_preferences, `${label}.anchor_preferences`)
+  };
+}
+
 function toolsRoot(rootDir) {
   return path.join(rootDir, 'tools');
 }
@@ -132,7 +157,8 @@ function validateToolSpec(name, value) {
     family_profiles: ensureOptionalStringArray(value.family_profiles, `tool ${name} family_profiles`),
     device_profiles: ensureOptionalStringArray(value.device_profiles, `tool ${name} device_profiles`),
     source_modules: ensureOptionalStringArray(value.source_modules, `tool ${name} source_modules`),
-    notes: ensureOptionalStringArray(value.notes, `tool ${name} notes`)
+    notes: ensureOptionalStringArray(value.notes, `tool ${name} notes`),
+    intent_profile: ensureOptionalIntentProfile(value.intent_profile, `tool ${name} intent_profile`)
   };
 }
 
