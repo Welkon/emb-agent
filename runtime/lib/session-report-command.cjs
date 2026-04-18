@@ -163,6 +163,12 @@ function createSessionReportCommandHelpers(deps) {
       next.next.tool_recommendation
         ? next.next.tool_recommendation
         : null;
+    const walkthroughRecommendation =
+      next &&
+      next.next &&
+      next.next.walkthrough_recommendation
+        ? next.next.walkthrough_recommendation
+        : null;
     const chipSupportHealth =
       next &&
       next.health &&
@@ -172,6 +178,13 @@ function createSessionReportCommandHelpers(deps) {
     const latestExecutor = getLatestExecutor(resolved.session);
     const latestForensics = getLatestForensics(resolved.session);
     const delegationRuntime = getDelegationRuntime(resolved.session);
+    const walkthroughExecution =
+      resolved &&
+      resolved.session &&
+      resolved.session.diagnostics &&
+      resolved.session.diagnostics.walkthrough_runtime
+        ? resolved.session.diagnostics.walkthrough_runtime
+        : null;
     const executorSignal = buildExecutorSignal(latestExecutor);
 
     return {
@@ -200,6 +213,8 @@ function createSessionReportCommandHelpers(deps) {
       },
       executor_signal: executorSignal,
       tool_recommendation: toolRecommendation,
+      walkthrough_recommendation: walkthroughRecommendation,
+      walkthrough_execution: walkthroughExecution,
       chip_support_health: chipSupportHealth,
       next,
       resume
@@ -207,6 +222,15 @@ function createSessionReportCommandHelpers(deps) {
   }
 
   function buildSessionReportMarkdown(report) {
+    const walkthroughSteps =
+      report.walkthrough_execution && Array.isArray(report.walkthrough_execution.steps)
+        ? report.walkthrough_execution.steps
+        : [];
+    const walkthroughIndex =
+      report.walkthrough_execution && Number.isInteger(report.walkthrough_execution.current_index)
+        ? report.walkthrough_execution.current_index
+        : 0;
+    const walkthroughCurrentStep = walkthroughSteps[walkthroughIndex] || null;
     const lines = [
       '# Emb-Agent Session Report',
       '',
@@ -322,6 +346,32 @@ function createSessionReportCommandHelpers(deps) {
         : '(none)'}`
     );
     lines.push(
+      `- walkthrough_mode: ${report.walkthrough_recommendation ? report.walkthrough_recommendation.kind : '(none)'}`
+    );
+    lines.push(
+      `- walkthrough_tools: ${report.walkthrough_recommendation && (report.walkthrough_recommendation.ordered_tools || []).length > 0
+        ? report.walkthrough_recommendation.ordered_tools.join(' -> ')
+        : '(none)'}`
+    );
+    lines.push(
+      `- walkthrough_status: ${report.walkthrough_execution ? report.walkthrough_execution.status || '(empty)' : '(none)'}`
+    );
+    lines.push(
+      `- walkthrough_progress: ${report.walkthrough_execution
+        ? `${report.walkthrough_execution.completed_count || 0}/${report.walkthrough_execution.total_steps || 0}`
+        : '(none)'}`
+    );
+    lines.push(
+      `- walkthrough_current: ${report.walkthrough_execution
+        ? report.walkthrough_execution.current_tool || (walkthroughCurrentStep && walkthroughCurrentStep.tool) || '(none)'
+        : '(none)'}`
+    );
+    lines.push(
+      `- walkthrough_last: ${report.walkthrough_execution
+        ? report.walkthrough_execution.last_summary || '(empty)'
+        : '(none)'}`
+    );
+    lines.push(
       `- chip_support_health: ${formatChipSupportHealthSummary(report.chip_support_health)}`
     );
     lines.push(`- suggested_flow: ${report.next.current.suggested_flow || ''}`);
@@ -375,6 +425,8 @@ function createSessionReportCommandHelpers(deps) {
       delegation_runtime: report.diagnostics.delegation_runtime,
       executor_signal: report.executor_signal,
       tool_recommendation: report.tool_recommendation,
+      walkthrough_recommendation: report.walkthrough_recommendation,
+      walkthrough_execution: report.walkthrough_execution,
       chip_support_health: report.chip_support_health,
       handoff_present: Boolean(report.handoff),
       auto_memory: autoMemory

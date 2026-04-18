@@ -8,6 +8,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const dispatchCommandRuntimeHelpers = require(path.join(repoRoot, 'runtime', 'lib', 'dispatch-command-runtime.cjs'));
 const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 
 async function captureCliJson(args) {
@@ -516,6 +517,108 @@ test('dispatch run returns missing tool inputs instead of throwing when tool-fir
   } finally {
     process.chdir(currentCwd);
   }
+});
+
+test('dispatch run advances peripheral walkthrough step-by-step and persists progress', () => {
+  const session = {
+    diagnostics: {
+      delegation_runtime: {},
+      walkthrough_runtime: {}
+    }
+  };
+  const orderedTools = ['timer-calc', 'pwm-calc', 'adc-scale'];
+  const recommendation = {
+    kind: 'peripheral-walkthrough',
+    ordered_tools: orderedTools,
+    recommended_sequence: orderedTools.map(tool => ({
+      tool,
+      status: 'ready',
+      argv: ['tool', 'run', tool],
+      cli_draft: `tool run ${tool}`,
+      missing_inputs: []
+    }))
+  };
+
+  function buildDispatchContext() {
+    const runtimeState = session.diagnostics.walkthrough_runtime || {};
+    const steps = Array.isArray(runtimeState.steps) ? runtimeState.steps : [];
+    const currentIndex = Number.isInteger(runtimeState.current_index)
+      ? runtimeState.current_index
+      : 0;
+    const currentStep = steps[currentIndex] || null;
+    return {
+      source: 'next',
+      requested_action: 'next',
+      resolved_action: 'scan',
+      reason: 'broad peripheral walkthrough',
+      cli: 'scan',
+      workflow_stage: { name: 'triage', primary_command: 'scan' },
+      walkthrough_recommendation: recommendation,
+      walkthrough_execution: {
+        kind: recommendation.kind,
+        status: runtimeState.status || 'pending',
+        completed_count: Number.isInteger(runtimeState.completed_count) ? runtimeState.completed_count : 0,
+        total_steps: orderedTools.length,
+        current_tool: currentStep && currentStep.tool ? currentStep.tool : orderedTools[0]
+      },
+      tool_execution: {
+        available: true,
+        recommended: true,
+        tool: orderedTools[0]
+      },
+      context_hygiene: null,
+      next_actions: [],
+      handoff: null,
+      permission_gates: [],
+      executor_signal: null,
+      agent_execution: null
+    };
+  }
+
+  const helpers = dispatchCommandRuntimeHelpers.createDispatchCommandRuntimeHelpers({
+    scheduler: { buildSchedule() { return null; } },
+    updateSession(mutator) {
+      mutator(session);
+      return { session };
+    },
+    resolveSession() {
+      return { session };
+    },
+    runSubAgentBridge: null,
+    collectSubAgentBridgeJobs: null,
+    buildDispatchContext,
+    buildOrchestratorContext() {
+      return {};
+    },
+    handleCatalogAndStateCommands() {
+      return { status: 'ok' };
+    },
+    handleActionCommands() {
+      return { status: 'ok' };
+    },
+    handleAdapterToolChipCommands(cmd, subcmd, rest) {
+      return {
+        status: 'ok',
+        summary: `ran ${rest[0]}`
+      };
+    }
+  });
+
+  const firstRun = helpers.executeDispatchCommand('next', { entered_via: 'dispatch run next' });
+  assert.equal(firstRun.execution.kind, 'walkthrough-tool');
+  assert.equal(firstRun.walkthrough_step.tool, 'timer-calc');
+  assert.equal(firstRun.walkthrough_execution.completed_count, 1);
+  assert.equal(firstRun.walkthrough_execution.current_tool, 'pwm-calc');
+  assert.equal(session.diagnostics.walkthrough_runtime.last_tool, 'timer-calc');
+  assert.equal(session.diagnostics.walkthrough_runtime.completed_count, 1);
+
+  const secondRun = helpers.executeDispatchCommand('next', { entered_via: 'dispatch run next' });
+  assert.equal(secondRun.execution.kind, 'walkthrough-tool');
+  assert.equal(secondRun.walkthrough_step.tool, 'pwm-calc');
+  assert.equal(secondRun.walkthrough_execution.completed_count, 2);
+  assert.equal(secondRun.walkthrough_execution.current_tool, 'adc-scale');
+  assert.equal(session.diagnostics.walkthrough_runtime.last_tool, 'pwm-calc');
+  assert.equal(session.diagnostics.walkthrough_runtime.completed_count, 2);
 });
 
 test('dispatch run persists delegation runtime snapshot into session diagnostics', async () => {

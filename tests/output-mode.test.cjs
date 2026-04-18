@@ -47,6 +47,26 @@ test('applyOutputMode builds brief next context payload', () => {
         tool: 'timer-calc',
         status: 'ready',
         cli_draft: 'tool run timer-calc --target-us 500'
+      },
+      walkthrough_recommendation: {
+        kind: 'peripheral-walkthrough',
+        summary: 'walk every ready tool once',
+        tool_count: 3,
+        ordered_tools: ['timer-calc', 'pwm-calc', 'adc-scale'],
+        first_tool: 'timer-calc',
+        first_cli: 'tool run timer-calc --target-us 500',
+        recommended_sequence: [
+          {
+            tool: 'timer-calc',
+            status: 'ready',
+            cli_draft: 'tool run timer-calc --target-us 500'
+          },
+          {
+            tool: 'pwm-calc',
+            status: 'ready',
+            cli_draft: 'tool run pwm-calc --target-hz 1000'
+          }
+        ]
       }
     },
     workflow_stage: {
@@ -117,6 +137,18 @@ test('applyOutputMode builds brief next context payload', () => {
       }
     ],
     next_actions: ['a', 'b', 'c', 'd', 'e', 'f'],
+    walkthrough_execution: {
+      kind: 'peripheral-walkthrough',
+      status: 'running',
+      total_steps: 3,
+      completed_count: 1,
+      current_tool: 'pwm-calc',
+      current_cli: 'tool run pwm-calc --target-hz 1000',
+      last_tool: 'timer-calc',
+      last_summary: 'Walkthrough step timer-calc completed.',
+      completed_steps: ['timer-calc'],
+      remaining_steps: ['pwm-calc', 'adc-scale']
+    },
     health: {
       status: 'ok',
       summary: { score: 90 }
@@ -141,6 +173,12 @@ test('applyOutputMode builds brief next context payload', () => {
   assert.equal(output.context_hygiene.compress_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress');
   assert.equal(output.next_actions.length, 5);
   assert.equal(output.tool_recommendation.tool, 'timer-calc');
+  assert.equal(output.walkthrough_recommendation.kind, 'peripheral-walkthrough');
+  assert.deepEqual(output.walkthrough_recommendation.ordered_tools, ['timer-calc', 'pwm-calc', 'adc-scale']);
+  assert.equal(output.walkthrough_recommendation.recommended_sequence.length, 2);
+  assert.equal(output.walkthrough_execution.status, 'running');
+  assert.equal(output.walkthrough_execution.current_tool, 'pwm-calc');
+  assert.deepEqual(output.walkthrough_execution.completed_steps, ['timer-calc']);
   assert.equal(output.runtime_events.status, 'pending');
   assert.deepEqual(output.runtime_events.types, ['workflow-next', 'permission-evaluated']);
   assert.equal(output.external_agent, undefined);

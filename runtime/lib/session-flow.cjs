@@ -9,6 +9,7 @@ const permissionGateHelpers = require('./permission-gates.cjs');
 const projectInputState = require('./project-input-state.cjs');
 const qualityGateHelpers = require('./quality-gates.cjs');
 const runtimeEventHelpers = require('./runtime-events.cjs');
+const intentProviderHelpers = require('./intent-provider.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -84,6 +85,10 @@ function createSessionFlowHelpers(deps) {
     getActiveTask
   } = deps;
   const blankSelectionModeCache = new Map();
+  const {
+    analyzeIntentSelection,
+    normalizeIntentRouterConfig
+  } = intentProviderHelpers.createIntentProviderHelpers({ ROOT });
 
   function isBlankProjectSelectionMode(resolved) {
     const projectRoot = resolved && resolved.session ? resolved.session.project_root : '';
@@ -522,13 +527,19 @@ function createSessionFlowHelpers(deps) {
         (resolved.effective && resolved.effective.tool_recommendations) || [],
         resolved
       );
+      const peripheralWalkthrough = shouldSuggestPeripheralWalkthrough(
+        resolved,
+        (resolved.effective && resolved.effective.tool_recommendations) || []
+      );
       const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
       const firstTool = primaryToolRecommendation || suggestedTools[0];
       return {
         command: 'scan',
-        reason: firstTool
-          ? `This looks more like hardware/formula/tool triage; run scan and evaluate ${firstTool.tool || firstTool.name} first`
-          : 'This looks more like hardware truth, register, pin, or formula triage; run scan before deciding whether to enter tool'
+        reason: peripheralWalkthrough
+          ? 'This is a broad peripheral exercise; run scan first, then walk every ready tool instead of stopping at the first one'
+          : firstTool
+            ? `This looks more like hardware/formula/tool triage; run scan and evaluate ${firstTool.tool || firstTool.name} first`
+            : 'This looks more like hardware truth, register, pin, or formula triage; run scan before deciding whether to enter tool'
       };
     }
 
@@ -683,17 +694,7 @@ function createSessionFlowHelpers(deps) {
       : 0;
   }
 
-  function normalizeIntentText(value) {
-    return String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[_-]+/g, ' ')
-      .replace(/[^a-z0-9.%+/ ]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  function buildHardwareIntentHaystack(resolved) {
+  function collectHardwareIntentTexts(resolved) {
     const hardware = resolved && resolved.hardware ? resolved.hardware : {};
     const identity = hardware && hardware.identity ? hardware.identity : hardware;
     const signals = Array.isArray(identity && identity.signals) ? identity.signals : [];
@@ -701,7 +702,7 @@ function createSessionFlowHelpers(deps) {
     const session = resolved && resolved.session ? resolved.session : {};
     const activeTask = getActiveTask ? getActiveTask() : null;
 
-    return normalizeIntentText(runtime.unique([
+    return runtime.unique([
       session && session.focus ? session.focus : '',
       session && session.active_task && session.active_task.title ? session.active_task.title : '',
       activeTask && activeTask.title ? activeTask.title : '',
@@ -717,108 +718,128 @@ function createSessionFlowHelpers(deps) {
         item && item.name ? item.name : '',
         item && item.usage ? item.usage : ''
       ])
-    ]).filter(Boolean).join(' '));
+    ]).filter(Boolean);
   }
 
-  function includesIntentKeyword(haystack, keyword) {
-    const normalizedHaystack = normalizeIntentText(haystack);
-    const normalizedKeyword = normalizeIntentText(keyword);
-    return Boolean(normalizedHaystack && normalizedKeyword && normalizedHaystack.includes(normalizedKeyword));
-  }
-
-  function hasExactPwmTargetIntent(haystack) {
-    const normalizedHaystack = normalizeIntentText(haystack);
-    if (!normalizedHaystack) {
+  function shouldSuggestPeripheralWalkthrough(resolved, toolRecommendations) {
+    const items = Array.isArray(toolRecommendations) ? toolRecommendations : [];
+    if (items.length < 2) {
       return false;
     }
 
-    const hasFrequencyTarget =
-      /\b\d+(?:\.\d+)?\s*(?:k?hz|khz)\b/.test(normalizedHaystack) ||
-      includesIntentKeyword(normalizedHaystack, 'target hz');
-    const hasDutyTarget =
-      /\b\d+(?:\.\d+)?\s*%\b/.test(normalizedHaystack) ||
-      includesIntentKeyword(normalizedHaystack, 'duty');
-
-    return hasFrequencyTarget && hasDutyTarget;
-  }
-
-  function hasStructuredExactPwmIntent(resolved) {
-    const hardware = resolved && resolved.hardware ? resolved.hardware : {};
-    const identity = hardware && hardware.identity ? hardware.identity : hardware;
-    const signals = Array.isArray(identity && identity.signals) ? identity.signals : [];
-    const peripherals = Array.isArray(identity && identity.peripherals) ? identity.peripherals : [];
-    const session = resolved && resolved.session ? resolved.session : {};
-    const activeTask = getActiveTask ? getActiveTask() : null;
-    const texts = runtime.unique([
-      session && session.focus ? session.focus : '',
-      session && session.active_task && session.active_task.title ? session.active_task.title : '',
-      activeTask && activeTask.title ? activeTask.title : '',
-      ...signals.flatMap(item => [
-        item && item.name ? item.name : '',
-        item && item.note ? item.note : ''
-      ]),
-      ...peripherals.flatMap(item => [
-        item && item.name ? item.name : '',
-        item && item.usage ? item.usage : ''
-      ])
-    ]).filter(Boolean);
-
-    const joined = texts.join(' ');
-    const hasPwm = /\bpwm\b/i.test(joined) || texts.some(text => /pwm/i.test(String(text || '')));
-    const hasFrequency = /\b\d+(?:\.\d+)?\s*k?hz\b/i.test(joined) || /\b\d+(?:\.\d+)?\s*hz\b/i.test(joined);
-    const hasDuty = /\b\d+(?:\.\d+)?\s*%/.test(joined) || /\bduty\b/i.test(joined);
-
-    return hasPwm && hasFrequency && hasDuty;
-  }
-
-  function getToolIntentScore(item, resolved) {
-    const tool = String(item && item.tool ? item.tool : '').trim().toLowerCase();
-    const haystack = buildHardwareIntentHaystack(resolved);
-    const exactPwmTarget = hasExactPwmTargetIntent(haystack);
-
-    if (!tool || !haystack) {
-      return 0;
+    const readyItems = items.filter(item => item && item.status === 'ready');
+    if (readyItems.length < 2) {
+      return false;
     }
 
-    let score = 0;
+    const joined = collectHardwareIntentTexts(resolved).join(' ').toLowerCase();
+    return /exercise all supported|all supported .*peripheral|all peripheral|all supported tools|全部外设|所有外设|全外设/.test(joined);
+  }
 
-    if (tool === 'pwm-calc') {
-      if (includesIntentKeyword(haystack, 'pwm')) score += 60;
-      if (includesIntentKeyword(haystack, 'duty')) score += 18;
-      if (includesIntentKeyword(haystack, 'hz') || includesIntentKeyword(haystack, 'khz')) score += 10;
-      if (exactPwmTarget) score -= 6;
-      if (includesIntentKeyword(haystack, 'lpwmg')) score -= 8;
-    } else if (tool === 'lpwmg-calc') {
-      if (includesIntentKeyword(haystack, 'lpwmg')) score += 80;
-      if (includesIntentKeyword(haystack, 'pwm')) score += 34;
-      if (includesIntentKeyword(haystack, 'duty')) score += 18;
-      if (includesIntentKeyword(haystack, 'hz') || includesIntentKeyword(haystack, 'khz')) score += 10;
-      if (exactPwmTarget) score += 40;
-      if (includesIntentKeyword(haystack, 'exact') || includesIntentKeyword(haystack, 'precise')) score += 12;
-    } else if (tool === 'timer-calc') {
-      if (includesIntentKeyword(haystack, 'timer')) score += 36;
-      if (includesIntentKeyword(haystack, 'period')) score += 18;
-      if (includesIntentKeyword(haystack, 'delay')) score += 18;
-      if (includesIntentKeyword(haystack, 'timeout')) score += 18;
-      if (includesIntentKeyword(haystack, 'interrupt')) score += 14;
-      if (includesIntentKeyword(haystack, 'tick')) score += 14;
-      if (includesIntentKeyword(haystack, 'pwm')) score -= 20;
-    } else if (tool === 'comparator-threshold') {
-      if (includesIntentKeyword(haystack, 'comparator')) score += 50;
-      if (includesIntentKeyword(haystack, 'threshold')) score += 24;
-      if (includesIntentKeyword(haystack, 'bandgap')) score += 12;
-    } else if (tool === 'lvdc-threshold') {
-      if (includesIntentKeyword(haystack, 'lvdc')) score += 50;
-      if (includesIntentKeyword(haystack, 'low voltage')) score += 18;
-      if (includesIntentKeyword(haystack, 'battery')) score += 12;
-      if (includesIntentKeyword(haystack, 'threshold')) score += 16;
-    } else if (tool === 'charger-config') {
-      if (includesIntentKeyword(haystack, 'charger')) score += 50;
-      if (includesIntentKeyword(haystack, 'charge')) score += 24;
-      if (includesIntentKeyword(haystack, 'current')) score += 12;
+  function buildPeripheralWalkthroughActions(resolved, toolRecommendations) {
+    if (!shouldSuggestPeripheralWalkthrough(resolved, toolRecommendations)) {
+      return [];
     }
 
-    return score;
+    const readyItems = (Array.isArray(toolRecommendations) ? toolRecommendations : [])
+      .filter(item => item && item.status === 'ready');
+    if (readyItems.length === 0) {
+      return [];
+    }
+
+    const checklist = readyItems
+      .slice(0, 6)
+      .map((item, index) => `${index + 1}. ${item.tool}`)
+      .join(' | ');
+
+    return [
+      'This is a broad peripheral exercise; do not stop at the first matching tool.',
+      `Ready tool checklist: ${checklist}`,
+      'Run scan first, then walk each ready tool once and record one concrete output per peripheral.'
+    ];
+  }
+
+  function buildWalkthroughRecommendation(resolved, toolRecommendations) {
+    if (!shouldSuggestPeripheralWalkthrough(resolved, toolRecommendations)) {
+      return null;
+    }
+
+    const readyItems = (Array.isArray(toolRecommendations) ? toolRecommendations : [])
+      .filter(item => item && item.status === 'ready');
+    if (readyItems.length === 0) {
+      return null;
+    }
+
+    const orderedTools = readyItems.map(item => item.tool);
+    const first = readyItems[0] || null;
+
+    return {
+      kind: 'peripheral-walkthrough',
+      summary: 'Walk every ready tool once and capture one concrete output per peripheral.',
+      tool_count: readyItems.length,
+      ordered_tools: orderedTools,
+      first_tool: first ? first.tool : '',
+      first_cli: first ? first.cli_draft || '' : '',
+      recommended_sequence: readyItems.slice(0, 8).map(item => ({
+        tool: item.tool,
+        status: item.status,
+        argv: Array.isArray(item.argv) ? item.argv.slice() : [],
+        cli_draft: item.cli_draft || '',
+        missing_inputs: item.missing_inputs || [],
+        defaults_applied: item.defaults_applied || {},
+        trust: item.trust || null
+      }))
+    };
+  }
+
+  function buildWalkthroughRuntimeActions(session, recommendation) {
+    const runtimeState =
+      session &&
+      session.diagnostics &&
+      session.diagnostics.walkthrough_runtime &&
+      typeof session.diagnostics.walkthrough_runtime === 'object' &&
+      !Array.isArray(session.diagnostics.walkthrough_runtime)
+        ? session.diagnostics.walkthrough_runtime
+        : null;
+    if (!runtimeState || !recommendation) {
+      return [];
+    }
+
+    const orderedTools = Array.isArray(recommendation.ordered_tools) ? recommendation.ordered_tools : [];
+    const runtimeTools = Array.isArray(runtimeState.ordered_tools) ? runtimeState.ordered_tools : [];
+    const sameWalkthrough = runtimeState.kind === recommendation.kind &&
+      orderedTools.length === runtimeTools.length &&
+      orderedTools.every((item, index) => item === runtimeTools[index]);
+    if (!sameWalkthrough) {
+      return [];
+    }
+
+    const totalSteps = Number.isInteger(runtimeState.total_steps) ? runtimeState.total_steps : orderedTools.length;
+    const completedCount = Number.isInteger(runtimeState.completed_count)
+      ? runtimeState.completed_count
+      : 0;
+    const currentIndex = Number.isInteger(runtimeState.current_index) ? runtimeState.current_index : 0;
+    const currentStep =
+      Array.isArray(runtimeState.steps) && runtimeState.steps[currentIndex]
+        ? runtimeState.steps[currentIndex]
+        : null;
+
+    if (runtimeState.status === 'completed') {
+      return [
+        `Walkthrough completed: ${completedCount}/${totalSteps} steps finished.`,
+        runtimeState.last_summary ? `Walkthrough last result: ${runtimeState.last_summary}` : ''
+      ].filter(Boolean);
+    }
+
+    return [
+      `Walkthrough progress: ${completedCount}/${totalSteps} steps completed.`,
+      currentStep && currentStep.status === 'needs-input' && Array.isArray(currentStep.missing_inputs) && currentStep.missing_inputs.length > 0
+        ? `Continue walkthrough after filling inputs for ${currentStep.tool}: ${currentStep.missing_inputs.join(', ')}`
+        : currentStep && currentStep.cli
+          ? `Continue walkthrough step: ${currentStep.cli}`
+          : '',
+      runtimeState.last_summary ? `Walkthrough last result: ${runtimeState.last_summary}` : ''
+    ].filter(Boolean);
   }
 
   function buildAdapterHealthHints(healthReport, primaryToolRecommendation) {
@@ -872,51 +893,24 @@ function createSessionFlowHelpers(deps) {
     ];
   }
 
-  function selectExactPwmToolRecommendation(toolRecommendations, resolved) {
-    const items = Array.isArray(toolRecommendations) ? toolRecommendations : [];
-    const haystack = buildHardwareIntentHaystack(resolved);
-
-    if (
-      (!hasStructuredExactPwmIntent(resolved) && !hasExactPwmTargetIntent(haystack)) ||
-      !includesIntentKeyword(haystack, 'pwm')
-    ) {
-      return null;
-    }
-
-    const lpwmg = items.find(item =>
-      item &&
-      item.tool === 'lpwmg-calc' &&
-      Boolean(item.trust && item.trust.executable)
-    );
-    const pwm = items.find(item =>
-      item &&
-      item.tool === 'pwm-calc' &&
-      Boolean(item.trust && item.trust.executable)
-    );
-
-    if (!lpwmg || !pwm) {
-      return null;
-    }
-
-    return lpwmg;
-  }
-
   function selectPrimaryToolRecommendation(toolRecommendations, resolved) {
     const items = Array.isArray(toolRecommendations) ? toolRecommendations.slice() : [];
     if (items.length === 0) {
       return null;
     }
-
-    const exactPwmTool = selectExactPwmToolRecommendation(items, resolved);
-    if (exactPwmTool) {
-      return exactPwmTool;
-    }
+    const rankedIntent = analyzeIntentSelection({
+      projectConfig: resolved && resolved.project_config ? resolved.project_config : {},
+      texts: collectHardwareIntentTexts(resolved),
+      toolRecommendations: items
+    });
 
     return items
       .map((item, index) => ({ item, index }))
       .sort((left, right) => {
+        const leftIntent = rankedIntent.ranked.find(entry => entry.item === left.item);
+        const rightIntent = rankedIntent.ranked.find(entry => entry.item === right.item);
         return getToolRecommendationScore(left.item) - getToolRecommendationScore(right.item) ||
-          getToolIntentScore(right.item, resolved) - getToolIntentScore(left.item, resolved) ||
+          ((rightIntent && rightIntent.intent_score) || 0) - ((leftIntent && leftIntent.intent_score) || 0) ||
           Number(Boolean(right.item && right.item.trust && right.item.trust.executable)) -
             Number(Boolean(left.item && left.item.trust && left.item.trust.executable)) ||
           getToolRecommendationTrustScore(right.item) - getToolRecommendationTrustScore(left.item) ||
@@ -1052,6 +1046,9 @@ function createSessionFlowHelpers(deps) {
     const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
     const toolRecommendations = (resolved.effective && resolved.effective.tool_recommendations) || [];
     const primaryToolRecommendation = selectPrimaryToolRecommendation(toolRecommendations, resolved);
+    const peripheralWalkthroughActions = buildPeripheralWalkthroughActions(resolved, toolRecommendations);
+    const walkthroughRecommendation = buildWalkthroughRecommendation(resolved, toolRecommendations);
+    const walkthroughRuntimeActions = buildWalkthroughRuntimeActions(session, walkthroughRecommendation);
     const primaryRegisterSource = recommendedSources.find(item => item.priority_group === 'register-summary') || null;
     const primarySource = primaryRegisterSource || recommendedSources[0] || null;
     const latestForensics =
@@ -1107,6 +1104,7 @@ function createSessionFlowHelpers(deps) {
       next,
       schematic_analysis: schematicAnalysis,
       primary_tool_recommendation: primaryToolRecommendation,
+      walkthrough_recommendation: walkthroughRecommendation,
       next_actions: runtime.unique([
         memorySummary && memorySummary.generated_at
           ? `Compact summary captured: ${memorySummary.generated_at}`
@@ -1120,6 +1118,8 @@ function createSessionFlowHelpers(deps) {
         handoff && handoff.next_action ? `Resume from handoff: ${handoff.next_action}` : '',
         ...(handoff ? handoff.human_actions_pending.map(action => `Manual action required: ${action}`) : []),
         summaryTask ? `Resume task ${summaryTask.name} first: ${summaryTask.title}` : '',
+        ...walkthroughRuntimeActions,
+        ...peripheralWalkthroughActions,
         summaryLatestForensics && summaryLatestForensics.report_file
           ? `Latest forensics: ${summaryLatestForensics.report_file} (${summaryLatestForensics.highest_severity || 'info'})`
           : '',
@@ -1297,6 +1297,61 @@ function createSessionFlowHelpers(deps) {
   }
 
   function buildNextActionCard(nextCommand, workflowStage, nextActions, health, activeTask) {
+    function isHousekeepingHint(text) {
+      return /^(Capture a compact snapshot|Resume task |Resume from compact summary|Resume from handoff|Context reminder:|Chip support status:|Chip support trust:|Re-read )/i.test(String(text || '').trim());
+    }
+
+    function scoreActionHint(text, command) {
+      const value = String(text || '').trim();
+      if (!value) {
+        return 999;
+      }
+
+      const normalized = value.toLowerCase();
+      const commandName = String(command && command.command ? command.command : '').trim().toLowerCase();
+      const reason = String(command && command.reason ? command.reason : '').toLowerCase();
+      const walkthroughMode = commandName === 'scan' && reason.includes('broad peripheral exercise');
+
+      if (walkthroughMode) {
+        if (normalized.includes('continue walkthrough step:')) return 0;
+        if (normalized.includes('walkthrough progress:')) return 1;
+        if (normalized.includes('walkthrough last result:')) return 2;
+        if (normalized.includes('ready tool checklist:')) return 0;
+        if (normalized.includes('run scan first, then walk each ready tool')) return 3;
+        if (normalized.includes('do not stop at the first matching tool')) return 4;
+      }
+
+      if (isHousekeepingHint(value)) return 50;
+      if (normalized.startsWith('manual action required:')) return 40;
+      if (normalized.startsWith('suggested flow:')) return 60;
+      if (normalized.startsWith('suggested command:')) return 61;
+      return 10;
+    }
+
+    function selectCardActionHints(items, command) {
+      const ranked = (Array.isArray(items) ? items : [])
+        .map((item, index) => ({
+          item: String(item || '').trim(),
+          index,
+          score: scoreActionHint(item, command)
+        }))
+        .filter(entry => entry.item);
+
+      if (ranked.length === 0) {
+        return {
+          first: '',
+          second: ''
+        };
+      }
+
+      ranked.sort((left, right) => left.score - right.score || left.index - right.index);
+
+      return {
+        first: ranked[0] ? ranked[0].item : '',
+        second: ranked[1] ? ranked[1].item : ''
+      };
+    }
+
     const command = nextCommand && typeof nextCommand === 'object' ? nextCommand : {};
     const stage = workflowStage && typeof workflowStage === 'object' ? workflowStage : {};
     const quickstart = command.health_quickstart && typeof command.health_quickstart === 'object'
@@ -1312,9 +1367,12 @@ function createSessionFlowHelpers(deps) {
     const firstLabel = command.gated_by_health
       ? (firstQuickstartStep && firstQuickstartStep.label ? firstQuickstartStep.label : 'Run health closure first')
       : `Run ${command.command || 'next'}`;
+    const selectedHints = command.gated_by_health
+      ? { first: '', second: '' }
+      : selectCardActionHints(nextActions, command);
     const firstInstruction = command.gated_by_health
       ? (quickstart.user_summary || nextActions[0] || '')
-      : (nextActions[0] || '');
+      : (selectedHints.first || nextActions[0] || '');
     const firstCli = firstQuickstartStep && firstQuickstartStep.cli
       ? firstQuickstartStep.cli
       : (command.cli || '');
@@ -1323,7 +1381,7 @@ function createSessionFlowHelpers(deps) {
       : (
           activeTask && activeTask.name && command.command === 'verify'
             ? `Then: ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['task', 'aar', 'scan', activeTask.name])}`
-            : (nextActions[1] || '')
+            : (selectedHints.second || nextActions[1] || '')
         );
 
     return {
@@ -1357,6 +1415,11 @@ function createSessionFlowHelpers(deps) {
         }
       : guidance.next;
     const contextHygiene = buildContextHygiene(resolved, handoff, nextCommand.command);
+    const walkthroughMode = shouldSuggestPeripheralWalkthrough(
+      resolved,
+      (resolved.effective && resolved.effective.tool_recommendations) || []
+    );
+    const adapterHealthHints = buildAdapterHealthHints(health, guidance.primary_tool_recommendation);
     const nextActions = gatedByHealth
       ? runtime.unique([
           ...(health && health.quickstart
@@ -1372,12 +1435,12 @@ function createSessionFlowHelpers(deps) {
           ...(health && Array.isArray(health.next_commands)
             ? health.next_commands.map(item => `Run this health recommendation first: ${item.cli}`)
             : []),
-          ...buildAdapterHealthHints(health, guidance.primary_tool_recommendation),
-          ...guidance.next_actions
+          ...(walkthroughMode ? guidance.next_actions : adapterHealthHints),
+          ...(walkthroughMode ? adapterHealthHints : guidance.next_actions)
         ])
       : runtime.unique([
-          ...buildAdapterHealthHints(health, guidance.primary_tool_recommendation),
-          ...guidance.next_actions
+          ...(walkthroughMode ? guidance.next_actions : adapterHealthHints),
+          ...(walkthroughMode ? adapterHealthHints : guidance.next_actions)
         ]);
     const workflowStage = buildWorkflowStage(nextCommand, resolved);
     const qualityGates = getQualityGateSummary(resolved);
@@ -1431,6 +1494,10 @@ function createSessionFlowHelpers(deps) {
       memory_summary: buildMemorySummaryView(memorySummary),
       quality_gates: qualityGates,
       permission_gates: permissionGates,
+      walkthrough_execution:
+        resolved.session && resolved.session.diagnostics && resolved.session.diagnostics.walkthrough_runtime
+          ? resolved.session.diagnostics.walkthrough_runtime
+          : null,
       health: health
         ? {
             status: health.status,
@@ -1448,7 +1515,8 @@ function createSessionFlowHelpers(deps) {
         health_next_commands: nextCommand.health_next_commands || [],
         health_quickstart: nextCommand.health_quickstart || null,
         schematic_analysis: guidance.schematic_analysis,
-        tool_recommendation: guidance.primary_tool_recommendation
+        tool_recommendation: guidance.primary_tool_recommendation,
+        walkthrough_recommendation: guidance.walkthrough_recommendation
       },
       action_card: buildNextActionCard({
         ...nextCommand,
@@ -1457,7 +1525,12 @@ function createSessionFlowHelpers(deps) {
       }, workflowStage, nextActions, health, activeTask),
       workflow_stage: workflowStage,
       context_hygiene: contextHygiene,
-      next_actions: nextActions
+      next_actions: nextActions,
+      walkthrough_recommendation: guidance.walkthrough_recommendation,
+      walkthrough_execution:
+        resolved.session && resolved.session.diagnostics && resolved.session.diagnostics.walkthrough_runtime
+          ? resolved.session.diagnostics.walkthrough_runtime
+          : null
     }, resolved);
 
     return runtimeEventHelpers.appendRuntimeEvent(result, {
@@ -1568,6 +1641,7 @@ function createSessionFlowHelpers(deps) {
       focus: resolved.session.focus || '',
       preferences: getPreferences(resolved.session),
       project_defaults: projectConfig,
+      intent_router: normalizeIntentRouterConfig(projectConfig),
       agents: resolved.effective.agents,
       review_axes: resolved.effective.review_axes,
       note_targets: resolved.effective.note_targets,
@@ -1579,6 +1653,10 @@ function createSessionFlowHelpers(deps) {
       delegation_runtime:
         resolved.session && resolved.session.diagnostics && resolved.session.diagnostics.delegation_runtime
           ? resolved.session.diagnostics.delegation_runtime
+          : null,
+      walkthrough_execution:
+        resolved.session && resolved.session.diagnostics && resolved.session.diagnostics.walkthrough_runtime
+          ? resolved.session.diagnostics.walkthrough_runtime
           : null,
       memory_summary: buildMemorySummaryView(memorySummary),
       session_state: sessionState,
