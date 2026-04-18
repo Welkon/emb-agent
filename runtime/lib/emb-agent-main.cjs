@@ -592,6 +592,8 @@ const {
 
 const {
   runSessionReport,
+  listStoredSessionReports,
+  buildCurrentSessionView,
   handleSessionReportCommands
 } = sessionReportCommandHelpers.createSessionReportCommandHelpers({
   fs,
@@ -685,6 +687,51 @@ const {
   parseMemoryExtractArgs,
   parseMemoryPromoteArgs
 });
+
+function buildContextOverview() {
+  const resolved = resolveSession();
+  const sessionView = buildCurrentSessionView();
+  const status = buildStatus();
+  const next = buildNextContext();
+  const start = buildStartContext();
+  const bootstrap = buildBootstrapReport();
+  const health = buildHealthReport();
+
+  return {
+    entry: 'context',
+    project_root: resolved && resolved.session ? resolved.session.project_root : resolveProjectRoot(),
+    summary: {
+      profile: resolved && resolved.session ? resolved.session.project_profile : '',
+      packs: resolved && resolved.session ? resolved.session.active_packs || [] : [],
+      focus: resolved && resolved.session ? resolved.session.focus || '' : '',
+      last_command: resolved && resolved.session ? resolved.session.last_command || '' : '',
+      active_task:
+        status && status.active_task && status.active_task.name
+          ? {
+              name: status.active_task.name,
+              title: status.active_task.title || '',
+              status: status.active_task.status || ''
+            }
+          : null,
+      handoff_present: Boolean(sessionView && sessionView.handoff),
+      stored_reports:
+        sessionView &&
+        sessionView.reports &&
+        Array.isArray(sessionView.reports.reports)
+          ? sessionView.reports.reports.length
+          : 0
+    },
+    session_state: sessionView ? sessionView.session_state : null,
+    memory_summary: loadContextSummary(),
+    handoff: sessionView ? sessionView.handoff : null,
+    reports: sessionView ? sessionView.reports : { reports: [] },
+    status,
+    next,
+    start,
+    bootstrap,
+    health
+  };
+}
 
 function printJson(value) {
   process.stdout.write(JSON.stringify(value, null, 2) + '\n');
@@ -1224,6 +1271,7 @@ const {
   buildPausePayload,
   buildPauseContextSummary,
   maybeAutoExtractOnPause,
+  buildContextOverview,
   buildCompressContextSummary,
   saveHandoff,
   saveContextSummary,
@@ -1292,9 +1340,11 @@ module.exports = {
   parseAdapterBootstrapArgs,
   parseAdapterSyncArgs,
   buildResumeContext,
+  buildContextOverview,
   buildArchReviewContext,
   buildReviewContext,
   runSessionReport,
+  listStoredSessionReports,
   listSkills,
   loadSkill,
   runSkill,

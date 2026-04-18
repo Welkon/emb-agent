@@ -79,6 +79,10 @@ function createSessionReportCommandHelpers(deps) {
       .replace('T', '-');
   }
 
+  function buildReportBaseName(generatedAt) {
+    return `report-${buildTimestampSlug(generatedAt)}`;
+  }
+
   function getLatestExecutor(session) {
     return session &&
       session.diagnostics &&
@@ -384,11 +388,146 @@ function createSessionReportCommandHelpers(deps) {
     return lines.join('\n');
   }
 
+  function buildStoredReportSummary(report, markdownRelativePath, jsonRelativePath) {
+    return {
+      id: buildReportBaseName(report.generated_at),
+      generated_at: report.generated_at,
+      summary: report.summary || '',
+      project_root: report.project_root,
+      profile: report.profile || '',
+      packs: Array.isArray(report.packs) ? report.packs : [],
+      focus: report.focus || '',
+      last_command: report.last_command || '',
+      next_command: report.next && report.next.next ? report.next.next.command || '' : '',
+      next_reason: report.next && report.next.next ? report.next.next.reason || '' : '',
+      handoff_present: Boolean(report.handoff),
+      executor_signal: report.executor_signal || null,
+      chip_support_health: report.chip_support_health || null,
+      markdown_file: markdownRelativePath,
+      json_file: jsonRelativePath
+    };
+  }
+
+  function writeSessionReportArtifacts(report) {
+    ensureSessionReportsDir();
+    const baseName = buildReportBaseName(report.generated_at);
+    const markdownPath = path.join(getSessionReportsDir(), `${baseName}.md`);
+    const jsonPath = path.join(getSessionReportsDir(), `${baseName}.json`);
+    const markdownRelativePath = path.relative(process.cwd(), markdownPath);
+    const jsonRelativePath = path.relative(process.cwd(), jsonPath);
+    const stored = buildStoredReportSummary(report, markdownRelativePath, jsonRelativePath);
+
+    fs.writeFileSync(markdownPath, buildSessionReportMarkdown(report), 'utf8');
+    runtime.writeJson(jsonPath, {
+      ...stored,
+      report
+    });
+
+    return {
+      base_name: baseName,
+      markdown_path: markdownPath,
+      json_path: jsonPath,
+      markdown_relative_path: markdownRelativePath,
+      json_relative_path: jsonRelativePath,
+      stored
+    };
+  }
+
+  function listStoredSessionReports() {
+    if (!fs.existsSync(getSessionReportsDir())) {
+      return {
+        reports: []
+      };
+    }
+
+    const reports = fs.readdirSync(getSessionReportsDir())
+      .filter(name => name.endsWith('.json'))
+      .map(name => {
+        const fullPath = path.join(getSessionReportsDir(), name);
+        const raw = runtime.readJson(fullPath);
+        if (!raw || typeof raw !== 'object') {
+          return null;
+        }
+        return {
+          id: String(raw.id || path.basename(name, '.json')),
+          generated_at: String(raw.generated_at || ''),
+          summary: String(raw.summary || ''),
+          project_root: String(raw.project_root || ''),
+          profile: String(raw.profile || ''),
+          packs: Array.isArray(raw.packs) ? raw.packs : [],
+          focus: String(raw.focus || ''),
+          last_command: String(raw.last_command || ''),
+          next_command: String(raw.next_command || ''),
+          next_reason: String(raw.next_reason || ''),
+          handoff_present: raw.handoff_present === true,
+          executor_signal: raw.executor_signal || null,
+          chip_support_health: raw.chip_support_health || null,
+          markdown_file: String(raw.markdown_file || path.relative(process.cwd(), path.join(getSessionReportsDir(), `${path.basename(name, '.json')}.md`))),
+          json_file: String(raw.json_file || path.relative(process.cwd(), fullPath))
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => String(right.generated_at || '').localeCompare(String(left.generated_at || '')));
+
+    return {
+      reports
+    };
+  }
+
+  function resolveStoredSessionReport(target) {
+    const history = listStoredSessionReports();
+    const normalized = String(target || '').trim();
+
+    if (!normalized || normalized === 'latest') {
+      return history.reports[0] || null;
+    }
+
+    return history.reports.find(item =>
+      item.id === normalized ||
+      item.json_file === normalized ||
+      item.markdown_file === normalized ||
+      path.basename(item.json_file || '') === normalized ||
+      path.basename(item.markdown_file || '') === normalized
+    ) || null;
+  }
+
+  function showStoredSessionReport(target) {
+    const resolved = resolveStoredSessionReport(target);
+    if (!resolved) {
+      throw new Error(`Session report not found: ${target}`);
+    }
+
+    const jsonPath = path.isAbsolute(resolved.json_file)
+      ? resolved.json_file
+      : path.resolve(process.cwd(), resolved.json_file);
+    const raw = runtime.readJson(jsonPath) || {};
+
+    return {
+      entry: resolved,
+      report: raw.report || null
+    };
+  }
+
+  function buildCurrentSessionView() {
+    const resolved = resolveSession();
+    const session = resolved && resolved.session ? resolved.session : {};
+    return {
+      ...session,
+      session_state: buildSessionStatePayload(),
+      handoff: loadHandoff() || null,
+      reports: listStoredSessionReports()
+    };
+  }
+
   function runSessionReport(summaryText, options) {
     const explicitConfirmation =
       options && typeof options === 'object' && !Array.isArray(options)
         ? options.explicit_confirmation === true
         : false;
+    const commandName =
+      options && typeof options === 'object' && !Array.isArray(options)
+        ? String(options.command_name || 'session-report')
+        : 'session-report';
     const blocked = applySessionReportPermission({
       generated: false,
       report_file: '',
@@ -401,23 +540,20 @@ function createSessionReportCommandHelpers(deps) {
       return blocked.result;
     }
 
-    ensureSessionReportsDir();
     const report = buildSessionReport(summaryText);
-    const fileName = `report-${buildTimestampSlug(report.generated_at)}.md`;
-    const filePath = path.join(getSessionReportsDir(), fileName);
-
-    fs.writeFileSync(filePath, buildSessionReportMarkdown(report), 'utf8');
+    const artifacts = writeSessionReportArtifacts(report);
     const autoMemory = typeof maybeAutoExtractOnSessionReport === 'function'
       ? maybeAutoExtractOnSessionReport(summaryText || '')
       : null;
 
     updateSession(current => {
-      current.last_command = 'session-report';
+      current.last_command = commandName;
     });
 
     return permissionGateHelpers.applyPermissionDecision({
       generated: true,
-      report_file: path.relative(process.cwd(), filePath),
+      report_file: artifacts.markdown_relative_path,
+      report_json_file: artifacts.json_relative_path,
       summary: report.summary,
       session_state: buildSessionStatePayload(),
       next: report.next.next,
@@ -434,19 +570,46 @@ function createSessionReportCommandHelpers(deps) {
   }
 
   function handleSessionReportCommands(cmd, subcmd, rest) {
-    if (cmd !== 'session-report') {
+    if (cmd !== 'session-report' && cmd !== 'session') {
       return undefined;
+    }
+
+    if (cmd === 'session') {
+      if (!subcmd || subcmd === 'show') {
+        const target = String(rest[0] || '').trim();
+        if (!target || target === 'current') {
+          return buildCurrentSessionView();
+        }
+        return showStoredSessionReport(target);
+      }
+
+      if (subcmd === 'history' || subcmd === 'list') {
+        return listStoredSessionReports();
+      }
+
+      if (subcmd === 'record') {
+        const parsed = stripPermissionControlTokens(rest);
+        const summaryText = parsed.tokens.join(' ').trim();
+        return runSessionReport(summaryText, {
+          explicit_confirmation: parsed.explicit_confirmation,
+          command_name: 'session record'
+        });
+      }
     }
 
     const parsed = stripPermissionControlTokens([subcmd, ...rest].filter(Boolean));
     const summaryText = parsed.tokens.join(' ').trim();
     return runSessionReport(summaryText, {
-      explicit_confirmation: parsed.explicit_confirmation
+      explicit_confirmation: parsed.explicit_confirmation,
+      command_name: 'session-report'
     });
   }
 
   return {
     getSessionReportsDir,
+    listStoredSessionReports,
+    showStoredSessionReport,
+    buildCurrentSessionView,
     runSessionReport,
     handleSessionReportCommands
   };

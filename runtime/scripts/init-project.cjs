@@ -568,6 +568,8 @@ function ensureBootstrapTask(projectRoot, projectConfig, docsPlan, force) {
     commit: '',
     pr_url: '',
     subtasks: buildBootstrapTaskSubtasks(docsPlan),
+    parent: null,
+    children: [],
     relatedFiles,
     notes: buildBootstrapTaskNotes(projectConfig, docsPlan),
     type: 'implement',

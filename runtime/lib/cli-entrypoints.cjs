@@ -615,6 +615,9 @@ function createCliEntryHelpers(deps) {
           'settings reset',
           'config show',
           'session show',
+          'session history',
+          'session show [current|latest|<report-id>]',
+          'session record [--confirm] [summary]',
           'session-report [--confirm] [summary]'
         ]
       },
@@ -647,6 +650,12 @@ function createCliEntryHelpers(deps) {
         title: 'Task, skills, and memory',
         entries: [
           'task list',
+          'task show <name>',
+          'task set-branch [--confirm] <name> <branch>',
+          'task set-base-branch [--confirm] <name> <branch>',
+          'task subtask add [--confirm] <parent> <child>',
+          'task subtask remove [--confirm] <parent> <child>',
+          'task create-pr [--confirm] <name> [--dry-run]',
           'task context list <name> [implement|check|debug|all]',
           'task context add [--confirm] <name> <implement|check|debug> <path> [reason]',
           'pause show',

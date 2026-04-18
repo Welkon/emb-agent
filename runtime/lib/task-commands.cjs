@@ -575,6 +575,7 @@ function createTaskCommandHelpers(deps) {
       priority: 'P2',
       creator: '',
       assignee: '',
+      parent: '',
       branch: '',
       baseBranch: resolveDefaultBaseBranch(),
       worktreePath: '',
@@ -619,6 +620,11 @@ function createTaskCommandHelpers(deps) {
         index += 1;
         continue;
       }
+      if (token === '--parent') {
+        result.parent = tokens[index + 1] || '';
+        index += 1;
+        continue;
+      }
       if (token === '--branch') {
         result.branch = tokens[index + 1] || '';
         index += 1;
@@ -653,6 +659,7 @@ function createTaskCommandHelpers(deps) {
     result.branch = String(result.branch || '').trim();
     result.creator = String(result.creator || '').trim();
     result.assignee = String(result.assignee || '').trim();
+    result.parent = String(result.parent || '').trim();
     result.description = String(result.description || '').trim();
     result.worktreePath = String(result.worktreePath || '').trim();
     result.notes = String(result.notes || '').trim();
@@ -1446,6 +1453,8 @@ function createTaskCommandHelpers(deps) {
       commit: '',
       pr_url: '',
       subtasks: [],
+      parent: parsedSummary.parent || null,
+      children: [],
       relatedFiles: references.slice(),
       notes: parsedSummary.notes || '',
       type,
@@ -1486,6 +1495,82 @@ function createTaskCommandHelpers(deps) {
     const taskDir = getTaskDir(name);
     runtime.ensureDir(taskDir);
     runtime.writeJson(getTaskManifestPath(name), manifest);
+  }
+
+  function readTaskManifest(name) {
+    const manifestPath = getTaskManifestPath(name);
+    if (!fs.existsSync(manifestPath)) {
+      throw new Error(`Task not found: ${name}`);
+    }
+    return runtime.readJson(manifestPath);
+  }
+
+  function updateTaskManifest(name, updater) {
+    const current = readTaskManifest(name);
+    const next = typeof updater === 'function' ? updater(current) : current;
+    writeTask(name, updateTaskTimestamps(next));
+    return readTask(name);
+  }
+
+  function getTaskCompletionState(name) {
+    try {
+      const manifest = readTaskManifest(name);
+      return normalizeTaskStatus(manifest.status || 'planning');
+    } catch {
+      return 'missing';
+    }
+  }
+
+  function buildChildProgress(children) {
+    const list = Array.isArray(children)
+      ? children.map(item => String(item || '').trim()).filter(Boolean)
+      : [];
+    const total = list.length;
+    const completed = list.filter(name => getTaskCompletionState(name) === 'completed').length;
+    return {
+      total,
+      completed,
+      summary: total > 0 ? `${completed}/${total}` : '0/0'
+    };
+  }
+
+  function linkParentChild(parentName, childName) {
+    if (parentName === childName) {
+      throw new Error('A task cannot be its own parent');
+    }
+
+    const parent = readTaskManifest(parentName);
+    const child = readTaskManifest(childName);
+    const currentParent = child.parent ? String(child.parent).trim() : '';
+
+    if (currentParent && currentParent !== parentName) {
+      throw new Error(`Task ${childName} already has parent ${currentParent}`);
+    }
+
+    writeTask(parentName, updateTaskTimestamps({
+      ...parent,
+      children: runtime.unique([...(Array.isArray(parent.children) ? parent.children : []), childName])
+    }));
+    writeTask(childName, updateTaskTimestamps({
+      ...child,
+      parent: parentName
+    }));
+  }
+
+  function unlinkParentChild(parentName, childName) {
+    const parent = readTaskManifest(parentName);
+    const child = readTaskManifest(childName);
+
+    writeTask(parentName, updateTaskTimestamps({
+      ...parent,
+      children: (Array.isArray(parent.children) ? parent.children : []).filter(
+        item => String(item || '').trim() !== childName
+      )
+    }));
+    writeTask(childName, updateTaskTimestamps({
+      ...child,
+      parent: child.parent && String(child.parent).trim() === parentName ? null : child.parent || null
+    }));
   }
 
   function runGit(args, cwd, label) {
@@ -2054,6 +2139,10 @@ function createTaskCommandHelpers(deps) {
       commit: String(manifest.commit || ''),
       pr_url: String(manifest.pr_url || ''),
       subtasks: Array.isArray(manifest.subtasks) ? manifest.subtasks : [],
+      parent: manifest.parent ? String(manifest.parent) : null,
+      children: Array.isArray(manifest.children)
+        ? manifest.children.map(item => String(item || '').trim()).filter(Boolean)
+        : [],
       relatedFiles,
       notes: String(manifest.notes || manifest.resolution_note || ''),
       type: String(manifest.type || 'implement'),
@@ -2093,6 +2182,7 @@ function createTaskCommandHelpers(deps) {
       created_at: String(manifest.created_at || createdAt),
       updated_at: updatedAt,
       path: path.relative(process.cwd(), manifestPath),
+      child_progress: buildChildProgress(manifest.children),
       context
     };
   }
@@ -2129,6 +2219,9 @@ function createTaskCommandHelpers(deps) {
     }
 
     const session = loadSession();
+    if (parsed.parent) {
+      readTaskManifest(parsed.parent);
+    }
     const name = buildUniqueTaskSlug(parsed.summary);
     const bindings = previewBindings;
     const manifest = buildTaskManifest(name, parsed, parsed.type, session, bindings);
@@ -2171,6 +2264,10 @@ function createTaskCommandHelpers(deps) {
       injected_specs: injected.specs
     }));
 
+    if (parsed.parent) {
+      linkParentChild(parsed.parent, name);
+    }
+
     updateSession(current => {
       current.last_command = 'task add';
     });
@@ -2187,6 +2284,200 @@ function createTaskCommandHelpers(deps) {
       current.last_command = 'task show';
     });
     return { task };
+  }
+
+  function setTaskBranch(rest) {
+    const input = parseNamedTaskWriteArgs(rest, 'task set-branch');
+    const branch = String(input.rest[0] || '').trim();
+    if (!branch) {
+      throw new Error('Missing branch name');
+    }
+
+    const blocked = applyTaskWritePermission({
+      updated: false,
+      task: {
+        name: input.name,
+        branch
+      }
+    }, 'task-set-branch', input.explicit_confirmation);
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    const task = updateTaskManifest(input.name, current => ({
+      ...current,
+      branch
+    }));
+    updateSession(current => {
+      current.last_command = 'task set-branch';
+    });
+    return permissionGateHelpers.applyPermissionDecision({
+      updated: true,
+      task
+    }, blocked.permission);
+  }
+
+  function setTaskBaseBranch(rest) {
+    const input = parseNamedTaskWriteArgs(rest, 'task set-base-branch');
+    const baseBranch = String(input.rest[0] || '').trim();
+    if (!baseBranch) {
+      throw new Error('Missing base branch name');
+    }
+
+    const blocked = applyTaskWritePermission({
+      updated: false,
+      task: {
+        name: input.name,
+        base_branch: baseBranch
+      }
+    }, 'task-set-base-branch', input.explicit_confirmation);
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    const task = updateTaskManifest(input.name, current => ({
+      ...current,
+      base_branch: baseBranch
+    }));
+    updateSession(current => {
+      current.last_command = 'task set-base-branch';
+    });
+    return permissionGateHelpers.applyPermissionDecision({
+      updated: true,
+      task
+    }, blocked.permission);
+  }
+
+  function linkSubtaskCommand(rest) {
+    const control = stripPermissionControlTokens(rest);
+    const parentName = String(control.tokens[0] || '').trim();
+    const childName = String(control.tokens[1] || '').trim();
+    if (!parentName) {
+      throw new Error('Missing parent task name');
+    }
+    if (!childName) {
+      throw new Error('Missing child task name');
+    }
+
+    const blocked = applyTaskWritePermission({
+      updated: false,
+      parent: { name: parentName },
+      child: { name: childName }
+    }, 'task-subtask-add', control.explicit_confirmation);
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    linkParentChild(parentName, childName);
+    updateSession(current => {
+      current.last_command = 'task subtask add';
+    });
+    return permissionGateHelpers.applyPermissionDecision({
+      updated: true,
+      parent: readTask(parentName),
+      child: readTask(childName)
+    }, blocked.permission);
+  }
+
+  function unlinkSubtaskCommand(rest) {
+    const control = stripPermissionControlTokens(rest);
+    const parentName = String(control.tokens[0] || '').trim();
+    const childName = String(control.tokens[1] || '').trim();
+    if (!parentName) {
+      throw new Error('Missing parent task name');
+    }
+    if (!childName) {
+      throw new Error('Missing child task name');
+    }
+
+    const blocked = applyTaskWritePermission({
+      updated: false,
+      parent: { name: parentName },
+      child: { name: childName }
+    }, 'task-subtask-remove', control.explicit_confirmation);
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    unlinkParentChild(parentName, childName);
+    updateSession(current => {
+      current.last_command = 'task subtask remove';
+    });
+    return permissionGateHelpers.applyPermissionDecision({
+      updated: true,
+      parent: readTask(parentName),
+      child: readTask(childName)
+    }, blocked.permission);
+  }
+
+  function createTaskPr(rest) {
+    const control = stripPermissionControlTokens(rest);
+    const filtered = [];
+    let dryRun = false;
+
+    control.tokens.forEach(token => {
+      if (token === '--dry-run') {
+        dryRun = true;
+        return;
+      }
+      filtered.push(token);
+    });
+
+    const taskName = String(filtered[0] || '').trim();
+    if (!taskName) {
+      throw new Error('Missing task name');
+    }
+
+    const task = readTask(taskName);
+    const branch = String(task.branch || '').trim() || `task/${task.name}`;
+    const base = String(task.base_branch || '').trim() || resolveDefaultBaseBranch();
+    const scope = String(task.scope || '').trim();
+    const title = `${scope ? `${scope}: ` : ''}${task.title}`;
+    const body_lines = [
+      `Task: ${task.name}`,
+      '',
+      task.description || task.title,
+      '',
+      `PRD: ${task.artifacts.prd || '(none)'}`,
+      `AAR: ${task.artifacts.aar || '(none)'}`,
+      `Status: ${task.status}`
+    ];
+
+    const blocked = applyTaskWritePermission({
+      ready: false,
+      task: {
+        name: task.name,
+        branch,
+        base_branch: base
+      }
+    }, 'task-create-pr', control.explicit_confirmation);
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    const updatedTask = dryRun
+      ? task
+      : updateTaskManifest(task.name, current => ({
+          ...current,
+          current_phase: 4
+        }));
+
+    updateSession(current => {
+      current.last_command = 'task create-pr';
+    });
+    return permissionGateHelpers.applyPermissionDecision({
+      ready: true,
+      dry_run: dryRun,
+      task: updatedTask,
+      pr: {
+        title,
+        head: branch,
+        base,
+        body_lines,
+        suggested_cli: `gh pr create --base ${base} --head ${branch} --title "${title}" --body-file ${task.artifacts.prd || `.emb-agent/tasks/${task.name}/prd.md`}`,
+        manual_required: true
+      }
+    }, blocked.permission);
   }
 
   function activateTask(rest) {
@@ -2554,12 +2845,32 @@ function createTaskCommandHelpers(deps) {
       return showTask(rest[0]);
     }
 
+    if (subcmd === 'set-branch') {
+      return setTaskBranch(rest);
+    }
+
+    if (subcmd === 'set-base-branch') {
+      return setTaskBaseBranch(rest);
+    }
+
+    if (subcmd === 'create-pr') {
+      return createTaskPr(rest);
+    }
+
     if (subcmd === 'activate') {
       return activateTask(rest);
     }
 
     if (subcmd === 'resolve') {
       return resolveTask(rest);
+    }
+
+    if (subcmd === 'subtask' && rest[0] === 'add') {
+      return linkSubtaskCommand(rest.slice(1));
+    }
+
+    if (subcmd === 'subtask' && (rest[0] === 'remove' || rest[0] === 'unlink')) {
+      return unlinkSubtaskCommand(rest.slice(1));
     }
 
     if (subcmd === 'worktree' && (!rest[0] || rest[0] === 'list')) {

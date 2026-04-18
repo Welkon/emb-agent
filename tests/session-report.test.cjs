@@ -11,6 +11,58 @@ const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-proj
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 
+async function captureCliJson(args) {
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    await cli.main(args);
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+
+  return JSON.parse(stdout);
+}
+
+test('session command group records history and shows stored reports', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-group-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['session', 'record', 'capture first grouped session']);
+
+    const history = await captureCliJson(['session', 'history']);
+    assert.equal(history.reports.length, 1);
+    assert.equal(history.reports[0].summary, 'capture first grouped session');
+    assert.ok(history.reports[0].markdown_file.endsWith('.md'));
+    assert.ok(history.reports[0].json_file.endsWith('.json'));
+
+    const latest = await captureCliJson(['session', 'show', 'latest']);
+    assert.equal(latest.entry.summary, 'capture first grouped session');
+    assert.equal(latest.report.summary, 'capture first grouped session');
+    assert.equal(latest.report.next.next.command.length > 0, true);
+
+    const current = await captureCliJson(['session', 'show']);
+    assert.equal(current.project_root, tempProject);
+    assert.ok(current.session_state);
+    assert.equal(current.reports.reports.length, 1);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('session-report writes lightweight session report with next guidance', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-'));
   const currentCwd = process.cwd();
