@@ -491,6 +491,11 @@ test('text mode next surfaces runtime event summary in tty output', async () => 
 
     assert.match(output.stderr, /Workflow: selection/);
     assert.match(output.stderr, /Next: scan/);
+    assert.match(output.stderr, /First: Follow the recommended flow: scan -> do -> verify\./);
+    assert.doesNotMatch(output.stderr, /Hint:/);
+    assert.doesNotMatch(output.stderr, /Next Hint:/);
+    assert.doesNotMatch(output.stderr, /flow=scan -> do -> verify/);
+    assert.doesNotMatch(output.stderr, /command=scan; reason=/);
     assert.match(output.stderr, /Events: ok \/ 1 \(workflow-next\)/);
   } finally {
     process.chdir(currentCwd);

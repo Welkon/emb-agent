@@ -152,8 +152,27 @@ function createCliRouter(deps) {
       return scope ? `Running ${scope}` : 'Running emb-agent command';
     }
 
+    function humanizeTerminalHint(text) {
+      const value = String(text || '').trim();
+      if (!value) {
+        return '';
+      }
+
+      if (/^flow=/i.test(value)) {
+        const flow = value.replace(/^flow=/i, '').trim();
+        return flow ? `Follow the recommended flow: ${flow}.` : '';
+      }
+
+      if (/^command=/i.test(value)) {
+        return '';
+      }
+
+      return value;
+    }
+
     function pushActionCardLines(lines, actionCard) {
       const card = actionCard && typeof actionCard === 'object' && !Array.isArray(actionCard) ? actionCard : {};
+      const firstInstruction = humanizeTerminalHint(card.first_instruction);
 
       if (card.stage) {
         lines.push(terminalUi.renderKeyValue('Stage', card.stage, 'info'));
@@ -164,8 +183,8 @@ function createCliRouter(deps) {
       if (card.summary) {
         lines.push(terminalUi.renderKeyValue('Summary', card.summary, 'muted'));
       }
-      if (card.first_instruction) {
-        lines.push(terminalUi.renderKeyValue('First', card.first_instruction, 'muted'));
+      if (firstInstruction) {
+        lines.push(terminalUi.renderKeyValue('First', firstInstruction, 'muted'));
       }
       if (card.first_cli) {
         lines.push(terminalUi.renderKeyValue('CLI', card.first_cli, 'success'));
@@ -175,8 +194,22 @@ function createCliRouter(deps) {
       }
     }
 
-    function pushNextActions(lines, actions) {
-      const items = Array.isArray(actions) ? actions.filter(Boolean) : [];
+    function pushNextActions(lines, actions, actionCard) {
+      const card = actionCard && typeof actionCard === 'object' && !Array.isArray(actionCard) ? actionCard : {};
+      const alreadyShown = new Set(
+        [
+          humanizeTerminalHint(card.first_instruction),
+          humanizeTerminalHint(card.summary),
+          humanizeTerminalHint(card.reason),
+          humanizeTerminalHint(card.then_cli)
+        ]
+          .map(item => String(item || '').trim())
+          .filter(Boolean)
+      );
+      const items = (Array.isArray(actions) ? actions : [])
+        .map(humanizeTerminalHint)
+        .filter(Boolean)
+        .filter(item => !alreadyShown.has(String(item).trim()));
       if (items[0]) {
         lines.push(terminalUi.renderKeyValue('Hint', items[0], 'muted'));
       }
@@ -328,7 +361,7 @@ function createCliRouter(deps) {
         if (payload.context_hygiene && payload.context_hygiene.recommendation) {
           lines.push(terminalUi.renderKeyValue('Context', payload.context_hygiene.recommendation, 'muted'));
         }
-        pushNextActions(lines, payload.next_actions);
+        pushNextActions(lines, payload.next_actions, nestedActionCard);
         return appendRuntimeEventsSummary(lines, payload);
       }
 
@@ -405,7 +438,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Reason', payload.next.reason, 'muted'));
         }
         pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions);
+        pushNextActions(lines, payload.next_actions, nestedActionCard);
         return appendRuntimeEventsSummary(lines, payload);
       }
 
@@ -417,7 +450,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Reason', payload.reason, 'muted'));
         }
         pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions);
+        pushNextActions(lines, payload.next_actions, nestedActionCard);
         return appendRuntimeEventsSummary(lines, payload);
       }
 
@@ -500,7 +533,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Read Next', payload.next_reads[0], 'muted'));
         }
         pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions);
+        pushNextActions(lines, payload.next_actions, nestedActionCard);
         return appendRuntimeEventsSummary(lines, payload);
       }
 
@@ -511,7 +544,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Verify', payload.verification[0], 'muted'));
         }
         pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions);
+        pushNextActions(lines, payload.next_actions, nestedActionCard);
         return appendRuntimeEventsSummary(lines, payload);
       }
 
@@ -524,7 +557,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Execute', payload.execution_brief.suggested_steps[0], 'muted'));
         }
         pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions);
+        pushNextActions(lines, payload.next_actions, nestedActionCard);
         return appendRuntimeEventsSummary(lines, payload);
       }
 
@@ -537,7 +570,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Next Step', payload.next_step, 'muted'));
         }
         pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions);
+        pushNextActions(lines, payload.next_actions, nestedActionCard);
         return appendRuntimeEventsSummary(lines, payload);
       }
 
@@ -548,7 +581,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Reviewers', payload.review_agents.join(', '), 'muted'));
         }
         pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions);
+        pushNextActions(lines, payload.next_actions, nestedActionCard);
         return appendRuntimeEventsSummary(lines, payload);
       }
 
@@ -561,7 +594,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Next Step', payload.next_step, 'muted'));
         }
         pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions);
+        pushNextActions(lines, payload.next_actions, nestedActionCard);
         return appendRuntimeEventsSummary(lines, payload);
       }
 

@@ -521,3 +521,64 @@ test('interactive main keeps final summary in terminal ui instead of stdout dump
     process.chdir(currentCwd);
   }
 });
+
+test('flag-driven tty install keeps final summary in terminal ui instead of stdout dump', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-flag-main-'));
+  const tempConfig = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-flag-config-'));
+  let stdout = '';
+  let stderr = '';
+
+  const fakeProcess = {
+    cwd: () => tempProject,
+    env: { EMB_AGENT_WORKSPACE_TRUST: '1' },
+    argv: ['node', 'install.js'],
+    stdin: { isTTY: true },
+    stdout: {
+      isTTY: true,
+      write(chunk) {
+        stdout += String(chunk);
+        return true;
+      }
+    },
+    stderr: {
+      isTTY: true,
+      write(chunk) {
+        stderr += String(chunk);
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess, {
+    createTerminalUi() {
+      return {
+        enabled: true,
+        chalk: {
+          bold: text => String(text),
+          blue: text => String(text),
+          cyan: text => String(text),
+          dim: text => String(text),
+          gray: text => String(text),
+          green: text => String(text),
+          red: text => String(text),
+          yellow: text => String(text),
+          white: text => String(text)
+        },
+        createActivity() {
+          return {
+            succeed() {},
+            fail() {}
+          };
+        }
+      };
+    }
+  });
+
+  await helper.main(['--codex', '--global', '--config-dir', tempConfig, '--developer', 'welkon']);
+
+  assert.equal(stdout, '');
+  assert.match(stderr, /Installation complete/);
+  assert.match(stderr, /Runtime Dir:/);
+  assert.match(stderr, /Next:/);
+  assert.match(stderr, /then run start/);
+});
