@@ -1005,6 +1005,7 @@ function buildStartContext() {
     runInitCommand([], 'start');
   }
   const initialized = fs.existsSync(runtime.resolveProjectDataPath(projectRoot, 'project.json'));
+  const resolved = initialized ? resolveSession() : null;
   const initGuidance = buildInitGuidance(projectRoot);
   const bootstrap = buildBootstrapSummary(initGuidance);
   const bootstrapReport = initialized ? buildBootstrapReport() : null;
@@ -1052,11 +1053,14 @@ function buildStartContext() {
             name: activeTask.name,
             title: activeTask.title,
             status: activeTask.status,
+            package: activeTask.package || '',
             worktree_path: activeTask.worktree_path,
             prd_path: `.emb-agent/tasks/${activeTask.name}/prd.md`
           }
         : null,
       handoff_present: Boolean(handoff),
+      default_package: resolved && resolved.session ? resolved.session.default_package || '' : '',
+      active_package: resolved && resolved.session ? resolved.session.active_package || '' : '',
       hardware_identity: initGuidance.selected_identity
     },
     immediate: {

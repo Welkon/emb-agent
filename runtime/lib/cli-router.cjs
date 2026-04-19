@@ -236,6 +236,14 @@ function createCliRouter(deps) {
         if (payload.active_task && payload.active_task.name) {
           lines.push(terminalUi.renderKeyValue('Task', payload.active_task.name, 'success'));
         }
+        if (payload.active_task && payload.active_task.package) {
+          lines.push(terminalUi.renderKeyValue('Package', payload.active_task.package, 'info'));
+        } else if (payload.active_package) {
+          lines.push(terminalUi.renderKeyValue('Package', payload.active_package, 'info'));
+        }
+        if (payload.default_package && payload.default_package !== payload.active_package) {
+          lines.push(terminalUi.renderKeyValue('Default Package', payload.default_package, 'muted'));
+        }
         if (payload.focus) {
           lines.push(terminalUi.renderKeyValue('Focus', payload.focus, 'muted'));
         }
@@ -299,6 +307,18 @@ function createCliRouter(deps) {
       if (cmd === 'next' && !subcmd) {
         if (payload.workflow_stage && payload.workflow_stage.name) {
           lines.push(terminalUi.renderKeyValue('Workflow', payload.workflow_stage.name, 'info'));
+        }
+        if (payload.task && payload.task.package) {
+          lines.push(terminalUi.renderKeyValue('Package', payload.task.package, 'info'));
+        } else if (payload.current && payload.current.active_package) {
+          lines.push(terminalUi.renderKeyValue('Package', payload.current.active_package, 'info'));
+        }
+        if (
+          payload.current &&
+          payload.current.default_package &&
+          payload.current.default_package !== payload.current.active_package
+        ) {
+          lines.push(terminalUi.renderKeyValue('Default Package', payload.current.default_package, 'muted'));
         }
         if (payload.next && payload.next.command) {
           lines.push(terminalUi.renderKeyValue('Next', payload.next.command, 'success'));

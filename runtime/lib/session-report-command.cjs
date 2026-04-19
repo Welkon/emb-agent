@@ -198,6 +198,17 @@ function createSessionReportCommandHelpers(deps) {
       git_branch: resolved.session.git_branch || '',
       profile: resolved.session.project_profile,
       packs: resolved.session.active_packs || [],
+      default_package: resolved.session.default_package || '',
+      active_package: resolved.session.active_package || '',
+      active_task:
+        resolved.session.active_task && resolved.session.active_task.name
+          ? {
+              name: resolved.session.active_task.name || '',
+              title: resolved.session.active_task.title || '',
+              status: resolved.session.active_task.status || '',
+              package: resolved.session.active_task.package || ''
+            }
+          : null,
       preferences: resolved.session.preferences || {},
       focus: resolved.session.focus || '',
       last_command: resolved.session.last_command || '',
@@ -248,6 +259,11 @@ function createSessionReportCommandHelpers(deps) {
       `- git_branch: ${report.git_branch || '(none)'}`,
       `- profile: ${report.profile}`,
       `- packs: ${report.packs.join(', ') || '(none)'}`,
+      `- default_package: ${report.default_package || '(none)'}`,
+      `- active_package: ${report.active_package || '(none)'}`,
+      `- active_task: ${report.active_task
+        ? `${report.active_task.name || '(task)'}${report.active_task.package ? ` [${report.active_task.package}]` : ''} (${report.active_task.status || 'unknown'})`
+        : '(none)'}`,
       `- focus: ${report.focus || '(empty)'}`,
       `- last_command: ${report.last_command || '(empty)'}`,
       `- last_files: ${report.last_files.join(', ') || '(none)'}`,

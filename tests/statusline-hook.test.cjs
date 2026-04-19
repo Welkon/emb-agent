@@ -24,6 +24,11 @@ test('statusline hook summarizes current task, branch, and developer', () => {
   fs.mkdirSync(taskDir, { recursive: true });
   fs.writeFileSync(path.join(embDir, '.current-task'), 'demo-task\n', 'utf8');
   fs.writeFileSync(
+    path.join(embDir, 'project.json'),
+    JSON.stringify({ default_package: 'app', active_package: 'fw' }, null, 2) + '\n',
+    'utf8'
+  );
+  fs.writeFileSync(
     path.join(embDir, '.developer'),
     JSON.stringify({ name: 'felix', runtime: 'claude' }, null, 2) + '\n',
     'utf8'
@@ -34,7 +39,8 @@ test('statusline hook summarizes current task, branch, and developer', () => {
       name: 'demo-task',
       title: 'Exercise ADC path',
       status: 'in_progress',
-      priority: 'P1'
+      priority: 'P1',
+      package: 'fw'
     }, null, 2) + '\n',
     'utf8'
   );
@@ -55,6 +61,7 @@ test('statusline hook summarizes current task, branch, and developer', () => {
   assert.match(output, /in_progress/);
   assert.match(output, /Claude Sonnet/);
   assert.match(output, /feat\/statusline/);
+  assert.match(output, /pkg:fw/);
   assert.match(output, /felix/);
   assert.match(output, /1 task\(s\)/);
 });

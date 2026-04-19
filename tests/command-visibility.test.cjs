@@ -396,6 +396,8 @@ test('start returns a linear default workflow for project and task execution', a
 
     assert.equal(start.entry, 'start');
     assert.equal(start.summary.initialized, true);
+    assert.equal(start.summary.default_package, '');
+    assert.equal(start.summary.active_package, '');
     assert.equal(start.immediate.command, 'next');
     assert.equal(start.workflow.mode, 'linear-default');
     assert.ok(Array.isArray(start.workflow.steps));
@@ -407,6 +409,44 @@ test('start returns a linear default workflow for project and task execution', a
     assert.equal(start.next.command, 'scan');
   } finally {
     process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
+  }
+});
+
+test('start and next expose package-aware monorepo entry context', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-start-package-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    fs.writeFileSync(
+      path.join(tempProject, 'pnpm-workspace.yaml'),
+      ['packages:', '  - packages/*', ''].join('\n'),
+      'utf8'
+    );
+    fs.mkdirSync(path.join(tempProject, 'packages', 'app'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, 'packages', 'fw'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempProject, 'packages', 'app', 'package.json'),
+      JSON.stringify({ name: '@demo/app' }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(tempProject, 'packages', 'fw', 'package.json'),
+      JSON.stringify({ name: '@demo/fw' }, null, 2) + '\n',
+      'utf8'
+    );
+
+    await captureCliJson(['init']);
+
+    const start = await captureCliJson(['start']);
+    assert.equal(start.summary.default_package, 'app');
+    assert.equal(start.summary.active_package, 'app');
+
+    const output = await captureCliTtyOutput(['next']);
+    assert.match(output.stderr, /Package: app/);
+    assert.match(output.stderr, /Next: scan/);
+  } finally {
     process.chdir(currentCwd);
   }
 });

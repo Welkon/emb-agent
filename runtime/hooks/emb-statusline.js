@@ -74,7 +74,16 @@ function getCurrentTask(projectRoot) {
     name: taskName,
     title: String(manifest.title || manifest.name || taskName).trim(),
     status: String(manifest.status || '').trim(),
-    priority: String(manifest.priority || 'P2').trim()
+    priority: String(manifest.priority || 'P2').trim(),
+    package: String(manifest.package || '').trim()
+  };
+}
+
+function getProjectPackageState(projectRoot) {
+  const payload = readJson(path.join(projectRoot, '.emb-agent', 'project.json'));
+  return {
+    default_package: String(payload.default_package || '').trim(),
+    active_package: String(payload.active_package || '').trim()
   };
 }
 
@@ -129,6 +138,7 @@ function buildStatusLine(input) {
   const developer = getDeveloper(projectRoot);
   const branch = getGitBranch(projectRoot);
   const taskCount = countTasks(projectRoot);
+  const packageState = getProjectPackageState(projectRoot);
   const model = String(
     (input && input.model && (input.model.display_name || input.model.name)) ||
     input.model ||
@@ -152,6 +162,12 @@ function buildStatusLine(input) {
   infoParts.push(formatContextPercent(contextPercent));
   if (branch) {
     infoParts.push(colorize(35, branch));
+  }
+  const packageName = task && task.package
+    ? task.package
+    : (packageState.active_package || packageState.default_package || '');
+  if (packageName) {
+    infoParts.push(colorize(36, `pkg:${packageName}`));
   }
   infoParts.push(formatDuration(durationMs));
   if (developer) {

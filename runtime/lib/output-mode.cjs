@@ -573,15 +573,23 @@ function compactObject(input) {
 function buildBriefNextContext(value) {
   const current = isObject(value.current) ? value.current : {};
   const next = isObject(value.next) ? value.next : {};
+  const task = isObject(value.task) ? value.task : {};
 
   return compactObject({
     output_mode: 'brief',
     current: compactObject({
       profile: current.profile || '',
       packs: toArray(current.packs),
+      default_package: current.default_package || '',
+      active_package: current.active_package || '',
       focus: current.focus || '',
       last_command: current.last_command || '',
       suggested_flow: current.suggested_flow || ''
+    }),
+    task: compactObject({
+      name: task.name || '',
+      status: task.status || '',
+      package: task.package || ''
     }),
     next: compactObject({
       command: next.command || '',
@@ -619,6 +627,15 @@ function buildBriefStartContext(value) {
       project_root: summary.project_root || '',
       initialized: summary.initialized === undefined ? undefined : Boolean(summary.initialized),
       handoff_present: summary.handoff_present === undefined ? undefined : Boolean(summary.handoff_present),
+      default_package: summary.default_package || '',
+      active_package: summary.active_package || '',
+      active_task: isObject(summary.active_task)
+        ? compactObject({
+            name: summary.active_task.name || '',
+            package: summary.active_task.package || '',
+            status: summary.active_task.status || ''
+          })
+        : null,
       hardware_identity: isObject(summary.hardware_identity) ? summary.hardware_identity : null
     }),
     immediate: compactObject({
@@ -932,6 +949,15 @@ function buildBriefStatusOutput(value) {
     project_root: value.project_root || '',
     project_profile: value.project_profile || '',
     active_packs: truncateList(value.active_packs, 4),
+    default_package: value.default_package || '',
+    active_package: value.active_package || '',
+    active_task: isObject(value.active_task)
+      ? compactObject({
+          name: value.active_task.name || '',
+          status: value.active_task.status || '',
+          package: value.active_task.package || ''
+        })
+      : null,
     focus: value.focus || '',
     open_questions: truncateList(value.open_questions, 4),
     known_risks: truncateList(value.known_risks, 4),
