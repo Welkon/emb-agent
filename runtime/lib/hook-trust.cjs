@@ -69,22 +69,7 @@ function isWorkspaceTrusted(input, env) {
   return resolveWorkspaceTrust(input, env, arguments[2]).trusted;
 }
 
-function hasEnabledCodexHooks(content) {
-  return (
-    /^\s*(?:"codex_hooks"|codex_hooks)\s*=\s*true(?:\s*#.*)?$/m.test(String(content || '')) ||
-    /^\s*features\.(?:"codex_hooks"|codex_hooks)\s*=\s*true(?:\s*#.*)?$/m.test(String(content || ''))
-  );
-}
-
-function hasCodexHookCommand(content, eventName, hookFileName) {
-  const eventPattern = new RegExp(`\\bevent\\s*=\\s*["']${escapeRegex(eventName)}["']`);
-  const commandPattern = new RegExp(`\\bcommand\\s*=\\s*["'][^"'\\r\\n]*${escapeRegex(hookFileName)}[^"'\\r\\n]*["']`);
-  const blocks = String(content || '').split(/\[\[hooks\]\]/u).slice(1);
-
-  return blocks.some(block => eventPattern.test(block) && commandPattern.test(block));
-}
-
-function hasClaudeHookCommand(settings, eventName, hookFileName) {
+function hasJsonHookCommand(settings, eventName, hookFileName) {
   const entries =
     settings &&
     settings.hooks &&
@@ -102,6 +87,10 @@ function hasClaudeHookCommand(settings, eventName, hookFileName) {
       hook.command.includes(hookFileName)
       )
   );
+}
+
+function hasClaudeHookCommand(settings, eventName, hookFileName) {
+  return hasJsonHookCommand(settings, eventName, hookFileName);
 }
 
 function hasCursorHookCommand(settings, eventName, hookFileName) {
@@ -136,22 +125,24 @@ function resolveHostConfigTrust(options) {
   const path = options && options.path;
   const runtimeHost = options && options.runtimeHost;
 
-  if (!fs || !path || !runtimeHost || !runtimeHost.runtimeHome || !runtimeHost.configFileName) {
-    return null;
-  }
-
-  const configPath = path.join(runtimeHost.runtimeHome, runtimeHost.configFileName);
-  if (!fs.existsSync(configPath)) {
+  if (!fs || !path || !runtimeHost || !runtimeHost.runtimeHome) {
     return null;
   }
 
   try {
     if (runtimeHost.name === 'codex') {
-      const content = fs.readFileSync(configPath, 'utf8');
+      const hooksConfigPath = path.join(
+        runtimeHost.runtimeHome,
+        runtimeHost.hooksConfigFileName || 'hooks.json'
+      );
+      if (!fs.existsSync(hooksConfigPath)) {
+        return null;
+      }
+
+      const settings = JSON.parse(fs.readFileSync(hooksConfigPath, 'utf8'));
       const hooksEnabled =
-        hasEnabledCodexHooks(content) &&
-        hasCodexHookCommand(content, 'SessionStart', 'emb-session-start.js') &&
-        hasCodexHookCommand(content, 'PostToolUse', 'emb-context-monitor.js');
+        hasJsonHookCommand(settings, 'SessionStart', 'emb-session-start.js') &&
+        hasJsonHookCommand(settings, 'PostToolUse', 'emb-context-monitor.js');
 
       if (!hooksEnabled) {
         return null;
@@ -167,6 +158,10 @@ function resolveHostConfigTrust(options) {
     }
 
     if (runtimeHost.name === 'claude') {
+      const configPath = path.join(runtimeHost.runtimeHome, runtimeHost.configFileName);
+      if (!fs.existsSync(configPath)) {
+        return null;
+      }
       const settings = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       const hooksEnabled =
         hasClaudeHookCommand(settings, 'SessionStart', 'emb-session-start.js') &&
@@ -186,6 +181,10 @@ function resolveHostConfigTrust(options) {
     }
 
     if (runtimeHost.name === 'cursor') {
+      const configPath = path.join(runtimeHost.runtimeHome, runtimeHost.configFileName);
+      if (!fs.existsSync(configPath)) {
+        return null;
+      }
       const settings = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       const hooksEnabled =
         hasCursorHookCommand(settings, 'SessionStart', 'emb-session-start.js') &&
@@ -257,9 +256,8 @@ function resolveWorkspaceTrust(input, env, options) {
 
 module.exports = {
   hasClaudeHookCommand,
-  hasCodexHookCommand,
   hasCursorHookCommand,
-  hasEnabledCodexHooks,
+  hasJsonHookCommand,
   isWorkspaceTrusted,
   parseBoolean,
   resolveTrustSignal,

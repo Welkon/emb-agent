@@ -61,7 +61,7 @@ test('hook dispatch switches to project cwd and restores it afterward', () => {
   }
 });
 
-test('hook dispatch trusts codex host config when hooks are installed', () => {
+test('hook dispatch trusts codex hooks.json when hooks are installed', () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-home-'));
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-project-'));
   const hookDispatch = hookDispatchHelpers.createHookDispatchHelpers({
@@ -71,25 +71,39 @@ test('hook dispatch trusts codex host config when hooks are installed', () => {
     runtimeHost: {
       name: 'codex',
       runtimeHome: tempHome,
-      configFileName: 'config.toml'
+      configFileName: 'config.toml',
+      hooksConfigFileName: 'hooks.json'
     }
   });
 
   fs.writeFileSync(
-    path.join(tempHome, 'config.toml'),
-    [
-      '[features]',
-      'codex_hooks = true',
-      '',
-      '[[hooks]]',
-      'event = "SessionStart"',
-      'command = "node /tmp/emb-session-start.js"',
-      '',
-      '[[hooks]]',
-      'event = "PostToolUse"',
-      'command = "node /tmp/emb-context-monitor.js"',
-      ''
-    ].join('\n'),
+    path.join(tempHome, 'hooks.json'),
+    JSON.stringify({
+      hooks: {
+        SessionStart: [
+          {
+            hooks: [
+              {
+                type: 'command',
+                command: 'node /tmp/emb-session-start.js'
+              }
+            ]
+          }
+        ],
+        PostToolUse: [
+          {
+            matcher: 'Bash|Edit|Write|MultiEdit|Agent|Task',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node /tmp/emb-context-monitor.js',
+                timeout: 10
+              }
+            ]
+          }
+        ]
+      }
+    }, null, 2) + '\n',
     'utf8'
   );
 

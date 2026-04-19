@@ -6,7 +6,7 @@ This page only covers platform-specific setup differences. The canonical onboard
 
 | Runtime | Install | Runtime dir | Command surface | Extra manual step |
 | --- | --- | --- | --- | --- |
-| Codex | `npx emb-agent` | `./.codex/` | project skills under `./.codex/skills/` | Hooks may still require `multi_agent = true` and `codex_hooks = true` in `~/.codex/config.toml` |
+| Codex | `npx emb-agent` | `./.codex/` | project skills under `./.codex/skills/` | none |
 | Claude Code | `npx emb-agent` | `./.claude/` | slash commands under `./.claude/commands/emb/` | none |
 | Cursor | `npx emb-agent` | `./.cursor/` | command wrappers under `./.cursor/commands/` | none |
 
@@ -19,12 +19,6 @@ This page only covers platform-specific setup differences. The canonical onboard
 
 ## Codex note
 
-As of Codex CLI `v0.116.0` on `2026-03-24`, hooks may still require manual enablement in `~/.codex/config.toml`:
+emb-agent installs Codex startup automation into `./.codex/hooks.json` automatically.
 
-```toml
-[features]
-multi_agent = true
-codex_hooks = true
-```
-
-emb-agent intentionally does not write these flags automatically.
+The installer also maintains `./.codex/config.toml` for project-scoped agent wiring. In normal use, restart Codex once after install and then run `start`.
