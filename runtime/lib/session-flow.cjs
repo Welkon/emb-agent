@@ -75,6 +75,7 @@ function createSessionFlowHelpers(deps) {
     RUNTIME_CONFIG,
     DEFAULT_ARCH_REVIEW_PATTERNS,
     getRuntimeHost,
+    buildInitGuidance,
     resolveSession,
     getProjectStatePaths,
     getHealthReport,
@@ -222,6 +223,18 @@ function createSessionFlowHelpers(deps) {
 
   function shouldGateNextWithHealth(resolved, handoff, nextCommand, healthReport) {
     if (!healthReport || nextCommand !== 'scan' || handoff) {
+      return false;
+    }
+
+    const session = resolved && resolved.session ? resolved.session : {};
+    const initGuidance =
+      typeof buildInitGuidance === 'function' && session.project_root
+        ? buildInitGuidance(session.project_root)
+        : null;
+    if (
+      initGuidance &&
+      (initGuidance.project_definition_required || initGuidance.hardware_confirmation_required)
+    ) {
       return false;
     }
 
@@ -492,6 +505,10 @@ function createSessionFlowHelpers(deps) {
       );
     const blankSelectionMode = isBlankProjectSelectionMode(resolved);
     const useBlankSelectionFlow = blankSelectionMode && lastFiles.length === 0;
+    const initGuidance =
+      typeof buildInitGuidance === 'function' && session.project_root
+        ? buildInitGuidance(session.project_root)
+        : null;
 
     if (hasQualityGateBlock) {
       const blockingItems = runtime.unique([
@@ -570,6 +587,13 @@ function createSessionFlowHelpers(deps) {
       return {
         command: 'scan',
         reason: `Project definition is still open. Run scan first to converge goals, constraints, interfaces, and candidate devices from ${runtime.getProjectAssetRelativePath('req.yaml')}.`
+      };
+    }
+
+    if (initGuidance && initGuidance.hardware_confirmation_required) {
+      return {
+        command: 'scan',
+        reason: `Hardware identity is still missing. Run scan first to confirm the real MCU and package, then record them in ${runtime.getProjectAssetRelativePath('hw.yaml')} before execution.`
       };
     }
 

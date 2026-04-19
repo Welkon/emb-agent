@@ -556,6 +556,41 @@ test('task worktree state exposes package-scoped workspace metadata', async () =
   }
 });
 
+test('task add and activate keep tty output human-readable for package tasks', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-package-tty-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    fs.writeFileSync(
+      path.join(tempProject, 'pnpm-workspace.yaml'),
+      ['packages:', '  - packages/*', ''].join('\n'),
+      'utf8'
+    );
+    writeJson(path.join(tempProject, 'packages', 'app', 'package.json'), { name: '@demo/app' });
+    writeJson(path.join(tempProject, 'packages', 'fw', 'package.json'), { name: '@demo/fw' });
+    writeText(path.join(tempProject, 'packages', 'fw', 'src', 'main.c'), '// fw main\n');
+    await cli.main(['init']);
+    writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: .task-worktrees\n');
+    initGitRepo(tempProject);
+
+    const addTty = await captureCliTtyOutput(['task', 'add', 'TTY package task', '--package', 'fw']);
+    assert.equal(addTty.stdout.trim(), '');
+    assert.match(addTty.stderr, /Created: yes/);
+    assert.match(addTty.stderr, /Task: tty-package-task/);
+    assert.match(addTty.stderr, /Package: fw/);
+
+    const activateTty = await captureCliTtyOutput(['task', 'activate', 'tty-package-task']);
+    assert.equal(activateTty.stdout.trim(), '');
+    assert.match(activateTty.stderr, /Activated: yes/);
+    assert.match(activateTty.stderr, /Task: tty-package-task/);
+    assert.match(activateTty.stderr, /Package: fw/);
+    assert.match(activateTty.stderr, /Path:/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('task activate creates a real git worktree when the project is a git repository', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-git-'));
   const currentCwd = process.cwd();
