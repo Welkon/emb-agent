@@ -448,6 +448,7 @@ test('start and next expose package-aware monorepo entry context', async () => {
     assert.match(startTty.stderr, /Project: .*emb-agent-start-package-/);
     assert.match(startTty.stderr, /Package: app/);
     assert.match(startTty.stderr, /Bootstrap: define-project-constraints/);
+    assert.match(startTty.stderr, /First: Open \.emb-agent\/req\.yaml/);
 
     const output = await captureCliTtyOutput(['next']);
     assert.equal(output.stdout.trim(), '');
