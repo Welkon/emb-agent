@@ -20,10 +20,11 @@ function createInstallTargets(deps) {
       runtimeDirName: 'emb-agent',
       agentsDirName: 'agents',
       configFileName: 'config.toml',
+      hooksConfigFileName: 'hooks.json',
       agentLabel: 'Codex agents',
       restartLabel: 'Codex',
       agentMode: 'codex-toml',
-      hookMode: 'codex-toml',
+      hookMode: 'codex-json',
       managedRuntimePathPatterns: managedRuntimePathPatterns.slice()
     },
     claude: {

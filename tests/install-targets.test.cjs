@@ -21,6 +21,8 @@ test('codex target resolves expected local/global directories', () => {
   const codex = targets.resolveInstallTarget('codex');
 
   assert.equal(codex.supported, true);
+  assert.equal(codex.hookMode, 'codex-json');
+  assert.equal(codex.hooksConfigFileName, 'hooks.json');
   assert.equal(
     targets.resolveTargetDir(codex, { local: true, global: false, configDir: '' }),
     path.join(process.cwd(), '.codex')

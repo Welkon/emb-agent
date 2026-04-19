@@ -819,48 +819,8 @@ function createInstallHelpers(deps) {
     return content.includes('\r\n') ? '\r\n' : '\n';
   }
 
-  function normalizeCodexHooksAssignments(content) {
-    return content.replace(
-      /^(\s*(?:features\.)?(?:"codex_hooks"|codex_hooks)\s*=\s*)(?:false|true|".*"|'.*')(\s*(?:#.*)?)$/gm,
-      '$1true$2'
-    );
-  }
-
-  function hasEnabledCodexHooks(content) {
-    return (
-      /^\s*(?:"codex_hooks"|codex_hooks)\s*=\s*true(?:\s*#.*)?$/m.test(content) ||
-      /^\s*features\.(?:"codex_hooks"|codex_hooks)\s*=\s*true(?:\s*#.*)?$/m.test(content)
-    );
-  }
-
-  function ensureCodexHooksFeature(configPath) {
-    let content = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
-    const eol = detectLineEnding(content);
-    let next = normalizeCodexHooksAssignments(content);
-
-    if (hasEnabledCodexHooks(next)) {
-      if (next !== content) {
-        fs.writeFileSync(configPath, next, 'utf8');
-      }
-      return;
-    }
-
-    if (/^\[features\](?:\s*#.*)?$/m.test(next)) {
-      next = next.replace(/^\[features\](?:\s*#.*)?$/m, match => `${match}${eol}codex_hooks = true`);
-    } else if (/^\s*features\.[^=\n]+\s*=.+$/m.test(next)) {
-      next = `features.codex_hooks = true${eol}${next}`;
-    } else {
-      next = next.trim()
-        ? `[features]${eol}codex_hooks = true${eol}${eol}${next}`
-        : `[features]${eol}codex_hooks = true${eol}`;
-    }
-
-    fs.writeFileSync(configPath, next, 'utf8');
-  }
-
   function buildConfigBlock(targetDir, target, agents) {
     const agentsDir = path.join(targetDir, target.agentsDirName || 'agents').replace(/\\/g, '/');
-    const hooksDir = path.join(targetDir, target.runtimeDirName, 'hooks').replace(/\\/g, '/');
     const lines = [MANAGED_MARKER_START, ''];
 
     for (const agent of agents) {
@@ -870,14 +830,6 @@ function createInstallHelpers(deps) {
       lines.push('');
     }
 
-    lines.push('[[hooks]]');
-    lines.push('event = "SessionStart"');
-    lines.push(`command = "node ${hooksDir}/emb-session-start.js"`);
-    lines.push('');
-    lines.push('[[hooks]]');
-    lines.push('event = "PostToolUse"');
-    lines.push(`command = "node ${hooksDir}/emb-context-monitor.js"`);
-    lines.push('');
     lines.push(MANAGED_MARKER_END);
     return lines.join('\n');
   }
@@ -1106,7 +1058,6 @@ function createInstallHelpers(deps) {
 
     const configPath = path.join(targetDir, target.configFileName || 'config.toml');
     mergeManagedConfig(configPath, buildConfigBlock(targetDir, target, installed));
-    ensureCodexHooksFeature(configPath);
     return installed.length;
   }
 
@@ -1137,6 +1088,15 @@ function createInstallHelpers(deps) {
     );
 
     return agentFiles.length;
+  }
+
+  function installCodexHooks(targetDir, target, args) {
+    ensureJsonHostHooks(
+      path.join(targetDir, target.hooksConfigFileName || 'hooks.json'),
+      targetDir,
+      target,
+      Boolean(args && args.local)
+    );
   }
 
   function generateClaudeCommandContent(commandName, content, runtimeDir) {
@@ -1651,6 +1611,23 @@ function createInstallHelpers(deps) {
         }
       }
     }
+
+    if (target.hookMode === 'codex-json') {
+      const hooksConfigPath = path.join(targetDir, target.hooksConfigFileName || 'hooks.json');
+      if (fs.existsSync(hooksConfigPath)) {
+        const cleanedHooks = stripJsonHostManagedHooks(readJsonObject(hooksConfigPath));
+        if (
+          cleanedHooks &&
+          typeof cleanedHooks === 'object' &&
+          !Array.isArray(cleanedHooks) &&
+          Object.keys(cleanedHooks).length > 0
+        ) {
+          writeJsonObject(hooksConfigPath, cleanedHooks);
+        } else {
+          fs.unlinkSync(hooksConfigPath);
+        }
+      }
+    }
   }
 
   async function main(argv) {
@@ -1700,6 +1677,9 @@ function createInstallHelpers(deps) {
     let cursorCommandCount;
     try {
       agentCount = installAgents(targetDir, target, args);
+      if (target.hookMode === 'codex-json') {
+        installCodexHooks(targetDir, target, args);
+      }
       codexSkillCount = installCodexSkills(targetDir, target, runtimeDir);
       claudeCommandCount = installClaudeCommands(targetDir, target, runtimeDir);
       cursorCommandCount = installCursorCommands(targetDir, target, runtimeDir);
@@ -1757,7 +1737,12 @@ function createInstallHelpers(deps) {
         : []),
       ...(target.managesHostConfig === false
         ? [`External runtime metadata: ${path.join(runtimeDir, 'HOST.json')}`]
-        : [`Updated ${target.label} config: ${path.join(targetDir, target.configFileName || 'config.toml')}`]),
+        : [
+            `Updated ${target.label} config: ${path.join(targetDir, target.configFileName || 'config.toml')}`,
+            ...(target.hookMode === 'codex-json'
+              ? [`Installed ${target.label} hooks config: ${path.join(targetDir, target.hooksConfigFileName || 'hooks.json')}`]
+              : [])
+          ]),
       `Developer identity: ${args.developer} (${target.name})`,
       ...(args.subagentBridgeCmd
         ? [`Sub-agent bridge: ${args.subagentBridgeCmd} (timeout: ${args.subagentBridgeTimeoutMs} ms)`]

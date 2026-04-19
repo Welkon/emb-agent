@@ -17,7 +17,8 @@ const DEFAULT_HOSTS = {
     name: 'codex',
     label: 'Codex',
     defaultHomeDirName: '.codex',
-    configFileName: 'config.toml'
+    configFileName: 'config.toml',
+    hooksConfigFileName: 'hooks.json'
   },
   claude: {
     name: 'claude',
@@ -211,6 +212,7 @@ function resolveRuntimeHost(runtimeRoot) {
     name,
     label: metadata.label || defaults.label,
     configFileName: metadata.config_file_name || defaults.configFileName,
+    hooksConfigFileName: metadata.hooks_config_file_name || defaults.hooksConfigFileName || '',
     runtimeRoot: resolvedRoot,
     runtimeHome,
     stateRoot: sourceLayout
@@ -244,6 +246,7 @@ function createInstallHostMetadata(targetDir, target, args) {
     name: target.name,
     label: target.label,
     config_file_name: target.configFileName || '',
+    hooks_config_file_name: target.hooksConfigFileName || '',
     install_scope: args && args.local ? 'local' : 'global',
     install_profile: String((args && args.profile) || 'core').trim() || 'core',
     target_dir: path.resolve(targetDir).replace(/\\/g, '/'),

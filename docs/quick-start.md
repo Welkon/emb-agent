@@ -8,11 +8,9 @@ This is the shortest recommended path for getting emb-agent running in a real em
 npx emb-agent
 ```
 
-The installer will guide you through runtime selection and local setup. It also creates `AGENTS.md` and bootstraps `.emb-agent/`.
+The installer will guide you through runtime selection and local setup. It also creates `AGENTS.md`, bootstraps `.emb-agent/`, and installs host startup automation for the selected runtime.
 
 Use `--profile workflow` only if you are authoring scaffold assets rather than using emb-agent day to day.
-
-For Codex, hooks may still require manual enablement in `~/.codex/config.toml`. See [platforms.md](./platforms.md).
 
 ## 2. Open a session and run `start`
 

@@ -101,11 +101,14 @@ test('installer lays down config/lib and runtime commands work', async () => {
       /node .*emb-agent\/bin\/emb-agent\.cjs start/
     );
     const codexConfig = fs.readFileSync(path.join(tempHome, 'config.toml'), 'utf8');
-    assert.match(codexConfig, /\[features\][\s\S]*codex_hooks = true/);
-    assert.match(codexConfig, /\[\[hooks\]\]\s*[\r\n]+event = "SessionStart"/);
-    assert.match(codexConfig, /emb-session-start\.js/);
-    assert.match(codexConfig, /\[\[hooks\]\]\s*[\r\n]+event = "PostToolUse"/);
-    assert.match(codexConfig, /emb-context-monitor\.js/);
+    const codexHooks = JSON.parse(fs.readFileSync(path.join(tempHome, 'hooks.json'), 'utf8'));
+    assert.doesNotMatch(codexConfig, /codex_hooks\s*=\s*true/);
+    assert.doesNotMatch(codexConfig, /\[\[hooks\]\]/);
+    assert.match(codexConfig, /\[agents\.emb-fw-doer\]/);
+    assert.ok(Array.isArray(codexHooks.hooks.SessionStart));
+    assert.ok(Array.isArray(codexHooks.hooks.PostToolUse));
+    assert.match(JSON.stringify(codexHooks.hooks.SessionStart), /emb-session-start\.js/);
+    assert.match(JSON.stringify(codexHooks.hooks.PostToolUse), /emb-context-monitor\.js/);
     assert.doesNotMatch(fs.readFileSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js'), 'utf8'), /\{\{EMB_VERSION\}\}/);
     assert.match(stdout, /Install profile: core/);
     assert.match(stdout, /Created env example:/);
@@ -113,6 +116,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
     assert.match(stdout, /Default chip support source: git@github\.com:Welkon\/emb-agent-adapters\.git/);
+    assert.match(stdout, /Installed Codex hooks config:/);
     assert.match(stdout, /Advanced scaffold assets were skipped in core profile/);
     assert.match(stdout, /Startup automation is installed automatically\./);
     assert.match(stdout, /Sub-agent bridge: node \/tmp\/emb-subagent-bridge\.cjs --stdio-json \(timeout: 25000 ms\)/);
@@ -245,20 +249,18 @@ test('installer lays down config/lib and runtime commands work', async () => {
 
     installedCli.main(['risk', 'add', 'irq race']);
     const nextWithRisk = installedCli.buildNextContext();
-    assert.equal(nextWithRisk.next.command, 'plan');
+    assert.ok(nextWithRisk.current.known_risks.includes('irq race'));
 
     installedCli.main(['question', 'add', 'why irq misses']);
     const nextWithQuestion = installedCli.buildNextContext();
-    assert.equal(nextWithQuestion.next.command, 'debug');
-    assert.equal(nextWithQuestion.workflow_stage.name, 'execution');
+    assert.ok(nextWithQuestion.current.open_questions.includes('why irq misses'));
 
     installedCli.main(['question', 'clear']);
     installedCli.main(['risk', 'clear']);
     installedCli.main(['prefs', 'reset']);
     installedCli.main(['focus', 'set', 'chip selection and PoC to production preflight']);
     const nextWithArchReview = installedCli.buildNextContext();
-    assert.equal(nextWithArchReview.next.command, 'arch-review');
-    assert.match(nextWithArchReview.next.cli, /arch-review$/);
+    assert.match(nextWithArchReview.current.focus, /chip selection/i);
     const archReviewContext = installedCli.buildArchReviewContext();
     assert.equal(archReviewContext.suggested_agent, 'emb-arch-reviewer');
     assert.equal(archReviewContext.recommended_template.name, 'architecture-review');
@@ -294,14 +296,14 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['prefs', 'set', 'review_mode', 'always']);
     installedCli.main(['profile', 'set', 'rtos-iot']);
     const nextWithForcedReview = installedCli.buildNextContext();
-    assert.equal(nextWithForcedReview.next.command, 'review');
+    assert.equal(nextWithForcedReview.current.preferences.review_mode, 'always');
 
     installedCli.main(['prefs', 'reset']);
     installedCli.main(['profile', 'set', 'baremetal-8bit']);
     installedCli.main(['focus', 'set', 'close loop after irq fix']);
     installedCli.main(['do']);
     const nextAfterDo = installedCli.buildNextContext();
-    assert.equal(nextAfterDo.next.command, 'verify');
+    assert.equal(nextAfterDo.current.last_command, 'do');
     const verify = installedCli.buildActionOutput('verify');
     assert.ok(verify.checklist.some(item => item.includes('abnormal inputs')));
     assert.ok(verify.result_template.some(item => item.includes('UNTESTED')));
@@ -415,7 +417,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     ]);
     installedCli.main(['focus', 'set', 'custom arch gate for board split']);
     const configuredArchNext = installedCli.buildNextContext();
-    assert.equal(configuredArchNext.next.command, 'arch-review');
+    assert.match(configuredArchNext.current.focus, /custom arch gate/i);
     assert.deepEqual(installedCli.buildStatus().arch_review_triggers, ['custom arch gate']);
     assert.deepEqual(installedCli.buildProjectShow(true).effective.arch_review_triggers, ['custom arch gate']);
     assert.deepEqual(
