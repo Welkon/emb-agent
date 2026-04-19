@@ -63,6 +63,29 @@ function createCliRouter(deps) {
       printJson(outputModeHelpers.applyOutputMode(value, parsedOutputMode.brief));
     }
 
+    function emitCommandResult(meta, value, options) {
+      const commandMeta =
+        meta && typeof meta === 'object' && !Array.isArray(meta)
+          ? meta
+          : { cmd: '', subcmd: '' };
+      const settings =
+        options && typeof options === 'object' && !Array.isArray(options)
+          ? options
+          : {};
+
+      if (terminalUi.enabled && parsedOutputMode.json !== true) {
+        if (settings.summary_already_rendered !== true) {
+          if (settings.success_text) {
+            terminalUi.info(settings.success_text);
+          }
+          terminalUi.renderSummary(buildSummaryLines(commandMeta.cmd, commandMeta.subcmd, value));
+        }
+        return;
+      }
+
+      emitJson(value);
+    }
+
     function buildOperationText(cmd, subcmd, rest) {
       const scope = [cmd, subcmd].filter(Boolean).join(' ');
 
@@ -225,6 +248,42 @@ function createCliRouter(deps) {
         }
         if (Array.isArray(payload.reused) && payload.reused.length > 0) {
           lines.push(terminalUi.renderKeyValue('Reused', String(payload.reused.length), 'muted'));
+        }
+        return appendRuntimeEventsSummary(lines, payload);
+      }
+
+      if (cmd === 'start') {
+        const summary =
+          payload.summary && typeof payload.summary === 'object' && !Array.isArray(payload.summary)
+            ? payload.summary
+            : {};
+        const immediate =
+          payload.immediate && typeof payload.immediate === 'object' && !Array.isArray(payload.immediate)
+            ? payload.immediate
+            : {};
+
+        if (summary.project_root) {
+          lines.push(terminalUi.renderKeyValue('Project', summary.project_root, 'info'));
+        }
+        if (summary.active_task && summary.active_task.name) {
+          lines.push(terminalUi.renderKeyValue('Task', summary.active_task.name, 'success'));
+        }
+        if (summary.active_task && summary.active_task.package) {
+          lines.push(terminalUi.renderKeyValue('Package', summary.active_task.package, 'info'));
+        } else if (summary.active_package) {
+          lines.push(terminalUi.renderKeyValue('Package', summary.active_package, 'info'));
+        }
+        if (summary.default_package && summary.default_package !== summary.active_package) {
+          lines.push(terminalUi.renderKeyValue('Default Package', summary.default_package, 'muted'));
+        }
+        if (immediate.command) {
+          lines.push(terminalUi.renderKeyValue('Next', immediate.command, 'success'));
+        }
+        if (immediate.reason) {
+          lines.push(terminalUi.renderKeyValue('Reason', immediate.reason, 'muted'));
+        }
+        if (payload.bootstrap && payload.bootstrap.stage) {
+          lines.push(terminalUi.renderKeyValue('Bootstrap', payload.bootstrap.stage, 'info'));
         }
         return appendRuntimeEventsSummary(lines, payload);
       }
@@ -613,6 +672,60 @@ function createCliRouter(deps) {
         }
       }
 
+      if (cmd === 'task' && subcmd === 'add') {
+        if (payload.created === true) {
+          lines.push(terminalUi.renderKeyValue('Created', 'yes', 'success'));
+        }
+        if (payload.task && payload.task.name) {
+          lines.push(terminalUi.renderKeyValue('Task', payload.task.name, 'info'));
+        }
+        if (payload.task && payload.task.package) {
+          lines.push(terminalUi.renderKeyValue('Package', payload.task.package, 'info'));
+        }
+        if (payload.task && payload.task.path) {
+          lines.push(terminalUi.renderKeyValue('Path', payload.task.path, 'muted'));
+        }
+        return appendRuntimeEventsSummary(lines, payload);
+      }
+
+      if (cmd === 'task' && subcmd === 'activate') {
+        if (payload.activated === true) {
+          lines.push(terminalUi.renderKeyValue('Activated', 'yes', 'success'));
+        }
+        if (payload.task && payload.task.name) {
+          lines.push(terminalUi.renderKeyValue('Task', payload.task.name, 'info'));
+        }
+        if (payload.task && payload.task.package) {
+          lines.push(terminalUi.renderKeyValue('Package', payload.task.package, 'info'));
+        }
+        if (payload.workspace && payload.workspace.mode) {
+          lines.push(terminalUi.renderKeyValue('Mode', payload.workspace.mode, 'muted'));
+        }
+        if (payload.workspace && payload.workspace.path) {
+          lines.push(terminalUi.renderKeyValue('Path', payload.workspace.path, 'muted'));
+        }
+        if (payload.worktree && payload.worktree.summary) {
+          lines.push(terminalUi.renderKeyValue('Summary', payload.worktree.summary, 'muted'));
+        }
+        return appendRuntimeEventsSummary(lines, payload);
+      }
+
+      if (cmd === 'session-report' || (cmd === 'session' && subcmd === 'record')) {
+        if (payload.generated === true) {
+          lines.push(terminalUi.renderKeyValue('Generated', 'yes', 'success'));
+        }
+        if (payload.report_file) {
+          lines.push(terminalUi.renderKeyValue('Report', payload.report_file, 'info'));
+        }
+        if (payload.next && payload.next.command) {
+          lines.push(terminalUi.renderKeyValue('Next', payload.next.command, 'success'));
+        }
+        if (payload.next && payload.next.reason) {
+          lines.push(terminalUi.renderKeyValue('Reason', payload.next.reason, 'muted'));
+        }
+        return appendRuntimeEventsSummary(lines, payload);
+      }
+
       if (cmd === 'executor' && subcmd === 'run') {
         lines.push(terminalUi.renderKeyValue('Executor', payload.executor, 'info'));
         lines.push(
@@ -964,13 +1077,13 @@ function createCliRouter(deps) {
         failure_text: 'emb-agent init failed'
       }, () => runInitCommand(args.slice(1), 'init'));
       if (initialized) {
-        emitJson(initialized);
+        emitCommandResult({ cmd, subcmd }, initialized, { summary_already_rendered: true });
       }
       return;
     }
 
     if (cmd === 'start') {
-      emitJson(buildStartContext());
+      emitCommandResult({ cmd, subcmd }, buildStartContext());
       return;
     }
 
@@ -1051,13 +1164,13 @@ function createCliRouter(deps) {
       }, () => runInitCommand(args.slice(1), 'attach'));
       if (initialized) {
         initialized.legacy_alias = true;
-        emitJson(initialized);
+        emitCommandResult({ cmd, subcmd }, initialized, { summary_already_rendered: true });
       }
       return;
     }
 
     if (cmd === 'ingest') {
-      emitJson(await runWithTerminalUi({
+      emitCommandResult({ cmd, subcmd }, await runWithTerminalUi({
         cmd,
         subcmd,
         text: buildOperationText(cmd, subcmd, rest),
@@ -1065,7 +1178,7 @@ function createCliRouter(deps) {
         failure_text: `ingest ${subcmd || ''}`.trim() + ' failed'
       }, activity => runIngestCommand(subcmd, rest, {
         ui: buildIngestProgressBridge(activity)
-      })));
+      })), { summary_already_rendered: true });
       return;
     }
 
@@ -1094,20 +1207,20 @@ function createCliRouter(deps) {
     }
 
     if (cmd === 'status') {
-      emitJson(runWithTerminalUi({
+      emitCommandResult({ cmd, subcmd }, runWithTerminalUi({
         cmd,
         subcmd,
         text: buildOperationText(cmd, subcmd, rest),
         success_text: 'status updated',
         failure_text: 'status inspection failed',
         activity: false
-      }, () => buildStatus()));
+      }, () => buildStatus()), { summary_already_rendered: true });
       return;
     }
 
     if (cmd === 'bootstrap') {
       if (!subcmd || subcmd === 'show') {
-        emitJson(runWithTerminalUi({
+        emitCommandResult({ cmd, subcmd }, runWithTerminalUi({
           cmd,
           subcmd,
           text: buildOperationText(cmd, subcmd, rest),
@@ -1119,7 +1232,7 @@ function createCliRouter(deps) {
             current.last_command = 'bootstrap';
           });
           return buildBootstrapReport();
-        }));
+        }), { summary_already_rendered: true });
         return;
       }
 
@@ -1161,7 +1274,7 @@ function createCliRouter(deps) {
           return;
         }
 
-        emitJson(await runWithTerminalUi({
+        emitCommandResult({ cmd, subcmd }, await runWithTerminalUi({
           cmd,
           subcmd,
           text: stage.label ? `Bootstrap: ${stage.label}` : buildOperationText(cmd, subcmd, rest),
@@ -1214,7 +1327,7 @@ function createCliRouter(deps) {
             stage,
             bootstrap
           };
-        }));
+        }), { summary_already_rendered: true });
         return;
       }
 
@@ -1232,13 +1345,13 @@ function createCliRouter(deps) {
 
     if (cmd === 'next') {
       if (subcmd === 'run') {
-        emitJson(runWithTerminalUi({
+        emitCommandResult({ cmd, subcmd }, runWithTerminalUi({
           cmd,
           subcmd,
           text: buildOperationText(cmd, subcmd, rest),
           success_text: 'next stage entered',
           failure_text: 'next run failed'
-        }, () => executeDispatchCommand('next', { entered_via: 'next run' })));
+        }, () => executeDispatchCommand('next', { entered_via: 'next run' })), { summary_already_rendered: true });
         return;
       }
 
@@ -1261,7 +1374,7 @@ function createCliRouter(deps) {
       }
 
       const context = buildNextContext();
-      emitJson(runWithTerminalUi({
+      emitCommandResult({ cmd, subcmd }, runWithTerminalUi({
         cmd,
         subcmd,
         text: buildOperationText(cmd, subcmd, rest),
@@ -1274,7 +1387,7 @@ function createCliRouter(deps) {
         });
         context.current.last_command = session.last_command || '';
         return context;
-      }));
+      }), { summary_already_rendered: true });
       return;
     }
 
@@ -1399,13 +1512,13 @@ function createCliRouter(deps) {
     }
 
     if (cmd === 'executor' && subcmd === 'run') {
-      emitJson(runWithTerminalUi({
+      emitCommandResult({ cmd, subcmd }, runWithTerminalUi({
         cmd,
         subcmd,
         text: buildOperationText(cmd, subcmd, rest),
         success_text: `${cmd} ${subcmd}`.trim() + ' completed',
         failure_text: `${cmd} ${subcmd}`.trim() + ' failed'
-      }, () => handleCatalogAndStateCommands(cmd, subcmd, rest)));
+      }, () => handleCatalogAndStateCommands(cmd, subcmd, rest)), { summary_already_rendered: true });
       return;
     }
 
@@ -1414,14 +1527,23 @@ function createCliRouter(deps) {
       if (cmd === 'task' && subcmd === 'worktree') {
         const worktreeAction = rest[0] || 'list';
         const interactiveAction = worktreeAction === 'create' || worktreeAction === 'cleanup' || worktreeAction === 'remove';
-        emitJson(runWithTerminalUi({
+        emitCommandResult({ cmd, subcmd }, runWithTerminalUi({
           cmd,
           subcmd,
           text: buildOperationText(cmd, `${subcmd} ${worktreeAction}`.trim(), rest.slice(1)),
           success_text: `task worktree ${worktreeAction}`.trim() + ' updated',
           failure_text: `task worktree ${worktreeAction}`.trim() + ' failed',
           activity: interactiveAction
-        }, () => stateCommandResult));
+        }, () => stateCommandResult), { summary_already_rendered: true });
+        return;
+      }
+
+      if (
+        (cmd === 'task' && ['add', 'activate'].includes(subcmd || '')) ||
+        cmd === 'session-report' ||
+        (cmd === 'session' && subcmd === 'record')
+      ) {
+        emitCommandResult({ cmd, subcmd }, stateCommandResult);
         return;
       }
 
@@ -1430,7 +1552,7 @@ function createCliRouter(deps) {
     }
 
     if (cmd === 'doc' && subcmd === 'fetch') {
-      emitJson(await runWithTerminalUi({
+      emitCommandResult({ cmd, subcmd }, await runWithTerminalUi({
         cmd,
         subcmd,
         text: buildOperationText(cmd, subcmd, rest),
@@ -1438,7 +1560,7 @@ function createCliRouter(deps) {
         failure_text: 'doc fetch failed'
       }, activity => handleDocCommands(cmd, subcmd, rest, {
         ui: buildDocCommandProgressBridge(activity)
-      })));
+      })), { summary_already_rendered: true });
       return;
     }
 
@@ -1455,14 +1577,14 @@ function createCliRouter(deps) {
     const actionCommandResult = handleActionCommands(cmd, subcmd, rest);
     if (actionCommandResult !== undefined) {
       if (['scan', 'plan', 'do', 'debug', 'review', 'verify'].includes(cmd) && !subcmd) {
-        emitJson(runWithTerminalUi({
+        emitCommandResult({ cmd, subcmd }, runWithTerminalUi({
           cmd,
           subcmd,
           text: buildOperationText(cmd, subcmd, rest),
           success_text: `${cmd} context updated`,
           failure_text: `${cmd} failed`,
           activity: false
-        }, () => actionCommandResult));
+        }, () => actionCommandResult), { summary_already_rendered: true });
       } else {
         emitJson(actionCommandResult);
       }
@@ -1478,13 +1600,13 @@ function createCliRouter(deps) {
     }
 
     if (cmd === 'tool' && subcmd === 'run') {
-      emitJson(runWithTerminalUi({
+      emitCommandResult({ cmd, subcmd }, runWithTerminalUi({
         cmd,
         subcmd,
         text: buildOperationText(cmd, subcmd, rest),
         success_text: `${cmd} ${subcmd}`.trim() + ' completed',
         failure_text: `${cmd} ${subcmd}`.trim() + ' failed'
-      }, () => handleAdapterToolChipCommands(cmd, subcmd, rest)));
+      }, () => handleAdapterToolChipCommands(cmd, subcmd, rest)), { summary_already_rendered: true });
       return;
     }
 
@@ -1495,13 +1617,13 @@ function createCliRouter(deps) {
         (subcmd === 'analysis' && rest[0] === 'init')
       )
     ) {
-      emitJson(await runWithTerminalUi({
+      emitCommandResult({ cmd, subcmd }, await runWithTerminalUi({
         cmd,
         subcmd,
         text: buildOperationText(cmd, subcmd, rest),
         success_text: `${cmd} ${subcmd}`.trim() + ' completed',
         failure_text: `${cmd} ${subcmd}`.trim() + ' failed'
-      }, () => handleAdapterToolChipCommands(cmd, subcmd, rest)));
+      }, () => handleAdapterToolChipCommands(cmd, subcmd, rest)), { summary_already_rendered: true });
       return;
     }
 

@@ -443,9 +443,36 @@ test('start and next expose package-aware monorepo entry context', async () => {
     assert.equal(start.summary.default_package, 'app');
     assert.equal(start.summary.active_package, 'app');
 
+    const startTty = await captureCliTtyOutput(['start']);
+    assert.equal(startTty.stdout.trim(), '');
+    assert.match(startTty.stderr, /Project: .*emb-agent-start-package-/);
+    assert.match(startTty.stderr, /Package: app/);
+    assert.match(startTty.stderr, /Bootstrap: define-project-constraints/);
+
     const output = await captureCliTtyOutput(['next']);
+    assert.equal(output.stdout.trim(), '');
     assert.match(output.stderr, /Package: app/);
     assert.match(output.stderr, /Next: scan/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('next does not skip hardware bootstrap when identity is still missing', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-next-hw-gate-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    fs.mkdirSync(path.join(tempProject, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, 'src', 'main.c'), '// bring-up\n', 'utf8');
+
+    await captureCliJson(['init']);
+
+    const next = await captureCliJson(['next']);
+    assert.equal(next.next.command, 'scan');
+    assert.match(next.next.reason, /Hardware identity is still missing/i);
+    assert.doesNotMatch(next.next.reason, /Context is already sufficient/i);
   } finally {
     process.chdir(currentCwd);
   }

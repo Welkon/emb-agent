@@ -428,6 +428,7 @@ const {
   RUNTIME_CONFIG,
   DEFAULT_ARCH_REVIEW_PATTERNS,
   getRuntimeHost: () => runtimeHost.resolveRuntimeHost(ROOT),
+  buildInitGuidance: (...args) => buildInitGuidance(...args),
   resolveSession,
   getProjectStatePaths,
   getHealthReport: () => buildHealthReport(),
