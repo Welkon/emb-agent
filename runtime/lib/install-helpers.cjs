@@ -1785,7 +1785,7 @@ function createInstallHelpers(deps) {
     ];
 
     reporter.complete(target, runtimeDir, projectBootstrap, installProfile);
-    if (!args.interactive || !reporter.enabled) {
+    if (!reporter.enabled) {
       process.stdout.write(lines.join('\n') + '\n');
     }
   }
