@@ -100,6 +100,52 @@ test('session-report writes lightweight session report with next guidance', asyn
   }
 });
 
+test('session-report records package-aware monorepo context', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-package-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    fs.writeFileSync(
+      path.join(tempProject, 'pnpm-workspace.yaml'),
+      ['packages:', '  - packages/*', ''].join('\n'),
+      'utf8'
+    );
+    fs.mkdirSync(path.join(tempProject, 'packages', 'app'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, 'packages', 'fw'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempProject, 'packages', 'app', 'package.json'),
+      JSON.stringify({ name: '@demo/app' }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(tempProject, 'packages', 'fw', 'package.json'),
+      JSON.stringify({ name: '@demo/fw' }, null, 2) + '\n',
+      'utf8'
+    );
+
+    await cli.main(['init']);
+    const created = await captureCliJson(['task', 'add', 'Capture package-aware report', '--package', 'fw']);
+    await captureCliJson(['task', 'activate', created.task.name]);
+    await cli.main(['session-report', 'capture package-aware state']);
+
+    const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
+    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
+    assert.equal(reports.length, 1);
+
+    const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
+    assert.match(content, /default_package: app/);
+    assert.match(content, /active_package: fw/);
+    assert.match(content, /active_task: .* \[fw\] \(in_progress\)/);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('session-report also performs auto-memory extraction at session boundary', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-memory-'));
   const currentCwd = process.cwd();

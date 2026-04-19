@@ -240,6 +240,13 @@ test('applyOutputMode builds brief start context payload with external driver hi
       project_root: '/tmp/demo',
       initialized: true,
       handoff_present: false,
+      default_package: 'app',
+      active_package: 'fw',
+      active_task: {
+        name: 'adc-path',
+        status: 'in_progress',
+        package: 'fw'
+      },
       hardware_identity: {
         vendor: 'SCMCU',
         model: 'SC8F072',
@@ -274,6 +281,9 @@ test('applyOutputMode builds brief start context payload with external driver hi
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.entry, 'start');
+  assert.equal(output.summary.default_package, 'app');
+  assert.equal(output.summary.active_package, 'fw');
+  assert.equal(output.summary.active_task.package, 'fw');
   assert.equal(output.immediate.command, 'task add <summary>');
   assert.equal(output.runtime_events.status, 'ok');
   assert.deepEqual(output.runtime_events.types, ['workflow-start']);
@@ -316,7 +326,14 @@ test('applyOutputMode builds brief init output with external driver hints', () =
 test('applyOutputMode keeps runtime event summaries compact for automation callers', () => {
   const output = outputMode.applyOutputMode({
     current: {
-      profile: 'baremetal-8bit'
+      profile: 'baremetal-8bit',
+      default_package: 'app',
+      active_package: 'fw'
+    },
+    task: {
+      name: 'adc-path',
+      status: 'in_progress',
+      package: 'fw'
     },
     next: {
       command: 'scan',
@@ -335,6 +352,9 @@ test('applyOutputMode keeps runtime event summaries compact for automation calle
   }, true);
 
   assert.equal(output.output_mode, 'brief');
+  assert.equal(output.current.default_package, 'app');
+  assert.equal(output.current.active_package, 'fw');
+  assert.equal(output.task.package, 'fw');
   assert.equal(Array.isArray(output.runtime_events), false);
   assert.equal(output.runtime_events.status, 'pending');
   assert.equal(output.runtime_events.total, 1);
@@ -379,6 +399,13 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
     runtime_host: 'codex',
     project_root: '/tmp/demo',
     project_profile: 'baremetal-8bit',
+    default_package: 'app',
+    active_package: 'fw',
+    active_task: {
+      name: 'adc-path',
+      status: 'in_progress',
+      package: 'fw'
+    },
     context_hygiene: { level: 'ok' },
     subagent_bridge: {
       available: true,
@@ -412,6 +439,10 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
       }
     ]
   }, true);
+
+  assert.equal(statusOutput.default_package, 'app');
+  assert.equal(statusOutput.active_package, 'fw');
+  assert.equal(statusOutput.active_task.package, 'fw');
 
   const dispatchOutput = outputMode.applyOutputMode({
     requested_action: 'next',
