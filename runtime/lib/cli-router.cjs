@@ -261,6 +261,19 @@ function createCliRouter(deps) {
           payload.immediate && typeof payload.immediate === 'object' && !Array.isArray(payload.immediate)
             ? payload.immediate
             : {};
+        const bootstrapStage =
+          payload.bootstrap && payload.bootstrap.stage
+            ? String(payload.bootstrap.stage).trim()
+            : '';
+        let firstInstruction = '';
+
+        if (bootstrapStage === 'define-project-constraints') {
+          firstInstruction = 'Open .emb-agent/req.yaml and record the project type, inputs/outputs, interfaces, and constraints.';
+        } else if (bootstrapStage === 'confirm-hardware-identity') {
+          firstInstruction = 'Open .emb-agent/hw.yaml and record the real MCU and package before execution.';
+        } else if (summary.active_task && summary.active_task.name) {
+          firstInstruction = `Continue the active task ${summary.active_task.name} before starting new work.`;
+        }
 
         if (summary.project_root) {
           lines.push(terminalUi.renderKeyValue('Project', summary.project_root, 'info'));
@@ -276,14 +289,20 @@ function createCliRouter(deps) {
         if (summary.default_package && summary.default_package !== summary.active_package) {
           lines.push(terminalUi.renderKeyValue('Default Package', summary.default_package, 'muted'));
         }
+        if (bootstrapStage) {
+          lines.push(terminalUi.renderKeyValue('Bootstrap', bootstrapStage, 'info'));
+        }
         if (immediate.command) {
           lines.push(terminalUi.renderKeyValue('Next', immediate.command, 'success'));
         }
         if (immediate.reason) {
           lines.push(terminalUi.renderKeyValue('Reason', immediate.reason, 'muted'));
         }
-        if (payload.bootstrap && payload.bootstrap.stage) {
-          lines.push(terminalUi.renderKeyValue('Bootstrap', payload.bootstrap.stage, 'info'));
+        if (firstInstruction) {
+          lines.push(terminalUi.renderKeyValue('First', firstInstruction, 'muted'));
+        }
+        if (immediate.cli && immediate.command && immediate.command !== 'next') {
+          lines.push(terminalUi.renderKeyValue('CLI', immediate.cli, 'success'));
         }
         return appendRuntimeEventsSummary(lines, payload);
       }
