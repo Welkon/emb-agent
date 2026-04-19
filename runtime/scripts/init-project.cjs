@@ -8,10 +8,19 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const runtimeHostHelpers = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
+const workflowImportHelpers = require(path.join(ROOT, 'lib', 'workflow-import.cjs'));
 const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
+const workflowImport = workflowImportHelpers.createWorkflowImportHelpers({
+  childProcess: require('child_process'),
+  fs,
+  os: require('os'),
+  path,
+  runtime,
+  workflowRegistry
+});
 const BOOTSTRAP_TASK_NAME = '00-bootstrap-project';
 const BOOTSTRAP_TASK_CHANNELS = ['implement', 'check', 'debug'];
 const PROJECT_AGENTS_PATH = 'AGENTS.md';
@@ -22,7 +31,7 @@ function usage() {
       'init-project usage:',
       '  node scripts/init-project.cjs',
       '  node scripts/init-project.cjs --project <repo-root>',
-      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--pack <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>]',
+      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--pack <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>]',
       '  node scripts/init-project.cjs --force'
     ].join('\n') + '\n'
   );
@@ -37,6 +46,9 @@ function parseArgs(argv) {
     runtimeSet: false,
     user: '',
     userSet: false,
+    registry: '',
+    registryBranch: '',
+    registrySubdir: '',
     force: false,
     help: false
   };
@@ -105,6 +117,21 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (token === '--registry' || token === '-r') {
+      result.registry = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
+    if (token === '--registry-branch') {
+      result.registryBranch = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
+    if (token === '--registry-subdir') {
+      result.registrySubdir = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
     if (token === '--force') {
       result.force = true;
       continue;
@@ -125,12 +152,162 @@ function parseArgs(argv) {
   if ((argv.includes('--user') || argv.includes('-u')) && !result.user) {
     throw new Error('Missing name after --user/-u');
   }
+  if ((argv.includes('--registry') || argv.includes('-r')) && !result.registry) {
+    throw new Error('Missing source after --registry/-r');
+  }
+  if (argv.includes('--registry-branch') && !result.registryBranch) {
+    throw new Error('Missing name after --registry-branch');
+  }
+  if (argv.includes('--registry-subdir') && !result.registrySubdir) {
+    throw new Error('Missing path after --registry-subdir');
+  }
 
   return result;
 }
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function normalizeMonorepoPath(value) {
+  return String(value || '').trim().replace(/\\/g, '/').replace(/^\/+/g, '').replace(/\/+$/g, '');
+}
+
+function readPackageNameFromDir(projectRoot, relativeDir) {
+  const packageJsonPath = path.join(projectRoot, relativeDir, 'package.json');
+  if (fs.existsSync(packageJsonPath)) {
+    try {
+      const parsed = runtime.readJson(packageJsonPath);
+      const rawName = String(parsed.name || '').trim();
+      if (rawName) {
+        return rawName.split('/').pop();
+      }
+    } catch {}
+  }
+
+  return path.basename(relativeDir);
+}
+
+function detectPackageType(projectRoot, relativeDir) {
+  if (fs.existsSync(path.join(projectRoot, relativeDir, 'package.json'))) {
+    return 'node';
+  }
+  if (fs.existsSync(path.join(projectRoot, relativeDir, 'Cargo.toml'))) {
+    return 'rust';
+  }
+  if (fs.existsSync(path.join(projectRoot, relativeDir, 'pyproject.toml'))) {
+    return 'python';
+  }
+  if (fs.existsSync(path.join(projectRoot, relativeDir, 'go.mod'))) {
+    return 'go';
+  }
+  return 'unknown';
+}
+
+function expandWorkspacePattern(projectRoot, pattern) {
+  const normalized = normalizeMonorepoPath(pattern);
+  if (!normalized || normalized === '.') {
+    return [];
+  }
+
+  if (!normalized.includes('*')) {
+    const absolutePath = path.join(projectRoot, normalized);
+    return fs.existsSync(absolutePath) && fs.statSync(absolutePath).isDirectory()
+      ? [normalized]
+      : [];
+  }
+
+  if (!normalized.endsWith('/*')) {
+    return [];
+  }
+
+  const baseDir = normalized.slice(0, -2);
+  const absoluteBaseDir = path.join(projectRoot, baseDir);
+  if (!fs.existsSync(absoluteBaseDir) || !fs.statSync(absoluteBaseDir).isDirectory()) {
+    return [];
+  }
+
+  return fs.readdirSync(absoluteBaseDir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => normalizeMonorepoPath(path.posix.join(baseDir, entry.name)));
+}
+
+function parseGitmodules(projectRoot) {
+  const gitmodulesPath = path.join(projectRoot, '.gitmodules');
+  if (!fs.existsSync(gitmodulesPath)) {
+    return [];
+  }
+
+  const matches = [];
+  const content = fs.readFileSync(gitmodulesPath, 'utf8');
+  const pattern = /^\s*path\s*=\s*(.+)\s*$/gm;
+  let match = pattern.exec(content);
+  while (match) {
+    matches.push(normalizeMonorepoPath(match[1]));
+    match = pattern.exec(content);
+  }
+  return matches.filter(Boolean);
+}
+
+function detectMonorepoPackages(projectRoot) {
+  const byPath = new Map();
+  const submodulePaths = new Set(parseGitmodules(projectRoot));
+
+  function addPackage(relativeDir) {
+    const normalizedPath = normalizeMonorepoPath(relativeDir);
+    if (!normalizedPath || normalizedPath === '.' || byPath.has(normalizedPath)) {
+      return;
+    }
+    const absolutePath = path.join(projectRoot, normalizedPath);
+    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isDirectory()) {
+      return;
+    }
+
+    byPath.set(normalizedPath, {
+      name: readPackageNameFromDir(projectRoot, normalizedPath),
+      path: normalizedPath,
+      type: detectPackageType(projectRoot, normalizedPath),
+      submodule: submodulePaths.has(normalizedPath)
+    });
+  }
+
+  const pnpmWorkspacePath = path.join(projectRoot, 'pnpm-workspace.yaml');
+  if (fs.existsSync(pnpmWorkspacePath)) {
+    const parsed = runtime.parseSimpleYaml(pnpmWorkspacePath);
+    const packages = Array.isArray(parsed.packages) ? parsed.packages : [];
+    packages.forEach(pattern => {
+      expandWorkspacePattern(projectRoot, pattern).forEach(addPackage);
+    });
+  }
+
+  const packageJsonPath = path.join(projectRoot, 'package.json');
+  if (fs.existsSync(packageJsonPath)) {
+    try {
+      const parsed = runtime.readJson(packageJsonPath);
+      const workspaces = Array.isArray(parsed.workspaces)
+        ? parsed.workspaces
+        : Array.isArray(parsed.workspaces && parsed.workspaces.packages)
+          ? parsed.workspaces.packages
+          : [];
+      workspaces.forEach(pattern => {
+        expandWorkspacePattern(projectRoot, pattern).forEach(addPackage);
+      });
+    } catch {}
+  }
+
+  submodulePaths.forEach(addPackage);
+
+  const packages = Array.from(byPath.values())
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const defaultPackage =
+    packages.find(item => item.submodule !== true) ||
+    packages[0] ||
+    null;
+
+  return {
+    packages,
+    default_package: defaultPackage ? defaultPackage.name : ''
+  };
 }
 
 function loadBuiltInProfile(name) {
@@ -267,6 +444,7 @@ function buildProjectConfig(projectRoot, args) {
   }
   runtime.initProjectLayout(projectRoot);
   const workflowCatalog = loadWorkflowCatalog(projectRoot);
+  const monorepo = detectMonorepoPackages(projectRoot);
 
   const active_packs = runtime.unique((args.packs || []).filter(Boolean));
 
@@ -276,6 +454,9 @@ function buildProjectConfig(projectRoot, args) {
     {
       project_profile,
       active_packs,
+      packages: monorepo.packages,
+      default_package: monorepo.default_package,
+      active_package: monorepo.default_package,
       chip_support_sources: [],
       executors: {},
       quality_gates: {
@@ -771,6 +952,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   const bootstrapDocsPlan = buildBootstrapDocsPlan(projectRoot, effectiveProjectConfig, workflowCatalog);
   const projectAgentsGuide = ensureProjectAgentsGuide(projectRoot, force);
   const worktreeConfig = ensureWorktreeConfig(projectRoot, force);
+  let workflowRegistryImport = null;
 
   for (const item of truthPlan) {
     const outputPath = path.join(projectRoot, item.output);
@@ -806,11 +988,20 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     reused.push(bootstrapTask.path);
   }
 
+  if (initOptions.registry) {
+    workflowRegistryImport = workflowImport.importProjectWorkflowRegistry(projectRoot, initOptions.registry, {
+      branch: initOptions.registryBranch,
+      subdir: initOptions.registrySubdir,
+      force
+    });
+  }
+
   return {
     project_root: projectRoot,
     project_config: path.relative(projectRoot, projectConfigPath),
     defaults: effectiveProjectConfig,
     bootstrap_task: bootstrapTask,
+    workflow_registry_import: workflowRegistryImport,
     created,
     updated,
     reused

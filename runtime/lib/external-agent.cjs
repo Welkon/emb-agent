@@ -184,7 +184,7 @@ function createExternalAgentHelpers() {
 
     return buildEnvelope('status', runtimeHost, {
       status: 'inspection',
-      summary: 'Use next to continue the workflow.',
+      summary: 'Run next to continue the workflow.',
       runtime_events: summarizeProtocolRuntimeEvents(source),
       session_state:
         source.session_state && typeof source.session_state === 'object' && !Array.isArray(source.session_state)

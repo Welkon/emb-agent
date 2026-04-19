@@ -198,11 +198,11 @@ function buildFocusOrder(resolved) {
   const context = buildContext(resolved);
 
   return runtime.unique([
-    context.focus ? `Current focus: ${context.focus}` : '',
-    ...context.focusAreas.map(area => `Scenario focus: ${area}`),
-    ...context.lastFiles.map(file => `Recent file: ${file}`),
-    ...context.openQuestions.slice(0, 2).map(question => `Open question: ${question}`),
-    ...context.knownRisks.slice(0, 2).map(risk => `Known risk: ${risk}`)
+    context.focus ? `focus=${context.focus}` : '',
+    ...context.focusAreas.map(area => `scenario_focus=${area}`),
+    ...context.lastFiles.map(file => `recent_file=${file}`),
+    ...context.openQuestions.slice(0, 2).map(question => `open_question=${question}`),
+    ...context.knownRisks.slice(0, 2).map(risk => `known_risk=${risk}`)
   ]);
 }
 
@@ -1365,10 +1365,10 @@ function buildDefaultOpenQuestions(resolved) {
 function buildNextReads(resolved) {
   const context = buildContext(resolved);
   const hintedReads = buildPreferredReadKeys(resolved).map(key => READ_HINTS[key] || key);
-  const truthFiles = getProjectTruthFiles(resolved).map(file => `Project truth layer: ${file}`);
-  const schematicReads = getRecentSchematicParsedFiles(resolved).map(file => `Normalized schematic data: ${file}`);
+  const truthFiles = getProjectTruthFiles(resolved).map(file => `truth_layer=${file}`);
+  const schematicReads = getRecentSchematicParsedFiles(resolved).map(file => `schematic_data=${file}`);
   const schematicAnalysisReads = getRecentSchematicAnalyses(resolved).map(item =>
-    `Schematic agent handoff: ${item.summary_file}${item.recommended_agent ? ` -> ${item.recommended_agent}` : ''}`
+    `schematic_handoff=${item.summary_file}${item.recommended_agent ? ` -> ${item.recommended_agent}` : ''}`
   );
 
   return runtime.unique([
@@ -1376,14 +1376,14 @@ function buildNextReads(resolved) {
     ...schematicReads,
     ...schematicAnalysisReads,
     context.isBlankSelectionMode
-      ? `Selection input first: ${runtime.getProjectAssetRelativePath('req.yaml')}`
+      ? `selection_input=${runtime.getProjectAssetRelativePath('req.yaml')}`
       : '',
     context.isBlankSelectionMode
-      ? 'Collect only decision-shaping facts first: power, package, IO, peripherals, timing, cost, environment'
+      ? 'selection_scope=collect only decision-shaping facts first: power, package, IO, peripherals, timing, cost, environment'
       : '',
     ...hintedReads,
-    context.lastFiles[0] ? `Re-read recent file: ${context.lastFiles[0]}` : '',
-    context.knownRisks[0] ? `Re-check risk source: ${context.knownRisks[0]}` : ''
+    context.lastFiles[0] ? `reread_recent_file=${context.lastFiles[0]}` : '',
+    context.knownRisks[0] ? `risk_source=${context.knownRisks[0]}` : ''
   ]);
 }
 
@@ -1465,9 +1465,9 @@ function buildVerificationEvidenceTargets(resolved) {
     : [];
 
   return runtime.unique([
-    ...truthFiles.map(file => `Project truth layer: ${file}`),
-    ...(resolved.session.last_files || []).slice(0, 3).map(file => `Recent file: ${file}`),
-    ...suggestedSources.slice(0, 2).map(item => `Source summary: ${item.path}`)
+    ...truthFiles.map(file => `truth_layer=${file}`),
+    ...(resolved.session.last_files || []).slice(0, 3).map(file => `recent_file=${file}`),
+    ...suggestedSources.slice(0, 2).map(item => `source_summary=${item.path}`)
   ]);
 }
 
@@ -1789,20 +1789,20 @@ function buildForensicsOutput(resolved) {
     problem:
       diagnostics.problem ||
       (latestExecutor && ['failed', 'error'].includes(latestExecutor.status)
-        ? `Latest executor ${latestExecutor.name || 'unknown'} ${latestExecutor.status}`
+        ? `executor=${latestExecutor.name || 'unknown'}; status=${latestExecutor.status}`
         : '') ||
       resolved.session.focus ||
       'The current problem is still drifting; forensics should come first',
     evidence_sources: runtime.unique([
-      diagnostics.report_file ? `Latest forensics: ${diagnostics.report_file}` : '',
+      diagnostics.report_file ? `forensics_report=${diagnostics.report_file}` : '',
       latestExecutor && latestExecutor.name
-        ? `Latest executor: ${latestExecutor.name} ${latestExecutor.status || 'unknown'}${
+        ? `executor_status=${latestExecutor.name}; status=${latestExecutor.status || 'unknown'}${
           latestExecutor.exit_code === null ? '' : `, exit=${latestExecutor.exit_code}`
         }`
         : '',
-      latestExecutor && latestExecutor.stderr_preview ? `Executor stderr summary: ${latestExecutor.stderr_preview}` : '',
-      ...(resolved.session.last_files || []).slice(0, 2).map(file => `Recent file: ${file}`),
-      ...getProjectTruthFiles(resolved).map(file => `Project truth layer: ${file}`)
+      latestExecutor && latestExecutor.stderr_preview ? `executor_stderr=${latestExecutor.stderr_preview}` : '',
+      ...(resolved.session.last_files || []).slice(0, 2).map(file => `recent_file=${file}`),
+      ...getProjectTruthFiles(resolved).map(file => `truth_layer=${file}`)
     ]),
     findings_template: [
       'Observed symptom',

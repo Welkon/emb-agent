@@ -1,5 +1,6 @@
 'use strict';
 
+const childProcess = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
@@ -559,6 +560,56 @@ function ensureBoolean(value, label, fallback) {
   return value;
 }
 
+function normalizePackagePath(value, label) {
+  const normalized = ensureOptionalString(value, label).replace(/\\/g, '/').replace(/^\/+/g, '');
+  if (normalized.includes('..')) {
+    throw new Error(`${label} must stay inside the project root`);
+  }
+  return normalized;
+}
+
+function validateProjectPackageEntry(value, index) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`packages[${index}] must be an object`);
+  }
+
+  return {
+    name: ensureString(value.name, `packages[${index}].name`),
+    path: normalizePackagePath(value.path, `packages[${index}].path`),
+    type: ensureOptionalString(value.type, `packages[${index}].type`) || 'unknown',
+    submodule: ensureBoolean(value.submodule, `packages[${index}].submodule`, false)
+  };
+}
+
+function validateProjectPackages(value) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error('packages must be an array');
+  }
+
+  const seenNames = new Set();
+  const seenPaths = new Set();
+
+  return value.map((item, index) => {
+    const entry = validateProjectPackageEntry(item, index);
+    const normalizedName = entry.name.toLowerCase();
+    const normalizedPath = entry.path.toLowerCase();
+
+    if (seenNames.has(normalizedName)) {
+      throw new Error(`packages[${index}].name must be unique`);
+    }
+    if (seenPaths.has(normalizedPath)) {
+      throw new Error(`packages[${index}].path must be unique`);
+    }
+
+    seenNames.add(normalizedName);
+    seenPaths.add(normalizedPath);
+    return entry;
+  });
+}
+
 function normalizeActiveTask(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {
@@ -566,6 +617,7 @@ function normalizeActiveTask(value) {
       title: '',
       status: '',
       path: '',
+      package: '',
       updated_at: ''
     };
   }
@@ -575,6 +627,7 @@ function normalizeActiveTask(value) {
     title: ensureOptionalString(value.title, 'active_task.title'),
     status: ensureOptionalString(value.status, 'active_task.status'),
     path: normalizeProjectRelativePath(ensureOptionalString(value.path, 'active_task.path')),
+    package: ensureOptionalString(value.package, 'active_task.package'),
     updated_at: ensureOptionalString(value.updated_at, 'active_task.updated_at')
   };
 }
@@ -1289,10 +1342,24 @@ function validatePermissionsConfig(config) {
 
 function validateProjectConfig(config, runtimeConfig) {
   expectObject(config, 'Project config');
+  const packages = validateProjectPackages(config.packages || []);
+  const defaultPackage = ensureOptionalString(config.default_package, 'default_package');
+  const activePackage = ensureOptionalString(config.active_package, 'active_package');
+  const knownPackages = new Set(packages.map(item => item.name));
+
+  if (defaultPackage && packages.length > 0 && !knownPackages.has(defaultPackage)) {
+    throw new Error(`default_package must exist in packages: ${defaultPackage}`);
+  }
+  if (activePackage && packages.length > 0 && !knownPackages.has(activePackage)) {
+    throw new Error(`active_package must exist in packages: ${activePackage}`);
+  }
 
   return {
     project_profile: ensureOptionalString(config.project_profile, 'project_profile'),
     active_packs: ensureStringArray(config.active_packs || [], 'active_packs'),
+    packages,
+    default_package: packages.length > 0 ? defaultPackage : '',
+    active_package: packages.length > 0 ? (activePackage || defaultPackage) : '',
     chip_support_sources: validateAdapterSources(config.chip_support_sources || []),
     executors: validateExecutors(config.executors || {}),
     quality_gates: validateQualityGates(config.quality_gates || {}),
@@ -1411,6 +1478,23 @@ function getProjectKey(projectRoot) {
   return crypto.createHash('sha1').update(path.resolve(projectRoot)).digest('hex').slice(0, 12);
 }
 
+function detectGitBranch(projectRoot) {
+  const cwd = path.resolve(projectRoot || process.cwd());
+  if (!fs.existsSync(path.join(cwd, '.git'))) {
+    return '';
+  }
+
+  try {
+    return String(childProcess.execFileSync('git', ['branch', '--show-current'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 function getProjectStatePaths(rootDir, cwd, runtimeConfig) {
   const projectRoot = path.resolve(cwd);
   const projectKey = getProjectKey(projectRoot);
@@ -1509,11 +1593,17 @@ function normalizeSession(session, paths, runtimeConfig, projectConfig) {
     projectConfig && projectConfig.developer
       ? validateDeveloperConfig(projectConfig.developer)
       : validateDeveloperConfig({});
+  const projectPackages =
+    projectConfig && Array.isArray(projectConfig.packages)
+      ? validateProjectPackages(projectConfig.packages)
+      : [];
+  const knownPackages = new Set(projectPackages.map(item => item.name));
 
   next.session_version = defaults.session_version;
   next.project_root = paths.projectRoot;
   next.project_key = paths.projectKey;
   next.project_name = path.basename(paths.projectRoot);
+  next.git_branch = detectGitBranch(paths.projectRoot);
   next.project_profile =
     ensureOptionalString(next.project_profile, 'project_profile') ||
     ((projectConfig && projectConfig.project_profile) || '');
@@ -1524,6 +1614,30 @@ function normalizeSession(session, paths, runtimeConfig, projectConfig) {
         ? ensureStringArray(projectConfig.active_packs, 'active_packs')
         : []
   );
+  next.packages =
+    Array.isArray(next.packages) && next.packages.length > 0
+      ? validateProjectPackages(next.packages)
+      : projectPackages;
+  next.default_package =
+    ensureOptionalString(next.default_package, 'default_package') ||
+    ((projectConfig && projectConfig.default_package) || '');
+  next.active_task = normalizeActiveTask(next.active_task || {});
+  next.active_package =
+    ensureOptionalString(next.active_package, 'active_package') ||
+    next.active_task.package ||
+    ((projectConfig && projectConfig.active_package) || '') ||
+    next.default_package;
+  if (next.packages.length === 0) {
+    next.default_package = '';
+    next.active_package = '';
+  } else {
+    if (next.default_package && !knownPackages.has(next.default_package)) {
+      next.default_package = (projectConfig && projectConfig.default_package) || '';
+    }
+    if (next.active_package && !knownPackages.has(next.active_package)) {
+      next.active_package = next.default_package || '';
+    }
+  }
   const developerSource =
     !next.developer || typeof next.developer !== 'object' || Array.isArray(next.developer)
       ? {}
@@ -1539,7 +1653,6 @@ function normalizeSession(session, paths, runtimeConfig, projectConfig) {
     .slice(0, defaults.max_last_files);
   next.open_questions = ensureStringArray(next.open_questions || [], 'open_questions');
   next.known_risks = ensureStringArray(next.known_risks || [], 'known_risks');
-  next.active_task = normalizeActiveTask(next.active_task || {});
   next.diagnostics = normalizeDiagnostics(next.diagnostics || {});
   next.last_command = ensureOptionalString(next.last_command, 'last_command');
   next.paused_at = ensureOptionalString(next.paused_at, 'paused_at');
@@ -1569,6 +1682,11 @@ function loadDefaultSession(rootDir, paths, runtimeConfig, projectConfig) {
     }
     if (projectConfig.active_packs && projectConfig.active_packs.length > 0) {
       seeded.active_packs = projectConfig.active_packs;
+    }
+    if (projectConfig.packages && projectConfig.packages.length > 0) {
+      seeded.packages = projectConfig.packages;
+      seeded.default_package = projectConfig.default_package || '';
+      seeded.active_package = projectConfig.active_package || projectConfig.default_package || '';
     }
     seeded.developer = {
       ...(raw.developer || {}),
@@ -1607,6 +1725,8 @@ function validateHandoff(handoff, runtimeConfig) {
     focus: ensureOptionalString(handoff.focus, 'handoff.focus'),
     profile: ensureOptionalString(handoff.profile, 'handoff.profile'),
     packs: ensureStringArray(handoff.packs || [], 'handoff.packs'),
+    default_package: ensureOptionalString(handoff.default_package, 'handoff.default_package'),
+    active_package: ensureOptionalString(handoff.active_package, 'handoff.active_package'),
     last_command: ensureOptionalString(handoff.last_command, 'handoff.last_command'),
     suggested_flow: ensureOptionalString(handoff.suggested_flow, 'handoff.suggested_flow'),
     next_action: ensureOptionalString(handoff.next_action, 'handoff.next_action'),
@@ -1658,6 +1778,8 @@ function validateContextSummary(summary, runtimeConfig) {
     focus: ensureOptionalString(summary.focus, 'context_summary.focus'),
     profile: ensureOptionalString(summary.profile, 'context_summary.profile'),
     packs: ensureStringArray(summary.packs || [], 'context_summary.packs'),
+    default_package: ensureOptionalString(summary.default_package, 'context_summary.default_package'),
+    active_package: ensureOptionalString(summary.active_package, 'context_summary.active_package'),
     last_command: ensureOptionalString(summary.last_command, 'context_summary.last_command'),
     suggested_flow: ensureOptionalString(summary.suggested_flow, 'context_summary.suggested_flow'),
     next_action: ensureOptionalString(summary.next_action, 'context_summary.next_action'),
@@ -1671,6 +1793,7 @@ function validateContextSummary(summary, runtimeConfig) {
       name: ensureOptionalString(activeTaskSource.name, 'context_summary.active_task.name'),
       title: ensureOptionalString(activeTaskSource.title, 'context_summary.active_task.title'),
       status: ensureOptionalString(activeTaskSource.status, 'context_summary.active_task.status'),
+      package: ensureOptionalString(activeTaskSource.package, 'context_summary.active_task.package'),
       path: normalizeProjectRelativePath(
         ensureOptionalString(activeTaskSource.path, 'context_summary.active_task.path')
       )
@@ -1722,6 +1845,7 @@ module.exports = {
   getProjectAssetRelativePath,
   getProjectExtDir,
   getProjectKey,
+  detectGitBranch,
   resolveProjectStateInspection,
   getProjectStatePaths,
   initProjectLayout,

@@ -19,7 +19,7 @@ function loadChalk() {
     const resolved = require('chalk');
     return resolved && resolved.default ? resolved.default : resolved;
   } catch {
-    return createIdentityPainter();
+    return null;
   }
 }
 
@@ -36,13 +36,100 @@ function ensureText(value) {
   return String(value || '').trim();
 }
 
+function normalizeColorMode(value, defaultMode = 'auto') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) {
+    return defaultMode;
+  }
+  if (normalized === 'always' || normalized === 'auto' || normalized === 'never') {
+    return normalized;
+  }
+  throw new Error(`Unsupported color mode: ${value}`);
+}
+
+function resolveColorMode(options = {}) {
+  if (options.colorMode) {
+    return normalizeColorMode(options.colorMode, 'auto');
+  }
+
+  const argv = Array.isArray(options.argv) ? options.argv : [];
+  let argvMode = '';
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = String(argv[index] || '').trim();
+    if (token === '--no-color') {
+      argvMode = 'never';
+      continue;
+    }
+    if (token === '--color') {
+      const next = String(argv[index + 1] || '').trim().toLowerCase();
+      if (next === 'always' || next === 'auto' || next === 'never') {
+        argvMode = next;
+        index += 1;
+        continue;
+      }
+      argvMode = 'always';
+      continue;
+    }
+    if (token.startsWith('--color=')) {
+      argvMode = normalizeColorMode(token.slice('--color='.length), 'always');
+    }
+  }
+
+  if (argvMode) {
+    return argvMode;
+  }
+
+  const env = options.env || {};
+  if (Object.prototype.hasOwnProperty.call(env, 'NO_COLOR') && String(env.NO_COLOR || '').trim() !== '') {
+    return 'never';
+  }
+  if (Object.prototype.hasOwnProperty.call(env, 'FORCE_COLOR')) {
+    const forceColor = String(env.FORCE_COLOR || '').trim().toLowerCase();
+    if (!forceColor || forceColor === '0' || forceColor === 'false') {
+      return 'never';
+    }
+    return 'always';
+  }
+
+  return 'auto';
+}
+
+function createConfiguredPainter(chalkModule, colorEnabled) {
+  if (!colorEnabled) {
+    return createIdentityPainter();
+  }
+
+  if (!chalkModule) {
+    return createIdentityPainter();
+  }
+
+  if (typeof chalkModule.Instance === 'function') {
+    return new chalkModule.Instance({ level: 1 });
+  }
+
+  return chalkModule;
+}
+
 function createTerminalUi(options = {}) {
   const hostProcess = options.process || process;
   const stdout = hostProcess.stdout || process.stdout;
   const stderr = hostProcess.stderr || process.stderr;
-  const chalk = loadChalk();
+  const env = options.env || hostProcess.env || process.env || {};
+  const argv = Array.isArray(options.argv) ? options.argv : hostProcess.argv || process.argv || [];
+  const stderrIsTty = Boolean(stderr && stderr.isTTY);
+  const colorMode = resolveColorMode({
+    colorMode: options.colorMode,
+    argv,
+    env
+  });
+  const colorEnabled = colorMode === 'always' || (colorMode === 'auto' && stderrIsTty);
+  const chalk = createConfiguredPainter(loadChalk(), colorEnabled);
   const ora = loadOra();
-  const enabled = options.enabled !== false && Boolean(stdout && stdout.isTTY && stderr && stderr.isTTY);
+  const enabled =
+    options.enabled !== false &&
+    Boolean(stderr && typeof stderr.write === 'function') &&
+    (stderrIsTty || colorMode === 'always');
 
   function writeLine(text) {
     if (!enabled) {
@@ -129,7 +216,7 @@ function createTerminalUi(options = {}) {
       };
     }
 
-    if (typeof ora !== 'function') {
+    if (!stderrIsTty || typeof ora !== 'function') {
       return createFallbackActivity(text);
     }
 
@@ -188,6 +275,8 @@ function createTerminalUi(options = {}) {
 
   return {
     enabled,
+    colorMode,
+    colorEnabled,
     chalk,
     info,
     warn,
@@ -199,5 +288,6 @@ function createTerminalUi(options = {}) {
 }
 
 module.exports = {
-  createTerminalUi
+  createTerminalUi,
+  resolveColorMode
 };

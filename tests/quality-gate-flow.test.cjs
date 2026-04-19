@@ -72,9 +72,9 @@ test('next stays in verify loop until required quality gates pass', async () => 
     assert.equal(beforeRun.permission_gates[0].kind, 'quality-gate');
     assert.equal(beforeRun.permission_gates[0].state, 'pending');
     assert.match(beforeRun.quality_gates.status_summary, /Executor gates pending: build, bench/);
-    assert.ok(beforeRun.next_actions.some(item => item.includes('executor run build')));
-    assert.ok(beforeRun.next_actions.some(item => item.includes('executor run bench')));
-    assert.ok(beforeRun.next_actions.some(item => item.includes('verify confirm board-bench')));
+    assert.ok(beforeRun.next_actions.some(item => item.includes('quality_gate_run=executor run build')));
+    assert.ok(beforeRun.next_actions.some(item => item.includes('quality_gate_run=executor run bench')));
+    assert.ok(beforeRun.next_actions.some(item => item.includes('quality_gate_signoff=verify confirm board-bench')));
 
     const runtimeRoot = path.join(repoRoot, 'runtime');
     const runtimeConfig = runtime.loadRuntimeConfig(runtimeRoot);
@@ -121,8 +121,8 @@ test('next stays in verify loop until required quality gates pass', async () => 
     assert.match(afterBuild.next.reason, /Executor gates pending: bench/);
     assert.deepEqual(afterBuild.quality_gates.pending_gates, ['bench']);
     assert.deepEqual(afterBuild.quality_gates.pending_signoffs, ['board-bench']);
-    assert.ok(afterBuild.next_actions.some(item => item.includes('executor run bench')));
-    assert.ok(afterBuild.next_actions.some(item => item.includes('verify confirm board-bench')));
+    assert.ok(afterBuild.next_actions.some(item => item.includes('quality_gate_run=executor run bench')));
+    assert.ok(afterBuild.next_actions.some(item => item.includes('quality_gate_signoff=verify confirm board-bench')));
 
     const benchFailedSession = runtime.readJson(statePaths.sessionPath);
     benchFailedSession.last_command = 'executor run bench';
@@ -166,8 +166,8 @@ test('next stays in verify loop until required quality gates pass', async () => 
     assert.equal(afterBenchFail.permission_gates[0].state, 'blocked');
     assert.deepEqual(afterBenchFail.quality_gates.failed_gates, ['bench']);
     assert.deepEqual(afterBenchFail.quality_gates.pending_signoffs, ['board-bench']);
-    assert.ok(afterBenchFail.next_actions.some(item => item.includes('executor run bench')));
-    assert.ok(afterBenchFail.next_actions.some(item => item.includes('verify confirm board-bench')));
+    assert.ok(afterBenchFail.next_actions.some(item => item.includes('quality_gate_run=executor run bench')));
+    assert.ok(afterBenchFail.next_actions.some(item => item.includes('quality_gate_signoff=verify confirm board-bench')));
 
     const verify = cli.buildActionOutput('verify');
     assert.equal(verify.quality_gates.gate_status, 'failed');

@@ -32,8 +32,8 @@ function usage() {
     [
       'attach-project usage:',
       '  node scripts/attach-project.cjs',
-      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--pack <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>]',
-      '  node scripts/attach-project.cjs --mcu <name> [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [--force]'
+      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--pack <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>]',
+      '  node scripts/attach-project.cjs --mcu <name> [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>] [--force]'
     ].join('\n') + '\n'
   );
 }
@@ -47,6 +47,9 @@ function parseArgs(argv) {
     runtimeSet: false,
     user: '',
     userSet: false,
+    registry: '',
+    registryBranch: '',
+    registrySubdir: '',
     mcu: '',
     package: '',
     board: '',
@@ -120,6 +123,21 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (token === '--registry' || token === '-r') {
+      result.registry = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
+    if (token === '--registry-branch') {
+      result.registryBranch = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
+    if (token === '--registry-subdir') {
+      result.registrySubdir = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
     if (token === '--mcu') {
       result.mcu = argv[index + 1] || '';
       index += 1;
@@ -164,6 +182,15 @@ function parseArgs(argv) {
   }
   if ((argv.includes('--user') || argv.includes('-u')) && !result.user) {
     throw new Error('Missing name after --user/-u');
+  }
+  if ((argv.includes('--registry') || argv.includes('-r')) && !result.registry) {
+    throw new Error('Missing source after --registry/-r');
+  }
+  if (argv.includes('--registry-branch') && !result.registryBranch) {
+    throw new Error('Missing name after --registry-branch');
+  }
+  if (argv.includes('--registry-subdir') && !result.registrySubdir) {
+    throw new Error('Missing path after --registry-subdir');
   }
   if (argv.includes('--mcu') && !result.mcu) {
     throw new Error('Missing value after --mcu');
@@ -352,7 +379,10 @@ function attachProject(argv) {
     runtime: args.runtime,
     runtimeSet: args.runtimeSet,
     user: args.user,
-    userSet: args.userSet
+    userSet: args.userSet,
+    registry: args.registry,
+    registryBranch: args.registryBranch,
+    registrySubdir: args.registrySubdir
   };
   const projectConfig = initProject.buildProjectConfig(projectRoot, configArgs);
   const detected = detectProjectInputs(projectRoot);

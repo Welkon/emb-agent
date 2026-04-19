@@ -860,7 +860,7 @@ function createNoteReportHelpers(deps) {
     }
 
     if (planOutput.scheduler && planOutput.scheduler.primary_agent) {
-      lines.push(`- Primary agent: ${planOutput.scheduler.primary_agent}`);
+      lines.push(`- primary_agent: ${planOutput.scheduler.primary_agent}`);
     }
 
     return lines.join('\n') + '\n';
@@ -1088,50 +1088,50 @@ function createNoteReportHelpers(deps) {
       `- Focus: ${verifyOutput.scope.focus || '-'}`,
       `- Runtime model: ${verifyOutput.scope.runtime_model || '-'}`,
       `- Concurrency model: ${verifyOutput.scope.concurrency_model || '-'}`,
-      `- Next command: ${next && next.next ? next.next.command : '-'}`,
-      `- Tool recommendation: ${toolRecommendation ? toolRecommendation.tool : '-'}`,
-      `- Tool trust: ${toolRecommendation && toolRecommendation.trust
+      `- next_command: ${next && next.next ? next.next.command : '-'}`,
+      `- tool_recommendation: ${toolRecommendation ? toolRecommendation.tool : '-'}`,
+      `- tool_trust: ${toolRecommendation && toolRecommendation.trust
         ? `${toolRecommendation.trust.grade} (${toolRecommendation.trust.score}/100), executable=${toolRecommendation.trust.executable ? 'yes' : 'no'}`
         : '-'}`,
-      `- Chip support health: ${formatChipSupportHealthSummary(chipSupportHealth)}`,
-      `- Latest executor: ${latestExecutor
+      `- chip_support_health: ${formatChipSupportHealthSummary(chipSupportHealth)}`,
+      `- latest_executor: ${latestExecutor
         ? `${latestExecutor.name} ${latestExecutor.status}, exit=${latestExecutor.exit_code === null ? '-' : latestExecutor.exit_code}, risk=${latestExecutor.risk || '-'}, duration=${latestExecutor.duration_ms === null ? '-' : latestExecutor.duration_ms}ms`
         : '-'}`
     ];
 
     if (latestExecutor) {
-      lines.push(`- Latest executor cwd: ${latestExecutor.cwd || '-'}`);
-      lines.push(`- Latest executor argv: ${formatExecutorArgv(latestExecutor.argv) || '-'}`);
+      lines.push(`- latest_executor_cwd: ${latestExecutor.cwd || '-'}`);
+      lines.push(`- latest_executor_argv: ${formatExecutorArgv(latestExecutor.argv) || '-'}`);
       if ((latestExecutor.evidence_hint || []).length > 0) {
-        lines.push(`- Latest executor evidence hint: ${latestExecutor.evidence_hint.join(', ')}`);
+        lines.push(`- latest_executor_evidence_hint: ${latestExecutor.evidence_hint.join(', ')}`);
       }
       if (latestExecutor.stdout_preview) {
-        lines.push(`- Latest executor stdout preview: ${latestExecutor.stdout_preview}`);
+        lines.push(`- latest_executor_stdout_preview: ${latestExecutor.stdout_preview}`);
       }
       if (latestExecutor.stderr_preview) {
-        lines.push(`- Latest executor stderr preview: ${latestExecutor.stderr_preview}`);
+        lines.push(`- latest_executor_stderr_preview: ${latestExecutor.stderr_preview}`);
       }
     }
 
     if (verifyOutput.quality_gates) {
-      lines.push(`- Quality gates: ${verifyOutput.quality_gates.gate_status || '-'}`);
+      lines.push(`- quality_gates: ${verifyOutput.quality_gates.gate_status || '-'}`);
       if (verifyOutput.quality_gates.status_summary) {
-        lines.push(`- Quality gate summary: ${verifyOutput.quality_gates.status_summary}`);
+        lines.push(`- quality_gate_summary: ${verifyOutput.quality_gates.status_summary}`);
       }
       if ((verifyOutput.quality_gates.required_executors || []).length > 0) {
-        lines.push(`- Required executors: ${(verifyOutput.quality_gates.required_executors || []).join(', ')}`);
+        lines.push(`- required_executors: ${(verifyOutput.quality_gates.required_executors || []).join(', ')}`);
       }
       if ((verifyOutput.quality_gates.required_signoffs || []).length > 0) {
-        lines.push(`- Required signoffs: ${(verifyOutput.quality_gates.required_signoffs || []).join(', ')}`);
+        lines.push(`- required_signoffs: ${(verifyOutput.quality_gates.required_signoffs || []).join(', ')}`);
       }
       if ((verifyOutput.quality_gates.confirmed_signoffs || []).length > 0) {
-        lines.push(`- Confirmed signoffs: ${(verifyOutput.quality_gates.confirmed_signoffs || []).join(', ')}`);
+        lines.push(`- confirmed_signoffs: ${(verifyOutput.quality_gates.confirmed_signoffs || []).join(', ')}`);
       }
       if ((verifyOutput.quality_gates.pending_signoffs || []).length > 0) {
-        lines.push(`- Pending signoffs: ${(verifyOutput.quality_gates.pending_signoffs || []).join(', ')}`);
+        lines.push(`- pending_signoffs: ${(verifyOutput.quality_gates.pending_signoffs || []).join(', ')}`);
       }
       if ((verifyOutput.quality_gates.rejected_signoffs || []).length > 0) {
-        lines.push(`- Rejected signoffs: ${(verifyOutput.quality_gates.rejected_signoffs || []).join(', ')}`);
+        lines.push(`- rejected_signoffs: ${(verifyOutput.quality_gates.rejected_signoffs || []).join(', ')}`);
       }
     }
 
@@ -1167,7 +1167,7 @@ function createNoteReportHelpers(deps) {
     }
 
     if (verifyOutput.scheduler && verifyOutput.scheduler.primary_agent) {
-      lines.push(`- Primary agent: ${verifyOutput.scheduler.primary_agent}`);
+      lines.push(`- primary_agent: ${verifyOutput.scheduler.primary_agent}`);
     }
 
     return lines.join('\n') + '\n';

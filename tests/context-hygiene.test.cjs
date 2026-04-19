@@ -22,7 +22,7 @@ test('context hygiene stays stable for light sessions and suggests clear after h
 
     const lightStatus = cli.buildStatus();
     assert.equal(lightStatus.context_hygiene.level, 'stable');
-    assert.match(lightStatus.context_hygiene.recommendation, /no proactive cleanup is needed/);
+    assert.match(lightStatus.context_hygiene.recommendation, /Context load is light/);
 
     for (let index = 1; index <= 5; index += 1) {
       const fileName = `src/f${index}.c`;
@@ -39,7 +39,7 @@ test('context hygiene stays stable for light sessions and suggests clear after h
 
     const heavyNext = cli.buildNextContext();
     assert.equal(heavyNext.context_hygiene.level, 'suggest-clearing');
-    assert.match(heavyNext.context_hygiene.recommendation, /pause now/);
+    assert.match(heavyNext.context_hygiene.recommendation, /Run pause now/);
     assert.equal(heavyNext.context_hygiene.compress_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress');
     assert.ok(heavyNext.next_actions.some(item => item.includes('Capture a compact snapshot before clearing')));
     assert.ok(heavyNext.next_actions.some(item => item.includes('Context reminder')));
@@ -50,7 +50,7 @@ test('context hygiene stays stable for light sessions and suggests clear after h
     assert.equal(resumed.context_hygiene.level, 'suggest-clearing');
     assert.equal(resumed.context_hygiene.handoff_ready, true);
     assert.equal(resumed.context_hygiene.clear_hint, 'clear -> resume');
-    assert.match(resumed.context_hygiene.recommendation, /a handoff exists/);
+    assert.match(resumed.context_hygiene.recommendation, /stored handoff/);
     assert.equal(resumed.memory_summary.source, 'pause');
     assert.equal(resumed.memory_summary.next_action, 'capture heavy session before clear');
     assert.equal(resumed.memory_summary.last_files.length, 5);

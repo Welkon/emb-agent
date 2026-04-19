@@ -513,7 +513,7 @@ test('dispatch run returns missing tool inputs instead of throwing when tool-fir
     assert.equal(run.reason, 'missing-tool-inputs');
     assert.equal(run.tool, 'timer-calc');
     assert.deepEqual(run.missing_inputs, ['clock-hz', 'target-us or target-hz']);
-    assert.match(run.summary, /still needs inputs/i);
+    assert.match(run.summary, /status=needs-input/i);
   } finally {
     process.chdir(currentCwd);
   }
@@ -754,7 +754,7 @@ test('dispatch run hard-blocks action execution when stage A review requires red
     assert.equal(run.delegation_runtime.review.redispatch_required, true);
     assert.equal(run.delegation_runtime.review.stage_a.status, 'redispatch-required');
     assert.equal(run.redispatch_required, true);
-    assert.equal(run.summary.includes('Stage A contract review failed'), true);
+    assert.equal(run.summary.includes('Stage A status=redispatch-required'), true);
   } finally {
     if (originalBridgeCmd === undefined) {
       delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;

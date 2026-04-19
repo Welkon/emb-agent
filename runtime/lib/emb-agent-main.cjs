@@ -2,6 +2,7 @@
 
 const childProcess = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -58,6 +59,7 @@ const subAgentRuntimeHelpers = require(path.join(ROOT, 'lib', 'sub-agent-runtime
 const skillRuntimeHelpers = require(path.join(ROOT, 'lib', 'skill-runtime.cjs'));
 const memoryRuntimeHelpers = require(path.join(ROOT, 'lib', 'memory-runtime.cjs'));
 const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs'));
+const workflowImportHelpers = require(path.join(ROOT, 'lib', 'workflow-import.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 const externalAgent = externalAgentHelpers.createExternalAgentHelpers({
@@ -613,11 +615,21 @@ const {
   handleWorkflowCommands
 } = workflowAuthoringHelpers.createWorkflowAuthoringHelpers({
   fs,
+  childProcess,
+  os,
   path,
   process,
   ROOT,
   runtime,
   workflowRegistry,
+  workflowImport: workflowImportHelpers.createWorkflowImportHelpers({
+    childProcess,
+    fs,
+    os,
+    path,
+    runtime,
+    workflowRegistry
+  }),
   templateCli,
   getProjectExtDir,
   loadPack,
@@ -1025,10 +1037,10 @@ function buildStartContext() {
     : bootstrapCommand
       ? bootstrap.summary
     : activeTask
-      ? 'An active task already exists, so the shortest path is to continue the task loop.'
+      ? 'An active task already exists. Continue that task before starting new work.'
       : initialized
-        ? 'Project bootstrap exists; create and activate a task before execution.'
-        : 'The repository has just been initialized for emb-agent.';
+        ? 'The emb-agent project bootstrap already exists. Create and activate a task before execution.'
+        : 'The emb-agent project has just been initialized in this workspace.';
 
   return runtimeEventHelpers.appendRuntimeEvent({
     entry: 'start',

@@ -244,9 +244,9 @@ test('scan prioritizes normalized schematic parsed data when recent schematic in
   const scan = scheduler.buildScanOutput(resolved);
 
   assert.ok(scan.relevant_files.includes('.emb-agent/cache/schematics/schematic-abc123/parsed.json'));
-  assert.ok(scan.next_reads.some(item => item.includes('Normalized schematic data: .emb-agent/cache/schematics/schematic-abc123/parsed.json')));
+  assert.ok(scan.next_reads.some(item => item.includes('schematic_data=.emb-agent/cache/schematics/schematic-abc123/parsed.json')));
   assert.ok(scan.scheduler.agent_execution.dispatch_contract.primary.context_bundle.truth_sources.some(
-    item => item.includes('Normalized schematic data: .emb-agent/cache/schematics/schematic-abc123/parsed.json')
+    item => item.includes('schematic_data=.emb-agent/cache/schematics/schematic-abc123/parsed.json')
   ));
 });
 
@@ -268,7 +268,7 @@ test('blank project selection mode prioritizes req truth and constraint question
   assert.equal(scan.relevant_files[0], '.emb-agent/req.yaml');
   assert.ok(scan.key_facts.includes('selection_mode=blank-project'));
   assert.ok(scan.open_questions.some(item => item.includes('What must this product actually do')));
-  assert.ok(scan.next_reads.some(item => item.includes('Selection input first: .emb-agent/req.yaml')));
+  assert.ok(scan.next_reads.some(item => item.includes('selection_input=.emb-agent/req.yaml')));
   assert.equal(plan.goal, 'Converge product constraints first, then narrow to the first viable chip candidate');
   assert.ok(plan.steps.some(item => item.includes('.emb-agent/req.yaml')));
   assert.ok(plan.verification.some(item => item.includes('documented constraints')));

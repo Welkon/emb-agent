@@ -28,6 +28,11 @@ allowed-tools:
 - `.emb-agent/req.yaml`
 - starter docs, caches, and bootstrap checklists
 
+## Monorepo Detection
+
+- When the repository exposes a typical workspace layout such as `pnpm-workspace.yaml`, `package.json workspaces`, or `.gitmodules`, `init` records detected packages in `.emb-agent/project.json`.
+- The detected package list becomes the project default package context for later task routing and session state.
+
 ## After Init
 
 - If MCU and package are already known, run:

@@ -122,9 +122,9 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     assert.equal(nextContext.handoff_protocol.protocol, 'emb-agent.chip-support-analysis/1');
     assert.equal(nextContext.next.recommended_flow.id, 'doc-to-chip-support-analysis');
     assert.equal(nextContext.next.handoff_protocol.artifact_path, '.emb-agent/analysis/pms150g.json');
-    assert.ok(nextContext.next_actions.some(item => item.includes('Analyze the latest hardware doc with emb-hw-scout first')));
-    assert.ok(nextContext.next_actions.some(item => item.includes('Initialize analysis artifact first:')));
-    assert.ok(nextContext.next_actions.some(item => item.includes('Derive draft adapters from analysis artifact:')));
+    assert.ok(nextContext.next_actions.some(item => item.includes('hardware_doc_analysis=emb-hw-scout')));
+    assert.ok(nextContext.next_actions.some(item => item.startsWith('analysis_init=')));
+    assert.ok(nextContext.next_actions.some(item => item.startsWith('analysis_derive=')));
 
     const second = await cli.runIngestCommand(
       'doc',

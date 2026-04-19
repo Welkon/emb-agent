@@ -140,8 +140,8 @@ function runHook(rawInput) {
         '## Emb-Agent Session Reminder',
         '',
         'Primary entrypoint: start',
-        `Current shortest command: ${start.immediate.command}`,
-        `Found an unconsumed handoff. If start confirms resume, use: ${resume.context_hygiene.resume_cli}`,
+        `Recommended next command: ${start.immediate.command}`,
+        `Pending handoff detected. Resume with: ${resume.context_hygiene.resume_cli}`,
         `Handoff note: ${nextAction}`,
         ...specLines
       );
@@ -160,7 +160,7 @@ function runHook(rawInput) {
         '## Emb-Agent Session Reminder',
         '',
         'Primary entrypoint: start',
-        `Current shortest command: ${start.immediate.command}`,
+        `Recommended next command: ${start.immediate.command}`,
         `Current active task: ${resume.task.name} (${resume.task.title})`,
         `Status: ${resume.task.status} / Type: ${resume.task.type}`,
         `Re-read the task PRD first: ${prdPath}`,
@@ -176,8 +176,8 @@ function runHook(rawInput) {
         '## Emb-Agent Session Reminder',
         '',
         'Primary entrypoint: start',
-        `Current shortest command: ${start.immediate.command}`,
-        `Why: ${start.immediate.reason}`
+        `Recommended next command: ${start.immediate.command}`,
+        `Reason: ${start.immediate.reason}`
       );
     }
 

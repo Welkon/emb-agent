@@ -154,9 +154,9 @@ test('fixed chip model auto-discovers suggested tools and chip support readiness
     assert.equal(next.next.tool_recommendation.tool, 'timer-calc');
     assert.equal(next.next.tool_recommendation.trust.grade, 'trusted');
     assert.match(next.next.tool_recommendation.cli_draft, /tool run timer-calc/);
-    assert.ok(next.next_actions.some(item => item.includes('Re-read the register summary first: .emb-agent/docs/sources/mcu/vendor-chip-registers.md')));
-    assert.ok(next.next_actions.some(item => item.includes('Preferred tool draft:')));
-    assert.ok(next.next_actions.some(item => item.includes('Missing tool inputs:')));
+    assert.ok(next.next_actions.some(item => item.includes('reread_register_summary=.emb-agent/docs/sources/mcu/vendor-chip-registers.md')));
+    assert.ok(next.next_actions.some(item => item.startsWith('tool_cli=')));
+    assert.ok(next.next_actions.some(item => item.startsWith('tool_missing_inputs=')));
     assert.equal(plan.recommended_sources[0].id, 'mcu/vendor-chip-registers');
     assert.equal(plan.suggested_tools[0].chip, 'vendor-chip');
     assert.equal(plan.tool_recommendations[0].binding_algorithm, 'vendor-timer16');
@@ -872,17 +872,17 @@ test('broad peripheral exercise keeps next in walkthrough mode instead of single
     const next = cli.buildNextContext();
 
     assert.equal(next.next.command, 'scan');
-    assert.match(next.next.reason, /broad peripheral exercise/i);
+    assert.match(next.next.reason, /Broad peripheral walkthrough detected/i);
     assert.equal(next.next.walkthrough_recommendation.kind, 'peripheral-walkthrough');
     assert.deepEqual(
       next.next.walkthrough_recommendation.ordered_tools,
       ['timer-calc', 'pwm-calc', 'comparator-threshold', 'adc-scale']
     );
     assert.equal(next.walkthrough_recommendation.kind, 'peripheral-walkthrough');
-    assert.match(next.action_card.first_instruction, /Ready tool checklist:/);
-    assert.match(next.action_card.followup, /Run scan first, then walk each ready tool once/);
-    assert.ok(next.next_actions.some(item => item.includes('do not stop at the first matching tool')));
-    assert.ok(next.next_actions.some(item => item.includes('Ready tool checklist: 1. timer-calc | 2. pwm-calc | 3. comparator-threshold | 4. adc-scale')));
+    assert.match(next.action_card.first_instruction, /Broad peripheral exercise|do not stop at the first matching tool/i);
+    assert.match(next.action_card.followup, /ready_tool_checklist=|walkthrough_plan=/);
+    assert.ok(next.next_actions.some(item => item.includes('walkthrough_scope=broad peripheral exercise')));
+    assert.ok(next.next_actions.some(item => item.includes('ready_tool_checklist=1. timer-calc | 2. pwm-calc | 3. comparator-threshold | 4. adc-scale')));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

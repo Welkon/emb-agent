@@ -384,6 +384,8 @@ function createSessionFlowHelpers(deps) {
       {
         profile: resolved.profile.name,
         packs: resolved.session.active_packs || [],
+        active_package: resolved.session.active_package || '',
+        default_package: resolved.session.default_package || '',
         task: task || null,
         handoff: handoff || null
       },
@@ -411,6 +413,8 @@ function createSessionFlowHelpers(deps) {
       focus: resolved.session.focus || '',
       profile: resolved.profile.name,
       packs: resolved.session.active_packs,
+      active_package: resolved.session.active_package || '',
+      default_package: resolved.session.default_package || '',
       runtime_model: resolved.profile.runtime_model || '',
       concurrency_model: resolved.profile.concurrency_model || '',
       review_agents: resolved.effective.review_agents,
@@ -531,14 +535,14 @@ function createSessionFlowHelpers(deps) {
       if (preferences.review_mode === 'always') {
         return {
           command: 'review',
-          reason: 'Current preferences require review first before closing the concept-stage selection pass'
+          reason: 'Review mode is forced. Run review before closing the concept-stage selection pass.'
         };
       }
 
       if (shouldSuggestArchReview(resolved)) {
         return {
           command: 'arch-review',
-          reason: 'Current concept-stage context shows solution preflight signals; run a system-level architecture review first'
+          reason: 'Concept-stage preflight signals are active. Run arch-review before narrowing the selection path.'
         };
       }
 
@@ -565,7 +569,7 @@ function createSessionFlowHelpers(deps) {
 
       return {
         command: 'scan',
-        reason: `Project is still in definition and chip-selection mode; run scan to converge goals, constraints, interfaces, and candidate devices from ${runtime.getProjectAssetRelativePath('req.yaml')} first`
+        reason: `Project definition is still open. Run scan first to converge goals, constraints, interfaces, and candidate devices from ${runtime.getProjectAssetRelativePath('req.yaml')}.`
       };
     }
 
@@ -590,31 +594,31 @@ function createSessionFlowHelpers(deps) {
       return {
         command: 'scan',
         reason: peripheralWalkthrough
-          ? 'This is a broad peripheral exercise; run scan first, then walk every ready tool instead of stopping at the first one'
+          ? 'Broad peripheral walkthrough detected. Run scan first, then walk every ready tool instead of stopping at the first one.'
           : firstTool
-            ? `This looks more like hardware/formula/tool triage; run scan and evaluate ${firstTool.tool || firstTool.name} first`
-            : 'This looks more like hardware truth, register, pin, or formula triage; run scan before deciding whether to enter tool'
+            ? `Hardware/formula/tool triage is more likely here. Run scan and evaluate ${firstTool.tool || firstTool.name} first.`
+            : 'Hardware truth, register, pin, or formula triage is more likely here. Run scan before choosing a tool.'
       };
     }
 
     if ((session.last_command || '').trim() === 'do' && hasActiveContext) {
       return {
         command: 'verify',
-        reason: 'A do step just finished; close this iteration with the embedded verification checklist and result record first'
+        reason: 'A do step just finished. Run verify next to close the iteration with a result record.'
       };
     }
 
     if (preferences.review_mode === 'always') {
       return {
         command: 'review',
-        reason: 'Current preferences require review first before choosing the execution path'
+        reason: 'Review mode is forced. Run review before choosing the execution path.'
       };
     }
 
     if (shouldSuggestArchReview(resolved)) {
       return {
         command: 'arch-review',
-        reason: 'Current context shows selection or solution preflight signals; run a system-level architecture review first'
+        reason: 'Selection or solution preflight signals are active. Run arch-review before execution.'
       };
     }
 
@@ -623,8 +627,8 @@ function createSessionFlowHelpers(deps) {
         command: 'review',
         reason:
           preferences.review_mode === 'always'
-            ? 'Current preferences require review first before choosing the execution path'
-            : 'A review signal is active; run a structural review before choosing the execution path'
+            ? 'Review mode is forced. Run review before choosing the execution path.'
+            : 'A review signal is active. Run review before choosing the execution path.'
       };
     }
 
@@ -633,28 +637,28 @@ function createSessionFlowHelpers(deps) {
         command: 'plan',
         reason:
           preferences.plan_mode === 'always'
-            ? 'Current preferences require a micro-plan before execution'
-            : 'Current context has entered a complex-task signal; make a micro-plan before execution'
+            ? 'Plan mode is forced. Make a micro-plan before execution.'
+            : 'A complex-task signal is active. Make a micro-plan before execution.'
       };
     }
 
     if (!hasActiveContext) {
       return {
         command: 'scan',
-        reason: 'No effective working context exists yet; run a minimal scan first'
+        reason: 'No effective working context exists yet. Run a minimal scan first.'
       };
     }
 
     if (lastFiles.length === 0) {
       return {
         command: 'scan',
-        reason: 'There is no recent-file record yet; add a scan first to lock onto the real change point'
+        reason: 'No recent-file record exists yet. Run scan first to lock onto the real change point.'
       };
     }
 
     return {
       command: 'do',
-      reason: 'Context is already sufficient; proceed with the minimal execution directly'
+      reason: 'Context is already sufficient. Proceed with the minimal execution directly.'
     };
   }
 
@@ -710,15 +714,15 @@ function createSessionFlowHelpers(deps) {
       level = 'consider-clearing';
     }
 
-    let recommendation = 'Current context is still light; no proactive cleanup is needed.';
+    let recommendation = 'Context load is light. Keep working in the current session.';
     if (level === 'consider-clearing') {
       recommendation = handoff
-        ? 'Context is getting heavier. If you are about to switch tasks or dig deeper, clear context directly and then resume.'
-        : 'Context is getting heavier. If you are about to switch tasks or dig deeper, pause first, then clear context, and resume afterward.';
+        ? 'Context load is rising. If scope expands or the task changes, clear context and resume from the stored handoff.'
+        : 'Context load is rising. If scope expands or the task changes, run pause, clear context, then resume.';
     } else if (level === 'suggest-clearing') {
       recommendation = handoff
-        ? 'Current context is already heavy and a handoff exists; clear context now and resume afterward.'
-        : 'Current context is already heavy; pause now, then clear context, and resume afterward.';
+        ? 'Context load is heavy. Clear context now, then resume from the stored handoff.'
+        : 'Context load is heavy. Run pause now, clear context, then resume.';
     }
 
     return {
@@ -807,9 +811,9 @@ function createSessionFlowHelpers(deps) {
       .join(' | ');
 
     return [
-      'This is a broad peripheral exercise; do not stop at the first matching tool.',
-      `Ready tool checklist: ${checklist}`,
-      'Run scan first, then walk each ready tool once and record one concrete output per peripheral.'
+      'walkthrough_scope=broad peripheral exercise; do not stop at the first matching tool',
+      `ready_tool_checklist=${checklist}`,
+      'walkthrough_plan=run scan first, then walk each ready tool once and record one concrete output per peripheral'
     ];
   }
 
@@ -880,19 +884,19 @@ function createSessionFlowHelpers(deps) {
 
     if (runtimeState.status === 'completed') {
       return [
-        `Walkthrough completed: ${completedCount}/${totalSteps} steps finished.`,
-        runtimeState.last_summary ? `Walkthrough last result: ${runtimeState.last_summary}` : ''
+        `walkthrough_progress=${completedCount}/${totalSteps}; status=completed`,
+        runtimeState.last_summary ? `walkthrough_last=${runtimeState.last_summary}` : ''
       ].filter(Boolean);
     }
 
     return [
-      `Walkthrough progress: ${completedCount}/${totalSteps} steps completed.`,
+      `walkthrough_progress=${completedCount}/${totalSteps}; status=${runtimeState.status || 'running'}`,
       currentStep && currentStep.status === 'needs-input' && Array.isArray(currentStep.missing_inputs) && currentStep.missing_inputs.length > 0
-        ? `Continue walkthrough after filling inputs for ${currentStep.tool}: ${currentStep.missing_inputs.join(', ')}`
+        ? `walkthrough_step=${currentStep.tool}; missing_inputs=${currentStep.missing_inputs.join(', ')}`
         : currentStep && currentStep.cli
-          ? `Continue walkthrough step: ${currentStep.cli}`
+          ? `walkthrough_step=${currentStep.cli}`
           : '',
-      runtimeState.last_summary ? `Walkthrough last result: ${runtimeState.last_summary}` : ''
+      runtimeState.last_summary ? `walkthrough_last=${runtimeState.last_summary}` : ''
     ].filter(Boolean);
   }
 
@@ -925,25 +929,25 @@ function createSessionFlowHelpers(deps) {
 
     const reuseFirst =
       reusability && reusability.status === 'reusable'
-        ? 'Chip support status: reusable across projects'
+        ? 'chip_support_status=reusable across projects'
         : reusability && reusability.status === 'reusable-candidate'
-          ? 'Chip support status: reusable candidate after review'
-          : 'Chip support status: project-only for now';
+          ? 'chip_support_status=reusable candidate after review'
+          : 'chip_support_status=project-only for now';
 
     if (preferredTrustTool.executable) {
       return [
         reuseFirst,
-        `Chip support trust: ${preferredTrustTool.tool} ${preferredTrustTool.grade} (${preferredTrustTool.score}/100)`
+        `chip_support_trust=${preferredTrustTool.tool}; grade=${preferredTrustTool.grade}; score=${preferredTrustTool.score}/100`
       ];
     }
 
     return [
       reuseFirst,
-      `Chip support trust reminder: ${preferredTrustTool.tool} is currently ${preferredTrustTool.grade} (${preferredTrustTool.score}/100)`,
-      `Handle the chip-support gap first: ${preferredTrustTool.recommended_action}`,
+      `chip_support_trust=${preferredTrustTool.tool}; grade=${preferredTrustTool.grade}; score=${preferredTrustTool.score}/100; executable=no`,
+      `chip_support_action=${preferredTrustTool.recommended_action}`,
       primaryToolRecommendation && primaryToolRecommendation.cli_draft
-        ? `Use the current tool draft for calibration first; do not treat it as ground truth yet: ${primaryToolRecommendation.cli_draft}`
-        : 'Use the current tool output for calibration first; do not treat it as ground truth yet'
+        ? `chip_support_calibration_cli=${primaryToolRecommendation.cli_draft}`
+        : 'chip_support_calibration=use the current tool output for calibration first; do not treat it as ground truth yet'
     ];
   }
 
@@ -1024,6 +1028,8 @@ function createSessionFlowHelpers(deps) {
       focus: session.focus || '',
       profile: resolved.profile.name,
       packs: session.active_packs || [],
+      default_package: session.default_package || '',
+      active_package: session.active_package || '',
       last_command: session.last_command || '',
       suggested_flow: handoff && handoff.suggested_flow ? handoff.suggested_flow : suggestFlow(resolved),
       next_action: handoff && handoff.next_action ? handoff.next_action : '',
@@ -1036,12 +1042,14 @@ function createSessionFlowHelpers(deps) {
             name: activeTask.name,
             title: activeTask.title,
             status: activeTask.status,
+            package: activeTask.package || '',
             path: activeTask.path
           }
         : {
             name: '',
             title: '',
             status: '',
+            package: '',
             path: ''
           },
       diagnostics: {
@@ -1081,10 +1089,12 @@ function createSessionFlowHelpers(deps) {
       next_action: memorySummary.next_action || '',
       context_notes: memorySummary.context_notes || '',
       packs: memorySummary.packs || [],
+      default_package: memorySummary.default_package || '',
+      active_package: memorySummary.active_package || '',
       last_files: memorySummary.last_files || [],
       open_questions: memorySummary.open_questions || [],
       known_risks: memorySummary.known_risks || [],
-      active_task: memorySummary.active_task || { name: '', title: '', status: '', path: '' },
+      active_task: memorySummary.active_task || { name: '', title: '', status: '', package: '', path: '' },
       diagnostics: memorySummary.diagnostics || { latest_forensics: {}, latest_executor: {} }
     };
   }
@@ -1166,84 +1176,84 @@ function createSessionFlowHelpers(deps) {
           ? `Compact summary captured: ${memorySummary.generated_at}`
           : '',
         !memorySummary && ['consider-clearing', 'suggest-clearing'].includes(contextHygiene.level)
-          ? `Capture a compact snapshot before clearing: ${contextHygiene.compress_cli}`
+          ? `snapshot_command=${contextHygiene.compress_cli}`
           : '',
         memorySummary && memorySummary.next_action
-          ? `Resume from compact summary: ${memorySummary.next_action}`
+          ? `summary_resume=${memorySummary.next_action}`
           : '',
-        handoff && handoff.next_action ? `Resume from handoff: ${handoff.next_action}` : '',
-        ...(handoff ? handoff.human_actions_pending.map(action => `Manual action required: ${action}`) : []),
-        summaryTask ? `Resume task ${summaryTask.name} first: ${summaryTask.title}` : '',
+        handoff && handoff.next_action ? `handoff_resume=${handoff.next_action}` : '',
+        ...(handoff ? handoff.human_actions_pending.map(action => `manual_action=${action}`) : []),
+        summaryTask ? `task_resume=${summaryTask.name}; title=${summaryTask.title}` : '',
         ...walkthroughRuntimeActions,
         ...peripheralWalkthroughActions,
         summaryLatestForensics && summaryLatestForensics.report_file
-          ? `Latest forensics: ${summaryLatestForensics.report_file} (${summaryLatestForensics.highest_severity || 'info'})`
+          ? `forensics_report=${summaryLatestForensics.report_file}; severity=${summaryLatestForensics.highest_severity || 'info'}`
           : '',
         summaryLatestExecutor && summaryLatestExecutor.name
-          ? `Latest executor: ${summaryLatestExecutor.name} ${summaryLatestExecutor.status || 'unknown'}${
+          ? `executor_status=${summaryLatestExecutor.name}; status=${summaryLatestExecutor.status || 'unknown'}${
             summaryLatestExecutor.exit_code === null ? '' : `, exit=${summaryLatestExecutor.exit_code}`
           }`
           : '',
         summaryLatestExecutor && ['failed', 'error'].includes(summaryLatestExecutor.status)
-          ? `Start review around the failed executor first: ${summaryLatestExecutor.name}${summaryLatestExecutor.stderr_preview ? ` | ${summaryLatestExecutor.stderr_preview}` : ''}`
+          ? `executor_review=${summaryLatestExecutor.name}${summaryLatestExecutor.stderr_preview ? ` | ${summaryLatestExecutor.stderr_preview}` : ''}`
           : '',
         qualityGates.enabled
-          ? `Quality gate status: ${qualityGates.status_summary || qualityGates.gate_status}`
+          ? `quality_gate_status=${qualityGates.status_summary || qualityGates.gate_status}`
           : '',
         qualityGates.blocking_summary && qualityGates.blocking_summary !== qualityGates.status_summary
-          ? `Blocking gate: ${qualityGates.blocking_summary}`
+          ? `quality_gate_blocking=${qualityGates.blocking_summary}`
           : '',
-        ...qualityGates.recommended_runs.map(item => `Run quality gate first: ${item}`),
-        ...qualityGates.recommended_signoffs.map(item => `Confirm human gate first: ${item}`),
-        ...qualityGates.rejected_signoffs.map(item => `Human signoff rejected: ${item}`),
+        ...qualityGates.recommended_runs.map(item => `quality_gate_run=${item}`),
+        ...qualityGates.recommended_signoffs.map(item => `quality_gate_signoff=${item}`),
+        ...qualityGates.rejected_signoffs.map(item => `quality_gate_rejected=${item}`),
         schematicAnalysis && schematicAnalysis.recommended_agent
-          ? `Analyze the latest schematic with ${schematicAnalysis.recommended_agent} first: ${schematicAnalysis.parsed_file}`
+          ? `schematic_analysis=${schematicAnalysis.recommended_agent}; file=${schematicAnalysis.parsed_file}`
           : '',
         schematicAnalysis && schematicAnalysis.confirmation_targets.length > 0
-          ? `Confirm schematic-derived fields before truth edits: ${schematicAnalysis.confirmation_targets.join(', ')}`
+          ? `schematic_confirm=${schematicAnalysis.confirmation_targets.join(', ')}`
           : '',
         schematicAnalysis && schematicAnalysis.cli_hint
-          ? `Schematic handoff: ${schematicAnalysis.cli_hint}`
+          ? `schematic_handoff=${schematicAnalysis.cli_hint}`
           : '',
         hardwareDocAnalysis && hardwareDocAnalysis.recommended_agent
-          ? `Analyze the latest hardware doc with ${hardwareDocAnalysis.recommended_agent} first: ${hardwareDocAnalysis.markdown_file}`
+          ? `hardware_doc_analysis=${hardwareDocAnalysis.recommended_agent}; file=${hardwareDocAnalysis.markdown_file}`
           : '',
         hardwareDocAnalysis && hardwareDocAnalysis.confirmation_targets.length > 0
-          ? `Confirm hardware-doc-derived fields before adapter generation: ${hardwareDocAnalysis.confirmation_targets.join(', ')}`
+          ? `hardware_doc_confirm=${hardwareDocAnalysis.confirmation_targets.join(', ')}`
           : '',
         hardwareDocAnalysis && hardwareDocAnalysis.artifact_path
-          ? `Chip-support analysis artifact target: ${hardwareDocAnalysis.artifact_path}`
+          ? `analysis_artifact=${hardwareDocAnalysis.artifact_path}`
           : '',
         hardwareDocAnalysis && hardwareDocAnalysis.init_command
-          ? `Initialize analysis artifact first: ${hardwareDocAnalysis.init_command}`
+          ? `analysis_init=${hardwareDocAnalysis.init_command}`
           : '',
         hardwareDocAnalysis && hardwareDocAnalysis.derive_command
-          ? `Derive draft adapters from analysis artifact: ${hardwareDocAnalysis.derive_command}`
+          ? `analysis_derive=${hardwareDocAnalysis.derive_command}`
           : '',
         hardwareDocAnalysis && hardwareDocAnalysis.cli_hint
-          ? `Hardware doc handoff: ${hardwareDocAnalysis.cli_hint}`
+          ? `hardware_doc_handoff=${hardwareDocAnalysis.cli_hint}`
           : '',
-        primaryRegisterSource ? `Re-read the register summary first: ${primaryRegisterSource.path}` : '',
-        !primaryRegisterSource && primarySource ? `Re-read the source summary first: ${primarySource.path}` : '',
-        ...suggestedTools.slice(0, 2).map(tool => `Tool to evaluate first: ${tool.name} (${tool.status})`),
+        primaryRegisterSource ? `reread_register_summary=${primaryRegisterSource.path}` : '',
+        !primaryRegisterSource && primarySource ? `reread_source_summary=${primarySource.path}` : '',
+        ...suggestedTools.slice(0, 2).map(tool => `tool_candidate=${tool.name}; status=${tool.status}`),
         primaryToolRecommendation
-          ? `Preferred tool draft: ${primaryToolRecommendation.cli_draft}`
+          ? `tool_cli=${primaryToolRecommendation.cli_draft}`
           : '',
         primaryToolRecommendation && (primaryToolRecommendation.missing_inputs || []).length > 0
-          ? `Missing tool inputs: ${primaryToolRecommendation.missing_inputs.join(', ')}`
+          ? `tool_missing_inputs=${primaryToolRecommendation.missing_inputs.join(', ')}`
           : '',
-        focus ? `Continue around focus "${focus}" first` : '',
-        summaryLastFiles[0] ? `Re-read ${summaryLastFiles[0]} first` : '',
-        summaryOpenQuestions[0] ? `Confirm this question first: ${summaryOpenQuestions[0]}` : '',
-        summaryKnownRisks[0] ? `Re-check this risk: ${summaryKnownRisks[0]}` : '',
+        focus ? `focus=${focus}` : '',
+        summaryLastFiles[0] ? `reread_file=${summaryLastFiles[0]}` : '',
+        summaryOpenQuestions[0] ? `open_question=${summaryOpenQuestions[0]}` : '',
+        summaryKnownRisks[0] ? `risk=${summaryKnownRisks[0]}` : '',
         contextHygiene.level === 'consider-clearing'
-          ? `Context reminder: ${contextHygiene.recommendation}`
+          ? `context=${contextHygiene.recommendation}`
           : '',
         contextHygiene.level === 'suggest-clearing'
-          ? `Context reminder: ${contextHygiene.recommendation}`
+          ? `context=${contextHygiene.recommendation}`
           : '',
-        `Suggested flow: ${suggestedFlow}`,
-        `Suggested command: ${next.command} (${next.reason})`
+        `flow=${suggestedFlow}`,
+        `command=${next.command}; reason=${next.reason}`
       ])
     };
   }
@@ -1372,7 +1382,7 @@ function createSessionFlowHelpers(deps) {
 
   function buildNextActionCard(nextCommand, workflowStage, nextActions, health, activeTask) {
     function isHousekeepingHint(text) {
-      return /^(Capture a compact snapshot|Resume task |Resume from compact summary|Resume from handoff|Context reminder:|Chip support status:|Chip support trust:|Re-read )/i.test(String(text || '').trim());
+      return /^(snapshot_command=|task_resume=|summary_resume=|handoff_resume=|context=|chip_support_status=|chip_support_trust=|reread_)/i.test(String(text || '').trim());
     }
 
     function scoreActionHint(text, command) {
@@ -1387,18 +1397,18 @@ function createSessionFlowHelpers(deps) {
       const walkthroughMode = commandName === 'scan' && reason.includes('broad peripheral exercise');
 
       if (walkthroughMode) {
-        if (normalized.includes('continue walkthrough step:')) return 0;
-        if (normalized.includes('walkthrough progress:')) return 1;
-        if (normalized.includes('walkthrough last result:')) return 2;
-        if (normalized.includes('ready tool checklist:')) return 0;
-        if (normalized.includes('run scan first, then walk each ready tool')) return 3;
+        if (normalized.startsWith('walkthrough_step=')) return 0;
+        if (normalized.startsWith('walkthrough_progress=')) return 1;
+        if (normalized.startsWith('walkthrough_last=')) return 2;
+        if (normalized.startsWith('ready_tool_checklist=')) return 0;
+        if (normalized.startsWith('walkthrough_plan=')) return 3;
         if (normalized.includes('do not stop at the first matching tool')) return 4;
       }
 
       if (isHousekeepingHint(value)) return 50;
-      if (normalized.startsWith('manual action required:')) return 40;
-      if (normalized.startsWith('suggested flow:')) return 60;
-      if (normalized.startsWith('suggested command:')) return 61;
+      if (normalized.startsWith('manual_action=')) return 40;
+      if (normalized.startsWith('flow=')) return 60;
+      if (normalized.startsWith('command=')) return 61;
       return 10;
     }
 
@@ -1499,15 +1509,15 @@ function createSessionFlowHelpers(deps) {
           ...(health && health.quickstart
             ? [
                 health.quickstart.followup
-                  ? `First closure: ${health.quickstart.followup}`
-                  : `First closure: ${(health.quickstart.steps || [])
+                  ? `health_closure=${health.quickstart.followup}`
+                  : `health_closure=${(health.quickstart.steps || [])
                       .map(step => step.cli || step.label)
                       .filter(Boolean)
                       .join(' -> ')}`
               ]
             : []),
           ...(health && Array.isArray(health.next_commands)
-            ? health.next_commands.map(item => `Run this health recommendation first: ${item.cli}`)
+            ? health.next_commands.map(item => `health_command=${item.cli}`)
             : []),
           ...(walkthroughMode ? guidance.next_actions : adapterHealthHints),
           ...(walkthroughMode ? adapterHealthHints : guidance.next_actions)
@@ -1676,6 +1686,8 @@ function createSessionFlowHelpers(deps) {
       focus,
       profile: resolved.profile.name,
       packs: resolved.session.active_packs,
+      default_package: resolved.session.default_package || '',
+      active_package: resolved.session.active_package || '',
       last_command: resolved.session.last_command || '',
       suggested_flow: suggestedFlow,
       next_action: nextAction,
@@ -1729,6 +1741,9 @@ function createSessionFlowHelpers(deps) {
       project_name: resolved.session.project_name,
       project_profile: resolved.session.project_profile,
       active_packs: resolved.session.active_packs,
+      packages: resolved.session.packages || [],
+      default_package: resolved.session.default_package || '',
+      active_package: resolved.session.active_package || '',
       developer: resolved.session.developer || { name: '', runtime: '' },
       focus: resolved.session.focus || '',
       preferences: getPreferences(resolved.session),
@@ -1756,11 +1771,12 @@ function createSessionFlowHelpers(deps) {
       permission_gates: permissionGates,
       injected_specs: injectedSpecs,
       active_task: activeTask
-        ? {
+          ? {
             name: activeTask.name,
             title: activeTask.title,
             status: activeTask.status,
             type: activeTask.type,
+            package: activeTask.package || '',
             path: activeTask.path,
             worktree_path: activeTask.worktree_path,
             artifacts: activeTask.artifacts,

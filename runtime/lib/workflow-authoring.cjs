@@ -8,6 +8,7 @@ function createWorkflowAuthoringHelpers(deps) {
     ROOT,
     runtime,
     workflowRegistry,
+    workflowImport,
     templateCli,
     getProjectExtDir,
     loadPack,
@@ -450,6 +451,51 @@ function createWorkflowAuthoringHelpers(deps) {
     };
   }
 
+  function parseWorkflowImportArgs(args) {
+    const options = {
+      source: '',
+      branch: '',
+      subdir: '',
+      force: false
+    };
+
+    for (let index = 0; index < args.length; index += 1) {
+      const token = args[index];
+
+      if (!options.source && !token.startsWith('--')) {
+        options.source = token;
+        continue;
+      }
+      if (token === '--branch') {
+        options.branch = args[index + 1] || '';
+        index += 1;
+        if (!options.branch) {
+          throw new Error('Missing workflow registry branch');
+        }
+        continue;
+      }
+      if (token === '--subdir') {
+        options.subdir = args[index + 1] || '';
+        index += 1;
+        if (!options.subdir) {
+          throw new Error('Missing workflow registry subdir');
+        }
+        continue;
+      }
+      if (token === '--force') {
+        options.force = true;
+        continue;
+      }
+      throw new Error(`Unknown workflow import option: ${token}`);
+    }
+
+    if (!options.source) {
+      throw new Error('Missing workflow registry source');
+    }
+
+    return options;
+  }
+
   function handleWorkflowCommands(cmd, subcmd, rest) {
     if (cmd !== 'workflow') {
       return undefined;
@@ -504,6 +550,24 @@ function createWorkflowAuthoringHelpers(deps) {
 
       return {
         command: `workflow new ${kind}`,
+        ...result
+      };
+    }
+
+    if (subcmd === 'import') {
+      const target = rest[0];
+      if (target !== 'registry') {
+        throw new Error(`Unknown workflow import target: ${target || ''}`.trim());
+      }
+
+      const options = parseWorkflowImportArgs(rest.slice(1));
+      const result = workflowImport.importProjectWorkflowRegistry(process.cwd(), options.source, options);
+      updateSession(current => {
+        current.last_command = 'workflow import registry';
+      });
+
+      return {
+        command: 'workflow import registry',
         ...result
       };
     }

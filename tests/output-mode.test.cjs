@@ -248,26 +248,26 @@ test('applyOutputMode builds brief start context payload with external driver hi
     },
     immediate: {
       command: 'task add <summary>',
-      reason: 'Project bootstrap exists; create and activate a task before execution.',
+      reason: 'The emb-agent project bootstrap already exists. Create and activate a task before execution.',
       cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs task add <summary>'
     },
     bootstrap: {
       status: 'ready-for-next',
       stage: 'continue-with-next',
       command: 'next',
-      summary: 'Project bootstrap is explicit enough to continue with next.'
+      summary: 'Bootstrap is ready. Run next.'
     },
     runtime_events: [
       {
         type: 'workflow-start',
         category: 'workflow',
         status: 'ok',
-        summary: 'Project bootstrap exists; create and activate a task before execution.'
+        summary: 'The emb-agent project bootstrap already exists. Create and activate a task before execution.'
       }
     ],
     next: {
       command: 'scan',
-      reason: 'selection mode is already closed',
+      reason: 'Project definition is already closed.',
       cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs scan'
     }
   }, true);
@@ -294,14 +294,14 @@ test('applyOutputMode builds brief init output with external driver hints', () =
       status: 'needs-project-definition',
       stage: 'define-project-constraints',
       command: 'next',
-      summary: 'Define the project in .emb-agent/req.yaml first: write the project type, intended inputs/outputs, interfaces, and constraints.'
+      summary: 'Project definition is still required. Fill .emb-agent/req.yaml with the project type, intended inputs/outputs, interfaces, and constraints.'
     },
     runtime_events: [
       {
         type: 'workflow-start',
         category: 'workflow',
         status: 'pending',
-        summary: 'Define the project in .emb-agent/req.yaml first.'
+        summary: 'Project definition is still required. Fill .emb-agent/req.yaml first.'
       }
     ]
   }, true);
@@ -320,7 +320,7 @@ test('applyOutputMode keeps runtime event summaries compact for automation calle
     },
     next: {
       command: 'scan',
-      reason: 'selection is still open',
+      reason: 'Project definition is still open.',
       cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs scan'
     },
     runtime_events: [
@@ -328,7 +328,7 @@ test('applyOutputMode keeps runtime event summaries compact for automation calle
         type: 'workflow-next',
         category: 'workflow',
         status: 'pending',
-        summary: 'selection is still open'
+        summary: 'Project definition is still open.'
       }
     ],
     next_actions: []
@@ -486,7 +486,7 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
       explicit: true,
       source: 'env',
       signal: 'untrusted',
-      summary: 'Automatic startup is explicitly disabled by environment override'
+      summary: 'Host startup automation is explicitly disabled by environment override.'
     },
     summary: { pass: 3, warn: 1, fail: 0, info: 0 },
     checks: [
@@ -503,9 +503,9 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
     action_card: {
       status: 'needs-user-input',
       stage: 'host-readiness',
-      action: 'Needs host action',
+      action: 'Host action required',
       summary: 'Startup hooks are not active in the current host session; restart the host once, then rerun health.',
-      reason: 'Host session ready for automatic bootstrap',
+      reason: 'Enable host startup hooks',
       first_instruction: 'Startup hooks are not active in the current host session; restart the host once, then rerun health.',
       first_cli: '',
       then_cli: '',
@@ -554,9 +554,9 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
     action_card: {
       status: 'needs-user-input',
       stage: 'host-readiness',
-      action: 'Needs host action',
+      action: 'Host action required',
       summary: 'Startup hooks are not active in the current host session; restart the host once, then rerun health.',
-      reason: 'Host session ready for automatic bootstrap',
+      reason: 'Enable host startup hooks',
       first_instruction: 'Startup hooks are not active in the current host session; restart the host once, then rerun health.',
       first_cli: '',
       then_cli: '',
@@ -567,15 +567,15 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
       explicit: true,
       source: 'env',
       signal: 'untrusted',
-      summary: 'Automatic startup is explicitly disabled by environment override'
+      summary: 'Host startup automation is explicitly disabled by environment override.'
     },
     next_stage: {
       id: 'startup-hooks',
       status: 'manual',
       display_id: 'host-readiness',
       display_status: 'needs-user-input',
-      label: 'Host session ready for automatic bootstrap',
-      action_summary: 'Needs host action',
+      label: 'Enable host startup hooks',
+      action_summary: 'Host action required',
       cli: ''
     },
     stages: [
@@ -585,8 +585,8 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
         status: 'manual',
         display_id: 'host-readiness',
         display_status: 'needs-user-input',
-        label: 'Host session ready for automatic bootstrap',
-        action_summary: 'Needs host action'
+        label: 'Enable host startup hooks',
+        action_summary: 'Host action required'
       }
     ],
     quickstart: {
@@ -601,7 +601,7 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
   assert.equal('workspace_trust' in healthOutput, false);
   assert.equal('workspace_trust' in bootstrapOutput, false);
   assert.equal(healthOutput.quickstart.stage, 'restart-host-for-bootstrap');
-  assert.equal(healthOutput.action_card.action, 'Needs host action');
+  assert.equal(healthOutput.action_card.action, 'Host action required');
   assert.match(healthOutput.action_card.first_instruction, /Startup hooks are not active/);
   assert.deepEqual(healthOutput.checks.map(item => item.key), ['startup_automation']);
   assert.deepEqual(healthOutput.recommendations, ['Configure EMB_AGENT_SUBAGENT_BRIDGE_CMD if you want dispatch/orchestrate to launch host sub-agents automatically.']);
@@ -639,7 +639,7 @@ test('applyOutputMode prioritizes brief health checks around the current action 
     action_card: {
       status: 'ready-to-run',
       stage: 'chip-support',
-      action: 'Ready to continue',
+      action: 'Ready to run',
       summary: 'Chip support is available but not installed in the project yet; install it before continuing.',
       first_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support bootstrap'
     },
@@ -682,7 +682,7 @@ test('applyOutputMode limits brief health checks to three non-info items when ac
     action_card: {
       status: 'needs-user-input',
       stage: 'host-readiness',
-      action: 'Needs host action',
+      action: 'Host action required',
       summary: 'Startup hooks are not active in the current host session; restart the host once, then rerun health.'
     },
     quickstart: {
@@ -727,7 +727,7 @@ test('applyOutputMode skips recommendation owned by the active action stage when
     action_card: {
       status: 'needs-user-input',
       stage: 'host-readiness',
-      action: 'Needs host action',
+      action: 'Host action required',
       summary: 'Startup hooks are not active in the current host session; restart the host once, then rerun health.',
       first_instruction: 'Startup hooks are not active in the current host session; restart the host once, then rerun health.'
     },
@@ -756,9 +756,9 @@ test('applyOutputMode builds brief bootstrap output', () => {
     action_card: {
       status: 'needs-user-input',
       stage: 'host-readiness',
-      action: 'Needs host action',
+      action: 'Host action required',
       summary: 'Startup hooks are not active in the current host session; restart the host once, then rerun health.',
-      reason: 'Host session ready for automatic bootstrap',
+      reason: 'Enable host startup hooks',
       first_instruction: 'Startup hooks are not active in the current host session; restart the host once, then rerun health.',
       first_cli: '',
       then_cli: '',
@@ -769,15 +769,15 @@ test('applyOutputMode builds brief bootstrap output', () => {
       explicit: false,
       source: 'default',
       signal: 'untrusted-no-signal',
-      summary: 'The current host session is not ready for automatic startup yet; automatic bootstrap steps stay paused by default'
+      summary: 'Host startup automation is not ready yet. Automatic bootstrap stays paused by default.'
     },
     next_stage: {
       id: 'startup-hooks',
       status: 'manual',
       display_id: 'host-readiness',
       display_status: 'needs-user-input',
-      label: 'Host session ready for automatic bootstrap',
-      action_summary: 'Needs host action',
+      label: 'Enable host startup hooks',
+      action_summary: 'Host action required',
       cli: ''
     },
     stages: [
@@ -787,7 +787,7 @@ test('applyOutputMode builds brief bootstrap output', () => {
         status: 'manual',
         display_id: 'host-readiness',
         display_status: 'needs-user-input',
-        label: 'Host session ready for automatic bootstrap'
+        label: 'Enable host startup hooks'
       }
     ],
     quickstart: {
@@ -804,9 +804,9 @@ test('applyOutputMode builds brief bootstrap output', () => {
   assert.equal(output.status, 'needs-user-input');
   assert.equal(output.current_stage, 'host-readiness');
   assert.equal('workspace_trust' in output, false);
-  assert.equal(output.action_card.action, 'Needs host action');
+  assert.equal(output.action_card.action, 'Host action required');
   assert.equal(output.next_stage.id, 'host-readiness');
-  assert.equal(output.next_stage.action_summary, 'Needs host action');
+  assert.equal(output.next_stage.action_summary, 'Host action required');
   assert.equal(output.stages.length, 2);
   assert.equal(output.quickstart.stage, 'restart-host-for-bootstrap');
   assert.equal(output.quickstart.summary, 'Startup hooks are not active in the current host session; restart the host once, then rerun health.');

@@ -184,7 +184,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.ok(nextBeforeContext.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(nextBeforeContext.workflow_stage.name, 'selection');
     assert.equal(nextBeforeContext.workflow_stage.primary_command, 'scan');
-    assert.match(nextBeforeContext.next.reason, /definition and chip-selection mode/);
+    assert.match(nextBeforeContext.next.reason, /Project definition is still open/);
     assert.ok(nextBeforeContext.next_actions.some(item => item.includes('.emb-agent/req.yaml')));
     assert.ok(Array.isArray(nextBeforeContext.next.health_next_commands));
     assert.equal(nextBeforeContext.next.health_next_commands.length, 0);
@@ -228,7 +228,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(resume.memory_summary.source, 'pause');
     assert.ok(resume.memory_summary.next_action.includes('resume irq race first'));
     assert.ok(resume.next_actions.some(item => item.includes('handoff')));
-    assert.ok(resume.next_actions.some(item => item.includes('Suggested command')));
+    assert.ok(resume.next_actions.some(item => item.startsWith('command=')));
     assert.equal(nextAfterPause.next.command, 'scan');
     assert.ok(nextAfterPause.handoff.next_action.includes('resume irq race first'));
     assert.equal(nextAfterPause.memory_summary.source, 'pause');
@@ -548,8 +548,13 @@ test('installer lays down claude agents and settings hooks', async () => {
     assert.equal(fs.existsSync(path.join(tempHome, 'commands', 'emb', 'init.md')), false);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-context-monitor.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'hooks', 'emb-statusline.js')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'config.toml')), false);
+    assert.deepEqual(settings.statusLine, {
+      type: 'command',
+      command: `node "${path.join(tempHome, 'emb-agent', 'hooks', 'emb-statusline.js').replace(/\\/g, '/')}"`
+    });
     assert.ok(Array.isArray(settings.hooks.SessionStart));
     assert.ok(Array.isArray(settings.hooks.PostToolUse));
     assert.match(JSON.stringify(settings.hooks.SessionStart), /emb-session-start\.js/);
@@ -598,6 +603,11 @@ test('installer defaults Claude to project-scoped .claude layout', async () => {
     assert.equal(fs.existsSync(path.join(claudeRoot, 'commands', 'emb', 'start.md')), true);
     assert.equal(fs.existsSync(path.join(claudeRoot, 'commands', 'emb', 'init.md')), false);
     assert.equal(fs.existsSync(path.join(claudeRoot, 'settings.json')), true);
+    const settings = JSON.parse(fs.readFileSync(path.join(claudeRoot, 'settings.json'), 'utf8'));
+    assert.deepEqual(settings.statusLine, {
+      type: 'command',
+      command: 'node ".claude/emb-agent/hooks/emb-statusline.js"'
+    });
     assert.match(stdout, /Installed 13 Claude commands under:/);
     assert.match(stdout, /\.claude\/commands\/emb/);
   } finally {
@@ -684,7 +694,7 @@ test('installer defaults Cursor to project-scoped .cursor layout', async () => {
     assert.match(stdout, /Installed 13 Cursor commands under:/);
     assert.match(stdout, /\.cursor\/commands/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
-    assert.match(stdout, /run: next/);
+    assert.match(stdout, /run: start/);
     assert.doesNotMatch(stdout, /run: init/);
   } finally {
     process.chdir(currentCwd);
@@ -730,7 +740,7 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     assert.match(stdout, /\.codex\/skills/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /Bootstrap task:/);
-    assert.match(stdout, /run: next/);
+    assert.match(stdout, /run: start/);
     assert.doesNotMatch(stdout, /run: init/);
   } finally {
     if (previousTrust === undefined) {

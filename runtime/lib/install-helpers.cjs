@@ -17,7 +17,8 @@ function createInstallHelpers(deps) {
     runtimeSrc,
     runtimeHooksSrc,
     packageVersion,
-    initProject
+    initProject,
+    createTerminalUi
   } = deps;
 
   const MANAGED_MARKER_START = '# EMB-AGENT managed start';
@@ -71,6 +72,8 @@ function createInstallHelpers(deps) {
         '  --global                Install to runtime config home',
         '  --local                 Install to current project runtime dir and bootstrap .emb-agent/',
         '  --profile <name>        Install profile: core (default), workflow',
+        '  --color[=<mode>]        Color mode: always, auto (default), never',
+        '  --no-color              Disable ANSI colors while keeping installer feedback',
         '  --config-dir <path>     Override target runtime directory',
         '  --subagent-bridge-cmd <command>',
         '                          Configure host sub-agent bridge command',
@@ -138,6 +141,20 @@ function createInstallHelpers(deps) {
     return normalized;
   }
 
+  function normalizeColorMode(value, flagName, defaultMode = 'auto') {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      if (flagName) {
+        throw new Error(`Missing value after ${flagName}`);
+      }
+      return defaultMode;
+    }
+    if (normalized !== 'always' && normalized !== 'auto' && normalized !== 'never') {
+      throw new Error(`Unsupported color mode: ${value}`);
+    }
+    return normalized;
+  }
+
   function getInstallProfile(args) {
     const profileName = normalizeInstallProfile(args && args.profile, '');
     return INSTALL_PROFILES[profileName];
@@ -150,6 +167,8 @@ function createInstallHelpers(deps) {
       runtime: '',
       developer: '',
       profile: 'core',
+      color: 'auto',
+      interactive: false,
       configDir: '',
       subagentBridgeCmd: '',
       subagentBridgeTimeoutMs: DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
@@ -218,6 +237,24 @@ function createInstallHelpers(deps) {
       if (token === '--profile') {
         result.profile = normalizeInstallProfile(argv[index + 1], '--profile');
         index += 1;
+        continue;
+      }
+      if (token === '--color') {
+        const next = String(argv[index + 1] || '').trim().toLowerCase();
+        if (next === 'always' || next === 'auto' || next === 'never') {
+          result.color = normalizeColorMode(next, '--color');
+          index += 1;
+          continue;
+        }
+        result.color = 'always';
+        continue;
+      }
+      if (token.startsWith('--color=')) {
+        result.color = normalizeColorMode(token.slice('--color='.length), '--color');
+        continue;
+      }
+      if (token === '--no-color') {
+        result.color = 'never';
         continue;
       }
       if (token === '--uninstall' || token === '-u') {
@@ -307,41 +344,152 @@ function createInstallHelpers(deps) {
     return !Array.isArray(argv) || argv.length === 0;
   }
 
+  function createPromptStyler() {
+    const fallbackChalk = {
+      bold: text => String(text),
+      blue: text => String(text),
+      cyan: text => String(text),
+      dim: text => String(text),
+      gray: text => String(text),
+      green: text => String(text),
+      red: text => String(text),
+      yellow: text => String(text),
+      white: text => String(text)
+    };
+
+    if (typeof createTerminalUi !== 'function') {
+      return {
+        enabled: false,
+        chalk: fallbackChalk
+      };
+    }
+
+    const output = process.stdout || process.stderr;
+    const ui = createTerminalUi({
+      process: {
+        env: process.env || {},
+        argv: process.argv || [],
+        stdout: output,
+        stderr: output
+      }
+    });
+
+    return {
+      enabled: Boolean(ui && ui.enabled),
+      chalk: ui && ui.chalk ? ui.chalk : fallbackChalk
+    };
+  }
+
+  function writePromptOutput(text) {
+    const output = process.stdout;
+    if (!output || typeof output.write !== 'function') {
+      return;
+    }
+    output.write(String(text || ''));
+  }
+
+  function buildPromptHeader(chalk) {
+    return [
+      chalk.cyan(chalk.bold('emb-agent installer')),
+      chalk.gray('  Embedded workflow bootstrap for Codex, Claude Code, and Cursor'),
+      ''
+    ];
+  }
+
+  function renderInteractiveSection(chalk, icon, title, descriptionLines, choiceLines, promptLabel) {
+    const lines = [
+      chalk.blue(`${icon} ${title}`)
+    ];
+
+    for (const line of descriptionLines || []) {
+      if (line) {
+        lines.push(chalk.gray(`  ${line}`));
+      }
+    }
+
+    if (Array.isArray(choiceLines) && choiceLines.length > 0) {
+      lines.push('');
+      choiceLines.forEach(item => {
+        lines.push(item);
+      });
+    }
+
+    lines.push('');
+    lines.push(chalk.yellow(promptLabel));
+    return lines.join('\n');
+  }
+
   function buildInteractiveRuntimePrompt(targets) {
-    const lines = ['emb-agent installer', '', 'Which runtime would you like to install for?', ''];
+    const { chalk } = createPromptStyler();
+    const choiceLines = [];
 
     for (let index = 0; index < targets.length; index += 1) {
       const target = targets[index];
       const globalDir = path.join(os.homedir(), ...(target.defaultGlobalDirParts || [target.localDirName]));
-      lines.push(`  ${index + 1}) ${target.label} (${globalDir.replace(os.homedir(), '~')})`);
+      choiceLines.push(
+        `  ${chalk.cyan(`${index + 1}.`)} ${chalk.white(target.label)} ${chalk.gray(`(${globalDir.replace(os.homedir(), '~')})`)}`
+      );
     }
 
-    return `${lines.join('\n')}\n\nChoice [1]: `;
+    return [
+      ...buildPromptHeader(chalk),
+      renderInteractiveSection(
+        chalk,
+        '▶',
+        'Select Runtime',
+        ['Choose the host runtime that emb-agent should integrate with.'],
+        choiceLines,
+        'Choice [1] > '
+      )
+    ].join('\n');
   }
 
   function buildInteractiveLocationPrompt(target) {
+    const { chalk } = createPromptStyler();
     const globalDir = path.join(os.homedir(), ...(target.defaultGlobalDirParts || [target.localDirName]));
     const defaultLocation = getDefaultInstallLocation(target && target.name);
     const defaultChoice = defaultLocation === 'local' ? '2' : '1';
-    return [
-      '',
-      'Where would you like to install?',
-      '',
-      `  1) Global (${globalDir.replace(os.homedir(), '~')})`,
-      `  2) Local  (./${target.localDirName})`,
-      '',
-      `Choice [${defaultChoice}]: `
-    ].join('\n');
+    const recommended = defaultLocation === 'local' ? '  Recommended for this runtime' : '';
+
+    return renderInteractiveSection(
+      chalk,
+      '▶',
+      'Install Location',
+      [
+        `Target runtime: ${target.label}`,
+        'Project-scoped installs are easier to test and keep isolated.'
+      ],
+      [
+        `  ${chalk.cyan('1.')} ${chalk.white('Global')} ${chalk.gray(`(${globalDir.replace(os.homedir(), '~')})`)}`,
+        `  ${chalk.cyan('2.')} ${chalk.white('Local')} ${chalk.gray(`(./${target.localDirName})`)}${chalk.green(recommended)}`
+      ],
+      `Choice [${defaultChoice}] > `
+    );
   }
 
   function buildInteractiveDeveloperPrompt() {
-    return [
-      '',
-      'Enter the developer name to seed new projects.',
-      'This value is required and will be reused by init.',
-      '',
-      'Developer name: '
-    ].join('\n');
+    const { chalk } = createPromptStyler();
+    return renderInteractiveSection(
+      chalk,
+      '▶',
+      'Developer Identity',
+      [
+        'Enter the developer name used to seed new emb-agent projects.',
+        'Tip: use your git username or the name you want embedded in project metadata.'
+      ],
+      [],
+      'Developer name > '
+    );
+  }
+
+  function writePromptConfirmation(label, value) {
+    const { chalk } = createPromptStyler();
+    writePromptOutput(`${chalk.green('✓')} ${chalk.cyan(label)} ${chalk.gray(value)}\n`);
+  }
+
+  function writePromptWarning(message) {
+    const { chalk } = createPromptStyler();
+    writePromptOutput(`${chalk.yellow('!')} ${chalk.yellow(message)}\n`);
   }
 
   function promptLine(question) {
@@ -404,6 +552,7 @@ function createInstallHelpers(deps) {
         runtime,
         developer,
         profile,
+        interactive: true,
         configDir: '',
         subagentBridgeCmd,
         subagentBridgeTimeoutMs:
@@ -425,15 +574,20 @@ function createInstallHelpers(deps) {
       selectedIndex = 1;
     }
     const target = targets[selectedIndex - 1];
+    writePromptConfirmation('Runtime:', target.label);
 
     const defaultLocation = getDefaultInstallLocation(target.name);
     const locationAnswer = await promptLine(buildInteractiveLocationPrompt(target));
     const resolvedLocationAnswer = String(locationAnswer || (defaultLocation === 'local' ? '2' : '1')).trim();
     const isLocal = resolvedLocationAnswer === '2';
-    const developer = await promptLine(buildInteractiveDeveloperPrompt());
-    if (!developer) {
-      throw new Error('Developer name is required during install.');
+    writePromptConfirmation('Location:', isLocal ? 'Local project' : 'Global config');
+
+    let developer = await promptLine(buildInteractiveDeveloperPrompt());
+    while (!developer) {
+      writePromptWarning('Developer name is required');
+      developer = await promptLine(buildInteractiveDeveloperPrompt());
     }
+    writePromptConfirmation('Developer:', developer);
 
     return {
       global: !isLocal,
@@ -441,6 +595,7 @@ function createInstallHelpers(deps) {
       runtime: target.name,
       developer,
       profile: 'core',
+      interactive: true,
       configDir: '',
       subagentBridgeCmd: '',
       subagentBridgeTimeoutMs: DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
@@ -762,6 +917,24 @@ function createInstallHelpers(deps) {
 
     const sessionStartCommand = buildJsonHostHookCommand(targetDir, target, 'emb-session-start.js', isLocal);
     const contextMonitorCommand = buildJsonHostHookCommand(targetDir, target, 'emb-context-monitor.js', isLocal);
+    const statusLineCommand = buildJsonHostHookCommand(targetDir, target, 'emb-statusline.js', isLocal);
+
+    if (target && target.name === 'claude') {
+      const existingStatusLine = next.statusLine;
+      const statusLineManaged =
+        existingStatusLine &&
+        typeof existingStatusLine === 'object' &&
+        !Array.isArray(existingStatusLine) &&
+        typeof existingStatusLine.command === 'string' &&
+        existingStatusLine.command.includes('emb-statusline.js');
+
+      if (!existingStatusLine || statusLineManaged) {
+        next.statusLine = {
+          type: 'command',
+          command: statusLineCommand
+        };
+      }
+    }
 
     const hasSessionStartHook = next.hooks.SessionStart.some(entry =>
       entry &&
@@ -832,10 +1005,32 @@ function createInstallHelpers(deps) {
 
   function stripJsonHostManagedHooks(settings) {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings) || !settings.hooks) {
+      if (
+        settings &&
+        typeof settings === 'object' &&
+        !Array.isArray(settings) &&
+        settings.statusLine &&
+        typeof settings.statusLine === 'object' &&
+        typeof settings.statusLine.command === 'string' &&
+        settings.statusLine.command.includes('emb-statusline.js')
+      ) {
+        const next = { ...settings };
+        delete next.statusLine;
+        return next;
+      }
       return settings;
     }
 
     const next = { ...settings, hooks: { ...settings.hooks } };
+
+    if (
+      next.statusLine &&
+      typeof next.statusLine === 'object' &&
+      typeof next.statusLine.command === 'string' &&
+      next.statusLine.command.includes('emb-statusline.js')
+    ) {
+      delete next.statusLine;
+    }
 
     for (const eventName of ['SessionStart', 'PostToolUse']) {
       const entries = Array.isArray(next.hooks[eventName]) ? next.hooks[eventName] : [];
@@ -1292,6 +1487,112 @@ function createInstallHelpers(deps) {
     ];
   }
 
+  function createInstallReporter(args) {
+    if (typeof createTerminalUi !== 'function') {
+      return {
+        enabled: false,
+        announce() {},
+        activity() {
+          return {
+            succeed() {},
+            fail() {}
+          };
+        },
+        complete() {},
+        removed() {}
+      };
+    }
+
+    const ui = createTerminalUi({
+      process,
+      colorMode: args && args.color
+    });
+    const chalk = ui && ui.chalk ? ui.chalk : {
+      bold: text => String(text),
+      cyan: text => String(text),
+      dim: text => String(text),
+      green: text => String(text),
+      yellow: text => String(text)
+    };
+
+    function writeTerminalLine(line = '') {
+      if (!ui || !ui.enabled || !process.stderr || typeof process.stderr.write !== 'function') {
+        return;
+      }
+      process.stderr.write(`${line}\n`);
+    }
+
+    function activity(text) {
+      return ui && typeof ui.createActivity === 'function'
+        ? ui.createActivity(text)
+        : {
+            succeed() {},
+            fail() {}
+          };
+    }
+
+    function announce(target, args, targetDir, installProfile) {
+      if (!ui || !ui.enabled) {
+        return;
+      }
+
+      writeTerminalLine(chalk.bold('emb-agent installer'));
+      writeTerminalLine(`${chalk.cyan('  Runtime:')} ${target.label}`);
+      writeTerminalLine(
+        `${chalk.cyan('  Location:')} ${args.local ? 'local project' : 'global config'}`
+      );
+      writeTerminalLine(`${chalk.cyan('  Target:')} ${targetDir}`);
+      writeTerminalLine(`${chalk.cyan('  Profile:')} ${installProfile.name}`);
+      if (args.developer) {
+        writeTerminalLine(`${chalk.cyan('  Developer:')} ${args.developer}`);
+      }
+      if (args.subagentBridgeCmd) {
+        writeTerminalLine(
+          `${chalk.cyan('  Bridge:')} ${args.subagentBridgeCmd} (${args.subagentBridgeTimeoutMs} ms)`
+        );
+      }
+      writeTerminalLine(chalk.dim(''));
+    }
+
+    function complete(target, runtimeDir, projectBootstrap, installProfile) {
+      if (!ui || !ui.enabled) {
+        return;
+      }
+
+      writeTerminalLine(chalk.green('Installation complete'));
+      writeTerminalLine(`${chalk.cyan('  Runtime Dir:')} ${runtimeDir}`);
+      writeTerminalLine(`${chalk.cyan('  Profile:')} ${installProfile.name}`);
+      if (projectBootstrap && projectBootstrap.bootstrap_task && projectBootstrap.bootstrap_task.path) {
+        writeTerminalLine(
+          `${chalk.cyan('  Bootstrap Task:')} ${path.join(projectBootstrap.project_root, projectBootstrap.bootstrap_task.path)}`
+        );
+      }
+      writeTerminalLine(
+        `${chalk.cyan('  Next:')} Restart ${target.restartLabel || target.label}, then run start`
+      );
+      writeTerminalLine(chalk.dim(''));
+    }
+
+    function removed(target, targetDir) {
+      if (!ui || !ui.enabled) {
+        return;
+      }
+
+      writeTerminalLine(chalk.green('Uninstall complete'));
+      writeTerminalLine(`${chalk.cyan('  Runtime:')} ${target.label}`);
+      writeTerminalLine(`${chalk.cyan('  Removed From:')} ${targetDir}`);
+      writeTerminalLine(chalk.dim(''));
+    }
+
+    return {
+      enabled: Boolean(ui && ui.enabled),
+      announce,
+      activity,
+      complete,
+      removed
+    };
+  }
+
   function uninstall(targetDir, target) {
     const agentsDir = path.join(targetDir, target.agentsDirName || 'agents');
 
@@ -1362,25 +1663,83 @@ function createInstallHelpers(deps) {
 
     const target = getRuntimeTarget(args);
     const targetDir = getTargetDir(args);
+    const installProfile = getInstallProfile(args);
+    const reporter = createInstallReporter(args);
     ensureDir(targetDir);
 
+    reporter.announce(target, args, targetDir, installProfile);
+
     if (args.uninstall) {
-      uninstall(targetDir, target);
+      const uninstallActivity = reporter.activity('Removing emb-agent managed files');
+      try {
+        uninstall(targetDir, target);
+        uninstallActivity.succeed('Removed emb-agent managed files');
+      } catch (error) {
+        uninstallActivity.fail('Removing emb-agent managed files', error);
+        throw error;
+      }
+      reporter.removed(target, targetDir);
       process.stdout.write(`Uninstalled emb-agent managed files for ${target.label} from: ${targetDir}\n`);
       return;
     }
 
-    const runtimeDir = installRuntime(targetDir, target, args);
+    const runtimeActivity = reporter.activity('Installing emb-agent runtime files');
+    let runtimeDir;
+    try {
+      runtimeDir = installRuntime(targetDir, target, args);
+      runtimeActivity.succeed('Installed emb-agent runtime files');
+    } catch (error) {
+      runtimeActivity.fail('Installing emb-agent runtime files', error);
+      throw error;
+    }
     const installedRuntimeHost = runtimeHost.resolveRuntimeHost(runtimeDir);
-    const agentCount = installAgents(targetDir, target, args);
-    const codexSkillCount = installCodexSkills(targetDir, target, runtimeDir);
-    const claudeCommandCount = installClaudeCommands(targetDir, target, runtimeDir);
-    const cursorCommandCount = installCursorCommands(targetDir, target, runtimeDir);
+    const integrationActivity = reporter.activity('Installing host agents, hooks, and commands');
+    let agentCount;
+    let codexSkillCount;
+    let claudeCommandCount;
+    let cursorCommandCount;
+    try {
+      agentCount = installAgents(targetDir, target, args);
+      codexSkillCount = installCodexSkills(targetDir, target, runtimeDir);
+      claudeCommandCount = installClaudeCommands(targetDir, target, runtimeDir);
+      cursorCommandCount = installCursorCommands(targetDir, target, runtimeDir);
+      const installedSurfaceCount = agentCount + codexSkillCount + claudeCommandCount + cursorCommandCount;
+      integrationActivity.succeed(
+        installedSurfaceCount > 0
+          ? `Installed ${installedSurfaceCount} host integration artifacts`
+          : 'Installed host integration metadata'
+      );
+    } catch (error) {
+      integrationActivity.fail('Installing host agents, hooks, and commands', error);
+      throw error;
+    }
+
+    const envActivity = reporter.activity('Preparing local environment template');
     const envExamplePath = path.join(args.local ? process.cwd() : targetDir, '.env.example');
-    const envExampleCreated = installEnvExample(envExamplePath);
-    const projectBootstrap = bootstrapProjectIfNeeded(args);
+    let envExampleCreated;
+    try {
+      envExampleCreated = installEnvExample(envExamplePath);
+      envActivity.succeed(`${envExampleCreated ? 'Created' : 'Kept'} env example`);
+    } catch (error) {
+      envActivity.fail('Preparing local environment template', error);
+      throw error;
+    }
+
+    let projectBootstrap = null;
+    if (args.local) {
+      const bootstrapActivity = reporter.activity('Bootstrapping local emb-agent project');
+      try {
+        projectBootstrap = bootstrapProjectIfNeeded(args);
+        bootstrapActivity.succeed(
+          projectBootstrap ? 'Bootstrapped local emb-agent project' : 'Skipped local project bootstrap'
+        );
+      } catch (error) {
+        bootstrapActivity.fail('Bootstrapping local emb-agent project', error);
+        throw error;
+      }
+    }
+
     const envHintLines = buildEnvHintLines(envExamplePath);
-    const installProfile = getInstallProfile(args);
     const lines = [
       `Installed emb-agent runtime for ${target.label} to: ${runtimeDir}`,
       `Install profile: ${installProfile.name}`,
@@ -1418,14 +1777,17 @@ function createInstallHelpers(deps) {
       ...(!installProfile.includeScaffolds
         ? ['Advanced scaffold assets were skipped in core profile. Reinstall with --profile workflow to include them.']
         : []),
-      `Startup automation is installed automatically. If it does not seem active yet, restart the host once and rerun ${projectBootstrap ? 'next' : 'start'}. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.`,
+      'Startup automation is installed automatically. If it does not seem active yet, restart the host once and rerun start. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.',
       'Next steps:',
       `  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`,
-      `  In a project repo, open a ${target.label} session and run: ${projectBootstrap ? 'next' : 'start'}`,
-      `  ${projectBootstrap ? 'Review .emb-agent/tasks/00-bootstrap-project before broadening the workflow.' : 'Then continue with: next'}`
+      `  In a project repo, open a ${target.label} session and run: start`,
+      `  ${projectBootstrap ? 'Then continue with: next after start routes the bootstrap state.' : 'Then continue with: next'}`
     ];
 
-    process.stdout.write(lines.join('\n') + '\n');
+    reporter.complete(target, runtimeDir, projectBootstrap, installProfile);
+    if (!args.interactive || !reporter.enabled) {
+      process.stdout.write(lines.join('\n') + '\n');
+    }
   }
 
   return {

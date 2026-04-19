@@ -26,6 +26,8 @@ allowed-tools:
 - Prefer the lightest subcommand that keeps facts, evidence, and project truth aligned.
 - Usually `start` should decide when you need `task add` or `task activate`; use `task` directly once the task lifecycle is already explicit.
 - Use `task add --parent <name>` or `task subtask add <parent> <child>` when larger work needs a visible task tree.
+- In monorepo projects, use `task add --package <name>` to bind the task to one package and carry that package into activation and status.
+- Package-bound tasks automatically prioritize that package in their default context and expose package scope in `task worktree show/status`.
 - Use `task set-branch` and `task set-base-branch` before `task create-pr` if branch routing needs to differ from the defaults.
 - Use `task worktree create <name>` when you need the workspace before moving task status to `in_progress`.
 - Use `task worktree status` or `task worktree show <name>` to inspect workspace state, registry, and current-task pointers.
