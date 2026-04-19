@@ -112,7 +112,7 @@ test('external init and next expose fixed driver payload for external agents', a
     assert.equal(status.entrypoint, 'status');
     assert.match(status.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
     assert.equal(status.status, 'inspection');
-    assert.match(status.summary, /Use next/);
+    assert.match(status.summary, /next/i);
     assert.ok(status.session_state);
     assert.equal(status.session_state.storage_mode, 'primary');
     assert.equal(status.session_state.session.exists, true);

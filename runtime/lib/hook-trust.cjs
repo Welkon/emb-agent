@@ -162,7 +162,7 @@ function resolveHostConfigTrust(options) {
         explicit: true,
         source: 'host-config',
         signal: 'hooks-enabled',
-        summary: 'Codex host startup automation is available; emb-agent can continue automatic bootstrap steps'
+        summary: 'Codex startup hooks are active. emb-agent can continue automatic bootstrap.'
       };
     }
 
@@ -181,7 +181,7 @@ function resolveHostConfigTrust(options) {
         explicit: true,
         source: 'host-config',
         signal: 'hooks-enabled',
-        summary: 'Claude Code startup automation is available; emb-agent can continue automatic bootstrap steps'
+        summary: 'Claude Code startup hooks are active. emb-agent can continue automatic bootstrap.'
       };
     }
 
@@ -200,7 +200,7 @@ function resolveHostConfigTrust(options) {
         explicit: true,
         source: 'host-config',
         signal: 'hooks-enabled',
-        summary: 'Cursor startup automation is available; emb-agent can continue automatic bootstrap steps'
+        summary: 'Cursor startup hooks are active. emb-agent can continue automatic bootstrap.'
       };
     }
   } catch {
@@ -223,8 +223,8 @@ function resolveWorkspaceTrust(input, env, options) {
       source: 'env',
       signal: forced ? 'trusted' : 'untrusted',
       summary: forced
-        ? 'Automatic startup is explicitly enabled by environment override'
-        : 'Automatic startup is explicitly disabled by environment override'
+        ? 'Host startup automation is explicitly enabled by environment override.'
+        : 'Host startup automation is explicitly disabled by environment override.'
     };
   }
 
@@ -236,8 +236,8 @@ function resolveWorkspaceTrust(input, env, options) {
       source: 'payload',
       signal: payloadSignal ? 'trusted' : 'untrusted',
       summary: payloadSignal
-        ? 'The current host session provided automatic-startup access'
-        : 'The current host session withheld automatic-startup access'
+        ? 'The current host session granted startup-hook access.'
+        : 'The current host session withheld startup-hook access.'
     };
   }
 
@@ -251,7 +251,7 @@ function resolveWorkspaceTrust(input, env, options) {
     explicit: false,
     source: 'default',
     signal: 'untrusted-no-signal',
-    summary: 'The current host session is not ready for automatic startup yet; automatic bootstrap steps stay paused by default'
+    summary: 'Host startup automation is not ready yet. Automatic bootstrap stays paused by default.'
   };
 }
 

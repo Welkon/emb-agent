@@ -119,21 +119,21 @@ function createActionContractHelpers(deps) {
   function buildActionSummary(action) {
     switch (action) {
       case 'scan':
-        return 'Lock the real change surface before mutation.';
+        return 'Action=scan. Lock the real change surface before mutation.';
       case 'plan':
-        return 'Lock truth, constraints, and the smallest executable order before mutation.';
+        return 'Action=plan. Lock truth, constraints, and the smallest executable order before mutation.';
       case 'do':
-        return 'Execute the smallest durable change and keep verification debt explicit.';
+        return 'Action=do. Execute the smallest durable change and keep verification debt explicit.';
       case 'debug':
-        return 'Eliminate hypotheses one by one before patching.';
+        return 'Action=debug. Eliminate hypotheses one by one before patching.';
       case 'review':
-        return 'Inspect structural risk without collapsing into style review.';
+        return 'Action=review. Inspect structural risk without collapsing into style review.';
       case 'verify':
-        return 'Close evidence item by item and surface any failed or untested gates.';
+        return 'Action=verify. Close evidence item by item and surface any failed or untested gates.';
       case 'forensics':
-        return 'Converge the problem statement and evidence before choosing the return path.';
+        return 'Action=forensics. Converge the problem statement and evidence before choosing the return path.';
       case 'note':
-        return 'Record stable conclusions only and keep temporary session fragments out.';
+        return 'Action=note. Record stable conclusions only and keep temporary session fragments out.';
       default:
         return '';
     }
@@ -141,29 +141,40 @@ function createActionContractHelpers(deps) {
 
   function buildActionReason(action, output, resolved) {
     if (action === 'plan') {
-      return output.goal || '';
+      return output.goal ? `goal=${output.goal}` : '';
     }
     if (action === 'do' || action === 'debug') {
-      return output.chosen_agent ? `Primary agent: ${output.chosen_agent}` : '';
+      return output.chosen_agent ? `primary_agent=${output.chosen_agent}` : '';
     }
     if (action === 'review') {
       return Array.isArray(output.axes) && output.axes.length > 0
-        ? `Primary review axis: ${output.axes[0]}`
+        ? `review_axis=${output.axes[0]}`
         : '';
     }
     if (action === 'verify') {
-      return output.closure_status || output.next_step || '';
+      return output.closure_status
+        ? `closure_status=${output.closure_status}`
+        : (output.next_step ? `next_step=${output.next_step}` : '');
     }
     if (action === 'scan') {
       return Array.isArray(output.key_facts) && output.key_facts.length > 0
-        ? output.key_facts[0]
+        ? `key_fact=${output.key_facts[0]}`
         : '';
     }
     if (action === 'forensics' || action === 'note') {
-      return output.next_step || output.problem || output.chosen_agent || '';
+      if (output.next_step) {
+        return `next_step=${output.next_step}`;
+      }
+      if (output.problem) {
+        return `problem=${output.problem}`;
+      }
+      if (output.chosen_agent) {
+        return `primary_agent=${output.chosen_agent}`;
+      }
+      return '';
     }
     return resolved && resolved.session && resolved.session.focus
-      ? resolved.session.focus
+      ? `focus=${resolved.session.focus}`
       : '';
   }
 
@@ -217,10 +228,10 @@ function createActionContractHelpers(deps) {
 
   function buildActionNextActions(actionCard, output) {
     return runtime.unique([
-      actionCard && actionCard.first_instruction ? `First: ${actionCard.first_instruction}` : '',
-      actionCard && actionCard.first_cli ? `Suggested next command: ${actionCard.first_cli}` : '',
-      actionCard && actionCard.followup ? actionCard.followup : '',
-      output && output.next_step ? `Keep this as the next decision point: ${output.next_step}` : ''
+      actionCard && actionCard.first_instruction ? `instruction=${actionCard.first_instruction}` : '',
+      actionCard && actionCard.first_cli ? `command=${actionCard.first_cli}` : '',
+      actionCard && actionCard.followup ? `followup=${actionCard.followup}` : '',
+      output && output.next_step ? `decision_point=${output.next_step}` : ''
     ]);
   }
 

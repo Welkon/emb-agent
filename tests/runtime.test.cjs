@@ -70,6 +70,7 @@ test('normalizeSession fills metadata and trims arrays', () => {
     title: '',
     status: '',
     path: '',
+    package: '',
     updated_at: ''
   });
   assert.deepEqual(session.diagnostics, {
@@ -615,6 +616,8 @@ test('project state paths and handoff validator support lightweight handoff', ()
       version: '1.0',
       status: 'paused',
       packs: ['sensor-node'],
+      default_package: 'app',
+      active_package: 'fw',
       last_files: ['main.c'],
       open_questions: ['q1'],
       known_risks: ['r1']
@@ -624,6 +627,8 @@ test('project state paths and handoff validator support lightweight handoff', ()
 
   assert.equal(handoff.status, 'paused');
   assert.deepEqual(handoff.packs, ['sensor-node']);
+  assert.equal(handoff.default_package, 'app');
+  assert.equal(handoff.active_package, 'fw');
   assert.deepEqual(handoff.last_files, ['main.c']);
 
   const contextSummary = runtime.validateContextSummary(
@@ -633,6 +638,8 @@ test('project state paths and handoff validator support lightweight handoff', ()
       source: 'pause',
       profile: 'baremetal-8bit',
       packs: ['sensor-node'],
+      default_package: 'app',
+      active_package: 'fw',
       next_action: 'resume timer drift',
       last_files: ['main.c'],
       open_questions: ['q1'],
@@ -641,6 +648,7 @@ test('project state paths and handoff validator support lightweight handoff', ()
         name: 'timer-drift',
         title: 'Investigate timer drift',
         status: 'active',
+        package: 'fw',
         path: '.emb-agent/tasks/timer-drift.json'
       },
       diagnostics: {
@@ -659,6 +667,9 @@ test('project state paths and handoff validator support lightweight handoff', ()
   assert.equal(contextSummary.snapshot_label, '');
   assert.equal(contextSummary.stale_note, '');
   assert.deepEqual(contextSummary.recovery_pointers, []);
+  assert.equal(contextSummary.default_package, 'app');
+  assert.equal(contextSummary.active_package, 'fw');
   assert.equal(contextSummary.active_task.name, 'timer-drift');
+  assert.equal(contextSummary.active_task.package, 'fw');
   assert.equal(contextSummary.diagnostics.latest_executor.exit_code, 7);
 });

@@ -122,11 +122,11 @@ function createDispatchCommandRuntimeHelpers(deps) {
       policy: reviewContract.policy ? String(reviewContract.policy) : '',
       redispatch_required: redispatchRequired,
       summary: redispatchRequired
-        ? 'Stage A contract review failed; redispatch with a tighter contract instead of patching inline.'
+        ? 'Stage A status=redispatch-required. Tighten the worker contract and redispatch. Do not patch inline.'
         : stageAStatus === 'passed'
-          ? 'Stage A passed; Stage B quality review is the next explicit gate.'
+          ? 'Stage A status=passed. Run Stage B quality review next.'
           : blockedWithoutResults
-            ? 'Worker outputs are unavailable, so Stage A cannot complete yet.'
+            ? 'Stage A status=blocked-no-worker-results. Worker outputs are unavailable.'
             : '',
       stage_a: {
         id: stageAContract.id ? String(stageAContract.id) : 'contract-review',
@@ -491,7 +491,7 @@ function createDispatchCommandRuntimeHelpers(deps) {
           status: 'needs-input',
           executed: false,
           reason: 'missing-tool-inputs',
-          summary: `Tool ${execution.tool} still needs inputs before it can run: ${missingInputs.join(', ')}`,
+          summary: `Tool ${execution.tool} status=needs-input. Missing inputs: ${missingInputs.join(', ')}`,
           tool: execution.tool,
           cli_draft: execution.cli || '',
           missing_inputs: missingInputs,
@@ -734,7 +734,7 @@ function createDispatchCommandRuntimeHelpers(deps) {
     const stageA = review && isObject(review.stage_a) ? review.stage_a : {};
     const summary = String(
       review.summary ||
-      'Stage A contract review failed; redispatch with a tighter worker contract before continuing.'
+      'Stage A status=redispatch-required. Tighten the worker contract and redispatch before continuing.'
     ).trim();
 
     return annotateExecutionResult({
@@ -753,7 +753,7 @@ function createDispatchCommandRuntimeHelpers(deps) {
         failure_action: stageA.failure_action || 'redispatch',
         status: stageA.status || 'redispatch-required'
       },
-      recommended_next_step: 'Tighten the worker contract and redispatch; do not patch the remaining 10% inline in the main thread.'
+      recommended_next_step: 'Tighten the worker contract, then redispatch. Do not patch the remaining gap inline in the main thread.'
     }, {
       ...executionMeta,
       kind: 'action-blocked',

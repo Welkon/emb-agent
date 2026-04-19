@@ -482,6 +482,15 @@ function createCliRouter(deps) {
           if (payload.task && payload.task.name) {
             lines.push(terminalUi.renderKeyValue('Task', payload.task.name, 'info'));
           }
+          if (payload.workspace && payload.workspace.package_scope) {
+            lines.push(terminalUi.renderKeyValue('Scope', payload.workspace.package_scope, 'muted'));
+          }
+          if (payload.workspace && payload.workspace.package) {
+            lines.push(terminalUi.renderKeyValue('Package', payload.workspace.package, 'info'));
+          }
+          if (payload.workspace && payload.workspace.package_path) {
+            lines.push(terminalUi.renderKeyValue('Package Path', payload.workspace.package_path, 'muted'));
+          }
           if (worktree.workspace_state) {
             lines.push(
               terminalUi.renderKeyValue(
@@ -526,6 +535,15 @@ function createCliRouter(deps) {
         if (Object.keys(worktree).length > 0) {
           if (worktree.task_name) {
             lines.push(terminalUi.renderKeyValue('Task', worktree.task_name, 'info'));
+          }
+          if (worktree.package_scope) {
+            lines.push(terminalUi.renderKeyValue('Scope', worktree.package_scope, 'muted'));
+          }
+          if (worktree.package) {
+            lines.push(terminalUi.renderKeyValue('Package', worktree.package, 'info'));
+          }
+          if (worktree.package_path) {
+            lines.push(terminalUi.renderKeyValue('Package Path', worktree.package_path, 'muted'));
           }
           if (worktree.workspace_state) {
             lines.push(
@@ -1116,7 +1134,7 @@ function createCliRouter(deps) {
           emitJson({
             executed: false,
             reason: 'network-bootstrap-required',
-            summary: 'Default chip support install requires an explicit source or manual network-enabled execution',
+            summary: 'Network access is required for the default chip support install. Provide an explicit source or run this step in a network-enabled session.',
             stage,
             bootstrap
           });

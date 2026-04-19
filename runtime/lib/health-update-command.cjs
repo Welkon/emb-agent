@@ -268,17 +268,17 @@ function createHealthUpdateCommandHelpers(deps) {
   function getBootstrapStageAction(id) {
     switch (id) {
       case 'startup-hooks':
-        return 'Needs host action';
+        return 'Host action required';
       case 'hardware-truth':
-        return 'Needs project facts';
+        return 'Project facts required';
       case 'doc-truth-sync':
-        return 'Needs document apply';
+        return 'Document apply required';
       case 'support-bootstrap':
       case 'support-derive':
       case 'next-step':
-        return 'Ready to continue';
+        return 'Ready to run';
       case 'init-project':
-        return 'Needs project init';
+        return 'Project init required';
       default:
         return '';
     }
@@ -488,13 +488,13 @@ function createHealthUpdateCommandHelpers(deps) {
         createBootstrapStage(
           'startup-hooks',
           !initReady ? 'pending' : trustReady ? 'completed' : 'manual',
-          'Host session ready for automatic bootstrap',
+          'Enable host startup hooks',
           {
             summary: trustReady
               ? (workspaceTrust && workspaceTrust.summary)
                 ? workspaceTrust.summary
-                : 'The current host session is ready for automatic bootstrap flows'
-              : 'Restart the host once so emb-agent automatic startup can attach before bootstrap continues',
+                : 'Host startup hooks are active. Automatic bootstrap can continue.'
+              : 'Restart the host once so emb-agent startup hooks attach before bootstrap continues.',
             evidence: workspaceTrust
               ? [
                   workspaceTrust.source ? `source=${workspaceTrust.source}` : '',
@@ -583,8 +583,8 @@ function createHealthUpdateCommandHelpers(deps) {
         'Enter the recommended next stage',
         {
           summary: hasBlockingStage
-            ? 'Finish earlier bootstrap stages first, then enter next'
-            : 'Bootstrap prerequisites are closed; continue with next',
+            ? 'Finish earlier bootstrap stages first. Then run next.'
+            : 'Bootstrap is ready. Run next.',
           cli: next ? next.cli : NEXT_CLI,
           kind: 'command',
           argv: ['next']
@@ -631,7 +631,7 @@ function createHealthUpdateCommandHelpers(deps) {
       ? nextStage.id === 'next-step' && reuseSummary
         ? reuseSummary
         : nextStage.summary || nextStage.label
-      : reuseSummary || 'Bootstrap prerequisites are already closed; run next directly';
+      : reuseSummary || 'Bootstrap is already clear. Run next directly.';
     const quickstartUserSummary =
       nextStage && nextStage.id === 'next-step' && reuseSummary
         ? reuseSummary
@@ -645,12 +645,12 @@ function createHealthUpdateCommandHelpers(deps) {
         ? nextStage.id === 'next-step' && reuseSummary
           ? reuseSummary
           : nextStage.summary || nextStage.label
-        : reuseSummary || 'Bootstrap prerequisites are already closed',
+        : reuseSummary || 'Bootstrap is already clear.',
       display_summary: nextStage
         ? nextStage.id === 'next-step' && reuseSummary
           ? reuseSummary
           : getQuickstartUserSummary(quickstartStage, nextStage.summary || nextStage.label)
-        : reuseSummary || 'Bootstrap prerequisites are closed; enter the recommended next stage.',
+        : reuseSummary || 'Bootstrap is already clear. Enter the recommended next stage.',
       current_stage: nextStage ? nextStage.id : '',
       display_current_stage: nextStage ? nextStage.display_id : 'continue-with-next',
       next_stage: nextStage,
@@ -674,12 +674,12 @@ function createHealthUpdateCommandHelpers(deps) {
         ? nextStage.id === 'next-step' && reuseSummary
           ? reuseSummary
           : nextStage.summary || nextStage.label
-        : reuseSummary || 'Bootstrap prerequisites are already closed',
+        : reuseSummary || 'Bootstrap is already clear.',
       display_summary: nextStage
         ? nextStage.id === 'next-step' && reuseSummary
           ? reuseSummary
           : getQuickstartUserSummary(quickstartStage, nextStage.summary || nextStage.label)
-        : reuseSummary || 'Bootstrap prerequisites are closed; enter the recommended next stage.',
+        : reuseSummary || 'Bootstrap is already clear. Enter the recommended next stage.',
       current_stage: nextStage ? nextStage.id : '',
       display_current_stage: nextStage ? nextStage.display_id : 'continue-with-next',
       next_stage: nextStage,

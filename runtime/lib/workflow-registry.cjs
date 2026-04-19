@@ -87,6 +87,7 @@ function normalizeApplyWhen(raw, label) {
     return {
       always: false,
       packs: [],
+      packages: [],
       profiles: [],
       task_types: [],
       task_statuses: [],
@@ -99,6 +100,7 @@ function normalizeApplyWhen(raw, label) {
   return {
     always: ensureBoolean(source.always, false),
     packs: ensureStringArray(source.packs || [], `${label}.packs`),
+    packages: ensureStringArray(source.packages || [], `${label}.packages`),
     profiles: ensureStringArray(source.profiles || [], `${label}.profiles`),
     task_types: ensureStringArray(source.task_types || [], `${label}.task_types`),
     task_statuses: ensureStringArray(source.task_statuses || [], `${label}.task_statuses`),
@@ -268,6 +270,7 @@ function getProjectWorkflowPaths(projectExtDir) {
   return {
     registryDir: path.join(projectExtDir, PROJECT_REGISTRY_DIR),
     registryPath: path.join(projectExtDir, PROJECT_REGISTRY_DIR, WORKFLOW_REGISTRY_FILE),
+    packsDir: path.join(projectExtDir, 'packs'),
     specsDir: path.join(projectExtDir, PROJECT_SPECS_DIR),
     templatesDir: path.join(projectExtDir, PROJECT_TEMPLATES_DIR),
     projectLocalSpecPath: path.join(projectExtDir, PROJECT_SPECS_DIR, 'project-local.md'),
@@ -331,7 +334,7 @@ function syncProjectWorkflowLayout(projectExtDir, options = {}) {
   const migrated = [];
   const reused = [];
 
-  const dirs = [paths.registryDir, paths.specsDir, paths.templatesDir];
+  const dirs = [paths.registryDir, paths.packsDir, paths.specsDir, paths.templatesDir];
   dirs.forEach(dirPath => {
     if (fs.existsSync(dirPath)) {
       reused.push(path.relative(projectExtDir, dirPath).replace(/\\/g, '/'));
@@ -508,8 +511,13 @@ function evaluateSpecReason(spec, context) {
   const reasons = [];
   const profile = String((context && context.profile) || '').trim();
   const packs = new Set(((context && context.packs) || []).map(item => String(item || '').trim()));
+  const activePackage = String((context && context.active_package) || '').trim();
+  const defaultPackage = String((context && context.default_package) || '').trim();
   const task = context && context.task ? context.task : null;
   const handoff = Boolean(context && context.handoff);
+  const packageCandidates = new Set(
+    [activePackage, defaultPackage, task && task.package ? String(task.package).trim() : ''].filter(Boolean)
+  );
 
   if (applyWhen.always) {
     reasons.push('always');
@@ -520,6 +528,11 @@ function evaluateSpecReason(spec, context) {
   applyWhen.packs.forEach(name => {
     if (packs.has(name)) {
       reasons.push(`pack:${name}`);
+    }
+  });
+  applyWhen.packages.forEach(name => {
+    if (packageCandidates.has(name)) {
+      reasons.push(`package:${name}`);
     }
   });
   if (task && task.type && applyWhen.task_types.includes(task.type)) {
@@ -539,6 +552,7 @@ function evaluateSpecReason(spec, context) {
     const hasNoConditions =
       !applyWhen.always &&
       applyWhen.packs.length === 0 &&
+      applyWhen.packages.length === 0 &&
       applyWhen.profiles.length === 0 &&
       applyWhen.task_types.length === 0 &&
       applyWhen.task_statuses.length === 0 &&
@@ -599,6 +613,7 @@ module.exports = {
   createDefaultProjectWorkflowRegistry,
   getProjectWorkflowPaths,
   loadWorkflowRegistry,
+  normalizeRegistry,
   resolveAutoInjectedSpecs,
   syncProjectWorkflowLayout
 };

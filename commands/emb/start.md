@@ -10,8 +10,8 @@ allowed-tools:
 # emb-start
 
 - Use `$emb-start` at the beginning of a session or after a major context switch.
-- It is the single repository entrypoint.
-- On the first run, it should initialize the repository automatically before routing forward.
+- It is the single project entrypoint.
+- On the first run, it should initialize the emb-agent project files automatically before routing forward.
 - It should route to `resume`, the next bootstrap step, `task add`, or `next`.
 - Use `start --brief` when a wrapper only needs compact bootstrap guidance plus summarized `runtime_events`.
 - Use `external start` when the caller needs the stable external-driver envelope instead of the full start payload.

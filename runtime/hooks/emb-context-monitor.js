@@ -119,14 +119,14 @@ function buildMetricsMessage(metrics, contextHygiene) {
     ? contextHygiene.clear_hint
     : 'pause -> clear -> resume';
   const reasons = contextHygiene && Array.isArray(contextHygiene.reasons) && contextHygiene.reasons.length > 0
-    ? ` Project-side signals: ${contextHygiene.reasons.join('; ')}.`
+    ? ` Signals: ${contextHygiene.reasons.join('; ')}.`
     : '';
 
   if (isCritical) {
-    return `${prefix} About ${Math.round(metrics.remaining)}% of the context window remains and it is near the limit. Do not expand the problem space further. Run ${pauseCli} now, finish the smallest closure, then continue with ${resumeChain}.${reasons}`;
+    return `${prefix} Context window remaining=${Math.round(metrics.remaining)}%. Stop expanding scope. Run ${pauseCli} now, close the smallest pending unit, then follow ${resumeChain}.${reasons}`;
   }
 
-  return `${prefix} About ${Math.round(metrics.remaining)}% of the context window remains. Prepare to close scope before digging deeper. Prefer pause first, then continue with ${resumeChain}.${reasons}`;
+  return `${prefix} Context window remaining=${Math.round(metrics.remaining)}%. Prepare to close scope before deeper exploration. Prefer pause first, then follow ${resumeChain}.${reasons}`;
 }
 
 function buildSessionMessage(contextHygiene) {
@@ -141,7 +141,7 @@ function buildSessionMessage(contextHygiene) {
     ? ` Reasons: ${contextHygiene.reasons.join('; ')}.`
     : '';
 
-  return `${prefix} ${contextHygiene.recommendation}${reasons} Suggested chain: ${contextHygiene.clear_hint}.`;
+  return `${prefix} ${contextHygiene.recommendation}${reasons} Next chain: ${contextHygiene.clear_hint}.`;
 }
 
 function severityRank(level) {

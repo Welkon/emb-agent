@@ -172,3 +172,41 @@ test('workflow registry exposes implementation style spec and template', () => {
   assert.ok((merged.specs || []).some(item => item.name === 'task-completion-aar'));
   assert.ok(injected.some(item => item.name === 'task-completion-aar'));
 });
+
+test('workflow registry supports package-aware auto injection', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-package-'));
+  const projectExtDir = runtime.initProjectLayout(tempProject);
+  const registryPath = path.join(projectExtDir, 'registry', 'workflow.json');
+
+  const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+  registry.specs.push({
+    name: 'firmware-package-focus',
+    title: 'Firmware Package Focus',
+    path: 'specs/firmware-package-focus.md',
+    summary: 'Project-local package rules for firmware work.',
+    auto_inject: true,
+    priority: 88,
+    apply_when: {
+      packages: ['fw']
+    }
+  });
+  fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(
+    path.join(projectExtDir, 'specs', 'firmware-package-focus.md'),
+    '# Firmware Package Focus\n\n- Check firmware package boundaries.\n',
+    'utf8'
+  );
+
+  const merged = workflowRegistry.loadWorkflowRegistry(path.join(repoRoot, 'runtime'), {
+    projectExtDir
+  });
+  const injected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
+    profile: 'baremetal-8bit',
+    packs: [],
+    active_package: 'fw',
+    default_package: 'app',
+    task: { type: 'implement', status: 'planning', package: 'fw' }
+  }, { limit: 8 });
+
+  assert.ok(injected.some(item => item.name === 'firmware-package-focus'));
+});

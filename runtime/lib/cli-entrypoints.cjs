@@ -541,7 +541,7 @@ function createCliEntryHelpers(deps) {
           'start',
           'bootstrap [run [--confirm]]',
           'next [run]',
-          'task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
+          'task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--package <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
           'task activate [--confirm] <name>',
           'task worktree <list|status|show|create|cleanup> [name]'
         ]
@@ -679,6 +679,7 @@ function createCliEntryHelpers(deps) {
           'spec show <name>',
           'workflow init [--force]',
           'workflow list',
+          'workflow import registry <source> [--branch <name>] [--subdir <path>] [--force]',
           'workflow show registry',
           'workflow show <pack|spec|template> <name>',
           'workflow new pack <name> [--with-spec [<name>]] [--with-template [<name>]] [--output <path>] [--force]',
@@ -897,7 +898,7 @@ function createCliEntryHelpers(deps) {
       return {
         status: 'needs-project-definition',
         stage: 'define-project-constraints',
-        summary: `Define the project in ${runtime.getProjectAssetRelativePath('req.yaml')} first: write the project type, intended inputs/outputs, interfaces, and constraints. Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until you have a real chip or board reference.`,
+        summary: `Project definition is still required. Fill ${runtime.getProjectAssetRelativePath('req.yaml')} with the project type, intended inputs/outputs, interfaces, and constraints. Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a real chip or board reference exists.`,
         command: primaryAction && primaryAction.cli_fallback ? primaryAction.cli_fallback : 'next',
         bootstrap_task: guidance.bootstrap_task || null
       };
@@ -907,7 +908,7 @@ function createCliEntryHelpers(deps) {
       return {
         status: 'needs-hardware-identity',
         stage: 'confirm-hardware-identity',
-        summary: `Hardware identity is not confirmed yet; write the real MCU and package into ${runtime.getProjectAssetRelativePath('hw.yaml')} before execution.`,
+        summary: `Hardware identity is still missing. Record the real MCU and package in ${runtime.getProjectAssetRelativePath('hw.yaml')} before execution.`,
         command: primaryAction && primaryAction.cli_fallback
           ? primaryAction.cli_fallback
           : 'declare hardware --mcu <name> --package <name>',
@@ -919,7 +920,7 @@ function createCliEntryHelpers(deps) {
       return {
         status: primaryAction.status === 'unconfigured' ? 'needs-chip-support-source' : 'ready-for-next',
         stage: primaryAction.kind,
-        summary: String(primaryAction.summary || '').trim() || 'Project bootstrap can continue with next.',
+        summary: String(primaryAction.summary || '').trim() || 'Bootstrap is ready. Run next.',
         command: primaryAction.cli_fallback || 'next',
         bootstrap_task: guidance.bootstrap_task || null
       };
@@ -928,7 +929,7 @@ function createCliEntryHelpers(deps) {
     return {
       status: 'ready-for-next',
       stage: 'continue-with-next',
-      summary: 'Project bootstrap is explicit enough to continue with next.',
+      summary: 'Bootstrap is ready. Run next.',
       command: 'next',
       bootstrap_task: guidance.bootstrap_task || null
     };
@@ -955,6 +956,10 @@ function createCliEntryHelpers(deps) {
         '--codex',
         '--claude',
         '--cursor',
+        '--registry',
+        '-r',
+        '--registry-branch',
+        '--registry-subdir',
         '--user',
         '-u',
         '--force'

@@ -572,6 +572,7 @@ function createTaskCommandHelpers(deps) {
       description: '',
       devType: 'embedded',
       scope: '',
+      package: '',
       priority: 'P2',
       creator: '',
       assignee: '',
@@ -602,6 +603,11 @@ function createTaskCommandHelpers(deps) {
       }
       if (token === '--scope') {
         result.scope = tokens[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--package') {
+        result.package = tokens[index + 1] || '';
         index += 1;
         continue;
       }
@@ -655,6 +661,7 @@ function createTaskCommandHelpers(deps) {
     result.devType = normalizeTaskDevType(result.devType);
     result.priority = normalizeTaskPriority(result.priority);
     result.scope = normalizeTaskSlug(result.scope);
+    result.package = String(result.package || '').trim();
     result.baseBranch = String(result.baseBranch || '').trim() || resolveDefaultBaseBranch();
     result.branch = String(result.branch || '').trim();
     result.creator = String(result.creator || '').trim();
@@ -1052,7 +1059,11 @@ function createTaskCommandHelpers(deps) {
     };
   }
 
-  function buildDefaultContextEntries(channel, session) {
+  function buildDefaultContextEntries(channel, session, taskLike) {
+    const packageScope = resolveTaskPackageScope(taskLike, session, {
+      requireKnown: Boolean(taskLike && taskLike.package),
+      requireExisting: Boolean(taskLike && taskLike.package)
+    });
     const baseEntries = [
       {
         path: runtime.getProjectAssetRelativePath('hw.yaml'),
@@ -1063,6 +1074,14 @@ function createTaskCommandHelpers(deps) {
         reason: 'Requirement truth'
       }
     ];
+
+    if (packageScope && packageScope.path) {
+      baseEntries.push({
+        kind: 'directory',
+        path: packageScope.path,
+        reason: 'Active monorepo package scope'
+      });
+    }
 
     if (channel === 'implement') {
       baseEntries.push(
@@ -1084,14 +1103,98 @@ function createTaskCommandHelpers(deps) {
       });
     }
 
-    (session.last_files || []).forEach(item => {
+    const recentFiles = runtime.unique((session && session.last_files) || []);
+    const scopedRecentFiles =
+      packageScope && packageScope.path
+        ? recentFiles.filter(item => isPathWithinPackageScope(item, packageScope.path))
+        : [];
+    const selectedRecentFiles = scopedRecentFiles.length > 0 ? scopedRecentFiles : recentFiles;
+
+    selectedRecentFiles.forEach(item => {
       baseEntries.push({
         path: item,
-        reason: 'Recently related files'
+        reason:
+          scopedRecentFiles.length > 0
+            ? 'Recently related files in active package'
+            : 'Recently related files'
       });
     });
 
     return uniqueContextEntries(baseEntries);
+  }
+
+  function getProjectPackages() {
+    const projectConfig = getProjectConfig ? getProjectConfig() : {};
+    return Array.isArray(projectConfig && projectConfig.packages)
+      ? projectConfig.packages.filter(item => item && typeof item === 'object')
+      : [];
+  }
+
+  function resolveTaskPackageScope(taskLike, session, options) {
+    const settings = options && typeof options === 'object' ? options : {};
+    const packages = getProjectPackages();
+
+    if (packages.length < 1) {
+      return null;
+    }
+
+    const packageMap = new Map(
+      packages
+        .map(item => [String(item.name || '').trim(), item])
+        .filter(item => item[0])
+    );
+    const projectConfig = getProjectConfig ? getProjectConfig() : {};
+    const requestedName = String(taskLike && taskLike.package ? taskLike.package : '').trim();
+    const candidates = [requestedName];
+
+    if (settings.useSessionFallback !== false) {
+      candidates.push(String(session && session.active_package ? session.active_package : '').trim());
+    }
+    if (settings.useProjectFallback !== false) {
+      candidates.push(
+        String(projectConfig && projectConfig.active_package ? projectConfig.active_package : '').trim(),
+        String(projectConfig && projectConfig.default_package ? projectConfig.default_package : '').trim()
+      );
+    }
+
+    const normalizedCandidates = candidates.filter(Boolean);
+    const resolvedName = normalizedCandidates.find(item => packageMap.has(item)) || '';
+
+    if (!resolvedName) {
+      if (settings.requireKnown && requestedName) {
+        throw new Error(`Unknown task package: ${requestedName}`);
+      }
+      return null;
+    }
+
+    const descriptor = packageMap.get(resolvedName) || {};
+    const packagePath = runtime.normalizeProjectRelativePath(String(descriptor.path || '').trim());
+    const absolutePath = packagePath ? path.join(resolveProjectRoot(), packagePath) : '';
+    const exists = Boolean(absolutePath) && fs.existsSync(absolutePath);
+
+    if (settings.requireExisting && (!packagePath || !exists)) {
+      throw new Error(`Task package path does not exist: ${packagePath || resolvedName}`);
+    }
+
+    return {
+      name: resolvedName,
+      path: packagePath,
+      absolute_path: absolutePath,
+      exists,
+      type: String(descriptor.type || '').trim(),
+      submodule: descriptor.submodule === true
+    };
+  }
+
+  function isPathWithinPackageScope(candidatePath, packagePath) {
+    const normalizedCandidate = runtime.normalizeProjectRelativePath(String(candidatePath || '').trim());
+    const normalizedPackage = runtime.normalizeProjectRelativePath(String(packagePath || '').trim());
+
+    if (!normalizedCandidate || !normalizedPackage) {
+      return false;
+    }
+
+    return normalizedCandidate === normalizedPackage || normalizedCandidate.startsWith(`${normalizedPackage}/`);
   }
 
   function buildInjectedSpecContext(taskLike, session) {
@@ -1427,6 +1530,20 @@ function createTaskCommandHelpers(deps) {
         : {};
     const creator = parsedSummary.creator || projectDeveloper.name || '';
     const assignee = parsedSummary.assignee || creator;
+    const projectPackages = Array.isArray(projectConfig && projectConfig.packages) ? projectConfig.packages : [];
+    const knownPackages = new Set(projectPackages.map(item => item.name));
+    const requestedPackage = String(parsedSummary.package || '').trim();
+    if (requestedPackage && !knownPackages.has(requestedPackage)) {
+      throw new Error(`Unknown task package: ${requestedPackage}`);
+    }
+    const resolvedPackage =
+      requestedPackage && knownPackages.has(requestedPackage)
+        ? requestedPackage
+        : session && session.active_package && knownPackages.has(session.active_package)
+          ? session.active_package
+          : projectConfig && projectConfig.default_package && knownPackages.has(projectConfig.default_package)
+            ? projectConfig.default_package
+            : '';
     const references = runtime.unique(session.last_files || []);
     const status = 'planning';
     const slug = String(name || normalizeTaskSlug(title));
@@ -1440,6 +1557,7 @@ function createTaskCommandHelpers(deps) {
       status,
       dev_type: parsedSummary.devType || 'embedded',
       scope: parsedSummary.scope || '',
+      package: resolvedPackage,
       priority: parsedSummary.priority || 'P2',
       creator,
       assignee,
@@ -1697,6 +1815,17 @@ function createTaskCommandHelpers(deps) {
     const copied = [];
     let task_dir = '';
     let post_create = [];
+    const packageScope = resolveTaskPackageScope(task, null, {
+      requireKnown: Boolean(task && task.package),
+      requireExisting: Boolean(task && task.package),
+      useSessionFallback: false,
+      useProjectFallback: false
+    });
+    const workspaceScope = {
+      package: packageScope ? packageScope.name : '',
+      package_path: packageScope ? packageScope.path : '',
+      package_scope: packageScope ? 'package' : 'project'
+    };
 
     if (!created) {
       syncWorkspaceCurrentTaskPointer(targetPath, task.name);
@@ -1706,7 +1835,8 @@ function createTaskCommandHelpers(deps) {
         path: targetPath,
         copied,
         task_dir,
-        post_create
+        post_create,
+        ...workspaceScope
       };
     }
 
@@ -1751,7 +1881,8 @@ function createTaskCommandHelpers(deps) {
         path: targetPath,
         copied,
         task_dir,
-        post_create
+        post_create,
+        ...workspaceScope
       };
     }
 
@@ -1767,7 +1898,8 @@ function createTaskCommandHelpers(deps) {
       path: targetPath,
       copied,
       task_dir,
-      post_create
+      post_create,
+      ...workspaceScope
     };
   }
 
@@ -1836,6 +1968,14 @@ function createTaskCommandHelpers(deps) {
   function classifyTaskWorktreeState(input) {
     const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
 
+    if (source.package_scope === 'package' && source.package && !source.package_exists) {
+      return {
+        state: 'package-missing',
+        attention: 'warn',
+        summary: `Task package ${source.package} is configured but ${source.package_path || 'its path'} is missing.`
+      };
+    }
+
     if (!source.path) {
       return {
         state: 'detached',
@@ -1892,12 +2032,26 @@ function createTaskCommandHelpers(deps) {
   }
 
   function buildTaskWorktreeState(task, registryEntry) {
+    const currentSession = loadSession();
     const pathFromTask = String(task && task.worktree_path ? task.worktree_path : '').trim();
     const pathFromRegistry = String(registryEntry && registryEntry.worktree_path ? registryEntry.worktree_path : '').trim();
     const rawPath = pathFromTask || pathFromRegistry;
     const workspacePath = rawPath
       ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(resolveProjectRoot(), rawPath))
       : '';
+    const packageName = String(task && task.package ? task.package : '').trim();
+    const packageScope = resolveTaskPackageScope(task, currentSession, {
+      requireKnown: false,
+      requireExisting: false,
+      useSessionFallback: false,
+      useProjectFallback: false
+    });
+    const resolvedPackage = packageScope ? packageScope.name : packageName;
+    const resolvedPackagePath = packageScope ? packageScope.path : '';
+    const resolvedPackageExists = resolvedPackage
+      ? Boolean(packageScope && packageScope.exists)
+      : true;
+    const resolvedPackageScope = resolvedPackage ? 'package' : 'project';
     const exists = Boolean(workspacePath) && fs.existsSync(workspacePath);
     const mode = String(
       (registryEntry && registryEntry.mode) ||
@@ -1910,22 +2064,30 @@ function createTaskCommandHelpers(deps) {
       path: workspacePath,
       exists,
       managed: workspacePath ? isManagedTaskWorkspace(workspacePath) : false,
-      active: Boolean(loadSession().active_task && loadSession().active_task.name === task.name),
+      active: Boolean(currentSession.active_task && currentSession.active_task.name === task.name),
       current_task: currentTask,
-      dirty_files
+      dirty_files,
+      package: resolvedPackage,
+      package_path: resolvedPackagePath,
+      package_scope: resolvedPackageScope,
+      package_exists: resolvedPackageExists
     });
 
     return {
       task_name: task.name,
       task_title: task.title,
       task_status: task.status,
+      package: resolvedPackage,
+      package_path: resolvedPackagePath,
+      package_scope: resolvedPackageScope,
+      package_exists: resolvedPackageExists,
       branch: String(task.branch || '').trim(),
       base_branch: String(task.base_branch || '').trim(),
       mode,
       path: workspacePath,
       exists,
       managed: workspacePath ? isManagedTaskWorkspace(workspacePath) : false,
-      active: Boolean(loadSession().active_task && loadSession().active_task.name === task.name),
+      active: Boolean(currentSession.active_task && currentSession.active_task.name === task.name),
       current_task: currentTask,
       dirty_files,
       workspace_state: classification.state,
@@ -1955,6 +2117,7 @@ function createTaskCommandHelpers(deps) {
         active: worktrees.filter(item => item.active).length,
         missing: worktrees.filter(item => item.workspace_state === 'missing').length,
         dirty: worktrees.filter(item => item.workspace_state === 'dirty').length,
+        package_missing: worktrees.filter(item => item.workspace_state === 'package-missing').length,
         attention_required: worktrees.filter(item => item.attention === 'warn').length
       },
       registry_path: path.relative(resolveProjectRoot(), getTaskWorktreeRegistryPath()).replace(/\\/g, '/')
@@ -2033,7 +2196,10 @@ function createTaskCommandHelpers(deps) {
       source: 'task-commands',
       details: {
         mode: workspace.mode || '',
-        path: workspace.path || ''
+        path: workspace.path || '',
+        package: workspace.package || '',
+        package_path: workspace.package_path || '',
+        package_scope: workspace.package_scope || 'project'
       }
     }), blocked.permission);
   }
@@ -2126,6 +2292,7 @@ function createTaskCommandHelpers(deps) {
       status,
       dev_type: normalizeTaskDevType(manifest.dev_type || 'embedded'),
       scope: String(manifest.scope || ''),
+      package: String(manifest.package || ''),
       priority: normalizeTaskPriority(manifest.priority || 'P2'),
       creator: String(manifest.creator || ''),
       assignee: String(manifest.assignee || ''),
@@ -2207,6 +2374,7 @@ function createTaskCommandHelpers(deps) {
         status: 'planning',
         dev_type: parsed.devType,
         scope: parsed.scope,
+        package: parsed.package,
         priority: parsed.priority,
         assignee: parsed.assignee || parsed.creator || '',
         type: parsed.type,
@@ -2255,7 +2423,7 @@ function createTaskCommandHelpers(deps) {
             reason: 'Task goal, constraints, and acceptance checklist'
           },
           ...buildBindingContextEntries(channel, bindings),
-          ...buildDefaultContextEntries(channel, session)
+          ...buildDefaultContextEntries(channel, session, manifest)
         ])
       );
     });
@@ -2548,6 +2716,7 @@ function createTaskCommandHelpers(deps) {
     updateSession(current => {
       current.last_command = 'task activate';
       current.focus = task.title;
+      current.active_package = task.package || current.active_package || '';
       current.last_files = runtime
         .unique([
           ...(((task.context || {}).implement) || []).map(item => item.path),
@@ -2559,6 +2728,7 @@ function createTaskCommandHelpers(deps) {
         title: task.title,
         status: 'in_progress',
         path: task.path,
+        package: task.package || '',
         updated_at: new Date().toISOString()
       };
     });
@@ -2617,11 +2787,14 @@ function createTaskCommandHelpers(deps) {
     updateSession(current => {
       current.last_command = 'task resolve';
       if (current.active_task && current.active_task.name === input.name) {
+        current.active_package =
+          (getProjectConfig() && getProjectConfig().default_package) || '';
         current.active_task = {
           name: '',
           title: '',
           status: '',
           path: '',
+          package: '',
           updated_at: ''
         };
       }

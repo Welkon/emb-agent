@@ -10,16 +10,22 @@ const repoRoot = path.resolve(__dirname, '..');
 const installHelpersModule = require(path.join(repoRoot, 'runtime', 'lib', 'install-helpers.cjs'));
 const installTargetsModule = require(path.join(repoRoot, 'runtime', 'lib', 'install-targets.cjs'));
 const runtimeHost = require(path.join(repoRoot, 'runtime', 'lib', 'runtime-host.cjs'));
+const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 
-function createHelper(customProcess, promptInstallerChoices) {
+function createHelper(customProcess, options = {}) {
   const runtimeSrc = path.join(repoRoot, 'runtime');
+  const {
+    promptInstallerChoices,
+    createTerminalUi,
+    readline
+  } = options;
 
   return installHelpersModule.createInstallHelpers({
     fs,
     os,
     path,
     process: customProcess,
-    readline: null,
+    readline: readline || null,
     promptInstallerChoices,
     installTargets: installTargetsModule.createInstallTargets({
       os,
@@ -31,7 +37,9 @@ function createHelper(customProcess, promptInstallerChoices) {
     agentsSrc: path.join(repoRoot, 'agents'),
     runtimeSrc,
     runtimeHooksSrc: path.join(runtimeSrc, 'hooks'),
-    packageVersion: '0.0.0-test'
+    packageVersion: '0.0.0-test',
+    initProject,
+    createTerminalUi
   });
 }
 
@@ -63,13 +71,15 @@ test('interactive no-args install can resolve local codex choice through prompt 
     }
   };
 
-  const helper = createHelper(fakeProcess, async targets => {
-    assert.deepEqual(targets.map(item => item.name), ['codex', 'claude', 'cursor']);
-    return {
-      runtime: 'codex',
-      location: 'local',
-      developer: 'welkon'
-    };
+  const helper = createHelper(fakeProcess, {
+    promptInstallerChoices: async targets => {
+      assert.deepEqual(targets.map(item => item.name), ['codex', 'claude', 'cursor']);
+      return {
+        runtime: 'codex',
+        location: 'local',
+        developer: 'welkon'
+      };
+    }
   });
 
   const args = await helper.resolveArgs([]);
@@ -81,6 +91,82 @@ test('interactive no-args install can resolve local codex choice through prompt 
   assert.equal(args.profile, 'core');
   assert.equal(args.subagentBridgeCmd, '');
   assert.equal(args.subagentBridgeTimeoutMs, runtimeHost.DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS);
+});
+
+test('interactive prompts render structured sections and retry blank developer names', async () => {
+  const askedQuestions = [];
+  const answers = ['1', '2', '', 'welkon'];
+  let stdout = '';
+
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    argv: ['node', 'install.js'],
+    stdin: { isTTY: true },
+    stdout: {
+      isTTY: true,
+      write(chunk) {
+        stdout += String(chunk);
+        return true;
+      }
+    },
+    stderr: {
+      isTTY: true,
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess, {
+    readline: {
+      createInterface() {
+        return {
+          on() {},
+          close() {},
+          question(question, callback) {
+            askedQuestions.push(String(question));
+            callback(String(answers.shift() || ''));
+          }
+        };
+      }
+    },
+    createTerminalUi() {
+      const wrap = tag => text => `<${tag}>${String(text)}</${tag}>`;
+      return {
+        enabled: true,
+        chalk: {
+          bold: wrap('bold'),
+          blue: wrap('blue'),
+          cyan: wrap('cyan'),
+          dim: wrap('dim'),
+          gray: wrap('gray'),
+          green: wrap('green'),
+          red: wrap('red'),
+          yellow: wrap('yellow'),
+          white: wrap('white')
+        }
+      };
+    }
+  });
+
+  const args = await helper.resolveArgs([]);
+
+  assert.equal(args.runtime, 'codex');
+  assert.equal(args.local, true);
+  assert.equal(args.developer, 'welkon');
+  assert.equal(askedQuestions.length, 4);
+  assert.match(askedQuestions[0], /Select Runtime/);
+  assert.match(askedQuestions[0], /Embedded workflow bootstrap/);
+  assert.match(askedQuestions[0], /Choice \[1\] >/);
+  assert.match(askedQuestions[1], /Install Location/);
+  assert.match(askedQuestions[1], /Recommended for this runtime/);
+  assert.match(askedQuestions[2], /Developer Identity/);
+  assert.match(askedQuestions[2], /Developer name >/);
+  assert.match(stdout, /Runtime:/);
+  assert.match(stdout, /Location:/);
+  assert.match(stdout, /Developer name is required/);
+  assert.match(stdout, /Developer:/);
 });
 
 test('parseArgs accepts sub-agent bridge command and timeout', () => {
@@ -217,6 +303,26 @@ test('parseArgs accepts install profile override', () => {
   assert.equal(args.profile, 'workflow');
 });
 
+test('parseArgs accepts color mode overrides', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+  const explicit = helper.parseArgs(['--global', '--developer', 'welkon', '--color=always']);
+  const disabled = helper.parseArgs(['--global', '--developer', 'welkon', '--no-color']);
+
+  assert.equal(explicit.color, 'always');
+  assert.equal(disabled.color, 'never');
+});
+
 test('parseArgs rejects sub-agent bridge timeout without command', () => {
   const fakeProcess = {
     cwd: () => repoRoot,
@@ -255,4 +361,163 @@ test('parseArgs rejects empty default adapter source location', () => {
     () => helper.parseArgs(['--global', '--developer', 'welkon', '--default-chip-support-source-location']),
     /Missing value after --default-chip-support-source-location/
   );
+});
+
+test('main reports install progress through injected terminal ui', async () => {
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-install-ui-'));
+  const activities = [];
+  let stderr = '';
+  let receivedColorMode = '';
+
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    argv: ['node', 'install.js'],
+    stdin: { isTTY: true },
+    stdout: {
+      isTTY: true,
+      write() {
+        return true;
+      }
+    },
+    stderr: {
+      isTTY: true,
+      write(chunk) {
+        stderr += String(chunk);
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess, {
+    createTerminalUi(options = {}) {
+      receivedColorMode = String(options.colorMode || '');
+      return {
+        enabled: true,
+        chalk: {
+          bold: text => String(text),
+          cyan: text => String(text),
+          dim: text => String(text),
+          green: text => String(text),
+          yellow: text => String(text)
+        },
+        createActivity(text) {
+          activities.push({ type: 'start', text });
+          return {
+            succeed(message) {
+              activities.push({ type: 'succeed', text: message });
+            },
+            fail(message, error) {
+              activities.push({
+                type: 'fail',
+                text: message,
+                error: error && error.message ? error.message : ''
+              });
+            }
+          };
+        }
+      };
+    }
+  });
+
+  await helper.main(['--codex', '--global', '--config-dir', tempHome, '--developer', 'welkon', '--color=always']);
+
+  assert.match(stderr, /emb-agent installer/);
+  assert.match(stderr, /Runtime:/);
+  assert.match(stderr, /Target:/);
+  assert.match(stderr, /Installation complete/);
+  assert.match(stderr, /Next:/);
+  assert.match(stderr, /then run start/);
+  assert.equal(receivedColorMode, 'always');
+  assert.deepEqual(
+    activities.filter(item => item.type === 'start').map(item => item.text),
+    [
+      'Installing emb-agent runtime files',
+      'Installing host agents, hooks, and commands',
+      'Preparing local environment template'
+    ]
+  );
+  assert.ok(
+    activities.some(item => item.type === 'succeed' && item.text === 'Installed emb-agent runtime files')
+  );
+  assert.ok(
+    activities.some(
+      item => item.type === 'succeed' && /Installed \d+ host integration artifacts/.test(item.text)
+    )
+  );
+  assert.ok(
+    activities.some(item => item.type === 'succeed' && /env example/.test(item.text))
+  );
+  assert.equal(activities.some(item => item.type === 'fail'), false);
+});
+
+test('interactive main keeps final summary in terminal ui instead of stdout dump', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-interactive-main-'));
+  const currentCwd = process.cwd();
+  let stdout = '';
+  let stderr = '';
+
+  const fakeProcess = {
+    cwd: () => tempProject,
+    env: { EMB_AGENT_WORKSPACE_TRUST: '1' },
+    argv: ['node', 'install.js'],
+    stdin: { isTTY: true },
+    stdout: {
+      isTTY: true,
+      write(chunk) {
+        stdout += String(chunk);
+        return true;
+      }
+    },
+    stderr: {
+      isTTY: true,
+      write(chunk) {
+        stderr += String(chunk);
+        return true;
+      }
+    }
+  };
+
+  try {
+    process.chdir(tempProject);
+    const helper = createHelper(fakeProcess, {
+      promptInstallerChoices: async () => ({
+        runtime: 'codex',
+        location: 'local',
+        developer: 'welkon'
+      }),
+      createTerminalUi() {
+        return {
+          enabled: true,
+          chalk: {
+            bold: text => String(text),
+            blue: text => String(text),
+            cyan: text => String(text),
+            dim: text => String(text),
+            gray: text => String(text),
+            green: text => String(text),
+            red: text => String(text),
+            yellow: text => String(text),
+            white: text => String(text)
+          },
+          createActivity() {
+            return {
+              succeed() {},
+              fail() {}
+            };
+          }
+        };
+      }
+    });
+
+    await helper.main([]);
+
+    assert.equal(stdout, '');
+    assert.match(stderr, /Installation complete/);
+    assert.match(stderr, /Runtime Dir:/);
+    assert.match(stderr, /Next:/);
+    assert.match(stderr, /then run start/);
+  } finally {
+    process.chdir(currentCwd);
+  }
 });

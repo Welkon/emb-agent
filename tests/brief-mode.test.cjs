@@ -56,8 +56,32 @@ test('action --brief surfaces unified action cards and followups', async () => {
     assert.equal(output.output_mode, 'brief');
     assert.ok(output.action_card);
     assert.equal(output.action_card.stage, 'scan');
+    assert.equal(output.action_card.summary, 'Action=scan. Lock the real change surface before mutation.');
     assert.ok(Array.isArray(output.next_actions));
     assert.ok(output.next_actions.length > 0);
+    assert.ok(output.next_actions.some(item => item.startsWith('instruction=')));
+    assert.ok(output.next_actions.some(item => item.startsWith('command=')));
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('action --brief keeps action card reasons in key-value form', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-brief-action-reason-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['question', 'add', 'why irq misses after wake']);
+
+    const output = await captureCliJson(['debug', '--brief']);
+
+    assert.equal(output.output_mode, 'brief');
+    assert.ok(output.action_card);
+    assert.equal(output.action_card.stage, 'debug');
+    assert.equal(output.action_card.summary, 'Action=debug. Eliminate hypotheses one by one before patching.');
+    assert.match(output.action_card.reason, /^primary_agent=/);
   } finally {
     process.chdir(currentCwd);
   }

@@ -32,7 +32,7 @@ test('session start hook points the user back to start instead of replaying the 
     assert.equal(empty.trusted, true);
     assert.match(empty.output, /Emb-Agent Session Reminder/);
     assert.match(empty.output, /Primary entrypoint: start/);
-    assert.match(empty.output, /Current shortest command: next/);
+    assert.match(empty.output, /Recommended next command: next/);
     assert.doesNotMatch(empty.output, /Task bootstrap:/);
     assert.doesNotMatch(empty.output, /Execution loop:/);
 
@@ -42,8 +42,8 @@ test('session start hook points the user back to start instead of replaying the 
     assert.equal(reminder.runtime_events[0].type, 'hook-dispatch');
     assert.match(reminder.output, /Emb-Agent Session Reminder/);
     assert.match(reminder.output, /Primary entrypoint: start/);
-    assert.match(reminder.output, /Current shortest command: resume/);
-    assert.match(reminder.output, /Found an unconsumed handoff/);
+    assert.match(reminder.output, /Recommended next command: resume/);
+    assert.match(reminder.output, /Pending handoff detected/);
     assert.match(reminder.output, /node ~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs resume/);
     assert.match(reminder.output, /resume irq race first/);
   } finally {
@@ -155,6 +155,7 @@ test('session start hook reminds active task context after clearable resume path
 
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
     assert.match(reminder.output, /Primary entrypoint: start/);
+    assert.match(reminder.output, /Recommended next command: next/);
     assert.match(reminder.output, /Current active task:/);
     assert.match(reminder.output, /Investigate PMS150G comparator timing/);
     assert.match(reminder.output, /Re-read the task PRD first:/);

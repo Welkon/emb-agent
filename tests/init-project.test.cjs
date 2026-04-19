@@ -341,7 +341,11 @@ test('init returns onboarding guidance for chip support setup', () => {
     assert.equal(result.bootstrap.status, 'needs-project-definition');
     assert.equal(result.bootstrap.stage, 'define-project-constraints');
     assert.equal(result.bootstrap.command, 'next');
-    assert.match(result.bootstrap.summary, /Define the project in \.emb-agent\/req\.yaml first/);
+    assert.match(
+      result.bootstrap.summary,
+      /\.emb-agent\/req\.yaml.*project type.*inputs\/outputs.*interfaces.*constraints/i
+    );
+    assert.match(result.bootstrap.summary, /\.emb-agent\/hw\.yaml.*unknown/i);
     assert.equal(result.bootstrap.bootstrap_task.name, '00-bootstrap-project');
     assert.equal(result.bootstrap_task.name, '00-bootstrap-project');
     assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
@@ -375,7 +379,9 @@ test('init scans existing project inputs and suggests hardware confirmation befo
     assert.equal(result.bootstrap.status, 'needs-hardware-identity');
     assert.equal(result.bootstrap.stage, 'confirm-hardware-identity');
     assert.ok(result.bootstrap.command.includes('declare hardware --mcu <name> --package <name>'));
-    assert.match(result.bootstrap.summary, /Hardware identity is not confirmed yet/);
+    assert.match(result.bootstrap.summary, /Hardware identity.*missing/i);
+    assert.match(result.bootstrap.summary, /\.emb-agent\/hw\.yaml/i);
+    assert.match(result.bootstrap.summary, /MCU and package/i);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -506,6 +512,61 @@ test('init accepts runtime and developer identity flags and persists updates', (
       fs.readFileSync(path.join(tempProject, '.gitignore'), 'utf8'),
       /\.emb-agent\/\.developer/
     );
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('init-project auto-detects monorepo packages from pnpm workspace', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-monorepo-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    fs.writeFileSync(
+      path.join(tempProject, 'pnpm-workspace.yaml'),
+      ['packages:', '  - packages/*', ''].join('\n'),
+      'utf8'
+    );
+    fs.mkdirSync(path.join(tempProject, 'packages', 'app'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, 'packages', 'fw'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempProject, 'packages', 'app', 'package.json'),
+      JSON.stringify({ name: '@demo/app' }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(tempProject, 'packages', 'fw', 'package.json'),
+      JSON.stringify({ name: '@demo/fw' }, null, 2) + '\n',
+      'utf8'
+    );
+
+    initProject.main(['--project', tempProject]);
+
+    const projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+
+    assert.deepEqual(
+      projectConfig.packages.map(item => ({ name: item.name, path: item.path, type: item.type, submodule: item.submodule })),
+      [
+        { name: 'app', path: 'packages/app', type: 'node', submodule: false },
+        { name: 'fw', path: 'packages/fw', type: 'node', submodule: false }
+      ]
+    );
+    assert.equal(projectConfig.default_package, 'app');
+    assert.equal(projectConfig.active_package, 'app');
+
+    process.chdir(tempProject);
+    cli.main(['init']);
+    const status = cli.buildStatus();
+    assert.equal(status.default_package, 'app');
+    assert.equal(status.active_package, 'app');
+    assert.equal(Array.isArray(status.packages), true);
+    assert.equal(status.packages.length, 2);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

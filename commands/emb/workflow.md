@@ -19,6 +19,8 @@ Keep this out of the default command path. It is an advanced surface for writing
   Normalize `.emb-agent/registry/`, `.emb-agent/specs/`, and `.emb-agent/templates/`.
 - `workflow list`
   Show the merged built-in and project-local workflow catalog.
+- `workflow import registry <source> [--branch <name>] [--subdir <path>] [--force]`
+  Import project-local workflow packs, specs, and templates from a local path or git repository into `.emb-agent/`.
 - `workflow show registry`
   Show the project-local workflow registry file.
 - `workflow show pack <name>`

@@ -456,6 +456,106 @@ test('task supports parent-child links and create-pr preview commands', async ()
   }
 });
 
+test('task package selection propagates into manifest and active session package', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-package-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    fs.writeFileSync(
+      path.join(tempProject, 'pnpm-workspace.yaml'),
+      ['packages:', '  - packages/*', ''].join('\n'),
+      'utf8'
+    );
+    writeJson(path.join(tempProject, 'packages', 'app', 'package.json'), { name: '@demo/app' });
+    writeJson(path.join(tempProject, 'packages', 'fw', 'package.json'), { name: '@demo/fw' });
+
+    await cli.main(['init']);
+    writeText(path.join(tempProject, 'packages', 'app', 'src', 'app.ts'), '// app\n');
+    writeText(path.join(tempProject, 'packages', 'fw', 'src', 'adc.c'), '// adc\n');
+    writeText(path.join(tempProject, 'packages', 'fw', 'src', 'pwm.c'), '// pwm\n');
+    await cli.main(['last-files', 'add', 'packages/app/src/app.ts']);
+    await cli.main(['last-files', 'add', 'packages/fw/src/adc.c']);
+    await cli.main(['last-files', 'add', 'packages/fw/src/pwm.c']);
+
+    const created = await captureCliJson([
+      'task',
+      'add',
+      'Implement ADC sampling path',
+      '--scope',
+      'adc',
+      '--package',
+      'fw'
+    ]);
+    const taskName = created.task.name;
+
+    assert.equal(created.task.package, 'fw');
+
+    const shown = await captureCliJson(['task', 'show', taskName]);
+    assert.equal(shown.task.package, 'fw');
+    assert.equal(shown.task.context.implement.some(item => item.kind === 'directory' && item.path === 'packages/fw'), true);
+    assert.equal(shown.task.context.implement.some(item => item.path === 'packages/fw/src/adc.c'), true);
+    assert.equal(shown.task.context.implement.some(item => item.path === 'packages/fw/src/pwm.c'), true);
+    assert.equal(shown.task.context.implement.some(item => item.path === 'packages/app/src/app.ts'), false);
+
+    await captureCliJson(['task', 'activate', taskName]);
+
+    const session = cli.loadSession();
+    assert.equal(session.active_package, 'fw');
+    assert.equal(session.active_task.package, 'fw');
+
+    const status = cli.buildStatus();
+    assert.equal(status.active_package, 'fw');
+    assert.equal(status.active_task.package, 'fw');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task worktree state exposes package-scoped workspace metadata', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-package-worktree-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    fs.writeFileSync(
+      path.join(tempProject, 'pnpm-workspace.yaml'),
+      ['packages:', '  - packages/*', ''].join('\n'),
+      'utf8'
+    );
+    writeJson(path.join(tempProject, 'packages', 'app', 'package.json'), { name: '@demo/app' });
+    writeJson(path.join(tempProject, 'packages', 'fw', 'package.json'), { name: '@demo/fw' });
+    writeText(path.join(tempProject, 'packages', 'fw', 'src', 'main.c'), '// fw main\n');
+    await cli.main(['init']);
+    writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: .task-worktrees\n');
+    initGitRepo(tempProject);
+
+    const created = await captureCliJson(['task', 'add', 'Inspect package workspace scope', '--package', 'fw']);
+    const taskName = created.task.name;
+
+    const provisioned = await captureCliJson(['task', 'worktree', 'create', taskName]);
+    assert.equal(provisioned.workspace.package, 'fw');
+    assert.equal(provisioned.workspace.package_scope, 'package');
+    assert.equal(provisioned.workspace.package_path, 'packages/fw');
+    assert.equal(provisioned.worktree.package, 'fw');
+    assert.equal(provisioned.worktree.package_scope, 'package');
+    assert.equal(provisioned.worktree.package_path, 'packages/fw');
+    assert.equal(provisioned.worktree.package_exists, true);
+
+    const shown = await captureCliJson(['task', 'worktree', 'show', taskName]);
+    assert.equal(shown.worktree.package, 'fw');
+    assert.equal(shown.worktree.package_scope, 'package');
+    assert.equal(shown.worktree.package_path, 'packages/fw');
+
+    const tty = await captureCliTtyOutput(['task', 'worktree', 'show', taskName]);
+    assert.match(tty.stderr, /Scope: package/);
+    assert.match(tty.stderr, /Package: fw/);
+    assert.match(tty.stderr, /Package Path: packages\/fw/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('task activate creates a real git worktree when the project is a git repository', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-git-'));
   const currentCwd = process.cwd();

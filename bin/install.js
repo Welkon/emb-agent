@@ -15,6 +15,7 @@ const PACKAGE_VERSION = PACKAGE_JSON.version || '0.0.0';
 const installHelpers = require(path.join(RUNTIME_SRC, 'lib', 'install-helpers.cjs'));
 const installTargets = require(path.join(RUNTIME_SRC, 'lib', 'install-targets.cjs'));
 const runtimeHost = require(path.join(RUNTIME_SRC, 'lib', 'runtime-host.cjs'));
+const terminalUi = require(path.join(RUNTIME_SRC, 'lib', 'terminal-ui.cjs'));
 const initProject = require(path.join(RUNTIME_SRC, 'scripts', 'init-project.cjs'));
 
 const {
@@ -50,7 +51,8 @@ const {
   runtimeSrc: RUNTIME_SRC,
   runtimeHooksSrc: RUNTIME_HOOKS_SRC,
   packageVersion: PACKAGE_VERSION,
-  initProject
+  initProject,
+  createTerminalUi: terminalUi.createTerminalUi
 });
 
 module.exports = {

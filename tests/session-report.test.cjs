@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const childProcess = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -533,7 +534,7 @@ test('session-report records latest executor summary and routes failed executor 
     assert.match(content, /latest_executor_argv: node scripts\/bench-runner\.cjs --case resume/);
     assert.match(content, /latest_executor_stderr_preview: device handshake timeout/);
     assert.match(content, /next_command: review/);
-    assert.match(content, /Latest executor: bench failed/);
+    assert.match(content, /executor_status=bench; status=failed/);
     assert.equal(reportResult.executor_signal.present, true);
     assert.equal(reportResult.executor_signal.failed, true);
     assert.equal(reportResult.executor_signal.requires_forensics, true);
@@ -582,6 +583,46 @@ test('session-report includes delegation runtime summary from latest orchestrate
     } else {
       process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
     }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('session-report records the current git branch in session and stored artifacts', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-branch-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main(['--project', tempProject]);
+    childProcess.execFileSync('git', ['init', '-b', 'feat/session-report'], {
+      cwd: tempProject,
+      stdio: 'ignore'
+    });
+    process.chdir(tempProject);
+
+    await cli.main(['init']);
+    const reportResult = await captureCliJson(['session-report', 'capture branch-aware state']);
+    const current = await captureCliJson(['session', 'show', 'current']);
+    const history = await captureCliJson(['session', 'history']);
+
+    assert.equal(current.git_branch, 'feat/session-report');
+    assert.equal(reportResult.generated, true);
+
+    const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
+    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.json'));
+    assert.equal(reports.length, 1);
+
+    const stored = JSON.parse(fs.readFileSync(path.join(reportDir, reports[0]), 'utf8'));
+    assert.equal(stored.git_branch, 'feat/session-report');
+    assert.equal(stored.report.git_branch, 'feat/session-report');
+    assert.equal(history.reports[0].git_branch, 'feat/session-report');
+
+    const markdown = fs.readFileSync(path.join(reportDir, reports[0].replace(/\.json$/, '.md')), 'utf8');
+    assert.match(markdown, /git_branch: feat\/session-report/);
+  } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }

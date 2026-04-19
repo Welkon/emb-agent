@@ -90,9 +90,9 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     assert.equal(summaryJson.agent_analysis.recommended_agent, 'emb-hw-scout');
     assert.ok(summaryJson.agent_analysis.inputs.includes(ingested.artifacts.parsed));
     assert.equal(nextContext.next.schematic_analysis.recommended_agent, 'emb-hw-scout');
-    assert.ok(nextContext.next_actions.some(item => item.includes('Analyze the latest schematic with emb-hw-scout first')));
-    assert.ok(nextContext.next_actions.some(item => item.includes('Confirm schematic-derived fields before truth edits:')));
-    assert.ok(scanContext.next_reads.some(item => item.includes('Schematic agent handoff:')));
+    assert.ok(nextContext.next_actions.some(item => item.includes('schematic_analysis=emb-hw-scout')));
+    assert.ok(nextContext.next_actions.some(item => item.startsWith('schematic_confirm=')));
+    assert.ok(scanContext.next_reads.some(item => item.includes('schematic_handoff=')));
     assert.equal(ingested.session.last_files[0], ingested.artifacts.parsed);
   } finally {
     process.chdir(currentCwd);

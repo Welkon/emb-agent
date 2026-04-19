@@ -123,7 +123,7 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.equal(report.quickstart.stage, 'fill-hardware-identity');
     assert.equal(report.quickstart.display_stage, 'complete-project-facts');
     assert.match(report.quickstart.user_summary, /Hardware identity is incomplete/);
-    assert.equal(report.action_card.action, 'Needs project facts');
+    assert.equal(report.action_card.action, 'Project facts required');
     assert.equal(report.action_card.stage, 'project-facts');
     assert.match(report.action_card.first_instruction, /Hardware identity is incomplete/);
     assert.ok(report.action_card.followup.includes('rerun:'));
@@ -132,7 +132,7 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.equal(report.bootstrap.next_stage.status, 'manual');
     assert.equal(report.bootstrap.next_stage.display_status, 'needs-user-input');
     assert.equal(report.bootstrap.next_stage.display_id, 'project-facts');
-    assert.equal(report.bootstrap.next_stage.action_summary, 'Needs project facts');
+    assert.equal(report.bootstrap.next_stage.action_summary, 'Project facts required');
     assert.ok(report.bootstrap.stages.some(item => item.id === 'init-project' && item.status === 'completed'));
     assert.ok(report.quickstart.followup.includes('rerun:'));
     assert.equal(cli.loadSession().last_command, 'health');
@@ -408,11 +408,11 @@ test('health and bootstrap expose host startup readiness as an explicit bootstra
     assert.equal(report.bootstrap.display_current_stage, 'host-readiness');
     assert.equal(report.bootstrap.next_stage.status, 'manual');
     assert.equal(report.bootstrap.next_stage.display_status, 'needs-user-input');
-    assert.equal(report.bootstrap.next_stage.action_summary, 'Needs host action');
+    assert.equal(report.bootstrap.next_stage.action_summary, 'Host action required');
     assert.equal(report.quickstart.stage, 'restart-host-hooks');
     assert.equal(report.quickstart.display_stage, 'restart-host-for-bootstrap');
     assert.match(report.quickstart.user_summary, /Startup hooks are not active/);
-    assert.equal(report.action_card.action, 'Needs host action');
+    assert.equal(report.action_card.action, 'Host action required');
     assert.equal(report.action_card.stage, 'host-readiness');
     assert.match(report.action_card.first_instruction, /Startup hooks are not active/);
     assert.ok(report.recommendations.some(item => item.includes('automatic startup')));
@@ -423,7 +423,7 @@ test('health and bootstrap expose host startup readiness as an explicit bootstra
 
     assert.equal(report.current_stage, 'startup-hooks');
     assert.equal(report.display_current_stage, 'host-readiness');
-    assert.equal(report.action_card.action, 'Needs host action');
+    assert.equal(report.action_card.action, 'Host action required');
     assert.equal(report.next_stage.id, 'startup-hooks');
     assert.equal(report.next_stage.display_id, 'host-readiness');
     assert.equal(report.next_stage.status, 'manual');
@@ -662,7 +662,7 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.checks.find(item => item.key === 'chip_support_sync_project').status, 'info');
     assert.ok(report.next_commands.some(item => item.cli.includes('support derive --from-project')));
     assert.equal(report.quickstart.stage, 'derive-then-next');
-    assert.equal(report.action_card.action, 'Ready to continue');
+    assert.equal(report.action_card.action, 'Ready to run');
     assert.equal(report.action_card.stage, 'chip-support-draft');
     assert.equal(report.action_card.first_instruction, '');
     assert.ok(report.action_card.first_cli.includes('support derive --from-project'));
@@ -786,7 +786,7 @@ test('health surfaces pending doc apply as quickstart before generic next', asyn
     assert.ok(report.next_commands.some(item => item.key === 'doc-apply'));
     assert.equal(report.quickstart.stage, 'doc-apply-then-next');
     assert.equal(report.action_card.stage, 'apply-document-facts');
-    assert.equal(report.action_card.action, 'Needs document apply');
+    assert.equal(report.action_card.action, 'Document apply required');
     assert.equal(report.action_card.first_instruction, '');
     assert.ok(report.action_card.first_cli.includes('ingest apply doc'));
     assert.equal(report.bootstrap.current_stage, 'doc-truth-sync');
@@ -883,7 +883,7 @@ test('health routes from applied hardware doc to adapter derive when synced adap
     );
     assert.equal(report.quickstart.stage, 'derive-then-next');
     assert.equal(report.action_card.stage, 'chip-support-draft');
-    assert.equal(report.action_card.action, 'Ready to continue');
+    assert.equal(report.action_card.action, 'Ready to run');
     assert.equal(report.action_card.first_instruction, '');
     assert.ok(report.action_card.first_cli.includes('support analysis init --chip PMS150G --package SOP8'));
     assert.ok(report.action_card.then_cli.includes('support derive --from-analysis .emb-agent/analysis/pms150g.json'));
