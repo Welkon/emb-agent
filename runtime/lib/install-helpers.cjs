@@ -1547,8 +1547,26 @@ function createInstallHelpers(deps) {
     }
 
     const parsedInitArgs = initProject.parseArgs(initArgs);
-    const projectConfig = initProject.buildProjectConfig(projectRoot, parsedInitArgs);
-    return initProject.scaffoldProject(projectRoot, projectConfig, false, parsedInitArgs);
+    const workflowSetup = initProject.prepareProjectWorkflowSetup(projectRoot, parsedInitArgs, {
+      force: false,
+      process: {
+        ...process,
+        stdin: { isTTY: false },
+        stdout: { isTTY: false, write() { return true; } }
+      }
+    });
+    const resolvedInitArgs = {
+      ...parsedInitArgs,
+      packs: workflowSetup.activePacks
+    };
+    const projectConfig = initProject.buildProjectConfig(projectRoot, resolvedInitArgs, {
+      workflowCatalog: workflowSetup.workflowCatalog,
+      activePacks: workflowSetup.activePacks
+    });
+    return initProject.scaffoldProject(projectRoot, projectConfig, false, {
+      ...resolvedInitArgs,
+      workflowRegistryImport: workflowSetup.workflowRegistryImport
+    });
   }
 
   function buildEnvHintLines(envExamplePath) {

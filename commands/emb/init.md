@@ -28,6 +28,12 @@ allowed-tools:
 - `.emb-agent/req.yaml`
 - starter docs, caches, and bootstrap checklists
 
+## Workflow Packs
+
+- `init` can activate workflow packs with `--pack <name>`.
+- If the current workflow registry exposes multiple packs and `init` runs in an interactive terminal, it will offer a pack picker before writing `.emb-agent/project.json`.
+- Registry import happens before that choice, so packs brought in through `--registry` are available in the same `init` run.
+
 ## Monorepo Detection
 
 - When the repository exposes a typical workspace layout such as `pnpm-workspace.yaml`, `package.json workspaces`, or `.gitmodules`, `init` records detected packages in `.emb-agent/project.json`.

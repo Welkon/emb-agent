@@ -384,9 +384,22 @@ function attachProject(argv) {
     registryBranch: args.registryBranch,
     registrySubdir: args.registrySubdir
   };
-  const projectConfig = initProject.buildProjectConfig(projectRoot, configArgs);
+  const workflowSetup = initProject.prepareProjectWorkflowSetup(projectRoot, configArgs, {
+    force: args.force
+  });
+  const resolvedConfigArgs = {
+    ...configArgs,
+    packs: workflowSetup.activePacks
+  };
+  const projectConfig = initProject.buildProjectConfig(projectRoot, resolvedConfigArgs, {
+    workflowCatalog: workflowSetup.workflowCatalog,
+    activePacks: workflowSetup.activePacks
+  });
   const detected = detectProjectInputs(projectRoot);
-  const scaffolded = initProject.scaffoldProject(projectRoot, projectConfig, args.force, configArgs);
+  const scaffolded = initProject.scaffoldProject(projectRoot, projectConfig, args.force, {
+    ...resolvedConfigArgs,
+    workflowRegistryImport: workflowSetup.workflowRegistryImport
+  });
   const projectExtDir = runtime.getProjectExtDir(projectRoot);
   const hwPath = path.join(projectExtDir, 'hw.yaml');
   const reqPath = path.join(projectExtDir, 'req.yaml');
