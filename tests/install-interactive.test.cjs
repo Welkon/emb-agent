@@ -427,7 +427,7 @@ test('main reports install progress through injected terminal ui', async () => {
   assert.match(stderr, /Target:/);
   assert.match(stderr, /Installation complete/);
   assert.match(stderr, /Next:/);
-  assert.match(stderr, /then run start/);
+  assert.match(stderr, /then open a new session/);
   assert.equal(receivedColorMode, 'always');
   assert.deepEqual(
     activities.filter(item => item.type === 'start').map(item => item.text),
@@ -516,7 +516,7 @@ test('interactive main keeps final summary in terminal ui instead of stdout dump
     assert.match(stderr, /Installation complete/);
     assert.match(stderr, /Runtime Dir:/);
     assert.match(stderr, /Next:/);
-    assert.match(stderr, /then run start/);
+    assert.match(stderr, /then open a new session/);
   } finally {
     process.chdir(currentCwd);
   }
@@ -580,5 +580,5 @@ test('flag-driven tty install keeps final summary in terminal ui instead of stdo
   assert.match(stderr, /Installation complete/);
   assert.match(stderr, /Runtime Dir:/);
   assert.match(stderr, /Next:/);
-  assert.match(stderr, /then run start/);
+  assert.match(stderr, /then open a new session/);
 });

@@ -123,8 +123,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.match(stdout, /Startup automation is installed automatically\./);
     assert.match(stdout, /Sub-agent bridge: node \/tmp\/emb-subagent-bridge\.cjs --stdio-json \(timeout: 25000 ms\)/);
     assert.match(stdout, /Next steps:/);
-    assert.match(stdout, /open a Codex session and run: start/);
-    assert.match(stdout, /Then continue with: next/);
+    assert.match(stdout, /open a Codex session\. emb-agent will inject the startup context automatically\./);
+    assert.match(stdout, /Then continue with the recommended next command\./);
 
     process.chdir(tempProject);
     const sessionPath = path.join(tempHome, 'state', 'emb-agent', 'projects');
@@ -698,8 +698,8 @@ test('installer defaults Cursor to project-scoped .cursor layout', async () => {
     assert.match(stdout, /Installed 13 Cursor commands under:/);
     assert.match(stdout, /\.cursor\/commands/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
-    assert.match(stdout, /run: start/);
-    assert.doesNotMatch(stdout, /run: init/);
+    assert.match(stdout, /open a Cursor session\. emb-agent will inject the startup context automatically\./);
+    assert.match(stdout, /recommended next command from the injected startup context/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -760,8 +760,8 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     assert.match(stdout, /\.agents\/skills/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /Bootstrap task:/);
-    assert.match(stdout, /run: start/);
-    assert.doesNotMatch(stdout, /run: init/);
+    assert.match(stdout, /open a Codex session\. emb-agent will inject the startup context automatically\./);
+    assert.match(stdout, /"entry": "start"/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;

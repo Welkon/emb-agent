@@ -12,13 +12,11 @@ The installer will guide you through runtime selection and local setup. It also 
 
 Use `--profile workflow` only if you are authoring scaffold assets rather than using emb-agent day to day.
 
-## 2. Open a session and run `start`
+## 2. Open a session
 
-```bash
-start
-```
+emb-agent injects the startup context automatically when the session opens. On the first run it initializes the repo automatically, then tells you the shortest next step.
 
-Start with `start`. On the first run it initializes the repo automatically, then tells you the shortest next step.
+Use `start` only when you want to re-render that entry context manually.
 
 Do not treat a shared adapters repository as required setup before you can begin. The default flow should work inside the current project first.
 
