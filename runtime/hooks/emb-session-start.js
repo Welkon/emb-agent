@@ -126,71 +126,125 @@ function buildInjectedSpecLines(projectRoot, resume) {
   ];
 }
 
+function buildSessionContext(projectRoot, start, resume, options) {
+  const settings = options && typeof options === 'object' ? options : {};
+  const lines = [
+    '<emb-agent-session-context>',
+    'emb-agent startup context is already injected for this session.',
+    'Do not ask the user to run start just to load bootstrap state.',
+    'Use the injected state below as the source of truth and continue from the recommended next step.',
+    '</emb-agent-session-context>',
+    '',
+    '<current-state>',
+    `Project root: ${projectRoot}`,
+    settings.initializedDuringHook
+      ? 'Repository bootstrap: initialized automatically during SessionStart'
+      : 'Repository bootstrap: already initialized',
+    `Recommended next command: ${start.immediate.command}`,
+    `Recommended CLI: ${start.immediate.cli}`,
+    `Reason: ${start.immediate.reason}`
+  ];
+
+  if (start.bootstrap) {
+    lines.push(`Bootstrap status: ${start.bootstrap.status}`);
+    if (start.bootstrap.stage) {
+      lines.push(`Bootstrap stage: ${start.bootstrap.stage}`);
+    }
+    if (start.bootstrap.summary) {
+      lines.push(`Bootstrap summary: ${start.bootstrap.summary}`);
+    }
+  }
+
+  if (resume && resume.handoff) {
+    lines.push(`Pending handoff: ${resume.handoff.next_action || 'resume the existing handoff before new work'}`);
+  }
+
+  if (resume && resume.task) {
+    const implementFiles = (((resume.task.context || {}).implement) || [])
+      .slice(0, 4)
+      .map(item => item.path)
+      .filter(Boolean);
+    const prdPath = resume.task.artifacts && resume.task.artifacts.prd
+      ? resume.task.artifacts.prd
+      : `.emb-agent/tasks/${resume.task.name}/prd.md`;
+
+    lines.push(`Active task: ${resume.task.name} (${resume.task.title})`);
+    lines.push(`Task status: ${resume.task.status} / Type: ${resume.task.type}`);
+    lines.push(`Task PRD: ${prdPath}`);
+    lines.push(
+      implementFiles.length > 0
+        ? `Task implement context: ${implementFiles.join(', ')}`
+        : `Task implement context: run task context list ${resume.task.name}`
+    );
+  }
+
+  if (Array.isArray(settings.specLines) && settings.specLines.length > 0) {
+    lines.push(...settings.specLines);
+  }
+  if (Array.isArray(settings.updateLines) && settings.updateLines.length > 0) {
+    lines.push(...settings.updateLines);
+  }
+
+  lines.push('</current-state>', '');
+  lines.push('<ready>');
+  lines.push('Startup context is already injected above.');
+  lines.push('Only suggest running start when the user explicitly wants to re-render the entry context manually.');
+  lines.push('If bootstrap is incomplete, guide the user through the shortest next step instead of redirecting back to start.');
+  lines.push('</ready>');
+
+  return lines.join('\n');
+}
+
+function buildHostSessionStartPayload(data, message) {
+  const eventName = data && (data.hook_event_name || data.event)
+    ? String(data.hook_event_name || data.event)
+    : 'SessionStart';
+
+  if (RUNTIME_HOST.name === 'cursor') {
+    return {
+      additional_context: message
+    };
+  }
+
+  if (RUNTIME_HOST.name === 'codex') {
+    return {
+      suppressOutput: true,
+      systemMessage: `emb-agent context injected (${message.length} chars)`,
+      hookSpecificOutput: {
+        hookEventName: eventName,
+        additionalContext: message
+      }
+    };
+  }
+
+  return {
+    hookSpecificOutput: {
+      hookEventName: eventName,
+      additionalContext: message
+    }
+  };
+}
+
 function runHook(rawInput) {
   return hookDispatch.runHookWithProjectContext(rawInput, ({ data, projectRoot }) => {
     const cli = require(path.join(__dirname, '..', 'bin', 'emb-agent.cjs'));
+    const projectConfigPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
+    const hadProjectConfig = fs.existsSync(projectConfigPath);
     const start = cli.buildStartContext();
     const resume = start.summary && start.summary.initialized ? cli.buildResumeContext() : { handoff: null, task: null };
-    const lines = buildUpdateLines();
+    const updateLines = buildUpdateLines();
     const specLines = buildInjectedSpecLines(projectRoot, resume);
+    const message = buildSessionContext(projectRoot, start, resume, {
+      initializedDuringHook: !hadProjectConfig && fs.existsSync(projectConfigPath),
+      updateLines,
+      specLines
+    });
 
-    if (start.resume && start.resume.handoff) {
-      const nextAction = start.resume.handoff.next_action || 'run resume first to restore the working state';
-      lines.unshift(
-        '## Emb-Agent Session Reminder',
-        '',
-        'Primary entrypoint: start',
-        `Recommended next command: ${start.immediate.command}`,
-        `Pending handoff detected. Resume with: ${resume.context_hygiene.resume_cli}`,
-        `Handoff note: ${nextAction}`,
-        ...specLines
-      );
-    }
-
-    if (!(start.resume && start.resume.handoff) && resume.task) {
-      const implementFiles = (((resume.task.context || {}).implement) || [])
-        .slice(0, 4)
-        .map(item => item.path)
-        .filter(Boolean);
-      const prdPath = resume.task.artifacts && resume.task.artifacts.prd
-        ? resume.task.artifacts.prd
-        : `.emb-agent/tasks/${resume.task.name}/prd.md`;
-
-      lines.unshift(
-        '## Emb-Agent Session Reminder',
-        '',
-        'Primary entrypoint: start',
-        `Recommended next command: ${start.immediate.command}`,
-        `Current active task: ${resume.task.name} (${resume.task.title})`,
-        `Status: ${resume.task.status} / Type: ${resume.task.type}`,
-        `Re-read the task PRD first: ${prdPath}`,
-        implementFiles.length > 0
-          ? `Re-read the task implement context first: ${implementFiles.join(', ')}`
-          : 'Run task context list <name> first to confirm the local context for the current task.',
-        ...specLines
-      );
-    }
-
-    if (!(start.resume && start.resume.handoff) && !resume.task) {
-      lines.unshift(
-        '## Emb-Agent Session Reminder',
-        '',
-        'Primary entrypoint: start',
-        `Recommended next command: ${start.immediate.command}`,
-        `Reason: ${start.immediate.reason}`
-      );
-    }
-
-    if (lines.length === 0) {
+    if (!message) {
       return '';
     }
 
-    if (lines[0] !== '## Emb-Agent Session Reminder') {
-      lines.unshift('## Emb-Agent Session Reminder', '');
-    }
-
-    lines.push('');
-    return lines.join('\n');
+    return JSON.stringify(buildHostSessionStartPayload(data, message));
   });
 }
 

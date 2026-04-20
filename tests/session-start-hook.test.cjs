@@ -10,7 +10,12 @@ const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const sessionStartHook = require(path.join(repoRoot, 'runtime', 'hooks', 'emb-session-start.js'));
 
-test('session start hook points the user back to start instead of replaying the full workflow', () => {
+function parseHookPayload(result) {
+  assert.equal(typeof result.output, 'string');
+  return JSON.parse(result.output);
+}
+
+test('session start hook auto-injects startup context and initializes the repo on first session', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-start-'));
   const currentCwd = process.cwd();
   const previousSkip = process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
@@ -26,26 +31,27 @@ test('session start hook points the user back to start instead of replaying the 
       fs.rmSync(cachePath, { force: true });
     }
     process.chdir(tempProject);
-    cli.main(['init']);
 
     const empty = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
+    const emptyPayload = parseHookPayload(empty);
     assert.equal(empty.trusted, true);
-    assert.match(empty.output, /Emb-Agent Session Reminder/);
-    assert.match(empty.output, /Primary entrypoint: start/);
-    assert.match(empty.output, /Recommended next command: next/);
-    assert.doesNotMatch(empty.output, /Task bootstrap:/);
-    assert.doesNotMatch(empty.output, /Execution loop:/);
+    assert.equal(emptyPayload.suppressOutput, true);
+    assert.equal(emptyPayload.hookSpecificOutput.hookEventName, 'SessionStart');
+    assert.match(emptyPayload.systemMessage, /emb-agent context injected/);
+    assert.match(emptyPayload.hookSpecificOutput.additionalContext, /startup context is already injected/i);
+    assert.match(emptyPayload.hookSpecificOutput.additionalContext, /initialized automatically during SessionStart/);
+    assert.match(emptyPayload.hookSpecificOutput.additionalContext, /Recommended next command: next/);
+    assert.doesNotMatch(emptyPayload.hookSpecificOutput.additionalContext, /Primary entrypoint: start/);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
 
     cli.main(['pause', 'resume irq race first']);
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
+    const reminderPayload = parseHookPayload(reminder);
     assert.equal(reminder.trusted, true);
     assert.equal(reminder.runtime_events[0].type, 'hook-dispatch');
-    assert.match(reminder.output, /Emb-Agent Session Reminder/);
-    assert.match(reminder.output, /Primary entrypoint: start/);
-    assert.match(reminder.output, /Recommended next command: resume/);
-    assert.match(reminder.output, /Pending handoff detected/);
-    assert.match(reminder.output, /node ~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs resume/);
-    assert.match(reminder.output, /resume irq race first/);
+    assert.match(reminderPayload.hookSpecificOutput.additionalContext, /Recommended next command: resume/);
+    assert.match(reminderPayload.hookSpecificOutput.additionalContext, /Pending handoff: resume irq race first/);
+    assert.match(reminderPayload.hookSpecificOutput.additionalContext, /Recommended CLI: node ~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs resume/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
@@ -101,8 +107,9 @@ test('session start hook surfaces cached update and stale install notices', () =
     process.chdir(tempProject);
     cli.main(['init']);
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
-    assert.match(reminder.output, /Found a newer emb-agent version: 0.2.0 -> 0.3.0/);
-    assert.match(reminder.output, /Detected stale install/);
+    const payload = parseHookPayload(reminder);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Found a newer emb-agent version: 0.2.0 -> 0.3.0/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Detected stale install/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
@@ -154,17 +161,17 @@ test('session start hook reminds active task context after clearable resume path
     cli.main(['task', 'activate', taskName]);
 
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
-    assert.match(reminder.output, /Primary entrypoint: start/);
-    assert.match(reminder.output, /Recommended next command: next/);
-    assert.match(reminder.output, /Current active task:/);
-    assert.match(reminder.output, /Investigate PMS150G comparator timing/);
-    assert.match(reminder.output, /Re-read the task PRD first:/);
-    assert.match(reminder.output, /task implement context/);
-    assert.match(reminder.output, /emb-agent\/hw\.yaml/);
-    assert.match(reminder.output, /Auto-injected specs:/);
-    assert.match(reminder.output, /project-local/);
-    assert.match(reminder.output, /task-execution/);
-    assert.doesNotMatch(reminder.output, /Default loop:/);
+    const payload = parseHookPayload(reminder);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Recommended next command: next/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Active task:/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Investigate PMS150G comparator timing/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Task PRD:/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Task implement context:/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /emb-agent\/hw\.yaml/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Auto-injected specs:/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /project-local/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /task-execution/);
+    assert.doesNotMatch(payload.hookSpecificOutput.additionalContext, /Primary entrypoint: start/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;

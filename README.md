@@ -38,9 +38,11 @@ The installer will guide you through runtime selection and local setup. It creat
 
 Use `--profile workflow` only when you are authoring scaffolds instead of using emb-agent day to day.
 
-### 2. Open a session and run `start`
+### 2. Open a session
 
-Start with `start`. On the first run it initializes the repo automatically, then tells you the shortest next step.
+emb-agent injects the startup context automatically when the session opens. On the first run it initializes the repo automatically, then tells you the shortest next step.
+
+Use `start` only when you want to re-render that entry context manually.
 
 ### 3. Continue with the shortest hardware path
 

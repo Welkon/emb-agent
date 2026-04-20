@@ -1644,7 +1644,7 @@ function createInstallHelpers(deps) {
         );
       }
       writeTerminalLine(
-        `${chalk.cyan('  Next:')} Restart ${target.restartLabel || target.label}, then run start`
+        `${chalk.cyan('  Next:')} Restart ${target.restartLabel || target.label}, then open a new session`
       );
       writeTerminalLine(chalk.dim(''));
     }
@@ -1894,11 +1894,11 @@ function createInstallHelpers(deps) {
       ...(!installProfile.includeScaffolds
         ? ['Advanced scaffold assets were skipped in core profile. Reinstall with --profile workflow to include them.']
         : []),
-      'Startup automation is installed automatically. If it does not seem active yet, restart the host once and rerun start. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.',
+      'Startup automation is installed automatically. If it does not seem active yet, restart the host once and open a new session. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.',
       'Next steps:',
       `  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`,
-      `  In a project repo, open a ${target.label} session and run: start`,
-      `  ${projectBootstrap ? 'Then continue with: next after start routes the bootstrap state.' : 'Then continue with: next'}`
+      `  In a project repo, open a ${target.label} session. emb-agent will inject the startup context automatically.`,
+      `  ${projectBootstrap ? 'Then continue with the recommended next command from the injected startup context.' : 'Then continue with the recommended next command.'}`
     ];
 
     reporter.complete(target, runtimeDir, projectBootstrap, installProfile);
