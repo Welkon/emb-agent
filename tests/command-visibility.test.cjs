@@ -1,6 +1,6 @@
 'use strict';
 
-const test = require('node:test');
+const nodeTest = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
@@ -8,6 +8,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const test = (name, fn) => nodeTest(name, { concurrency: false }, fn);
 
 async function captureCliText(args, cliImpl = cli) {
   const originalWrite = process.stdout.write;

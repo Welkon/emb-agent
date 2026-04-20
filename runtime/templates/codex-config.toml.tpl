@@ -1,0 +1,9 @@
+# EMB-AGENT managed start
+# emb-agent project-scoped Codex defaults.
+# Codex loads this after ~/.codex/config.toml when you work in this project.
+
+# Keep AGENTS.md as the primary project instruction file.
+project_doc_fallback_filenames = ["AGENTS.md"]
+
+{{AGENT_BLOCKS}}
+# EMB-AGENT managed end
