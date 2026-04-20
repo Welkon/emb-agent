@@ -226,11 +226,24 @@ function createActionContractHelpers(deps) {
     };
   }
 
-  function buildActionNextActions(actionCard, output) {
+  function buildClosureCheckpointHint(action) {
+    if (action === 'review') {
+      return `checkpoint=If these review findings should carry into the next session, capture a session checkpoint with: ${buildCli(['session', 'record'])}`;
+    }
+
+    if (action === 'verify') {
+      return `checkpoint=If you may stop after this verification pass, capture a session checkpoint with: ${buildCli(['session', 'record'])}`;
+    }
+
+    return '';
+  }
+
+  function buildActionNextActions(action, actionCard, output) {
     return runtime.unique([
       actionCard && actionCard.first_instruction ? `instruction=${actionCard.first_instruction}` : '',
       actionCard && actionCard.first_cli ? `command=${actionCard.first_cli}` : '',
       actionCard && actionCard.followup ? `followup=${actionCard.followup}` : '',
+      buildClosureCheckpointHint(action),
       output && output.next_step ? `decision_point=${output.next_step}` : ''
     ]);
   }
@@ -388,7 +401,7 @@ function createActionContractHelpers(deps) {
     return {
       ...enriched,
       action_card: actionCard,
-      next_actions: buildActionNextActions(actionCard, enriched),
+      next_actions: buildActionNextActions(action, actionCard, enriched),
       permission_gates: permissionGateHelpers.buildPermissionGates(enriched)
     };
   }
