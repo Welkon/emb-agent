@@ -1,6 +1,7 @@
 'use strict';
 
 const permissionGateHelpers = require('./permission-gates.cjs');
+const sessionReportStoreHelpers = require('./session-report-store.cjs');
 
 function createSessionReportCommandHelpers(deps) {
   const {
@@ -16,6 +17,11 @@ function createSessionReportCommandHelpers(deps) {
     updateSession,
     maybeAutoExtractOnSessionReport
   } = deps;
+  const sessionReportStore = sessionReportStoreHelpers.createSessionReportStoreHelpers({
+    fs,
+    path,
+    runtime
+  });
 
   function stripPermissionControlTokens(tokens) {
     const list = Array.isArray(tokens) ? tokens : [];
@@ -55,7 +61,7 @@ function createSessionReportCommandHelpers(deps) {
   }
 
   function getSessionReportsDir() {
-    return path.join(getProjectExtDir(), 'reports', 'sessions');
+    return sessionReportStore.getSessionReportsDir(getProjectExtDir());
   }
 
   function ensureSessionReportsDir() {
@@ -453,62 +459,29 @@ function createSessionReportCommandHelpers(deps) {
   }
 
   function listStoredSessionReports() {
-    if (!fs.existsSync(getSessionReportsDir())) {
-      return {
-        reports: []
-      };
-    }
-
-    const reports = fs.readdirSync(getSessionReportsDir())
-      .filter(name => name.endsWith('.json'))
-      .map(name => {
-        const fullPath = path.join(getSessionReportsDir(), name);
-        const raw = runtime.readJson(fullPath);
-        if (!raw || typeof raw !== 'object') {
-          return null;
-        }
-        return {
-          id: String(raw.id || path.basename(name, '.json')),
-          generated_at: String(raw.generated_at || ''),
-          summary: String(raw.summary || ''),
-          project_root: String(raw.project_root || ''),
-          git_branch: String(raw.git_branch || ''),
-          profile: String(raw.profile || ''),
-          packs: Array.isArray(raw.packs) ? raw.packs : [],
-          focus: String(raw.focus || ''),
-          last_command: String(raw.last_command || ''),
-          next_command: String(raw.next_command || ''),
-          next_reason: String(raw.next_reason || ''),
-          handoff_present: raw.handoff_present === true,
-          executor_signal: raw.executor_signal || null,
-          chip_support_health: raw.chip_support_health || null,
-          markdown_file: String(raw.markdown_file || path.relative(process.cwd(), path.join(getSessionReportsDir(), `${path.basename(name, '.json')}.md`))),
-          json_file: String(raw.json_file || path.relative(process.cwd(), fullPath))
-        };
-      })
-      .filter(Boolean)
-      .sort((left, right) => String(right.generated_at || '').localeCompare(String(left.generated_at || '')));
-
-    return {
-      reports
-    };
+    const resolved = resolveSession();
+    return sessionReportStore.listStoredSessionReports(getProjectExtDir(), {
+      cwd: process.cwd(),
+      current_branch:
+        resolved &&
+        resolved.session &&
+        resolved.session.git_branch
+          ? resolved.session.git_branch
+          : ''
+    });
   }
 
   function resolveStoredSessionReport(target) {
-    const history = listStoredSessionReports();
-    const normalized = String(target || '').trim();
-
-    if (!normalized || normalized === 'latest') {
-      return history.reports[0] || null;
-    }
-
-    return history.reports.find(item =>
-      item.id === normalized ||
-      item.json_file === normalized ||
-      item.markdown_file === normalized ||
-      path.basename(item.json_file || '') === normalized ||
-      path.basename(item.markdown_file || '') === normalized
-    ) || null;
+    const resolved = resolveSession();
+    return sessionReportStore.resolveStoredSessionReport(getProjectExtDir(), target, {
+      cwd: process.cwd(),
+      current_branch:
+        resolved &&
+        resolved.session &&
+        resolved.session.git_branch
+          ? resolved.session.git_branch
+          : ''
+    });
   }
 
   function showStoredSessionReport(target) {
@@ -531,11 +504,13 @@ function createSessionReportCommandHelpers(deps) {
   function buildCurrentSessionView() {
     const resolved = resolveSession();
     const session = resolved && resolved.session ? resolved.session : {};
+    const reports = listStoredSessionReports();
     return {
       ...session,
       session_state: buildSessionStatePayload(),
       handoff: loadHandoff() || null,
-      reports: listStoredSessionReports()
+      reports,
+      latest_report: reports.preferred || reports.latest || null
     };
   }
 

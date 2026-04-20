@@ -6,6 +6,14 @@
 const childProcess = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const runtime = require('../lib/runtime.cjs');
+const sessionReportStoreHelpers = require('../lib/session-report-store.cjs');
+
+const sessionReportStore = sessionReportStoreHelpers.createSessionReportStoreHelpers({
+  fs,
+  path,
+  runtime
+});
 
 function findProjectRoot(startDir) {
   let current = path.resolve(startDir || process.cwd());
@@ -99,6 +107,24 @@ function countTasks(projectRoot) {
     .length;
 }
 
+function getSessionCheckpoint(projectRoot, branch) {
+  try {
+    return sessionReportStore.buildSessionReportContinuity(
+      path.join(projectRoot, '.emb-agent'),
+      {
+        cwd: projectRoot,
+        current_branch: branch
+      }
+    );
+  } catch {
+    return {
+      present: false,
+      branch_status: 'none',
+      preferred: null
+    };
+  }
+}
+
 function colorize(code, text) {
   return `\u001b[${code}m${text}\u001b[0m`;
 }
@@ -139,6 +165,7 @@ function buildStatusLine(input) {
   const branch = getGitBranch(projectRoot);
   const taskCount = countTasks(projectRoot);
   const packageState = getProjectPackageState(projectRoot);
+  const sessionCheckpoint = getSessionCheckpoint(projectRoot, branch);
   const model = String(
     (input && input.model && (input.model.display_name || input.model.name)) ||
     input.model ||
@@ -162,6 +189,15 @@ function buildStatusLine(input) {
   infoParts.push(formatContextPercent(contextPercent));
   if (branch) {
     infoParts.push(colorize(35, branch));
+  }
+  if (sessionCheckpoint.present) {
+    if (sessionCheckpoint.branch_status === 'mismatch') {
+      infoParts.push(colorize(33, 'ckpt!'));
+    } else if (sessionCheckpoint.branch_status === 'match') {
+      infoParts.push(colorize(32, 'ckpt'));
+    } else {
+      infoParts.push(colorize(90, 'ckpt?'));
+    }
   }
   const packageName = task && task.package
     ? task.package
