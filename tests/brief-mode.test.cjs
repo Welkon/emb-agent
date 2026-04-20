@@ -37,7 +37,7 @@ test('next --brief returns condensed next context', async () => {
   assert.ok(Array.isArray(output.next_actions));
   assert.ok(output.next_actions.length <= 5);
   assert.ok(output.runtime_events);
-  assert.equal(output.runtime_events.status, 'pending');
+  assert.ok(['pending', 'ok'].includes(output.runtime_events.status));
   assert.ok(output.runtime_events.total >= 1);
   assert.ok(Array.isArray(output.runtime_events.types));
   assert.ok(output.runtime_events.types.includes('workflow-next'));

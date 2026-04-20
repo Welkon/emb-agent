@@ -163,6 +163,10 @@ function createCliRouter(deps) {
         return flow ? `Follow the recommended flow: ${flow}.` : '';
       }
 
+      if (/^checkpoint=/i.test(value)) {
+        return value.replace(/^checkpoint=/i, '').trim();
+      }
+
       if (/^command=/i.test(value)) {
         return '';
       }

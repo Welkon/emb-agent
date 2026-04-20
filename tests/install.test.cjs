@@ -309,6 +309,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const verify = installedCli.buildActionOutput('verify');
     assert.ok(verify.checklist.some(item => item.includes('abnormal inputs')));
     assert.ok(verify.result_template.some(item => item.includes('UNTESTED')));
+    assert.ok(verify.next_actions.some(item => item.startsWith('checkpoint=')));
 
     installedCli.main([
       'review',
@@ -322,6 +323,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const reviewReportPath = path.join(tempProject, 'docs', 'REVIEW-REPORT.md');
     assert.equal(fs.existsSync(reviewReportPath), true);
     assert.match(fs.readFileSync(reviewReportPath, 'utf8'), /Reconnect path needs release gate/);
+    const review = installedCli.buildActionOutput('review');
+    assert.ok(review.next_actions.some(item => item.startsWith('checkpoint=')));
 
     installedCli.main([
       'scan',
