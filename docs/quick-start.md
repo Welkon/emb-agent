@@ -80,7 +80,7 @@ If the derived support is only good enough for the current repository, keep it l
 
 The public command surface is intentionally small:
 
-- Start: `start`, `ingest`, `next`, `task`
+- Start / route: `start`, `ingest`, `next`, `task`
 - Execute: `scan`, `plan`, `do`, `debug`
 - Close: `review`, `verify`, `pause`, `resume`
 

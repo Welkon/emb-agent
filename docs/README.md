@@ -16,7 +16,7 @@ If the repository root README explains what emb-agent is, the docs directory sho
 - [Product Boundaries](./product-boundaries.md)
   The embedded-first layering between default workflow, support surfaces, and chip support.
 - [Quick Start](./quick-start.md)
-  The shortest path from install to either `start -> declare hardware -> next` or `start -> req truth -> next` when MCU is still unknown.
+  The shortest path from install to automatic startup context, then either `declare hardware -> next` or `req truth -> next` when MCU is still unknown.
 - [Platforms](./platforms.md)
   Runtime-specific install and path details for Codex, Claude Code, and Cursor.
 - [Scenarios](./scenarios.md)
