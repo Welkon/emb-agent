@@ -9,8 +9,8 @@ allowed-tools:
 
 # emb-start
 
-- Use `$emb-start` at the beginning of a session or after a major context switch.
-- It is the single project entrypoint.
+- Use `$emb-start` after a major context switch or when you want to re-render entry guidance manually.
+- New sessions should already receive startup context automatically from host hooks.
 - On the first run, it should initialize the emb-agent project files automatically before routing forward.
 - It should route to `resume`, the next bootstrap step, `task add`, or `next`.
 - Use `start --brief` when a wrapper only needs compact bootstrap guidance plus summarized `runtime_events`.

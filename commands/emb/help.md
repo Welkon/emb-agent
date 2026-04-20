@@ -14,7 +14,8 @@ Output the emb-agent help summary below and nothing else.
 ## Fast Path
 
 - Run these as Codex, Claude Code, or Cursor session commands.
-- Use `start` first. It is the single project entrypoint.
+- Open a new session first. emb-agent should inject startup context automatically.
+- Use `start` when you need to re-render entry guidance manually.
 - If the chip is already known, prefer `declare hardware`, then let `next` or `health` route you into project-local chip support or execution.
 - Use `next` for the default continuation once bootstrap and task context are in place.
 - Use `help advanced` or `help --all` only when you need the full installed surface.

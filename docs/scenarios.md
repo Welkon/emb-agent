@@ -9,12 +9,12 @@ Use this when the product direction is known, but the chip decision is still ope
 Flow:
 
 ```text
-start -> record goals/constraints in req.yaml -> next
+open session -> record goals/constraints in req.yaml -> next
 ```
 
 Use:
 
-- `start` to initialize the repo and create truth files on first run
+- open a new session so startup context can initialize the repo and create truth files on first run
 - `req.yaml` to record product goals, interfaces, constraints, and acceptance
 - `next` to stay on the concept-stage path without inventing fake hardware identity
 
@@ -27,12 +27,12 @@ Use this when the codebase exists, but the MCU/package truth is still unclear or
 Flow:
 
 ```text
-start -> confirm detected chip/package -> declare hardware -> next
+open session -> confirm detected chip/package -> declare hardware -> next
 ```
 
 Use:
 
-- `start` to scaffold truth files and inspect current inputs
+- open a new session so startup context can scaffold truth files and inspect current inputs
 - `declare hardware` to lock MCU and package
 - `ingest doc` only if the answer still lives in manuals or PDFs
 

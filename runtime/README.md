@@ -94,6 +94,8 @@ function runHook(rawInput) {
 }
 ```
 
+For Codex and Cursor startup flows, `SessionStart` now injects startup context through the host hook payload instead of relying on a plain reminder string. That keeps first-run initialization and next-step routing in the host-visible session context automatically.
+
 ## Automation Output
 
 emb-agent exposes two machine-oriented user surfaces on top of the regular JSON payloads.

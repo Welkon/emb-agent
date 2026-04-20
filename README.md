@@ -101,7 +101,7 @@ Host-specific runtime state stays outside the repo. That keeps project truth col
 
 emb-agent has three layers:
 
-- **Embedded workflow**: the default project path built around `start`, `declare hardware`, `next`, task flow, and repo truth.
+- **Embedded workflow**: the default project path built around startup context, `declare hardware`, `next`, task flow, repo truth, and manual `start` re-entry when needed.
 - **Chip-support runtime**: family-, device-, and chip-specific formulas, bindings, routes, and executable tool logic.
 - **Host integration surface**: skills, commands, hooks, and shell entry files that adapt emb-agent to different AI coding hosts.
 
@@ -112,7 +112,7 @@ That means emb-agent should be understood as embedded project infrastructure, no
 | Capability | What it changes |
 | --- | --- |
 | **Hardware truth in the repo** | Keep MCU model, package, signals, peripherals, constraints, and unknowns in `.emb-agent/hw.yaml` instead of repeating them in chat. |
-| **Short default workflow** | Most projects only need `start`, `declare hardware`, `next`, and the execution loop behind them. |
+| **Short default workflow** | Most projects only need session startup context, `declare hardware`, `next`, and the execution loop behind them. |
 | **Document-to-truth flow** | Pull facts out of datasheets or schematics when the answer is not already known. |
 | **Chip-support execution** | Keep chip-, family-, and vendor-specific logic in chip support packs instead of bloating the core workflow. |
 | **Verification-aware closure** | Close work with explicit review and verify loops instead of generic code-only completion. |

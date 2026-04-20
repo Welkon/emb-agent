@@ -21,4 +21,4 @@ This page only covers platform-specific setup differences. The canonical onboard
 
 emb-agent installs Codex startup automation into `./.codex/hooks.json` automatically.
 
-The installer also maintains `./.codex/config.toml` for project-scoped agent wiring. In normal use, restart Codex once after install and then run `start`.
+The installer also maintains `./.codex/config.toml` for project-scoped agent wiring. In normal use, restart Codex once after install and open a new session. emb-agent injects startup context automatically there, and `start` is only needed when you want to re-render entry guidance manually.
