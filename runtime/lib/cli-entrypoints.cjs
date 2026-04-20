@@ -656,6 +656,7 @@ function createCliEntryHelpers(deps) {
           'task subtask add [--confirm] <parent> <child>',
           'task subtask remove [--confirm] <parent> <child>',
           'task create-pr [--confirm] <name> [--dry-run]',
+          'task link-pr [--confirm] <name> <url> [--number <id>] [--status <state>]',
           'task context list <name> [implement|check|debug|all]',
           'task context add [--confirm] <name> <implement|check|debug> <path> [reason]',
           'pause show',

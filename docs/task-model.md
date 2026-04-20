@@ -83,6 +83,15 @@ task worktree cleanup <task-name>
 
 `task activate` and `task resolve` still create and cleanup the task workspace automatically, but the worktree lifecycle can now be managed independently when you need Trellis-style inspection or pre-provisioning.
 
+Worktree status also carries lightweight routing metadata:
+
+- package scope and package path
+- whether the package is marked as a submodule
+- branch and base-branch intent
+- PR readiness metadata captured from `task create-pr`
+
+When the PR is created outside emb-agent, run `task link-pr <task> <url>` to turn preview metadata into a linked PR record without introducing full PR orchestration.
+
 Example:
 
 ```bash

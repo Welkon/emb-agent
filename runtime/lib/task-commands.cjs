@@ -785,6 +785,86 @@ function createTaskCommandHelpers(deps) {
     };
   }
 
+  function buildDefaultTaskPr() {
+    return {
+      status: '',
+      head: '',
+      base: '',
+      title: '',
+      url: '',
+      number: '',
+      suggested_cli: '',
+      manual_required: true,
+      previewed_at: '',
+      linked_at: '',
+      updated_at: ''
+    };
+  }
+
+  function buildTaskPrTitle(taskLike) {
+    const task = taskLike && typeof taskLike === 'object' && !Array.isArray(taskLike) ? taskLike : {};
+    const scope = String(task.scope || '').trim();
+    const title = String(task.title || task.goal || task.name || '').trim();
+
+    if (!title) {
+      return '';
+    }
+
+    return `${scope ? `${scope}: ` : ''}${title}`;
+  }
+
+  function normalizeTaskPr(source, taskLike) {
+    const value = source && typeof source === 'object' && !Array.isArray(source) ? source : {};
+    const task = taskLike && typeof taskLike === 'object' && !Array.isArray(taskLike) ? taskLike : {};
+    const defaults = buildDefaultTaskPr();
+    const url = String(value.url || task.pr_url || '').trim();
+    const explicitStatus = String(value.status || '').trim();
+    const linked = Boolean(url) || explicitStatus === 'linked';
+    const head = linked
+      ? String(value.head || task.branch || '').trim()
+      : String(task.branch || value.head || '').trim();
+    const base = linked
+      ? String(value.base || task.base_branch || '').trim()
+      : String(task.base_branch || value.base || '').trim();
+    const title = String(value.title || buildTaskPrTitle(task) || '').trim();
+    let status = explicitStatus;
+
+    if (!status) {
+      if (url) {
+        status = 'linked';
+      } else if (value.previewed_at || value.suggested_cli) {
+        status = 'previewed';
+      } else if (head && base) {
+        status = 'ready';
+      } else {
+        status = 'not-ready';
+      }
+    }
+
+    if (!head || !base) {
+      status = 'not-ready';
+    }
+
+    if (url) {
+      status = 'linked';
+    }
+
+    return {
+      ...defaults,
+      status,
+      head,
+      base,
+      title,
+      url,
+      number: String(value.number || '').trim(),
+      suggested_cli: String(value.suggested_cli || '').trim(),
+      manual_required: value.manual_required !== false,
+      previewed_at: String(value.previewed_at || '').trim(),
+      linked_at: String(value.linked_at || '').trim(),
+      updated_at: String(value.updated_at || '').trim()
+    };
+  }
+
   function getTaskAarArtifactPath(name) {
     return path.join(getTaskDir(name), 'aar.md');
   }
@@ -1570,6 +1650,7 @@ function createTaskCommandHelpers(deps) {
       next_action: DEFAULT_TASK_PHASES.map(item => ({ ...item })),
       commit: '',
       pr_url: '',
+      pr: buildDefaultTaskPr(),
       subtasks: [],
       parent: parsedSummary.parent || null,
       children: [],
@@ -1968,6 +2049,14 @@ function createTaskCommandHelpers(deps) {
   function classifyTaskWorktreeState(input) {
     const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
 
+    if (source.package_scope === 'package' && source.package && source.submodule && !source.package_exists) {
+      return {
+        state: 'submodule-missing',
+        attention: 'warn',
+        summary: `Task package ${source.package} is configured as a submodule but ${source.package_path || 'its path'} is missing.`
+      };
+    }
+
     if (source.package_scope === 'package' && source.package && !source.package_exists) {
       return {
         state: 'package-missing',
@@ -2052,6 +2141,8 @@ function createTaskCommandHelpers(deps) {
       ? Boolean(packageScope && packageScope.exists)
       : true;
     const resolvedPackageScope = resolvedPackage ? 'package' : 'project';
+    const resolvedSubmodule = Boolean(packageScope && packageScope.submodule === true);
+    const taskPr = normalizeTaskPr(task && task.pr ? task.pr : null, task);
     const exists = Boolean(workspacePath) && fs.existsSync(workspacePath);
     const mode = String(
       (registryEntry && registryEntry.mode) ||
@@ -2070,7 +2161,10 @@ function createTaskCommandHelpers(deps) {
       package: resolvedPackage,
       package_path: resolvedPackagePath,
       package_scope: resolvedPackageScope,
-      package_exists: resolvedPackageExists
+      package_exists: resolvedPackageExists,
+      submodule: resolvedSubmodule,
+      pr_status: taskPr.status,
+      pr: taskPr
     });
 
     return {
@@ -2081,8 +2175,17 @@ function createTaskCommandHelpers(deps) {
       package_path: resolvedPackagePath,
       package_scope: resolvedPackageScope,
       package_exists: resolvedPackageExists,
+      submodule: resolvedSubmodule,
+      submodule_status:
+        resolvedPackageScope === 'package' && resolvedSubmodule
+          ? (resolvedPackageExists ? 'ready' : 'missing')
+          : resolvedPackageScope === 'package'
+            ? 'not-submodule'
+            : '',
       branch: String(task.branch || '').trim(),
       base_branch: String(task.base_branch || '').trim(),
+      pr_status: taskPr.status,
+      pr: taskPr,
       mode,
       path: workspacePath,
       exists,
@@ -2305,6 +2408,15 @@ function createTaskCommandHelpers(deps) {
       next_action: Array.isArray(manifest.next_action) ? manifest.next_action : DEFAULT_TASK_PHASES.map(item => ({ ...item })),
       commit: String(manifest.commit || ''),
       pr_url: String(manifest.pr_url || ''),
+      pr: normalizeTaskPr(manifest.pr, {
+        name: String(manifest.name || name),
+        title: String(manifest.title || manifest.goal || name),
+        goal: String(manifest.goal || manifest.title || ''),
+        scope: String(manifest.scope || ''),
+        branch: String(manifest.branch || ''),
+        base_branch: String(manifest.base_branch || 'main'),
+        pr_url: String(manifest.pr_url || '')
+      }),
       subtasks: Array.isArray(manifest.subtasks) ? manifest.subtasks : [],
       parent: manifest.parent ? String(manifest.parent) : null,
       children: Array.isArray(manifest.children)
@@ -2599,8 +2711,7 @@ function createTaskCommandHelpers(deps) {
     const task = readTask(taskName);
     const branch = String(task.branch || '').trim() || `task/${task.name}`;
     const base = String(task.base_branch || '').trim() || resolveDefaultBaseBranch();
-    const scope = String(task.scope || '').trim();
-    const title = `${scope ? `${scope}: ` : ''}${task.title}`;
+    const title = buildTaskPrTitle(task);
     const body_lines = [
       `Task: ${task.name}`,
       '',
@@ -2623,12 +2734,39 @@ function createTaskCommandHelpers(deps) {
       return blocked.result;
     }
 
-    const updatedTask = dryRun
-      ? task
-      : updateTaskManifest(task.name, current => ({
-          ...current,
-          current_phase: 4
-        }));
+    const now = new Date().toISOString();
+    const suggestedCli = `gh pr create --base ${base} --head ${branch} --title "${title}" --body-file ${task.artifacts.prd || `.emb-agent/tasks/${task.name}/prd.md`}`;
+    const updatedTask = updateTaskManifest(task.name, current => {
+      const currentPr = normalizeTaskPr(current.pr, {
+        ...task,
+        branch,
+        base_branch: base,
+        pr_url: current.pr_url || task.pr_url || ''
+      });
+      const nextPr = normalizeTaskPr({
+        ...currentPr,
+        status: currentPr.url ? 'linked' : 'previewed',
+        head: branch,
+        base,
+        title,
+        suggested_cli: suggestedCli,
+        manual_required: true,
+        previewed_at: now,
+        updated_at: now
+      }, {
+        ...task,
+        branch,
+        base_branch: base,
+        pr_url: current.pr_url || task.pr_url || ''
+      });
+
+      return {
+        ...current,
+        current_phase: dryRun ? Number(current.current_phase || deriveCurrentPhase(current.status || 'planning')) : 4,
+        pr_url: nextPr.url || String(current.pr_url || ''),
+        pr: nextPr
+      };
+    });
 
     updateSession(current => {
       current.last_command = 'task create-pr';
@@ -2642,9 +2780,83 @@ function createTaskCommandHelpers(deps) {
         head: branch,
         base,
         body_lines,
-        suggested_cli: `gh pr create --base ${base} --head ${branch} --title "${title}" --body-file ${task.artifacts.prd || `.emb-agent/tasks/${task.name}/prd.md`}`,
+        suggested_cli: suggestedCli,
         manual_required: true
       }
+    }, blocked.permission);
+  }
+
+  function linkTaskPr(rest) {
+    const input = parseNamedTaskWriteArgs(rest, 'task link-pr');
+    const url = String(input.rest[0] || '').trim();
+    if (!url) {
+      throw new Error('Missing PR URL');
+    }
+
+    let number = '';
+    let status = 'linked';
+    const extras = input.rest.slice(1);
+    for (let index = 0; index < extras.length; index += 1) {
+      const token = String(extras[index] || '').trim();
+      if (token === '--number') {
+        number = String(extras[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
+      if (token === '--status') {
+        status = String(extras[index + 1] || '').trim() || 'linked';
+        index += 1;
+        continue;
+      }
+    }
+
+    const task = readTask(input.name);
+    const blocked = applyTaskWritePermission({
+      updated: false,
+      task: {
+        name: task.name,
+        branch: task.branch,
+        base_branch: task.base_branch,
+        pr_url: url
+      }
+    }, 'task-link-pr', input.explicit_confirmation);
+    if (blocked.permission.decision !== 'allow') {
+      return blocked.result;
+    }
+
+    const now = new Date().toISOString();
+    const nextTask = updateTaskManifest(task.name, current => {
+      const currentPr = normalizeTaskPr(current.pr, {
+        ...task,
+        pr_url: current.pr_url || task.pr_url || ''
+      });
+      const nextPr = normalizeTaskPr({
+        ...currentPr,
+        status,
+        url,
+        number,
+        linked_at: currentPr.linked_at || now,
+        updated_at: now
+      }, {
+        ...task,
+        pr_url: url
+      });
+
+      return {
+        ...current,
+        pr_url: url,
+        pr: nextPr
+      };
+    });
+
+    updateSession(current => {
+      current.last_command = 'task link-pr';
+    });
+
+    return permissionGateHelpers.applyPermissionDecision({
+      updated: true,
+      task: nextTask,
+      pr: nextTask.pr
     }, blocked.permission);
   }
 
@@ -3028,6 +3240,10 @@ function createTaskCommandHelpers(deps) {
 
     if (subcmd === 'create-pr') {
       return createTaskPr(rest);
+    }
+
+    if (subcmd === 'link-pr') {
+      return linkTaskPr(rest);
     }
 
     if (subcmd === 'activate') {

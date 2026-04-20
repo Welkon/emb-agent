@@ -444,6 +444,47 @@ test('task supports parent-child links and create-pr preview commands', async ()
     assert.equal(preview.pr.base, 'release/demo');
     assert.match(preview.pr.title, /^pwm: /);
     assert.match(preview.pr.suggested_cli, /gh pr create/);
+    const childShown = await captureCliJson(['task', 'show', childName]);
+    assert.equal(childShown.task.pr.status, 'previewed');
+    assert.equal(childShown.task.pr.head, 'feat/pwm-execution');
+    assert.equal(childShown.task.pr.base, 'release/demo');
+    assert.match(childShown.task.pr.suggested_cli, /gh pr create/);
+
+    const linked = await captureCliJson([
+      'task',
+      'link-pr',
+      childName,
+      'https://github.com/demo/repo/pull/42',
+      '--number',
+      '42'
+    ]);
+    assert.equal(linked.updated, true);
+    assert.equal(linked.pr.status, 'linked');
+    assert.equal(linked.pr.url, 'https://github.com/demo/repo/pull/42');
+    assert.equal(linked.pr.number, '42');
+
+    const linkedShown = await captureCliJson(['task', 'show', childName]);
+    assert.equal(linkedShown.task.pr.status, 'linked');
+    assert.equal(linkedShown.task.pr.url, 'https://github.com/demo/repo/pull/42');
+    assert.equal(linkedShown.task.pr.number, '42');
+
+    const linkedTty = await captureCliTtyOutput([
+      'task',
+      'link-pr',
+      childName,
+      'https://github.com/demo/repo/pull/42',
+      '--number',
+      '42'
+    ]);
+    assert.match(linkedTty.stderr, /Linked: yes/);
+    assert.match(linkedTty.stderr, /PR Status: linked/);
+    assert.match(linkedTty.stderr, /PR URL: https:\/\/github.com\/demo\/repo\/pull\/42/);
+
+    const showTty = await captureCliTtyOutput(['task', 'show', childName]);
+    assert.match(showTty.stderr, /Task: implement-pwm-execution-path/);
+    assert.match(showTty.stderr, /Branch: feat\/pwm-execution/);
+    assert.match(showTty.stderr, /Base Branch: release\/demo/);
+    assert.match(showTty.stderr, /PR: linked: https:\/\/github.com\/demo\/repo\/pull\/42/);
 
     const linkedAgain = await captureCliJson(['task', 'subtask', 'remove', parentName, childName]);
     assert.equal(linkedAgain.updated, true);
@@ -527,11 +568,21 @@ test('task worktree state exposes package-scoped workspace metadata', async () =
     writeJson(path.join(tempProject, 'packages', 'fw', 'package.json'), { name: '@demo/fw' });
     writeText(path.join(tempProject, 'packages', 'fw', 'src', 'main.c'), '// fw main\n');
     await cli.main(['init']);
+    const projectConfigPath = path.join(tempProject, '.emb-agent', 'project.json');
+    const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
+    projectConfig.packages = (projectConfig.packages || []).map(item =>
+      item && item.name === 'fw'
+        ? { ...item, submodule: true }
+        : item
+    );
+    fs.writeFileSync(projectConfigPath, JSON.stringify(projectConfig, null, 2) + '\n', 'utf8');
     writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: .task-worktrees\n');
     initGitRepo(tempProject);
 
     const created = await captureCliJson(['task', 'add', 'Inspect package workspace scope', '--package', 'fw']);
     const taskName = created.task.name;
+    const preview = await captureCliJson(['task', 'create-pr', taskName, '--dry-run']);
+    assert.equal(preview.ready, true);
 
     const provisioned = await captureCliJson(['task', 'worktree', 'create', taskName]);
     assert.equal(provisioned.workspace.package, 'fw');
@@ -541,16 +592,41 @@ test('task worktree state exposes package-scoped workspace metadata', async () =
     assert.equal(provisioned.worktree.package_scope, 'package');
     assert.equal(provisioned.worktree.package_path, 'packages/fw');
     assert.equal(provisioned.worktree.package_exists, true);
+    assert.equal(provisioned.worktree.submodule, true);
+    assert.equal(provisioned.worktree.submodule_status, 'ready');
+    assert.equal(provisioned.worktree.pr_status, 'previewed');
+    assert.equal(provisioned.worktree.pr.head, `task/${taskName}`);
+    assert.equal(provisioned.worktree.pr.base, preview.pr.base);
 
     const shown = await captureCliJson(['task', 'worktree', 'show', taskName]);
     assert.equal(shown.worktree.package, 'fw');
     assert.equal(shown.worktree.package_scope, 'package');
     assert.equal(shown.worktree.package_path, 'packages/fw');
+    assert.equal(shown.worktree.submodule, true);
+    assert.equal(shown.worktree.pr_status, 'previewed');
+
+    const linked = await captureCliJson([
+      'task',
+      'link-pr',
+      taskName,
+      'https://github.com/demo/repo/pull/7',
+      '--number',
+      '7'
+    ]);
+    assert.equal(linked.pr.status, 'linked');
+
+    const shownLinked = await captureCliJson(['task', 'worktree', 'show', taskName]);
+    assert.equal(shownLinked.worktree.pr_status, 'linked');
+    assert.equal(shownLinked.worktree.pr.url, 'https://github.com/demo/repo/pull/7');
 
     const tty = await captureCliTtyOutput(['task', 'worktree', 'show', taskName]);
     assert.match(tty.stderr, /Scope: package/);
     assert.match(tty.stderr, /Package: fw/);
     assert.match(tty.stderr, /Package Path: packages\/fw/);
+    assert.match(tty.stderr, /Submodule: yes/);
+    assert.match(tty.stderr, new RegExp(`Branch: task/${taskName}`));
+    assert.match(tty.stderr, new RegExp(`Base Branch: ${preview.pr.base}`));
+    assert.match(tty.stderr, /PR: linked: https:\/\/github.com\/demo\/repo\/pull\/7/);
   } finally {
     process.chdir(currentCwd);
   }

@@ -626,6 +626,32 @@ function createCliRouter(deps) {
           if (payload.workspace && payload.workspace.package_path) {
             lines.push(terminalUi.renderKeyValue('Package Path', payload.workspace.package_path, 'muted'));
           }
+          if (worktree.submodule === true) {
+            lines.push(
+              terminalUi.renderKeyValue(
+                'Submodule',
+                worktree.submodule_status === 'missing' ? 'yes (missing)' : 'yes',
+                worktree.submodule_status === 'missing' ? 'warning' : 'muted'
+              )
+            );
+          }
+          if (worktree.branch) {
+            lines.push(terminalUi.renderKeyValue('Branch', worktree.branch, 'muted'));
+          }
+          if (worktree.base_branch) {
+            lines.push(terminalUi.renderKeyValue('Base Branch', worktree.base_branch, 'muted'));
+          }
+          if (worktree.pr_status) {
+            lines.push(
+              terminalUi.renderKeyValue(
+                'PR',
+                worktree.pr && worktree.pr.url
+                  ? `${worktree.pr_status}: ${worktree.pr.url}`
+                  : worktree.pr_status,
+                worktree.pr_status === 'linked' ? 'success' : 'muted'
+              )
+            );
+          }
           if (worktree.workspace_state) {
             lines.push(
               terminalUi.renderKeyValue(
@@ -679,6 +705,32 @@ function createCliRouter(deps) {
           }
           if (worktree.package_path) {
             lines.push(terminalUi.renderKeyValue('Package Path', worktree.package_path, 'muted'));
+          }
+          if (worktree.submodule === true) {
+            lines.push(
+              terminalUi.renderKeyValue(
+                'Submodule',
+                worktree.submodule_status === 'missing' ? 'yes (missing)' : 'yes',
+                worktree.submodule_status === 'missing' ? 'warning' : 'muted'
+              )
+            );
+          }
+          if (worktree.branch) {
+            lines.push(terminalUi.renderKeyValue('Branch', worktree.branch, 'muted'));
+          }
+          if (worktree.base_branch) {
+            lines.push(terminalUi.renderKeyValue('Base Branch', worktree.base_branch, 'muted'));
+          }
+          if (worktree.pr_status) {
+            lines.push(
+              terminalUi.renderKeyValue(
+                'PR',
+                worktree.pr && worktree.pr.url
+                  ? `${worktree.pr_status}: ${worktree.pr.url}`
+                  : worktree.pr_status,
+                worktree.pr_status === 'linked' ? 'success' : 'muted'
+              )
+            );
           }
           if (worktree.workspace_state) {
             lines.push(
@@ -762,6 +814,59 @@ function createCliRouter(deps) {
         }
         if (payload.worktree && payload.worktree.summary) {
           lines.push(terminalUi.renderKeyValue('Summary', payload.worktree.summary, 'muted'));
+        }
+        return appendRuntimeEventsSummary(lines, payload);
+      }
+
+      if (cmd === 'task' && subcmd === 'show') {
+        const task = payload.task && typeof payload.task === 'object' && !Array.isArray(payload.task)
+          ? payload.task
+          : {};
+        if (task.name) {
+          lines.push(terminalUi.renderKeyValue('Task', task.name, 'info'));
+        }
+        if (task.package) {
+          lines.push(terminalUi.renderKeyValue('Package', task.package, 'info'));
+        }
+        if (task.status) {
+          lines.push(terminalUi.renderKeyValue('Status', task.status, 'success'));
+        }
+        if (task.branch) {
+          lines.push(terminalUi.renderKeyValue('Branch', task.branch, 'muted'));
+        }
+        if (task.base_branch) {
+          lines.push(terminalUi.renderKeyValue('Base Branch', task.base_branch, 'muted'));
+        }
+        if (task.pr && task.pr.status) {
+          lines.push(
+            terminalUi.renderKeyValue(
+              'PR',
+              task.pr.url ? `${task.pr.status}: ${task.pr.url}` : task.pr.status,
+              task.pr.url ? 'success' : 'muted'
+            )
+          );
+        }
+        if (task.path) {
+          lines.push(terminalUi.renderKeyValue('Path', task.path, 'muted'));
+        }
+        return appendRuntimeEventsSummary(lines, payload);
+      }
+
+      if (cmd === 'task' && subcmd === 'link-pr') {
+        if (payload.updated === true) {
+          lines.push(terminalUi.renderKeyValue('Linked', 'yes', 'success'));
+        }
+        if (payload.task && payload.task.name) {
+          lines.push(terminalUi.renderKeyValue('Task', payload.task.name, 'info'));
+        }
+        if (payload.pr && payload.pr.status) {
+          lines.push(terminalUi.renderKeyValue('PR Status', payload.pr.status, 'success'));
+        }
+        if (payload.pr && payload.pr.url) {
+          lines.push(terminalUi.renderKeyValue('PR URL', payload.pr.url, 'muted'));
+        }
+        if (payload.pr && payload.pr.number) {
+          lines.push(terminalUi.renderKeyValue('PR Number', payload.pr.number, 'muted'));
         }
         return appendRuntimeEventsSummary(lines, payload);
       }
@@ -1595,7 +1700,7 @@ function createCliRouter(deps) {
       }
 
       if (
-        (cmd === 'task' && ['add', 'activate'].includes(subcmd || '')) ||
+        (cmd === 'task' && ['add', 'activate', 'show', 'create-pr', 'link-pr'].includes(subcmd || '')) ||
         cmd === 'session-report' ||
         (cmd === 'session' && subcmd === 'record')
       ) {

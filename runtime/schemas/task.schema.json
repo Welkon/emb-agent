@@ -111,6 +111,45 @@
     "pr_url": {
       "type": "string"
     },
+    "pr": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "number": {
+          "type": "string"
+        },
+        "suggested_cli": {
+          "type": "string"
+        },
+        "manual_required": {
+          "type": "boolean"
+        },
+        "previewed_at": {
+          "type": "string"
+        },
+        "linked_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
     "subtasks": {
       "type": "array",
       "items": {}
