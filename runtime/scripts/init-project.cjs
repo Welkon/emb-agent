@@ -8,6 +8,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const runtimeHostHelpers = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
+const terminalUiHelpers = require(path.join(ROOT, 'lib', 'terminal-ui.cjs'));
 const workflowImportHelpers = require(path.join(ROOT, 'lib', 'workflow-import.cjs'));
 const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs'));
 
@@ -25,6 +26,176 @@ const BOOTSTRAP_TASK_NAME = '00-bootstrap-project';
 const BOOTSTRAP_TASK_CHANNELS = ['implement', 'check', 'debug'];
 const PROJECT_AGENTS_PATH = 'AGENTS.md';
 const WORKTREE_CONFIG_PATH = path.join('.emb-agent', 'worktree.yaml');
+
+function createPromptStyler(hostProcess) {
+  const targetProcess = hostProcess || process;
+  const ui = terminalUiHelpers.createTerminalUi({
+    process: {
+      env: targetProcess.env || process.env || {},
+      argv: targetProcess.argv || process.argv || [],
+      stdout: targetProcess.stdout || process.stdout,
+      stderr: targetProcess.stdout || targetProcess.stderr || process.stderr
+    }
+  });
+
+  return ui && ui.chalk
+    ? ui.chalk
+    : {
+        blue: text => String(text),
+        cyan: text => String(text),
+        dim: text => String(text),
+        gray: text => String(text),
+        green: text => String(text),
+        red: text => String(text),
+        yellow: text => String(text),
+        white: text => String(text),
+        bold: text => String(text)
+      };
+}
+
+function writePromptOutput(hostProcess, text) {
+  const output = hostProcess && hostProcess.stdout ? hostProcess.stdout : process.stdout;
+  if (!output || typeof output.write !== 'function') {
+    return;
+  }
+  output.write(String(text || ''));
+}
+
+function isInteractivePromptAvailable(hostProcess) {
+  const targetProcess = hostProcess || process;
+  return Boolean(
+    targetProcess &&
+    targetProcess.stdin &&
+    targetProcess.stdin.isTTY &&
+    targetProcess.stdout &&
+    targetProcess.stdout.isTTY
+  );
+}
+
+function getInteractiveInputPath(hostProcess) {
+  const targetProcess = hostProcess || process;
+  if (targetProcess && targetProcess.platform) {
+    return targetProcess.platform === 'win32' ? 'CONIN$' : '/dev/tty';
+  }
+  return process.platform === 'win32' ? 'CONIN$' : '/dev/tty';
+}
+
+function readInteractiveLineSync(hostProcess) {
+  const inputPath = getInteractiveInputPath(hostProcess);
+  const fd = fs.openSync(inputPath, 'rs');
+  const buffer = Buffer.alloc(1);
+  let collected = '';
+
+  try {
+    while (true) {
+      const bytesRead = fs.readSync(fd, buffer, 0, 1, null);
+      if (bytesRead <= 0) {
+        break;
+      }
+      const char = buffer.toString('utf8', 0, bytesRead);
+      if (char === '\n') {
+        break;
+      }
+      if (char !== '\r') {
+        collected += char;
+      }
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  return collected.trim();
+}
+
+function buildWorkflowPackPrompt(entries, options = {}) {
+  const hostProcess = options.process || process;
+  const chalk = createPromptStyler(hostProcess);
+  const choiceLines = [
+    `  ${chalk.cyan('0.')} ${chalk.white('Skip for now')} ${chalk.gray('(continue without workflow packs)')}`
+  ];
+
+  entries.forEach((entry, index) => {
+    const description = String(entry.description || '').trim();
+    choiceLines.push(
+      `  ${chalk.cyan(`${index + 1}.`)} ${chalk.white(entry.name)}${description ? ` ${chalk.gray(`- ${description}`)}` : ''}`
+    );
+  });
+
+  return [
+    chalk.cyan(chalk.bold('emb-agent init')),
+    chalk.gray('  Select workflow packs for this project.'),
+    chalk.gray('  Press Enter to continue without packs, or use comma-separated numbers for multiple packs.'),
+    '',
+    chalk.blue('▶ Select Workflow Packs'),
+    '',
+    ...choiceLines,
+    '',
+    chalk.yellow('Choice [0] > ')
+  ].join('\n');
+}
+
+function parseWorkflowPackSelection(answer, entries) {
+  const trimmed = String(answer || '').trim();
+  if (!trimmed || trimmed === '0') {
+    return [];
+  }
+
+  const tokens = trimmed
+    .split(/[,\s]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+
+  if (tokens.length === 0) {
+    return [];
+  }
+
+  const names = [];
+
+  tokens.forEach(token => {
+    if (token === '0') {
+      return;
+    }
+
+    const index = Number.parseInt(token, 10);
+    if (!Number.isFinite(index) || index < 1 || index > entries.length) {
+      throw new Error(`Invalid workflow pack selection: ${token}`);
+    }
+
+    names.push(entries[index - 1].name);
+  });
+
+  return runtime.unique(names);
+}
+
+function promptWorkflowPackSelection(entries, options = {}) {
+  if (!Array.isArray(entries) || entries.length <= 1) {
+    return [];
+  }
+
+  if (typeof options.promptWorkflowPackChoices === 'function') {
+    const prompted = options.promptWorkflowPackChoices(entries);
+    if (Array.isArray(prompted)) {
+      return runtime.unique(prompted.map(item => String(item || '').trim()).filter(Boolean));
+    }
+    return parseWorkflowPackSelection(prompted, entries);
+  }
+
+  const hostProcess = options.process || process;
+  if (!isInteractivePromptAvailable(hostProcess)) {
+    return [];
+  }
+
+  while (true) {
+    writePromptOutput(hostProcess, `${buildWorkflowPackPrompt(entries, options)}\n`);
+    try {
+      return parseWorkflowPackSelection(readInteractiveLineSync(hostProcess), entries);
+    } catch (error) {
+      const chalk = createPromptStyler(hostProcess);
+      writePromptOutput(hostProcess, `${chalk.yellow(`! ${error.message}`)}\n`);
+    }
+  }
+}
+
 function usage() {
   process.stdout.write(
     [
@@ -330,6 +501,30 @@ function loadWorkflowCatalog(projectRoot) {
   });
 }
 
+function prepareProjectWorkflowSetup(projectRoot, args, options = {}) {
+  const initOptions = args || {};
+  runtime.initProjectLayout(projectRoot);
+
+  const workflowRegistryImport = initOptions.registry
+    ? workflowImport.importProjectWorkflowRegistry(projectRoot, initOptions.registry, {
+        branch: initOptions.registryBranch,
+        subdir: initOptions.registrySubdir,
+        force: options.force === true || initOptions.force === true
+      })
+    : null;
+  const workflowCatalog = loadWorkflowCatalog(projectRoot);
+  const explicitPacks = runtime.unique(((initOptions.packs || [])).filter(Boolean));
+  const activePacks = explicitPacks.length > 0
+    ? explicitPacks
+    : promptWorkflowPackSelection(workflowCatalog.packs || [], options);
+
+  return {
+    workflowCatalog,
+    workflowRegistryImport,
+    activePacks
+  };
+}
+
 function loadPackForProject(projectRoot, name, registry) {
   const catalog = registry || loadWorkflowCatalog(projectRoot);
   const entry = (catalog.packs || []).find(item => item.name === name);
@@ -437,16 +632,17 @@ function createTemplateFile(templateName, outputPath, context, force, templatesB
   return true;
 }
 
-function buildProjectConfig(projectRoot, args) {
+function buildProjectConfig(projectRoot, args, options = {}) {
   const project_profile = args.profile || '';
   if (project_profile) {
     loadBuiltInProfile(project_profile);
   }
   runtime.initProjectLayout(projectRoot);
-  const workflowCatalog = loadWorkflowCatalog(projectRoot);
+  const workflowCatalog = options.workflowCatalog || loadWorkflowCatalog(projectRoot);
   const monorepo = detectMonorepoPackages(projectRoot);
-
-  const active_packs = runtime.unique((args.packs || []).filter(Boolean));
+  const active_packs = runtime.unique(
+    (Array.isArray(options.activePacks) ? options.activePacks : args.packs || []).filter(Boolean)
+  );
 
   active_packs.forEach(name => loadPackForProject(projectRoot, name, workflowCatalog));
 
@@ -988,13 +1184,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     reused.push(bootstrapTask.path);
   }
 
-  if (initOptions.registry) {
-    workflowRegistryImport = workflowImport.importProjectWorkflowRegistry(projectRoot, initOptions.registry, {
-      branch: initOptions.registryBranch,
-      subdir: initOptions.registrySubdir,
-      force
-    });
-  }
+  workflowRegistryImport = initOptions.workflowRegistryImport || null;
 
   return {
     project_root: projectRoot,
@@ -1017,8 +1207,21 @@ function main(argv) {
   }
 
   const projectRoot = path.resolve(args.project || process.cwd());
-  const projectConfig = buildProjectConfig(projectRoot, args);
-  const result = scaffoldProject(projectRoot, projectConfig, args.force, args);
+  const workflowSetup = prepareProjectWorkflowSetup(projectRoot, args, {
+    force: args.force
+  });
+  const resolvedArgs = {
+    ...args,
+    packs: workflowSetup.activePacks
+  };
+  const projectConfig = buildProjectConfig(projectRoot, resolvedArgs, {
+    workflowCatalog: workflowSetup.workflowCatalog,
+    activePacks: workflowSetup.activePacks
+  });
+  const result = scaffoldProject(projectRoot, projectConfig, args.force, {
+    ...resolvedArgs,
+    workflowRegistryImport: workflowSetup.workflowRegistryImport
+  });
 
   process.stdout.write(
     JSON.stringify(
@@ -1040,8 +1243,12 @@ module.exports = {
   buildBootstrapDocsPlan,
   buildTruthPlan,
   buildProjectConfig,
+  buildWorkflowPackPrompt,
   buildTemplateContext,
   applyTemplate,
+  parseWorkflowPackSelection,
+  prepareProjectWorkflowSetup,
+  promptWorkflowPackSelection,
   scaffoldProject,
   main,
   parseArgs

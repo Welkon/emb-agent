@@ -20,6 +20,90 @@ function readBootstrapTask(projectRoot) {
   );
 }
 
+test('parseWorkflowPackSelection supports comma-separated pack indexes', () => {
+  const entries = [
+    { name: 'battery-charger', description: 'Charging flow' },
+    { name: 'sensor-node', description: 'Sampling flow' },
+    { name: 'motor-drive', description: 'PWM flow' }
+  ];
+
+  assert.deepEqual(initProject.parseWorkflowPackSelection('1, 3', entries), [
+    'battery-charger',
+    'motor-drive'
+  ]);
+  assert.deepEqual(initProject.parseWorkflowPackSelection('', entries), []);
+  assert.throws(() => initProject.parseWorkflowPackSelection('9', entries), /Invalid workflow pack selection/);
+});
+
+test('prepareProjectWorkflowSetup imports registry before resolving prompted workflow packs', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-pack-select-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-pack-select-source-'));
+
+  fs.mkdirSync(path.join(tempSource, '.emb-agent', 'registry'), { recursive: true });
+  fs.mkdirSync(path.join(tempSource, '.emb-agent', 'packs'), { recursive: true });
+  fs.writeFileSync(
+    path.join(tempSource, '.emb-agent', 'registry', 'workflow.json'),
+    JSON.stringify({
+      version: 1,
+      templates: [],
+      packs: [
+        {
+          name: 'smart-pillbox',
+          file: 'packs/smart-pillbox.yaml',
+          description: 'Imported smart pillbox workflow.'
+        }
+      ],
+      specs: []
+    }, null, 2) + '\n',
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(tempSource, '.emb-agent', 'packs', 'smart-pillbox.yaml'),
+    [
+      'name: smart-pillbox',
+      'focus_areas:',
+      '  - medication_schedule',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+
+  const workflowSetup = initProject.prepareProjectWorkflowSetup(
+    tempProject,
+    {
+      registry: tempSource,
+      registryBranch: '',
+      registrySubdir: '',
+      packs: []
+    },
+    {
+      promptWorkflowPackChoices(entries) {
+        assert.equal(entries.some(item => item.name === 'smart-pillbox'), true);
+        return ['smart-pillbox'];
+      }
+    }
+  );
+
+  const projectConfig = initProject.buildProjectConfig(
+    tempProject,
+    {
+      profile: '',
+      packs: workflowSetup.activePacks,
+      runtime: '',
+      user: ''
+    },
+    {
+      workflowCatalog: workflowSetup.workflowCatalog,
+      activePacks: workflowSetup.activePacks
+    }
+  );
+
+  assert.ok(workflowSetup.workflowRegistryImport);
+  assert.equal(workflowSetup.workflowRegistryImport.imported.some(item => item.name === 'smart-pillbox'), true);
+  assert.deepEqual(workflowSetup.activePacks, ['smart-pillbox']);
+  assert.deepEqual(projectConfig.active_packs, ['smart-pillbox']);
+});
+
 test('init-project creates project defaults and defers note templates into a bootstrap task', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-'));
   const currentCwd = process.cwd();
@@ -237,6 +321,67 @@ test('init-project honors project-local smart-pillbox extension pack and templat
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md')), false);
     assert.ok(bootstrapTask.relatedFiles.includes('docs/MEDICATION-FLOW.md'));
     assert.ok(bootstrapTask.subtasks.some(item => item.name.includes('docs/MEDICATION-FLOW.md')));
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('init-project keeps workflow packs empty in non-interactive mode even when imported registry adds packs', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-registry-pack-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-registry-pack-source-'));
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    fs.mkdirSync(path.join(tempSource, '.emb-agent', 'registry'), { recursive: true });
+    fs.mkdirSync(path.join(tempSource, '.emb-agent', 'packs'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempSource, '.emb-agent', 'registry', 'workflow.json'),
+      JSON.stringify({
+        version: 1,
+        templates: [],
+        packs: [
+          {
+            name: 'smart-pillbox',
+            file: 'packs/smart-pillbox.yaml',
+            description: 'Imported smart pillbox workflow.'
+          },
+          {
+            name: 'factory-test',
+            file: 'packs/factory-test.yaml',
+            description: 'Imported factory workflow.'
+          }
+        ],
+        specs: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(tempSource, '.emb-agent', 'packs', 'smart-pillbox.yaml'),
+      'name: smart-pillbox\nfocus_areas:\n  - medication_schedule\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(tempSource, '.emb-agent', 'packs', 'factory-test.yaml'),
+      'name: factory-test\nfocus_areas:\n  - board_test\n',
+      'utf8'
+    );
+
+    initProject.main([
+      '--project',
+      tempProject,
+      '--registry',
+      tempSource
+    ]);
+
+    const projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+
+    assert.deepEqual(projectConfig.active_packs, []);
+    assert.ok(fs.existsSync(path.join(tempProject, '.emb-agent', 'packs', 'smart-pillbox.yaml')));
+    assert.ok(fs.existsSync(path.join(tempProject, '.emb-agent', 'packs', 'factory-test.yaml')));
   } finally {
     process.stdout.write = originalWrite;
   }
