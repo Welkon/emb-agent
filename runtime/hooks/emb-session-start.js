@@ -12,6 +12,7 @@ const runtimeHostHelpers = require('../lib/runtime-host.cjs');
 const updateCheckHelpers = require('../lib/update-check.cjs');
 const runtime = require('../lib/runtime.cjs');
 const workflowRegistry = require('../lib/workflow-registry.cjs');
+const sessionReportStoreHelpers = require('../lib/session-report-store.cjs');
 
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const HOOK_VERSION = '{{EMB_VERSION}}';
@@ -21,6 +22,11 @@ const hookDispatch = hookDispatchHelpers.createHookDispatchHelpers({
   path,
   process,
   runtimeHost: RUNTIME_HOST
+});
+const sessionReportStore = sessionReportStoreHelpers.createSessionReportStoreHelpers({
+  fs,
+  path,
+  runtime
 });
 
 function getRuntimeRoot() {
@@ -126,6 +132,46 @@ function buildInjectedSpecLines(projectRoot, resume) {
   ];
 }
 
+function buildSessionReportLines(projectRoot, currentBranch) {
+  const continuity = sessionReportStore.buildSessionReportContinuity(
+    runtime.getProjectExtDir(projectRoot),
+    {
+      cwd: projectRoot,
+      current_branch: currentBranch
+    }
+  );
+
+  if (!continuity.present || !continuity.preferred) {
+    return [];
+  }
+
+  const report = continuity.preferred;
+  const lines = [
+    `Latest session checkpoint: ${report.summary || report.id}`,
+    `Checkpoint file: ${report.markdown_file || report.json_file || '(unknown)'}`
+  ];
+
+  if (report.generated_at) {
+    lines.push(`Checkpoint recorded: ${report.generated_at}`);
+  }
+  if (report.next_command) {
+    lines.push(`Checkpoint next command: ${report.next_command}`);
+  }
+  if (report.next_reason) {
+    lines.push(`Checkpoint reason: ${report.next_reason}`);
+  }
+
+  if (continuity.branch_status === 'match') {
+    lines.push(`Checkpoint branch: ${report.git_branch} (matches current branch)`);
+  } else if (continuity.branch_status === 'mismatch') {
+    lines.push(`Checkpoint branch: ${report.git_branch} (current branch: ${continuity.current_branch || 'unknown'})`);
+  } else if (report.git_branch) {
+    lines.push(`Checkpoint branch: ${report.git_branch}`);
+  }
+
+  return lines;
+}
+
 function buildSessionContext(projectRoot, start, resume, options) {
   const settings = options && typeof options === 'object' ? options : {};
   const lines = [
@@ -178,6 +224,9 @@ function buildSessionContext(projectRoot, start, resume, options) {
     );
   }
 
+  if (Array.isArray(settings.sessionReportLines) && settings.sessionReportLines.length > 0) {
+    lines.push(...settings.sessionReportLines);
+  }
   if (Array.isArray(settings.specLines) && settings.specLines.length > 0) {
     lines.push(...settings.specLines);
   }
@@ -232,12 +281,18 @@ function runHook(rawInput) {
     const hadProjectConfig = fs.existsSync(projectConfigPath);
     const start = cli.buildStartContext();
     const resume = start.summary && start.summary.initialized ? cli.buildResumeContext() : { handoff: null, task: null };
+    const session = typeof cli.loadSession === 'function' ? cli.loadSession() : null;
     const updateLines = buildUpdateLines();
     const specLines = buildInjectedSpecLines(projectRoot, resume);
+    const sessionReportLines = buildSessionReportLines(
+      projectRoot,
+      session && session.git_branch ? session.git_branch : ''
+    );
     const message = buildSessionContext(projectRoot, start, resume, {
       initializedDuringHook: !hadProjectConfig && fs.existsSync(projectConfigPath),
       updateLines,
-      specLines
+      specLines,
+      sessionReportLines
     });
 
     if (!message) {

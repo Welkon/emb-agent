@@ -732,11 +732,13 @@ function buildContextOverview() {
         sessionView.reports &&
         Array.isArray(sessionView.reports.reports)
           ? sessionView.reports.reports.length
-          : 0
+          : 0,
+      latest_report_present: Boolean(sessionView && sessionView.latest_report)
     },
     session_state: sessionView ? sessionView.session_state : null,
     memory_summary: loadContextSummary(),
     handoff: sessionView ? sessionView.handoff : null,
+    latest_report: sessionView ? sessionView.latest_report || null : null,
     reports: sessionView ? sessionView.reports : { reports: [] },
     status,
     next,

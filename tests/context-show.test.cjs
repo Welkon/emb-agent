@@ -51,6 +51,8 @@ test('context show aggregates live session, bootstrap, next, health, and stored 
     assert.ok(context.session_state);
     assert.ok(context.reports);
     assert.equal(context.reports.reports.length, 1);
+    assert.ok(context.latest_report);
+    assert.equal(context.latest_report.summary, 'capture bring-up checkpoint');
     assert.equal(context.reports.reports[0].summary, 'capture bring-up checkpoint');
     assert.equal(typeof context.next.next.command, 'string');
     assert.ok(context.next.next.command.length > 0);

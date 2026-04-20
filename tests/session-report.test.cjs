@@ -58,6 +58,10 @@ test('session command group records history and shows stored reports', async () 
     assert.equal(current.project_root, tempProject);
     assert.ok(current.session_state);
     assert.equal(current.reports.reports.length, 1);
+    assert.ok(current.reports.latest);
+    assert.ok(current.reports.preferred);
+    assert.ok(current.latest_report);
+    assert.equal(current.latest_report.summary, 'capture first grouped session');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

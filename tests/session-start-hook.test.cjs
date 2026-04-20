@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const childProcess = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -172,6 +173,52 @@ test('session start hook reminds active task context after clearable resume path
     assert.match(payload.hookSpecificOutput.additionalContext, /project-local/);
     assert.match(payload.hookSpecificOutput.additionalContext, /task-execution/);
     assert.doesNotMatch(payload.hookSpecificOutput.additionalContext, /Primary entrypoint: start/);
+  } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
+    if (previousSkip === undefined) {
+      delete process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
+    } else {
+      process.env.EMB_AGENT_SKIP_UPDATE_CHECK = previousSkip;
+    }
+    if (previousCachePath === undefined) {
+      delete process.env.EMB_AGENT_UPDATE_CACHE_PATH;
+    } else {
+      process.env.EMB_AGENT_UPDATE_CACHE_PATH = previousCachePath;
+    }
+    process.chdir(currentCwd);
+  }
+});
+
+test('session start hook surfaces the latest session checkpoint for the current branch', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-hook-'));
+  const currentCwd = process.cwd();
+  const previousSkip = process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
+  const previousCachePath = process.env.EMB_AGENT_UPDATE_CACHE_PATH;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  const cachePath = path.join(tempProject, '.cache', 'update-check.json');
+
+  try {
+    process.env.EMB_AGENT_SKIP_UPDATE_CHECK = '1';
+    process.env.EMB_AGENT_UPDATE_CACHE_PATH = cachePath;
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
+    process.chdir(tempProject);
+    childProcess.execFileSync('git', ['init', '-b', 'feat/session-hook'], {
+      cwd: tempProject,
+      stdio: 'ignore'
+    });
+    cli.main(['init']);
+    cli.main(['session', 'record', 'capture pwm checkpoint']);
+
+    const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
+    const payload = parseHookPayload(reminder);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Latest session checkpoint: capture pwm checkpoint/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Checkpoint next command:/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Checkpoint branch: feat\/session-hook \(matches current branch\)/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /\.emb-agent\/reports\/sessions\/report-/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
