@@ -104,11 +104,13 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const codexHooks = JSON.parse(fs.readFileSync(path.join(tempHome, 'hooks.json'), 'utf8'));
     assert.doesNotMatch(codexConfig, /codex_hooks\s*=\s*true/);
     assert.doesNotMatch(codexConfig, /\[\[hooks\]\]/);
+    assert.match(codexConfig, /project_doc_fallback_filenames = \["AGENTS\.md"\]/);
     assert.match(codexConfig, /\[agents\.emb-fw-doer\]/);
     assert.ok(Array.isArray(codexHooks.hooks.SessionStart));
     assert.ok(Array.isArray(codexHooks.hooks.PostToolUse));
     assert.match(JSON.stringify(codexHooks.hooks.SessionStart), /emb-session-start\.js/);
     assert.match(JSON.stringify(codexHooks.hooks.PostToolUse), /emb-context-monitor\.js/);
+    assert.match(JSON.stringify(codexHooks.hooks.SessionStart), /Loading emb-agent context/);
     assert.doesNotMatch(fs.readFileSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js'), 'utf8'), /\{\{EMB_VERSION\}\}/);
     assert.match(stdout, /Install profile: core/);
     assert.match(stdout, /Created env example:/);
@@ -728,6 +730,20 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
 
     assert.equal(fs.existsSync(path.join(codexRoot, 'skills', 'emb-start', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(codexRoot, 'skills', 'emb-init', 'SKILL.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.agents', 'skills', 'emb-start', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.agents', 'skills', 'emb-init', 'SKILL.md')), false);
+    assert.match(
+      fs.readFileSync(path.join(tempProject, '.agents', 'skills', 'emb-start', 'SKILL.md'), 'utf8'),
+      /This shared skill routes matching requests to the emb-agent command `start`\./
+    );
+    assert.match(
+      fs.readFileSync(path.join(codexRoot, 'config.toml'), 'utf8'),
+      /project_doc_fallback_filenames = \["AGENTS\.md"\]/
+    );
+    assert.match(
+      fs.readFileSync(path.join(codexRoot, 'hooks.json'), 'utf8'),
+      /Loading emb-agent context/
+    );
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
@@ -740,6 +756,8 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     installedCli.main(['start']);
     assert.match(stdout, /Installed 13 Codex skills under:/);
     assert.match(stdout, /\.codex\/skills/);
+    assert.match(stdout, /Installed 13 shared skills under:/);
+    assert.match(stdout, /\.agents\/skills/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /Bootstrap task:/);
     assert.match(stdout, /run: start/);
@@ -750,6 +768,247 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     } else {
       process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
     }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer uninstall removes local Codex managed surfaces and preserves user config', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-codex-uninstall-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
+    process.chdir(tempProject);
+    fs.mkdirSync(path.join(tempProject, '.codex'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, '.codex', 'config.toml'), 'model = "gpt-5"\n', 'utf8');
+    fs.writeFileSync(
+      path.join(tempProject, '.codex', 'hooks.json'),
+      JSON.stringify(
+        {
+          hooks: {
+            SessionStart: [
+              {
+                hooks: [
+                  {
+                    type: 'command',
+                    command: 'node "/tmp/custom-session-start.js"'
+                  }
+                ]
+              }
+            ],
+            PostToolUse: [
+              {
+                matcher: 'Write',
+                hooks: [
+                  {
+                    type: 'command',
+                    command: 'node "/tmp/custom-post-tool.js"'
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    await installer.main(['--developer', 'felix']);
+
+    assert.equal(fs.existsSync(path.join(tempProject, '.codex', 'emb-agent')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.codex', 'skills', 'emb-start', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.agents', 'skills', 'emb-start', 'SKILL.md')), true);
+
+    await installer.main(['--uninstall']);
+
+    assert.equal(fs.existsSync(path.join(tempProject, '.codex', 'emb-agent')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.codex', 'skills')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.agents')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
+
+    const preservedConfig = fs.readFileSync(path.join(tempProject, '.codex', 'config.toml'), 'utf8');
+    const preservedHooks = JSON.parse(fs.readFileSync(path.join(tempProject, '.codex', 'hooks.json'), 'utf8'));
+
+    assert.match(preservedConfig, /^model = "gpt-5"$/m);
+    assert.doesNotMatch(preservedConfig, /project_doc_fallback_filenames/);
+    assert.doesNotMatch(preservedConfig, /\[agents\./);
+    assert.match(JSON.stringify(preservedHooks), /custom-session-start\.js/);
+    assert.match(JSON.stringify(preservedHooks), /custom-post-tool\.js/);
+    assert.doesNotMatch(JSON.stringify(preservedHooks), /emb-session-start\.js/);
+    assert.doesNotMatch(JSON.stringify(preservedHooks), /emb-context-monitor\.js/);
+    assert.match(stdout, /Uninstalled emb-agent managed files for Codex from:/);
+  } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer uninstall removes local Claude managed surfaces and preserves user files', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-claude-uninstall-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    process.chdir(tempProject);
+    fs.mkdirSync(path.join(tempProject, '.claude', 'commands', 'emb'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.claude', 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, '.claude', 'commands', 'emb', 'team-notes.md'), '# custom\n', 'utf8');
+    fs.writeFileSync(path.join(tempProject, '.claude', 'agents', 'custom-helper.md'), '# custom helper\n', 'utf8');
+    fs.writeFileSync(
+      path.join(tempProject, '.claude', 'settings.json'),
+      JSON.stringify(
+        {
+          statusLine: {
+            type: 'command',
+            command: 'node "/tmp/custom-statusline.js"'
+          },
+          hooks: {
+            SessionStart: [
+              {
+                hooks: [
+                  {
+                    type: 'command',
+                    command: 'node "/tmp/custom-session-start.js"'
+                  }
+                ]
+              }
+            ],
+            PostToolUse: [
+              {
+                matcher: 'Write',
+                hooks: [
+                  {
+                    type: 'command',
+                    command: 'node "/tmp/custom-post-tool.js"'
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    await installer.main(['--claude', '--developer', 'felix']);
+
+    assert.equal(fs.existsSync(path.join(tempProject, '.claude', 'emb-agent')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.claude', 'commands', 'emb', 'start.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.claude', 'agents', 'emb-arch-reviewer.md')), true);
+
+    await installer.main(['--claude', '--uninstall']);
+
+    assert.equal(fs.existsSync(path.join(tempProject, '.claude', 'emb-agent')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.claude', 'commands', 'emb', 'start.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.claude', 'agents', 'emb-arch-reviewer.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.claude', 'commands', 'emb', 'team-notes.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.claude', 'agents', 'custom-helper.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
+
+    const preservedSettings = JSON.parse(fs.readFileSync(path.join(tempProject, '.claude', 'settings.json'), 'utf8'));
+
+    assert.equal(preservedSettings.statusLine.command, 'node "/tmp/custom-statusline.js"');
+    assert.match(JSON.stringify(preservedSettings), /custom-session-start\.js/);
+    assert.match(JSON.stringify(preservedSettings), /custom-post-tool\.js/);
+    assert.doesNotMatch(JSON.stringify(preservedSettings), /emb-session-start\.js/);
+    assert.doesNotMatch(JSON.stringify(preservedSettings), /emb-context-monitor\.js/);
+    assert.doesNotMatch(JSON.stringify(preservedSettings), /emb-statusline\.js/);
+    assert.match(stdout, /Uninstalled emb-agent managed files for Claude Code from:/);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer uninstall removes local Cursor managed surfaces and preserves user files', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-cursor-uninstall-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    process.chdir(tempProject);
+    fs.mkdirSync(path.join(tempProject, '.cursor', 'commands'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, '.cursor', 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, '.cursor', 'commands', 'team-notes.md'), '# custom\n', 'utf8');
+    fs.writeFileSync(path.join(tempProject, '.cursor', 'agents', 'custom-helper.md'), '# custom helper\n', 'utf8');
+    fs.writeFileSync(
+      path.join(tempProject, '.cursor', 'settings.json'),
+      JSON.stringify(
+        {
+          hooks: {
+            SessionStart: [
+              {
+                command: 'node "/tmp/custom-session-start.js"'
+              }
+            ],
+            PostToolUse: [
+              {
+                matcher: 'Write',
+                command: 'node "/tmp/custom-post-tool.js"',
+                timeout: 5
+              }
+            ]
+          }
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    await installer.main(['--cursor', '--developer', 'felix']);
+
+    assert.equal(fs.existsSync(path.join(tempProject, '.cursor', 'emb-agent')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.cursor', 'commands', 'emb-start.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.cursor', 'agents', 'emb-arch-reviewer.md')), true);
+
+    await installer.main(['--cursor', '--uninstall']);
+
+    assert.equal(fs.existsSync(path.join(tempProject, '.cursor', 'emb-agent')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.cursor', 'commands', 'emb-start.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.cursor', 'agents', 'emb-arch-reviewer.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.cursor', 'commands', 'team-notes.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.cursor', 'agents', 'custom-helper.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
+
+    const preservedSettings = JSON.parse(fs.readFileSync(path.join(tempProject, '.cursor', 'settings.json'), 'utf8'));
+
+    assert.match(JSON.stringify(preservedSettings), /custom-session-start\.js/);
+    assert.match(JSON.stringify(preservedSettings), /custom-post-tool\.js/);
+    assert.doesNotMatch(JSON.stringify(preservedSettings), /emb-session-start\.js/);
+    assert.doesNotMatch(JSON.stringify(preservedSettings), /emb-context-monitor\.js/);
+    assert.match(stdout, /Uninstalled emb-agent managed files for Cursor from:/);
+  } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }

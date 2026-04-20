@@ -721,6 +721,21 @@ function createInstallHelpers(deps) {
     return next.replace(/\{\{EMB_VERSION\}\}/g, packageVersion);
   }
 
+  function escapeRegExp(text) {
+    return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function renderRuntimeTemplate(templateName, replacements, targetDir, target) {
+    const templatePath = path.join(runtimeSrc, 'templates', templateName);
+    let content = replaceInstallPaths(fs.readFileSync(templatePath, 'utf8'), targetDir, target);
+
+    for (const [key, value] of Object.entries(replacements || {})) {
+      content = content.replace(new RegExp(`\\{\\{${escapeRegExp(key)}\\}\\}`, 'g'), String(value));
+    }
+
+    return content;
+  }
+
   function extractFrontmatterAndBody(content) {
     if (!content.startsWith('---\n') && !content.startsWith('---\r\n')) {
       return { frontmatter: '', body: content.trim() };
@@ -821,7 +836,7 @@ function createInstallHelpers(deps) {
 
   function buildConfigBlock(targetDir, target, agents) {
     const agentsDir = path.join(targetDir, target.agentsDirName || 'agents').replace(/\\/g, '/');
-    const lines = [MANAGED_MARKER_START, ''];
+    const lines = [];
 
     for (const agent of agents) {
       lines.push(`[agents.${agent.name}]`);
@@ -830,8 +845,7 @@ function createInstallHelpers(deps) {
       lines.push('');
     }
 
-    lines.push(MANAGED_MARKER_END);
-    return lines.join('\n');
+    return lines.join('\n').trim();
   }
 
   function readJsonObject(filePath) {
@@ -1057,7 +1071,17 @@ function createInstallHelpers(deps) {
     }
 
     const configPath = path.join(targetDir, target.configFileName || 'config.toml');
-    mergeManagedConfig(configPath, buildConfigBlock(targetDir, target, installed));
+    mergeManagedConfig(
+      configPath,
+      renderRuntimeTemplate(
+        'codex-config.toml.tpl',
+        {
+          AGENT_BLOCKS: buildConfigBlock(targetDir, target, installed)
+        },
+        targetDir,
+        target
+      )
+    );
     return installed.length;
   }
 
@@ -1091,12 +1115,38 @@ function createInstallHelpers(deps) {
   }
 
   function installCodexHooks(targetDir, target, args) {
-    ensureJsonHostHooks(
-      path.join(targetDir, target.hooksConfigFileName || 'hooks.json'),
-      targetDir,
-      target,
-      Boolean(args && args.local)
+    const hooksPath = path.join(targetDir, target.hooksConfigFileName || 'hooks.json');
+    const current = stripJsonHostManagedHooks(readJsonObject(hooksPath));
+    const next =
+      current && typeof current === 'object' && !Array.isArray(current)
+        ? { ...current }
+        : {};
+    const rendered = JSON.parse(
+      renderRuntimeTemplate(
+        'codex-hooks.json.tpl',
+        {
+          SESSION_START_COMMAND: JSON.stringify(
+            buildJsonHostHookCommand(targetDir, target, 'emb-session-start.js', Boolean(args && args.local))
+          ),
+          POST_TOOL_USE_COMMAND: JSON.stringify(
+            buildJsonHostHookCommand(targetDir, target, 'emb-context-monitor.js', Boolean(args && args.local))
+          )
+        },
+        targetDir,
+        target
+      )
     );
+
+    if (!next.hooks || typeof next.hooks !== 'object' || Array.isArray(next.hooks)) {
+      next.hooks = {};
+    }
+
+    for (const [eventName, entries] of Object.entries(rendered.hooks || {})) {
+      const existingEntries = Array.isArray(next.hooks[eventName]) ? next.hooks[eventName] : [];
+      next.hooks[eventName] = existingEntries.concat(entries);
+    }
+
+    writeJsonObject(hooksPath, next);
   }
 
   function generateClaudeCommandContent(commandName, content, runtimeDir) {
@@ -1251,6 +1301,36 @@ function createInstallHelpers(deps) {
     ].join('\n');
   }
 
+  function generateSharedSkillContent(commandName, content, runtimeDir) {
+    const { frontmatter, body } = extractFrontmatterAndBody(content);
+    const skillName = extractFrontmatterField(frontmatter, 'name') || `emb-${commandName}`;
+    const description = toSingleLine(
+      extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
+    );
+    const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+
+    return [
+      '---',
+      `name: ${skillName}`,
+      `description: ${JSON.stringify(description)}`,
+      '---',
+      '',
+      `# ${skillName}`,
+      '',
+      `This shared skill routes matching requests to the emb-agent command \`${commandName}\`.`,
+      '',
+      '## Invocation',
+      '',
+      `- When this skill matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
+      '- Use the runtime output as the source of truth for the next step instead of improvising a parallel workflow.',
+      '',
+      '## Original Guidance',
+      '',
+      body.trim(),
+      ''
+    ].join('\n');
+  }
+
   function installCodexSkills(targetDir, target, runtimeDir) {
     if (!target || target.name !== 'codex') {
       return 0;
@@ -1279,6 +1359,42 @@ function createInstallHelpers(deps) {
       fs.writeFileSync(
         path.join(skillDir, 'SKILL.md'),
         generateCodexSkillContent(commandName, rendered, runtimeDir),
+        'utf8'
+      );
+      installed += 1;
+    }
+
+    return installed;
+  }
+
+  function installSharedCodexSkills(targetDir, target, runtimeDir, args) {
+    if (!target || target.name !== 'codex' || !(args && args.local)) {
+      return 0;
+    }
+
+    const skillsRoot = path.join(path.resolve(targetDir, '..'), '.agents', 'skills');
+    ensureDir(skillsRoot);
+
+    for (const skillName of listManagedCodexSkillNames()) {
+      removeDirIfExists(path.join(skillsRoot, skillName));
+    }
+
+    let installed = 0;
+
+    for (const file of fs.readdirSync(commandsSrc).filter(name => name.endsWith('.md')).sort()) {
+      const commandName = file.replace(/\.md$/, '');
+      if (!commandVisibility.isPublicCommandName(commandName)) {
+        continue;
+      }
+
+      const raw = fs.readFileSync(path.join(commandsSrc, file), 'utf8');
+      const rendered = replaceInstallPaths(raw, targetDir, target);
+      const skillName = `emb-${commandName}`;
+      const skillDir = path.join(skillsRoot, skillName);
+      ensureDir(skillDir);
+      fs.writeFileSync(
+        path.join(skillDir, 'SKILL.md'),
+        generateSharedSkillContent(commandName, rendered, runtimeDir),
         'utf8'
       );
       installed += 1;
@@ -1553,7 +1669,7 @@ function createInstallHelpers(deps) {
     };
   }
 
-  function uninstall(targetDir, target) {
+  function uninstall(targetDir, target, args) {
     const agentsDir = path.join(targetDir, target.agentsDirName || 'agents');
 
     for (const agentName of listManagedAgentFiles()) {
@@ -1569,6 +1685,15 @@ function createInstallHelpers(deps) {
       for (const skillName of listManagedCodexSkillNames()) {
         removeDirIfExists(path.join(skillsRoot, skillName));
       }
+      removeDirIfEmpty(skillsRoot);
+      if (args && args.local) {
+        const sharedSkillsRoot = path.join(path.resolve(targetDir, '..'), '.agents', 'skills');
+        for (const skillName of listManagedCodexSkillNames()) {
+          removeDirIfExists(path.join(sharedSkillsRoot, skillName));
+        }
+        removeDirIfEmpty(sharedSkillsRoot);
+        removeDirIfEmpty(path.dirname(sharedSkillsRoot));
+      }
     }
     if (target.name === 'claude') {
       const commandsRoot = path.join(targetDir, 'commands', 'emb');
@@ -1578,7 +1703,8 @@ function createInstallHelpers(deps) {
           fs.unlinkSync(commandPath);
         }
       }
-      removeDirIfExists(commandsRoot);
+      removeDirIfEmpty(commandsRoot);
+      removeDirIfEmpty(path.dirname(commandsRoot));
     }
     if (target.name === 'cursor') {
       const commandsRoot = path.join(targetDir, 'commands');
@@ -1649,7 +1775,7 @@ function createInstallHelpers(deps) {
     if (args.uninstall) {
       const uninstallActivity = reporter.activity('Removing emb-agent managed files');
       try {
-        uninstall(targetDir, target);
+        uninstall(targetDir, target, args);
         uninstallActivity.succeed('Removed emb-agent managed files');
       } catch (error) {
         uninstallActivity.fail('Removing emb-agent managed files', error);
@@ -1673,6 +1799,7 @@ function createInstallHelpers(deps) {
     const integrationActivity = reporter.activity('Installing host agents, hooks, and commands');
     let agentCount;
     let codexSkillCount;
+    let sharedSkillCount;
     let claudeCommandCount;
     let cursorCommandCount;
     try {
@@ -1681,9 +1808,11 @@ function createInstallHelpers(deps) {
         installCodexHooks(targetDir, target, args);
       }
       codexSkillCount = installCodexSkills(targetDir, target, runtimeDir);
+      sharedSkillCount = installSharedCodexSkills(targetDir, target, runtimeDir, args);
       claudeCommandCount = installClaudeCommands(targetDir, target, runtimeDir);
       cursorCommandCount = installCursorCommands(targetDir, target, runtimeDir);
-      const installedSurfaceCount = agentCount + codexSkillCount + claudeCommandCount + cursorCommandCount;
+      const installedSurfaceCount =
+        agentCount + codexSkillCount + sharedSkillCount + claudeCommandCount + cursorCommandCount;
       integrationActivity.succeed(
         installedSurfaceCount > 0
           ? `Installed ${installedSurfaceCount} host integration artifacts`
@@ -1728,6 +1857,9 @@ function createInstallHelpers(deps) {
         : []),
       ...(codexSkillCount > 0
         ? [`Installed ${codexSkillCount} Codex skills under: ${path.join(targetDir, 'skills')}`]
+        : []),
+      ...(sharedSkillCount > 0
+        ? [`Installed ${sharedSkillCount} shared skills under: ${path.join(path.resolve(targetDir, '..'), '.agents', 'skills')}`]
         : []),
       ...(claudeCommandCount > 0
         ? [`Installed ${claudeCommandCount} Claude commands under: ${path.join(targetDir, 'commands', 'emb')}`]
