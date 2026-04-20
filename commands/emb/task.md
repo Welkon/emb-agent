@@ -29,7 +29,8 @@ allowed-tools:
 - In monorepo projects, use `task add --package <name>` to bind the task to one package and carry that package into activation and status.
 - Package-bound tasks automatically prioritize that package in their default context and expose package scope in `task worktree show/status`.
 - Use `task set-branch` and `task set-base-branch` before `task create-pr` if branch routing needs to differ from the defaults.
+- Use `task link-pr <name> <url>` after creating the PR manually so the task and worktree state stay PR-aware instead of stopping at preview-only metadata.
 - Use `task worktree create <name>` when you need the workspace before moving task status to `in_progress`.
-- Use `task worktree status` or `task worktree show <name>` to inspect workspace state, registry, and current-task pointers.
+- Use `task worktree status` or `task worktree show <name>` to inspect workspace state, registry, current-task pointers, package submodule metadata, and PR readiness.
 - Prefer `task worktree status` or `task worktree show <name>` before `create` or `cleanup`; they expose `workspace_state`, `attention`, and a plain-language summary for the operator.
 - Before `task resolve`, complete `task aar scan`. If any answer is `yes`, complete `task aar record` first.
