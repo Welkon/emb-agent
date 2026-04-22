@@ -70,8 +70,8 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     assert.equal(first.agent_analysis.recommended_agent, 'emb-hw-scout');
     assert.equal(first.agent_analysis.status, 'agent-analysis-recommended');
     assert.equal(first.agent_analysis.artifact_path, '.emb-agent/analysis/pms150g.json');
-    assert.match(first.agent_analysis.init_command, /support analysis init --chip PMS150G --package SOP8/);
-    assert.match(first.agent_analysis.derive_command, /support derive --from-analysis \.emb-agent\/analysis\/pms150g\.json/);
+    assert.match(first.agent_analysis.init_command, /adapter analysis init --chip PMS150G --package SOP8/);
+    assert.match(first.agent_analysis.derive_command, /adapter derive --from-analysis \.emb-agent\/analysis\/pms150g\.json/);
     assert.equal(first.recommended_flow.id, 'doc-to-chip-support-analysis');
     assert.equal(first.recommended_flow.mode, 'analysis-artifact-first');
     assert.equal(first.handoff_protocol.protocol, 'emb-agent.chip-support-analysis/1');

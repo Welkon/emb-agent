@@ -312,9 +312,10 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /Delegation and chip support runtime:/);
   assert.match(advanced, /Inspection and discovery:/);
   assert.match(advanced, /support source add/);
-  assert.match(advanced, /support analysis init --chip <name>/);
-  assert.match(advanced, /support export \[<source>\]/);
-  assert.match(advanced, /support publish \[<source>\]/);
+  assert.match(advanced, /adapter analysis init --chip <name>/);
+  assert.match(advanced, /adapter export \[<source>\]/);
+  assert.match(advanced, /adapter publish \[<source>\]/);
+  assert.match(advanced, /support analysis init \.\.\. \[alias of `adapter analysis init`\]/);
   assert.doesNotMatch(advanced, /support promote \[<source>\]/);
   assert.doesNotMatch(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);

@@ -44,39 +44,77 @@ function createSkillRuntimeHelper(projectRoot, options = {}) {
     process,
     runtime,
     runtimeConfig: runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime')),
-    runtimeHost: () => runtimeHost.resolveRuntimeHost(path.join(repoRoot, 'runtime')),
+    runtimeHost: () => options.runtimeHost || runtimeHost.resolveRuntimeHost(path.join(repoRoot, 'runtime')),
     resolveProjectRoot: () => projectRoot,
     getProjectExtDir: () => runtime.getProjectExtDir(projectRoot),
     updateSession() {},
-    builtInSkillsDir: path.join(repoRoot, 'skills'),
+    builtInSkillsDir: path.join(repoRoot, 'runtime', 'skills'),
     builtInDisplayRoot: repoRoot,
     loadGiget: options.loadGiget
   });
 }
 
-test('skills list and show expose lazily discovered built-in skills', async () => {
-  const listed = await captureJson(['skills', 'list']);
-  const shown = await captureJson(['skills', 'show', 'remember']);
+test('skills helper does not expose built-in core skills by default', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-empty-builtins-'));
+  const helper = createSkillRuntimeHelper(tempProject, {
+    runtimeHost: {
+      runtimeHome: path.join(tempProject, '.runtime-home'),
+      sourceLayout: false
+    }
+  });
 
+  const listed = helper.listSkills({});
   assert.ok(Array.isArray(listed));
-  assert.ok(listed.some(item => item.name === 'remember'));
-  assert.ok(listed.some(item => item.name === 'swarm-execution'));
-  assert.equal(shown.name, 'remember');
-  assert.equal(shown.execution_mode, 'inline');
-  assert.equal(shown.path, 'skills/remember.md');
-  assert.match(shown.content, /cross-session conclusions/);
+  assert.ok(!listed.some(item => item.name === 'remember'));
+  assert.ok(!listed.some(item => item.name === 'swarm-execution'));
 });
 
-test('skills run supports inline and isolated execution modes', async () => {
+test('project skills run supports inline and isolated execution modes', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-inline-isolated-'));
+  const currentCwd = process.cwd();
   const originalBridge = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
 
   try {
-    const inlineResult = await captureJson(['skills', 'run', 'remember', 'capture stable timer fact']);
+    process.chdir(tempProject);
+    await captureJson(['init']);
+
+    writeFile(
+      path.join(tempProject, '.emb-agent', 'skills', 'facts-capture', 'SKILL.md'),
+      [
+        '---',
+        'name: facts-capture',
+        'description: Capture a durable engineering fact.',
+        'execution_mode: inline',
+        '---',
+        '',
+        '# facts-capture',
+        '',
+        'Turn the current result into a durable note.',
+        ''
+      ].join('\n')
+    );
+    writeFile(
+      path.join(tempProject, '.emb-agent', 'skills', 'peer-roster', 'SKILL.md'),
+      [
+        '---',
+        'name: peer-roster',
+        'description: Run a peer-style isolated task.',
+        'execution_mode: isolated',
+        '---',
+        '',
+        '# peer-roster',
+        '',
+        'Run this work through the host sub-agent bridge.',
+        ''
+      ].join('\n')
+    );
+
+    const inlineResult = await captureJson(['skills', 'run', 'facts-capture', 'capture stable timer fact']);
     assert.equal(inlineResult.execution.mode, 'inline');
     assert.match(inlineResult.prompt, /capture stable timer fact/);
 
     process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = 'mock://ok';
-    const isolatedResult = await captureJson(['skills', 'run', 'swarm-execution']);
+    const isolatedResult = await captureJson(['skills', 'run', 'peer-roster']);
     assert.equal(isolatedResult.execution.mode, 'isolated');
     assert.equal(isolatedResult.isolated.status, 'ok');
     assert.equal(isolatedResult.isolated.worker_result.phase, 'skill');
@@ -86,6 +124,7 @@ test('skills run supports inline and isolated execution modes', async () => {
     } else {
       process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridge;
     }
+    process.chdir(currentCwd);
   }
 });
 

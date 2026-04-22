@@ -318,6 +318,247 @@ function createWorkflowImportHelpers(deps) {
       }
     }
 
+    const flatMarkdownFiles = fs.existsSync(baseRoot) && fs.statSync(baseRoot).isDirectory()
+      ? fs.readdirSync(baseRoot).filter(name => name.toLowerCase().endsWith('.md') && !/^readme(?:\..*)?\.md$/i.test(name))
+      : [];
+    if (flatMarkdownFiles.length > 0) {
+      return baseRoot;
+    }
+
+    throw new Error(`Workflow registry not found under source root: ${baseRoot}`);
+  }
+
+  function prettyName(value) {
+    return String(value || '')
+      .split(/[-_]+/)
+      .filter(Boolean)
+      .map(item => item.charAt(0).toUpperCase() + item.slice(1))
+      .join(' ');
+  }
+
+  function parseFrontmatterScalar(raw) {
+    const value = String(raw || '').trim();
+    if (!value) {
+      return '';
+    }
+    if (value === 'true') {
+      return true;
+    }
+    if (value === 'false') {
+      return false;
+    }
+    if (/^-?\d+$/u.test(value)) {
+      return Number(value);
+    }
+    if (value.startsWith('[') && value.endsWith(']')) {
+      const inner = value.slice(1, -1).trim();
+      if (!inner) {
+        return [];
+      }
+      return inner
+        .split(',')
+        .map(item => parseFrontmatterScalar(item))
+        .filter(item => item !== '');
+    }
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith('\'') && value.endsWith('\''))
+    ) {
+      return value.slice(1, -1);
+    }
+    return value;
+  }
+
+  function assignFrontmatterValue(target, dottedKey, value) {
+    const parts = String(dottedKey || '').trim().split('.').filter(Boolean);
+    if (parts.length === 0) {
+      return;
+    }
+
+    let cursor = target;
+    while (parts.length > 1) {
+      const part = parts.shift();
+      if (!cursor[part] || typeof cursor[part] !== 'object' || Array.isArray(cursor[part])) {
+        cursor[part] = {};
+      }
+      cursor = cursor[part];
+    }
+
+    cursor[parts[0]] = value;
+  }
+
+  function parseMarkdownFrontmatter(content) {
+    const source = String(content || '');
+    if (!source.startsWith('---\n') && !source.startsWith('---\r\n')) {
+      return {
+        metadata: {},
+        body: source
+      };
+    }
+
+    const endMarker = source.indexOf('\n---', 4);
+    if (endMarker === -1) {
+      return {
+        metadata: {},
+        body: source
+      };
+    }
+
+    const rawHead = source.slice(4, endMarker).replace(/\r/g, '');
+    const body = source.slice(endMarker + 4).replace(/^\r?\n/, '');
+    const metadata = {};
+
+    rawHead.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) {
+        return;
+      }
+      const match = trimmed.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/u);
+      if (!match) {
+        return;
+      }
+      assignFrontmatterValue(metadata, match[1], parseFrontmatterScalar(match[2]));
+    });
+
+    return {
+      metadata,
+      body
+    };
+  }
+
+  function firstHeadingFromMarkdown(content) {
+    const match = String(content || '').match(/^#\s+(.+)$/m);
+    return match ? String(match[1] || '').trim() : '';
+  }
+
+  function summarizeMarkdown(content) {
+    const lines = String(content || '').split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === '---' || trimmed.startsWith('#')) {
+        continue;
+      }
+      const cleaned = trimmed.replace(/^[-*]\s+/, '').trim();
+      if (cleaned) {
+        return cleaned;
+      }
+    }
+    return '';
+  }
+
+  function toStringArray(value) {
+    if (Array.isArray(value)) {
+      return value.map(item => String(item || '').trim()).filter(Boolean);
+    }
+    const text = String(value || '').trim();
+    return text ? [text] : [];
+  }
+
+  function discoverFlatWorkflowSpecs(baseRoot) {
+    if (!fs.existsSync(baseRoot) || !fs.statSync(baseRoot).isDirectory()) {
+      return null;
+    }
+
+    const markdownFiles = fs.readdirSync(baseRoot)
+      .filter(name => name.toLowerCase().endsWith('.md'))
+      .filter(name => !/^readme(?:\..*)?\.md$/i.test(name));
+
+    if (markdownFiles.length === 0) {
+      return null;
+    }
+
+    const sourcePathByEntryPath = new Map();
+    const specs = markdownFiles.map(name => {
+      const filePath = path.join(baseRoot, name);
+      const raw = runtime.readText(filePath);
+      const parsed = parseMarkdownFrontmatter(raw);
+      const metadata = parsed.metadata && typeof parsed.metadata === 'object' && !Array.isArray(parsed.metadata)
+        ? parsed.metadata
+        : {};
+      const baseName = name.slice(0, -3);
+      const specName = ensureOptionalString(metadata.name) || baseName;
+      const relativePath = `specs/${name}`;
+      const entry = {
+        name: specName,
+        title: ensureOptionalString(metadata.title) || firstHeadingFromMarkdown(parsed.body) || prettyName(specName),
+        path: relativePath,
+        summary: ensureOptionalString(metadata.summary) || summarizeMarkdown(parsed.body) || 'Imported external spec.',
+        auto_inject: metadata.auto_inject === true,
+        selectable: metadata.selectable === undefined ? true : metadata.selectable === true,
+        priority: Number.isInteger(metadata.priority) ? metadata.priority : 60,
+        apply_when:
+          metadata.apply_when && typeof metadata.apply_when === 'object' && !Array.isArray(metadata.apply_when)
+            ? metadata.apply_when
+            : { specs: [specName] },
+        focus_areas: toStringArray(metadata.focus_areas),
+        extra_review_axes: toStringArray(metadata.extra_review_axes),
+        preferred_notes: toStringArray(metadata.preferred_notes),
+        default_agents: toStringArray(metadata.default_agents)
+      };
+
+      sourcePathByEntryPath.set(relativePath, filePath);
+      return entry;
+    });
+
+    return {
+      registry: workflowRegistry.normalizeRegistry({
+        version: 1,
+        templates: [],
+        specs
+      }, 'Imported flat workflow specs'),
+      sourcePathByEntryPath
+    };
+  }
+
+  function resolveWorkflowSourceLayout(stagedRoot, options = {}) {
+    const subdir = String(options.subdir || '').trim();
+    const baseRoot = subdir
+      ? path.resolve(stagedRoot, subdir)
+      : path.resolve(stagedRoot);
+    const candidates = [
+      baseRoot,
+      path.join(baseRoot, '.emb-agent')
+    ];
+
+    for (const candidate of candidates) {
+      const registryPath = path.join(candidate, 'registry', 'workflow.json');
+      if (!fs.existsSync(registryPath)) {
+        continue;
+      }
+
+      return {
+        kind: 'registry-tree',
+        root: candidate,
+        registry: workflowRegistry.normalizeRegistry(
+          runtime.readJson(registryPath),
+          'Imported workflow registry'
+        ),
+        resolveEntrySourcePath(kind, entry) {
+          const relativePath = kind === 'template'
+            ? String(entry.source || '').trim()
+            : String(entry.path || '').trim();
+          return path.join(candidate, relativePath);
+        },
+        cleanup() {}
+      };
+    }
+
+    const flatCatalog = discoverFlatWorkflowSpecs(baseRoot);
+    if (flatCatalog) {
+      return {
+        kind: 'flat-markdown-specs',
+        root: baseRoot,
+        registry: flatCatalog.registry,
+        resolveEntrySourcePath(kind, entry) {
+          if (kind !== 'spec') {
+            return '';
+          }
+          return flatCatalog.sourcePathByEntryPath.get(String(entry.path || '').trim()) || '';
+        },
+        cleanup() {}
+      };
+    }
+
     throw new Error(`Workflow registry not found under source root: ${baseRoot}`);
   }
 
@@ -347,75 +588,77 @@ function createWorkflowImportHelpers(deps) {
     const staged = stageWorkflowRegistrySource(source, options);
 
     try {
-      const sourceExtDir = resolveWorkflowRegistryRoot(staged.root, options);
-      const sourcePaths = workflowRegistry.getProjectWorkflowPaths(sourceExtDir);
-      const sourceRegistry = workflowRegistry.normalizeRegistry(
-        runtime.readJson(sourcePaths.registryPath),
-        'Imported workflow registry'
-      );
-      const projectRegistry = workflowRegistry.normalizeRegistry(
-        runtime.readJson(projectPaths.registryPath),
-        'Project workflow registry'
-      );
+      const sourceLayout = resolveWorkflowSourceLayout(staged.root, options);
 
-      const imported = [];
-      const skipped = [];
-      const mapping = [
-        { kind: 'template', key: 'templates', pathField: 'source' },
-        { kind: 'spec', key: 'specs', pathField: 'path' }
-      ];
+      try {
+        const sourceRegistry = sourceLayout.registry;
+        const projectRegistry = workflowRegistry.normalizeRegistry(
+          runtime.readJson(projectPaths.registryPath),
+          'Project workflow registry'
+        );
 
-      mapping.forEach(({ kind, key, pathField }) => {
-        (sourceRegistry[key] || []).forEach(entry => {
-          const relativePath = String(entry[pathField] || '').trim();
-          const sourcePath = path.join(sourceExtDir, relativePath);
-          const targetPath = path.join(projectExtDir, relativePath);
-          const existingEntry = (projectRegistry[key] || []).find(item => item && item.name === entry.name);
+        const imported = [];
+        const skipped = [];
+        const mapping = [
+          { kind: 'template', key: 'templates', pathField: 'source' },
+          { kind: 'spec', key: 'specs', pathField: 'path' }
+        ];
 
-          if (!fs.existsSync(sourcePath)) {
-            throw new Error(`Imported ${kind} file is missing: ${relativePath}`);
-          }
+        mapping.forEach(({ kind, key, pathField }) => {
+          (sourceRegistry[key] || []).forEach(entry => {
+            const relativePath = String(entry[pathField] || '').trim();
+            const sourcePath = sourceLayout.resolveEntrySourcePath(kind, entry);
+            const targetPath = path.join(projectExtDir, relativePath);
+            const existingEntry = (projectRegistry[key] || []).find(item => item && item.name === entry.name);
 
-          if ((existingEntry || fs.existsSync(targetPath)) && !force) {
-            skipped.push({
+            if (!sourcePath || !fs.existsSync(sourcePath)) {
+              throw new Error(`Imported ${kind} file is missing: ${relativePath}`);
+            }
+
+            if ((existingEntry || fs.existsSync(targetPath)) && !force) {
+              skipped.push({
+                kind,
+                name: entry.name,
+                path: relativePath,
+                reason: existingEntry ? 'entry-exists' : 'path-exists'
+              });
+              return;
+            }
+
+            if (fs.existsSync(targetPath) && force) {
+              fs.rmSync(targetPath, { recursive: true, force: true });
+            }
+
+            copyRecursive(sourcePath, targetPath);
+            projectRegistry[key] = upsertRegistryEntry(projectRegistry[key], entry);
+            imported.push({
               kind,
               name: entry.name,
-              path: relativePath,
-              reason: existingEntry ? 'entry-exists' : 'path-exists'
+              path: relativePath
             });
-            return;
-          }
-
-          if (fs.existsSync(targetPath) && force) {
-            fs.rmSync(targetPath, { recursive: true, force: true });
-          }
-
-          copyRecursive(sourcePath, targetPath);
-          projectRegistry[key] = upsertRegistryEntry(projectRegistry[key], entry);
-          imported.push({
-            kind,
-            name: entry.name,
-            path: relativePath
           });
         });
-      });
 
-      runtime.writeJson(projectPaths.registryPath, projectRegistry);
+        runtime.writeJson(projectPaths.registryPath, projectRegistry);
 
-      return {
-        source: {
-          location: String(source || '').trim(),
-          mode: staged.mode,
-          root: sourceExtDir,
-          subdir: String(options.subdir || '').trim(),
-          branch: String(options.branch || '').trim()
-        },
-        force,
-        workflow_layout: layout,
-        registry_path: path.relative(projectExtDir, projectPaths.registryPath).replace(/\\/g, '/'),
-        imported,
-        skipped
-      };
+        return {
+          source: {
+            location: String(source || '').trim(),
+            mode: staged.mode,
+            source_kind: sourceLayout.kind,
+            root: sourceLayout.root,
+            subdir: String(options.subdir || '').trim(),
+            branch: String(options.branch || '').trim()
+          },
+          force,
+          workflow_layout: layout,
+          registry_path: path.relative(projectExtDir, projectPaths.registryPath).replace(/\\/g, '/'),
+          imported,
+          skipped
+        };
+      } finally {
+        sourceLayout.cleanup();
+      }
     } finally {
       staged.cleanup();
     }
@@ -423,6 +666,7 @@ function createWorkflowImportHelpers(deps) {
 
   return {
     importProjectWorkflowRegistry,
+    resolveWorkflowSourceLayout,
     resolveWorkflowRegistryRoot,
     stageWorkflowRegistrySource
   };

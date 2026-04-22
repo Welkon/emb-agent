@@ -219,3 +219,47 @@ test('init imports workflow registry from custom source', async () => {
     process.chdir(currentCwd);
   }
 });
+
+test('workflow import registry supports flat markdown spec sources', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-flat-import-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-flat-source-'));
+  const currentCwd = process.cwd();
+
+  try {
+    fs.writeFileSync(
+      path.join(tempSource, 'connected-appliance-focus.md'),
+      [
+        '---',
+        'name: connected-appliance',
+        'title: Connected Appliance',
+        'summary: Connectivity state, safe defaults, OTA recovery, and local or remote consistency checks.',
+        'auto_inject: true',
+        'selectable: true',
+        'priority: 60',
+        'apply_when.specs: [connected-appliance]',
+        'preferred_notes: [docs/CONNECTIVITY.md, docs/RELEASE-NOTES.md, docs/DEBUG-NOTES.md]',
+        '---',
+        '# Connected Appliance',
+        '',
+        '- Review connectivity state, OTA recovery, and local or remote consistency.',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    process.chdir(tempProject);
+    const result = await captureCliJson(['workflow', 'import', 'registry', tempSource]);
+
+    assert.equal(result.command, 'workflow import registry');
+    assert.equal(result.source.source_kind, 'flat-markdown-specs');
+    assert.equal(result.imported.length, 1);
+    assert.ok(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'connected-appliance-focus.md')));
+
+    const registry = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json'), 'utf8')
+    );
+    assert.ok(registry.specs.some(item => item.name === 'connected-appliance' && item.selectable === true));
+  } finally {
+    process.chdir(currentCwd);
+  }
+});

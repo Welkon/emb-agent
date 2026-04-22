@@ -11,7 +11,10 @@ const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 const scheduler = require(path.join(repoRoot, 'runtime', 'lib', 'scheduler.cjs'));
 const workflowRegistry = require(path.join(repoRoot, 'runtime', 'lib', 'workflow-registry.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
-const { importSupportWorkflowRegistry } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
+const {
+  importSupportWorkflowRegistry,
+  withSupportSourceEnv
+} = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 const REVIEW_AGENT_NAMES = ['hw-scout', 'bug-hunter', 'sys-reviewer', 'release-checker'];
 
@@ -38,7 +41,7 @@ function loadSelectedSpec(name) {
 
 function buildResolved(profileName, specNames, sessionOverrides = {}) {
   const profile = loadProfile(profileName);
-  const selectedSpecs = specNames.map(loadSelectedSpec);
+  const selectedSpecs = withSupportSourceEnv(() => specNames.map(loadSelectedSpec));
   const agents = runtime.unique([
     ...(profile.default_agents || []),
     ...selectedSpecs.flatMap(spec => spec.default_agents || [])

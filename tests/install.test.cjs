@@ -8,7 +8,10 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const installer = require(path.join(repoRoot, 'bin', 'install.js'));
-const { withDefaultWorkflowSourceEnv } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
+const {
+  withDefaultWorkflowSourceEnv,
+  workflowSourceRoot
+} = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 async function captureCliJson(cliImpl, args) {
   const originalWrite = process.stdout.write;
@@ -202,7 +205,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
       type: 'git',
       location: 'https://github.com/Welkon/emb-support.git',
       branch: '',
-      subdir: 'workflows'
+      subdir: 'specs'
     });
     assert.deepEqual(configData.default_skill_source, {
       type: 'git',
@@ -621,6 +624,55 @@ test('installer can preinstall project skill bundles during local setup', async 
   } finally {
     process.stdout.write = originalWrite;
     process.chdir(currentCwd);
+  }
+});
+
+test('installer can preconfigure project specs during local setup', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-spec-install-project-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    process.chdir(tempProject);
+    await installer.main([
+      '--codex',
+      '--local',
+      '--developer',
+      'welkon',
+      '--registry',
+      workflowSourceRoot,
+      '--registry-subdir',
+      'specs',
+      '--spec',
+      'connected-appliance'
+    ]);
+
+    const projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+    const projectRegistry = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json'), 'utf8')
+    );
+    const installedCli = require(path.join(tempProject, '.codex', 'emb-agent', 'bin', 'emb-agent.cjs'));
+    const status = installedCli.buildStatus();
+
+    assert.deepEqual(projectConfig.active_specs, ['connected-appliance']);
+    assert.deepEqual(status.active_specs, ['connected-appliance']);
+    assert.ok(projectRegistry.specs.some(item => item.name === 'connected-appliance'));
+    assert.equal(
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'connected-appliance-focus.md')),
+      true
+    );
+    assert.match(stdout, /Bootstrapped emb-agent project in:/);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
   }
 });
 

@@ -9,42 +9,47 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
-const { importSupportWorkflowRegistry } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
+const {
+  importSupportWorkflowRegistry,
+  withSupportSourceEnv
+} = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 test('settings facade manages profile specs and preferences together', () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-settings-'));
-  const currentCwd = process.cwd();
-  const originalWrite = process.stdout.write;
+  return withSupportSourceEnv(() => {
+    const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-settings-'));
+    const currentCwd = process.cwd();
+    const originalWrite = process.stdout.write;
 
-  process.stdout.write = () => true;
+    process.stdout.write = () => true;
 
-  try {
-    initProject.main(['--project', tempProject]);
+    try {
+      initProject.main(['--project', tempProject]);
 
-    process.chdir(tempProject);
-    cli.main(['init']);
-    importSupportWorkflowRegistry(tempProject);
-    cli.main(['settings', 'set', 'profile', 'rtos-iot']);
-    cli.main(['settings', 'set', 'specs', 'sensor-node,connected-appliance']);
-    cli.main(['settings', 'set', 'plan_mode', 'always']);
-    cli.main(['settings', 'set', 'verification_mode', 'strict']);
+      process.chdir(tempProject);
+      cli.main(['init']);
+      importSupportWorkflowRegistry(tempProject);
+      cli.main(['settings', 'set', 'profile', 'rtos-iot']);
+      cli.main(['settings', 'set', 'specs', 'sensor-node,connected-appliance']);
+      cli.main(['settings', 'set', 'plan_mode', 'always']);
+      cli.main(['settings', 'set', 'verification_mode', 'strict']);
 
-    let session = cli.loadSession();
-    assert.equal(session.project_profile, 'rtos-iot');
-    assert.deepEqual(session.active_specs, ['sensor-node', 'connected-appliance']);
-    assert.equal(session.preferences.plan_mode, 'always');
-    assert.equal(session.preferences.verification_mode, 'strict');
+      let session = cli.loadSession();
+      assert.equal(session.project_profile, 'rtos-iot');
+      assert.deepEqual(session.active_specs, ['sensor-node', 'connected-appliance']);
+      assert.equal(session.preferences.plan_mode, 'always');
+      assert.equal(session.preferences.verification_mode, 'strict');
 
-    cli.main(['settings', 'reset']);
-    session = cli.loadSession();
-    assert.equal(session.project_profile, 'baremetal-8bit');
-    assert.deepEqual(session.active_specs, []);
-    assert.equal(session.preferences.plan_mode, 'auto');
-    assert.equal(session.preferences.verification_mode, 'lean');
-  } finally {
-    process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
-  }
+      cli.main(['settings', 'reset']);
+      session = cli.loadSession();
+      assert.equal(session.project_profile, 'baremetal-8bit');
+      assert.deepEqual(session.active_specs, []);
+      assert.equal(session.preferences.plan_mode, 'auto');
+      assert.equal(session.preferences.verification_mode, 'lean');
+    } finally {
+      process.chdir(currentCwd);
+      process.stdout.write = originalWrite;
+    }
+  });
 });
 
 test('settings show includes runtime host bridge visibility', () => {

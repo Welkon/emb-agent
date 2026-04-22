@@ -60,8 +60,8 @@ function createHealthUpdateCommandHelpers(deps) {
 
   function buildProjectDeriveCommand() {
     return {
-      cli: buildSupportCli(['support', 'derive', '--from-project']),
-      argv: ['support', 'derive', '--from-project']
+      cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'derive', '--from-project']),
+      argv: ['adapter', 'derive', '--from-project']
     };
   }
 

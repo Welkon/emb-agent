@@ -24,7 +24,7 @@ Use a constrained middle layer instead:
 
 - document ingest extracts text and staged facts
 - an analysis artifact captures evidence-backed chip understanding
-- `support derive` / `support generate` turn that artifact into draft adapters
+- `adapter derive` / `adapter generate` turn that artifact into draft adapters
 
 This keeps AI useful without letting it freely write support as if it were already production truth.
 

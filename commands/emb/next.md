@@ -18,4 +18,4 @@ allowed-tools:
 - If an active task already exists, `next` should keep the task `prd.md` in the loop and explicitly tell you whether the right route is `scan-first` or `plan-first`.
 - Use `external next` when the caller wants the stable external-driver protocol with `status`, `summary`, `next.cli`, and summarized `runtime_events`.
 - In terminal mode, read the `Events:` line as the shortest explanation of why the runtime recommended the next step.
-- If `next` surfaces hardware-document chip-support guidance, the intended path is `support analysis init` -> agent fills artifact -> `support derive --from-analysis`.
+- If `next` surfaces hardware-document chip-support guidance, the intended path is `adapter analysis init` -> agent fills artifact -> `adapter derive --from-analysis`.

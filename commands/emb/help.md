@@ -63,8 +63,8 @@ The public command surface is intentionally small and grouped by default path.
 - Shared chip-support sources are optional for ordinary project startup; use them when you need reusable support, not before you can begin.
 - If the MCU is not chosen yet, keep `hw.yaml` unknown, record constraints in `req.yaml`, then return to `next`.
 - If the truth still lives outside the repo, use `ingest doc` or `ingest schematic` before writing truth directly.
-- After `ingest doc`, prefer `support analysis init` and then `support derive --from-analysis` instead of treating raw documents as final chip support.
-- If the chip is known and you only need support for the current project, prefer `support derive --from-project` before thinking about shared sources.
+- After `ingest doc`, prefer `adapter analysis init` and then `adapter derive --from-analysis` instead of treating raw documents as final chip support.
+- If the chip is known and you only need support for the current project, prefer `adapter derive --from-project` before thinking about shared sources.
 - If support is still only valid for the current project, keep it `project-only` first and publish it to a shared adapters catalog only after review.
 
 ## Advanced Help

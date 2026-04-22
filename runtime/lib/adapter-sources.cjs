@@ -1446,7 +1446,7 @@ function transferDerivedSupport(rootDir, projectRoot, projectConfig, options) {
   const inspection = settings.inspection && typeof settings.inspection === 'object' ? settings.inspection : null;
   const operation = settings.operation === 'export' ? 'export' : 'publish';
   const requirePromotionGate = settings.requirePromotionGate !== false;
-  const verbLabel = operation === 'export' ? 'support export' : 'support publish';
+  const verbLabel = operation === 'export' ? 'adapter export' : 'adapter publish';
   const pastVerb = operation === 'export' ? 'Exported' : 'Published';
   const conflictLabel = operation === 'export' ? 'Export conflict' : 'Publish conflict';
   const targetLabel = operation === 'export' ? 'private target' : 'shared source';

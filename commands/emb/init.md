@@ -52,9 +52,9 @@ allowed-tools:
   `ingest schematic --file <path>`
 - `ingest doc` stages document-derived truth first; apply it after review rather than assuming it already changed `hw.yaml`.
 - If document ingest later becomes chip-support work, initialize an analysis artifact first:
-  `support analysis init --chip <name>`
+  `adapter analysis init --chip <name>`
   then derive from that artifact with:
-  `support derive --from-analysis <path>`
+  `adapter derive --from-analysis <path>`
 
 ## Typical Next Step
 

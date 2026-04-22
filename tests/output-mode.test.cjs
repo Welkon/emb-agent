@@ -144,7 +144,7 @@ test('applyOutputMode builds brief next context payload', () => {
         {
           id: 'support-analysis-init',
           kind: 'command',
-          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support analysis init --chip PMS150G --package SOP8',
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter analysis init --chip PMS150G --package SOP8',
           artifact_path: '.emb-agent/analysis/pms150g.json'
         },
         {
@@ -156,7 +156,7 @@ test('applyOutputMode builds brief next context payload', () => {
         {
           id: 'support-derive-from-analysis',
           kind: 'command',
-          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support derive --from-analysis .emb-agent/analysis/pms150g.json',
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --from-analysis .emb-agent/analysis/pms150g.json',
           artifact_path: '.emb-agent/analysis/pms150g.json'
         }
       ]
@@ -169,12 +169,12 @@ test('applyOutputMode builds brief next context payload', () => {
       recommended_agent: 'emb-hw-scout',
       commands: {
         init: {
-          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support analysis init --chip PMS150G --package SOP8',
-          argv: ['support', 'analysis', 'init', '--chip', 'PMS150G', '--package', 'SOP8']
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter analysis init --chip PMS150G --package SOP8',
+          argv: ['adapter', 'analysis', 'init', '--chip', 'PMS150G', '--package', 'SOP8']
         },
         derive: {
-          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support derive --from-analysis .emb-agent/analysis/pms150g.json',
-          argv: ['support', 'derive', '--from-analysis', '.emb-agent/analysis/pms150g.json']
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --from-analysis .emb-agent/analysis/pms150g.json',
+          argv: ['adapter', 'derive', '--from-analysis', '.emb-agent/analysis/pms150g.json']
         }
       },
       confirmation_targets: ['mcu.model', 'mcu.package', 'peripherals[]'],
@@ -577,7 +577,7 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
         {
           id: 'support-analysis-init',
           kind: 'command',
-          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support analysis init --chip PMS150G --package SOP8',
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter analysis init --chip PMS150G --package SOP8',
           artifact_path: '.emb-agent/analysis/pms150g.json'
         }
       ]
@@ -588,8 +588,8 @@ test('applyOutputMode hides internal trust details in brief health/bootstrap out
       recommended_agent: 'emb-hw-scout',
       commands: {
         derive: {
-          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support derive --from-analysis .emb-agent/analysis/pms150g.json',
-          argv: ['support', 'derive', '--from-analysis', '.emb-agent/analysis/pms150g.json']
+          cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs adapter derive --from-analysis .emb-agent/analysis/pms150g.json',
+          argv: ['adapter', 'derive', '--from-analysis', '.emb-agent/analysis/pms150g.json']
         }
       }
     },
