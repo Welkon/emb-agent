@@ -25,6 +25,8 @@ function buildQualityPermissionGate(qualityGates) {
       ? 'blocked'
       : 'pending';
   const blockingItems = unique([
+    ...(gates.failed_skills || []),
+    ...(gates.pending_skills || []),
     ...(gates.failed_gates || []),
     ...(gates.pending_gates || []),
     ...(gates.rejected_signoffs || []),
@@ -44,8 +46,12 @@ function buildQualityPermissionGate(qualityGates) {
     ]),
     blocking_items: blockingItems,
     details: {
+      required_skills: toArray(gates.required_skills),
       required_executors: toArray(gates.required_executors),
       required_signoffs: toArray(gates.required_signoffs),
+      passed_skills: toArray(gates.passed_skills),
+      failed_skills: toArray(gates.failed_skills),
+      pending_skills: toArray(gates.pending_skills),
       passed_gates: toArray(gates.passed_gates),
       failed_gates: toArray(gates.failed_gates),
       pending_gates: toArray(gates.pending_gates),

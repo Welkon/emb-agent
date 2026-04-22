@@ -14,6 +14,7 @@ function createSkillRuntimeHelpers(deps) {
     runtimeHost,
     resolveProjectRoot,
     getProjectExtDir,
+    updateSession,
     builtInSkillsDir,
     builtInDisplayRoot
   } = deps;
@@ -383,6 +384,7 @@ function createSkillRuntimeHelpers(deps) {
       metadata.command_input || metadata.input_mode || metadata.input || ''
     );
     const workingDirectory = String(metadata.working_directory || metadata.cwd || '').trim();
+    const evidenceHint = toStringArray(metadata.evidence_hint || metadata.evidence || []);
 
     return {
       name: skillName,
@@ -408,6 +410,7 @@ function createSkillRuntimeHelpers(deps) {
       command,
       command_input: commandInput,
       working_directory: workingDirectory,
+      evidence_hint: evidenceHint,
       enabled: extras.enabled !== false,
       plugin: extras.plugin || null
     };
@@ -1119,6 +1122,7 @@ function createSkillRuntimeHelpers(deps) {
       path: entry.display_path,
       allowed_tools: entry.allowed_tools,
       hooks: entry.hooks,
+      evidence_hint: entry.evidence_hint,
       enabled: entry.enabled,
       plugin: entry.plugin
         ? {
@@ -1159,6 +1163,7 @@ function createSkillRuntimeHelpers(deps) {
       command: matched.command,
       command_input: matched.command_input,
       working_directory: matched.working_directory,
+      evidence_hint: matched.evidence_hint,
       enabled: matched.enabled,
       plugin: matched.plugin,
       base_dir: matched.base_dir,
@@ -1552,13 +1557,126 @@ function createSkillRuntimeHelpers(deps) {
     };
   }
 
+  function buildSkillRunStatus(status) {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (normalized === 'ok' || normalized === 'passed' || normalized === 'pass' || normalized === 'success') {
+      return 'ok';
+    }
+    if (normalized === 'failed' || normalized === 'spawn-error' || normalized === 'bridge-error') {
+      return 'failed';
+    }
+    if (normalized === 'blocked' || normalized === 'blocked-no-host-bridge') {
+      return 'blocked';
+    }
+    return normalized || 'unknown';
+  }
+
+  function buildSkillRunPreview(value) {
+    return truncateText(String(value || '').replace(/\s+/g, ' ').trim(), 240);
+  }
+
+  function buildSkillRunDiagnostic(skill, result, runMeta) {
+    const projectRoot = resolveProjectRoot();
+    const mode = runMeta && runMeta.mode ? runMeta.mode : skill.execution_mode;
+    const ranAt = runMeta && runMeta.ran_at ? runMeta.ran_at : new Date().toISOString();
+    const durationMs = Number.isInteger(runMeta && runMeta.duration_ms) ? runMeta.duration_ms : null;
+    const cwdValue =
+      result && result.cwd
+        ? result.cwd
+        : runMeta && runMeta.cwd
+          ? runMeta.cwd
+          : skill.base_dir;
+    const cwd = cwdValue
+      ? path.relative(projectRoot, cwdValue).replace(/\\/g, '/') || '.'
+      : '.';
+    const argv = Array.isArray(result && result.argv)
+      ? result.argv
+      : Array.isArray(runMeta && runMeta.argv)
+        ? runMeta.argv
+        : [];
+    const stdoutPreview =
+      result && result.stdout
+        ? buildSkillRunPreview(result.stdout)
+        : result && result.worker_result && result.worker_result.summary
+          ? buildSkillRunPreview(result.worker_result.summary)
+          : '';
+    const stderrPreview =
+      result && result.stderr
+        ? buildSkillRunPreview(result.stderr)
+        : result && result.bridge && result.bridge.stderr
+          ? buildSkillRunPreview(result.bridge.stderr)
+          : result && result.error
+            ? buildSkillRunPreview(result.error)
+            : '';
+    const rawStatus =
+      result && result.status
+        ? result.status
+        : result && result.worker_result && result.worker_result.status
+          ? result.worker_result.status
+          : '';
+
+    return {
+      name: skill.name,
+      status: buildSkillRunStatus(rawStatus),
+      risk: 'normal',
+      exit_code: Number.isInteger(result && result.exit_code)
+        ? result.exit_code
+        : Number.isInteger(result && result.bridge && result.bridge.exit_code)
+          ? result.bridge.exit_code
+          : null,
+      duration_ms: durationMs,
+      ran_at: ranAt,
+      cwd,
+      argv,
+      evidence_hint: Array.isArray(skill.evidence_hint) ? skill.evidence_hint.slice() : [],
+      stdout_preview: stdoutPreview,
+      stderr_preview: stderrPreview,
+      execution_mode: mode,
+      source: skill.source || ''
+    };
+  }
+
+  function recordSkillRun(skill, result, runMeta) {
+    if (typeof updateSession !== 'function') {
+      return null;
+    }
+
+    const diagnostic = buildSkillRunDiagnostic(skill, result, runMeta);
+    updateSession(current => {
+      current.last_command = `skills run ${skill.name}`;
+      const diagnostics = current.diagnostics || {};
+      const history =
+        diagnostics.skill_history &&
+        typeof diagnostics.skill_history === 'object' &&
+        !Array.isArray(diagnostics.skill_history)
+          ? diagnostics.skill_history
+          : {};
+      current.diagnostics = {
+        ...diagnostics,
+        latest_skill: diagnostic,
+        skill_history: {
+          ...history,
+          [skill.name]: diagnostic
+        }
+      };
+    });
+    return diagnostic;
+  }
+
   function runSkill(tokens) {
     const options = parseSkillRunArgs(tokens);
     const skill = loadSkill(options.name);
     const mode = options.isolated ? 'isolated' : skill.execution_mode;
+    const startedAt = Date.now();
 
     if (mode === 'isolated') {
       const isolated = invokeIsolatedSkill(skill, options.user_input);
+      const recorded = recordSkillRun(skill, isolated, {
+        mode: 'isolated',
+        ran_at: new Date().toISOString(),
+        duration_ms: Date.now() - startedAt,
+        cwd: resolveProjectRoot()
+      });
       return {
         command: 'skills run',
         skill: {
@@ -1566,6 +1684,7 @@ function createSkillRuntimeHelpers(deps) {
           source: skill.source,
           path: skill.path,
           execution_mode: skill.execution_mode,
+          evidence_hint: skill.evidence_hint,
           plugin: skill.plugin
         },
         execution: {
@@ -1573,11 +1692,18 @@ function createSkillRuntimeHelpers(deps) {
           user_input: options.user_input,
           user_tokens: options.user_tokens
         },
+        latest_skill: recorded,
         isolated
       };
     }
 
     if (mode === 'command') {
+      const commandResult = runCommandSkill(skill, options);
+      const recorded = recordSkillRun(skill, commandResult, {
+        mode: 'command',
+        ran_at: new Date().toISOString(),
+        duration_ms: Date.now() - startedAt
+      });
       return {
         command: 'skills run',
         skill: {
@@ -1587,14 +1713,16 @@ function createSkillRuntimeHelpers(deps) {
           execution_mode: skill.execution_mode,
           plugin: skill.plugin,
           command: skill.command,
-          command_input: skill.command_input
+          command_input: skill.command_input,
+          evidence_hint: skill.evidence_hint
         },
         execution: {
           mode: 'command',
           user_input: options.user_input,
           user_tokens: options.user_tokens
         },
-        command_result: runCommandSkill(skill, options)
+        latest_skill: recorded,
+        command_result: commandResult
       };
     }
 

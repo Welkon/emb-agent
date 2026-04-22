@@ -1743,6 +1743,7 @@ function buildVerifyOutput(resolved) {
   );
   const qualityGateChecklist = qualityGates.enabled
     ? runtime.unique([
+        ...qualityGates.required_skills.map(name => `Verification skill "${name}" must be green before closure`),
         ...qualityGates.required_executors.map(name => `Quality gate executor "${name}" must be green before closure`),
         ...qualityGates.required_signoffs.map(name => `Human signoff "${name}" must be confirmed before closure`)
       ])

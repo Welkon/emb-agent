@@ -593,6 +593,8 @@ function createSessionFlowHelpers(deps) {
 
     if (hasQualityGateBlock) {
       const blockingItems = runtime.unique([
+        ...qualityGates.failed_skills,
+        ...qualityGates.pending_skills,
         ...qualityGates.failed_gates,
         ...qualityGates.pending_gates,
         ...qualityGates.rejected_signoffs,
@@ -1136,6 +1138,7 @@ function createSessionFlowHelpers(deps) {
     const activeTask = getActiveTask ? getActiveTask() : null;
     const diagnostics = session.diagnostics || {};
     const latestForensics = diagnostics.latest_forensics || {};
+    const latestSkill = diagnostics.latest_skill || {};
     const latestExecutor = diagnostics.latest_executor || {};
     const capturedAt = new Date().toISOString();
     const summarySource = source || 'session';
@@ -1181,6 +1184,14 @@ function createSessionFlowHelpers(deps) {
           highest_severity: latestForensics.highest_severity || '',
           problem: latestForensics.problem || ''
         },
+        latest_skill: {
+          name: latestSkill.name || '',
+          status: latestSkill.status || '',
+          risk: latestSkill.risk || '',
+          exit_code: latestSkill.exit_code === undefined ? null : latestSkill.exit_code,
+          stderr_preview: latestSkill.stderr_preview || '',
+          stdout_preview: latestSkill.stdout_preview || ''
+        },
         latest_executor: {
           name: latestExecutor.name || '',
           status: latestExecutor.status || '',
@@ -1218,7 +1229,7 @@ function createSessionFlowHelpers(deps) {
       open_questions: memorySummary.open_questions || [],
       known_risks: memorySummary.known_risks || [],
       active_task: memorySummary.active_task || { name: '', title: '', status: '', package: '', path: '' },
-      diagnostics: memorySummary.diagnostics || { latest_forensics: {}, latest_executor: {} }
+      diagnostics: memorySummary.diagnostics || { latest_forensics: {}, latest_skill: {}, latest_executor: {} }
     };
   }
 
@@ -1245,6 +1256,10 @@ function createSessionFlowHelpers(deps) {
     const latestExecutor =
       session.diagnostics && session.diagnostics.latest_executor
         ? session.diagnostics.latest_executor
+        : null;
+    const latestSkill =
+      session.diagnostics && session.diagnostics.latest_skill
+        ? session.diagnostics.latest_skill
         : null;
     const qualityGates = getQualityGateSummary(resolved);
     const suggestedFlow = handoff && handoff.suggested_flow
@@ -1276,6 +1291,13 @@ function createSessionFlowHelpers(deps) {
       memorySummary.diagnostics.latest_executor.name
         ? memorySummary.diagnostics.latest_executor
         : latestExecutor;
+    const summaryLatestSkill =
+      memorySummary &&
+      memorySummary.diagnostics &&
+      memorySummary.diagnostics.latest_skill &&
+      memorySummary.diagnostics.latest_skill.name
+        ? memorySummary.diagnostics.latest_skill
+        : latestSkill;
     const summaryLastFiles =
       memorySummary && Array.isArray(memorySummary.last_files) && memorySummary.last_files.length > 0
         ? memorySummary.last_files
@@ -1327,11 +1349,19 @@ function createSessionFlowHelpers(deps) {
           : '',
         summaryLatestExecutor && summaryLatestExecutor.name
           ? `executor_status=${summaryLatestExecutor.name}; status=${summaryLatestExecutor.status || 'unknown'}${
-            summaryLatestExecutor.exit_code === null ? '' : `, exit=${summaryLatestExecutor.exit_code}`
-          }`
+              summaryLatestExecutor.exit_code === null ? '' : `, exit=${summaryLatestExecutor.exit_code}`
+            }`
+          : '',
+        summaryLatestSkill && summaryLatestSkill.name
+          ? `skill_status=${summaryLatestSkill.name}; status=${summaryLatestSkill.status || 'unknown'}${
+              summaryLatestSkill.exit_code === null ? '' : `, exit=${summaryLatestSkill.exit_code}`
+            }`
           : '',
         summaryLatestExecutor && ['failed', 'error'].includes(summaryLatestExecutor.status)
           ? `executor_review=${summaryLatestExecutor.name}${summaryLatestExecutor.stderr_preview ? ` | ${summaryLatestExecutor.stderr_preview}` : ''}`
+          : '',
+        summaryLatestSkill && ['failed', 'error', 'blocked'].includes(summaryLatestSkill.status)
+          ? `skill_review=${summaryLatestSkill.name}${summaryLatestSkill.stderr_preview ? ` | ${summaryLatestSkill.stderr_preview}` : ''}`
           : '',
         qualityGates.enabled
           ? `quality_gate_status=${qualityGates.status_summary || qualityGates.gate_status}`
@@ -1503,7 +1533,14 @@ function createSessionFlowHelpers(deps) {
           }
         : null,
       injected_specs: injectedSpecs,
-      diagnostics: resolved.session.diagnostics || { latest_forensics: {}, latest_executor: {}, executor_history: {}, human_signoffs: {} },
+      diagnostics: resolved.session.diagnostics || {
+        latest_forensics: {},
+        latest_skill: {},
+        skill_history: {},
+        latest_executor: {},
+        executor_history: {},
+        human_signoffs: {}
+      },
       memory_summary: buildMemorySummaryView(memorySummary),
       carry_over: {
         last_files: resolved.session.last_files || [],
@@ -1720,7 +1757,14 @@ function createSessionFlowHelpers(deps) {
             timestamp: handoff.timestamp
           }
         : null,
-      diagnostics: resolved.session.diagnostics || { latest_forensics: {}, latest_executor: {}, executor_history: {}, human_signoffs: {} },
+      diagnostics: resolved.session.diagnostics || {
+        latest_forensics: {},
+        latest_skill: {},
+        skill_history: {},
+        latest_executor: {},
+        executor_history: {},
+        human_signoffs: {}
+      },
       memory_summary: buildMemorySummaryView(memorySummary),
       quality_gates: qualityGates,
       permission_gates: permissionGates,
