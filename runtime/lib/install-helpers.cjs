@@ -85,6 +85,10 @@ function createInstallHelpers(deps) {
         '                          Optional default branch for the chip support source',
         '  --default-chip-support-source-subdir <path>',
         '                          Optional subdirectory under the chip support source repository',
+        '  --skill-source <source>',
+        '                          Install an initial skill bundle from path, npm:, pypi:, or git source',
+        '  --skill <name>',
+        '                          Enable only the named skill from the installed bundle (repeatable)',
         '  --uninstall             Remove emb-agent managed files from the target',
         '  --force                 Overwrite existing emb-agent runtime',
         '  --help                  Show this help'
@@ -175,6 +179,8 @@ function createInstallHelpers(deps) {
       defaultAdapterSourceLocation: '',
       defaultAdapterSourceBranch: '',
       defaultAdapterSourceSubdir: '',
+      skillSources: [],
+      skillNames: [],
       uninstall: false,
       force: false,
       help: false
@@ -295,6 +301,16 @@ function createInstallHelpers(deps) {
         index += 1;
         continue;
       }
+      if (token === '--skill-source') {
+        result.skillSources.push(String(argv[index + 1] || '').trim());
+        index += 1;
+        continue;
+      }
+      if (token === '--skill') {
+        result.skillNames.push(String(argv[index + 1] || '').trim());
+        index += 1;
+        continue;
+      }
       throw new Error(`Unknown argument: ${token}`);
     }
 
@@ -321,6 +337,12 @@ function createInstallHelpers(deps) {
     }
     if (argv.includes('--default-chip-support-source-subdir') && !result.defaultAdapterSourceSubdir) {
       throw new Error('Missing value after --default-chip-support-source-subdir');
+    }
+    if (argv.includes('--skill-source') && result.skillSources.some(item => !item)) {
+      throw new Error('Missing value after --skill-source');
+    }
+    if (argv.includes('--skill') && result.skillNames.some(item => !item)) {
+      throw new Error('Missing value after --skill');
     }
     if (result.global && result.local) {
       throw new Error('Use either --global or --local, not both');
@@ -562,6 +584,8 @@ function createInstallHelpers(deps) {
         defaultAdapterSourceLocation: '',
         defaultAdapterSourceBranch: '',
         defaultAdapterSourceSubdir: '',
+        skillSources: [],
+        skillNames: [],
         uninstall: false,
         force: false,
         help: false
@@ -602,6 +626,8 @@ function createInstallHelpers(deps) {
       defaultAdapterSourceLocation: '',
       defaultAdapterSourceBranch: '',
       defaultAdapterSourceSubdir: '',
+      skillSources: [],
+      skillNames: [],
       uninstall: false,
       force: false,
       help: false
@@ -1774,6 +1800,23 @@ function createInstallHelpers(deps) {
     }
   }
 
+  function installInitialSkills(runtimeDir, args) {
+    const sources = Array.isArray(args && args.skillSources) ? args.skillSources.filter(Boolean) : [];
+    if (sources.length === 0) {
+      return [];
+    }
+
+    const installedRuntime = require(path.join(runtimeDir, 'lib', 'emb-agent-main.cjs'));
+    const sharedArgs = [
+      '--scope',
+      args && args.local ? 'project' : 'user',
+      ...(args && args.force ? ['--force'] : []),
+      ...((args && Array.isArray(args.skillNames) ? args.skillNames : []).flatMap(name => ['--skill', name]))
+    ];
+
+    return sources.map(source => installedRuntime.installSkillSource([source, ...sharedArgs]));
+  }
+
   async function main(argv) {
     const args = await resolveArgs(argv || process.argv.slice(2));
 
@@ -1866,6 +1909,22 @@ function createInstallHelpers(deps) {
       }
     }
 
+    let installedSkillBundles = [];
+    if (Array.isArray(args.skillSources) && args.skillSources.length > 0) {
+      const skillsActivity = reporter.activity('Installing initial skill bundles');
+      try {
+        installedSkillBundles = installInitialSkills(runtimeDir, args);
+        skillsActivity.succeed(
+          installedSkillBundles.length > 0
+            ? `Installed ${installedSkillBundles.length} initial skill bundle${installedSkillBundles.length > 1 ? 's' : ''}`
+            : 'Skipped initial skill bundle install'
+        );
+      } catch (error) {
+        skillsActivity.fail('Installing initial skill bundles', error);
+        throw error;
+      }
+    }
+
     const envHintLines = buildEnvHintLines(envExamplePath);
     const lines = [
       `Installed emb-agent runtime for ${target.label} to: ${runtimeDir}`,
@@ -1900,6 +1959,10 @@ function createInstallHelpers(deps) {
       ...(args.defaultAdapterSourceLocation
         ? [`Default chip support source: ${args.defaultAdapterSourceLocation}`]
         : []),
+      ...installedSkillBundles.map(bundle => {
+        const enabledCount = Array.isArray(bundle.selected_skills) ? bundle.selected_skills.length : 0;
+        return `Installed skill bundle: ${bundle.plugin.name} (${enabledCount} enabled skill${enabledCount === 1 ? '' : 's'})`;
+      }),
       ...(projectBootstrap
         ? [
             `Bootstrapped emb-agent project in: ${projectBootstrap.project_root}`,

@@ -1248,6 +1248,18 @@ function validateDefaultAdapterSourceConfig(config) {
   };
 }
 
+function validateDefaultSkillSourceConfig(config) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, 'default_skill_source');
+
+  return {
+    type: ensureChoice(source.type, 'default_skill_source.type', ['path', 'git', 'npm', 'pypi'], 'git'),
+    location: ensureOptionalString(source.location, 'default_skill_source.location'),
+    branch: ensureOptionalString(source.branch, 'default_skill_source.branch'),
+    subdir: ensureOptionalString(source.subdir, 'default_skill_source.subdir')
+  };
+}
+
 function validateExecutorEnv(config, label) {
   const source = config === undefined || config === null ? {} : config;
   expectObject(source, label);
@@ -1408,6 +1420,7 @@ function validateRuntimeConfig(config) {
       default_preferences: DEFAULT_PREFERENCES
     }),
     default_chip_support_source: validateDefaultAdapterSourceConfig(config.default_chip_support_source || {}),
+    default_skill_source: validateDefaultSkillSourceConfig(config.default_skill_source || {}),
     project_state_dir: ensureString(
       config.project_state_dir || '../state/emb-agent/projects',
       'project_state_dir'

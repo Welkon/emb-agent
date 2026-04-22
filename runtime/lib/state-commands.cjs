@@ -38,6 +38,11 @@ function createStateCommandHelpers(deps) {
     listSkills,
     loadSkill,
     runSkill,
+    parseSkillListArgs,
+    installSkillSource,
+    enableInstalledSkill,
+    disableInstalledSkill,
+    removeInstalledSkill,
     loadInstructionLayers,
     listAutoMemory,
     loadMemoryEntry,
@@ -115,7 +120,7 @@ function createStateCommandHelpers(deps) {
       updateSession(current => {
         current.last_command = 'skills list';
       });
-      return listSkills();
+      return listSkills(parseSkillListArgs(rest));
     }
 
     if (cmd === 'skills' && subcmd === 'show') {
@@ -123,7 +128,9 @@ function createStateCommandHelpers(deps) {
       updateSession(current => {
         current.last_command = 'skills show';
       });
-      return loadSkill(rest[0]);
+      return loadSkill(rest[0], {
+        include_disabled: true
+      });
     }
 
     if (cmd === 'skills' && subcmd === 'run') {
@@ -131,6 +138,37 @@ function createStateCommandHelpers(deps) {
         current.last_command = 'skills run';
       });
       return runSkill(rest);
+    }
+
+    if (cmd === 'skills' && subcmd === 'install') {
+      updateSession(current => {
+        current.last_command = 'skills install';
+      });
+      return installSkillSource(rest);
+    }
+
+    if (cmd === 'skills' && subcmd === 'enable') {
+      if (!rest[0]) throw new Error('Missing skill or plugin name');
+      updateSession(current => {
+        current.last_command = 'skills enable';
+      });
+      return enableInstalledSkill(rest[0]);
+    }
+
+    if (cmd === 'skills' && subcmd === 'disable') {
+      if (!rest[0]) throw new Error('Missing skill or plugin name');
+      updateSession(current => {
+        current.last_command = 'skills disable';
+      });
+      return disableInstalledSkill(rest[0]);
+    }
+
+    if (cmd === 'skills' && (subcmd === 'remove' || subcmd === 'uninstall')) {
+      if (!rest[0]) throw new Error('Missing skill or plugin name');
+      updateSession(current => {
+        current.last_command = `skills ${subcmd}`;
+      });
+      return removeInstalledSkill(rest[0]);
     }
 
     if (cmd === 'memory' && subcmd === 'stack') {

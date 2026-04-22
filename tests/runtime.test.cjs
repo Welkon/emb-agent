@@ -30,6 +30,12 @@ test('loadRuntimeConfig returns validated defaults', () => {
     branch: '',
     subdir: ''
   });
+  assert.deepEqual(config.default_skill_source, {
+    type: 'git',
+    location: 'https://github.com/Welkon/emb-skills.git',
+    branch: '',
+    subdir: ''
+  });
   assert.equal(config.project_state_dir, '../state/emb-agent/projects');
   assert.equal(config.legacy_project_state_dir, 'state/projects');
   assert.equal(config.max_last_files, 12);
