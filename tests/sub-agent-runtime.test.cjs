@@ -34,7 +34,7 @@ function buildHelpers() {
       session: {
         project_root: '/tmp/example',
         focus: 'review irq and timer path',
-        active_packs: ['sensor-node']
+        active_specs: ['sensor-node']
       }
     }),
     loadMarkdown: () => ({

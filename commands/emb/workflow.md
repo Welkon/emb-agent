@@ -20,18 +20,14 @@ Keep this out of the default command path. It is an advanced surface for writing
 - `workflow list`
   Show the merged built-in and project-local workflow catalog.
 - `workflow import registry <source> [--branch <name>] [--subdir <path>] [--force]`
-  Import project-local workflow packs, specs, and templates from a local path or git repository into `.emb-agent/`.
+  Import project-local workflow specs and templates from a local path or git repository into `.emb-agent/`.
 - `workflow show registry`
   Show the project-local workflow registry file.
-- `workflow show pack <name>`
-  Show one pack definition.
-- `workflow show spec <name>`
-  Show one spec definition.
-- `workflow show template <name>`
-  Show one template source.
-- `workflow new pack <name> [--with-spec [<name>]] [--with-template [<name>]] [--output <path>] [--force]`
-  Create a project-local pack and register it. Optional spec/template creation is auto-wired into the same workflow registry.
-- `workflow new spec <name> [--pack <name>|--always] [--force]`
-  Create a project-local spec and register its injection rule.
+- `workflow show <spec|template> <name>`
+  Show one project-local spec or template definition.
+- `workflow new spec <name> [--with-template [<name>]] [--output <path>] [--force]`
+  Create a project-local selectable spec and register it.
+- `workflow new spec <name> [--spec <name>|--always] [--with-template [<name>]] [--output <path>] [--force]`
+  Create an additional auto-injected spec that applies when the named spec is active, or always.
 - `workflow new template <name> [--output <path>] [--force]`
   Create a project-local template and register its default output.

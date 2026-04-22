@@ -20,49 +20,59 @@ function readBootstrapTask(projectRoot) {
   );
 }
 
-test('parseWorkflowPackSelection supports comma-separated pack indexes', () => {
+test('parseWorkflowSpecSelection supports comma-separated spec indexes', () => {
   const entries = [
     { name: 'battery-charger', description: 'Charging flow' },
     { name: 'sensor-node', description: 'Sampling flow' },
     { name: 'motor-drive', description: 'PWM flow' }
   ];
 
-  assert.deepEqual(initProject.parseWorkflowPackSelection('1, 3', entries), [
+  assert.deepEqual(initProject.parseWorkflowSpecSelection('1, 3', entries), [
     'battery-charger',
     'motor-drive'
   ]);
-  assert.deepEqual(initProject.parseWorkflowPackSelection('', entries), []);
-  assert.throws(() => initProject.parseWorkflowPackSelection('9', entries), /Invalid workflow pack selection/);
+  assert.deepEqual(initProject.parseWorkflowSpecSelection('', entries), []);
+  assert.throws(() => initProject.parseWorkflowSpecSelection('9', entries), /Invalid workflow spec selection/);
 });
 
-test('prepareProjectWorkflowSetup imports registry before resolving prompted workflow packs', () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-pack-select-'));
-  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-pack-select-source-'));
+test('prepareProjectWorkflowSetup imports registry before resolving prompted workflow specs', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-spec-select-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-spec-select-source-'));
 
   fs.mkdirSync(path.join(tempSource, '.emb-agent', 'registry'), { recursive: true });
-  fs.mkdirSync(path.join(tempSource, '.emb-agent', 'packs'), { recursive: true });
+  fs.mkdirSync(path.join(tempSource, '.emb-agent', 'specs'), { recursive: true });
   fs.writeFileSync(
     path.join(tempSource, '.emb-agent', 'registry', 'workflow.json'),
     JSON.stringify({
       version: 1,
       templates: [],
-      packs: [
+      specs: [
         {
           name: 'smart-pillbox',
-          file: 'packs/smart-pillbox.yaml',
-          description: 'Imported smart pillbox workflow.'
+          title: 'Smart Pillbox',
+          path: 'specs/smart-pillbox.md',
+          summary: 'Imported smart pillbox workflow.',
+          auto_inject: true,
+          selectable: true,
+          priority: 62,
+          apply_when: {
+            specs: ['smart-pillbox']
+          },
+          focus_areas: ['medication_schedule'],
+          extra_review_axes: [],
+          preferred_notes: [],
+          default_agents: []
         }
-      ],
-      specs: []
+      ]
     }, null, 2) + '\n',
     'utf8'
   );
   fs.writeFileSync(
-    path.join(tempSource, '.emb-agent', 'packs', 'smart-pillbox.yaml'),
+    path.join(tempSource, '.emb-agent', 'specs', 'smart-pillbox.md'),
     [
-      'name: smart-pillbox',
-      'focus_areas:',
-      '  - medication_schedule',
+      '# Smart Pillbox',
+      '',
+      '- Check medication schedule flow.',
       ''
     ].join('\n'),
     'utf8'
@@ -74,10 +84,10 @@ test('prepareProjectWorkflowSetup imports registry before resolving prompted wor
       registry: tempSource,
       registryBranch: '',
       registrySubdir: '',
-      packs: []
+      specs: []
     },
     {
-      promptWorkflowPackChoices(entries) {
+      promptWorkflowSpecChoices(entries) {
         assert.equal(entries.some(item => item.name === 'smart-pillbox'), true);
         return ['smart-pillbox'];
       }
@@ -88,20 +98,20 @@ test('prepareProjectWorkflowSetup imports registry before resolving prompted wor
     tempProject,
     {
       profile: '',
-      packs: workflowSetup.activePacks,
+      specs: workflowSetup.activeSpecs,
       runtime: '',
       user: ''
     },
     {
       workflowCatalog: workflowSetup.workflowCatalog,
-      activePacks: workflowSetup.activePacks
+      activeSpecs: workflowSetup.activeSpecs
     }
   );
 
   assert.ok(workflowSetup.workflowRegistryImport);
   assert.equal(workflowSetup.workflowRegistryImport.imported.some(item => item.name === 'smart-pillbox'), true);
-  assert.deepEqual(workflowSetup.activePacks, ['smart-pillbox']);
-  assert.deepEqual(projectConfig.active_packs, ['smart-pillbox']);
+  assert.deepEqual(workflowSetup.activeSpecs, ['smart-pillbox']);
+  assert.deepEqual(projectConfig.active_specs, ['smart-pillbox']);
 });
 
 test('init-project creates project defaults and defers note templates into a bootstrap task', () => {
@@ -117,7 +127,7 @@ test('init-project creates project defaults and defers note templates into a boo
       tempProject,
       '--profile',
       'rtos-iot',
-      '--pack',
+      '--spec',
       'connected-appliance'
     ]);
 
@@ -127,7 +137,7 @@ test('init-project creates project defaults and defers note templates into a boo
     const bootstrapTask = readBootstrapTask(tempProject);
 
     assert.equal(projectConfig.project_profile, 'rtos-iot');
-    assert.deepEqual(projectConfig.active_packs, ['connected-appliance']);
+    assert.deepEqual(projectConfig.active_specs, ['connected-appliance']);
     assert.deepEqual(projectConfig.chip_support_sources, []);
     assert.deepEqual(projectConfig.executors, {});
     assert.deepEqual(projectConfig.quality_gates.required_skills, []);
@@ -201,7 +211,7 @@ test('init-project creates project defaults and defers note templates into a boo
 
     const status = cli.buildStatus();
     assert.equal(status.project_profile, 'rtos-iot');
-    assert.deepEqual(status.active_packs, ['connected-appliance']);
+    assert.deepEqual(status.active_specs, ['connected-appliance']);
     assert.equal(status.preferences.truth_source_mode, 'hardware_first');
     assert.deepEqual(status.developer, { name: '', runtime: '' });
     assert.equal(status.project_defaults.project_profile, 'rtos-iot');
@@ -213,7 +223,7 @@ test('init-project creates project defaults and defers note templates into a boo
   }
 });
 
-test('init-project with battery-charger pack adds deferred power charging note target to bootstrap task', () => {
+test('init-project with battery-charger spec adds deferred power charging note target to bootstrap task', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-battery-charger-'));
   const originalWrite = process.stdout.write;
 
@@ -225,7 +235,7 @@ test('init-project with battery-charger pack adds deferred power charging note t
       tempProject,
       '--profile',
       'baremetal-8bit',
-      '--pack',
+      '--spec',
       'battery-charger'
     ]);
 
@@ -235,7 +245,7 @@ test('init-project with battery-charger pack adds deferred power charging note t
     const bootstrapTask = readBootstrapTask(tempProject);
 
     assert.equal(projectConfig.project_profile, 'baremetal-8bit');
-    assert.deepEqual(projectConfig.active_packs, ['battery-charger']);
+    assert.deepEqual(projectConfig.active_specs, ['battery-charger']);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-CHARGING.md')), false);
     assert.ok(bootstrapTask.relatedFiles.includes('docs/POWER-CHARGING.md'));
     assert.ok(bootstrapTask.subtasks.some(item => item.name.includes('docs/POWER-CHARGING.md')));
@@ -244,7 +254,38 @@ test('init-project with battery-charger pack adds deferred power charging note t
   }
 });
 
-test('init-project honors project-local smart-pillbox extension pack and template', () => {
+test('init-project with Padauk firmware spec adds deferred implementation-style note target', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-padauk-firmware-'));
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main([
+      '--project',
+      tempProject,
+      '--profile',
+      'baremetal-8bit',
+      '--spec',
+      'padauk-firmware'
+    ]);
+
+    const projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+    const bootstrapTask = readBootstrapTask(tempProject);
+
+    assert.equal(projectConfig.project_profile, 'baremetal-8bit');
+    assert.deepEqual(projectConfig.active_specs, ['padauk-firmware']);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'IMPLEMENTATION-STYLE.md')), false);
+    assert.ok(bootstrapTask.relatedFiles.includes('docs/IMPLEMENTATION-STYLE.md'));
+    assert.ok(bootstrapTask.subtasks.some(item => item.name.includes('docs/IMPLEMENTATION-STYLE.md')));
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('init-project honors project-local smart-pillbox spec and template', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-smart-pillbox-'));
   const originalWrite = process.stdout.write;
 
@@ -260,40 +301,32 @@ test('init-project honors project-local smart-pillbox extension pack and templat
       description: 'Project-local medication flow note.',
       default_output: 'docs/MEDICATION-FLOW.md'
     });
-    registry.packs.push({
-      name: 'smart-pillbox',
-      file: 'packs/smart-pillbox.yaml',
-      description: 'Project-local smart pillbox workflow pack.'
-    });
     registry.specs.push({
-      name: 'smart-pillbox-focus',
-      title: 'Smart Pillbox Focus',
-      path: 'specs/smart-pillbox-focus.md',
+      name: 'smart-pillbox',
+      title: 'Smart Pillbox',
+      path: 'specs/smart-pillbox.md',
       summary: 'Project-local smart pillbox rules.',
       auto_inject: true,
+      selectable: true,
       priority: 62,
       apply_when: {
-        packs: ['smart-pillbox']
-      }
+        specs: ['smart-pillbox']
+      },
+      focus_areas: [
+        'medication_schedule',
+        'sync_reconciliation'
+      ],
+      extra_review_axes: [
+        'schedule_state_machine'
+      ],
+      preferred_notes: [
+        'docs/MEDICATION-FLOW.md'
+      ],
+      default_agents: []
     });
     fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
     fs.writeFileSync(
-      path.join(projectExtDir, 'packs', 'smart-pillbox.yaml'),
-      [
-        'name: smart-pillbox',
-        'focus_areas:',
-        '  - medication_schedule',
-        '  - sync_reconciliation',
-        'extra_review_axes:',
-        '  - schedule_state_machine',
-        'preferred_notes:',
-        '  - docs/MEDICATION-FLOW.md',
-        ''
-      ].join('\n'),
-      'utf8'
-    );
-    fs.writeFileSync(
-      path.join(projectExtDir, 'specs', 'smart-pillbox-focus.md'),
+      path.join(projectExtDir, 'specs', 'smart-pillbox.md'),
       '# Smart Pillbox Focus\n\n- Check adherence state transitions.\n',
       'utf8'
     );
@@ -308,7 +341,7 @@ test('init-project honors project-local smart-pillbox extension pack and templat
       tempProject,
       '--profile',
       'baremetal-8bit',
-      '--pack',
+      '--spec',
       'smart-pillbox'
     ]);
 
@@ -318,7 +351,7 @@ test('init-project honors project-local smart-pillbox extension pack and templat
     const bootstrapTask = readBootstrapTask(tempProject);
 
     assert.equal(projectConfig.project_profile, 'baremetal-8bit');
-    assert.deepEqual(projectConfig.active_packs, ['smart-pillbox']);
+    assert.deepEqual(projectConfig.active_specs, ['smart-pillbox']);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md')), false);
     assert.ok(bootstrapTask.relatedFiles.includes('docs/MEDICATION-FLOW.md'));
     assert.ok(bootstrapTask.subtasks.some(item => item.name.includes('docs/MEDICATION-FLOW.md')));
@@ -327,45 +360,66 @@ test('init-project honors project-local smart-pillbox extension pack and templat
   }
 });
 
-test('init-project keeps workflow packs empty in non-interactive mode even when imported registry adds packs', () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-registry-pack-'));
-  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-registry-pack-source-'));
+test('init-project keeps workflow specs empty in non-interactive mode even when imported registry adds specs', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-registry-spec-'));
+  const tempSource = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-registry-spec-source-'));
   const originalWrite = process.stdout.write;
 
   process.stdout.write = () => true;
 
   try {
     fs.mkdirSync(path.join(tempSource, '.emb-agent', 'registry'), { recursive: true });
-    fs.mkdirSync(path.join(tempSource, '.emb-agent', 'packs'), { recursive: true });
+    fs.mkdirSync(path.join(tempSource, '.emb-agent', 'specs'), { recursive: true });
     fs.writeFileSync(
       path.join(tempSource, '.emb-agent', 'registry', 'workflow.json'),
       JSON.stringify({
         version: 1,
         templates: [],
-        packs: [
+        specs: [
           {
             name: 'smart-pillbox',
-            file: 'packs/smart-pillbox.yaml',
-            description: 'Imported smart pillbox workflow.'
+            title: 'Smart Pillbox',
+            path: 'specs/smart-pillbox.md',
+            summary: 'Imported smart pillbox workflow.',
+            auto_inject: true,
+            selectable: true,
+            priority: 62,
+            apply_when: {
+              specs: ['smart-pillbox']
+            },
+            focus_areas: ['medication_schedule'],
+            extra_review_axes: [],
+            preferred_notes: [],
+            default_agents: []
           },
           {
             name: 'factory-test',
-            file: 'packs/factory-test.yaml',
-            description: 'Imported factory workflow.'
+            title: 'Factory Test',
+            path: 'specs/factory-test.md',
+            summary: 'Imported factory workflow.',
+            auto_inject: true,
+            selectable: true,
+            priority: 60,
+            apply_when: {
+              specs: ['factory-test']
+            },
+            focus_areas: ['board_test'],
+            extra_review_axes: [],
+            preferred_notes: [],
+            default_agents: []
           }
-        ],
-        specs: []
+        ]
       }, null, 2) + '\n',
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempSource, '.emb-agent', 'packs', 'smart-pillbox.yaml'),
-      'name: smart-pillbox\nfocus_areas:\n  - medication_schedule\n',
+      path.join(tempSource, '.emb-agent', 'specs', 'smart-pillbox.md'),
+      '# Smart Pillbox\n',
       'utf8'
     );
     fs.writeFileSync(
-      path.join(tempSource, '.emb-agent', 'packs', 'factory-test.yaml'),
-      'name: factory-test\nfocus_areas:\n  - board_test\n',
+      path.join(tempSource, '.emb-agent', 'specs', 'factory-test.md'),
+      '# Factory Test\n',
       'utf8'
     );
 
@@ -380,15 +434,15 @@ test('init-project keeps workflow packs empty in non-interactive mode even when 
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
     );
 
-    assert.deepEqual(projectConfig.active_packs, []);
-    assert.ok(fs.existsSync(path.join(tempProject, '.emb-agent', 'packs', 'smart-pillbox.yaml')));
-    assert.ok(fs.existsSync(path.join(tempProject, '.emb-agent', 'packs', 'factory-test.yaml')));
+    assert.deepEqual(projectConfig.active_specs, []);
+    assert.ok(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'smart-pillbox.md')));
+    assert.ok(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'factory-test.md')));
   } finally {
     process.stdout.write = originalWrite;
   }
 });
 
-test('init-project with motor-drive pack adds deferred motor note targets to bootstrap task', () => {
+test('init-project with motor-drive spec adds deferred motor note targets to bootstrap task', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-motor-drive-'));
   const originalWrite = process.stdout.write;
 
@@ -400,7 +454,7 @@ test('init-project with motor-drive pack adds deferred motor note targets to boo
       tempProject,
       '--profile',
       'baremetal-8bit',
-      '--pack',
+      '--spec',
       'motor-drive'
     ]);
 
@@ -410,7 +464,7 @@ test('init-project with motor-drive pack adds deferred motor note targets to boo
     const bootstrapTask = readBootstrapTask(tempProject);
 
     assert.equal(projectConfig.project_profile, 'baremetal-8bit');
-    assert.deepEqual(projectConfig.active_packs, ['motor-drive']);
+    assert.deepEqual(projectConfig.active_specs, ['motor-drive']);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MOTOR-CONTROL.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-STAGE.md')), false);
     assert.ok(bootstrapTask.relatedFiles.includes('docs/MOTOR-CONTROL.md'));
@@ -481,9 +535,9 @@ test('init returns onboarding guidance for chip support setup', () => {
 
     assert.equal(result.initialized, true);
     assert.equal(result.session.project_profile, '');
-    assert.deepEqual(result.session.active_packs, []);
+    assert.deepEqual(result.session.active_specs, []);
     assert.equal(projectConfig.project_profile, '');
-    assert.deepEqual(projectConfig.active_packs, []);
+    assert.deepEqual(projectConfig.active_specs, []);
     assert.equal(result.bootstrap.status, 'needs-project-definition');
     assert.equal(result.bootstrap.stage, 'define-project-constraints');
     assert.equal(result.bootstrap.command, 'next');

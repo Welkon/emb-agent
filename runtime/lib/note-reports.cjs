@@ -282,7 +282,7 @@ function createNoteReportHelpers(deps) {
       `### ${timestamp}`,
       `- Summary: ${reviewInput.summary}`,
       `- Profile: ${reviewOutput.scope.profile}`,
-      `- Packs: ${(reviewOutput.scope.packs || []).join(', ') || '-'}`,
+      `- Specs: ${(reviewOutput.scope.specs || []).join(', ') || '-'}`,
       `- Scope: ${reviewInput.scope || reviewOutput.scope.focus || 'structural review'}`,
       '- Review axes:'
     ];
@@ -347,8 +347,8 @@ function createNoteReportHelpers(deps) {
       }
     }
 
-    if ((reviewOutput.scheduler.packs || []).length > 0) {
-      lines.push(`- Scheduler packs: ${reviewOutput.scheduler.packs.join(', ')}`);
+    if ((reviewOutput.scheduler.specs || []).length > 0) {
+      lines.push(`- Scheduler specs: ${reviewOutput.scheduler.specs.join(', ')}`);
     }
 
     if ((reviewOutput.scheduler.profile || '')) {
@@ -1094,7 +1094,7 @@ function createNoteReportHelpers(deps) {
       `### ${timestamp}`,
       `- Summary: ${verifyInput.summary}`,
       `- Profile: ${verifyOutput.scope.profile}`,
-      `- Packs: ${(verifyOutput.scope.packs || []).join(', ') || '-'}`,
+      `- Specs: ${(verifyOutput.scope.specs || []).join(', ') || '-'}`,
       `- Focus: ${verifyOutput.scope.focus || '-'}`,
       `- Runtime model: ${verifyOutput.scope.runtime_model || '-'}`,
       `- Concurrency model: ${verifyOutput.scope.concurrency_model || '-'}`,

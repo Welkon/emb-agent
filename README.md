@@ -21,7 +21,7 @@ It keeps hardware truth in the repo, keeps the default command flow small, and g
 Installable skill bundles can add executable capabilities such as scope control, build, flash, or debug flows without expanding the default core workflow.
 When a project wants those executable skills to participate in closure, declare them in `quality_gates.required_skills` so `verify` and `next` can drive `skills run` before manual signoff.
 
-emb-agent is not just a skill pack or prompt wrapper. Skills, commands, hooks, and `AGENTS.md` files are host integration surfaces for Codex, Claude Code, Cursor, and similar runtimes. The product itself is the embedded workflow plus the chip-support runtime behind it.
+emb-agent is not just a skill bundle or prompt wrapper. Skills, commands, hooks, and `AGENTS.md` files are host integration surfaces for Codex, Claude Code, Cursor, and similar runtimes. The product itself is the embedded workflow plus the chip-support runtime behind it.
 
 When chip support appears in `health`, `next`, `support status`, or reports, read it in this order:
 
@@ -119,7 +119,7 @@ That means emb-agent should be understood as embedded project infrastructure, no
 | **Hardware truth in the repo** | Keep MCU model, package, signals, peripherals, constraints, and unknowns in `.emb-agent/hw.yaml` instead of repeating them in chat. |
 | **Short default workflow** | Most projects only need session startup context, `declare hardware`, `next`, and the execution loop behind them. |
 | **Document-to-truth flow** | Pull facts out of datasheets or schematics when the answer is not already known. |
-| **Chip-support execution** | Keep chip-, family-, and vendor-specific logic in chip support packs instead of bloating the core workflow. |
+| **Chip-support execution** | Keep chip-, family-, and vendor-specific logic in chip-support modules instead of bloating the core workflow. |
 | **Verification-aware closure** | Close work with explicit review and verify loops instead of generic code-only completion. |
 
 ## More Docs

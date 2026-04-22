@@ -272,7 +272,7 @@ function loadProjectConfig(projectRoot, runtimeConfig) {
   return (
     runtime.loadProjectConfig(projectRoot, runtimeConfig) || {
       project_profile: '',
-      active_packs: [],
+      active_specs: [],
       preferences: runtimeConfig.default_preferences || {},
       integrations: {
         mineru: {

@@ -326,7 +326,7 @@ function createActionContractHelpers(deps) {
       runtime.getProjectExtDir(resolved.session.project_root),
       {
         profile: resolved.profile.name,
-        packs: resolved.session.active_packs || [],
+        specs: resolved.session.active_specs || [],
         task: task || null,
         handoff: handoff || null
       },

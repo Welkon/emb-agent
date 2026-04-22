@@ -317,7 +317,6 @@ function looksLikeLegacyProjectExtDir(legacyDir) {
     'tasks',
     'reports',
     'profiles',
-    'packs',
     'chip-support',
     'extensions'
   ];
@@ -413,7 +412,6 @@ function initProjectLayout(projectRoot) {
   ensureDir(path.join(projectExtDir, 'reports', 'forensics'));
   ensureDir(path.join(projectExtDir, 'reports', 'sessions'));
   ensureDir(path.join(projectExtDir, 'profiles'));
-  ensureDir(path.join(projectExtDir, 'packs'));
   ensureDir(path.join(projectExtDir, 'chip-support'));
   ensureDir(path.join(projectExtDir, 'tasks', 'archive'));
   ensureDir(path.join(path.resolve(projectRoot), 'docs'));
@@ -1382,6 +1380,9 @@ function validateProjectConfig(config, runtimeConfig) {
   const packages = validateProjectPackages(config.packages || []);
   const defaultPackage = ensureOptionalString(config.default_package, 'default_package');
   const activePackage = ensureOptionalString(config.active_package, 'active_package');
+  const activeSpecs = config.active_specs === undefined
+    ? []
+    : ensureStringArray(config.active_specs || [], 'active_specs');
   const knownPackages = new Set(packages.map(item => item.name));
 
   if (defaultPackage && packages.length > 0 && !knownPackages.has(defaultPackage)) {
@@ -1393,7 +1394,7 @@ function validateProjectConfig(config, runtimeConfig) {
 
   return {
     project_profile: ensureOptionalString(config.project_profile, 'project_profile'),
-    active_packs: ensureStringArray(config.active_packs || [], 'active_packs'),
+    active_specs: activeSpecs,
     packages,
     default_package: packages.length > 0 ? defaultPackage : '',
     active_package: packages.length > 0 ? (activePackage || defaultPackage) : '',
@@ -1424,10 +1425,10 @@ function mergeRuntimeDefaults(runtimeConfig, projectConfig) {
   return {
     ...runtimeConfig,
     default_profile: projectConfig.project_profile || runtimeConfig.default_profile,
-    default_packs:
-      projectConfig.active_packs && projectConfig.active_packs.length > 0
-        ? projectConfig.active_packs
-        : runtimeConfig.default_packs,
+    default_specs:
+      projectConfig.active_specs && projectConfig.active_specs.length > 0
+        ? projectConfig.active_specs
+        : runtimeConfig.default_specs,
     default_preferences: projectConfig.preferences || runtimeConfig.default_preferences
   };
 }
@@ -1439,7 +1440,7 @@ function validateRuntimeConfig(config) {
     runtime_version: Number(config.runtime_version || 1),
     session_version: Number(config.session_version || 1),
     default_profile: ensureString(config.default_profile || 'baremetal-8bit', 'default_profile'),
-    default_packs: ensureStringArray(config.default_packs || [], 'default_packs'),
+    default_specs: ensureStringArray(config.default_specs || [], 'default_specs'),
     developer: validateDeveloperConfig(config.developer || {}),
     default_preferences: normalizePreferences(config.default_preferences || {}, {
       default_preferences: DEFAULT_PREFERENCES
@@ -1498,17 +1499,6 @@ function validateProfile(name, profile) {
       profile.arch_review_triggers || [],
       `Profile ${name} arch_review_triggers`
     )
-  };
-}
-
-function validatePack(name, pack) {
-  expectObject(pack, `Pack ${name}`);
-  return {
-    name: ensureString(pack.name || name, `Pack ${name} name`),
-    focus_areas: ensureStringArray(pack.focus_areas || [], `Pack ${name} focus_areas`),
-    extra_review_axes: ensureStringArray(pack.extra_review_axes || [], `Pack ${name} extra_review_axes`),
-    preferred_notes: ensureStringArray(pack.preferred_notes || [], `Pack ${name} preferred_notes`),
-    default_agents: ensureStringArray(pack.default_agents || [], `Pack ${name} default_agents`)
   };
 }
 
@@ -1645,11 +1635,11 @@ function normalizeSession(session, paths, runtimeConfig, projectConfig) {
   next.project_profile =
     ensureOptionalString(next.project_profile, 'project_profile') ||
     ((projectConfig && projectConfig.project_profile) || '');
-  next.active_packs = unique(
-    Array.isArray(next.active_packs) && next.active_packs.length > 0
-      ? ensureStringArray(next.active_packs, 'active_packs')
-      : Array.isArray(projectConfig && projectConfig.active_packs)
-        ? ensureStringArray(projectConfig.active_packs, 'active_packs')
+  next.active_specs = unique(
+    Array.isArray(next.active_specs) && next.active_specs.length > 0
+      ? ensureStringArray(next.active_specs, 'active_specs')
+      : Array.isArray(projectConfig && projectConfig.active_specs)
+        ? ensureStringArray(projectConfig.active_specs, 'active_specs')
         : []
   );
   next.packages =
@@ -1718,8 +1708,8 @@ function loadDefaultSession(rootDir, paths, runtimeConfig, projectConfig) {
     if (projectConfig.project_profile) {
       seeded.project_profile = projectConfig.project_profile;
     }
-    if (projectConfig.active_packs && projectConfig.active_packs.length > 0) {
-      seeded.active_packs = projectConfig.active_packs;
+    if (projectConfig.active_specs && projectConfig.active_specs.length > 0) {
+      seeded.active_specs = projectConfig.active_specs;
     }
     if (projectConfig.packages && projectConfig.packages.length > 0) {
       seeded.packages = projectConfig.packages;
@@ -1755,6 +1745,7 @@ function cleanupStaleLock(lockPath, staleMs) {
 
 function validateHandoff(handoff, runtimeConfig) {
   expectObject(handoff, 'Handoff');
+  const specs = ensureStringArray(handoff.specs || [], 'handoff.specs');
 
   return {
     version: ensureString(handoff.version || '1.0', 'handoff.version'),
@@ -1762,7 +1753,7 @@ function validateHandoff(handoff, runtimeConfig) {
     status: ensureString(handoff.status || 'paused', 'handoff.status'),
     focus: ensureOptionalString(handoff.focus, 'handoff.focus'),
     profile: ensureOptionalString(handoff.profile, 'handoff.profile'),
-    packs: ensureStringArray(handoff.packs || [], 'handoff.packs'),
+    specs,
     default_package: ensureOptionalString(handoff.default_package, 'handoff.default_package'),
     active_package: ensureOptionalString(handoff.active_package, 'handoff.active_package'),
     last_command: ensureOptionalString(handoff.last_command, 'handoff.last_command'),
@@ -1783,6 +1774,7 @@ function validateHandoff(handoff, runtimeConfig) {
 
 function validateContextSummary(summary, runtimeConfig) {
   expectObject(summary, 'Context summary');
+  const specs = ensureStringArray(summary.specs || [], 'context_summary.specs');
 
   const activeTaskSource =
     summary.active_task && typeof summary.active_task === 'object' && !Array.isArray(summary.active_task)
@@ -1821,7 +1813,7 @@ function validateContextSummary(summary, runtimeConfig) {
     recovery_pointers: ensureStringArray(summary.recovery_pointers || [], 'context_summary.recovery_pointers'),
     focus: ensureOptionalString(summary.focus, 'context_summary.focus'),
     profile: ensureOptionalString(summary.profile, 'context_summary.profile'),
-    packs: ensureStringArray(summary.packs || [], 'context_summary.packs'),
+    specs,
     default_package: ensureOptionalString(summary.default_package, 'context_summary.default_package'),
     active_package: ensureOptionalString(summary.active_package, 'context_summary.active_package'),
     last_command: ensureOptionalString(summary.last_command, 'context_summary.last_command'),
@@ -1931,7 +1923,6 @@ module.exports = {
   validateContextSummary,
   validateDeveloperConfig,
   validateHandoff,
-  validatePack,
   validateProfile,
   validateProjectConfig,
   validateQualityGates,

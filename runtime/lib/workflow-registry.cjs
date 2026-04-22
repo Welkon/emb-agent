@@ -86,7 +86,7 @@ function normalizeApplyWhen(raw, label) {
   if (raw === undefined || raw === null) {
     return {
       always: false,
-      packs: [],
+      specs: [],
       packages: [],
       profiles: [],
       task_types: [],
@@ -99,7 +99,7 @@ function normalizeApplyWhen(raw, label) {
   const source = ensureObject(raw, label);
   return {
     always: ensureBoolean(source.always, false),
-    packs: ensureStringArray(source.packs || [], `${label}.packs`),
+    specs: ensureStringArray(source.specs || [], `${label}.specs`),
     packages: ensureStringArray(source.packages || [], `${label}.packages`),
     profiles: ensureStringArray(source.profiles || [], `${label}.profiles`),
     task_types: ensureStringArray(source.task_types || [], `${label}.task_types`),
@@ -119,15 +119,6 @@ function normalizeTemplateEntry(entry, label) {
   };
 }
 
-function normalizePackEntry(entry, label) {
-  const source = ensureObject(entry, label);
-  return {
-    name: ensureString(source.name, `${label}.name`),
-    file: ensureRelativeFile(source.file, `${label}.file`),
-    description: ensureOptionalString(source.description)
-  };
-}
-
 function normalizeSpecEntry(entry, label) {
   const source = ensureObject(entry, label);
   return {
@@ -136,8 +127,13 @@ function normalizeSpecEntry(entry, label) {
     path: ensureRelativeFile(source.path, `${label}.path`),
     summary: ensureOptionalString(source.summary),
     auto_inject: ensureBoolean(source.auto_inject, false),
+    selectable: ensureBoolean(source.selectable, false),
     priority: ensureInteger(source.priority, 0),
-    apply_when: normalizeApplyWhen(source.apply_when, `${label}.apply_when`)
+    apply_when: normalizeApplyWhen(source.apply_when, `${label}.apply_when`),
+    focus_areas: ensureStringArray(source.focus_areas || [], `${label}.focus_areas`),
+    extra_review_axes: ensureStringArray(source.extra_review_axes || [], `${label}.extra_review_axes`),
+    preferred_notes: ensureStringArray(source.preferred_notes || [], `${label}.preferred_notes`),
+    default_agents: ensureStringArray(source.default_agents || [], `${label}.default_agents`)
   };
 }
 
@@ -148,9 +144,6 @@ function normalizeRegistry(raw, label) {
     templates: (Array.isArray(source.templates) ? source.templates : []).map((item, index) =>
       normalizeTemplateEntry(item, `${label}.templates[${index}]`)
     ),
-    packs: (Array.isArray(source.packs) ? source.packs : []).map((item, index) =>
-      normalizePackEntry(item, `${label}.packs[${index}]`)
-    ),
     specs: (Array.isArray(source.specs) ? source.specs : []).map((item, index) =>
       normalizeSpecEntry(item, `${label}.specs[${index}]`)
     )
@@ -159,7 +152,7 @@ function normalizeRegistry(raw, label) {
 
 function resolveCatalogEntries(entries, kind, sourceRoot, scope, registryPath) {
   return entries.map(entry => {
-    const relativeFile = kind === 'templates' ? entry.source : kind === 'packs' ? entry.file : entry.path;
+    const relativeFile = kind === 'templates' ? entry.source : entry.path;
     const absolutePath = path.join(sourceRoot, relativeFile);
     const displayPath = scope === 'project'
       ? `.emb-agent/${relativeFile}`
@@ -212,21 +205,6 @@ function appendMissingCatalogEntries(existing, additions) {
   return merged;
 }
 
-function discoverProjectPacks(projectExtDir) {
-  const packsDir = path.join(projectExtDir, 'packs');
-  if (!fs.existsSync(packsDir) || !fs.statSync(packsDir).isDirectory()) {
-    return [];
-  }
-
-  return fs.readdirSync(packsDir)
-    .filter(name => name.endsWith('.yaml'))
-    .map(name => ({
-      name: name.slice(0, -5),
-      file: `packs/${name}`,
-      description: 'Project-local pack'
-    }));
-}
-
 function discoverProjectTemplates(projectExtDir) {
   const templatesDir = path.join(projectExtDir, PROJECT_TEMPLATES_DIR);
   if (!fs.existsSync(templatesDir) || !fs.statSync(templatesDir).isDirectory()) {
@@ -260,8 +238,13 @@ function discoverProjectSpecs(projectExtDir) {
         path: `${PROJECT_SPECS_DIR}/${name}`,
         summary: 'Project-local spec.',
         auto_inject: false,
+        selectable: false,
         priority: 0,
-        apply_when: {}
+        apply_when: {},
+        focus_areas: [],
+        extra_review_axes: [],
+        preferred_notes: [],
+        default_agents: []
       };
     });
 }
@@ -270,12 +253,10 @@ function getProjectWorkflowPaths(projectExtDir) {
   return {
     registryDir: path.join(projectExtDir, PROJECT_REGISTRY_DIR),
     registryPath: path.join(projectExtDir, PROJECT_REGISTRY_DIR, WORKFLOW_REGISTRY_FILE),
-    packsDir: path.join(projectExtDir, 'packs'),
     specsDir: path.join(projectExtDir, PROJECT_SPECS_DIR),
     templatesDir: path.join(projectExtDir, PROJECT_TEMPLATES_DIR),
     projectLocalSpecPath: path.join(projectExtDir, PROJECT_SPECS_DIR, 'project-local.md'),
     legacySpecRegistryPath: path.join(projectExtDir, PROJECT_SPECS_DIR, 'registry.json'),
-    legacyPackRegistryPath: path.join(projectExtDir, 'packs', 'registry.json'),
     legacyTemplateRegistryPath: path.join(projectExtDir, PROJECT_TEMPLATES_DIR, 'registry.json')
   };
 }
@@ -295,7 +276,6 @@ function createDefaultProjectWorkflowRegistry() {
   return {
     version: WORKFLOW_REGISTRY_VERSION,
     templates: [],
-    packs: [],
     specs: [
       {
         name: 'project-local',
@@ -303,10 +283,15 @@ function createDefaultProjectWorkflowRegistry() {
         path: 'specs/project-local.md',
         summary: 'Project-specific repo conventions and durable workflow rules.',
         auto_inject: true,
+        selectable: false,
         priority: 120,
         apply_when: {
           always: true
-        }
+        },
+        focus_areas: [],
+        extra_review_axes: [],
+        preferred_notes: [],
+        default_agents: []
       }
     ]
   };
@@ -334,7 +319,7 @@ function syncProjectWorkflowLayout(projectExtDir, options = {}) {
   const migrated = [];
   const reused = [];
 
-  const dirs = [paths.registryDir, paths.packsDir, paths.specsDir, paths.templatesDir];
+  const dirs = [paths.registryDir, paths.specsDir, paths.templatesDir];
   dirs.forEach(dirPath => {
     if (fs.existsSync(dirPath)) {
       reused.push(path.relative(projectExtDir, dirPath).replace(/\\/g, '/'));
@@ -353,18 +338,13 @@ function syncProjectWorkflowLayout(projectExtDir, options = {}) {
     : normalizeRegistry(createDefaultProjectWorkflowRegistry(), 'Default project workflow registry');
 
   const legacyTemplates = readLegacySection(paths.legacyTemplateRegistryPath, 'templates');
-  const legacyPacks = readLegacySection(paths.legacyPackRegistryPath, 'packs');
   const legacySpecs = readLegacySection(paths.legacySpecRegistryPath, 'specs');
-  const hasLegacyRegistry = legacyTemplates.length > 0 || legacyPacks.length > 0 || legacySpecs.length > 0;
+  const hasLegacyRegistry = legacyTemplates.length > 0 || legacySpecs.length > 0;
 
   if (hasLegacyRegistry) {
     nextRegistry.templates = mergeCatalogEntries(
       nextRegistry.templates,
       legacyTemplates.map((item, index) => normalizeTemplateEntry(item, `Legacy templates[${index}]`))
-    );
-    nextRegistry.packs = mergeCatalogEntries(
-      nextRegistry.packs,
-      legacyPacks.map((item, index) => normalizePackEntry(item, `Legacy packs[${index}]`))
     );
     nextRegistry.specs = mergeCatalogEntries(
       nextRegistry.specs,
@@ -400,7 +380,6 @@ function syncProjectWorkflowLayout(projectExtDir, options = {}) {
   if (write && hasLegacyRegistry) {
     [
       paths.legacyTemplateRegistryPath,
-      paths.legacyPackRegistryPath,
       paths.legacySpecRegistryPath
     ].forEach(filePath => {
       if (!fs.existsSync(filePath)) {
@@ -426,7 +405,6 @@ function loadWorkflowRegistry(runtimeRoot, options = {}) {
   const builtIn = {
     version: builtInRaw.version,
     templates: resolveCatalogEntries(builtInRaw.templates, 'templates', runtimeRoot, 'built-in', runtimeRegistryPath),
-    packs: resolveCatalogEntries(builtInRaw.packs, 'packs', runtimeRoot, 'built-in', runtimeRegistryPath),
     specs: resolveCatalogEntries(builtInRaw.specs, 'specs', runtimeRoot, 'built-in', runtimeRegistryPath)
   };
 
@@ -440,20 +418,12 @@ function loadWorkflowRegistry(runtimeRoot, options = {}) {
   const project = {
     version: projectRaw.version,
     templates: resolveCatalogEntries(projectRaw.templates, 'templates', projectExtDir, 'project', paths.registryPath),
-    packs: resolveCatalogEntries(projectRaw.packs, 'packs', projectExtDir, 'project', paths.registryPath),
     specs: resolveCatalogEntries(projectRaw.specs, 'specs', projectExtDir, 'project', paths.registryPath)
   };
 
   const discoveredTemplates = resolveCatalogEntries(
     discoverProjectTemplates(projectExtDir),
     'templates',
-    projectExtDir,
-    'project',
-    paths.registryPath
-  );
-  const discoveredPacks = resolveCatalogEntries(
-    discoverProjectPacks(projectExtDir),
-    'packs',
     projectExtDir,
     'project',
     paths.registryPath
@@ -471,10 +441,6 @@ function loadWorkflowRegistry(runtimeRoot, options = {}) {
     templates: appendMissingCatalogEntries(
       mergeCatalogEntries(builtIn.templates, project.templates),
       discoveredTemplates
-    ),
-    packs: appendMissingCatalogEntries(
-      mergeCatalogEntries(builtIn.packs, project.packs),
-      discoveredPacks
     ),
     specs: appendMissingCatalogEntries(
       mergeCatalogEntries(builtIn.specs, project.specs),
@@ -510,7 +476,7 @@ function evaluateSpecReason(spec, context) {
   const applyWhen = spec.apply_when || {};
   const reasons = [];
   const profile = String((context && context.profile) || '').trim();
-  const packs = new Set(((context && context.packs) || []).map(item => String(item || '').trim()));
+  const specs = new Set(((context && context.specs) || []).map(item => String(item || '').trim()));
   const activePackage = String((context && context.active_package) || '').trim();
   const defaultPackage = String((context && context.default_package) || '').trim();
   const task = context && context.task ? context.task : null;
@@ -525,9 +491,9 @@ function evaluateSpecReason(spec, context) {
   if (profile && applyWhen.profiles.includes(profile)) {
     reasons.push(`profile:${profile}`);
   }
-  applyWhen.packs.forEach(name => {
-    if (packs.has(name)) {
-      reasons.push(`pack:${name}`);
+  applyWhen.specs.forEach(name => {
+    if (specs.has(name)) {
+      reasons.push(`spec:${name}`);
     }
   });
   applyWhen.packages.forEach(name => {
@@ -551,7 +517,7 @@ function evaluateSpecReason(spec, context) {
   if (reasons.length === 0 && spec.auto_inject) {
     const hasNoConditions =
       !applyWhen.always &&
-      applyWhen.packs.length === 0 &&
+      applyWhen.specs.length === 0 &&
       applyWhen.packages.length === 0 &&
       applyWhen.profiles.length === 0 &&
       applyWhen.task_types.length === 0 &&

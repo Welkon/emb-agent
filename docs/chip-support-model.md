@@ -2,7 +2,7 @@
 
 emb-agent core stays abstract on purpose.
 
-The core should own workflow, truth layers, state continuity, and tool contracts. Vendor-, family-, and chip-specific formulas should live in chip support packs.
+The core should own workflow, truth layers, state continuity, and tool contracts. Vendor-, family-, and chip-specific formulas should live in chip-support modules.
 
 ## What belongs in core
 
@@ -70,7 +70,7 @@ The shared catalog exists for publication and reuse, not as a prerequisite befor
 
 ## Why this split matters
 
-Without chip support packs, embedded AI workflows tend to mix:
+Without chip-support modules, embedded AI workflows tend to mix:
 
 - durable project truth
 - vendor-specific knowledge

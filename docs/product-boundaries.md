@@ -18,7 +18,7 @@ The most useful mental model is:
 
 What emb-agent is **not**:
 
-- not a standalone skill pack
+- not a standalone skill bundle
 - not just a prompt library
 - not a generic agent harness with embedded examples attached
 
@@ -117,7 +117,7 @@ Without this layering, emb-agent can read like a grab-bag:
 - workflow engine
 - skill system
 - scaffold generator
-- hook pack
+- hook integration block
 - harness integration layer
 
 The intended interpretation is:

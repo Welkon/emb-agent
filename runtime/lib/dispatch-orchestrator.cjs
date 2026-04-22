@@ -388,10 +388,10 @@ function createDispatchHelpers(deps) {
     const strategy = buildOrchestratorStrategy(execution);
     const current = dispatch.source === 'next'
       ? (dispatch.current || {})
-      : {
+        : {
           project_root: resolved.session.project_root,
           profile: resolved.profile.name,
-          packs: resolved.session.active_packs,
+          specs: resolved.session.active_specs,
           focus: resolved.session.focus || '',
           preferences: getPreferences(resolved.session),
           last_command: resolved.session.last_command || '',

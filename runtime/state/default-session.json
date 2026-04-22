@@ -2,7 +2,7 @@
   "session_version": 1,
   "git_branch": "",
   "project_profile": "",
-  "active_packs": [],
+  "active_specs": [],
   "preferences": {
     "truth_source_mode": "hardware_first",
     "plan_mode": "auto",

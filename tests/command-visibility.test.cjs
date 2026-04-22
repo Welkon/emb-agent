@@ -329,7 +329,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /Global option: --brief .*runtime_events/);
   assert.match(advanced, /spec list/);
   assert.match(advanced, /workflow init/);
-  assert.match(advanced, /workflow new pack/);
+  assert.match(advanced, /workflow new spec/);
   assert.doesNotMatch(advanced, /workspace link/);
   assert.doesNotMatch(advanced, /thread /);
   assert.match(advanced, /commands list/);

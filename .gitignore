@@ -3,4 +3,6 @@ emb-agent-*.tgz
 state/emb-agent/projects/*
 runtime/state/projects/*
 .emb-agent/
+!examples/project-extensions/smart-pillbox/.emb-agent/
+!examples/project-extensions/smart-pillbox/.emb-agent/**
 .emb-agent/.developer

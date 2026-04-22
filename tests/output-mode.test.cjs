@@ -33,7 +33,7 @@ test('applyOutputMode builds brief next context payload', () => {
   const input = {
     current: {
       profile: 'baremetal-8bit',
-      packs: ['sensor-node'],
+      specs: ['sensor-node'],
       focus: 'bringup',
       last_command: 'scan',
       suggested_flow: 'scan -> do -> verify'
@@ -326,7 +326,7 @@ test('applyOutputMode builds brief init output with external driver hints', () =
     project_root: '/tmp/demo',
     project_dir: '.emb-agent',
     project_profile: '',
-    active_packs: [],
+    active_specs: [],
     developer: { name: 'welkon', runtime: 'external' },
     bootstrap: {
       status: 'needs-project-definition',

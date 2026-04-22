@@ -117,8 +117,6 @@ function createWorkflowImportHelpers(deps) {
       force: false
     });
 
-    ensureDir(projectPaths.packsDir);
-
     const staged = stageWorkflowRegistrySource(source, options);
 
     try {
@@ -137,7 +135,6 @@ function createWorkflowImportHelpers(deps) {
       const skipped = [];
       const mapping = [
         { kind: 'template', key: 'templates', pathField: 'source' },
-        { kind: 'pack', key: 'packs', pathField: 'file' },
         { kind: 'spec', key: 'specs', pathField: 'path' }
       ];
 

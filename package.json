@@ -17,7 +17,6 @@
     "runtime/registry",
     "runtime/scaffolds",
     "runtime/schemas",
-    "runtime/packs",
     "runtime/profiles",
     "runtime/README.md",
     "runtime/scripts",
@@ -49,6 +48,7 @@
   },
   "dependencies": {
     "chalk": "^4.1.2",
+    "giget": "^3.2.0",
     "ora": "^5.4.1"
   }
 }

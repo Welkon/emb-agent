@@ -8,26 +8,43 @@
       "default_output": "docs/MEDICATION-FLOW.md"
     }
   ],
-  "packs": [
-    {
-      "name": "smart-pillbox",
-      "file": "packs/smart-pillbox.yaml",
-      "description": "Medication reminder, adherence recording, and device/app/cloud consistency workflow pack."
-    }
-  ],
   "specs": [
     {
-      "name": "smart-pillbox-focus",
-      "title": "Smart Pillbox Focus",
-      "path": "specs/smart-pillbox-focus.md",
+      "name": "smart-pillbox",
+      "title": "Smart Pillbox",
+      "path": "specs/smart-pillbox.md",
       "summary": "Medication schedule, adherence evidence, sync reconciliation, and false-success risk checks for connected pillbox devices.",
       "auto_inject": true,
+      "selectable": true,
       "priority": 62,
       "apply_when": {
-        "packs": [
+        "specs": [
           "smart-pillbox"
         ]
-      }
+      },
+      "focus_areas": [
+        "medication_schedule",
+        "reminder_delivery",
+        "lid_or_bin_state",
+        "offline_recording",
+        "sync_reconciliation",
+        "low_power_safety"
+      ],
+      "extra_review_axes": [
+        "schedule_state_machine",
+        "device_app_cloud_consistency",
+        "clock_drift_and_timezone",
+        "false_positive_taken_state",
+        "factory_reset_and_rebind",
+        "caregiver_notification_integrity"
+      ],
+      "preferred_notes": [
+        "docs/MEDICATION-FLOW.md",
+        "docs/CONNECTIVITY.md",
+        "docs/POWER-CHARGING.md",
+        "docs/DEBUG-NOTES.md"
+      ],
+      "default_agents": []
     }
   ]
 }

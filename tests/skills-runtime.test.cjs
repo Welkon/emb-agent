@@ -8,6 +8,9 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
+const runtimeHost = require(path.join(repoRoot, 'runtime', 'lib', 'runtime-host.cjs'));
+const skillRuntimeModule = require(path.join(repoRoot, 'runtime', 'lib', 'skill-runtime.cjs'));
 
 async function captureJson(args) {
   const originalWrite = process.stdout.write;
@@ -30,6 +33,25 @@ async function captureJson(args) {
 function writeFile(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, 'utf8');
+}
+
+function createSkillRuntimeHelper(projectRoot, options = {}) {
+  return skillRuntimeModule.createSkillRuntimeHelpers({
+    childProcess: options.childProcess || require('child_process'),
+    fs,
+    os,
+    path,
+    process,
+    runtime,
+    runtimeConfig: runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime')),
+    runtimeHost: () => runtimeHost.resolveRuntimeHost(path.join(repoRoot, 'runtime')),
+    resolveProjectRoot: () => projectRoot,
+    getProjectExtDir: () => runtime.getProjectExtDir(projectRoot),
+    updateSession() {},
+    builtInSkillsDir: path.join(repoRoot, 'skills'),
+    builtInDisplayRoot: repoRoot,
+    loadGiget: options.loadGiget
+  });
 }
 
 test('skills list and show expose lazily discovered built-in skills', async () => {
@@ -194,6 +216,83 @@ test('skills install can add, disable, enable, and remove plugin-managed skills'
       fs.existsSync(path.join(tempProject, '.emb-agent', 'plugins', 'tektronix-scope-kit')),
       false
     );
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('skills install syncs host-visible entry skills for project-scoped plugins', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-entry-project-'));
+  const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-entry-bundle-'));
+  const currentCwd = process.cwd();
+
+  try {
+    writeFile(
+      path.join(bundleDir, '.emb-agent-plugin', 'plugin.json'),
+      JSON.stringify(
+        {
+          name: 'scope-entry-kit',
+          version: '0.4.0',
+          description: 'Scope skill entries.',
+          skills: './skills'
+        },
+        null,
+        2
+      ) + '\n'
+    );
+    writeFile(
+      path.join(bundleDir, 'skills', 'scope-entry', 'SKILL.md'),
+      [
+        '---',
+        'name: scope-entry',
+        'description: Drive the active scope through emb-agent.',
+        'when_to_use: When the user needs a scope capture or scope verification step.',
+        'execution_mode: command',
+        'command:',
+        '  - node',
+        '  - scripts/run.cjs',
+        '---',
+        '',
+        '# scope-entry',
+        '',
+        'Connect to the scope, capture evidence, and report the result.',
+        ''
+      ].join('\n')
+    );
+    writeFile(
+      path.join(bundleDir, 'skills', 'scope-entry', 'scripts', 'run.cjs'),
+      [
+        "'use strict';",
+        '',
+        "process.stdout.write(JSON.stringify({ status: 'ok', entry: true }) + '\\n');",
+        ''
+      ].join('\n')
+    );
+
+    process.chdir(tempProject);
+    await captureJson(['init']);
+    fs.mkdirSync(path.join(tempProject, '.codex'), { recursive: true });
+
+    const installResult = await captureJson(['skills', 'install', bundleDir, '--scope', 'project']);
+    const codexEntryPath = path.join(tempProject, '.codex', 'skills', 'scope-entry', 'SKILL.md');
+    const sharedEntryPath = path.join(tempProject, '.agents', 'skills', 'scope-entry', 'SKILL.md');
+
+    assert.equal(installResult.plugin.name, 'scope-entry-kit');
+    assert.equal(fs.existsSync(codexEntryPath), false);
+    assert.equal(fs.existsSync(sharedEntryPath), true);
+    assert.match(fs.readFileSync(sharedEntryPath, 'utf8'), /shared skill entry routes matching requests/);
+
+    await captureJson(['skills', 'disable', 'scope-entry']);
+    assert.equal(fs.existsSync(codexEntryPath), false);
+    assert.equal(fs.existsSync(sharedEntryPath), false);
+
+    await captureJson(['skills', 'enable', 'scope-entry']);
+    assert.equal(fs.existsSync(codexEntryPath), false);
+    assert.equal(fs.existsSync(sharedEntryPath), true);
+
+    await captureJson(['skills', 'remove', 'scope-entry-kit']);
+    assert.equal(fs.existsSync(codexEntryPath), false);
+    assert.equal(fs.existsSync(sharedEntryPath), false);
   } finally {
     process.chdir(currentCwd);
   }
@@ -384,4 +483,166 @@ test('skills install falls back to the default skill source when source is omitt
     }
     process.chdir(currentCwd);
   }
+});
+
+test('skills preview can inspect GitHub skill bundles without local git', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-remote-preview-project-'));
+  let gitSpawned = false;
+  const helper = createSkillRuntimeHelper(tempProject, {
+    childProcess: {
+      spawnSync() {
+        gitSpawned = true;
+        throw new Error('git should not be used for GitHub skill preview');
+      }
+    },
+    async loadGiget() {
+      return {
+        async downloadTemplate(source, options) {
+          assert.equal(source, 'gh:Welkon/emb-skills');
+          writeFile(
+            path.join(options.dir, 'index.json'),
+            JSON.stringify(
+              {
+                version: 1,
+                skills: [
+                  {
+                    name: 'xc8-build',
+                    path: 'skills/xc8-build'
+                  },
+                  {
+                    name: 'tektronix-scope',
+                    path: 'skills/tektronix-scope'
+                  }
+                ]
+              },
+              null,
+              2
+            ) + '\n'
+          );
+          writeFile(
+            path.join(options.dir, 'README.md'),
+            '# emb skills\n'
+          );
+          writeFile(
+            path.join(options.dir, 'skills', 'xc8-build', 'SKILL.md'),
+            [
+              '---',
+              'name: xc8-build',
+              'description: Build firmware with XC8.',
+              'execution_mode: command',
+              'command:',
+              '  - python3',
+              '  - scripts/build_xc8.py',
+              '---',
+              '',
+              '# xc8-build',
+              ''
+            ].join('\n')
+          );
+          writeFile(
+            path.join(options.dir, 'skills', 'xc8-build', 'BUILD.md'),
+            '# build notes\n'
+          );
+          writeFile(
+            path.join(options.dir, 'skills', 'tektronix-scope', 'SKILL.md'),
+            [
+              '---',
+              'name: tektronix-scope',
+              'description: Preview a remote scope capture skill.',
+              'execution_mode: command',
+              'command:',
+              '  - node',
+              '  - scripts/tek_scope.py',
+              '---',
+              '',
+              '# tektronix-scope',
+              ''
+            ].join('\n')
+          );
+          writeFile(
+            path.join(options.dir, 'skills', 'tektronix-scope', 'references', 'tbs1102b.md'),
+            '# tbs1102b\n'
+          );
+          writeFile(
+            path.join(options.dir, 'skills', 'tektronix-scope', 'references', 'tektronix-workflow.md'),
+            '# tektronix workflow\n'
+          );
+        }
+      };
+    }
+  });
+
+  const preview = await helper.previewSkillSource([
+    'https://github.com/Welkon/emb-skills.git',
+    '--scope',
+    'project'
+  ]);
+
+  assert.equal(gitSpawned, false);
+  assert.equal(preview.plugin.name, 'emb-skills');
+  assert.deepEqual(preview.skills.map(item => item.name).sort(), ['tektronix-scope', 'xc8-build']);
+});
+
+test('skills preview ignores reference markdown when a manifest points at a skills directory', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-manifest-preview-project-'));
+  const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-manifest-preview-bundle-'));
+  const helper = createSkillRuntimeHelper(tempProject);
+
+  writeFile(
+    path.join(bundleDir, '.emb-agent-plugin', 'plugin.json'),
+    JSON.stringify(
+      {
+        name: 'doc-heavy-skill-kit',
+        version: '0.1.0',
+        skills: './skills'
+      },
+      null,
+      2
+    ) + '\n'
+  );
+  writeFile(
+    path.join(bundleDir, 'skills', 'scope-capture', 'SKILL.md'),
+    [
+      '---',
+      'name: scope-capture',
+      'description: Capture a waveform.',
+      'execution_mode: command',
+      'command:',
+      '  - node',
+      '  - scripts/run.cjs',
+      '---',
+      '',
+      '# scope-capture',
+      ''
+    ].join('\n')
+  );
+  writeFile(
+    path.join(bundleDir, 'skills', 'scope-capture', 'references', 'scope.md'),
+    '# scope reference\n'
+  );
+  writeFile(
+    path.join(bundleDir, 'skills', 'xc8-build', 'SKILL.md'),
+    [
+      '---',
+      'name: xc8-build',
+      'description: Build firmware.',
+      'execution_mode: command',
+      'command:',
+      '  - python3',
+      '  - scripts/build_xc8.py',
+      '---',
+      '',
+      '# xc8-build',
+      ''
+    ].join('\n')
+  );
+  writeFile(
+    path.join(bundleDir, 'skills', 'xc8-build', 'BUILD.md'),
+    '# build notes\n'
+  );
+
+  const preview = await helper.previewSkillSource([bundleDir, '--scope', 'project']);
+
+  assert.equal(preview.plugin.name, 'doc-heavy-skill-kit');
+  assert.deepEqual(preview.skills.map(item => item.name).sort(), ['scope-capture', 'xc8-build']);
 });

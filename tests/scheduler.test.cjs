@@ -9,6 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 const scheduler = require(path.join(repoRoot, 'runtime', 'lib', 'scheduler.cjs'));
+const workflowRegistry = require(path.join(repoRoot, 'runtime', 'lib', 'workflow-registry.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
 const REVIEW_AGENT_NAMES = ['hw-scout', 'bug-hunter', 'sys-reviewer', 'release-checker'];
@@ -20,19 +21,21 @@ function loadProfile(name) {
   );
 }
 
-function loadPack(name) {
-  return runtime.validatePack(
-    name,
-    runtime.parseSimpleYaml(path.join(repoRoot, 'runtime', 'packs', `${name}.yaml`))
-  );
+function loadSelectedSpec(name) {
+  const registry = workflowRegistry.loadWorkflowRegistry(path.join(repoRoot, 'runtime'));
+  const entry = (registry.specs || []).find(item => item.name === name && item.selectable === true);
+  if (!entry) {
+    throw new Error(`Selectable spec not found: ${name}`);
+  }
+  return entry;
 }
 
-function buildResolved(profileName, packNames, sessionOverrides = {}) {
+function buildResolved(profileName, specNames, sessionOverrides = {}) {
   const profile = loadProfile(profileName);
-  const packs = packNames.map(loadPack);
+  const selectedSpecs = specNames.map(loadSelectedSpec);
   const agents = runtime.unique([
     ...(profile.default_agents || []),
-    ...packs.flatMap(pack => pack.default_agents || [])
+    ...selectedSpecs.flatMap(spec => spec.default_agents || [])
   ]);
   const reviewAgents = runtime.unique(agents.filter(name => REVIEW_AGENT_NAMES.includes(name)));
 
@@ -41,7 +44,7 @@ function buildResolved(profileName, packNames, sessionOverrides = {}) {
       project_root: '/tmp/example',
       project_name: 'example',
       project_profile: profile.name,
-      active_packs: packNames,
+      active_specs: specNames,
       focus: '',
       last_files: [],
       open_questions: [],
@@ -49,18 +52,18 @@ function buildResolved(profileName, packNames, sessionOverrides = {}) {
       ...sessionOverrides
     },
     profile,
-    packs,
+    selected_specs: selectedSpecs,
     effective: {
       agents,
       review_agents: reviewAgents,
-      focus_areas: runtime.unique(packs.flatMap(pack => pack.focus_areas || [])),
+      focus_areas: runtime.unique(selectedSpecs.flatMap(spec => spec.focus_areas || [])),
       review_axes: runtime.unique([
         ...(profile.review_axes || []),
-        ...packs.flatMap(pack => pack.extra_review_axes || [])
+        ...selectedSpecs.flatMap(spec => spec.extra_review_axes || [])
       ]),
       note_targets: runtime.unique([
         ...(profile.notes_targets || []),
-        ...packs.flatMap(pack => pack.preferred_notes || [])
+        ...selectedSpecs.flatMap(spec => spec.preferred_notes || [])
       ]),
       search_priority: profile.search_priority || [],
       guardrails: profile.guardrails || [],

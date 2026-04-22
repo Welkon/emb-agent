@@ -46,8 +46,8 @@ Project state is stored by default at:
   Fixed output templates.
 - `profiles/`
   Built-in project profiles.
-- `packs/`
-  Built-in scenario packs.
+- `specs/`
+  Built-in workflow specs and selectable project-spec definitions.
 - `tools/`
   Core abstract tool specs.
 - `chips/`

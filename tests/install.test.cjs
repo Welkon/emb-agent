@@ -96,6 +96,24 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'command-docs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'tools', 'registry.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'chips', 'registry.json')), true);
+    assert.equal(
+      require.resolve('chalk', { paths: [path.join(runtimeRoot, 'lib')] }).startsWith(
+        path.join(runtimeRoot, 'node_modules')
+      ),
+      true
+    );
+    assert.equal(
+      require.resolve('ora', { paths: [path.join(runtimeRoot, 'lib')] }).startsWith(
+        path.join(runtimeRoot, 'node_modules')
+      ),
+      true
+    );
+    assert.equal(
+      require.resolve('giget', { paths: [path.join(runtimeRoot, 'lib')] }).startsWith(
+        path.join(runtimeRoot, 'node_modules')
+      ),
+      true
+    );
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'chip-support')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'extensions')), false);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'scheduler.cjs')), true);
@@ -421,7 +439,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const configuredProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-configured-'));
     const initProject = require(path.join(runtimeRoot, 'scripts', 'init-project.cjs'));
 
-    initProject.main(['--project', configuredProject, '--profile', 'rtos-iot', '--pack', 'connected-appliance']);
+    initProject.main(['--project', configuredProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
 
     const projectConfigPath = path.join(configuredProject, '.emb-agent', 'project.json');
 
@@ -433,7 +451,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['project', 'set', '--field', 'preferences.plan_mode', '--value', 'always']);
     const configuredStatus = installedCli.buildStatus();
     assert.equal(configuredStatus.project_profile, 'rtos-iot');
-    assert.deepEqual(configuredStatus.active_packs, ['connected-appliance']);
+    assert.deepEqual(configuredStatus.active_specs, ['connected-appliance']);
     assert.equal(configuredStatus.preferences.truth_source_mode, 'code_first');
     assert.deepEqual(configuredStatus.project_defaults.arch_review.trigger_patterns, []);
     const configuredProjectView = installedCli.buildProjectShow(true);
@@ -580,11 +598,16 @@ test('installer can preinstall project skill bundles during local setup', async 
     const installedCli = require(path.join(tempProject, '.codex', 'emb-agent', 'bin', 'emb-agent.cjs'));
     const listed = await captureCliJson(installedCli, ['skills', 'list']);
     const runResult = await captureCliJson(installedCli, ['skills', 'run', 'scope-connect']);
+    const codexEntryPath = path.join(tempProject, '.codex', 'skills', 'scope-connect', 'SKILL.md');
+    const sharedEntryPath = path.join(tempProject, '.agents', 'skills', 'scope-connect', 'SKILL.md');
 
     assert.ok(listed.some(item => item.name === 'scope-connect' && item.plugin && item.plugin.name === 'scope-ops-kit'));
     assert.equal(runResult.execution.mode, 'command');
     assert.equal(runResult.command_result.status, 'ok');
     assert.equal(runResult.command_result.parsed_output.connected, true);
+    assert.equal(fs.existsSync(codexEntryPath), false);
+    assert.equal(fs.existsSync(sharedEntryPath), true);
+    assert.match(fs.readFileSync(sharedEntryPath, 'utf8'), /shared skill entry routes matching requests/);
     assert.match(stdout, /Installed skill bundle: scope-ops-kit/);
   } finally {
     process.stdout.write = originalWrite;
@@ -844,12 +867,8 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
 
     assert.equal(fs.existsSync(path.join(codexRoot, 'skills', 'emb-start', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(codexRoot, 'skills', 'emb-init', 'SKILL.md')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.agents', 'skills', 'emb-start', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.agents', 'skills', 'emb-start', 'SKILL.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.agents', 'skills', 'emb-init', 'SKILL.md')), false);
-    assert.match(
-      fs.readFileSync(path.join(tempProject, '.agents', 'skills', 'emb-start', 'SKILL.md'), 'utf8'),
-      /This shared skill routes matching requests to the emb-agent command `start`\./
-    );
     assert.match(
       fs.readFileSync(path.join(codexRoot, 'config.toml'), 'utf8'),
       /project_doc_fallback_filenames = \["AGENTS\.md"\]/
@@ -870,8 +889,7 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     installedCli.main(['start']);
     assert.match(stdout, /Installed 13 Codex skills under:/);
     assert.match(stdout, /\.codex\/skills/);
-    assert.match(stdout, /Installed 13 shared skills under:/);
-    assert.match(stdout, /\.agents\/skills/);
+    assert.doesNotMatch(stdout, /Installed 13 shared skills under:/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /Bootstrap task:/);
     assert.match(stdout, /open a Codex session\. emb-agent will inject the startup context automatically\./);
@@ -942,7 +960,7 @@ test('installer uninstall removes local Codex managed surfaces and preserves use
 
     assert.equal(fs.existsSync(path.join(tempProject, '.codex', 'emb-agent')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.codex', 'skills', 'emb-start', 'SKILL.md')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.agents', 'skills', 'emb-start', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.agents', 'skills', 'emb-start', 'SKILL.md')), false);
 
     await installer.main(['--uninstall']);
 

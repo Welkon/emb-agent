@@ -33,7 +33,7 @@ If the repository root README explains what emb-agent is, the docs directory sho
 - [Automation Output Contract](./automation-contract.md)
   The stable machine-readable surfaces for `--brief`, `external`, and `task worktree`.
 - [Workflow Layering](./workflow-layering.md)
-  How to decide between built-in packs/specs and project-local workflow extensions.
+  How to decide between built-in specs and project-local workflow extensions.
 
 ## Examples
 
