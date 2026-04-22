@@ -692,7 +692,7 @@ test('applyOutputMode prioritizes brief health checks around the current action 
     next_commands: [
       {
         key: 'support-source-add',
-        cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git'
+        cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support source add default-support --type git --location https://github.com/Welkon/emb-support.git'
       }
     ],
     action_card: {
@@ -735,7 +735,7 @@ test('applyOutputMode limits brief health checks to three non-info items when ac
     next_commands: [
       {
         key: 'support-source-add',
-        cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git'
+        cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs support source add default-support --type git --location https://github.com/Welkon/emb-support.git'
       }
     ],
     action_card: {
@@ -755,7 +755,7 @@ test('applyOutputMode limits brief health checks to three non-info items when ac
   assert.equal(output.checks.length, 3);
   assert.ok(output.checks.every(item => item.status !== 'info'));
   assert.deepEqual(output.recommendations, ['Register the default chip support source before retrying chip support install.']);
-  assert.equal(output.primary_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs support source add default-pack --type git --location https://github.com/Welkon/emb-agent-adapters.git');
+  assert.equal(output.primary_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs support source add default-support --type git --location https://github.com/Welkon/emb-support.git');
 });
 
 test('applyOutputMode skips recommendation owned by the active action stage when picking the brief main recommendation', () => {

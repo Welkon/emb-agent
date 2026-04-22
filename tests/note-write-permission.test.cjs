@@ -9,6 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const { withDefaultWorkflowSourceEnv } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 async function captureStdout(run) {
   const originalWrite = process.stdout.write;
@@ -180,10 +181,11 @@ test('review save honors write deny rules before touching review report', async 
 
   process.stdout.write = () => true;
 
-  try {
-    initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
-    process.chdir(tempProject);
-    await cli.main(['init']);
+  return withDefaultWorkflowSourceEnv(async () => {
+    try {
+      initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
+      process.chdir(tempProject);
+      await cli.main(['init']);
 
     updateProjectConfig(tempProject, config => {
       config.permissions.writes.deny = ['review-save'];
@@ -207,11 +209,12 @@ test('review save honors write deny rules before touching review report', async 
     assert.equal(blocked.status, 'permission-denied');
     assert.equal(blocked.permission_decision.decision, 'deny');
     assert.equal(blocked.permission_decision.reason_code, 'policy-deny');
-    assert.equal(fs.existsSync(reviewPath), false);
-  } finally {
-    process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
-  }
+      assert.equal(fs.existsSync(reviewPath), false);
+    } finally {
+      process.chdir(currentCwd);
+      process.stdout.write = originalWrite;
+    }
+  });
 });
 
 test('verify save honors write ask rules before touching verification report', async () => {

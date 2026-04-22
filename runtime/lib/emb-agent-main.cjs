@@ -644,6 +644,7 @@ const {
     fs,
     os,
     path,
+    process,
     runtime,
     workflowRegistry
   }),

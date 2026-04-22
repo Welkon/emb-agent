@@ -512,7 +512,7 @@ test('adapter bootstrap uses default adapter source overrides when no source arg
   const previousLocation = process.env.EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_LOCATION;
 
   try {
-    createPathAdapterSource(tempSource);
+    createPathAdapterSource(path.join(tempSource, 'adapters'));
     initProject.main(['--project', tempProject]);
     process.chdir(tempProject);
     cli.main(['init']);
@@ -528,7 +528,7 @@ test('adapter bootstrap uses default adapter source overrides when no source arg
 
     assert.equal(bootstrap.action, 'bootstrapped');
     assert.equal(bootstrap.source_action, 'added');
-    assert.equal(bootstrap.source.name, 'default-pack');
+    assert.equal(bootstrap.source.name, 'default-support');
     assert.equal(bootstrap.source.type, 'path');
     assert.equal(bootstrap.source.location, tempSource);
     assert.equal(bootstrap.sync.status, 'synced');

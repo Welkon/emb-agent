@@ -9,6 +9,7 @@ const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const runtimeHostHelpers = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
 const terminalUiHelpers = require(path.join(ROOT, 'lib', 'terminal-ui.cjs'));
+const defaultWorkflowSourceHelpers = require(path.join(ROOT, 'lib', 'default-workflow-source.cjs'));
 const workflowImportHelpers = require(path.join(ROOT, 'lib', 'workflow-import.cjs'));
 const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs'));
 
@@ -19,6 +20,7 @@ const workflowImport = workflowImportHelpers.createWorkflowImportHelpers({
   fs,
   os: require('os'),
   path,
+  process,
   runtime,
   workflowRegistry
 });
@@ -494,19 +496,89 @@ function loadWorkflowCatalog(projectRoot) {
   });
 }
 
+function listCatalogSpecNames(workflowCatalog) {
+  return new Set(
+    ((workflowCatalog && workflowCatalog.specs) || [])
+      .map(item => String(item && item.name ? item.name : '').trim())
+      .filter(Boolean)
+  );
+}
+
+function findMissingExplicitWorkflowSpecs(workflowCatalog, explicitSpecs) {
+  if (!Array.isArray(explicitSpecs) || explicitSpecs.length === 0) {
+    return [];
+  }
+
+  const known = listCatalogSpecNames(workflowCatalog);
+  return explicitSpecs.filter(name => !known.has(name));
+}
+
+function shouldAttemptDefaultWorkflowImport(initOptions, options, workflowCatalog, explicitSpecs) {
+  if (initOptions.registry) {
+    return false;
+  }
+
+  if (findMissingExplicitWorkflowSpecs(workflowCatalog, explicitSpecs).length > 0) {
+    return true;
+  }
+
+  const selectableSpecs = (workflowCatalog.specs || []).filter(item => item.selectable === true);
+  if (selectableSpecs.length > 0) {
+    return false;
+  }
+
+  return typeof options.promptWorkflowSpecChoices === 'function' ||
+    isInteractivePromptAvailable(options.process || process);
+}
+
 function prepareProjectWorkflowSetup(projectRoot, args, options = {}) {
   const initOptions = args || {};
   runtime.initProjectLayout(projectRoot);
 
-  const workflowRegistryImport = initOptions.registry
+  let workflowRegistryImport = initOptions.registry
     ? workflowImport.importProjectWorkflowRegistry(projectRoot, initOptions.registry, {
         branch: initOptions.registryBranch,
         subdir: initOptions.registrySubdir,
         force: options.force === true || initOptions.force === true
       })
     : null;
-  const workflowCatalog = loadWorkflowCatalog(projectRoot);
   const explicitSpecs = runtime.unique(((initOptions.specs || [])).filter(Boolean));
+  let workflowCatalog = loadWorkflowCatalog(projectRoot);
+  const missingExplicitSpecs = findMissingExplicitWorkflowSpecs(workflowCatalog, explicitSpecs);
+
+  if (shouldAttemptDefaultWorkflowImport(initOptions, options, workflowCatalog, explicitSpecs)) {
+    const defaultWorkflowSource = defaultWorkflowSourceHelpers.resolveDefaultWorkflowSource(
+      RUNTIME_CONFIG,
+      process.env
+    );
+
+    try {
+      workflowRegistryImport = workflowImport.importProjectWorkflowRegistry(
+        projectRoot,
+        defaultWorkflowSource.location,
+        {
+          branch: defaultWorkflowSource.branch,
+          subdir: defaultWorkflowSource.subdir,
+          force: options.force === true || initOptions.force === true
+        }
+      );
+      workflowCatalog = loadWorkflowCatalog(projectRoot);
+    } catch (error) {
+      if (missingExplicitSpecs.length > 0) {
+        const label = missingExplicitSpecs.length === 1 ? 'spec' : 'specs';
+        throw new Error(
+          `Could not load required workflow ${label} (${missingExplicitSpecs.join(', ')}) from the default workflow source: ${error.message}`
+        );
+      }
+    }
+  }
+
+  const remainingMissingSpecs = findMissingExplicitWorkflowSpecs(workflowCatalog, explicitSpecs);
+  if (remainingMissingSpecs.length > 0) {
+    const label = remainingMissingSpecs.length === 1 ? 'spec' : 'specs';
+    throw new Error(`Workflow ${label} not found: ${remainingMissingSpecs.join(', ')}`);
+  }
+
   const selectableSpecs = (workflowCatalog.specs || []).filter(item => item.selectable === true);
   const activeSpecs = explicitSpecs.length > 0
     ? explicitSpecs

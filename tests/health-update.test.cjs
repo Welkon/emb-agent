@@ -118,7 +118,7 @@ test('health reports warn for incomplete hardware identity and fail for missing 
     assert.ok(report.checks.some(item => item.key === 'hardware_identity' && item.status === 'warn'));
     assert.ok(report.checks.some(item => item.key === 'szlcsc_integration' && item.status === 'pass'));
     assert.ok(Array.isArray(report.next_commands));
-    assert.ok(report.next_commands.every(item => !item.cli.includes('support source add default-pack')));
+    assert.ok(report.next_commands.every(item => !item.cli.includes('support source add default-support')));
     assert.ok(report.next_commands.some(item => item.cli.endsWith(' next')));
     assert.equal(report.quickstart.stage, 'fill-hardware-identity');
     assert.equal(report.quickstart.display_stage, 'complete-project-facts');
@@ -345,7 +345,7 @@ test('health uses configured default adapter source from environment', () => {
     stdout = '';
     cli.main(['health']);
     const report = JSON.parse(stdout);
-    assert.ok(report.next_commands.every(item => !item.cli.includes('support source add default-pack')));
+    assert.ok(report.next_commands.every(item => !item.cli.includes('support source add default-support')));
     assert.ok(report.next_commands.some(item => item.cli.endsWith(' next')));
     assert.equal(report.quickstart.stage, 'fill-hardware-identity');
     assert.equal(report.action_card.stage, 'project-facts');
@@ -696,7 +696,7 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.action_card.first_cli.endsWith(' next'), true);
 
     stdout = '';
-    cli.main(['support', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
+    cli.main(['support', 'source', 'add', 'default-support', '--type', 'path', '--location', tempSource]);
 
     stdout = '';
     cli.main(['health']);
@@ -704,7 +704,7 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.checks.find(item => item.key === 'chip_support_sources_registered').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'chip_support_sync_project').status, 'pass');
     assert.equal(report.checks.find(item => item.key === 'chip_support_match').status, 'pass');
-    assert.ok(report.next_commands.every(item => !item.cli.includes('support bootstrap default-pack')));
+    assert.ok(report.next_commands.every(item => !item.cli.includes('support bootstrap default-support')));
     assert.equal(report.quickstart.stage, 'next');
     assert.equal(report.checks.find(item => item.key === 'chip_support_quality').status, 'warn');
     assert.equal(report.checks.find(item => item.key === 'binding_quality').status, 'warn');
@@ -717,7 +717,7 @@ test('health reports adapter registration and sync readiness', async () => {
     assert.equal(report.chip_support_health.reusability.reusable, false);
     assert.match(report.quickstart.summary, /project-local/);
     assert.match(report.action_card.summary, /project-local/);
-    assert.ok(report.recommendations.every(item => !item.includes('support sync default-pack')));
+    assert.ok(report.recommendations.every(item => !item.includes('support sync default-support')));
     assert.ok(report.next_commands.some(item => item.cli.includes('tool run timer-calc')));
   } finally {
     if (previousTrust === undefined) {
@@ -856,8 +856,8 @@ test('health routes from applied hardware doc to adapter derive when synced adap
       { providerImpls }
     );
     await cli.runIngestCommand('apply', ['doc', ingested.doc_id, '--to', 'hardware']);
-    cli.main(['support', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
-    cli.main(['support', 'sync', 'default-pack']);
+    cli.main(['support', 'source', 'add', 'default-support', '--type', 'path', '--location', tempSource]);
+    cli.main(['support', 'sync', 'default-support']);
 
     stdout = '';
     cli.main(['health']);

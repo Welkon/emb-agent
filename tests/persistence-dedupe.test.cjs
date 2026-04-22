@@ -9,6 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const { withDefaultWorkflowSourceEnv } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 function countOccurrences(content, needle) {
   return (content.match(new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
@@ -99,8 +100,9 @@ test('repeated review save with same summary replaces prior report entry', () =>
 
   process.stdout.write = () => true;
 
-  try {
-    initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
+  return withDefaultWorkflowSourceEnv(() => {
+    try {
+      initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
 
     process.chdir(tempProject);
     cli.main(['init']);
@@ -110,10 +112,11 @@ test('repeated review save with same summary replaces prior report entry', () =>
 
     const content = fs.readFileSync(path.join(tempProject, 'docs', 'REVIEW-REPORT.md'), 'utf8');
 
-    assert.equal(countOccurrences(content, 'Reconnect path needs explicit offline gate'), 1);
-    assert.equal(countOccurrences(content, 'finding-v2'), 1);
-  } finally {
-    process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
-  }
+      assert.equal(countOccurrences(content, 'Reconnect path needs explicit offline gate'), 1);
+      assert.equal(countOccurrences(content, 'finding-v2'), 1);
+    } finally {
+      process.chdir(currentCwd);
+      process.stdout.write = originalWrite;
+    }
+  });
 });

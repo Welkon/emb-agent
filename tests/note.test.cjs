@@ -9,6 +9,9 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const {
+  importSupportWorkflowRegistry
+} = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 test('note add appends structured entry to hardware doc', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-note-'));
@@ -66,6 +69,7 @@ test('note add can create missing connectivity note target from template', () =>
 
     process.chdir(tempProject);
     cli.main(['init']);
+    importSupportWorkflowRegistry(tempProject);
     cli.main(['profile', 'set', 'rtos-iot']);
     cli.main(['spec', 'add', 'connected-appliance']);
     cli.main([

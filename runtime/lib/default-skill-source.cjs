@@ -1,7 +1,8 @@
 'use strict';
 
 const DEFAULT_SKILL_SOURCE_TYPE = 'git';
-const DEFAULT_SKILL_SOURCE_LOCATION = 'https://github.com/Welkon/emb-skills.git';
+const DEFAULT_SKILL_SOURCE_LOCATION = 'https://github.com/Welkon/emb-support.git';
+const DEFAULT_SKILL_SOURCE_SUBDIR = 'skills';
 
 function readEnvString(env, key) {
   if (!env || typeof env !== 'object' || Array.isArray(env)) {
@@ -41,7 +42,8 @@ function resolveDefaultSkillSource(runtimeConfig, env) {
     String(config.branch || '').trim();
   const subdir =
     readEnvString(env, 'EMB_AGENT_DEFAULT_SKILL_SOURCE_SUBDIR') ||
-    String(config.subdir || '').trim();
+    String(config.subdir || '').trim() ||
+    DEFAULT_SKILL_SOURCE_SUBDIR;
 
   return {
     type,
@@ -51,8 +53,24 @@ function resolveDefaultSkillSource(runtimeConfig, env) {
   };
 }
 
+function buildSkillSourceInstallArgv(source) {
+  const resolved = source || resolveDefaultSkillSource(null, null);
+  const argv = [resolved.location];
+
+  if (resolved.branch) {
+    argv.push('--branch', resolved.branch);
+  }
+  if (resolved.subdir) {
+    argv.push('--subdir', resolved.subdir);
+  }
+
+  return argv;
+}
+
 module.exports = {
   DEFAULT_SKILL_SOURCE_TYPE,
   DEFAULT_SKILL_SOURCE_LOCATION,
+  DEFAULT_SKILL_SOURCE_SUBDIR,
+  buildSkillSourceInstallArgv,
   resolveDefaultSkillSource
 };

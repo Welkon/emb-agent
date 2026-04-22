@@ -10,6 +10,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const { withDefaultWorkflowSourceEnv } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 function readBootstrapTask(projectRoot) {
   return JSON.parse(
@@ -62,6 +63,22 @@ test('prepareProjectWorkflowSetup imports registry before resolving prompted wor
           extra_review_axes: [],
           preferred_notes: [],
           default_agents: []
+        },
+        {
+          name: 'factory-test',
+          title: 'Factory Test',
+          path: 'specs/factory-test.md',
+          summary: 'Imported factory test workflow.',
+          auto_inject: true,
+          selectable: true,
+          priority: 55,
+          apply_when: {
+            specs: ['factory-test']
+          },
+          focus_areas: ['production'],
+          extra_review_axes: [],
+          preferred_notes: [],
+          default_agents: []
         }
       ]
     }, null, 2) + '\n',
@@ -73,6 +90,16 @@ test('prepareProjectWorkflowSetup imports registry before resolving prompted wor
       '# Smart Pillbox',
       '',
       '- Check medication schedule flow.',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(tempSource, '.emb-agent', 'specs', 'factory-test.md'),
+    [
+      '# Factory Test',
+      '',
+      '- Check factory flow.',
       ''
     ].join('\n'),
     'utf8'
@@ -121,15 +148,16 @@ test('init-project creates project defaults and defers note templates into a boo
 
   process.stdout.write = () => true;
 
-  try {
-    initProject.main([
-      '--project',
-      tempProject,
-      '--profile',
-      'rtos-iot',
-      '--spec',
-      'connected-appliance'
-    ]);
+  return withDefaultWorkflowSourceEnv(() => {
+    try {
+      initProject.main([
+        '--project',
+        tempProject,
+        '--profile',
+        'rtos-iot',
+        '--spec',
+        'connected-appliance'
+      ]);
 
     const projectConfig = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
@@ -217,10 +245,11 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(status.project_defaults.project_profile, 'rtos-iot');
     assert.deepEqual(status.project_defaults.arch_review.trigger_patterns, []);
     assert.ok(Array.isArray(status.arch_review_triggers));
-  } finally {
-    process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
-  }
+    } finally {
+      process.chdir(currentCwd);
+      process.stdout.write = originalWrite;
+    }
+  });
 });
 
 test('init-project with battery-charger spec adds deferred power charging note target to bootstrap task', () => {
@@ -229,15 +258,16 @@ test('init-project with battery-charger spec adds deferred power charging note t
 
   process.stdout.write = () => true;
 
-  try {
-    initProject.main([
-      '--project',
-      tempProject,
-      '--profile',
-      'baremetal-8bit',
-      '--spec',
-      'battery-charger'
-    ]);
+  return withDefaultWorkflowSourceEnv(() => {
+    try {
+      initProject.main([
+        '--project',
+        tempProject,
+        '--profile',
+        'baremetal-8bit',
+        '--spec',
+        'battery-charger'
+      ]);
 
     const projectConfig = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
@@ -249,9 +279,10 @@ test('init-project with battery-charger spec adds deferred power charging note t
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-CHARGING.md')), false);
     assert.ok(bootstrapTask.relatedFiles.includes('docs/POWER-CHARGING.md'));
     assert.ok(bootstrapTask.subtasks.some(item => item.name.includes('docs/POWER-CHARGING.md')));
-  } finally {
-    process.stdout.write = originalWrite;
-  }
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
 });
 
 test('init-project with Padauk firmware spec adds deferred implementation-style note target', () => {
@@ -260,15 +291,16 @@ test('init-project with Padauk firmware spec adds deferred implementation-style 
 
   process.stdout.write = () => true;
 
-  try {
-    initProject.main([
-      '--project',
-      tempProject,
-      '--profile',
-      'baremetal-8bit',
-      '--spec',
-      'padauk-firmware'
-    ]);
+  return withDefaultWorkflowSourceEnv(() => {
+    try {
+      initProject.main([
+        '--project',
+        tempProject,
+        '--profile',
+        'baremetal-8bit',
+        '--spec',
+        'padauk-firmware'
+      ]);
 
     const projectConfig = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
@@ -280,9 +312,10 @@ test('init-project with Padauk firmware spec adds deferred implementation-style 
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'IMPLEMENTATION-STYLE.md')), false);
     assert.ok(bootstrapTask.relatedFiles.includes('docs/IMPLEMENTATION-STYLE.md'));
     assert.ok(bootstrapTask.subtasks.some(item => item.name.includes('docs/IMPLEMENTATION-STYLE.md')));
-  } finally {
-    process.stdout.write = originalWrite;
-  }
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
 });
 
 test('init-project honors project-local smart-pillbox spec and template', () => {
@@ -448,15 +481,16 @@ test('init-project with motor-drive spec adds deferred motor note targets to boo
 
   process.stdout.write = () => true;
 
-  try {
-    initProject.main([
-      '--project',
-      tempProject,
-      '--profile',
-      'baremetal-8bit',
-      '--spec',
-      'motor-drive'
-    ]);
+  return withDefaultWorkflowSourceEnv(() => {
+    try {
+      initProject.main([
+        '--project',
+        tempProject,
+        '--profile',
+        'baremetal-8bit',
+        '--spec',
+        'motor-drive'
+      ]);
 
     const projectConfig = JSON.parse(
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
@@ -469,9 +503,10 @@ test('init-project with motor-drive spec adds deferred motor note targets to boo
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-STAGE.md')), false);
     assert.ok(bootstrapTask.relatedFiles.includes('docs/MOTOR-CONTROL.md'));
     assert.ok(bootstrapTask.relatedFiles.includes('docs/POWER-STAGE.md'));
-  } finally {
-    process.stdout.write = originalWrite;
-  }
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+  });
 });
 
 test('init preserves existing docs files without force', () => {
@@ -588,7 +623,7 @@ test('init scans existing project inputs and suggests hardware confirmation befo
   }
 });
 
-test('init prioritizes project-local chip support derive for confirmed chip before board pin declaration', () => {
+test('init prioritizes bootstrap run for confirmed chip when default support source is available', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-pins-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -647,8 +682,8 @@ test('init prioritizes project-local chip support derive for confirmed chip befo
     assert.equal(result.initialized, true);
     assert.equal(result.bootstrap.status, 'ready-for-next');
     assert.equal(result.bootstrap.stage, 'bootstrap-chip-support');
-    assert.equal(result.bootstrap.command, 'support derive --from-project');
-    assert.match(result.bootstrap.summary, /project-local draft chip support/i);
+    assert.equal(result.bootstrap.command, 'bootstrap run --confirm');
+    assert.match(result.bootstrap.summary, /chip support install is ready/i);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

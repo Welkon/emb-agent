@@ -11,6 +11,7 @@ const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 const scheduler = require(path.join(repoRoot, 'runtime', 'lib', 'scheduler.cjs'));
 const workflowRegistry = require(path.join(repoRoot, 'runtime', 'lib', 'workflow-registry.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const { importSupportWorkflowRegistry } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 const REVIEW_AGENT_NAMES = ['hw-scout', 'bug-hunter', 'sys-reviewer', 'release-checker'];
 
@@ -22,7 +23,12 @@ function loadProfile(name) {
 }
 
 function loadSelectedSpec(name) {
-  const registry = workflowRegistry.loadWorkflowRegistry(path.join(repoRoot, 'runtime'));
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-scheduler-workflow-'));
+  const projectExtDir = runtime.initProjectLayout(tempProject);
+  importSupportWorkflowRegistry(tempProject);
+  const registry = workflowRegistry.loadWorkflowRegistry(path.join(repoRoot, 'runtime'), {
+    projectExtDir
+  });
   const entry = (registry.specs || []).find(item => item.name === name && item.selectable === true);
   if (!entry) {
     throw new Error(`Selectable spec not found: ${name}`);

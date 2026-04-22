@@ -1268,6 +1268,18 @@ function validateDefaultAdapterSourceConfig(config) {
   };
 }
 
+function validateDefaultWorkflowSourceConfig(config) {
+  const source = config === undefined || config === null ? {} : config;
+  expectObject(source, 'default_workflow_source');
+
+  return {
+    type: ensureChoice(source.type, 'default_workflow_source.type', ['path', 'git'], 'git'),
+    location: ensureOptionalString(source.location, 'default_workflow_source.location'),
+    branch: ensureOptionalString(source.branch, 'default_workflow_source.branch'),
+    subdir: ensureOptionalString(source.subdir, 'default_workflow_source.subdir')
+  };
+}
+
 function validateDefaultSkillSourceConfig(config) {
   const source = config === undefined || config === null ? {} : config;
   expectObject(source, 'default_skill_source');
@@ -1445,6 +1457,7 @@ function validateRuntimeConfig(config) {
     default_preferences: normalizePreferences(config.default_preferences || {}, {
       default_preferences: DEFAULT_PREFERENCES
     }),
+    default_workflow_source: validateDefaultWorkflowSourceConfig(config.default_workflow_source || {}),
     default_chip_support_source: validateDefaultAdapterSourceConfig(config.default_chip_support_source || {}),
     default_skill_source: validateDefaultSkillSourceConfig(config.default_skill_source || {}),
     project_state_dir: ensureString(
@@ -1922,6 +1935,9 @@ module.exports = {
   validateAdapterSources,
   validateContextSummary,
   validateDeveloperConfig,
+  validateDefaultAdapterSourceConfig,
+  validateDefaultWorkflowSourceConfig,
+  validateDefaultSkillSourceConfig,
   validateHandoff,
   validateProfile,
   validateProjectConfig,

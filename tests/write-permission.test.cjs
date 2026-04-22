@@ -320,7 +320,7 @@ test('bootstrap run surfaces permission ask and supports --confirm for gated ada
       'support',
       'source',
       'add',
-      'default-pack',
+      'default-support',
       '--type',
       'path',
       '--location',

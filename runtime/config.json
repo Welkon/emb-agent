@@ -13,17 +13,23 @@
     "review_mode": "auto",
     "verification_mode": "lean"
   },
+  "default_workflow_source": {
+    "type": "git",
+    "location": "https://github.com/Welkon/emb-support.git",
+    "branch": "",
+    "subdir": "workflows"
+  },
   "default_chip_support_source": {
     "type": "git",
-    "location": "",
+    "location": "https://github.com/Welkon/emb-support.git",
     "branch": "",
-    "subdir": ""
+    "subdir": "adapters"
   },
   "default_skill_source": {
     "type": "git",
-    "location": "https://github.com/Welkon/emb-skills.git",
+    "location": "https://github.com/Welkon/emb-support.git",
     "branch": "",
-    "subdir": ""
+    "subdir": "skills"
   },
   "project_state_dir": "../state/emb-agent/projects",
   "legacy_project_state_dir": "state/projects",
