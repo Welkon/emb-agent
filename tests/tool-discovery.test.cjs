@@ -317,7 +317,7 @@ test('known chip start path prefers guided bootstrap once a chip support source 
   }
 });
 
-test('known chip start path prefers project-local derive before shared sources are configured', async () => {
+test('known chip start path prefers bootstrap run when default support source is configured', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-start-derive-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -331,10 +331,10 @@ test('known chip start path prefers project-local derive before shared sources a
 
     const start = cli.buildStartContext();
 
-    assert.equal(start.immediate.command, 'support derive --from-project');
-    assert.match(start.immediate.cli, /support derive --from-project$/);
+    assert.equal(start.immediate.command, 'bootstrap run --confirm');
+    assert.match(start.immediate.cli, /bootstrap run --confirm$/);
     assert.ok(Array.isArray(start.workflow.steps[0].commands));
-    assert.ok(start.workflow.steps[0].commands.some(item => item.includes('support derive --from-project')));
+    assert.ok(start.workflow.steps[0].commands.some(item => item.includes('bootstrap run --confirm')));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

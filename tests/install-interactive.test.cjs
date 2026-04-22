@@ -10,7 +10,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const installHelpersModule = require(path.join(repoRoot, 'runtime', 'lib', 'install-helpers.cjs'));
 const installTargetsModule = require(path.join(repoRoot, 'runtime', 'lib', 'install-targets.cjs'));
-const { DEFAULT_SKILL_SOURCE_LOCATION } = require(path.join(
+const { DEFAULT_SKILL_SOURCE_LOCATION, DEFAULT_SKILL_SOURCE_SUBDIR } = require(path.join(
   repoRoot,
   'runtime',
   'lib',
@@ -159,7 +159,7 @@ test('interactive prompts render structured sections and retry blank developer n
 
   const helper = createHelper(fakeProcess, {
     previewSkillSource(argv) {
-      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--scope', 'project']);
+      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--subdir', DEFAULT_SKILL_SOURCE_SUBDIR, '--scope', 'project']);
       return {
         plugin: {
           name: 'emb-skills'
@@ -261,7 +261,7 @@ test('interactive prompts can collect initial skill source and selected skills',
 
   const helper = createHelper(fakeProcess, {
     previewSkillSource(argv) {
-      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--scope', 'project']);
+      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--subdir', DEFAULT_SKILL_SOURCE_SUBDIR, '--scope', 'project']);
       return {
         plugin: {
           name: 'scope-ops-kit'
@@ -351,7 +351,7 @@ test('interactive prompts support arrow-key multi-select for skills', async () =
 
   const helper = createHelper(fakeProcess, {
     previewSkillSource(argv) {
-      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--scope', 'project']);
+      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--subdir', DEFAULT_SKILL_SOURCE_SUBDIR, '--scope', 'project']);
       return {
         plugin: {
           name: 'scope-ops-kit'
@@ -442,7 +442,7 @@ test('interactive prompts support selecting the direct skip option with arrow ke
 
   const helper = createHelper(fakeProcess, {
     previewSkillSource(argv) {
-      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--scope', 'project']);
+      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--subdir', DEFAULT_SKILL_SOURCE_SUBDIR, '--scope', 'project']);
       return {
         plugin: {
           name: 'scope-ops-kit'
@@ -519,7 +519,7 @@ test('interactive prompts skip initial skills when selection is left blank', asy
 
   const helper = createHelper(fakeProcess, {
     previewSkillSource(argv) {
-      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--scope', 'project']);
+      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--subdir', DEFAULT_SKILL_SOURCE_SUBDIR, '--scope', 'project']);
       return {
         plugin: {
           name: 'scope-ops-kit'
@@ -628,7 +628,7 @@ test('interactive prompts can switch away from the default initial skill bundle'
   const args = await helper.resolveArgs([]);
 
   assert.deepEqual(previewCalls, [
-    [DEFAULT_SKILL_SOURCE_LOCATION, '--scope', 'project'],
+    [DEFAULT_SKILL_SOURCE_LOCATION, '--subdir', DEFAULT_SKILL_SOURCE_SUBDIR, '--scope', 'project'],
     ['./custom-bundle', '--scope', 'project']
   ]);
   assert.deepEqual(args.skillSources, ['./custom-bundle']);

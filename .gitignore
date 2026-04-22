@@ -5,4 +5,6 @@ runtime/state/projects/*
 .emb-agent/
 !examples/project-extensions/smart-pillbox/.emb-agent/
 !examples/project-extensions/smart-pillbox/.emb-agent/**
+!tests/fixtures/emb-support/workflows/.emb-agent/
+!tests/fixtures/emb-support/workflows/.emb-agent/**
 .emb-agent/.developer

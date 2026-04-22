@@ -497,6 +497,7 @@ function createCliEntryHelpers(deps) {
       package_present: Boolean(hardware.package),
       declared_intent_present: Boolean(declaredIntentPresent),
       chip_support_sources_registered: sources.length,
+      chip_support_source_ready: adapterSourceReady,
       existing_project_detected: meaningfulInputCount > 0,
       hardware_confirmation_required: !hardwareReady && !blankProject,
       project_definition_required: blankProject,
@@ -831,7 +832,12 @@ function createCliEntryHelpers(deps) {
     const hasHandoff = settings.hasHandoff === true;
     const initialized = settings.initialized !== false;
     const knownChipPath = Boolean(initGuidance && initGuidance.hardware_identity_present);
-    const sourceReady = Boolean(initGuidance && initGuidance.chip_support_sources_registered > 0);
+    const sourceReady = Boolean(
+      initGuidance && (
+        initGuidance.chip_support_source_ready === true ||
+        initGuidance.chip_support_sources_registered > 0
+      )
+    );
     const workflow = [
       {
         id: 'project-bootstrap',

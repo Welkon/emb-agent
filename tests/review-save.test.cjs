@@ -9,6 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const { withDefaultWorkflowSourceEnv } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 test('review save creates review report from template and appends structured entry', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-review-'));
@@ -17,8 +18,9 @@ test('review save creates review report from template and appends structured ent
 
   process.stdout.write = () => true;
 
-  try {
-    initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
+  return withDefaultWorkflowSourceEnv(() => {
+    try {
+      initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
 
     process.chdir(tempProject);
     cli.main(['init']);
@@ -45,8 +47,9 @@ test('review save creates review report from template and appends structured ent
     assert.match(content, /Rollback trigger is not yet documented/);
     assert.match(content, /Verify offline default behavior after rollback/);
     assert.match(content, /ota_rollback/);
-  } finally {
-    process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
-  }
+    } finally {
+      process.chdir(currentCwd);
+      process.stdout.write = originalWrite;
+    }
+  });
 });

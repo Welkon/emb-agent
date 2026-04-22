@@ -8,6 +8,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const installer = require(path.join(repoRoot, 'bin', 'install.js'));
+const { withDefaultWorkflowSourceEnv } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 async function captureCliJson(cliImpl, args) {
   const originalWrite = process.stdout.write;
@@ -197,11 +198,17 @@ test('installer lays down config/lib and runtime commands work', async () => {
       branch: 'main',
       subdir: 'emb-agent'
     });
+    assert.deepEqual(configData.default_workflow_source, {
+      type: 'git',
+      location: 'https://github.com/Welkon/emb-support.git',
+      branch: '',
+      subdir: 'workflows'
+    });
     assert.deepEqual(configData.default_skill_source, {
       type: 'git',
-      location: 'https://github.com/Welkon/emb-skills.git',
+      location: 'https://github.com/Welkon/emb-support.git',
       branch: '',
-      subdir: ''
+      subdir: 'skills'
     });
     assert.deepEqual(configData.developer, { name: 'welkon', runtime: 'codex' });
     assert.equal(hostMetadata.name, 'codex');
@@ -439,7 +446,9 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const configuredProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-configured-'));
     const initProject = require(path.join(runtimeRoot, 'scripts', 'init-project.cjs'));
 
-    initProject.main(['--project', configuredProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
+    withDefaultWorkflowSourceEnv(() => {
+      initProject.main(['--project', configuredProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
+    });
 
     const projectConfigPath = path.join(configuredProject, '.emb-agent', 'project.json');
 

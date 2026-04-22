@@ -1,8 +1,9 @@
 'use strict';
 
-const DEFAULT_ADAPTER_SOURCE_NAME = 'default-pack';
+const DEFAULT_ADAPTER_SOURCE_NAME = 'default-support';
 const DEFAULT_ADAPTER_SOURCE_TYPE = 'git';
-const DEFAULT_ADAPTER_SOURCE_LOCATION = 'https://github.com/Welkon/emb-agent-adapters.git';
+const DEFAULT_ADAPTER_SOURCE_LOCATION = 'https://github.com/Welkon/emb-support.git';
+const DEFAULT_ADAPTER_SOURCE_SUBDIR = 'adapters';
 
 function readEnvString(env, key) {
   if (!env || typeof env !== 'object' || Array.isArray(env)) {
@@ -35,7 +36,10 @@ function resolveDefaultAdapterSource(runtimeConfig, env) {
     String(config.location || '').trim() ||
     DEFAULT_ADAPTER_SOURCE_LOCATION;
   const branch = readEnvString(env, 'EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_BRANCH') || String(config.branch || '').trim();
-  const subdir = readEnvString(env, 'EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_SUBDIR') || String(config.subdir || '').trim();
+  const subdir =
+    readEnvString(env, 'EMB_AGENT_DEFAULT_CHIP_SUPPORT_SOURCE_SUBDIR') ||
+    String(config.subdir || '').trim() ||
+    DEFAULT_ADAPTER_SOURCE_SUBDIR;
 
   return {
     name: DEFAULT_ADAPTER_SOURCE_NAME,
@@ -64,6 +68,7 @@ module.exports = {
   DEFAULT_ADAPTER_SOURCE_NAME,
   DEFAULT_ADAPTER_SOURCE_TYPE,
   DEFAULT_ADAPTER_SOURCE_LOCATION,
+  DEFAULT_ADAPTER_SOURCE_SUBDIR,
   buildDefaultAdapterSourceArgs,
   resolveDefaultAdapterSource
 };

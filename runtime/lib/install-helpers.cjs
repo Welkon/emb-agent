@@ -1,7 +1,8 @@
 'use strict';
 
 const commandVisibility = require('./command-visibility.cjs');
-const { DEFAULT_SKILL_SOURCE_LOCATION } = require('./default-skill-source.cjs');
+const defaultSkillSourceHelpers = require('./default-skill-source.cjs');
+const { DEFAULT_SKILL_SOURCE_LOCATION } = defaultSkillSourceHelpers;
 
 function createInstallHelpers(deps) {
   const {
@@ -933,9 +934,24 @@ function createInstallHelpers(deps) {
     return cachedSkillSourcePreviewer;
   }
 
+  function resolveInstallerDefaultSkillSource() {
+    const runtime = require(path.join(runtimeSrc, 'lib', 'runtime.cjs'));
+    const runtimeConfig = runtime.loadRuntimeConfig(runtimeSrc);
+    return defaultSkillSourceHelpers.resolveDefaultSkillSource(runtimeConfig, process.env);
+  }
+
+  function buildInstallerSkillSourceArgv(source) {
+    const resolvedSource = String(source || '').trim();
+    const defaultSource = resolveInstallerDefaultSkillSource();
+    if (resolvedSource && resolvedSource === defaultSource.location) {
+      return defaultSkillSourceHelpers.buildSkillSourceInstallArgv(defaultSource);
+    }
+    return [resolvedSource];
+  }
+
   function previewInteractiveSkillSource(source, selectedSkillNames) {
     const previewer = getSkillSourcePreviewer();
-    const argv = [source, '--scope', 'project'];
+    const argv = [...buildInstallerSkillSourceArgv(source), '--scope', 'project'];
     (Array.isArray(selectedSkillNames) ? selectedSkillNames : []).forEach(name => {
       argv.push('--skill', name);
     });
@@ -2397,7 +2413,7 @@ function createInstallHelpers(deps) {
     ];
 
     return Promise.all(
-      sources.map(source => installedRuntime.installSkillSource([source, ...sharedArgs]))
+      sources.map(source => installedRuntime.installSkillSource([...buildInstallerSkillSourceArgv(source), ...sharedArgs]))
     );
   }
 

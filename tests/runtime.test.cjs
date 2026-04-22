@@ -24,17 +24,23 @@ test('loadRuntimeConfig returns validated defaults', () => {
     verification_mode: 'lean',
     orchestration_mode: 'auto'
   });
+  assert.deepEqual(config.default_workflow_source, {
+    type: 'git',
+    location: 'https://github.com/Welkon/emb-support.git',
+    branch: '',
+    subdir: 'workflows'
+  });
   assert.deepEqual(config.default_chip_support_source, {
     type: 'git',
-    location: '',
+    location: 'https://github.com/Welkon/emb-support.git',
     branch: '',
-    subdir: ''
+    subdir: 'adapters'
   });
   assert.deepEqual(config.default_skill_source, {
     type: 'git',
-    location: 'https://github.com/Welkon/emb-skills.git',
+    location: 'https://github.com/Welkon/emb-support.git',
     branch: '',
-    subdir: ''
+    subdir: 'skills'
   });
   assert.equal(config.project_state_dir, '../state/emb-agent/projects');
   assert.equal(config.legacy_project_state_dir, 'state/projects');

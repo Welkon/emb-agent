@@ -205,8 +205,8 @@ test('task commands create activate manage context and resolve lightweight tasks
       ].join('\n'),
       'utf8'
     );
-    await cli.main(['support', 'source', 'add', 'default-pack', '--type', 'path', '--location', tempSource]);
-    await cli.main(['support', 'sync', 'default-pack']);
+    await cli.main(['support', 'source', 'add', 'default-support', '--type', 'path', '--location', tempSource]);
+    await cli.main(['support', 'sync', 'default-support']);
     await cli.runIngestCommand(
       'doc',
       ['--file', 'docs/SC8F072.pdf', '--kind', 'datasheet', '--to', 'hardware'],
@@ -272,7 +272,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(created.task.scope, 'pwm');
     assert.equal(created.task.priority, 'P1');
     assert.ok(created.task.bindings.docs.some(item => item.doc_id));
-    assert.ok(created.task.bindings.chip_support.some(item => item.source === 'default-pack'));
+    assert.ok(created.task.bindings.chip_support.some(item => item.source === 'default-support'));
     assert.ok(created.task.bindings.tools.some(item => item.tool === 'timer-calc'));
     assert.ok(created.task.injected_specs.some(item => item.name === 'project-local'));
     assert.ok(created.task.context.implement.some(item => item.path === '.emb-agent/hw.yaml'));

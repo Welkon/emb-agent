@@ -9,10 +9,12 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const workflowRegistry = require(path.join(repoRoot, 'runtime', 'lib', 'workflow-registry.cjs'));
 const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
+const { importSupportWorkflowRegistry } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 test('workflow registry merges built-in and project specs and resolves auto injection', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-registry-'));
   const projectExtDir = runtime.initProjectLayout(tempProject);
+  importSupportWorkflowRegistry(tempProject);
   const registryPath = path.join(projectExtDir, 'registry', 'workflow.json');
 
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
@@ -56,6 +58,7 @@ test('workflow registry merges built-in and project specs and resolves auto inje
 test('workflow registry injects iot device focus for connected projects without requiring rtos', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-iot-'));
   const projectExtDir = runtime.initProjectLayout(tempProject);
+  importSupportWorkflowRegistry(tempProject);
 
   const merged = workflowRegistry.loadWorkflowRegistry(path.join(repoRoot, 'runtime'), {
     projectExtDir
@@ -74,6 +77,7 @@ test('workflow registry injects iot device focus for connected projects without 
 test('workflow registry injects project-local smart pillbox focus plus shared iot focus', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-pillbox-'));
   const projectExtDir = runtime.initProjectLayout(tempProject);
+  importSupportWorkflowRegistry(tempProject);
   const registryPath = path.join(projectExtDir, 'registry', 'workflow.json');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
 
@@ -135,6 +139,7 @@ test('workflow registry injects project-local smart pillbox focus plus shared io
 test('workflow registry injects motor drive focus for motor control projects', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-motor-'));
   const projectExtDir = runtime.initProjectLayout(tempProject);
+  importSupportWorkflowRegistry(tempProject);
 
   const merged = workflowRegistry.loadWorkflowRegistry(path.join(repoRoot, 'runtime'), {
     projectExtDir
@@ -152,6 +157,7 @@ test('workflow registry injects motor drive focus for motor control projects', (
 test('workflow registry injects Padauk firmware focus for constrained-toolchain projects', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-padauk-'));
   const projectExtDir = runtime.initProjectLayout(tempProject);
+  importSupportWorkflowRegistry(tempProject);
 
   const merged = workflowRegistry.loadWorkflowRegistry(path.join(repoRoot, 'runtime'), {
     projectExtDir

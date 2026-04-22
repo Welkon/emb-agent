@@ -9,6 +9,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const { importSupportWorkflowRegistry } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 test('settings facade manages profile specs and preferences together', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-settings-'));
@@ -22,6 +23,7 @@ test('settings facade manages profile specs and preferences together', () => {
 
     process.chdir(tempProject);
     cli.main(['init']);
+    importSupportWorkflowRegistry(tempProject);
     cli.main(['settings', 'set', 'profile', 'rtos-iot']);
     cli.main(['settings', 'set', 'specs', 'sensor-node,connected-appliance']);
     cli.main(['settings', 'set', 'plan_mode', 'always']);
