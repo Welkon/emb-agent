@@ -258,6 +258,16 @@ test('applyOutputMode builds brief start context payload with external driver hi
       reason: 'The emb-agent project bootstrap already exists. Create and activate a task before execution.',
       cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs task add <summary>'
     },
+    task_intake: {
+      status: 'ready',
+      recommended_entry: 'task add <summary>',
+      summary: 'Create a task and PRD first. Use scan when requirements, hardware truth, or the change surface are still unclear; use plan when the path is already explicit.',
+      paths: [
+        { id: 'known-change' },
+        { id: 'unclear-scope' },
+        { id: 'system-change' }
+      ]
+    },
     bootstrap: {
       status: 'ready-for-next',
       stage: 'continue-with-next',
@@ -285,6 +295,9 @@ test('applyOutputMode builds brief start context payload with external driver hi
   assert.equal(output.summary.active_package, 'fw');
   assert.equal(output.summary.active_task.package, 'fw');
   assert.equal(output.immediate.command, 'task add <summary>');
+  assert.equal(output.task_intake.status, 'ready');
+  assert.equal(output.task_intake.recommended_entry, 'task add <summary>');
+  assert.deepEqual(output.task_intake.modes, ['known-change', 'unclear-scope', 'system-change']);
   assert.equal(output.runtime_events.status, 'ok');
   assert.deepEqual(output.runtime_events.types, ['workflow-start']);
   assert.equal(output.external_agent, undefined);

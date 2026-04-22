@@ -861,7 +861,12 @@ function createCliEntryHelpers(deps) {
         title: 'Task bootstrap',
         commands: activeTask
           ? [`task activate ${activeTask.name} (already active)`]
-          : ['task add <summary>', 'task activate <name>'],
+          : [
+              'task add <summary>',
+              'task activate <name>',
+              'If scope is unclear: scan -> plan',
+              'If scope is already explicit: plan -> do'
+            ],
         outcome: 'The current change has an isolated task context and PRD.'
       },
       {
@@ -885,6 +890,45 @@ function createCliEntryHelpers(deps) {
     }
 
     return workflow;
+  }
+
+  function buildTaskIntake(options) {
+    const settings = options || {};
+    const activeTask = settings.activeTask || null;
+    const hasHandoff = settings.hasHandoff === true;
+    const bootstrapPending = settings.bootstrapPending === true;
+
+    if (activeTask || hasHandoff) {
+      return null;
+    }
+
+    return {
+      status: bootstrapPending ? 'blocked-by-bootstrap' : 'ready',
+      recommended_entry: 'task add <summary>',
+      summary: bootstrapPending
+        ? 'After bootstrap is ready, create a task and PRD first. Use scan when requirements, hardware truth, or the change surface are still unclear; use plan when the path is already explicit.'
+        : 'Create a task and PRD first. Use scan when requirements, hardware truth, or the change surface are still unclear; use plan when the path is already explicit.',
+      paths: [
+        {
+          id: 'known-change',
+          when: 'The target files and acceptance check are already explicit.',
+          commands: ['task add <summary>', 'task activate <name>', 'plan', 'do'],
+          outcome: 'Execution can move directly into an implementation plan.'
+        },
+        {
+          id: 'unclear-scope',
+          when: 'Requirements, hardware truth, or the changed surface are still fuzzy.',
+          commands: ['task add <summary>', 'task activate <name>', 'scan', 'plan'],
+          outcome: 'The task PRD and project facts converge before mutation.'
+        },
+        {
+          id: 'system-change',
+          when: 'The work crosses timing, concurrency, release, or interface boundaries.',
+          commands: ['task add <summary>', 'task activate <name>', 'scan', 'plan', 'review', 'verify'],
+          outcome: 'Cross-boundary risks stay explicit through closure.'
+        }
+      ]
+    };
   }
 
   function buildBootstrapSummary(initGuidance) {
@@ -1077,6 +1121,7 @@ function createCliEntryHelpers(deps) {
     buildInitGuidance,
     buildBootstrapSummary,
     buildStartWorkflow,
+    buildTaskIntake,
     buildUsagePayload,
     usage,
     runInitCommand,

@@ -233,6 +233,21 @@ function buildSessionContext(projectRoot, start, resume, options) {
     );
   }
 
+  if (
+    !summaryHasActiveTask(start) &&
+    start.task_intake &&
+    typeof start.task_intake === 'object' &&
+    start.task_intake.summary
+  ) {
+    lines.push(
+      `${
+        start.task_intake.status === 'blocked-by-bootstrap'
+          ? 'Task intake after bootstrap'
+          : 'Task intake'
+      }: ${start.task_intake.summary}`
+    );
+  }
+
   if (Array.isArray(settings.sessionReportLines) && settings.sessionReportLines.length > 0) {
     lines.push(...settings.sessionReportLines);
   }
@@ -251,6 +266,17 @@ function buildSessionContext(projectRoot, start, resume, options) {
   lines.push('</ready>');
 
   return lines.join('\n');
+}
+
+function summaryHasActiveTask(start) {
+  return Boolean(
+    start &&
+    start.summary &&
+    typeof start.summary === 'object' &&
+    start.summary.active_task &&
+    typeof start.summary.active_task === 'object' &&
+    start.summary.active_task.name
+  );
 }
 
 function buildHostSessionStartPayload(data, message) {

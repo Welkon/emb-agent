@@ -19,6 +19,7 @@ function createActionContractHelpers(deps) {
     buildContextHygiene,
     enrichWithToolSuggestions,
     buildArchReviewContext,
+    buildWorkflowStage,
     getActiveTask
   } = deps;
 
@@ -27,12 +28,17 @@ function createActionContractHelpers(deps) {
   }
 
   function buildActionFollowup(action, resolved, activeTask) {
-    const blankSelection = resolved && resolved.session
-      ? Boolean(
-          resolved.hardware &&
-            resolved.hardware.selection_mode === 'blank-project'
-        )
-      : false;
+    const scanWorkflowStage = action === 'scan' && typeof buildWorkflowStage === 'function'
+      ? buildWorkflowStage({ command: 'scan' }, resolved)
+      : null;
+    const blankSelection = action === 'scan'
+      ? Boolean(scanWorkflowStage && scanWorkflowStage.name === 'selection')
+      : (resolved && resolved.session
+          ? Boolean(
+              resolved.hardware &&
+                resolved.hardware.selection_mode === 'blank-project'
+            )
+          : false);
 
     if (action === 'scan') {
       const nextAction = blankSelection ? 'plan' : 'do';
@@ -208,6 +214,10 @@ function createActionContractHelpers(deps) {
     return '';
   }
 
+  function extractThenCli(text) {
+    return String(text || '').trim().replace(/^Then:\s*/i, '').trim();
+  }
+
   function buildActionCard(action, output, resolved, activeTask) {
     const followup = buildActionFollowup(action, resolved, activeTask);
     const instruction = buildActionInstruction(action, output);
@@ -221,7 +231,7 @@ function createActionContractHelpers(deps) {
       first_step_label: followup.label || '',
       first_instruction: instruction,
       first_cli: followup.cli || '',
-      then_cli: '',
+      then_cli: extractThenCli(followup.followup),
       followup: followup.followup || ''
     };
   }
@@ -339,6 +349,9 @@ function createActionContractHelpers(deps) {
     const handoff = loadHandoff();
     const activeTask = typeof getActiveTask === 'function' ? getActiveTask() : null;
     const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
+    const workflowStage = typeof buildWorkflowStage === 'function'
+      ? buildWorkflowStage({ command: action }, resolved)
+      : null;
     let output;
 
     if (action === 'scan') {
@@ -400,6 +413,7 @@ function createActionContractHelpers(deps) {
 
     return {
       ...enriched,
+      workflow_stage: workflowStage,
       action_card: actionCard,
       next_actions: buildActionNextActions(action, actionCard, enriched),
       permission_gates: permissionGateHelpers.buildPermissionGates(enriched)

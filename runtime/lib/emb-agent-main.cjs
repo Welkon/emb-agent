@@ -417,6 +417,7 @@ const {
   buildGuidance,
   buildResumeContext,
   buildNextContext,
+  buildWorkflowStage,
   shouldSuggestPlan,
   shouldSuggestReview,
   suggestFlow,
@@ -981,6 +982,7 @@ const {
   buildInitGuidance,
   buildBootstrapSummary,
   buildStartWorkflow,
+  buildTaskIntake,
   buildUsagePayload,
   usage,
   runInitCommand,
@@ -1029,6 +1031,11 @@ function buildStartContext() {
   const bootstrapCommand = bootstrapPending && bootstrap && bootstrap.command
     ? bootstrap.command
     : '';
+  const taskIntake = buildTaskIntake({
+    activeTask,
+    hasHandoff: Boolean(handoff),
+    bootstrapPending
+  });
   const immediateCommand = handoff
     ? 'resume'
     : bootstrapCommand
@@ -1073,6 +1080,7 @@ function buildStartContext() {
       reason: immediateReason,
       cli: `${getRuntimeHost().cliCommand} ${immediateCommand}`
     },
+    task_intake: taskIntake,
     workflow: {
       mode: 'linear-default',
       steps: buildStartWorkflow(initGuidance, {
@@ -1193,6 +1201,7 @@ const {
   buildContextHygiene,
   enrichWithToolSuggestions,
   buildArchReviewContext,
+  buildWorkflowStage,
   getActiveTask
 });
 

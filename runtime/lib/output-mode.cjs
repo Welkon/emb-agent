@@ -239,6 +239,41 @@ function summarizeActionCard(value) {
   });
 }
 
+function summarizeTaskRef(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const artifacts = isObject(value.artifacts) ? value.artifacts : {};
+
+  return compactObject({
+    name: value.name || '',
+    title: value.title || '',
+    status: value.status || '',
+    package: value.package || '',
+    path: value.path || '',
+    prd: artifacts.prd || ''
+  });
+}
+
+function summarizeTaskConvergence(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    status: value.status || '',
+    prd_path: value.prd_path || '',
+    summary: value.summary || '',
+    prompts: truncateList(value.prompts, 3),
+    recommended_path: value.recommended_path || '',
+    recommended_reason: value.recommended_reason || '',
+    next_cli: value.next_cli || '',
+    then_cli: value.then_cli || '',
+    review_hint: value.review_hint || ''
+  });
+}
+
 function normalizeComparableText(value) {
   return String(value || '')
     .trim()
@@ -619,6 +654,7 @@ function buildBriefNextContext(value) {
 function buildBriefStartContext(value) {
   const summary = isObject(value.summary) ? value.summary : {};
   const immediate = isObject(value.immediate) ? value.immediate : {};
+  const taskIntake = isObject(value.task_intake) ? value.task_intake : {};
 
   return compactObject({
     output_mode: 'brief',
@@ -642,6 +678,17 @@ function buildBriefStartContext(value) {
       command: immediate.command || '',
       reason: immediate.reason || '',
       cli: immediate.cli || ''
+    }),
+    task_intake: compactObject({
+      status: taskIntake.status || '',
+      recommended_entry: taskIntake.recommended_entry || '',
+      summary: taskIntake.summary || '',
+      modes: truncateList(
+        toArray(taskIntake.paths)
+          .map(item => item && item.id ? item.id : '')
+          .filter(Boolean),
+        4
+      )
     }),
     bootstrap: compactObject({
       status: value.bootstrap && value.bootstrap.status || '',
@@ -728,6 +775,7 @@ function buildBriefPlanOutput(value) {
     risks: truncateList(value.risks, 5),
     steps: truncateList(value.steps, 5),
     verification: truncateList(value.verification, 4),
+    workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
@@ -747,6 +795,7 @@ function buildBriefDoOutput(value) {
       suggested_steps: truncateList(executionBrief.suggested_steps, 4),
       supporting_agents: truncateList(executionBrief.supporting_agents, 3)
     }),
+    workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
@@ -760,6 +809,7 @@ function buildBriefScanOutput(value) {
     key_facts: truncateList(value.key_facts, 6),
     open_questions: truncateList(value.open_questions, 4),
     next_reads: truncateList(value.next_reads, 5),
+    workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
@@ -773,6 +823,7 @@ function buildBriefDebugOutput(value) {
     hypotheses: truncateList(value.hypotheses, 4),
     checks: truncateList(value.checks, 4),
     next_step: value.next_step || '',
+    workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
@@ -794,6 +845,7 @@ function buildBriefReviewOutput(value) {
     axes: truncateList(value.axes, 6),
     required_checks: truncateList(value.required_checks, 5),
     review_agents: truncateList(value.review_agents, 4),
+    workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
@@ -818,6 +870,7 @@ function buildBriefVerifyOutput(value) {
     quality_gates: summarizeQualityGates(value.quality_gates),
     permission_gates: summarizePermissionGates(value.permission_gates),
     verification_focus: truncateList(value.verification_focus, 4),
+    workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
@@ -973,6 +1026,29 @@ function buildBriefStatusOutput(value) {
   });
 }
 
+function buildBriefTaskLifecycleOutput(value) {
+  const workspace = isObject(value.workspace) ? value.workspace : {};
+  const worktree = isObject(value.worktree) ? value.worktree : {};
+
+  return compactObject({
+    output_mode: 'brief',
+    created: value.created === undefined ? undefined : Boolean(value.created),
+    activated: value.activated === undefined ? undefined : Boolean(value.activated),
+    task: summarizeTaskRef(value.task),
+    workspace: compactObject({
+      mode: workspace.mode || '',
+      path: workspace.path || ''
+    }),
+    worktree: compactObject({
+      summary: worktree.summary || '',
+      workspace_state: worktree.workspace_state || '',
+      attention: worktree.attention || ''
+    }),
+    task_convergence: summarizeTaskConvergence(value.task_convergence),
+    runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events)
+  });
+}
+
 function buildBriefToolOutput(value) {
   return compactObject({
     output_mode: 'brief',
@@ -1064,6 +1140,10 @@ function applyBriefMode(value) {
 
   if (Object.prototype.hasOwnProperty.call(value, 'tool') && Object.prototype.hasOwnProperty.call(value, 'status') && Object.prototype.hasOwnProperty.call(value, 'implementation')) {
     return buildBriefToolOutput(value);
+  }
+
+  if (isObject(value.task) && (Object.prototype.hasOwnProperty.call(value, 'created') || Object.prototype.hasOwnProperty.call(value, 'activated'))) {
+    return buildBriefTaskLifecycleOutput(value);
   }
 
   if (isObject(value.scheduler)) {

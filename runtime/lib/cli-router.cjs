@@ -159,13 +159,33 @@ function createCliRouter(deps) {
         return '';
       }
 
+      if (/^instruction=/i.test(value)) {
+        return value.replace(/^instruction=/i, '').trim();
+      }
+
       if (/^flow=/i.test(value)) {
         const flow = value.replace(/^flow=/i, '').trim();
         return flow ? `Follow the recommended flow: ${flow}.` : '';
       }
 
+      if (/^followup=/i.test(value)) {
+        return value.replace(/^followup=/i, '').trim().replace(/^Then:\s*/i, '').trim();
+      }
+
+      if (/^decision_point=/i.test(value)) {
+        return value.replace(/^decision_point=/i, '').trim();
+      }
+
       if (/^checkpoint=/i.test(value)) {
         return value.replace(/^checkpoint=/i, '').trim();
+      }
+
+      if (/^health_closure=/i.test(value)) {
+        return value.replace(/^health_closure=/i, '').trim().replace(/^Then:\s*/i, '').trim();
+      }
+
+      if (/^health_command=/i.test(value)) {
+        return value.replace(/^health_command=/i, '').trim();
       }
 
       if (/^command=/i.test(value)) {
@@ -196,6 +216,49 @@ function createCliRouter(deps) {
       }
       if (card.then_cli) {
         lines.push(terminalUi.renderKeyValue('Then', card.then_cli, 'muted'));
+      }
+    }
+
+    function pushWorkflowStageLines(lines, workflowStage) {
+      const stage = workflowStage && typeof workflowStage === 'object' && !Array.isArray(workflowStage)
+        ? workflowStage
+        : {};
+
+      if (stage.name) {
+        lines.push(terminalUi.renderKeyValue('Workflow', stage.name, 'info'));
+      }
+      if (stage.exit_criteria) {
+        lines.push(terminalUi.renderKeyValue('Exit', stage.exit_criteria, 'muted'));
+      }
+    }
+
+    function pushTaskConvergenceLines(lines, taskConvergence) {
+      const convergence =
+        taskConvergence && typeof taskConvergence === 'object' && !Array.isArray(taskConvergence)
+          ? taskConvergence
+          : {};
+      const prompts = Array.isArray(convergence.prompts) ? convergence.prompts.filter(Boolean) : [];
+
+      if (convergence.prd_path) {
+        lines.push(terminalUi.renderKeyValue('PRD', convergence.prd_path, 'muted'));
+      }
+      if (convergence.summary) {
+        lines.push(terminalUi.renderKeyValue('Converge', convergence.summary, 'muted'));
+      }
+      if (prompts[0]) {
+        lines.push(terminalUi.renderKeyValue('First', prompts[0], 'muted'));
+      }
+      if (convergence.recommended_path) {
+        lines.push(terminalUi.renderKeyValue('Route', convergence.recommended_path, 'info'));
+      }
+      if (convergence.next_cli) {
+        lines.push(terminalUi.renderKeyValue('Next', convergence.next_cli, 'success'));
+      }
+      if (convergence.then_cli) {
+        lines.push(terminalUi.renderKeyValue('Then', convergence.then_cli, 'muted'));
+      }
+      if (convergence.review_hint) {
+        lines.push(terminalUi.renderKeyValue('Review', convergence.review_hint, 'muted'));
       }
     }
 
@@ -269,6 +332,10 @@ function createCliRouter(deps) {
     function buildSummaryLines(cmd, subcmd, result) {
       const lines = [];
       const payload = result && typeof result === 'object' && !Array.isArray(result) ? result : {};
+      const workflowStage =
+        payload.workflow_stage && typeof payload.workflow_stage === 'object' && !Array.isArray(payload.workflow_stage)
+          ? payload.workflow_stage
+          : {};
       const nestedActionCard =
         payload.action_card ||
         (payload.action_context && payload.action_context.action_card) ||
@@ -299,6 +366,10 @@ function createCliRouter(deps) {
           payload.immediate && typeof payload.immediate === 'object' && !Array.isArray(payload.immediate)
             ? payload.immediate
             : {};
+        const taskIntake =
+          payload.task_intake && typeof payload.task_intake === 'object' && !Array.isArray(payload.task_intake)
+            ? payload.task_intake
+            : {};
         const bootstrapStage =
           payload.bootstrap && payload.bootstrap.stage
             ? String(payload.bootstrap.stage).trim()
@@ -311,6 +382,8 @@ function createCliRouter(deps) {
           firstInstruction = 'Open .emb-agent/hw.yaml and record the real MCU and package before execution.';
         } else if (summary.active_task && summary.active_task.name) {
           firstInstruction = `Continue the active task ${summary.active_task.name} before starting new work.`;
+        } else if (immediate.command === 'task add <summary>' && taskIntake.summary) {
+          firstInstruction = taskIntake.summary;
         }
 
         if (summary.project_root) {
@@ -338,6 +411,18 @@ function createCliRouter(deps) {
         }
         if (firstInstruction) {
           lines.push(terminalUi.renderKeyValue('First', firstInstruction, 'muted'));
+        }
+        if (immediate.command !== 'task add <summary>' && taskIntake.summary) {
+          lines.push(terminalUi.renderKeyValue('Task Intake', taskIntake.summary, 'muted'));
+        }
+        if (immediate.command === 'task add <summary>' && taskIntake.paths && Array.isArray(taskIntake.paths) && taskIntake.paths.length > 0) {
+          const intakeModes = taskIntake.paths
+            .map(item => item && item.id ? String(item.id).replace(/-/g, ' ') : '')
+            .filter(Boolean)
+            .join(' | ');
+          if (intakeModes) {
+            lines.push(terminalUi.renderKeyValue('Intake', intakeModes, 'muted'));
+          }
         }
         if (immediate.cli && immediate.command && immediate.command !== 'next') {
           lines.push(terminalUi.renderKeyValue('CLI', immediate.cli, 'success'));
@@ -421,9 +506,7 @@ function createCliRouter(deps) {
       }
 
       if (cmd === 'next' && !subcmd) {
-        if (payload.workflow_stage && payload.workflow_stage.name) {
-          lines.push(terminalUi.renderKeyValue('Workflow', payload.workflow_stage.name, 'info'));
-        }
+        pushWorkflowStageLines(lines, workflowStage);
         if (payload.task && payload.task.package) {
           lines.push(terminalUi.renderKeyValue('Package', payload.task.package, 'info'));
         } else if (payload.current && payload.current.active_package) {
@@ -448,6 +531,7 @@ function createCliRouter(deps) {
       }
 
       if (cmd === 'next' && subcmd === 'run') {
+        pushWorkflowStageLines(lines, workflowStage);
         if (payload.resolved_action) {
           lines.push(terminalUi.renderKeyValue('Resolved', payload.resolved_action, 'success'));
         }
@@ -532,6 +616,7 @@ function createCliRouter(deps) {
       }
 
       if (cmd === 'scan' && !subcmd) {
+        pushWorkflowStageLines(lines, workflowStage);
         lines.push(terminalUi.renderKeyValue('Files', String((payload.relevant_files || []).length), 'info'));
         lines.push(terminalUi.renderKeyValue('Questions', String((payload.open_questions || []).length), 'success'));
         if (Array.isArray(payload.next_reads) && payload.next_reads.length > 0) {
@@ -543,6 +628,7 @@ function createCliRouter(deps) {
       }
 
       if (cmd === 'plan' && !subcmd) {
+        pushWorkflowStageLines(lines, workflowStage);
         lines.push(terminalUi.renderKeyValue('Goal', payload.goal, 'info'));
         lines.push(terminalUi.renderKeyValue('Steps', String((payload.steps || []).length), 'success'));
         if (Array.isArray(payload.verification) && payload.verification.length > 0) {
@@ -554,6 +640,7 @@ function createCliRouter(deps) {
       }
 
       if (cmd === 'do' && !subcmd) {
+        pushWorkflowStageLines(lines, workflowStage);
         if (payload.chosen_agent) {
           lines.push(terminalUi.renderKeyValue('Agent', payload.chosen_agent, 'info'));
         }
@@ -567,6 +654,7 @@ function createCliRouter(deps) {
       }
 
       if (cmd === 'debug' && !subcmd) {
+        pushWorkflowStageLines(lines, workflowStage);
         if (payload.chosen_agent) {
           lines.push(terminalUi.renderKeyValue('Agent', payload.chosen_agent, 'info'));
         }
@@ -580,6 +668,7 @@ function createCliRouter(deps) {
       }
 
       if (cmd === 'review' && !subcmd) {
+        pushWorkflowStageLines(lines, workflowStage);
         lines.push(terminalUi.renderKeyValue('Axes', String((payload.axes || []).length), 'info'));
         lines.push(terminalUi.renderKeyValue('Checks', String((payload.required_checks || []).length), 'success'));
         if (Array.isArray(payload.review_agents) && payload.review_agents.length > 0) {
@@ -591,6 +680,7 @@ function createCliRouter(deps) {
       }
 
       if (cmd === 'verify' && !subcmd) {
+        pushWorkflowStageLines(lines, workflowStage);
         lines.push(terminalUi.renderKeyValue('Checklist', String((payload.checklist || []).length), 'info'));
         if (payload.closure_status) {
           lines.push(terminalUi.renderKeyValue('Closure', payload.closure_status, 'success'));
@@ -782,6 +872,7 @@ function createCliRouter(deps) {
       }
 
       if (cmd === 'task' && subcmd === 'add') {
+        pushTaskConvergenceLines(lines, payload.task_convergence);
         if (payload.created === true) {
           lines.push(terminalUi.renderKeyValue('Created', 'yes', 'success'));
         }
@@ -798,6 +889,7 @@ function createCliRouter(deps) {
       }
 
       if (cmd === 'task' && subcmd === 'activate') {
+        pushTaskConvergenceLines(lines, payload.task_convergence);
         if (payload.activated === true) {
           lines.push(terminalUi.renderKeyValue('Activated', 'yes', 'success'));
         }

@@ -20,6 +20,13 @@ Output the emb-agent help summary below and nothing else.
 - Use `next` for the default continuation once bootstrap and task context are in place.
 - Use `help advanced` or `help --all` only when you need the full installed surface.
 
+## Task Intake
+
+- If the target files and acceptance check are already explicit, use `task add <summary>` and move into `plan` or `next`.
+- If requirements, hardware truth, or the changed surface are still unclear, use `task add <summary>` first and let `scan` converge the task before `plan` or `do`.
+- After `task add`, use the generated task `prd.md` as the lightweight convergence point: make goal, constraints, acceptance, and open questions explicit before choosing `scan` or `plan`.
+- If the change crosses timing, concurrency, release, or interface boundaries, expect the safer path to be `task add -> scan -> plan -> review -> verify`.
+
 ## Public Commands
 
 The public command surface is intentionally small and grouped by default path.
