@@ -41,6 +41,7 @@ function summarizeMemorySummary(value) {
   const activeTask = isObject(value.active_task) ? value.active_task : {};
   const diagnostics = isObject(value.diagnostics) ? value.diagnostics : {};
   const latestForensics = isObject(diagnostics.latest_forensics) ? diagnostics.latest_forensics : {};
+  const latestSkill = isObject(diagnostics.latest_skill) ? diagnostics.latest_skill : {};
   const latestExecutor = isObject(diagnostics.latest_executor) ? diagnostics.latest_executor : {};
 
   return compactObject({
@@ -66,6 +67,11 @@ function summarizeMemorySummary(value) {
       latest_forensics: compactObject({
         report_file: latestForensics.report_file || '',
         highest_severity: latestForensics.highest_severity || ''
+      }),
+      latest_skill: compactObject({
+        name: latestSkill.name || '',
+        status: latestSkill.status || '',
+        risk: latestSkill.risk || ''
       }),
       latest_executor: compactObject({
         name: latestExecutor.name || '',
@@ -541,8 +547,11 @@ function summarizeQualityGates(value) {
     gate_status: value.gate_status || '',
     status_summary: value.status_summary || '',
     blocking_summary: value.blocking_summary || '',
+    required_skills: truncateList(value.required_skills, 6),
     required_executors: truncateList(value.required_executors, 6),
     required_signoffs: truncateList(value.required_signoffs, 6),
+    pending_skills: truncateList(value.pending_skills, 6),
+    failed_skills: truncateList(value.failed_skills, 6),
     pending_gates: truncateList(value.pending_gates, 6),
     failed_gates: truncateList(value.failed_gates, 6),
     pending_signoffs: truncateList(value.pending_signoffs, 6),

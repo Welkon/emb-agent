@@ -21,6 +21,19 @@ function getRequiredExecutors(projectConfig) {
   return unique(qualityGates.required_executors || []);
 }
 
+function getRequiredSkills(projectConfig) {
+  if (!projectConfig || typeof projectConfig !== 'object') {
+    return [];
+  }
+
+  const qualityGates = projectConfig.quality_gates;
+  if (!qualityGates || typeof qualityGates !== 'object' || Array.isArray(qualityGates)) {
+    return [];
+  }
+
+  return unique(qualityGates.required_skills || []);
+}
+
 function getRequiredSignoffs(projectConfig) {
   if (!projectConfig || typeof projectConfig !== 'object') {
     return [];
@@ -78,6 +91,36 @@ function getExecutorRecord(name, diagnostics) {
   return null;
 }
 
+function getSkillRecord(name, diagnostics) {
+  const safeDiagnostics =
+    diagnostics && typeof diagnostics === 'object' && !Array.isArray(diagnostics)
+      ? diagnostics
+      : {};
+  const history =
+    safeDiagnostics.skill_history &&
+    typeof safeDiagnostics.skill_history === 'object' &&
+    !Array.isArray(safeDiagnostics.skill_history)
+      ? safeDiagnostics.skill_history
+      : {};
+  const latest =
+    safeDiagnostics.latest_skill &&
+    typeof safeDiagnostics.latest_skill === 'object' &&
+    !Array.isArray(safeDiagnostics.latest_skill)
+      ? safeDiagnostics.latest_skill
+      : null;
+  const fromHistory = history[name];
+
+  if (fromHistory && typeof fromHistory === 'object' && !Array.isArray(fromHistory)) {
+    return fromHistory;
+  }
+
+  if (latest && latest.name === name) {
+    return latest;
+  }
+
+  return null;
+}
+
 function normalizeHumanSignoffStatus(value) {
   const status = String(value || '').trim().toLowerCase();
   if (status === 'confirmed' || status === 'pass' || status === 'passed' || status === 'ok') {
@@ -107,8 +150,21 @@ function getHumanSignoffRecord(name, diagnostics) {
 }
 
 function evaluateQualityGates(projectConfig, diagnostics) {
+  const requiredSkills = getRequiredSkills(projectConfig);
   const requiredExecutors = getRequiredExecutors(projectConfig);
   const requiredSignoffs = getRequiredSignoffs(projectConfig);
+  const skillDetails = requiredSkills.map(name => {
+    const record = getSkillRecord(name, diagnostics);
+    const state = normalizeObservedStatus(record && record.status);
+
+    return {
+      name,
+      state,
+      observed_status: record && record.status ? String(record.status) : '',
+      exit_code: record && Number.isInteger(record.exit_code) ? record.exit_code : null,
+      ran_at: record && record.ran_at ? String(record.ran_at) : ''
+    };
+  });
   const gateDetails = requiredExecutors.map(name => {
     const record = getExecutorRecord(name, diagnostics);
     const state = normalizeObservedStatus(record && record.status);
@@ -134,6 +190,9 @@ function evaluateQualityGates(projectConfig, diagnostics) {
     };
   });
 
+  const passedSkills = skillDetails.filter(item => item.state === 'passed').map(item => item.name);
+  const failedSkills = skillDetails.filter(item => item.state === 'failed').map(item => item.name);
+  const pendingSkills = skillDetails.filter(item => item.state === 'pending').map(item => item.name);
   const passedGates = gateDetails.filter(item => item.state === 'passed').map(item => item.name);
   const failedGates = gateDetails.filter(item => item.state === 'failed').map(item => item.name);
   const pendingGates = gateDetails.filter(item => item.state === 'pending').map(item => item.name);
@@ -142,10 +201,10 @@ function evaluateQualityGates(projectConfig, diagnostics) {
   const pendingSignoffs = signoffDetails.filter(item => item.state === 'pending').map(item => item.name);
 
   let gateStatus = 'not-configured';
-  if (requiredExecutors.length > 0 || requiredSignoffs.length > 0) {
-    if (failedGates.length > 0 || rejectedSignoffs.length > 0) {
+  if (requiredSkills.length > 0 || requiredExecutors.length > 0 || requiredSignoffs.length > 0) {
+    if (failedSkills.length > 0 || failedGates.length > 0 || rejectedSignoffs.length > 0) {
       gateStatus = 'failed';
-    } else if (pendingGates.length > 0 || pendingSignoffs.length > 0) {
+    } else if (pendingSkills.length > 0 || pendingGates.length > 0 || pendingSignoffs.length > 0) {
       gateStatus = 'pending';
     } else {
       gateStatus = 'pass';
@@ -153,6 +212,11 @@ function evaluateQualityGates(projectConfig, diagnostics) {
   }
 
   const summaryParts = [];
+  if (failedSkills.length > 0) {
+    summaryParts.push(`Skill gates failed: ${failedSkills.join(', ')}`);
+  } else if (pendingSkills.length > 0) {
+    summaryParts.push(`Skill gates pending: ${pendingSkills.join(', ')}`);
+  }
   if (failedGates.length > 0) {
     summaryParts.push(`Executor gates failed: ${failedGates.join(', ')}`);
   } else if (pendingGates.length > 0) {
@@ -175,20 +239,30 @@ function evaluateQualityGates(projectConfig, diagnostics) {
   const blockingSummary = summaryParts[0] || '';
 
   return {
-    enabled: requiredExecutors.length > 0 || requiredSignoffs.length > 0,
+    enabled: requiredSkills.length > 0 || requiredExecutors.length > 0 || requiredSignoffs.length > 0,
     gate_status: gateStatus,
     status_summary: statusSummary,
     blocking_summary: blockingSummary,
+    required_skills: requiredSkills,
     required_executors: requiredExecutors,
     required_signoffs: requiredSignoffs,
+    passed_skills: passedSkills,
+    failed_skills: failedSkills,
+    pending_skills: pendingSkills,
     passed_gates: passedGates,
     failed_gates: failedGates,
     pending_gates: pendingGates,
     confirmed_signoffs: confirmedSignoffs,
     rejected_signoffs: rejectedSignoffs,
     pending_signoffs: pendingSignoffs,
-    recommended_runs: unique([...failedGates, ...pendingGates]).map(name => `executor run ${name}`),
+    recommended_runs: unique([
+      ...failedSkills.map(name => `skills run ${name}`),
+      ...pendingSkills.map(name => `skills run ${name}`),
+      ...failedGates.map(name => `executor run ${name}`),
+      ...pendingGates.map(name => `executor run ${name}`)
+    ]),
     recommended_signoffs: pendingSignoffs.map(name => `verify confirm ${name}`),
+    skill_details: skillDetails,
     gate_details: gateDetails,
     signoff_details: signoffDetails
   };
@@ -196,6 +270,7 @@ function evaluateQualityGates(projectConfig, diagnostics) {
 
 module.exports = {
   evaluateQualityGates,
+  getRequiredSkills,
   getRequiredExecutors,
   getRequiredSignoffs
 };

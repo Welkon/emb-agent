@@ -638,10 +638,18 @@ function normalizeDiagnostics(value) {
     !source.latest_forensics || typeof source.latest_forensics !== 'object' || Array.isArray(source.latest_forensics)
       ? {}
       : source.latest_forensics;
+  const latestSkillSource =
+    !source.latest_skill || typeof source.latest_skill !== 'object' || Array.isArray(source.latest_skill)
+      ? {}
+      : source.latest_skill;
   const latestExecutorSource =
     !source.latest_executor || typeof source.latest_executor !== 'object' || Array.isArray(source.latest_executor)
       ? {}
       : source.latest_executor;
+  const skillHistorySource =
+    !source.skill_history || typeof source.skill_history !== 'object' || Array.isArray(source.skill_history)
+      ? {}
+      : source.skill_history;
   const executorHistorySource =
     !source.executor_history || typeof source.executor_history !== 'object' || Array.isArray(source.executor_history)
       ? {}
@@ -685,6 +693,18 @@ function normalizeDiagnostics(value) {
     };
   }
 
+  const skillHistory = {};
+  Object.entries(skillHistorySource).forEach(([name, entry]) => {
+    const normalizedName = ensureOptionalString(name, 'diagnostics.skill_history key');
+    if (!normalizedName) {
+      return;
+    }
+    skillHistory[normalizedName] = normalizeExecutorDiagnostic(
+      entry,
+      `diagnostics.skill_history.${normalizedName}`,
+      normalizedName
+    );
+  });
   const executorHistory = {};
   Object.entries(executorHistorySource).forEach(([name, entry]) => {
     const normalizedName = ensureOptionalString(name, 'diagnostics.executor_history key');
@@ -979,6 +999,8 @@ function normalizeDiagnostics(value) {
       ),
       generated_at: ensureOptionalString(latestForensics.generated_at, 'diagnostics.latest_forensics.generated_at')
     },
+    latest_skill: normalizeExecutorDiagnostic(latestSkillSource, 'diagnostics.latest_skill', ''),
+    skill_history: skillHistory,
     latest_executor: normalizeExecutorDiagnostic(latestExecutorSource, 'diagnostics.latest_executor', ''),
     executor_history: executorHistory,
     human_signoffs: humanSignoffs,
@@ -1315,6 +1337,9 @@ function validateQualityGates(config) {
   expectObject(source, 'quality_gates');
 
   return {
+    required_skills: unique(
+      ensureStringArray(source.required_skills || [], 'quality_gates.required_skills').map(item => item.trim())
+    ),
     required_executors: unique(
       ensureStringArray(source.required_executors || [], 'quality_gates.required_executors').map(item => item.trim())
     ),
@@ -1773,6 +1798,12 @@ function validateContextSummary(summary, runtimeConfig) {
     !Array.isArray(diagnosticsSource.latest_forensics)
       ? diagnosticsSource.latest_forensics
       : {};
+  const latestSkillSource =
+    diagnosticsSource.latest_skill &&
+    typeof diagnosticsSource.latest_skill === 'object' &&
+    !Array.isArray(diagnosticsSource.latest_skill)
+      ? diagnosticsSource.latest_skill
+      : {};
   const latestExecutorSource =
     diagnosticsSource.latest_executor &&
     typeof diagnosticsSource.latest_executor === 'object' &&
@@ -1826,6 +1857,23 @@ function validateContextSummary(summary, runtimeConfig) {
         problem: ensureOptionalString(
           latestForensicsSource.problem,
           'context_summary.diagnostics.latest_forensics.problem'
+        )
+      },
+      latest_skill: {
+        name: ensureOptionalString(latestSkillSource.name, 'context_summary.diagnostics.latest_skill.name'),
+        status: ensureOptionalString(latestSkillSource.status, 'context_summary.diagnostics.latest_skill.status'),
+        risk: ensureOptionalString(latestSkillSource.risk, 'context_summary.diagnostics.latest_skill.risk'),
+        exit_code: ensureOptionalInteger(
+          latestSkillSource.exit_code,
+          'context_summary.diagnostics.latest_skill.exit_code'
+        ),
+        stderr_preview: ensureOptionalString(
+          latestSkillSource.stderr_preview,
+          'context_summary.diagnostics.latest_skill.stderr_preview'
+        ),
+        stdout_preview: ensureOptionalString(
+          latestSkillSource.stdout_preview,
+          'context_summary.diagnostics.latest_skill.stdout_preview'
         )
       },
       latest_executor: {

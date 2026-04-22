@@ -1035,6 +1035,16 @@ function createNoteReportHelpers(deps) {
       : null;
   }
 
+  function getLatestSkillSummary(resolved) {
+    return resolved &&
+      resolved.session &&
+      resolved.session.diagnostics &&
+      resolved.session.diagnostics.latest_skill &&
+      resolved.session.diagnostics.latest_skill.name
+      ? resolved.session.diagnostics.latest_skill
+      : null;
+  }
+
   function formatExecutorArgv(argv) {
     return (argv || []).map(item => String(item)).join(' ').trim();
   }
@@ -1065,7 +1075,7 @@ function createNoteReportHelpers(deps) {
     return `${reuseLabel}, tool=${primary.tool}, trust=${primary.grade} (${primary.score}/100), executable=${primary.executable ? 'yes' : 'no'}, action=${primary.recommended_action}`;
   }
 
-  function buildVerifyEntry(verifyOutput, verifyInput, latestExecutor) {
+  function buildVerifyEntry(verifyOutput, verifyInput, latestExecutor, latestSkill) {
     const timestamp = new Date().toISOString();
     const next = typeof buildNextContext === 'function' ? buildNextContext() : null;
     const toolRecommendation =
@@ -1094,10 +1104,27 @@ function createNoteReportHelpers(deps) {
         ? `${toolRecommendation.trust.grade} (${toolRecommendation.trust.score}/100), executable=${toolRecommendation.trust.executable ? 'yes' : 'no'}`
         : '-'}`,
       `- chip_support_health: ${formatChipSupportHealthSummary(chipSupportHealth)}`,
+      `- latest_skill: ${latestSkill
+        ? `${latestSkill.name} ${latestSkill.status}, exit=${latestSkill.exit_code === null ? '-' : latestSkill.exit_code}, risk=${latestSkill.risk || '-'}, duration=${latestSkill.duration_ms === null ? '-' : latestSkill.duration_ms}ms`
+        : '-'}`,
       `- latest_executor: ${latestExecutor
         ? `${latestExecutor.name} ${latestExecutor.status}, exit=${latestExecutor.exit_code === null ? '-' : latestExecutor.exit_code}, risk=${latestExecutor.risk || '-'}, duration=${latestExecutor.duration_ms === null ? '-' : latestExecutor.duration_ms}ms`
         : '-'}`
     ];
+
+    if (latestSkill) {
+      lines.push(`- latest_skill_cwd: ${latestSkill.cwd || '-'}`);
+      lines.push(`- latest_skill_argv: ${formatExecutorArgv(latestSkill.argv) || '-'}`);
+      if ((latestSkill.evidence_hint || []).length > 0) {
+        lines.push(`- latest_skill_evidence_hint: ${latestSkill.evidence_hint.join(', ')}`);
+      }
+      if (latestSkill.stdout_preview) {
+        lines.push(`- latest_skill_stdout_preview: ${latestSkill.stdout_preview}`);
+      }
+      if (latestSkill.stderr_preview) {
+        lines.push(`- latest_skill_stderr_preview: ${latestSkill.stderr_preview}`);
+      }
+    }
 
     if (latestExecutor) {
       lines.push(`- latest_executor_cwd: ${latestExecutor.cwd || '-'}`);
@@ -1118,8 +1145,17 @@ function createNoteReportHelpers(deps) {
       if (verifyOutput.quality_gates.status_summary) {
         lines.push(`- quality_gate_summary: ${verifyOutput.quality_gates.status_summary}`);
       }
+      if ((verifyOutput.quality_gates.required_skills || []).length > 0) {
+        lines.push(`- required_skills: ${(verifyOutput.quality_gates.required_skills || []).join(', ')}`);
+      }
       if ((verifyOutput.quality_gates.required_executors || []).length > 0) {
         lines.push(`- required_executors: ${(verifyOutput.quality_gates.required_executors || []).join(', ')}`);
+      }
+      if ((verifyOutput.quality_gates.pending_skills || []).length > 0) {
+        lines.push(`- pending_skills: ${(verifyOutput.quality_gates.pending_skills || []).join(', ')}`);
+      }
+      if ((verifyOutput.quality_gates.failed_skills || []).length > 0) {
+        lines.push(`- failed_skills: ${(verifyOutput.quality_gates.failed_skills || []).join(', ')}`);
       }
       if ((verifyOutput.quality_gates.required_signoffs || []).length > 0) {
         lines.push(`- required_signoffs: ${(verifyOutput.quality_gates.required_signoffs || []).join(', ')}`);
@@ -1190,6 +1226,7 @@ function createNoteReportHelpers(deps) {
       results: verifyInput.results,
       evidence: verifyInput.evidence,
       followups: verifyInput.followups,
+      latest_skill: null,
       latest_executor: null,
       tool_recommendation: null,
       chip_support_health: null
@@ -1202,13 +1239,14 @@ function createNoteReportHelpers(deps) {
     const resolved = resolveSession();
     const ensured = ensureNoteTargetDoc(target);
     const verifyOutput = scheduler.buildVerifyOutput(resolved);
+    const latestSkill = getLatestSkillSummary(resolved);
     const latestExecutor = getLatestExecutorSummary(resolved);
     const next = typeof buildNextContext === 'function' ? buildNextContext() : null;
     const content = runtime.readText(ensured.path);
     const nextContent = upsertSectionEntry(
       content,
       '## Emb-Agent Verifications',
-      buildVerifyEntry(verifyOutput, verifyInput, latestExecutor)
+      buildVerifyEntry(verifyOutput, verifyInput, latestExecutor, latestSkill)
     );
 
     fs.writeFileSync(ensured.path, nextContent, 'utf8');
@@ -1229,6 +1267,7 @@ function createNoteReportHelpers(deps) {
       results: verifyInput.results,
       evidence: verifyInput.evidence,
       followups: verifyInput.followups,
+      latest_skill: latestSkill,
       latest_executor: latestExecutor,
       tool_recommendation:
         next && next.next && next.next.tool_recommendation

@@ -570,6 +570,7 @@ const {
   runtimeHost: getRuntimeHost,
   resolveProjectRoot,
   getProjectExtDir,
+  updateSession,
   builtInSkillsDir: SKILLS_DIR,
   builtInDisplayRoot: SOURCE_LAYOUT ? SOURCE_ROOT : ROOT
 });

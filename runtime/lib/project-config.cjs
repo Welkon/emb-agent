@@ -701,6 +701,7 @@ function createProjectConfigHelpers(deps) {
         chip_support_sources: [],
         executors: {},
         quality_gates: {
+          required_skills: [],
           required_executors: [],
           required_signoffs: []
         },

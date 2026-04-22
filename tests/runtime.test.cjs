@@ -86,6 +86,20 @@ test('normalizeSession fills metadata and trims arrays', () => {
       highest_severity: '',
       generated_at: ''
     },
+    latest_skill: {
+      name: '',
+      status: '',
+      risk: '',
+      exit_code: null,
+      duration_ms: null,
+      ran_at: '',
+      cwd: '',
+      argv: [],
+      evidence_hint: [],
+      stdout_preview: '',
+      stderr_preview: ''
+    },
+    skill_history: {},
     latest_executor: {
       name: '',
       status: '',
@@ -260,6 +274,7 @@ test('project config defaults can override runtime defaults', () => {
           }
         },
         quality_gates: {
+          required_skills: ['scope-debug', 'scope-debug'],
           required_executors: ['build', 'bench', 'build'],
           required_signoffs: ['board-bench', 'thermal-check', 'board-bench']
         },
@@ -309,6 +324,7 @@ test('project config defaults can override runtime defaults', () => {
   assert.deepEqual(projectConfig.executors.build.argv, ['make', '-C', 'firmware']);
   assert.equal(projectConfig.executors.build.allow_extra_args, true);
   assert.equal(projectConfig.executors.build.env.BUILD_MODE, 'release');
+  assert.deepEqual(projectConfig.quality_gates.required_skills, ['scope-debug']);
   assert.deepEqual(projectConfig.quality_gates.required_executors, ['build', 'bench']);
   assert.deepEqual(projectConfig.quality_gates.required_signoffs, ['board-bench', 'thermal-check']);
   assert.equal(projectConfig.permissions.default_policy, 'ask');
@@ -362,6 +378,18 @@ test('project config rejects malformed executors', () => {
       config
     ),
     /Invalid executor name/
+  );
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        quality_gates: {
+          required_skills: 'scope-debug'
+        }
+      },
+      config
+    ),
+    /quality_gates\.required_skills/
   );
 
   assert.throws(

@@ -115,6 +115,15 @@ function createSessionReportCommandHelpers(deps) {
       : null;
   }
 
+  function getLatestSkill(session) {
+    return session &&
+      session.diagnostics &&
+      session.diagnostics.latest_skill &&
+      session.diagnostics.latest_skill.name
+      ? session.diagnostics.latest_skill
+      : null;
+  }
+
   function getLatestForensics(session) {
     return session &&
       session.diagnostics &&
@@ -202,6 +211,7 @@ function createSessionReportCommandHelpers(deps) {
       next.health.chip_support_health
         ? next.health.chip_support_health
         : null;
+    const latestSkill = getLatestSkill(resolved.session);
     const latestExecutor = getLatestExecutor(resolved.session);
     const latestForensics = getLatestForensics(resolved.session);
     const delegationRuntime = getDelegationRuntime(resolved.session);
@@ -247,6 +257,7 @@ function createSessionReportCommandHelpers(deps) {
         : null,
       diagnostics: {
         latest_forensics: latestForensics,
+        latest_skill: latestSkill,
         latest_executor: latestExecutor,
         delegation_runtime: delegationRuntime
       },
@@ -317,6 +328,18 @@ function createSessionReportCommandHelpers(deps) {
     lines.push(`- latest_forensics: ${report.diagnostics.latest_forensics
       ? `${report.diagnostics.latest_forensics.report_file} (${report.diagnostics.latest_forensics.highest_severity || 'info'})`
       : '(none)'}`);
+    lines.push(`- latest_skill: ${report.diagnostics.latest_skill
+      ? `${report.diagnostics.latest_skill.name} ${report.diagnostics.latest_skill.status}, exit=${report.diagnostics.latest_skill.exit_code === null ? '-' : report.diagnostics.latest_skill.exit_code}, risk=${report.diagnostics.latest_skill.risk || '-'}`
+      : '(none)'}`);
+    if (report.diagnostics.latest_skill) {
+      lines.push(`- latest_skill_cwd: ${report.diagnostics.latest_skill.cwd || '(empty)'}`);
+      lines.push(`- latest_skill_argv: ${(report.diagnostics.latest_skill.argv || []).join(' ') || '(none)'}`);
+      lines.push(
+        `- latest_skill_evidence_hint: ${(report.diagnostics.latest_skill.evidence_hint || []).join(', ') || '(none)'}`
+      );
+      lines.push(`- latest_skill_stdout_preview: ${report.diagnostics.latest_skill.stdout_preview || '(empty)'}`);
+      lines.push(`- latest_skill_stderr_preview: ${report.diagnostics.latest_skill.stderr_preview || '(empty)'}`);
+    }
     lines.push(`- latest_executor: ${report.diagnostics.latest_executor
       ? `${report.diagnostics.latest_executor.name} ${report.diagnostics.latest_executor.status}, exit=${report.diagnostics.latest_executor.exit_code === null ? '-' : report.diagnostics.latest_executor.exit_code}, risk=${report.diagnostics.latest_executor.risk || '-'}`
       : '(none)'}`);

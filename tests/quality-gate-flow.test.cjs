@@ -10,6 +10,11 @@ const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 
+function writeFile(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
 test('next stays in verify loop until required quality gates pass', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-quality-gate-'));
   const currentCwd = process.cwd();
@@ -175,6 +180,90 @@ test('next stays in verify loop until required quality gates pass', async () => 
     assert.equal(verify.permission_gates[0].state, 'blocked');
     assert.ok(verify.quality_gates.recommended_runs.includes('executor run bench'));
     assert.ok(verify.quality_gates.recommended_signoffs.includes('verify confirm board-bench'));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('verify loop can close required skill gates through skills run', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-skill-gate-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    writeFile(
+      path.join(tempProject, '.emb-agent', 'skills', 'scope-debug', 'SKILL.md'),
+      [
+        '---',
+        'name: scope-debug',
+        'description: Probe the active scope connection and return capture status.',
+        'execution_mode: command',
+        'evidence_hint:',
+        '  - docs/VERIFICATION.md',
+        'command:',
+        '  - node',
+        '  - scripts/run.cjs',
+        '---',
+        '',
+        '# scope-debug',
+        '',
+        'Run bench-side scope validation.',
+        ''
+      ].join('\n')
+    );
+    writeFile(
+      path.join(tempProject, '.emb-agent', 'skills', 'scope-debug', 'scripts', 'run.cjs'),
+      [
+        "'use strict';",
+        '',
+        "process.stdout.write(JSON.stringify({ status: 'ok', measurement: 'captured' }) + '\\n');",
+        ''
+      ].join('\n')
+    );
+
+    await cli.main([
+      'project',
+      'set',
+      '--field',
+      'quality_gates.required_skills',
+      '--value',
+      JSON.stringify(['scope-debug'])
+    ]);
+    await cli.main(['focus', 'set', 'close loop with required scope debug skill']);
+    await cli.main(['do']);
+
+    const beforeRun = cli.buildNextContext();
+    assert.equal(beforeRun.next.command, 'verify');
+    assert.equal(beforeRun.quality_gates.gate_status, 'pending');
+    assert.match(beforeRun.quality_gates.status_summary, /Skill gates pending: scope-debug/);
+    assert.deepEqual(beforeRun.quality_gates.required_skills, ['scope-debug']);
+    assert.deepEqual(beforeRun.quality_gates.pending_skills, ['scope-debug']);
+    assert.ok(beforeRun.next_actions.some(item => item.includes('quality_gate_run=skills run scope-debug')));
+
+    await cli.main(['skills', 'run', 'scope-debug']);
+
+    const runtimeRoot = path.join(repoRoot, 'runtime');
+    const runtimeConfig = runtime.loadRuntimeConfig(runtimeRoot);
+    const statePaths = runtime.getProjectStatePaths(runtimeRoot, tempProject, runtimeConfig);
+    const session = runtime.readJson(statePaths.sessionPath);
+
+    assert.equal(session.last_command, 'skills run scope-debug');
+    assert.equal(session.diagnostics.latest_skill.name, 'scope-debug');
+    assert.equal(session.diagnostics.latest_skill.status, 'ok');
+    assert.deepEqual(session.diagnostics.latest_skill.evidence_hint, ['docs/VERIFICATION.md']);
+
+    const afterRun = cli.buildActionOutput('verify');
+    assert.equal(afterRun.quality_gates.gate_status, 'pass');
+    assert.deepEqual(afterRun.quality_gates.passed_skills, ['scope-debug']);
+    assert.deepEqual(afterRun.quality_gates.pending_skills, []);
+    assert.deepEqual(afterRun.quality_gates.recommended_runs, []);
+    assert.ok(afterRun.checklist.some(item => item.includes('Verification skill "scope-debug"')));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

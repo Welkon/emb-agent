@@ -28,6 +28,14 @@ test('verify save creates verification report and appends structured entry', () 
       'project',
       'set',
       '--field',
+      'quality_gates.required_skills',
+      '--value',
+      JSON.stringify(['scope-debug'])
+    ]);
+    cli.main([
+      'project',
+      'set',
+      '--field',
       'quality_gates.required_signoffs',
       '--value',
       JSON.stringify(['board-bench'])
@@ -38,6 +46,19 @@ test('verify save creates verification report and appends structured entry', () 
     const runtimeConfig = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
     const statePaths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), tempProject, runtimeConfig);
     const session = runtime.readJson(statePaths.sessionPath);
+    session.diagnostics.latest_skill = {
+      name: 'scope-debug',
+      status: 'ok',
+      risk: 'normal',
+      exit_code: 0,
+      duration_ms: 950,
+      ran_at: '2026-04-09T10:58:00.000Z',
+      cwd: '.',
+      argv: ['node', 'scripts', 'scope-debug.cjs'],
+      evidence_hint: ['docs/VERIFICATION.md'],
+      stdout_preview: 'scope capture stable',
+      stderr_preview: ''
+    };
     session.diagnostics.latest_executor = {
       name: 'bench',
       status: 'ok',
@@ -89,12 +110,16 @@ test('verify save creates verification report and appends structured entry', () 
     assert.match(content, /tool_recommendation: -/);
     assert.match(content, /chip_support_health: -/);
     assert.match(content, /primary_agent: /);
+    assert.match(content, /latest_skill: scope-debug ok, exit=0, risk=normal, duration=950ms/);
+    assert.match(content, /latest_skill_argv: node scripts scope-debug\.cjs/);
+    assert.match(content, /latest_skill_stdout_preview: scope capture stable/);
     assert.match(content, /latest_executor: bench ok, exit=0, risk=high, duration=1800ms/);
     assert.match(content, /latest_executor_argv: node scripts\/bench-runner\.cjs --case wakeup/);
     assert.match(content, /latest_executor_evidence_hint: docs\/VERIFICATION\.md/);
     assert.match(content, /latest_executor_stdout_preview: bench pass wakeup path/);
     assert.match(content, /quality_gates: pending|quality_gates: pass/);
     assert.match(content, /quality_gate_summary:/);
+    assert.match(content, /required_skills: scope-debug/);
     assert.match(content, /required_signoffs: board-bench/);
     assert.match(content, /confirmed_signoffs: board-bench/);
   } finally {
