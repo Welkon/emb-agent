@@ -215,6 +215,7 @@ test('session start hook surfaces the latest session checkpoint for the current 
 
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
     const payload = parseHookPayload(reminder);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Continuity file: \.emb-agent\/reports\/sessions\/CURRENT\.md/);
     assert.match(payload.hookSpecificOutput.additionalContext, /Latest session checkpoint: capture pwm checkpoint/);
     assert.match(payload.hookSpecificOutput.additionalContext, /Checkpoint next command:/);
     assert.match(payload.hookSpecificOutput.additionalContext, /Checkpoint branch: feat\/session-hook \(matches current branch\)/);

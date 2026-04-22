@@ -68,6 +68,23 @@ function createSessionReportCommandHelpers(deps) {
     runtime.ensureDir(getSessionReportsDir());
   }
 
+  function buildContinuityReportRef(entry) {
+    if (!entry || typeof entry !== 'object') {
+      return null;
+    }
+
+    return {
+      id: String(entry.id || ''),
+      generated_at: String(entry.generated_at || ''),
+      summary: String(entry.summary || ''),
+      git_branch: String(entry.git_branch || ''),
+      next_command: String(entry.next_command || ''),
+      next_reason: String(entry.next_reason || ''),
+      markdown_file: String(entry.markdown_file || ''),
+      json_file: String(entry.json_file || '')
+    };
+  }
+
   function buildSessionStatePayload() {
     const statePaths = typeof getProjectStatePaths === 'function' ? getProjectStatePaths() : null;
     const resolved = resolveSession();
@@ -458,6 +475,272 @@ function createSessionReportCommandHelpers(deps) {
     };
   }
 
+  function buildSessionContinuityPayload(options = {}) {
+    const settings = options && typeof options === 'object' ? options : {};
+    const resolved = resolveSession();
+    const handoff = loadHandoff();
+    const next = buildNextContext();
+    const resume = buildResumeContext();
+    const reports = listStoredSessionReports();
+    const activeTask =
+      resume && resume.task && typeof resume.task === 'object' && resume.task.name
+        ? resume.task
+        : null;
+    const generatedAt = String(settings.generated_at || new Date().toISOString());
+    const latestReport = buildContinuityReportRef(
+      settings.latest_report || reports.preferred || reports.latest || null
+    );
+
+    return {
+      version: '1.0',
+      generated_at: generatedAt,
+      source: String(settings.source || 'session'),
+      project_root: resolved.session.project_root,
+      git_branch: resolved.session.git_branch || '',
+      profile: resolved.session.project_profile || '',
+      packs: resolved.session.active_packs || [],
+      focus: resolved.session.focus || '',
+      last_command: resolved.session.last_command || '',
+      default_package: resolved.session.default_package || '',
+      active_package: resolved.session.active_package || '',
+      active_task: activeTask
+        ? {
+            name: activeTask.name || '',
+            title: activeTask.title || '',
+            status: activeTask.status || '',
+            type: activeTask.type || '',
+            package: activeTask.package || '',
+            path: activeTask.path || '',
+            worktree_path: activeTask.worktree_path || ''
+          }
+        : null,
+      handoff: handoff
+        ? {
+            present: true,
+            timestamp: handoff.timestamp || '',
+            status: handoff.status || '',
+            next_action: handoff.next_action || '',
+            context_notes: handoff.context_notes || '',
+            suggested_flow: handoff.suggested_flow || ''
+          }
+        : {
+            present: false,
+            timestamp: '',
+            status: '',
+            next_action: '',
+            context_notes: '',
+            suggested_flow: ''
+          },
+      memory_summary:
+        resume && resume.memory_summary
+          ? {
+              source: resume.memory_summary.source || '',
+              snapshot_label: resume.memory_summary.snapshot_label || '',
+              next_action: resume.memory_summary.next_action || '',
+              context_notes: resume.memory_summary.context_notes || '',
+              last_files: resume.memory_summary.last_files || [],
+              open_questions: resume.memory_summary.open_questions || [],
+              known_risks: resume.memory_summary.known_risks || []
+            }
+          : null,
+      next:
+        next && next.next
+          ? {
+              command: next.next.command || '',
+              reason: next.next.reason || '',
+              cli: next.next.cli || '',
+              suggested_flow:
+                next.current && next.current.suggested_flow
+                  ? next.current.suggested_flow
+                  : '',
+              action_card:
+                next.action_card && typeof next.action_card === 'object'
+                  ? {
+                      action: next.action_card.action || '',
+                      summary: next.action_card.summary || '',
+                      first_instruction: next.action_card.first_instruction || '',
+                      first_cli: next.action_card.first_cli || ''
+                    }
+                  : null
+            }
+          : null,
+      resume:
+        resume && resume.summary
+          ? {
+              source: resume.summary.resume_source || '',
+              paused_at: resume.summary.paused_at || '',
+              last_resumed_at: resume.summary.last_resumed_at || '',
+              next_actions: Array.isArray(resume.next_actions) ? resume.next_actions.slice(0, 6) : []
+            }
+          : null,
+      reports: {
+        count: Array.isArray(reports.reports) ? reports.reports.length : 0,
+        latest_id: reports.latest ? reports.latest.id || '' : '',
+        preferred_id: reports.preferred ? reports.preferred.id || '' : ''
+      },
+      latest_report: latestReport
+    };
+  }
+
+  function buildSessionContinuityMarkdown(continuity, paths) {
+    const current = continuity && typeof continuity === 'object' ? continuity : {};
+    const files = paths && typeof paths === 'object' ? paths : {};
+    const latestReport =
+      current.latest_report && typeof current.latest_report === 'object'
+        ? current.latest_report
+        : null;
+    const handoff =
+      current.handoff && typeof current.handoff === 'object'
+        ? current.handoff
+        : { present: false };
+    const memorySummary =
+      current.memory_summary && typeof current.memory_summary === 'object'
+        ? current.memory_summary
+        : null;
+    const next =
+      current.next && typeof current.next === 'object'
+        ? current.next
+        : null;
+    const resume =
+      current.resume && typeof current.resume === 'object'
+        ? current.resume
+        : null;
+    const activeTask =
+      current.active_task && typeof current.active_task === 'object'
+        ? current.active_task
+        : null;
+
+    const lines = [
+      '# Session Continuity',
+      '',
+      `- Generated: ${current.generated_at || ''}`,
+      `- Source: ${current.source || ''}`,
+      `- Project: ${current.project_root || ''}`,
+      `- Branch: ${current.git_branch || '(none)'}`,
+      '',
+      '## Current State',
+      '',
+      `- profile: ${current.profile || '(none)'}`,
+      `- packs: ${(current.packs || []).join(', ') || '(none)'}`,
+      `- focus: ${current.focus || '(none)'}`,
+      `- last_command: ${current.last_command || '(none)'}`,
+      `- default_package: ${current.default_package || '(none)'}`,
+      `- active_package: ${current.active_package || '(none)'}`,
+      `- active_task: ${activeTask
+        ? `${activeTask.name || '(task)'}${activeTask.package ? ` [${activeTask.package}]` : ''} (${activeTask.status || 'unknown'})`
+        : '(none)'}`,
+      '',
+      '## Carry-Over',
+      '',
+      `- handoff_present: ${handoff.present ? 'yes' : 'no'}`,
+      `- handoff_next_action: ${handoff.next_action || '(none)'}`,
+      `- handoff_notes: ${handoff.context_notes || '(none)'}`,
+      `- memory_summary_source: ${memorySummary ? memorySummary.source || '(none)' : '(none)'}`,
+      `- memory_summary_next_action: ${memorySummary ? memorySummary.next_action || '(none)' : '(none)'}`,
+      `- open_questions: ${memorySummary && Array.isArray(memorySummary.open_questions) ? memorySummary.open_questions.join(' | ') || '(none)' : '(none)'}`,
+      `- known_risks: ${memorySummary && Array.isArray(memorySummary.known_risks) ? memorySummary.known_risks.join(' | ') || '(none)' : '(none)'}`,
+      '',
+      '## Recommended Path',
+      '',
+      `- next_command: ${next ? next.command || '(none)' : '(none)'}`,
+      `- next_reason: ${next ? next.reason || '(none)' : '(none)'}`,
+      `- next_cli: ${next ? next.cli || '(none)' : '(none)'}`,
+      `- resume_source: ${resume ? resume.source || '(none)' : '(none)'}`,
+      `- resume_paused_at: ${resume ? resume.paused_at || '(none)' : '(none)'}`,
+      '',
+      '## Latest Checkpoint',
+      '',
+      `- summary: ${latestReport ? latestReport.summary || '(none)' : '(none)'}`,
+      `- generated_at: ${latestReport ? latestReport.generated_at || '(none)' : '(none)'}`,
+      `- branch: ${latestReport ? latestReport.git_branch || '(none)' : '(none)'}`,
+      `- next_command: ${latestReport ? latestReport.next_command || '(none)' : '(none)'}`,
+      `- report_markdown: ${latestReport ? latestReport.markdown_file || '(none)' : '(none)'}`,
+      `- report_json: ${latestReport ? latestReport.json_file || '(none)' : '(none)'}`,
+      '',
+      '## Files',
+      '',
+      `- current_markdown: ${files.current_markdown || '(none)'}`,
+      `- current_json: ${files.current_json || '(none)'}`,
+      `- index_markdown: ${files.index_markdown || '(none)'}`,
+      ''
+    ];
+
+    if (resume && Array.isArray(resume.next_actions) && resume.next_actions.length > 0) {
+      lines.push('## Resume Hints');
+      lines.push('');
+      resume.next_actions.forEach(item => lines.push(`- ${item}`));
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  }
+
+  function buildSessionReportsIndexMarkdown(reports, continuity, paths) {
+    const history = reports && typeof reports === 'object' ? reports : { reports: [] };
+    const current = continuity && typeof continuity === 'object' ? continuity : {};
+    const lines = [
+      '# Session Report Index',
+      '',
+      `- Generated: ${current.generated_at || ''}`,
+      `- Current continuity: ${(paths && paths.current_markdown) || 'CURRENT.md'}`,
+      `- Preferred checkpoint: ${current.reports && current.reports.preferred_id ? current.reports.preferred_id : '(none)'}`,
+      `- Latest checkpoint: ${current.reports && current.reports.latest_id ? current.reports.latest_id : '(none)'}`,
+      `- Total stored reports: ${Array.isArray(history.reports) ? history.reports.length : 0}`,
+      '',
+      '| Generated | Summary | Branch | Next | Markdown |',
+      '|-----------|---------|--------|------|----------|'
+    ];
+
+    (history.reports || []).forEach(entry => {
+      lines.push(
+        `| ${entry.generated_at || '-'} | ${String(entry.summary || '(none)').replace(/\|/g, '\\|')} | ${entry.git_branch || '-'} | ${entry.next_command || '-'} | ${entry.markdown_file || '-'} |`
+      );
+    });
+
+    if ((history.reports || []).length === 0) {
+      lines.push('| - | (none) | - | - | - |');
+    }
+
+    lines.push('');
+    return lines.join('\n');
+  }
+
+  function writeSessionContinuityArtifacts(options = {}) {
+    ensureSessionReportsDir();
+    const continuity = buildSessionContinuityPayload(options);
+    const reports = listStoredSessionReports();
+    const continuityJsonPath = sessionReportStore.getSessionContinuityJsonPath(getProjectExtDir());
+    const continuityMarkdownPath = sessionReportStore.getSessionContinuityMarkdownPath(getProjectExtDir());
+    const indexMarkdownPath = sessionReportStore.getSessionReportsIndexPath(getProjectExtDir());
+    const paths = {
+      current_markdown: path.relative(process.cwd(), continuityMarkdownPath),
+      current_json: path.relative(process.cwd(), continuityJsonPath),
+      index_markdown: path.relative(process.cwd(), indexMarkdownPath)
+    };
+
+    fs.writeFileSync(
+      continuityMarkdownPath,
+      buildSessionContinuityMarkdown(continuity, paths),
+      'utf8'
+    );
+    runtime.writeJson(continuityJsonPath, {
+      ...continuity,
+      markdown_file: paths.current_markdown,
+      json_file: paths.current_json,
+      index_file: paths.index_markdown
+    });
+    fs.writeFileSync(
+      indexMarkdownPath,
+      buildSessionReportsIndexMarkdown(reports, continuity, paths),
+      'utf8'
+    );
+
+    return {
+      continuity,
+      paths
+    };
+  }
+
   function listStoredSessionReports() {
     const resolved = resolveSession();
     return sessionReportStore.listStoredSessionReports(getProjectExtDir(), {
@@ -505,12 +788,17 @@ function createSessionReportCommandHelpers(deps) {
     const resolved = resolveSession();
     const session = resolved && resolved.session ? resolved.session : {};
     const reports = listStoredSessionReports();
+    const continuity =
+      sessionReportStore.readStoredSessionContinuity(getProjectExtDir(), {
+        cwd: process.cwd()
+      }) || null;
     return {
       ...session,
       session_state: buildSessionStatePayload(),
       handoff: loadHandoff() || null,
       reports,
-      latest_report: reports.preferred || reports.latest || null
+      latest_report: reports.preferred || reports.latest || null,
+      continuity
     };
   }
 
@@ -537,6 +825,11 @@ function createSessionReportCommandHelpers(deps) {
 
     const report = buildSessionReport(summaryText);
     const artifacts = writeSessionReportArtifacts(report);
+    const continuityArtifacts = writeSessionContinuityArtifacts({
+      source: 'session-report',
+      generated_at: report.generated_at,
+      latest_report: artifacts.stored
+    });
     const autoMemory = typeof maybeAutoExtractOnSessionReport === 'function'
       ? maybeAutoExtractOnSessionReport(summaryText || '')
       : null;
@@ -549,6 +842,9 @@ function createSessionReportCommandHelpers(deps) {
       generated: true,
       report_file: artifacts.markdown_relative_path,
       report_json_file: artifacts.json_relative_path,
+      continuity_file: continuityArtifacts.paths.current_markdown,
+      continuity_json_file: continuityArtifacts.paths.current_json,
+      reports_index_file: continuityArtifacts.paths.index_markdown,
       summary: report.summary,
       session_state: buildSessionStatePayload(),
       next: report.next.next,
@@ -560,7 +856,8 @@ function createSessionReportCommandHelpers(deps) {
       walkthrough_execution: report.walkthrough_execution,
       chip_support_health: report.chip_support_health,
       handoff_present: Boolean(report.handoff),
-      auto_memory: autoMemory
+      auto_memory: autoMemory,
+      continuity: continuityArtifacts.continuity
     }, blocked.permission);
   }
 
@@ -605,6 +902,7 @@ function createSessionReportCommandHelpers(deps) {
     listStoredSessionReports,
     showStoredSessionReport,
     buildCurrentSessionView,
+    writeSessionContinuityArtifacts,
     runSessionReport,
     handleSessionReportCommands
   };

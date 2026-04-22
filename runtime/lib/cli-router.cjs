@@ -33,6 +33,7 @@ function createCliRouter(deps) {
     buildPausePayload,
     buildPauseContextSummary,
     maybeAutoExtractOnPause,
+    writeSessionContinuityArtifacts,
     buildContextOverview,
     buildCompressContextSummary,
     saveHandoff,
@@ -1567,9 +1568,13 @@ function createCliRouter(deps) {
       const session = updateSession(current => {
         current.last_command = 'context clear';
       });
+      const continuity = writeSessionContinuityArtifacts({
+        source: 'context-clear'
+      });
       emitJson({
         cleared: true,
         memory_summary: null,
+        continuity: continuity.continuity,
         session
       });
       return;
@@ -1582,9 +1587,13 @@ function createCliRouter(deps) {
       const session = updateSession(current => {
         current.last_command = 'context compress';
       });
+      const continuity = writeSessionContinuityArtifacts({
+        source: 'context-compress'
+      });
       emitJson({
         compressed: true,
         memory_summary: summary,
+        continuity: continuity.continuity,
         session
       });
       return;
@@ -1597,10 +1606,14 @@ function createCliRouter(deps) {
         current.last_command = 'pause clear';
         current.paused_at = '';
       });
+      const continuity = writeSessionContinuityArtifacts({
+        source: 'pause-clear'
+      });
       emitJson({
         cleared: true,
         handoff: null,
         memory_summary: null,
+        continuity: continuity.continuity,
         session
       });
       return;
@@ -1623,6 +1636,9 @@ function createCliRouter(deps) {
         current.last_command = 'pause';
         current.paused_at = handoff.timestamp;
       });
+      const continuity = writeSessionContinuityArtifacts({
+        source: 'pause'
+      });
       const autoMemory = typeof maybeAutoExtractOnPause === 'function'
         ? maybeAutoExtractOnPause(noteText)
         : null;
@@ -1630,6 +1646,7 @@ function createCliRouter(deps) {
         paused: true,
         handoff,
         memory_summary: pausedContext.summary,
+        continuity: continuity.continuity,
         auto_memory: autoMemory,
         session
       });

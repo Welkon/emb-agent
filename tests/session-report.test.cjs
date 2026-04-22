@@ -61,6 +61,8 @@ test('session command group records history and shows stored reports', async () 
     assert.ok(current.reports.latest);
     assert.ok(current.reports.preferred);
     assert.ok(current.latest_report);
+    assert.ok(current.continuity);
+    assert.equal(current.continuity.latest_report.summary, 'capture first grouped session');
     assert.equal(current.latest_report.summary, 'capture first grouped session');
   } finally {
     process.chdir(currentCwd);
@@ -86,10 +88,16 @@ test('session-report writes lightweight session report with next guidance', asyn
     await cli.main(['session-report', 'capture current bring-up handoff']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
-    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
-    assert.equal(reports.length, 1);
+    const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
+    assert.equal(reports.some(name => /^report-.+\.md$/i.test(name)), true);
+    assert.equal(fs.existsSync(path.join(reportDir, 'CURRENT.md')), true);
+    assert.equal(fs.existsSync(path.join(reportDir, 'CURRENT.json')), true);
+    assert.equal(fs.existsSync(path.join(reportDir, 'INDEX.md')), true);
 
-    const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
+    const content = fs.readFileSync(
+      path.join(reportDir, reports.find(name => /^report-.+\.md$/i.test(name))),
+      'utf8'
+    );
     assert.match(content, /# Emb-Agent Session Report/);
     assert.match(content, /capture current bring-up handoff/);
     assert.match(content, /is pwm divider restored after sleep/);
@@ -97,7 +105,55 @@ test('session-report writes lightweight session report with next guidance', asyn
     assert.match(content, /next_command: review/);
     assert.doesNotMatch(content, /## Workspace/);
     assert.doesNotMatch(content, /## Threads/);
+
+    const continuityMarkdown = fs.readFileSync(path.join(reportDir, 'CURRENT.md'), 'utf8');
+    const continuityJson = JSON.parse(fs.readFileSync(path.join(reportDir, 'CURRENT.json'), 'utf8'));
+    const indexMarkdown = fs.readFileSync(path.join(reportDir, 'INDEX.md'), 'utf8');
+    assert.match(continuityMarkdown, /# Session Continuity/);
+    assert.match(continuityMarkdown, /Latest Checkpoint/);
+    assert.match(continuityMarkdown, /capture current bring-up handoff/);
+    assert.equal(continuityJson.latest_report.summary, 'capture current bring-up handoff');
+    assert.equal(continuityJson.reports.count, 1);
+    assert.match(indexMarkdown, /# Session Report Index/);
+    assert.match(indexMarkdown, /capture current bring-up handoff/);
     assert.equal(cli.loadSession().last_command, 'session-report');
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('pause refreshes repo-visible continuity artifacts without creating a stored report', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-continuity-pause-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['focus', 'set', 'irq recovery']);
+    await cli.main(['question', 'add', 'is timer reload restored after wake']);
+    await cli.main(['risk', 'add', 'resume path may skip timer reload']);
+
+    const paused = await captureCliJson(['pause', 'resume irq recovery after clear']);
+    const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
+    const history = await captureCliJson(['session', 'history']);
+    const continuityMarkdown = fs.readFileSync(path.join(reportDir, 'CURRENT.md'), 'utf8');
+    const continuityJson = JSON.parse(fs.readFileSync(path.join(reportDir, 'CURRENT.json'), 'utf8'));
+
+    assert.equal(paused.paused, true);
+    assert.ok(paused.continuity);
+    assert.equal(history.reports.length, 0);
+    assert.equal(fs.existsSync(path.join(reportDir, 'CURRENT.md')), true);
+    assert.equal(fs.existsSync(path.join(reportDir, 'CURRENT.json')), true);
+    assert.equal(fs.existsSync(path.join(reportDir, 'INDEX.md')), true);
+    assert.match(continuityMarkdown, /handoff_present: yes/);
+    assert.match(continuityMarkdown, /resume irq recovery after clear/);
+    assert.equal(continuityJson.source, 'pause');
+    assert.equal(continuityJson.handoff.next_action, 'resume irq recovery after clear');
+    assert.equal(continuityJson.reports.count, 0);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -137,7 +193,7 @@ test('session-report records package-aware monorepo context', async () => {
     await cli.main(['session-report', 'capture package-aware state']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
-    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
+    const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
     assert.equal(reports.length, 1);
 
     const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
@@ -305,7 +361,7 @@ test('session-report records tool recommendation when scan tool is ready', async
     await cli.main(['session-report', 'capture timer formula path']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
-    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
+    const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
     assert.equal(reports.length, 1);
 
     const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
@@ -525,7 +581,7 @@ test('session-report records walkthrough recommendation for broad peripheral exe
     await cli.main(['session-report', 'capture peripheral walkthrough']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
-    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
+    const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
     assert.equal(reports.length, 1);
 
     const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
@@ -574,7 +630,7 @@ test('session-report records latest executor summary and routes failed executor 
     const reportResult = cli.runSessionReport('capture failed executor context');
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
-    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
+    const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
     assert.equal(reports.length, 1);
 
     const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
@@ -614,7 +670,7 @@ test('session-report includes delegation runtime summary from latest orchestrate
     await cli.main(['session-report', 'capture delegation runtime']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
-    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
+    const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
     assert.equal(reports.length, 1);
 
     const content = fs.readFileSync(path.join(reportDir, reports[0]), 'utf8');
@@ -662,7 +718,7 @@ test('session-report records the current git branch in session and stored artifa
     assert.equal(reportResult.generated, true);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
-    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.json'));
+    const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.json$/i.test(name));
     assert.equal(reports.length, 1);
 
     const stored = JSON.parse(fs.readFileSync(path.join(reportDir, reports[0]), 'utf8'));

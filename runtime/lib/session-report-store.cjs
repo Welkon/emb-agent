@@ -11,6 +11,18 @@ function createSessionReportStoreHelpers(deps) {
     return path.join(projectExtDir, 'reports', 'sessions');
   }
 
+  function getSessionContinuityJsonPath(projectExtDir) {
+    return path.join(getSessionReportsDir(projectExtDir), 'CURRENT.json');
+  }
+
+  function getSessionContinuityMarkdownPath(projectExtDir) {
+    return path.join(getSessionReportsDir(projectExtDir), 'CURRENT.md');
+  }
+
+  function getSessionReportsIndexPath(projectExtDir) {
+    return path.join(getSessionReportsDir(projectExtDir), 'INDEX.md');
+  }
+
   function safeReadJson(filePath) {
     try {
       return runtime.readJson(filePath);
@@ -70,7 +82,7 @@ function createSessionReportStoreHelpers(deps) {
     }
 
     const reports = fs.readdirSync(reportsDir)
-      .filter(name => name.endsWith('.json'))
+      .filter(name => /^report-.+\.json$/i.test(name))
       .map(name => normalizeStoredSessionReport(safeReadJson(path.join(reportsDir, name)), path.join(reportsDir, name), cwd))
       .filter(Boolean)
       .sort((left, right) => String(right.generated_at || '').localeCompare(String(left.generated_at || '')));
@@ -135,11 +147,74 @@ function createSessionReportStoreHelpers(deps) {
     };
   }
 
+  function readStoredSessionContinuity(projectExtDir, options = {}) {
+    const cwd = String(options.cwd || process.cwd()).trim() || process.cwd();
+    const filePath = getSessionContinuityJsonPath(projectExtDir);
+    const raw = safeReadJson(filePath);
+
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+
+    const markdownPath = getSessionContinuityMarkdownPath(projectExtDir);
+    const indexPath = getSessionReportsIndexPath(projectExtDir);
+    const latestReport =
+      raw.latest_report && typeof raw.latest_report === 'object'
+        ? raw.latest_report
+        : null;
+
+    return {
+      version: String(raw.version || '1.0'),
+      generated_at: String(raw.generated_at || ''),
+      source: String(raw.source || ''),
+      project_root: String(raw.project_root || ''),
+      git_branch: String(raw.git_branch || ''),
+      profile: String(raw.profile || ''),
+      packs: Array.isArray(raw.packs) ? raw.packs : [],
+      focus: String(raw.focus || ''),
+      last_command: String(raw.last_command || ''),
+      default_package: String(raw.default_package || ''),
+      active_package: String(raw.active_package || ''),
+      active_task:
+        raw.active_task && typeof raw.active_task === 'object'
+          ? raw.active_task
+          : null,
+      handoff:
+        raw.handoff && typeof raw.handoff === 'object'
+          ? raw.handoff
+          : null,
+      memory_summary:
+        raw.memory_summary && typeof raw.memory_summary === 'object'
+          ? raw.memory_summary
+          : null,
+      next:
+        raw.next && typeof raw.next === 'object'
+          ? raw.next
+          : null,
+      resume:
+        raw.resume && typeof raw.resume === 'object'
+          ? raw.resume
+          : null,
+      reports:
+        raw.reports && typeof raw.reports === 'object'
+          ? raw.reports
+          : { count: 0, latest_id: '', preferred_id: '' },
+      latest_report: latestReport,
+      markdown_file: path.relative(cwd, markdownPath),
+      json_file: path.relative(cwd, filePath),
+      index_file: path.relative(cwd, indexPath)
+    };
+  }
+
   return {
     getSessionReportsDir,
+    getSessionContinuityJsonPath,
+    getSessionContinuityMarkdownPath,
+    getSessionReportsIndexPath,
     listStoredSessionReports,
     resolveStoredSessionReport,
-    buildSessionReportContinuity
+    buildSessionReportContinuity,
+    readStoredSessionContinuity
   };
 }
 

@@ -133,6 +133,12 @@ function buildInjectedSpecLines(projectRoot, resume) {
 }
 
 function buildSessionReportLines(projectRoot, currentBranch) {
+  const storedContinuity = sessionReportStore.readStoredSessionContinuity(
+    runtime.getProjectExtDir(projectRoot),
+    {
+      cwd: projectRoot
+    }
+  );
   const continuity = sessionReportStore.buildSessionReportContinuity(
     runtime.getProjectExtDir(projectRoot),
     {
@@ -147,9 +153,12 @@ function buildSessionReportLines(projectRoot, currentBranch) {
 
   const report = continuity.preferred;
   const lines = [
+    storedContinuity && storedContinuity.markdown_file
+      ? `Continuity file: ${storedContinuity.markdown_file}`
+      : '',
     `Latest session checkpoint: ${report.summary || report.id}`,
     `Checkpoint file: ${report.markdown_file || report.json_file || '(unknown)'}`
-  ];
+  ].filter(Boolean);
 
   if (report.generated_at) {
     lines.push(`Checkpoint recorded: ${report.generated_at}`);
