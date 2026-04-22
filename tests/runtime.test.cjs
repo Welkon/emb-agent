@@ -28,7 +28,7 @@ test('loadRuntimeConfig returns validated defaults', () => {
     type: 'git',
     location: 'https://github.com/Welkon/emb-support.git',
     branch: '',
-    subdir: 'workflows'
+    subdir: 'specs'
   });
   assert.deepEqual(config.default_chip_support_source, {
     type: 'git',

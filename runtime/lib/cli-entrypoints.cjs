@@ -354,7 +354,7 @@ function createCliEntryHelpers(deps) {
     const adapterBootstrapCommand = buildAdapterBootstrapCommand(sources);
     const adapterSourceReady = sources.length > 0 || hasConfiguredDefaultAdapterSource();
     const bootstrapFastPathCommand = adapterSourceReady ? 'bootstrap run --confirm' : adapterBootstrapCommand;
-    const projectDeriveCommand = 'support derive --from-project';
+    const projectDeriveCommand = 'adapter derive --from-project';
     const agentActions = [];
     const declaredIntentPresent =
       (Array.isArray(hardware.signals) && hardware.signals.some(item => item && (item.name || item.pin || item.note))) ||
@@ -456,7 +456,7 @@ function createCliEntryHelpers(deps) {
       nextSteps.push(
         adapterSourceReady
           ? 'Prefer `bootstrap run --confirm` for the shortest guided path. It will execute the current bootstrap step directly, then hand you back to next.'
-          : 'Prefer `support derive --from-project` first so the current project gets draft chip support without requiring any shared source.'
+          : 'Prefer `adapter derive --from-project` first so the current project gets draft chip support without requiring any shared source.'
       );
       nextSteps.push(
         declaredIntentPresent
@@ -727,11 +727,16 @@ function createCliEntryHelpers(deps) {
           'support bootstrap [<name>] [--confirm] [--type path|git --location <path-or-url>] [--branch <name>] [--subdir <path>] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
           'support sync <name> [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
           'support sync --all [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
-          'support analysis init --chip <name> [--model <name>] [--vendor <name>] [--series <name>] [--family <slug>] [--device <slug>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--output <path>] [--force]',
-          'support derive [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',
-          'support export [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
-          'support publish [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
-          'support generate [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] --output-root <path> [--force]',
+          'adapter analysis init --chip <name> [--model <name>] [--vendor <name>] [--series <name>] [--family <slug>] [--device <slug>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--output <path>] [--force]',
+          'adapter derive [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',
+          'adapter export [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
+          'adapter publish [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
+          'adapter generate [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] --output-root <path> [--force]',
+          'support analysis init ... [alias of `adapter analysis init`]',
+          'support derive ... [alias of `adapter derive`]',
+          'support export ... [alias of `adapter export`]',
+          'support publish ... [alias of `adapter publish`]',
+          'support generate ... [alias of `adapter generate`]',
           'chip list',
           'chip show <name>'
         ]
@@ -851,7 +856,7 @@ function createCliEntryHelpers(deps) {
               ]
             : [
                 'declare hardware / ingest doc / ingest schematic as needed',
-                'support derive --from-project (or support analysis init -> support derive --from-analysis)',
+                'adapter derive --from-project (or adapter analysis init -> adapter derive --from-analysis)',
                 'next [run]'
               ]
           : ['declare hardware / ingest doc / ingest schematic as needed', 'next'],

@@ -10,6 +10,10 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const installHelpersModule = require(path.join(repoRoot, 'runtime', 'lib', 'install-helpers.cjs'));
 const installTargetsModule = require(path.join(repoRoot, 'runtime', 'lib', 'install-targets.cjs'));
+const {
+  DEFAULT_WORKFLOW_SOURCE_LOCATION,
+  DEFAULT_WORKFLOW_SOURCE_SUBDIR
+} = require(path.join(repoRoot, 'runtime', 'lib', 'default-workflow-source.cjs'));
 const { DEFAULT_SKILL_SOURCE_LOCATION, DEFAULT_SKILL_SOURCE_SUBDIR } = require(path.join(
   repoRoot,
   'runtime',
@@ -25,7 +29,8 @@ function createHelper(customProcess, options = {}) {
     promptInstallerChoices,
     createTerminalUi,
     readline,
-    previewSkillSource
+    previewSkillSource,
+    previewWorkflowSource
   } = options;
 
   return installHelpersModule.createInstallHelpers({
@@ -35,6 +40,21 @@ function createHelper(customProcess, options = {}) {
     process: customProcess,
     readline: readline || null,
     promptInstallerChoices,
+    previewWorkflowSource:
+      previewWorkflowSource ||
+      ((source, previewOptions = {}) => ({
+        source: {
+          location: source,
+          branch: String(previewOptions.branch || ''),
+          subdir: String(previewOptions.subdir || '')
+        },
+        specs: [
+          {
+            name: 'connected-appliance',
+            summary: 'Connected spec bootstrap.'
+          }
+        ]
+      })),
     previewSkillSource,
     installTargets: installTargetsModule.createInstallTargets({
       os,
@@ -100,8 +120,42 @@ test('interactive no-args install can resolve local codex choice through prompt 
   assert.equal(args.profile, 'core');
   assert.equal(args.subagentBridgeCmd, '');
   assert.equal(args.subagentBridgeTimeoutMs, runtimeHost.DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS);
+  assert.equal(args.registry, '');
+  assert.equal(args.registryBranch, '');
+  assert.equal(args.registrySubdir, '');
+  assert.deepEqual(args.specs, []);
   assert.deepEqual(args.skillSources, []);
   assert.deepEqual(args.skillNames, []);
+});
+
+test('interactive prompt hook can request initial spec import', async () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: true },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess, {
+    promptInstallerChoices: async () => ({
+      runtime: 'codex',
+      location: 'local',
+      developer: 'welkon',
+      installSpecs: true,
+      specs: 'connected-appliance, sensor-node'
+    })
+  });
+
+  const args = await helper.resolveArgs([]);
+
+  assert.equal(args.registry, DEFAULT_WORKFLOW_SOURCE_LOCATION);
+  assert.equal(args.registryBranch, '');
+  assert.equal(args.registrySubdir, DEFAULT_WORKFLOW_SOURCE_SUBDIR);
+  assert.deepEqual(args.specs, ['connected-appliance', 'sensor-node']);
 });
 
 test('interactive prompt hook can request initial skill install', async () => {
@@ -134,7 +188,7 @@ test('interactive prompt hook can request initial skill install', async () => {
 
 test('interactive prompts render structured sections and retry blank developer names', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', 'skip', '', 'welkon'];
+  const answers = ['1', '2', 'skip', 'skip', '', 'welkon'];
   let stdout = '';
 
   const fakeProcess = {
@@ -208,30 +262,39 @@ test('interactive prompts render structured sections and retry blank developer n
   assert.equal(args.runtime, 'codex');
   assert.equal(args.local, true);
   assert.equal(args.developer, 'welkon');
-  assert.equal(askedQuestions.length, 5);
+  assert.equal(askedQuestions.length, 6);
   assert.match(askedQuestions[0], /Select Runtime/);
   assert.match(askedQuestions[0], /Embedded workflow bootstrap/);
   assert.match(askedQuestions[0], /Choice \[1\] >/);
   assert.match(askedQuestions[1], /Install Location/);
   assert.match(askedQuestions[1], /Recommended for this runtime/);
-  assert.match(askedQuestions[2], /Skill Selection/);
+  assert.match(askedQuestions[2], /Spec Selection/);
   assert.match(askedQuestions[2], /Choice \[skip\/all\/source\] >/);
-  assert.match(askedQuestions[3], /Developer Identity/);
-  assert.match(askedQuestions[3], /Developer name >/);
+  assert.match(askedQuestions[3], /Skill Selection/);
+  assert.match(askedQuestions[3], /Choice \[skip\/all\/source\] >/);
+  assert.match(askedQuestions[4], /Developer Identity/);
+  assert.match(askedQuestions[4], /Developer name >/);
   assert.match(stdout, /Runtime:/);
   assert.match(stdout, /Location:/);
+  assert.match(stdout, /Spec source:/);
+  assert.match(stdout, /Available specs:/);
+  assert.match(stdout, /Specs:/);
   assert.match(stdout, /Skill source:/);
   assert.match(stdout, /Skill bundle:/);
   assert.match(stdout, /Skills:/);
   assert.match(stdout, /Developer name is required/);
   assert.match(stdout, /Developer:/);
+  assert.equal(args.registry, '');
+  assert.equal(args.registryBranch, '');
+  assert.equal(args.registrySubdir, '');
+  assert.deepEqual(args.specs, []);
   assert.deepEqual(args.skillSources, []);
   assert.deepEqual(args.skillNames, []);
 });
 
 test('interactive prompts can collect initial skill source and selected skills', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', '1 2', 'welkon'];
+  const answers = ['1', '2', '1', '1 2', 'welkon'];
   let stdout = '';
   const longDescription = [
     'Build firmware with the repo-local Python XC8 build script.',
@@ -294,20 +357,30 @@ test('interactive prompts can collect initial skill source and selected skills',
 
   const args = await helper.resolveArgs([]);
 
+  assert.equal(args.registry, DEFAULT_WORKFLOW_SOURCE_LOCATION);
+  assert.equal(args.registryBranch, '');
+  assert.equal(args.registrySubdir, DEFAULT_WORKFLOW_SOURCE_SUBDIR);
+  assert.deepEqual(args.specs, ['connected-appliance']);
   assert.deepEqual(args.skillSources, [DEFAULT_SKILL_SOURCE_LOCATION]);
   assert.deepEqual(args.skillNames, ['scope-connect', 'scope-capture']);
-  assert.equal(askedQuestions.length, 4);
-  assert.match(askedQuestions[2], /Skill Selection/);
-  assert.match(askedQuestions[2], /Press enter or type `skip` to skip initial skill installation/);
-  assert.match(askedQuestions[2], /skip\.\s+Skip initial skill installation/);
-  assert.match(askedQuestions[2], /space-separated numbers/);
-  assert.match(askedQuestions[2], /Type `all` to enable every published skill/);
-  assert.match(askedQuestions[2], /source/);
-  assert.match(askedQuestions[2], /scope-connect/);
-  assert.match(askedQuestions[2], /scope-capture/);
-  assert.doesNotMatch(askedQuestions[2], /while still allowing explicit overrides for chip, source files, and image prefix\./);
-  assert.match(askedQuestions[2], /Build firmware with the repo-local Python XC8 build script\./);
-  assert.match(askedQuestions[3], /Developer Identity/);
+  assert.equal(askedQuestions.length, 5);
+  assert.match(askedQuestions[2], /Spec Selection/);
+  assert.match(askedQuestions[2], /Type `all` to activate every selectable spec/);
+  assert.match(askedQuestions[2], /connected-appliance/);
+  assert.match(askedQuestions[3], /Skill Selection/);
+  assert.match(askedQuestions[3], /Press enter or type `skip` to skip initial skill installation/);
+  assert.match(askedQuestions[3], /skip\.\s+Skip initial skill installation/);
+  assert.match(askedQuestions[3], /space-separated numbers/);
+  assert.match(askedQuestions[3], /Type `all` to enable every published skill/);
+  assert.match(askedQuestions[3], /source/);
+  assert.match(askedQuestions[3], /scope-connect/);
+  assert.match(askedQuestions[3], /scope-capture/);
+  assert.doesNotMatch(askedQuestions[3], /while still allowing explicit overrides for chip, source files, and image prefix\./);
+  assert.match(askedQuestions[3], /Build firmware with the repo-local Python XC8 build script\./);
+  assert.match(askedQuestions[4], /Developer Identity/);
+  assert.match(stdout, /Spec source:/);
+  assert.match(stdout, /Available specs:/);
+  assert.match(stdout, /Spec selection:/);
   assert.match(stdout, /Skill source:/);
   assert.match(stdout, /Skill bundle:/);
   assert.match(stdout, /Skill selection:/);
@@ -315,7 +388,7 @@ test('interactive prompts can collect initial skill source and selected skills',
 
 test('interactive prompts support arrow-key multi-select for skills', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', 'welkon'];
+  const answers = ['1', '2', '1', 'welkon'];
   let stdout = '';
   const fakeStdin = new EventEmitter();
   fakeStdin.isTTY = true;
@@ -377,7 +450,7 @@ test('interactive prompts support arrow-key multi-select for skills', async () =
             askedQuestions.push(String(question));
             const answer = String(answers.shift() || '');
             callback(answer);
-            if (/Install Location/.test(String(question))) {
+            if (/Spec Selection/.test(String(question))) {
               setImmediate(() => {
                 fakeStdin.emit('data', '\u001b[B');
                 fakeStdin.emit('data', ' ');
@@ -392,9 +465,12 @@ test('interactive prompts support arrow-key multi-select for skills', async () =
 
   const args = await helper.resolveArgs([]);
 
+  assert.equal(args.registry, DEFAULT_WORKFLOW_SOURCE_LOCATION);
+  assert.equal(args.registrySubdir, DEFAULT_WORKFLOW_SOURCE_SUBDIR);
+  assert.deepEqual(args.specs, ['connected-appliance']);
   assert.deepEqual(args.skillSources, [DEFAULT_SKILL_SOURCE_LOCATION]);
   assert.deepEqual(args.skillNames, ['scope-capture']);
-  assert.equal(askedQuestions.length, 3);
+  assert.equal(askedQuestions.length, 4);
   assert.match(stdout, /●/);
   assert.match(stdout, /○/);
   assert.match(stdout, /skip/);
@@ -406,7 +482,7 @@ test('interactive prompts support arrow-key multi-select for skills', async () =
 
 test('interactive prompts support selecting the direct skip option with arrow keys', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', 'welkon'];
+  const answers = ['1', '2', '1', 'welkon'];
   let stdout = '';
   const fakeStdin = new EventEmitter();
   fakeStdin.isTTY = true;
@@ -468,7 +544,7 @@ test('interactive prompts support selecting the direct skip option with arrow ke
             askedQuestions.push(String(question));
             const answer = String(answers.shift() || '');
             callback(answer);
-            if (/Install Location/.test(String(question))) {
+            if (/Spec Selection/.test(String(question))) {
               setImmediate(() => {
                 fakeStdin.emit('data', '\u001b[A');
                 fakeStdin.emit('data', '\r');
@@ -482,9 +558,12 @@ test('interactive prompts support selecting the direct skip option with arrow ke
 
   const args = await helper.resolveArgs([]);
 
+  assert.equal(args.registry, DEFAULT_WORKFLOW_SOURCE_LOCATION);
+  assert.equal(args.registrySubdir, DEFAULT_WORKFLOW_SOURCE_SUBDIR);
+  assert.deepEqual(args.specs, ['connected-appliance']);
   assert.deepEqual(args.skillSources, []);
   assert.deepEqual(args.skillNames, []);
-  assert.equal(askedQuestions.length, 3);
+  assert.equal(askedQuestions.length, 4);
   assert.match(stdout, /skip/);
   assert.match(stdout, /Skip initial skill installation/);
   assert.match(stdout, /Highlight `skip` and press Enter/);
@@ -494,7 +573,7 @@ test('interactive prompts support selecting the direct skip option with arrow ke
 
 test('interactive prompts skip initial skills when selection is left blank', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', '', 'welkon'];
+  const answers = ['1', '2', 'skip', '', 'welkon'];
   let stdout = '';
 
   const fakeProcess = {
@@ -548,16 +627,21 @@ test('interactive prompts skip initial skills when selection is left blank', asy
 
   const args = await helper.resolveArgs([]);
 
+  assert.equal(args.registry, '');
+  assert.equal(args.registryBranch, '');
+  assert.equal(args.registrySubdir, '');
+  assert.deepEqual(args.specs, []);
   assert.deepEqual(args.skillSources, []);
   assert.deepEqual(args.skillNames, []);
-  assert.equal(askedQuestions.length, 4);
-  assert.match(askedQuestions[2], /Choice \[skip\/all\/source\] >/);
+  assert.equal(askedQuestions.length, 5);
+  assert.match(askedQuestions[2], /Spec Selection/);
+  assert.match(askedQuestions[3], /Choice \[skip\/all\/source\] >/);
   assert.match(stdout, /Skip initial bundle install/);
 });
 
 test('interactive prompts can switch away from the default initial skill bundle', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', 'source', './custom-bundle', '1', 'welkon'];
+  const answers = ['1', '2', '1', 'source', './custom-bundle', '1', 'welkon'];
   let stdout = '';
   const previewCalls = [];
 
@@ -627,23 +711,27 @@ test('interactive prompts can switch away from the default initial skill bundle'
 
   const args = await helper.resolveArgs([]);
 
+  assert.equal(args.registry, DEFAULT_WORKFLOW_SOURCE_LOCATION);
+  assert.equal(args.registrySubdir, DEFAULT_WORKFLOW_SOURCE_SUBDIR);
+  assert.deepEqual(args.specs, ['connected-appliance']);
   assert.deepEqual(previewCalls, [
     [DEFAULT_SKILL_SOURCE_LOCATION, '--subdir', DEFAULT_SKILL_SOURCE_SUBDIR, '--scope', 'project'],
     ['./custom-bundle', '--scope', 'project']
   ]);
   assert.deepEqual(args.skillSources, ['./custom-bundle']);
   assert.deepEqual(args.skillNames, ['scope-capture']);
-  assert.equal(askedQuestions.length, 6);
-  assert.match(askedQuestions[2], /Skill Selection/);
-  assert.match(askedQuestions[3], /Skill Source/);
-  assert.match(askedQuestions[4], /Skill Selection/);
+  assert.equal(askedQuestions.length, 7);
+  assert.match(askedQuestions[2], /Spec Selection/);
+  assert.match(askedQuestions[3], /Skill Selection/);
+  assert.match(askedQuestions[4], /Skill Source/);
+  assert.match(askedQuestions[5], /Skill Selection/);
   assert.match(stdout, /default-scope-kit/);
   assert.match(stdout, /custom-scope-kit/);
 });
 
 test('interactive prompts let user skip initial skills after preview failure', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', 'skip', 'welkon'];
+  const answers = ['1', '2', 'skip', 'skip', 'welkon'];
   let stdout = '';
 
   const fakeProcess = {
@@ -686,9 +774,13 @@ test('interactive prompts let user skip initial skills after preview failure', a
 
   const args = await helper.resolveArgs([]);
 
+  assert.equal(args.registry, '');
+  assert.equal(args.registryBranch, '');
+  assert.equal(args.registrySubdir, '');
+  assert.deepEqual(args.specs, []);
   assert.deepEqual(args.skillSources, []);
   assert.deepEqual(args.skillNames, []);
-  assert.equal(askedQuestions.length, 4);
+  assert.equal(askedQuestions.length, 5);
   assert.match(stdout, /cannot be inspected from this environment right now/);
   assert.match(stdout, /Skip initial bundle install/);
   assert.equal(args.developer, 'welkon');
@@ -854,6 +946,41 @@ test('parseArgs accepts default adapter source overrides', () => {
   assert.equal(args.defaultAdapterSourceLocation, 'git@github.com:Welkon/emb-agent-adapters.git');
   assert.equal(args.defaultAdapterSourceBranch, 'main');
   assert.equal(args.defaultAdapterSourceSubdir, 'emb-agent');
+});
+
+test('parseArgs accepts registry and spec overrides', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+  const args = helper.parseArgs([
+    '--global',
+    '--developer',
+    'welkon',
+    '--registry',
+    '/tmp/spec-catalog',
+    '--registry-branch',
+    'main',
+    '--registry-subdir',
+    'specs',
+    '--spec',
+    'connected-appliance',
+    '--spec',
+    'sensor-node'
+  ]);
+
+  assert.equal(args.registry, '/tmp/spec-catalog');
+  assert.equal(args.registryBranch, 'main');
+  assert.equal(args.registrySubdir, 'specs');
+  assert.deepEqual(args.specs, ['connected-appliance', 'sensor-node']);
 });
 
 test('parseArgs accepts install profile override', () => {

@@ -527,7 +527,8 @@ test('bootstrap run bypasses startup-hooks when host readiness is the only remai
       'support', 'bootstrap', 'local-pack',
       '--confirm',
       '--type', 'path',
-      '--location', path.resolve(repoRoot, '..', 'emb-agent-adapters')
+      '--location', path.resolve(repoRoot, '..', 'emb-support'),
+      '--subdir', 'adapters'
     ]);
 
     stdout = '';
@@ -660,16 +661,16 @@ test('health reports adapter registration and sync readiness', async () => {
     let report = JSON.parse(stdout);
     assert.equal(report.checks.find(item => item.key === 'chip_support_sources_registered').status, 'info');
     assert.equal(report.checks.find(item => item.key === 'chip_support_sync_project').status, 'info');
-    assert.ok(report.next_commands.some(item => item.cli.includes('support derive --from-project')));
+    assert.ok(report.next_commands.some(item => item.cli.includes('adapter derive --from-project')));
     assert.equal(report.quickstart.stage, 'derive-then-next');
     assert.equal(report.action_card.action, 'Ready to run');
     assert.equal(report.action_card.stage, 'chip-support-draft');
     assert.equal(report.action_card.first_instruction, '');
-    assert.ok(report.action_card.first_cli.includes('support derive --from-project'));
+    assert.ok(report.action_card.first_cli.includes('adapter derive --from-project'));
     assert.ok(report.action_card.then_cli.endsWith(' next'));
     assert.equal(report.bootstrap.current_stage, 'support-derive');
-    assert.ok(report.bootstrap.next_stage.cli.includes('support derive --from-project'));
-    assert.ok(report.quickstart.steps[0].cli.includes('support derive --from-project'));
+    assert.ok(report.bootstrap.next_stage.cli.includes('adapter derive --from-project'));
+    assert.ok(report.quickstart.steps[0].cli.includes('adapter derive --from-project'));
     assert.ok(report.quickstart.steps[1].cli.endsWith(' next'));
 
     stdout = '';
@@ -867,29 +868,29 @@ test('health routes from applied hardware doc to adapter derive when synced adap
     assert.equal(report.checks.find(item => item.key === 'chip_support_derive_candidate').status, 'warn');
     assert.ok(report.next_commands.some(item => item.key === 'support-analysis-init'));
     assert.ok(report.next_commands.some(item => item.key === 'support-derive-from-analysis'));
-    assert.ok(report.next_commands.some(item => item.cli.includes('support analysis init --chip PMS150G --package SOP8')));
-    assert.ok(report.next_commands.some(item => item.cli.includes('support derive --from-analysis .emb-agent/analysis/pms150g.json')));
+    assert.ok(report.next_commands.some(item => item.cli.includes('adapter analysis init --chip PMS150G --package SOP8')));
+    assert.ok(report.next_commands.some(item => item.cli.includes('adapter derive --from-analysis .emb-agent/analysis/pms150g.json')));
     assert.equal(report.recommended_flow.id, 'doc-to-chip-support-analysis');
     assert.equal(report.recommended_flow.mode, 'analysis-artifact-first');
     assert.equal(report.handoff_protocol.protocol, 'emb-agent.chip-support-analysis/1');
     assert.equal(report.handoff_protocol.artifact_path, '.emb-agent/analysis/pms150g.json');
     assert.deepEqual(
       report.next_commands.find(item => item.key === 'support-analysis-init').argv,
-      ['support', 'analysis', 'init', '--chip', 'PMS150G', '--package', 'SOP8']
+      ['adapter', 'analysis', 'init', '--chip', 'PMS150G', '--package', 'SOP8']
     );
     assert.deepEqual(
       report.next_commands.find(item => item.key === 'support-derive-from-analysis').argv,
-      ['support', 'derive', '--from-analysis', '.emb-agent/analysis/pms150g.json']
+      ['adapter', 'derive', '--from-analysis', '.emb-agent/analysis/pms150g.json']
     );
     assert.equal(report.quickstart.stage, 'derive-then-next');
     assert.equal(report.action_card.stage, 'chip-support-draft');
     assert.equal(report.action_card.action, 'Ready to run');
     assert.equal(report.action_card.first_instruction, '');
-    assert.ok(report.action_card.first_cli.includes('support analysis init --chip PMS150G --package SOP8'));
-    assert.ok(report.action_card.then_cli.includes('support derive --from-analysis .emb-agent/analysis/pms150g.json'));
+    assert.ok(report.action_card.first_cli.includes('adapter analysis init --chip PMS150G --package SOP8'));
+    assert.ok(report.action_card.then_cli.includes('adapter derive --from-analysis .emb-agent/analysis/pms150g.json'));
     assert.equal(report.bootstrap.current_stage, 'support-derive');
-    assert.ok(report.quickstart.steps[0].cli.includes('support analysis init --chip PMS150G --package SOP8'));
-    assert.ok(report.quickstart.steps[1].cli.includes('support derive --from-analysis .emb-agent/analysis/pms150g.json'));
+    assert.ok(report.quickstart.steps[0].cli.includes('adapter analysis init --chip PMS150G --package SOP8'));
+    assert.ok(report.quickstart.steps[1].cli.includes('adapter derive --from-analysis .emb-agent/analysis/pms150g.json'));
     assert.ok(report.quickstart.steps[2].cli.endsWith(' next'));
   } finally {
     if (previousTrust === undefined) {

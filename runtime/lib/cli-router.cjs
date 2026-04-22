@@ -137,16 +137,16 @@ function createCliRouter(deps) {
       if (cmd === 'support' && subcmd === 'bootstrap') {
         return 'Bootstrapping chip support source';
       }
-      if (cmd === 'support' && subcmd === 'analysis' && rest[0] === 'init') {
+      if ((cmd === 'support' || cmd === 'adapter') && subcmd === 'analysis' && rest[0] === 'init') {
         return 'Initializing chip support analysis artifact';
       }
-      if (cmd === 'support' && subcmd === 'export') {
+      if ((cmd === 'support' || cmd === 'adapter') && subcmd === 'export') {
         return 'Exporting derived chip support into a private target';
       }
-      if (cmd === 'support' && subcmd === 'publish') {
+      if ((cmd === 'support' || cmd === 'adapter') && subcmd === 'publish') {
         return 'Publishing derived chip support into a shared catalog';
       }
-      if (cmd === 'support' && (subcmd === 'derive' || subcmd === 'generate')) {
+      if ((cmd === 'support' || cmd === 'adapter') && (subcmd === 'derive' || subcmd === 'generate')) {
         return `Generating chip support artifacts via ${scope}`;
       }
 
@@ -1575,7 +1575,7 @@ function createCliRouter(deps) {
             return buildBootstrapRunResponse(stage, applied);
           }
 
-          if (stage.argv[0] === 'support' || stage.argv[0] === 'tool') {
+          if (stage.argv[0] === 'support' || stage.argv[0] === 'adapter' || stage.argv[0] === 'tool') {
             const result = handleAdapterToolChipCommands(stage.argv[0], stage.argv[1], stage.argv.slice(2));
             return buildBootstrapRunResponse(stage, result);
           }
@@ -1916,13 +1916,20 @@ function createCliRouter(deps) {
       return;
     }
 
-    if (
+    const supportTerminalUiCommand =
       cmd === 'support' &&
       (
         ['bootstrap', 'sync', 'derive', 'generate'].includes(subcmd || '') ||
         (subcmd === 'analysis' && rest[0] === 'init')
-      )
-    ) {
+      );
+    const adapterTerminalUiCommand =
+      cmd === 'adapter' &&
+      (
+        ['derive', 'generate'].includes(subcmd || '') ||
+        (subcmd === 'analysis' && rest[0] === 'init')
+      );
+
+    if (supportTerminalUiCommand || adapterTerminalUiCommand) {
       emitCommandResult({ cmd, subcmd }, await runWithTerminalUi({
         cmd,
         subcmd,

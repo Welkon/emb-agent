@@ -2,7 +2,7 @@
 
 const DEFAULT_WORKFLOW_SOURCE_TYPE = 'git';
 const DEFAULT_WORKFLOW_SOURCE_LOCATION = 'https://github.com/Welkon/emb-support.git';
-const DEFAULT_WORKFLOW_SOURCE_SUBDIR = 'workflows';
+const DEFAULT_WORKFLOW_SOURCE_SUBDIR = 'specs';
 
 function readEnvString(env, key) {
   if (!env || typeof env !== 'object' || Array.isArray(env)) {

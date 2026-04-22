@@ -13,7 +13,7 @@ const ANALYSIS_SCHEMA_ID = 'https://emb-agent.dev/schemas/chip-support-analysis.
 function usage() {
   process.stdout.write(
     [
-      'support-analysis usage:',
+      'adapter-analysis usage:',
       '  node scripts/support-analysis.cjs init --chip <name>',
       '    [--model <name>] [--vendor <name>] [--series <name>]',
       '    [--family <slug>] [--device <slug>] [--package <name>] [--pin-count <n>]',
@@ -139,7 +139,7 @@ function parseInitArgs(argv) {
   }
 
   if (!String(result.chip || result.model || result.device).trim()) {
-    throw new Error('support analysis init requires --chip, --model, or --device');
+    throw new Error('adapter analysis init requires --chip, --model, or --device');
   }
 
   return result;
@@ -193,7 +193,7 @@ function buildArtifact(parsed) {
       notes: [
         'Draft analysis artifact for AI-assisted chip-support derivation.',
         'Keep only evidence-backed facts from datasheets/manuals/schematics here.',
-        'Executable bindings remain draft after support derive/generate; use unsupported plus reason for negative conclusions.'
+        'Executable bindings remain draft after adapter derive/generate; use unsupported plus reason for negative conclusions.'
       ]
     }
   };
@@ -219,14 +219,14 @@ function initAnalysis(argv, options = {}) {
 
   return {
     status: 'ok',
-    command: 'support analysis init',
+    command: 'adapter analysis init',
     schema_id: ANALYSIS_SCHEMA_ID,
     draft: true,
     artifact_path: relativePath,
     family: normalizeSlug(parsed.family || ''),
     device: normalizeSlug(parsed.device || parsed.model || parsed.chip),
     chip: buildArtifact(parsed).chip_support_analysis.chip,
-    derive_hint: `support derive --from-analysis ${relativePath}`,
+    derive_hint: `adapter derive --from-analysis ${relativePath}`,
     notes: [
       'Fill this artifact with evidence-backed facts before deriving adapters.',
       'Keep executable bindings as proposals only; derive/generate will still write them as draft.'
@@ -246,7 +246,7 @@ function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  throw new Error(`Unknown support-analysis subcommand: ${subcmd}`);
+  throw new Error(`Unknown adapter-analysis subcommand: ${subcmd}`);
 }
 
 module.exports = {
@@ -261,7 +261,7 @@ if (require.main === module) {
   try {
     main(process.argv.slice(2));
   } catch (error) {
-    process.stderr.write(`support-analysis error: ${error.message}\n`);
+    process.stderr.write(`adapter-analysis error: ${error.message}\n`);
     process.exitCode = 1;
   }
 }

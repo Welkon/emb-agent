@@ -1133,7 +1133,7 @@ test('adapter derive can consume AI analysis artifact as structured input', asyn
   }
 });
 
-test('support analysis init creates a schema-backed artifact template', async () => {
+test('adapter analysis init creates a schema-backed artifact template', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-analysis-init-'));
   const currentCwd = process.cwd();
 
@@ -1144,7 +1144,7 @@ test('support analysis init creates a schema-backed artifact template', async ()
 
     const result = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'analysis',
         'init',
         '--chip',
@@ -1166,7 +1166,7 @@ test('support analysis init creates a schema-backed artifact template', async ()
     assert.equal(result.schema_id, 'https://emb-agent.dev/schemas/chip-support-analysis.schema.json');
     assert.equal(result.device, 'esp32-c3');
     assert.equal(result.chip, 'esp32-c3');
-    assert.match(result.derive_hint, /support derive --from-analysis \.emb-agent\/analysis\/esp32-c3\.json/);
+    assert.match(result.derive_hint, /adapter derive --from-analysis \.emb-agent\/analysis\/esp32-c3\.json/);
 
     assert.equal(artifact.$schema, 'https://emb-agent.dev/schemas/chip-support-analysis.schema.json');
     assert.equal(artifact.chip_support_analysis.vendor, 'Espressif');

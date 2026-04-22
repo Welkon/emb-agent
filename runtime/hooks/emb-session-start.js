@@ -10,6 +10,7 @@ const hookDispatchHelpers = require('../lib/hook-dispatch.cjs');
 const hookTrustHelpers = require('../lib/hook-trust.cjs');
 const runtimeHostHelpers = require('../lib/runtime-host.cjs');
 const updateCheckHelpers = require('../lib/update-check.cjs');
+const coreProtocolHelpers = require('../lib/core-protocols.cjs');
 const runtime = require('../lib/runtime.cjs');
 const workflowRegistry = require('../lib/workflow-registry.cjs');
 const sessionReportStoreHelpers = require('../lib/session-report-store.cjs');
@@ -108,7 +109,7 @@ function buildUpdateLines() {
   return lines;
 }
 
-function buildInjectedSpecLines(projectRoot, resume) {
+function buildInjectedWorkflowSpecLines(projectRoot, resume) {
   const registry = workflowRegistry.loadWorkflowRegistry(getRuntimeRoot(), {
     projectExtDir: runtime.getProjectExtDir(projectRoot)
   });
@@ -124,7 +125,7 @@ function buildInjectedSpecLines(projectRoot, resume) {
   }
 
   return [
-    'Auto-injected specs:',
+    'Auto-injected workflow specs:',
     ...specs.map(item => {
       const reason = item.reasons.join(', ');
       return `- ${item.name} (${item.display_path}): ${item.summary}${reason ? ` [${reason}]` : ''}`;
@@ -318,7 +319,8 @@ function runHook(rawInput) {
     const resume = start.summary && start.summary.initialized ? cli.buildResumeContext() : { handoff: null, task: null };
     const session = typeof cli.loadSession === 'function' ? cli.loadSession() : null;
     const updateLines = buildUpdateLines();
-    const specLines = buildInjectedSpecLines(projectRoot, resume);
+    const coreProtocolLines = coreProtocolHelpers.buildCoreProtocolLines();
+    const specLines = buildInjectedWorkflowSpecLines(projectRoot, resume);
     const sessionReportLines = buildSessionReportLines(
       projectRoot,
       session && session.git_branch ? session.git_branch : ''
@@ -326,7 +328,7 @@ function runHook(rawInput) {
     const message = buildSessionContext(projectRoot, start, resume, {
       initializedDuringHook: !hadProjectConfig && fs.existsSync(projectConfigPath),
       updateLines,
-      specLines,
+      specLines: [...coreProtocolLines, ...specLines],
       sessionReportLines
     });
 
@@ -343,6 +345,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildInjectedWorkflowSpecLines,
   buildUpdateLines,
   compareVersions,
   detectStaleInstall,

@@ -10,7 +10,8 @@ const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const {
-  importSupportWorkflowRegistry
+  importSupportWorkflowRegistry,
+  withSupportSourceEnv
 } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 test('note add appends structured entry to hardware doc', () => {
@@ -58,40 +59,42 @@ test('note add appends structured entry to hardware doc', () => {
 });
 
 test('note add can create missing connectivity note target from template', () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-note-rtos-'));
-  const currentCwd = process.cwd();
-  const originalWrite = process.stdout.write;
+  return withSupportSourceEnv(() => {
+    const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-note-rtos-'));
+    const currentCwd = process.cwd();
+    const originalWrite = process.stdout.write;
 
-  process.stdout.write = () => true;
+    process.stdout.write = () => true;
 
-  try {
-    initProject.main(['--project', tempProject]);
+    try {
+      initProject.main(['--project', tempProject]);
 
-    process.chdir(tempProject);
-    cli.main(['init']);
-    importSupportWorkflowRegistry(tempProject);
-    cli.main(['profile', 'set', 'rtos-iot']);
-    cli.main(['spec', 'add', 'connected-appliance']);
-    cli.main([
-      'note',
-      'add',
-      'connectivity',
-      'Offline mode must keep local relay control available',
-      '--kind',
-      'safe_default',
-      '--evidence',
-      'local control requirement'
-    ]);
+      process.chdir(tempProject);
+      cli.main(['init']);
+      importSupportWorkflowRegistry(tempProject);
+      cli.main(['profile', 'set', 'rtos-iot']);
+      cli.main(['spec', 'add', 'connected-appliance']);
+      cli.main([
+        'note',
+        'add',
+        'connectivity',
+        'Offline mode must keep local relay control available',
+        '--kind',
+        'safe_default',
+        '--evidence',
+        'local control requirement'
+      ]);
 
-    const connectivityPath = path.join(tempProject, 'docs', 'CONNECTIVITY.md');
-    const content = fs.readFileSync(connectivityPath, 'utf8');
+      const connectivityPath = path.join(tempProject, 'docs', 'CONNECTIVITY.md');
+      const content = fs.readFileSync(connectivityPath, 'utf8');
 
-    assert.equal(fs.existsSync(connectivityPath), true);
-    assert.match(content, /# .* Connectivity/);
-    assert.match(content, /## Emb-Agent Notes/);
-    assert.match(content, /Offline mode must keep local relay control available/);
-  } finally {
-    process.chdir(currentCwd);
-    process.stdout.write = originalWrite;
-  }
+      assert.equal(fs.existsSync(connectivityPath), true);
+      assert.match(content, /# .* Connectivity/);
+      assert.match(content, /## Emb-Agent Notes/);
+      assert.match(content, /Offline mode must keep local relay control available/);
+    } finally {
+      process.chdir(currentCwd);
+      process.stdout.write = originalWrite;
+    }
+  });
 });

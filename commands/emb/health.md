@@ -21,4 +21,4 @@ allowed-tools:
 - Run `$emb-health` when this command matches the current problem.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
 - Use it first when automatic startup seems inactive or bootstrap is blocked before hardware or chip support stages.
-- When `health` recommends chip-support work from a hardware document, prefer the analysis-artifact flow: `support analysis init` first, then `support derive --from-analysis`.
+- When `health` recommends chip-support work from a hardware document, prefer the analysis-artifact flow: `adapter analysis init` first, then `adapter derive --from-analysis`.

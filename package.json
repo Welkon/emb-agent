@@ -20,7 +20,6 @@
     "runtime/profiles",
     "runtime/README.md",
     "runtime/scripts",
-    "runtime/specs",
     "runtime/state/default-session.json",
     "runtime/templates",
     "runtime/tools",

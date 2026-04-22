@@ -46,14 +46,12 @@ Project state is stored by default at:
   Fixed output templates.
 - `profiles/`
   Built-in project profiles.
-- `specs/`
-  Built-in workflow specs and selectable project-spec definitions.
+- `registry/`
+  Built-in catalog metadata for templates and workflow-registry merging.
 - `tools/`
   Core abstract tool specs.
 - `chips/`
   Core abstract chip registry.
-- package-root `skills/`
-  Built-in skills discovered lazily by the runtime. Metadata is listed first; full bodies load only on `skills show` or `skills run`.
 - package-root `memory/`
   Built-in instruction-memory layers such as organization guidance that can be stacked with user, project, and local memory.
 - `extensions/`
@@ -189,14 +187,16 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs pause
 node <runtime-home>/emb-agent/bin/emb-agent.cjs resume
 ```
 
-Inspect reusable skills and layered memory:
+Inspect installed skills and layered memory:
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs skills list
-node <runtime-home>/emb-agent/bin/emb-agent.cjs skills show swarm-execution
+node <runtime-home>/emb-agent/bin/emb-agent.cjs skills show <name>
 node <runtime-home>/emb-agent/bin/emb-agent.cjs memory stack
 node <runtime-home>/emb-agent/bin/emb-agent.cjs memory audit
 ```
+
+emb-agent core task discipline, worker contracts, and AAR closure rules are implemented in runtime code rather than shipped as built-in skill/spec documents.
 
 `pause` also performs one auto-memory extraction pass so reusable conclusions can be reviewed later instead of being lost in session-only state.
 

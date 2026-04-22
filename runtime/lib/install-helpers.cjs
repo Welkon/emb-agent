@@ -1,6 +1,7 @@
 'use strict';
 
 const commandVisibility = require('./command-visibility.cjs');
+const defaultWorkflowSourceHelpers = require('./default-workflow-source.cjs');
 const defaultSkillSourceHelpers = require('./default-skill-source.cjs');
 const { DEFAULT_SKILL_SOURCE_LOCATION } = defaultSkillSourceHelpers;
 
@@ -12,6 +13,7 @@ function createInstallHelpers(deps) {
     process,
     readline,
     promptInstallerChoices,
+    previewWorkflowSource,
     previewSkillSource,
     installTargets,
     runtimeHost,
@@ -50,6 +52,7 @@ function createInstallHelpers(deps) {
   const INTERACTIVE_CANCELLED_MESSAGE = 'Interactive install cancelled.';
   const INTERACTIVE_SKILL_SELECTION_CHANGE_SOURCE = Symbol('interactive-skill-selection-change-source');
   let cachedSkillSourcePreviewer = null;
+  let cachedWorkflowSourcePreviewer = null;
 
   function usage() {
     process.stdout.write(
@@ -95,6 +98,14 @@ function createInstallHelpers(deps) {
         '                          Install an initial skill bundle from path, npm:, pypi:, or git source',
         '  --skill <name>',
         '                          Enable only the named skill from the installed bundle (repeatable)',
+        '  --registry <source>',
+        '                          Import project specs from path or git source during local bootstrap',
+        '  --registry-branch <name>',
+        '                          Optional branch for the workflow registry source',
+        '  --registry-subdir <path>',
+        '                          Optional subdirectory under the workflow registry source repository',
+        '  --spec <name>',
+        '                          Activate the named spec during local bootstrap (repeatable)',
         '  --uninstall             Remove emb-agent managed files from the target',
         '  --force                 Overwrite existing emb-agent runtime',
         '  --help                  Show this help'
@@ -185,6 +196,10 @@ function createInstallHelpers(deps) {
       defaultAdapterSourceLocation: '',
       defaultAdapterSourceBranch: '',
       defaultAdapterSourceSubdir: '',
+      registry: '',
+      registryBranch: '',
+      registrySubdir: '',
+      specs: [],
       skillSources: [],
       skillNames: [],
       uninstall: false,
@@ -317,6 +332,26 @@ function createInstallHelpers(deps) {
         index += 1;
         continue;
       }
+      if (token === '--registry' || token === '-r') {
+        result.registry = String(argv[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
+      if (token === '--registry-branch') {
+        result.registryBranch = String(argv[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
+      if (token === '--registry-subdir') {
+        result.registrySubdir = String(argv[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
+      if (token === '--spec') {
+        result.specs.push(String(argv[index + 1] || '').trim());
+        index += 1;
+        continue;
+      }
       throw new Error(`Unknown argument: ${token}`);
     }
 
@@ -349,6 +384,18 @@ function createInstallHelpers(deps) {
     }
     if (argv.includes('--skill') && result.skillNames.some(item => !item)) {
       throw new Error('Missing value after --skill');
+    }
+    if ((argv.includes('--registry') || argv.includes('-r')) && !result.registry) {
+      throw new Error('Missing value after --registry/-r');
+    }
+    if (argv.includes('--registry-branch') && !result.registryBranch) {
+      throw new Error('Missing value after --registry-branch');
+    }
+    if (argv.includes('--registry-subdir') && !result.registrySubdir) {
+      throw new Error('Missing value after --registry-subdir');
+    }
+    if (argv.includes('--spec') && result.specs.some(item => !item)) {
+      throw new Error('Missing value after --spec');
     }
     if (result.global && result.local) {
       throw new Error('Use either --global or --local, not both');
@@ -526,6 +573,62 @@ function createInstallHelpers(deps) {
     );
   }
 
+  function buildInteractiveWorkflowSourcePrompt(defaultSource = resolveInstallerDefaultWorkflowSource()) {
+    const { chalk } = createPromptStyler();
+    const defaultTarget = [
+      defaultSource.location,
+      defaultSource.subdir ? `subdir=${defaultSource.subdir}` : '',
+      defaultSource.branch ? `branch=${defaultSource.branch}` : ''
+    ].filter(Boolean).join(', ');
+
+    return renderInteractiveSection(
+      chalk,
+      '▶',
+      'Spec Source',
+      [
+        'Provide a path or git source for the external specs used during project bootstrap.',
+        `Press enter to use the default repository: ${defaultTarget}`,
+        'Type `skip` to continue without importing external specs.'
+      ],
+      [],
+      'Spec source > '
+    );
+  }
+
+  function buildInteractiveWorkflowSelectionPrompt(preview, options = {}) {
+    const { chalk } = createPromptStyler();
+    const specs = Array.isArray(preview && preview.specs) ? preview.specs : [];
+    const allowSourceChange = Boolean(options.allow_source_change);
+    const choiceLines = [
+      `  ${chalk.cyan('skip.')} ${chalk.white('Skip external spec import')}`,
+      '',
+      ...specs.map((entry, index) => {
+        const summary = summarizeInteractiveSkillSelectionDescription(entry && entry.summary);
+        const suffix = summary ? ` ${chalk.gray(`- ${summary}`)}` : '';
+        return `  ${chalk.cyan(`${index + 1}.`)} ${chalk.white(entry.name)}${suffix}`;
+      })
+    ];
+
+    const descriptionLines = [
+      `Source: ${preview && preview.source && preview.source.location ? preview.source.location : 'spec source'}`,
+      'Press enter or type `skip` to continue without importing external specs.',
+      'Use space-separated numbers to enable a subset.',
+      'Type `all` to activate every selectable spec from that source.'
+    ];
+    if (allowSourceChange) {
+      descriptionLines.push('Type `source` to use a different spec source.');
+    }
+
+    return renderInteractiveSection(
+      chalk,
+      '▶',
+      'Spec Selection',
+      descriptionLines,
+      choiceLines,
+      allowSourceChange ? 'Choice [skip/all/source] > ' : 'Choice [skip/all] > '
+    );
+  }
+
   function buildInteractiveSkillSelectionPrompt(preview, options = {}) {
     const { chalk } = createPromptStyler();
     const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
@@ -655,6 +758,20 @@ function createInstallHelpers(deps) {
       .filter(Boolean);
   }
 
+  function normalizeInteractiveWorkflowSpecs(value) {
+    if (Array.isArray(value)) {
+      return value
+        .flatMap(item => String(item || '').split(','))
+        .map(item => item.trim())
+        .filter(Boolean);
+    }
+
+    return String(value || '')
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+
   function readInteractiveBoolean(value, defaultValue) {
     const normalized = String(value || '').trim().toLowerCase();
     if (!normalized) {
@@ -669,6 +786,74 @@ function createInstallHelpers(deps) {
     }
 
     return defaultValue;
+  }
+
+  function resolveInstallerDefaultWorkflowSource() {
+    const runtime = require(path.join(runtimeSrc, 'lib', 'runtime.cjs'));
+    const runtimeConfig = runtime.loadRuntimeConfig(runtimeSrc);
+    return defaultWorkflowSourceHelpers.resolveDefaultWorkflowSource(runtimeConfig, process.env);
+  }
+
+  function buildInstallerWorkflowSourceConfig(source, options = {}) {
+    const defaultSource = resolveInstallerDefaultWorkflowSource();
+    const location = String(source || '').trim() || defaultSource.location;
+    const useDefaultSource = location === defaultSource.location;
+    const branch =
+      String(options.branch || '').trim() ||
+      (useDefaultSource ? String(defaultSource.branch || '').trim() : '');
+    const subdir =
+      String(options.subdir || '').trim() ||
+      (useDefaultSource ? String(defaultSource.subdir || '').trim() : '');
+
+    return {
+      location,
+      branch,
+      subdir
+    };
+  }
+
+  function resolveInteractiveWorkflowArgs(prompted) {
+    const installSpecsProvided = prompted && (
+      Object.prototype.hasOwnProperty.call(prompted, 'installSpecs') ||
+      Object.prototype.hasOwnProperty.call(prompted, 'installWorkflows')
+    );
+    const explicitRegistry = String(prompted && prompted.registry ? prompted.registry : '').trim();
+    const explicitRegistryBranch = String(
+      prompted && prompted.registryBranch ? prompted.registryBranch : ''
+    ).trim();
+    const explicitRegistrySubdir = String(
+      prompted && prompted.registrySubdir ? prompted.registrySubdir : ''
+    ).trim();
+    const requestedSpecs = normalizeInteractiveWorkflowSpecs(prompted && prompted.specs);
+    const installSpecs = installSpecsProvided
+      ? readInteractiveBoolean(
+          prompted && Object.prototype.hasOwnProperty.call(prompted, 'installSpecs')
+            ? prompted.installSpecs
+            : prompted.installWorkflows,
+          false
+        )
+      : Boolean(explicitRegistry || explicitRegistryBranch || explicitRegistrySubdir || requestedSpecs.length > 0);
+
+    if (!installSpecs) {
+      return {
+        registry: '',
+        registryBranch: '',
+        registrySubdir: '',
+        specs: []
+      };
+    }
+
+    const resolvedSource = buildInstallerWorkflowSourceConfig(explicitRegistry, {
+      branch: explicitRegistryBranch,
+      subdir: explicitRegistrySubdir
+    });
+
+    return {
+      registry: resolvedSource.location,
+      registryBranch: resolvedSource.branch,
+      registrySubdir: resolvedSource.subdir,
+      specs: requestedSpecs
+    };
   }
 
   function resolveInteractiveSkillArgs(prompted) {
@@ -691,6 +876,62 @@ function createInstallHelpers(deps) {
       skillSources: requestedSkillSources.length > 0 ? requestedSkillSources : [DEFAULT_SKILL_SOURCE_LOCATION],
       skillNames: requestedSkillNames
     };
+  }
+
+  function parseInteractiveWorkflowSelection(value, preview) {
+    const specs = Array.isArray(preview && preview.specs) ? preview.specs : [];
+    if (specs.length === 0) {
+      return null;
+    }
+
+    const tokens = String(value || '')
+      .split(/[,\s]+/)
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    if (tokens.length === 0) {
+      return null;
+    }
+
+    const selected = [];
+    let requestedSkip = false;
+    let requestedAll = false;
+
+    tokens.forEach(token => {
+      const normalized = token.toLowerCase();
+      if (normalized === 'skip' || token === '0') {
+        requestedSkip = true;
+        return;
+      }
+      if (normalized === 'all') {
+        requestedAll = true;
+        return;
+      }
+
+      const index = Number.parseInt(token, 10);
+      if (Number.isFinite(index) && String(index) === token && index >= 1 && index <= specs.length) {
+        selected.push(specs[index - 1].name);
+        return;
+      }
+
+      const matched = specs.find(entry => entry.name === token);
+      if (!matched) {
+        throw new Error(`Unknown spec selection: ${token}`);
+      }
+      selected.push(matched.name);
+    });
+
+    if (requestedSkip && (requestedAll || selected.length > 0)) {
+      throw new Error('Skip cannot be combined with spec selections.');
+    }
+    if (requestedSkip) {
+      return null;
+    }
+    if (requestedAll) {
+      return specs.map(entry => entry.name);
+    }
+
+    return Array.from(new Set(selected));
   }
 
   function parseInteractiveSkillSelection(value, preview) {
@@ -934,6 +1175,60 @@ function createInstallHelpers(deps) {
     return cachedSkillSourcePreviewer;
   }
 
+  function getWorkflowSourcePreviewer() {
+    if (typeof previewWorkflowSource === 'function') {
+      return previewWorkflowSource;
+    }
+    if (cachedWorkflowSourcePreviewer) {
+      return cachedWorkflowSourcePreviewer;
+    }
+
+    const runtime = require(path.join(runtimeSrc, 'lib', 'runtime.cjs'));
+    const workflowImportHelpers = require(path.join(runtimeSrc, 'lib', 'workflow-import.cjs'));
+    const workflowRegistry = require(path.join(runtimeSrc, 'lib', 'workflow-registry.cjs'));
+    const workflowImport = workflowImportHelpers.createWorkflowImportHelpers({
+      childProcess: require('child_process'),
+      fs,
+      os,
+      path,
+      process,
+      runtime,
+      workflowRegistry
+    });
+
+    cachedWorkflowSourcePreviewer = (source, options = {}) => {
+      const staged = workflowImport.stageWorkflowRegistrySource(source, options);
+
+      try {
+        const sourceLayout = workflowImport.resolveWorkflowSourceLayout(staged.root, options);
+
+        try {
+          const registry = sourceLayout.registry;
+          return {
+            source: {
+              location: String(source || '').trim(),
+              branch: String(options.branch || '').trim(),
+              subdir: String(options.subdir || '').trim()
+            },
+            specs: (registry.specs || [])
+              .filter(entry => entry && entry.selectable === true)
+              .map(entry => ({
+                name: entry.name,
+                title: entry.title,
+                summary: entry.summary
+              }))
+          };
+        } finally {
+          sourceLayout.cleanup();
+        }
+      } finally {
+        staged.cleanup();
+      }
+    };
+
+    return cachedWorkflowSourcePreviewer;
+  }
+
   function resolveInstallerDefaultSkillSource() {
     const runtime = require(path.join(runtimeSrc, 'lib', 'runtime.cjs'));
     const runtimeConfig = runtime.loadRuntimeConfig(runtimeSrc);
@@ -956,6 +1251,37 @@ function createInstallHelpers(deps) {
       argv.push('--skill', name);
     });
     return Promise.resolve(previewer(argv));
+  }
+
+  function previewInteractiveWorkflowSource(source, options = {}) {
+    const previewer = getWorkflowSourcePreviewer();
+    return Promise.resolve(previewer(source, options));
+  }
+
+  function formatInteractiveWorkflowSourceWarning(error) {
+    const message = String(error && error.message ? error.message : '').trim();
+    if (/Workflow registry source must be a non-empty string/i.test(message)) {
+      return 'That spec source is not valid. Enter another source or type `skip` to continue without external specs.';
+    }
+    if (/Workflow registry not found under source root/i.test(message)) {
+      return 'That source does not publish emb-agent specs. Enter another source or type `skip` to continue without external specs.';
+    }
+    if (/Workflow registry source was not found or is not accessible\./i.test(message)) {
+      return 'That spec source was not found or is not accessible. Enter another source or type `skip` to continue without external specs.';
+    }
+    if (/Could not reach workflow registry source\. Check your network connection and try again\./i.test(message)) {
+      return 'That spec source cannot be reached right now. Check the network connection, enter another source, or type `skip` to continue without external specs.';
+    }
+    if (/Workflow registry source download timed out\./i.test(message)) {
+      return 'That spec source timed out while loading. Enter another source or type `skip` to continue without external specs.';
+    }
+    if (/required local dependency is not available in this environment/i.test(message)) {
+      return 'That spec source cannot be inspected from this environment right now. Enter another source or type `skip` to continue without external specs.';
+    }
+    if (/Failed to clone workflow registry source|Could not download workflow registry source/i.test(message)) {
+      return 'That spec source could not be inspected right now. Enter another source or type `skip` to continue without external specs.';
+    }
+    return message || 'Could not inspect that spec source. Enter another source or type `skip` to continue without external specs.';
   }
 
   function formatInteractiveSkillSourceWarning(error) {
@@ -1065,6 +1391,10 @@ function createInstallHelpers(deps) {
       const developer = String(prompted && prompted.developer ? prompted.developer : '').trim();
       const profile = normalizeInstallProfile(prompted && prompted.profile ? prompted.profile : 'core', '');
       const subagentBridgeCmd = String(prompted && prompted.subagentBridgeCmd ? prompted.subagentBridgeCmd : '').trim();
+        const interactiveWorkflows =
+        location === 'local'
+          ? resolveInteractiveWorkflowArgs(prompted)
+          : { registry: '', registryBranch: '', registrySubdir: '', specs: [] };
       const interactiveSkills = resolveInteractiveSkillArgs(prompted);
       const subagentBridgeTimeoutProvided =
         prompted && prompted.subagentBridgeTimeoutMs !== undefined && prompted.subagentBridgeTimeoutMs !== null;
@@ -1091,6 +1421,10 @@ function createInstallHelpers(deps) {
         defaultAdapterSourceLocation: '',
         defaultAdapterSourceBranch: '',
         defaultAdapterSourceSubdir: '',
+        registry: interactiveWorkflows.registry,
+        registryBranch: interactiveWorkflows.registryBranch,
+        registrySubdir: interactiveWorkflows.registrySubdir,
+        specs: interactiveWorkflows.specs,
         skillSources: interactiveSkills.skillSources,
         skillNames: interactiveSkills.skillNames,
         uninstall: false,
@@ -1112,6 +1446,113 @@ function createInstallHelpers(deps) {
     const resolvedLocationAnswer = String(locationAnswer || (defaultLocation === 'local' ? '2' : '1')).trim();
     const isLocal = resolvedLocationAnswer === '2';
     writePromptConfirmation('Location:', isLocal ? 'Local project' : 'Global config');
+
+    let registry = '';
+    let registryBranch = '';
+    let registrySubdir = '';
+    let specs = [];
+    let resolvedWorkflowPreview = null;
+    let skipWorkflowImport = false;
+
+    async function promptForWorkflowSourceOverride() {
+      const defaultWorkflowSource = resolveInstallerDefaultWorkflowSource();
+
+      while (!resolvedWorkflowPreview) {
+        const workflowSourceInput = await promptLine(buildInteractiveWorkflowSourcePrompt(defaultWorkflowSource));
+        const normalizedInput = String(workflowSourceInput || '').trim();
+        if (normalizedInput.toLowerCase() === 'skip') {
+          skipWorkflowImport = true;
+          return;
+        }
+
+        const sourceConfig = buildInstallerWorkflowSourceConfig(normalizedInput, {});
+        try {
+          resolvedWorkflowPreview = await previewInteractiveWorkflowSource(sourceConfig.location, {
+            branch: sourceConfig.branch,
+            subdir: sourceConfig.subdir
+          });
+
+          registry = sourceConfig.location;
+          registryBranch = sourceConfig.branch;
+          registrySubdir = sourceConfig.subdir;
+          writePromptConfirmation('Spec source:', registry);
+          writePromptConfirmation(
+            'Available specs:',
+            `${resolvedWorkflowPreview.specs.length} selectable spec${resolvedWorkflowPreview.specs.length === 1 ? '' : 's'}`
+          );
+        } catch (error) {
+          writePromptWarning(formatInteractiveWorkflowSourceWarning(error));
+        }
+      }
+    }
+
+    if (isLocal) {
+      const defaultWorkflowSource = resolveInstallerDefaultWorkflowSource();
+
+      try {
+        resolvedWorkflowPreview = await previewInteractiveWorkflowSource(defaultWorkflowSource.location, {
+          branch: defaultWorkflowSource.branch,
+          subdir: defaultWorkflowSource.subdir
+        });
+        registry = defaultWorkflowSource.location;
+        registryBranch = defaultWorkflowSource.branch;
+        registrySubdir = defaultWorkflowSource.subdir;
+        writePromptConfirmation('Spec source:', registry);
+        writePromptConfirmation(
+          'Available specs:',
+          `${resolvedWorkflowPreview.specs.length} selectable spec${resolvedWorkflowPreview.specs.length === 1 ? '' : 's'}`
+        );
+      } catch (error) {
+        writePromptWarning(formatInteractiveWorkflowSourceWarning(error));
+        await promptForWorkflowSourceOverride();
+      }
+
+      while (resolvedWorkflowPreview && !skipWorkflowImport) {
+        try {
+          const selectionInput = await promptLine(
+            buildInteractiveWorkflowSelectionPrompt(resolvedWorkflowPreview, {
+              allow_source_change: true
+            })
+          );
+          const normalizedSelectionInput = String(selectionInput || '').trim().toLowerCase();
+          if (!normalizedSelectionInput || normalizedSelectionInput === 'skip') {
+            skipWorkflowImport = true;
+            break;
+          }
+          if (normalizedSelectionInput === 'source') {
+            resolvedWorkflowPreview = null;
+            registry = '';
+            registryBranch = '';
+            registrySubdir = '';
+            specs = [];
+            await promptForWorkflowSourceOverride();
+            continue;
+          }
+
+          const selectedSpecs = parseInteractiveWorkflowSelection(selectionInput, resolvedWorkflowPreview);
+          if (selectedSpecs === null) {
+            skipWorkflowImport = true;
+            break;
+          }
+          specs = selectedSpecs;
+          writePromptConfirmation(
+            'Spec selection:',
+            specs.length > 0 ? specs.join(', ') : 'all selectable specs'
+          );
+          break;
+        } catch (error) {
+          writePromptWarning(error.message);
+        }
+      }
+
+      if (!resolvedWorkflowPreview || skipWorkflowImport) {
+        registry = '';
+        registryBranch = '';
+        registrySubdir = '';
+        specs = [];
+        writePromptConfirmation('Specs:', 'Skip external spec import');
+      }
+    }
 
     let skillSources = [];
     let skillNames = [];
@@ -1237,6 +1678,10 @@ function createInstallHelpers(deps) {
       defaultAdapterSourceLocation: '',
       defaultAdapterSourceBranch: '',
       defaultAdapterSourceSubdir: '',
+      registry,
+      registryBranch,
+      registrySubdir,
+      specs,
       skillSources,
       skillNames,
       uninstall: false,
@@ -1258,6 +1703,9 @@ function createInstallHelpers(deps) {
   }
 
   function copyDir(sourceDir, targetDir) {
+    if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+      return;
+    }
     ensureDir(targetDir);
     const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
 
@@ -2073,6 +2521,7 @@ function createInstallHelpers(deps) {
     copyDirWithReplacement(path.join(runtimeSrc, 'templates'), path.join(runtimeDir, 'templates'), targetDir, target);
     copyDir(path.join(runtimeSrc, 'registry'), path.join(runtimeDir, 'registry'));
     copyDir(path.join(runtimeSrc, 'profiles'), path.join(runtimeDir, 'profiles'));
+    copyDir(path.join(path.resolve(runtimeSrc, '..'), 'skills'), path.join(runtimeDir, 'skills'));
     copyDir(path.join(runtimeSrc, 'specs'), path.join(runtimeDir, 'specs'));
     copyDir(path.join(runtimeSrc, 'tools'), runtimeToolsDir);
     copyDir(path.join(runtimeSrc, 'chips'), runtimeChipsDir);
@@ -2169,6 +2618,18 @@ function createInstallHelpers(deps) {
     if (args.developer) {
       initArgs.push('--user', args.developer);
     }
+    if (args.registry) {
+      initArgs.push('--registry', args.registry);
+    }
+    if (args.registryBranch) {
+      initArgs.push('--registry-branch', args.registryBranch);
+    }
+    if (args.registrySubdir) {
+      initArgs.push('--registry-subdir', args.registrySubdir);
+    }
+    (Array.isArray(args.specs) ? args.specs : []).forEach(name => {
+      initArgs.push('--spec', name);
+    });
 
     const parsedInitArgs = initProject.parseArgs(initArgs);
     const workflowSetup = initProject.prepareProjectWorkflowSetup(projectRoot, parsedInitArgs, {

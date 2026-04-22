@@ -69,7 +69,7 @@ Review the result, apply staged truth if needed, then return to `next`.
 If `health` or `next` starts talking about chip support after document ingest, prefer this path:
 
 ```text
-ingest doc -> apply truth -> support analysis init -> let the agent fill the analysis artifact -> support derive --from-analysis -> next
+ingest doc -> apply truth -> adapter analysis init -> let the agent fill the analysis artifact -> adapter derive --from-analysis -> next
 ```
 
 Do not treat `ingest doc` as if it already produced final chip support. It only stages facts and hands off to the analysis-artifact flow.

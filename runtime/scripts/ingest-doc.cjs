@@ -1270,11 +1270,11 @@ function buildDocAgentAnalysis(projectRoot, entry, artifacts, explicitHardwareFa
     path.basename(String(entry.source || ''), path.extname(String(entry.source || ''))) ||
     entry.doc_id;
   const artifactPath = path.relative(projectRoot, buildDocAnalysisArtifactPath(projectRoot, chipSeed)).replace(/\\/g, '/');
-  const initArgv = ['support', 'analysis', 'init', '--chip', chipSeed];
+  const initArgv = ['adapter', 'analysis', 'init', '--chip', chipSeed];
   if (packageName) {
     initArgv.push('--package', packageName);
   }
-  const deriveArgv = ['support', 'derive', '--from-analysis', artifactPath];
+  const deriveArgv = ['adapter', 'derive', '--from-analysis', artifactPath];
   const initCommand = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, initArgv);
   const deriveCommand = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, deriveArgv);
 
@@ -1312,7 +1312,7 @@ function buildDocAgentAnalysis(projectRoot, entry, artifacts, explicitHardwareFa
     expected_output: [
       'Extract only evidence-backed hardware facts into the analysis artifact.',
       'Mark unsupported bindings explicitly with reason instead of inventing formulas.',
-      'Run support derive from the artifact after review so adapters stay draft and structured.'
+      'Run adapter derive from the artifact after review so adapters stay draft and structured.'
     ],
     cli_hint:
       `Run ${initCommand}, ask emb-hw-scout to fill ${artifactPath} from ${artifacts && artifacts.markdown ? artifacts.markdown : entry.source}, then run ${deriveCommand}.`

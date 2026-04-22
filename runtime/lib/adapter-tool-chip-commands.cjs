@@ -22,6 +22,7 @@ function createAdapterToolChipCommandHelpers(deps) {
 
   function handleAdapterToolChipCommands(cmd, subcmd, rest) {
     const isChipSupportCommand = cmd === 'support';
+    const isAdapterCommand = cmd === 'adapter';
 
     if (isChipSupportCommand && subcmd === 'status') {
       return buildAdapterStatus(rest[0] || '');
@@ -65,23 +66,23 @@ function createAdapterToolChipCommandHelpers(deps) {
       return syncNamedAdapterSource(rest[0], parseAdapterSyncArgs(rest.slice(1)));
     }
 
-    if (isChipSupportCommand && subcmd === 'derive') {
+    if ((isChipSupportCommand || isAdapterCommand) && subcmd === 'derive') {
       return runAdapterDerive(rest);
     }
 
-    if (isChipSupportCommand && subcmd === 'generate') {
+    if ((isChipSupportCommand || isAdapterCommand) && subcmd === 'generate') {
       return runAdapterGenerate(rest);
     }
 
-    if (isChipSupportCommand && subcmd === 'analysis' && rest[0] === 'init') {
+    if ((isChipSupportCommand || isAdapterCommand) && subcmd === 'analysis' && rest[0] === 'init') {
       return runAdapterAnalysisInit(rest.slice(1));
     }
 
-    if (isChipSupportCommand && subcmd === 'export') {
+    if ((isChipSupportCommand || isAdapterCommand) && subcmd === 'export') {
       return runAdapterExport(rest);
     }
 
-    if (isChipSupportCommand && subcmd === 'publish') {
+    if ((isChipSupportCommand || isAdapterCommand) && subcmd === 'publish') {
       return runAdapterPublish(rest);
     }
 
