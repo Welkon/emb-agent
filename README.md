@@ -18,6 +18,8 @@ emb-agent is a hardware-first AI workflow layer for embedded firmware repositori
 
 It keeps hardware truth in the repo, keeps the default command flow small, and gives the agent one consistent path from "what chip is this?" to "what should I do next?".
 
+Installable skill bundles can add executable capabilities such as scope control, build, flash, or debug flows without expanding the default core workflow.
+
 emb-agent is not just a skill pack or prompt wrapper. Skills, commands, hooks, and `AGENTS.md` files are host integration surfaces for Codex, Claude Code, Cursor, and similar runtimes. The product itself is the embedded workflow plus the chip-support runtime behind it.
 
 When chip support appears in `health`, `next`, `support status`, or reports, read it in this order:
@@ -85,12 +87,14 @@ emb-agent keeps shared project truth in visible repo files:
 ```text
 .emb-agent/
 ├── hw.yaml
+├── plugins/
 ├── req.yaml
 ├── project.json
 └── tasks/
 ```
 
 - `hw.yaml`: MCU, package, signals, peripherals, constraints, and unknowns.
+- `plugins/`: optional project-scoped skill bundles installed through `skills install`.
 - `req.yaml`: goals, interfaces, acceptance, and failure policy.
 - `project.json`: project defaults and workflow preferences.
 - `tasks/`: task-local PRD, context, and lifecycle state.
@@ -103,7 +107,7 @@ emb-agent has three layers:
 
 - **Embedded workflow**: the default project path built around startup context, `declare hardware`, `next`, task flow, repo truth, and manual `start` re-entry when needed.
 - **Chip-support runtime**: family-, device-, and chip-specific formulas, bindings, routes, and executable tool logic.
-- **Host integration surface**: skills, commands, hooks, and shell entry files that adapt emb-agent to different AI coding hosts.
+- **Host integration surface**: skills, installable skill bundles, commands, hooks, and shell entry files that adapt emb-agent to different AI coding hosts.
 
 That means emb-agent should be understood as embedded project infrastructure, not as a standalone skill library.
 

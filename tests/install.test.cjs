@@ -9,6 +9,29 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const installer = require(path.join(repoRoot, 'bin', 'install.js'));
 
+async function captureCliJson(cliImpl, args) {
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    await cliImpl.main(args);
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+
+  return JSON.parse(stdout);
+}
+
+function writeFile(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
 test('installer lays down config/lib and runtime commands work', async () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-home-'));
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-proj-'));
@@ -155,6 +178,12 @@ test('installer lays down config/lib and runtime commands work', async () => {
       location: privateAdapterSource,
       branch: 'main',
       subdir: 'emb-agent'
+    });
+    assert.deepEqual(configData.default_skill_source, {
+      type: 'git',
+      location: 'https://github.com/Welkon/emb-skills.git',
+      branch: '',
+      subdir: ''
     });
     assert.deepEqual(configData.developer, { name: 'welkon', runtime: 'codex' });
     assert.equal(hostMetadata.name, 'codex');
@@ -481,6 +510,85 @@ test('installer lays down config/lib and runtime commands work', async () => {
     }
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
+  }
+});
+
+test('installer can preinstall project skill bundles during local setup', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-skill-install-project-'));
+  const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-skill-install-bundle-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    writeFile(
+      path.join(bundleDir, '.emb-agent-plugin', 'plugin.json'),
+      JSON.stringify(
+        {
+          name: 'scope-ops-kit',
+          version: '0.1.0',
+          description: 'Scope operation skills.',
+          skills: './skills'
+        },
+        null,
+        2
+      ) + '\n'
+    );
+    writeFile(
+      path.join(bundleDir, 'skills', 'scope-connect', 'SKILL.md'),
+      [
+        '---',
+        'name: scope-connect',
+        'description: Connect to the configured oscilloscope.',
+        'execution_mode: command',
+        'command:',
+        '  - node',
+        '  - scripts/connect.cjs',
+        '---',
+        '',
+        '# scope-connect',
+        '',
+        'Connect to the scope and report the status.',
+        ''
+      ].join('\n')
+    );
+    writeFile(
+      path.join(bundleDir, 'skills', 'scope-connect', 'scripts', 'connect.cjs'),
+      [
+        "'use strict';",
+        '',
+        "process.stdout.write(JSON.stringify({ status: 'ok', connected: true }) + '\\n');",
+        ''
+      ].join('\n')
+    );
+
+    process.chdir(tempProject);
+    await installer.main([
+      '--codex',
+      '--local',
+      '--developer',
+      'welkon',
+      '--skill-source',
+      bundleDir
+    ]);
+
+    const installedCli = require(path.join(tempProject, '.codex', 'emb-agent', 'bin', 'emb-agent.cjs'));
+    const listed = await captureCliJson(installedCli, ['skills', 'list']);
+    const runResult = await captureCliJson(installedCli, ['skills', 'run', 'scope-connect']);
+
+    assert.ok(listed.some(item => item.name === 'scope-connect' && item.plugin && item.plugin.name === 'scope-ops-kit'));
+    assert.equal(runResult.execution.mode, 'command');
+    assert.equal(runResult.command_result.status, 'ok');
+    assert.equal(runResult.command_result.parsed_output.connected, true);
+    assert.match(stdout, /Installed skill bundle: scope-ops-kit/);
+  } finally {
+    process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
   }
 });
 

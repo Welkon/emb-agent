@@ -9,17 +9,27 @@ allowed-tools:
 
 # emb-skills
 
-Use `skills` to inspect the lazily loaded skill catalog exposed by `emb-agent`.
+Use `skills` to inspect, install, and run the lazily loaded skill catalog exposed by `emb-agent`.
 
-This is support surface for longer embedded sessions. It can add leverage, but it is not the default day-one firmware-project path.
+Skill is the user-visible capability unit. Installable bundles can ship one or more skills and can be loaded from local paths, npm packages, PyPI packages, or git repositories.
 
 ## Commands
 
-- `skills list`
+- `skills list [--all]`
 - `skills show <name>`
 - `skills run <name> [--isolated] [input]`
+- `skills install [source] [--scope project|user] [--skill <name>] [--force]`
+- `skills enable <name>`
+- `skills disable <name>`
+- `skills remove <name>`
 
 ## Notes
 
 - Discovery stays metadata-only; full skill bodies load only on `skills show` or `skills run`.
+- OpenAI-style bundled skills can live in directories with `SKILL.md`, optional `scripts/`, and supporting assets.
+- When `source` is omitted, `skills install` falls back to the default skills repository configured by the runtime. The built-in default is `https://github.com/Welkon/emb-skills.git`.
+- If the plugin bundle contains a root `package.json` or `requirements.txt`, `skills install` provisions those dependencies into the plugin-local runtime automatically so command skills are runnable immediately after install.
+- `plugin.json` can also declare `dependencies.node`, `dependencies.python`, and `dependencies.system_requirements` when the bundle needs explicit runtime setup.
+- Project-local installed skill bundles live under `.emb-agent/plugins/`.
+- User-scope installed skill bundles live under the runtime home plugin directory.
 - `--isolated` uses the configured host sub-agent bridge when available.

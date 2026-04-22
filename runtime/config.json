@@ -19,6 +19,12 @@
     "branch": "",
     "subdir": ""
   },
+  "default_skill_source": {
+    "type": "git",
+    "location": "https://github.com/Welkon/emb-skills.git",
+    "branch": "",
+    "subdir": ""
+  },
   "project_state_dir": "../state/emb-agent/projects",
   "legacy_project_state_dir": "state/projects",
   "lock_timeout_ms": 2000,
