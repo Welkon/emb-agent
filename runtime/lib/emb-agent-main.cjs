@@ -10,7 +10,6 @@ const SOURCE_ROOT = path.resolve(ROOT, '..');
 const runtimeHost = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
 const SOURCE_LAYOUT = runtimeHost.isSourceRuntimeLayout(ROOT);
 const PROFILES_DIR = path.join(ROOT, 'profiles');
-const PACKS_DIR = path.join(ROOT, 'packs');
 const AGENTS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'agents') : path.join(ROOT, 'agents');
 const COMMANDS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'commands', 'emb') : path.join(ROOT, 'commands');
 const COMMAND_DOCS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'commands', 'emb') : path.join(ROOT, 'command-docs');
@@ -108,10 +107,6 @@ function getProjectProfilesDir() {
   return path.join(getProjectExtDir(), 'profiles');
 }
 
-function getProjectPacksDir() {
-  return path.join(getProjectExtDir(), 'packs');
-}
-
 function getProjectStatePaths() {
   return runtime.getProjectStatePaths(ROOT, resolveProjectRoot(), RUNTIME_CONFIG);
 }
@@ -185,32 +180,19 @@ function loadProfile(name) {
   return runtime.validateProfile(name, runtime.parseSimpleYaml(filePath));
 }
 
-function loadPack(name) {
-  const catalog = loadWorkflowCatalog();
-  const registryEntry = (catalog.packs || []).find(item => item.name === name);
-  const filePath = registryEntry && fs.existsSync(registryEntry.absolute_path)
-    ? registryEntry.absolute_path
-    : resolveYamlPath(getProjectPacksDir(), PACKS_DIR, name);
-  if (!filePath) {
-    throw new Error(`Pack not found: ${name}`);
-  }
-  return runtime.validatePack(name, runtime.parseSimpleYaml(filePath));
-}
-
-function listPackNames() {
-  return runtime.unique((loadWorkflowCatalog().packs || []).map(item => item.name));
-}
-
-function listSpecNames() {
-  return runtime.unique((loadWorkflowCatalog().specs || []).map(item => item.name));
-}
-
-function loadSpec(name) {
+function getCatalogSpecEntry(name, options = {}) {
   const entry = (loadWorkflowCatalog().specs || []).find(item => item.name === name);
   if (!entry) {
     throw new Error(`Spec not found: ${name}`);
   }
+  if (options.selectable === true && entry.selectable !== true) {
+    throw new Error(`Spec is not selectable: ${name}`);
+  }
+  return entry;
+}
 
+function buildSpecView(entry, options = {}) {
+  const includeContent = options.includeContent !== false;
   return {
     name: entry.name,
     title: entry.title || entry.name,
@@ -218,10 +200,35 @@ function loadSpec(name) {
     scope: entry.scope,
     summary: entry.summary,
     auto_inject: entry.auto_inject,
+    selectable: entry.selectable === true,
     priority: entry.priority,
     apply_when: entry.apply_when,
-    content: runtime.readText(entry.absolute_path)
+    focus_areas: entry.focus_areas || [],
+    extra_review_axes: entry.extra_review_axes || [],
+    preferred_notes: entry.preferred_notes || [],
+    default_agents: entry.default_agents || [],
+    ...(includeContent ? { content: runtime.readText(entry.absolute_path) } : {})
   };
+}
+
+function listSpecNames(options = {}) {
+  const selectableOnly = options.selectable === true;
+  return runtime.unique(
+    (loadWorkflowCatalog().specs || [])
+      .filter(item => (selectableOnly ? item.selectable === true : true))
+      .map(item => item.name)
+  );
+}
+
+function loadSpec(name) {
+  const entry = getCatalogSpecEntry(name);
+  return buildSpecView(entry, { includeContent: true });
+}
+
+function loadSelectedSpec(name) {
+  const entry = getCatalogSpecEntry(name, { selectable: true });
+
+  return buildSpecView(entry, { includeContent: true });
 }
 
 function loadMarkdown(dirPath, name, kind) {
@@ -330,7 +337,7 @@ function resolveSession() {
   const session = loadSession();
   const effectiveProfileName = session.project_profile || RUNTIME_CONFIG.default_profile;
   const profile = loadProfile(effectiveProfileName);
-  const packs = session.active_packs.map(loadPack);
+  const selectedSpecs = (session.active_specs || []).map(loadSelectedSpec);
   const projectConfig = getProjectConfig();
   const hardwareIdentity = hardwareTruthHelpers.loadHardwareTruth(runtime, session.project_root || resolveProjectRoot());
   const chipProfile = findChipProfileByModel(hardwareIdentity.model, hardwareIdentity.package);
@@ -339,7 +346,7 @@ function resolveSession() {
   const toolRecommendations = buildToolRecommendations(chipProfile, suggestedTools, hardwareIdentity);
   const agents = runtime.unique([
     ...(profile.default_agents || []),
-    ...packs.flatMap(pack => pack.default_agents || [])
+    ...selectedSpecs.flatMap(spec => spec.default_agents || [])
   ]);
 
   const reviewAgents = runtime.unique(
@@ -350,7 +357,7 @@ function resolveSession() {
     session,
     profile,
     project_config: projectConfig,
-    packs,
+    selected_specs: selectedSpecs,
     hardware: {
       identity: hardwareIdentity,
       chip_profile: chipProfile
@@ -358,14 +365,14 @@ function resolveSession() {
     effective: {
       agents,
       review_agents: reviewAgents,
-      focus_areas: runtime.unique(packs.flatMap(pack => pack.focus_areas || [])),
+      focus_areas: runtime.unique(selectedSpecs.flatMap(spec => spec.focus_areas || [])),
       review_axes: runtime.unique([
         ...(profile.review_axes || []),
-        ...packs.flatMap(pack => pack.extra_review_axes || [])
+        ...selectedSpecs.flatMap(spec => spec.extra_review_axes || [])
       ]),
       note_targets: runtime.unique([
         ...(profile.notes_targets || []),
-        ...packs.flatMap(pack => pack.preferred_notes || [])
+        ...selectedSpecs.flatMap(spec => spec.preferred_notes || [])
       ]),
       search_priority: profile.search_priority || [],
       guardrails: profile.guardrails || [],
@@ -487,7 +494,7 @@ const {
   loadSession,
   updateSession,
   loadProfile,
-  loadPack,
+  loadSpec,
   getProjectConfig
 });
 
@@ -540,7 +547,7 @@ const {
   getProjectConfig,
   normalizeSession,
   loadProfile,
-  loadPack,
+  loadSpec,
   findChipProfileByModel,
   resolveSession,
   buildToolExecutionFromRecommendation,
@@ -642,7 +649,6 @@ const {
   }),
   templateCli,
   getProjectExtDir,
-  loadPack,
   loadSpec,
   updateSession
 });
@@ -667,17 +673,13 @@ const {
   process,
   runtime,
   PROFILES_DIR,
-  PACKS_DIR,
   AGENTS_DIR,
   COMMANDS_DIR,
   commandVisibility,
   RUNTIME_CONFIG,
   getProjectProfilesDir,
-  getProjectPacksDir,
-  listPackNames,
   listSpecNames,
   loadProfile,
-  loadPack,
   loadSpec,
   loadCommandMarkdown,
   loadMarkdown,
@@ -729,7 +731,7 @@ function buildContextOverview() {
     project_root: resolved && resolved.session ? resolved.session.project_root : resolveProjectRoot(),
     summary: {
       profile: resolved && resolved.session ? resolved.session.project_profile : '',
-      packs: resolved && resolved.session ? resolved.session.active_packs || [] : [],
+      specs: resolved && resolved.session ? resolved.session.active_specs || [] : [],
       focus: resolved && resolved.session ? resolved.session.focus || '' : '',
       last_command: resolved && resolved.session ? resolved.session.last_command || '' : '',
       active_task:

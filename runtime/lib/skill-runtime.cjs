@@ -3,10 +3,13 @@
 const os = require('os');
 const defaultSkillSource = require('./default-skill-source.cjs');
 
+let gigetModulePromise = null;
+
 function createSkillRuntimeHelpers(deps) {
   const {
     childProcess,
     fs,
+    os: injectedOs,
     path,
     process,
     runtime,
@@ -16,9 +19,11 @@ function createSkillRuntimeHelpers(deps) {
     getProjectExtDir,
     updateSession,
     builtInSkillsDir,
-    builtInDisplayRoot
+    builtInDisplayRoot,
+    loadGiget
   } = deps;
 
+  const operatingSystem = injectedOs || os;
   const DISCOVERY_ITEM_LIMIT = 250;
   const DISCOVERY_TOTAL_LIMIT = 2400;
   const FALLBACK_ALLOWED_TOOLS = [];
@@ -33,6 +38,15 @@ function createSkillRuntimeHelpers(deps) {
   ];
   const MAX_MANIFEST_SEARCH_DEPTH = 6;
   const DEFAULT_COMMAND_TIMEOUT_MS = 30000;
+  const MANAGED_ENTRY_METADATA_KEY = 'emb_agent_managed_entry';
+  const GIGET_HOST_ENV_KEY = 'GIGET_GITLAB_URL';
+  const GIGET_SUPPORTED_PROVIDERS = new Set(['gh', 'github', 'gitlab', 'bitbucket']);
+  const KNOWN_PUBLIC_GIT_HOSTS = ['github.com', 'gitlab.com', 'bitbucket.org'];
+  const PUBLIC_GIT_HOST_PREFIX = {
+    'github.com': 'gh',
+    'gitlab.com': 'gitlab',
+    'bitbucket.org': 'bitbucket'
+  };
 
   function isObject(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -238,6 +252,181 @@ function createSkillRuntimeHelpers(deps) {
     return parts;
   }
 
+  async function loadGigetModule() {
+    if (typeof loadGiget === 'function') {
+      return await loadGiget();
+    }
+    if (!gigetModulePromise) {
+      gigetModulePromise = import('giget');
+    }
+    return gigetModulePromise;
+  }
+
+  async function withPromiseTimeout(promise, ms, label) {
+    let timer = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`${label} timed out after ${Math.ceil(ms / 1000)}s`));
+      }, ms);
+    });
+
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  async function withGigetHost(host, callback) {
+    if (!host) {
+      return callback();
+    }
+
+    const previous = process.env[GIGET_HOST_ENV_KEY];
+    process.env[GIGET_HOST_ENV_KEY] = `https://${host}`;
+    try {
+      return await callback();
+    } finally {
+      if (previous === undefined) {
+        delete process.env[GIGET_HOST_ENV_KEY];
+      } else {
+        process.env[GIGET_HOST_ENV_KEY] = previous;
+      }
+    }
+  }
+
+  function normalizeRemoteGitSource(source) {
+    const input = ensureNonEmptyString(source, 'Skill source');
+    const patterns = [
+      { re: /^https?:\/\/github\.com\//i, prefix: 'gh:' },
+      { re: /^https?:\/\/gitlab\.com\//i, prefix: 'gitlab:' },
+      { re: /^https?:\/\/bitbucket\.org\//i, prefix: 'bitbucket:' }
+    ];
+
+    for (const { re, prefix } of patterns) {
+      if (!re.test(input)) {
+        continue;
+      }
+
+      const rest = input.replace(re, '');
+      const treeMatch = rest.match(
+        /^([^/]+\/[^/]+)(?:\/(?:-|tree))?\/tree\/([^/]+)(?:\/(.+?))?(?:\.git)?\/?$/i
+      );
+      if (treeMatch) {
+        const [, repo, ref, subdir] = treeMatch;
+        return `${prefix}${repo}${subdir ? `/${subdir}` : ''}#${ref}`;
+      }
+
+      const cleaned = rest.replace(/\.git\/?$/i, '').replace(/\/$/, '');
+      return `${prefix}${cleaned}`;
+    }
+
+    return input;
+  }
+
+  function resolveRemoteGitBundleSource(source, options = {}) {
+    const rawSource = ensureNonEmptyString(source, 'Skill source');
+    const overrideBranch = ensureOptionalString(options.branch);
+    const overrideSubdir = ensureOptionalString(options.subdir);
+    let host = '';
+    let normalizedInput = '';
+
+    const sshMatch =
+      rawSource.match(/^git@([^:]+):(.+?)(?:\.git)?\/?$/i) ||
+      rawSource.match(/^ssh:\/\/git@([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?\/?$/i);
+    if (sshMatch) {
+      const sshHost = String(sshMatch[1] || '').toLowerCase();
+      const sshPath = String(sshMatch[2] || '').trim();
+      const publicPrefix = PUBLIC_GIT_HOST_PREFIX[sshHost];
+      if (publicPrefix) {
+        normalizedInput = `${publicPrefix}:${sshPath}`;
+      } else {
+        host = sshHost;
+        normalizedInput = `gitlab:${sshPath}`;
+      }
+    }
+
+    if (!normalizedInput) {
+      const httpsMatch = rawSource.match(/^https?:\/\/([^/]+)\/(.+?)(?:\.git)?\/?$/i);
+      if (httpsMatch) {
+        const httpsHost = String(httpsMatch[1] || '').toLowerCase();
+        if (!KNOWN_PUBLIC_GIT_HOSTS.includes(httpsHost)) {
+          host = httpsHost;
+          const pathPart = String(httpsMatch[2] || '').trim();
+          const treeMatch = pathPart.match(
+            /^([^/]+\/[^/]+)(?:\/-)?\/tree\/([^/]+)(?:\/(.+?))?$/i
+          );
+          if (treeMatch) {
+            const [, repoPath, ref, embeddedSubdir] = treeMatch;
+            normalizedInput = `gitlab:${repoPath}${embeddedSubdir ? `/${embeddedSubdir}` : ''}#${ref}`;
+          } else {
+            normalizedInput = `gitlab:${pathPart}`;
+          }
+        }
+      }
+    }
+
+    const normalized = normalizedInput || normalizeRemoteGitSource(rawSource);
+    const colonIndex = normalized.indexOf(':');
+    if (colonIndex === -1) {
+      return null;
+    }
+
+    const provider = normalized.slice(0, colonIndex).toLowerCase();
+    if (!GIGET_SUPPORTED_PROVIDERS.has(provider)) {
+      return null;
+    }
+
+    const remainder = normalized.slice(colonIndex + 1);
+    const refMatch = remainder.match(/^([^#]+?)(?:#(.+))?$/);
+    if (!refMatch) {
+      throw new Error(`Skill source is invalid: ${rawSource}`);
+    }
+
+    const pathPart = String(refMatch[1] || '').trim();
+    const embeddedBranch = ensureOptionalString(refMatch[2]);
+    const segments = pathPart.split('/').filter(Boolean);
+    if (segments.length < 2) {
+      throw new Error(`Skill source is invalid: ${rawSource}`);
+    }
+
+    const repo = `${segments[0]}/${segments[1]}`;
+    const embeddedSubdir = segments.slice(2).join('/');
+    const finalBranch = overrideBranch || embeddedBranch;
+    const finalSubdir = overrideSubdir || embeddedSubdir;
+    const gigetSource = `${provider}:${repo}${finalSubdir ? `/${finalSubdir}` : ''}${finalBranch ? `#${finalBranch}` : ''}`;
+
+    return {
+      provider,
+      repo,
+      subdir: finalSubdir,
+      ref: finalBranch,
+      host,
+      gigetSource
+    };
+  }
+
+  function classifyRemoteSourceDownloadError(error) {
+    const message = String(error && error.message ? error.message : '').trim();
+    if (!message) {
+      return 'Could not download skill source.';
+    }
+    if (/timed out/i.test(message)) {
+      return 'Skill source download timed out. Check your network connection and try again.';
+    }
+    if (/404|not found/i.test(message)) {
+      return 'Skill source was not found or is not accessible.';
+    }
+    if (
+      /failed to download|failed to fetch|fetch failed|network|econn|enotfound|etimedout|socket/i.test(message)
+    ) {
+      return 'Could not reach skill source. Check your network connection and try again.';
+    }
+    return `Could not download skill source: ${message}`;
+  }
+
   function normalizeSkillName(value, fallback) {
     const text = String(value || fallback || '').trim();
     if (!text) {
@@ -291,6 +480,32 @@ function createSkillRuntimeHelpers(deps) {
           continue;
         }
         if (name.endsWith('.md')) {
+          files.push(filePath);
+        }
+      }
+    }
+
+    return files.sort();
+  }
+
+  function walkSkillEntryFiles(dirPath) {
+    if (!dirPath || !fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) {
+      return [];
+    }
+
+    const files = [];
+    const queue = [dirPath];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      for (const name of fs.readdirSync(current)) {
+        const filePath = path.join(current, name);
+        const stats = fs.statSync(filePath);
+        if (stats.isDirectory()) {
+          queue.push(filePath);
+          continue;
+        }
+        if (name.toUpperCase() === 'SKILL.MD') {
           files.push(filePath);
         }
       }
@@ -482,6 +697,173 @@ function createSkillRuntimeHelpers(deps) {
     ].filter(item => item.dir);
   }
 
+  function isDirectory(dirPath) {
+    try {
+      return fs.statSync(dirPath).isDirectory();
+    } catch {
+      return false;
+    }
+  }
+
+  function buildProjectSkillEntryRoots() {
+    const projectRoot = resolveProjectRoot();
+    const codexRoot = path.join(projectRoot, '.codex');
+    const cursorRoot = path.join(projectRoot, '.cursor');
+    const sharedRoot = path.join(projectRoot, '.agents');
+    const roots = [];
+
+    if (isDirectory(codexRoot) || isDirectory(cursorRoot) || isDirectory(sharedRoot)) {
+      roots.push({
+        kind: 'shared',
+        dir: path.join(sharedRoot, 'skills')
+      });
+    }
+
+    return roots;
+  }
+
+  function buildUserSkillEntryRoots() {
+    const host = getRuntimeHost();
+    if (!host || !host.runtimeHome || host.sourceLayout) {
+      return [];
+    }
+    if (host.name !== 'codex' && host.name !== 'cursor') {
+      return [];
+    }
+    return [
+      {
+        kind: host.name,
+        dir: path.join(host.runtimeHome, 'skills')
+      }
+    ];
+  }
+
+  function buildSkillEntryRoots(scope) {
+    return scope === 'project'
+      ? buildProjectSkillEntryRoots()
+      : buildUserSkillEntryRoots();
+  }
+
+  function isManagedSkillEntryFile(filePath, skillName) {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return false;
+    }
+
+    try {
+      const parsed = parseFrontmatter(runtime.readText(filePath));
+      const metadata = parsed.metadata || {};
+      return metadata[MANAGED_ENTRY_METADATA_KEY] === true &&
+        ensureOptionalString(metadata.emb_agent_entry_target || '') === String(skillName || '').trim();
+    } catch {
+      return false;
+    }
+  }
+
+  function readSkillEntrySource(skill) {
+    const raw = runtime.readText(skill.file_path);
+    const parsed = parseFrontmatter(raw);
+    return {
+      metadata: parsed.metadata || {},
+      body: String(parsed.body || '').trim()
+    };
+  }
+
+  function buildManagedSkillEntryContent(skill, entryRoot) {
+    const source = readSkillEntrySource(skill);
+    const metadata = source.metadata || {};
+    const description = String(metadata.description || skill.description || `Run emb-agent skill ${skill.name}`).trim();
+    const whenToUse = String(metadata.when_to_use || metadata.when || '').trim();
+    const runtimeCli = getRuntimeHost().cliCommand;
+    const header =
+      entryRoot.kind === 'shared'
+        ? `This shared skill entry routes matching requests to \`${runtimeCli} skills run ${skill.name}\`.`
+        : `This ${entryRoot.kind} skill entry routes matching requests to \`${runtimeCli} skills run ${skill.name}\`.`;
+
+    const lines = [
+      '---',
+      `name: ${skill.name}`,
+      `description: ${JSON.stringify(description)}`,
+      whenToUse ? `when_to_use: ${JSON.stringify(whenToUse)}` : '',
+      `${MANAGED_ENTRY_METADATA_KEY}: true`,
+      `emb_agent_entry_target: ${skill.name}`,
+      `emb_agent_entry_kind: ${entryRoot.kind}`,
+      '---',
+      '',
+      `# ${skill.name}`,
+      '',
+      header,
+      '',
+      '## Invocation',
+      '',
+      `- When this skill matches the user intent, run \`${runtimeCli} skills run ${skill.name}\` with any required extra arguments.`,
+      '- If the skill needs passthrough arguments, append them after `--` instead of improvising a different workflow.',
+      '- Treat emb-agent output as the source of truth for the next step.',
+      '',
+      '## Original Guidance',
+      '',
+      source.body || `Run \`${runtimeCli} skills run ${skill.name}\`.`,
+      ''
+    ].filter(line => line !== '');
+
+    return lines.join('\n');
+  }
+
+  function writeManagedSkillEntry(entryRoot, skill) {
+    const skillDir = path.join(entryRoot.dir, skill.name);
+    const skillFile = path.join(skillDir, 'SKILL.md');
+    if (fs.existsSync(skillFile) && !isManagedSkillEntryFile(skillFile, skill.name)) {
+      return false;
+    }
+
+    runtime.ensureDir(skillDir);
+    fs.writeFileSync(skillFile, buildManagedSkillEntryContent(skill, entryRoot), 'utf8');
+    return true;
+  }
+
+  function removeManagedSkillEntry(entryRoot, skillName) {
+    const skillDir = path.join(entryRoot.dir, skillName);
+    const skillFile = path.join(skillDir, 'SKILL.md');
+    if (!fs.existsSync(skillFile) || !isManagedSkillEntryFile(skillFile, skillName)) {
+      return false;
+    }
+
+    removePathRecursive(skillDir);
+    return true;
+  }
+
+  function syncPluginSkillEntries(bundle) {
+    if (!bundle || !bundle.plugin || !bundle.plugin.scope || !Array.isArray(bundle.skills)) {
+      return;
+    }
+
+    const entryRoots = buildSkillEntryRoots(bundle.plugin.scope);
+    if (entryRoots.length === 0) {
+      return;
+    }
+
+    entryRoots.forEach(entryRoot => {
+      bundle.skills.forEach(skill => {
+        if (skill && skill.enabled !== false) {
+          writeManagedSkillEntry(entryRoot, skill);
+          return;
+        }
+        removeManagedSkillEntry(entryRoot, skill && skill.name ? skill.name : '');
+      });
+    });
+  }
+
+  function removePluginSkillEntries(bundle) {
+    if (!bundle || !bundle.plugin || !bundle.plugin.scope || !Array.isArray(bundle.skills)) {
+      return;
+    }
+
+    buildSkillEntryRoots(bundle.plugin.scope).forEach(entryRoot => {
+      bundle.skills.forEach(skill => {
+        removeManagedSkillEntry(entryRoot, skill && skill.name ? skill.name : '');
+      });
+    });
+  }
+
   function copyPathRecursive(sourcePath, targetPath) {
     const stats = fs.statSync(sourcePath);
     if (stats.isDirectory()) {
@@ -526,21 +908,66 @@ function createSkillRuntimeHelpers(deps) {
     const resolvedRoot = path.resolve(rootDir);
     const discovered = [];
     const seen = new Set();
-    const directSkill = path.join(resolvedRoot, 'SKILL.md');
-    if (fs.existsSync(directSkill)) {
-      discovered.push(directSkill);
-      seen.add(safeRealPath(directSkill));
-    }
 
-    const skillsDir = path.join(resolvedRoot, 'skills');
-    walkMarkdownFiles(skillsDir).forEach(filePath => {
+    function pushDiscovered(filePath) {
       const realPath = safeRealPath(filePath);
       if (seen.has(realPath)) {
         return;
       }
       seen.add(realPath);
       discovered.push(filePath);
-    });
+    }
+
+    function resolveSkillEntriesForPath(targetPath) {
+      if (!targetPath || !fs.existsSync(targetPath)) {
+        return [];
+      }
+
+      let stats;
+      try {
+        stats = fs.statSync(targetPath);
+      } catch {
+        stats = null;
+      }
+      if (!stats) {
+        return [];
+      }
+
+      if (stats.isDirectory()) {
+        const directSkill = path.join(targetPath, 'SKILL.md');
+        if (fs.existsSync(directSkill) && fs.statSync(directSkill).isFile()) {
+          return [directSkill];
+        }
+        return walkSkillEntryFiles(targetPath);
+      }
+
+      return path.basename(targetPath).toUpperCase() === 'SKILL.MD' ? [targetPath] : [];
+    }
+
+    const directSkill = path.join(resolvedRoot, 'SKILL.md');
+    if (fs.existsSync(directSkill)) {
+      pushDiscovered(directSkill);
+    }
+
+    const catalogIndex = safeReadJson(path.join(resolvedRoot, 'index.json'));
+    if (catalogIndex && Array.isArray(catalogIndex.skills) && catalogIndex.skills.length > 0) {
+      catalogIndex.skills.forEach(entry => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+          return;
+        }
+        const entryPath = ensureOptionalString(entry.path || entry.skill_path || entry.file);
+        if (!entryPath) {
+          return;
+        }
+        resolveSkillEntriesForPath(path.resolve(resolvedRoot, entryPath)).forEach(pushDiscovered);
+      });
+      if (discovered.length > 0) {
+        return discovered;
+      }
+    }
+
+    const skillsDir = path.join(resolvedRoot, 'skills');
+    walkSkillEntryFiles(skillsDir).forEach(pushDiscovered);
 
     return discovered.sort();
   }
@@ -627,7 +1054,7 @@ function createSkillRuntimeHelpers(deps) {
         if (fs.existsSync(directSkill)) {
           candidates.push(directSkill);
         } else {
-          candidates.push(...walkMarkdownFiles(filePath));
+          candidates.push(...walkSkillEntryFiles(filePath));
         }
 
         candidates.forEach(candidate => {
@@ -676,6 +1103,32 @@ function createSkillRuntimeHelpers(deps) {
     });
 
     return skillFiles;
+  }
+
+  function inferGeneratedPluginFallbackName(parsed, searchRoot) {
+    const sourceType = normalizeInstallSourceType(parsed.source, parsed.source_type);
+    const sourceSpec = stripInstallSourcePrefix(parsed.source, sourceType);
+
+    if (sourceType === 'path') {
+      return path.basename(path.resolve(resolveProjectRoot(), sourceSpec), path.extname(sourceSpec));
+    }
+
+    if (sourceType === 'git') {
+      const remoteBundleSource = resolveRemoteGitBundleSource(sourceSpec, {
+        branch: parsed.branch,
+        subdir: parsed.subdir
+      });
+      if (remoteBundleSource && remoteBundleSource.repo) {
+        return remoteBundleSource.repo.split('/').filter(Boolean).slice(-1)[0] || path.basename(searchRoot);
+      }
+
+      const cleaned = String(sourceSpec || '').trim().replace(/\.git\/?$/i, '').replace(/\/$/, '');
+      const segments = cleaned.split(/[/:]/).filter(Boolean);
+      return segments.length > 0 ? segments[segments.length - 1] : path.basename(searchRoot);
+    }
+
+    const sanitized = String(sourceSpec || '').trim().replace(/^@/, '').replace(/[@/]+/g, '-');
+    return sanitized || path.basename(searchRoot);
   }
 
   function ensureGeneratedPluginManifest(pluginRoot, fallbackName) {
@@ -1873,8 +2326,72 @@ function createSkillRuntimeHelpers(deps) {
     return userRoot;
   }
 
+  function isExecutableFile(filePath) {
+    try {
+      const stats = fs.statSync(filePath);
+      return stats.isFile();
+    } catch {
+      return false;
+    }
+  }
+
+  function resolveExecutablePath(command) {
+    const input = String(command || '').trim();
+    if (!input) {
+      return input;
+    }
+    if (input.includes(path.sep) || input.includes('/')) {
+      return input;
+    }
+
+    const envPath = String(process.env && process.env.PATH ? process.env.PATH : '');
+    const searchDirs = envPath
+      ? envPath.split(path.delimiter).map(item => String(item || '').trim()).filter(Boolean)
+      : [];
+    const fallbackDirs = operatingSystem.platform() === 'win32'
+      ? [
+          'C:\\Program Files\\Git\\cmd',
+          'C:\\Program Files\\Git\\bin',
+          'C:\\Program Files (x86)\\Git\\cmd',
+          'C:\\Program Files (x86)\\Git\\bin'
+        ]
+      : ['/usr/local/bin', '/usr/bin', '/bin'];
+    const extensions = operatingSystem.platform() === 'win32'
+      ? uniqueStrings(
+          String(process.env && process.env.PATHEXT ? process.env.PATHEXT : '.EXE;.CMD;.BAT;.COM')
+            .split(';')
+            .map(item => item.trim().toLowerCase())
+            .filter(Boolean)
+        )
+      : [''];
+
+    for (const dir of uniqueStrings([...searchDirs, ...fallbackDirs])) {
+      if (!dir) {
+        continue;
+      }
+
+      const directPath = path.join(dir, input);
+      if (isExecutableFile(directPath)) {
+        return directPath;
+      }
+
+      for (const extension of extensions) {
+        if (!extension) {
+          continue;
+        }
+        const candidate = path.join(dir, `${input}${extension}`);
+        if (isExecutableFile(candidate)) {
+          return candidate;
+        }
+      }
+    }
+
+    return input;
+  }
+
   function runInstallCommand(command, args, options, label) {
-    const result = childProcess.spawnSync(command, args, {
+    const resolvedCommand = resolveExecutablePath(command);
+    const result = childProcess.spawnSync(resolvedCommand, args, {
       cwd: options.cwd,
       encoding: 'utf8',
       env: {
@@ -1884,6 +2401,9 @@ function createSkillRuntimeHelpers(deps) {
     });
 
     if (result.error) {
+      if (result.error.code === 'ENOENT') {
+        throw new Error(`${label} failed: required local dependency is not available in this environment`);
+      }
       throw new Error(`${label} failed: ${result.error.message}`);
     }
     if (result.status !== 0) {
@@ -1940,7 +2460,34 @@ function createSkillRuntimeHelpers(deps) {
     };
   }
 
-  function materializeGitSource(sourceSpec, parsed, payloadDir) {
+  async function materializeGitSource(sourceSpec, parsed, payloadDir) {
+    const remoteBundleSource = resolveRemoteGitBundleSource(sourceSpec, {
+      branch: parsed.branch,
+      subdir: parsed.subdir
+    });
+    if (remoteBundleSource) {
+      runtime.ensureDir(payloadDir);
+      try {
+        const giget = await loadGigetModule();
+        await withGigetHost(remoteBundleSource.host, () =>
+          withPromiseTimeout(
+            giget.downloadTemplate(remoteBundleSource.gigetSource, {
+              dir: payloadDir,
+              preferOffline: true
+            }),
+            DEFAULT_COMMAND_TIMEOUT_MS,
+            'Skill source download'
+          )
+        );
+        return {
+          search_root: payloadDir,
+          location: sourceSpec
+        };
+      } catch (error) {
+        throw new Error(classifyRemoteSourceDownloadError(error));
+      }
+    }
+
     const cloneDir = path.join(payloadDir, 'repo');
     const cloneArgs = ['clone', '--depth', '1'];
     if (parsed.branch) {
@@ -1987,7 +2534,7 @@ function createSkillRuntimeHelpers(deps) {
     };
   }
 
-  function materializeSkillSource(parsed, payloadDir) {
+  async function materializeSkillSource(parsed, payloadDir) {
     const sourceType = normalizeInstallSourceType(parsed.source, parsed.source_type);
     const sourceSpec = stripInstallSourcePrefix(parsed.source, sourceType);
 
@@ -2000,7 +2547,7 @@ function createSkillRuntimeHelpers(deps) {
     if (sourceType === 'git') {
       return {
         source_type: sourceType,
-        ...materializeGitSource(sourceSpec, parsed, payloadDir)
+        ...(await materializeGitSource(sourceSpec, parsed, payloadDir))
       };
     }
     if (sourceType === 'pypi') {
@@ -2178,18 +2725,18 @@ function createSkillRuntimeHelpers(deps) {
     };
   }
 
-  function installSkillSource(tokens) {
+  async function installSkillSource(tokens) {
     const parsed = parseSkillInstallArgs(tokens);
     const scopeRoot = ensureScopePluginRoot(parsed.scope);
     const stagingRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-install-'));
     const stagingPayloadDir = path.join(stagingRoot, PLUGIN_PAYLOAD_DIR);
 
     try {
-      const materialized = materializeSkillSource(parsed, stagingPayloadDir);
+      const materialized = await materializeSkillSource(parsed, stagingPayloadDir);
       const searchRoot = materialized.search_root;
       let manifestPath = findPluginManifestPath(searchRoot);
       if (!manifestPath) {
-        manifestPath = ensureGeneratedPluginManifest(searchRoot, path.basename(searchRoot));
+        manifestPath = ensureGeneratedPluginManifest(searchRoot, inferGeneratedPluginFallbackName(parsed, searchRoot));
       }
 
       const manifestRelativeToPayload = path.relative(stagingPayloadDir, manifestPath);
@@ -2198,6 +2745,16 @@ function createSkillRuntimeHelpers(deps) {
       if (fs.existsSync(installDir)) {
         if (!parsed.force) {
           throw new Error(`Skill plugin already installed: ${normalizedManifest.name}`);
+        }
+        const existingBundle = readInstalledPluginBundle(installDir, {
+          scope: parsed.scope,
+          source: parsed.scope === 'project' ? 'project-plugin' : 'user-plugin',
+          display_root: parsed.scope === 'project'
+            ? resolveProjectRoot()
+            : (getRuntimeHost() && getRuntimeHost().runtimeHome ? getRuntimeHost().runtimeHome : '')
+        });
+        if (existingBundle) {
+          removePluginSkillEntries(existingBundle);
         }
         removePathRecursive(installDir);
       }
@@ -2239,6 +2796,17 @@ function createSkillRuntimeHelpers(deps) {
       };
       writePluginState(installDir, state);
 
+      syncPluginSkillEntries({
+        plugin: {
+          name: installedManifest.name,
+          scope: parsed.scope
+        },
+        skills: installedManifest.skills.map(item => ({
+          ...item,
+          enabled: enabledSkills.includes(item.name)
+        }))
+      });
+
       return {
         command: 'skills install',
         status: 'ok',
@@ -2270,6 +2838,55 @@ function createSkillRuntimeHelpers(deps) {
           path: item.display_path
         })),
         selected_skills: enabledSkills
+      };
+    } finally {
+      removePathRecursive(stagingRoot);
+    }
+  }
+
+  async function previewSkillSource(tokens) {
+    const parsed = parseSkillInstallArgs(tokens);
+    const stagingRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-preview-'));
+    const stagingPayloadDir = path.join(stagingRoot, PLUGIN_PAYLOAD_DIR);
+
+    try {
+      const materialized = await materializeSkillSource(parsed, stagingPayloadDir);
+      const searchRoot = materialized.search_root;
+      let manifestPath = findPluginManifestPath(searchRoot);
+      if (!manifestPath) {
+        manifestPath = ensureGeneratedPluginManifest(searchRoot, inferGeneratedPluginFallbackName(parsed, searchRoot));
+      }
+
+      const normalizedManifest = loadNormalizedPluginManifest(manifestPath);
+      const allSkillNames = normalizedManifest.skills.map(item => item.name);
+      const selectedSkills = parsed.skill_names.length > 0
+        ? uniqueStrings(parsed.skill_names)
+        : allSkillNames;
+      const missingSkills = selectedSkills.filter(name => !allSkillNames.includes(name));
+      if (missingSkills.length > 0) {
+        throw new Error(`Plugin ${normalizedManifest.name} does not expose skill(s): ${missingSkills.join(', ')}`);
+      }
+
+      return {
+        source: {
+          type: materialized.source_type,
+          specifier: parsed.source,
+          location: materialized.location || parsed.source,
+          branch: parsed.branch,
+          subdir: parsed.subdir
+        },
+        plugin: {
+          name: normalizedManifest.name,
+          version: normalizedManifest.version,
+          description: normalizedManifest.description
+        },
+        skills: normalizedManifest.skills.map(item => ({
+          name: item.name,
+          description: item.description,
+          execution_mode: item.execution_mode,
+          path: item.display_path,
+          selected: selectedSkills.includes(item.name)
+        }))
       };
     } finally {
       removePathRecursive(stagingRoot);
@@ -2311,6 +2928,13 @@ function createSkillRuntimeHelpers(deps) {
       enabled_skills: nextEnabled
     };
     writePluginState(bundle.plugin.install_path, nextState);
+    syncPluginSkillEntries({
+      plugin: bundle.plugin,
+      skills: bundle.skills.map(skill => ({
+        ...skill,
+        enabled: nextEnabled.includes(skill.name)
+      }))
+    });
     return {
       command: `skills ${action}`,
       status: 'ok',
@@ -2361,6 +2985,7 @@ function createSkillRuntimeHelpers(deps) {
   function removeInstalledSkill(name) {
     const bundle = resolveInstalledPluginTarget(name);
     if (bundle.plugin.name === name || bundle.skills.length === 1) {
+      removePluginSkillEntries(bundle);
       removePathRecursive(bundle.plugin.install_path);
       return {
         command: 'skills remove',
@@ -2386,6 +3011,7 @@ function createSkillRuntimeHelpers(deps) {
     loadSkill,
     runSkill,
     parseSkillListArgs,
+    previewSkillSource,
     installSkillSource,
     enableInstalledSkill,
     disableInstalledSkill,

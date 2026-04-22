@@ -114,7 +114,7 @@ function buildInjectedSpecLines(projectRoot, resume) {
   });
   const specs = workflowRegistry.resolveAutoInjectedSpecs(registry, {
     profile: resume && resume.summary ? resume.summary.profile : '',
-    packs: resume && resume.summary ? resume.summary.packs : [],
+    specs: resume && resume.summary ? (resume.summary.specs || []) : [],
     task: resume ? resume.task : null,
     handoff: resume ? resume.handoff : null
   }, { limit: 5 });

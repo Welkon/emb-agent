@@ -32,7 +32,7 @@ function usage() {
     [
       'attach-project usage:',
       '  node scripts/attach-project.cjs',
-      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--pack <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>]',
+      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--spec <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>]',
       '  node scripts/attach-project.cjs --mcu <name> [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>] [--force]'
     ].join('\n') + '\n'
   );
@@ -42,7 +42,7 @@ function parseArgs(argv) {
   const result = {
     project: '',
     profile: '',
-    packs: [],
+    specs: [],
     runtime: '',
     runtimeSet: false,
     user: '',
@@ -91,8 +91,8 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (token === '--pack') {
-      result.packs.push(argv[index + 1] || '');
+    if (token === '--spec') {
+      result.specs.push(argv[index + 1] || '');
       index += 1;
       continue;
     }
@@ -177,8 +177,8 @@ function parseArgs(argv) {
   if (argv.includes('--profile') && !result.profile) {
     throw new Error('Missing name after --profile');
   }
-  if (result.packs.includes('')) {
-    throw new Error('Missing name after --pack');
+  if (result.specs.includes('')) {
+    throw new Error('Missing name after --spec');
   }
   if ((argv.includes('--user') || argv.includes('-u')) && !result.user) {
     throw new Error('Missing name after --user/-u');
@@ -375,7 +375,7 @@ function attachProject(argv) {
   const projectRoot = path.resolve(args.project || process.cwd());
   const configArgs = {
     profile: args.profile,
-    packs: args.packs,
+    specs: args.specs,
     runtime: args.runtime,
     runtimeSet: args.runtimeSet,
     user: args.user,
@@ -389,7 +389,7 @@ function attachProject(argv) {
   });
   const resolvedConfigArgs = {
     ...configArgs,
-    packs: workflowSetup.activePacks
+    specs: workflowSetup.activeSpecs
   };
   const projectConfig = initProject.buildProjectConfig(projectRoot, resolvedConfigArgs, {
     workflowCatalog: workflowSetup.workflowCatalog,

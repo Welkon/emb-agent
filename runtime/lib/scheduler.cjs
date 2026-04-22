@@ -129,8 +129,8 @@ function hasAgent(resolved, name) {
   return (resolved.effective.agents || []).includes(name);
 }
 
-function hasPack(resolved, name) {
-  return (resolved.packs || []).some(pack => pack.name === name);
+function hasSelectedSpec(resolved, name) {
+  return (resolved.selected_specs || []).some(spec => spec.name === name);
 }
 
 function isBlankProjectSelectionMode(resolved) {
@@ -149,7 +149,7 @@ function buildContext(resolved) {
   const lastFiles = resolved.session.last_files || [];
   const openQuestions = resolved.session.open_questions || [];
   const knownRisks = resolved.session.known_risks || [];
-  const packNames = (resolved.packs || []).map(pack => pack.name);
+  const specNames = (resolved.selected_specs || []).map(spec => spec.name);
   const focusAreas = resolved.effective.focus_areas || [];
   const preferences = runtime.normalizePreferences(resolved.session.preferences || {});
 
@@ -158,7 +158,7 @@ function buildContext(resolved) {
     lastFiles,
     openQuestions,
     knownRisks,
-    packNames,
+    specNames,
     focusAreas,
     preferences,
     isBlankSelectionMode: isBlankProjectSelectionMode(resolved),
@@ -167,10 +167,10 @@ function buildContext(resolved) {
       resolved.profile.runtime_model === 'task_scheduler_plus_isr' ||
       (resolved.profile.concurrency_model || '').includes('tasks'),
     isConnected:
-      hasPack(resolved, 'connected-appliance') ||
+      hasSelectedSpec(resolved, 'connected-appliance') ||
       (resolved.effective.review_axes || []).includes('reconnect_strategy'),
     isSensor:
-      hasPack(resolved, 'sensor-node') ||
+      hasSelectedSpec(resolved, 'sensor-node') ||
       focusAreas.includes('sampling') ||
       focusAreas.includes('calibration')
   };
@@ -1629,7 +1629,7 @@ function buildSchedule(action, resolved) {
   return {
     action,
     profile: resolved.profile.name,
-    packs: (resolved.packs || []).map(pack => pack.name),
+    specs: (resolved.selected_specs || []).map(spec => spec.name),
     primary_agent: primaryAgent,
     supporting_agents: supportingAgents,
     agent_execution: buildAgentExecution(action, resolved, primaryAgent, supportingAgents),
@@ -1717,7 +1717,7 @@ function buildReviewOutput(resolved) {
   return {
     scope: {
       profile: resolved.profile.name,
-      packs: (resolved.packs || []).map(pack => pack.name),
+      specs: (resolved.selected_specs || []).map(spec => spec.name),
       focus: resolved.session.focus || '',
       runtime_model: resolved.profile.runtime_model,
       concurrency_model: resolved.profile.concurrency_model,
@@ -1752,7 +1752,7 @@ function buildVerifyOutput(resolved) {
   return {
     scope: {
       profile: resolved.profile.name,
-      packs: (resolved.packs || []).map(pack => pack.name),
+      specs: (resolved.selected_specs || []).map(spec => spec.name),
       focus: resolved.session.focus || '',
       runtime_model: resolved.profile.runtime_model,
       concurrency_model: resolved.profile.concurrency_model,

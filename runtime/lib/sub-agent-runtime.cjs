@@ -354,7 +354,7 @@ function createSubAgentRuntimeHelpers(deps) {
       session: {
         project_root: session.project_root || process.cwd(),
         project_profile: session.project_profile || '',
-        active_packs: toStringArray(session.active_packs),
+        active_specs: toStringArray(session.active_specs),
         focus: session.focus || ''
       },
       orchestration: {

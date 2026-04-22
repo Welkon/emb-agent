@@ -664,7 +664,7 @@ function createProjectConfigHelpers(deps) {
     if (includeEffective) {
       output.effective = {
         project_profile: resolved.session.project_profile,
-        active_packs: resolved.session.active_packs,
+        active_specs: resolved.session.active_specs,
         preferences: getPreferences(resolved.session),
         agents: resolved.effective.agents,
         review_agents: resolved.effective.review_agents,
@@ -697,7 +697,7 @@ function createProjectConfigHelpers(deps) {
     return runtime.validateProjectConfig(
       {
         project_profile: resolved.session.project_profile,
-        active_packs: resolved.session.active_packs,
+        active_specs: resolved.session.active_specs,
         chip_support_sources: [],
         executors: {},
         quality_gates: {
@@ -735,7 +735,7 @@ function createProjectConfigHelpers(deps) {
   function syncSessionWithProjectConfig(validated) {
     return updateSession(current => {
       current.project_profile = validated.project_profile || current.project_profile;
-      current.active_packs = validated.active_packs;
+      current.active_specs = validated.active_specs;
       current.preferences = validated.preferences;
     });
   }
@@ -751,7 +751,7 @@ function createProjectConfigHelpers(deps) {
       config: validated,
       session: {
         project_profile: session.project_profile,
-        active_packs: session.active_packs,
+        active_specs: session.active_specs,
         preferences: session.preferences
       }
     };

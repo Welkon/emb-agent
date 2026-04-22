@@ -15,7 +15,7 @@ Examples:
 - context hygiene
 - verification before mutation
 
-These belong in built-in specs such as core guardrails and task execution.
+These belong in built-in always-on specs such as core guardrails and task execution.
 
 ### 2. Profiles
 
@@ -28,20 +28,21 @@ Examples:
 
 If a rule is really about tasks, queues, locks, ISR boundaries, or scheduler behavior, it probably belongs in a profile or profile-linked spec.
 
-### 3. Built-in packs
+### 3. Built-in selectable specs
 
-Built-in packs should represent stable engineering domains with clear reuse across multiple projects.
+Built-in selectable specs should represent stable engineering domains with clear reuse across multiple projects.
 
-Good built-in pack candidates:
+Good built-in spec candidates:
 
 - `sensor-node`
 - `connected-appliance`
 - `battery-charger`
 - `motor-drive`
+- `padauk-firmware`
 
 These describe repeated risk structures such as sampling windows, local/remote consistency, power fallback, or fault shutdown.
 
-### 4. Project-local packs and specs
+### 4. Project-local specs and templates
 
 Product-specific workflow guidance should usually live in the project repository under `.emb-agent/`.
 
@@ -57,13 +58,12 @@ Examples:
 Project-local workflow extensions belong in:
 
 - `.emb-agent/registry/workflow.json`
-- `.emb-agent/packs/`
 - `.emb-agent/specs/`
 - `.emb-agent/templates/`
 
 ## Decision rule
 
-Before adding a new built-in pack or spec, ask:
+Before adding a new built-in spec, ask:
 
 1. Does this apply to many unrelated embedded projects?
 2. Is it an engineering risk pattern rather than a product story?
@@ -73,8 +73,10 @@ If the answer is "no" to any of those, prefer a project-local extension.
 
 ## Example
 
-`motor-drive` is a reasonable built-in pack because PWM, current sense, startup, and protection are stable cross-project engineering concerns.
+`motor-drive` is a reasonable built-in selectable spec because PWM, current sense, startup, and protection are stable cross-project engineering concerns.
 
-`smart-pillbox` is better treated as a project-local extension, because adherence state, reminder semantics, and caregiver flows are product-specific.
+`padauk-firmware` is a reasonable built-in selectable spec because constrained toolchain rules, Simple-C syntax limits, case-insensitive naming traps, and low-ROM ISR discipline recur across many unrelated Padauk projects.
+
+`smart-pillbox` is better treated as a project-local selectable spec, because adherence state, reminder semantics, and caregiver flows are product-specific.
 
 See [Smart Pillbox Project Extension](../examples/project-extensions/smart-pillbox/README.md) for a concrete example.

@@ -623,7 +623,7 @@ function buildBriefNextContext(value) {
     output_mode: 'brief',
     current: compactObject({
       profile: current.profile || '',
-      packs: toArray(current.packs),
+      specs: toArray(current.specs),
       default_package: current.default_package || '',
       active_package: current.active_package || '',
       focus: current.focus || '',
@@ -729,7 +729,7 @@ function buildBriefInitOutput(value) {
     project_root: value.project_root || '',
     project_dir: value.project_dir || '',
     project_profile: value.project_profile || session.project_profile || '',
-    active_packs: toArray(value.active_packs || session.active_packs),
+    active_specs: toArray(value.active_specs || session.active_specs),
     developer: isObject(value.developer) ? value.developer : (isObject(session.developer) ? session.developer : null),
     bootstrap: compactObject({
       status: bootstrap.status || '',
@@ -748,7 +748,7 @@ function buildBriefResumeContext(value) {
     output_mode: 'brief',
     summary: compactObject({
       profile: summary.profile || '',
-      packs: toArray(summary.packs),
+      specs: toArray(summary.specs),
       focus: summary.focus || '',
       last_command: summary.last_command || '',
       suggested_flow: summary.suggested_flow || '',
@@ -847,7 +847,7 @@ function buildBriefReviewOutput(value) {
     output_mode: 'brief',
     scope: compactObject({
       profile: scope.profile || '',
-      packs: toArray(scope.packs),
+      specs: toArray(scope.specs),
       focus: scope.focus || '',
       runtime_model: scope.runtime_model || '',
       concurrency_model: scope.concurrency_model || ''
@@ -869,7 +869,7 @@ function buildBriefVerifyOutput(value) {
     output_mode: 'brief',
     scope: compactObject({
       profile: scope.profile || '',
-      packs: toArray(scope.packs),
+      specs: toArray(scope.specs),
       focus: scope.focus || '',
       runtime_model: scope.runtime_model || '',
       concurrency_model: scope.concurrency_model || ''
@@ -1011,7 +1011,7 @@ function buildBriefStatusOutput(value) {
     output_mode: 'brief',
     project_root: value.project_root || '',
     project_profile: value.project_profile || '',
-    active_packs: truncateList(value.active_packs, 4),
+    active_specs: truncateList(value.active_specs, 4),
     default_package: value.default_package || '',
     active_package: value.active_package || '',
     active_task: isObject(value.active_task)

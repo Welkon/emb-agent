@@ -92,6 +92,7 @@ resolve_skill_path() {
   if [ -n "$HOOK_SKILL_NAME" ]; then
     for candidate in \
       "$PROJECT_ROOT/skills/$HOOK_SKILL_NAME/SKILL.md" \
+      "$PROJECT_ROOT/.agents/skills/$HOOK_SKILL_NAME/SKILL.md" \
       "$PROJECT_ROOT/.cursor/skills/$HOOK_SKILL_NAME/SKILL.md" \
       "$PROJECT_ROOT/.codex/skills/$HOOK_SKILL_NAME/SKILL.md"
     do
@@ -102,7 +103,7 @@ resolve_skill_path() {
     done
   fi
 
-  for search_root in "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.cursor/skills" "$PROJECT_ROOT/.codex/skills"; do
+  for search_root in "$PROJECT_ROOT/skills" "$PROJECT_ROOT/.agents/skills" "$PROJECT_ROOT/.cursor/skills" "$PROJECT_ROOT/.codex/skills"; do
     if [ ! -d "$search_root" ]; then
       continue
     fi

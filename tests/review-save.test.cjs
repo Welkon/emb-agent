@@ -18,7 +18,7 @@ test('review save creates review report from template and appends structured ent
   process.stdout.write = () => true;
 
   try {
-    initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--pack', 'connected-appliance']);
+    initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
 
     process.chdir(tempProject);
     cli.main(['init']);

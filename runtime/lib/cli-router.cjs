@@ -1824,6 +1824,9 @@ function createCliRouter(deps) {
 
     const stateCommandResult = handleCatalogAndStateCommands(cmd, subcmd, rest);
     if (stateCommandResult !== undefined) {
+      const stateCommandIsPromise =
+        stateCommandResult && typeof stateCommandResult.then === 'function';
+
       if (cmd === 'task' && subcmd === 'worktree') {
         const worktreeAction = rest[0] || 'list';
         const interactiveAction = worktreeAction === 'create' || worktreeAction === 'cleanup' || worktreeAction === 'remove';
@@ -1843,11 +1846,14 @@ function createCliRouter(deps) {
         cmd === 'session-report' ||
         (cmd === 'session' && subcmd === 'record')
       ) {
-        emitCommandResult({ cmd, subcmd }, stateCommandResult);
+        emitCommandResult(
+          { cmd, subcmd },
+          stateCommandIsPromise ? await stateCommandResult : stateCommandResult
+        );
         return;
       }
 
-      emitJson(stateCommandResult);
+      emitJson(stateCommandIsPromise ? await stateCommandResult : stateCommandResult);
       return;
     }
 

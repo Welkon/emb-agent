@@ -2,7 +2,7 @@
   "runtime_version": 1,
   "session_version": 1,
   "default_profile": "baremetal-8bit",
-  "default_packs": [],
+  "default_specs": [],
   "developer": {
     "name": "",
     "runtime": ""

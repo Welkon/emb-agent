@@ -28,11 +28,12 @@ allowed-tools:
 - `.emb-agent/req.yaml`
 - starter docs, caches, and bootstrap checklists
 
-## Workflow Packs
+## Workflow Specs
 
-- `init` can activate workflow packs with `--pack <name>`.
-- If the current workflow registry exposes multiple packs and `init` runs in an interactive terminal, it will offer a pack picker before writing `.emb-agent/project.json`.
-- Registry import happens before that choice, so packs brought in through `--registry` are available in the same `init` run.
+- `init` can activate workflow specs with `--spec <name>`.
+- If the current workflow registry exposes multiple selectable specs and `init` runs in an interactive terminal, it will offer a spec picker before writing `.emb-agent/project.json`.
+- Registry import happens before that choice, so specs brought in through `--registry` are available in the same `init` run.
+- Additional workflow specs can be enabled later with `spec add <name>`.
 
 ## Monorepo Detection
 

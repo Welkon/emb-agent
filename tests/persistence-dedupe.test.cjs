@@ -100,7 +100,7 @@ test('repeated review save with same summary replaces prior report entry', () =>
   process.stdout.write = () => true;
 
   try {
-    initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--pack', 'connected-appliance']);
+    initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
 
     process.chdir(tempProject);
     cli.main(['init']);

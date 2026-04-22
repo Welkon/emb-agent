@@ -8,7 +8,7 @@ function createSettingsCommandHelpers(deps) {
     loadSession,
     updateSession,
     loadProfile,
-    loadPack,
+    loadSpec,
     getProjectConfig
   } = deps;
 
@@ -24,7 +24,7 @@ function createSettingsCommandHelpers(deps) {
     return {
       settings: {
         profile: session.project_profile,
-        packs: session.active_packs || [],
+        specs: session.active_specs || [],
         preferences: runtime.normalizePreferences(session.preferences || {}, defaults)
       },
       host: {
@@ -34,7 +34,7 @@ function createSettingsCommandHelpers(deps) {
       },
       defaults: {
         profile: defaults.default_profile,
-        packs: defaults.default_packs || [],
+        specs: defaults.default_specs || [],
         preferences: runtime.normalizePreferences({}, defaults)
       }
     };
@@ -47,16 +47,21 @@ function createSettingsCommandHelpers(deps) {
     });
   }
 
-  function setPacks(rawValue) {
-    const packs = String(rawValue || '')
+  function setSpecs(rawValue) {
+    const specs = String(rawValue || '')
       .split(',')
       .map(item => item.trim())
       .filter(Boolean);
 
-    packs.forEach(loadPack);
+    specs.forEach(name => {
+      const spec = loadSpec(name);
+      if (spec.selectable !== true) {
+        throw new Error(`Spec is not selectable: ${name}`);
+      }
+    });
 
     return updateSession(current => {
-      current.active_packs = runtime.unique(packs);
+      current.active_specs = runtime.unique(specs);
     });
   }
 
@@ -77,7 +82,7 @@ function createSettingsCommandHelpers(deps) {
 
     return updateSession(current => {
       current.project_profile = defaults.default_profile;
-      current.active_packs = runtime.unique(defaults.default_packs || []);
+      current.active_specs = runtime.unique(defaults.default_specs || []);
       current.preferences = runtime.normalizePreferences({}, defaults);
     });
   }
@@ -108,8 +113,8 @@ function createSettingsCommandHelpers(deps) {
         return buildSettingsView();
       }
 
-      if (key === 'packs') {
-        setPacks(value);
+      if (key === 'specs') {
+        setSpecs(value);
         return buildSettingsView();
       }
 

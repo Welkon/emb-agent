@@ -686,9 +686,9 @@ function createCliEntryHelpers(deps) {
           'workflow list',
           'workflow import registry <source> [--branch <name>] [--subdir <path>] [--force]',
           'workflow show registry',
-          'workflow show <pack|spec|template> <name>',
-          'workflow new pack <name> [--with-spec [<name>]] [--with-template [<name>]] [--output <path>] [--force]',
-          'workflow new spec <name> [--pack <name>|--always] [--force]',
+          'workflow show <spec|template> <name>',
+          'workflow new spec <name> [--with-template [<name>]] [--output <path>] [--force]',
+          'workflow new spec <name> [--spec <name>|--always] [--with-template [<name>]] [--output <path>] [--force]',
           'workflow new template <name> [--output <path>] [--force]',
           'scaffold list',
           'scaffold show <name>',
@@ -696,11 +696,9 @@ function createCliEntryHelpers(deps) {
           'profile list',
           'profile show <name>',
           'profile set <name>',
-          'pack list',
-          'pack show <name>',
-          'pack add <name>',
-          'pack remove <name>',
-          'pack clear'
+          'spec add <name>',
+          'spec remove <name>',
+          'spec clear'
         ]
       },
       {
@@ -987,7 +985,7 @@ function createCliEntryHelpers(deps) {
     const hasInitOptions = rest.some(token =>
       [
         '--profile',
-        '--pack',
+        '--spec',
         '--mcu',
         '--package',
         '--board',
@@ -1026,7 +1024,7 @@ function createCliEntryHelpers(deps) {
         project_root: session.project_root,
         project_dir: path.relative(process.cwd(), getProjectExtDir()) || runtime.getProjectAssetRelativePath(),
         project_profile: session.project_profile,
-        active_packs: session.active_packs,
+        active_specs: session.active_specs,
         developer: session.developer,
         bootstrap_task: guidance.bootstrap_task || null,
         bootstrap
@@ -1054,7 +1052,7 @@ function createCliEntryHelpers(deps) {
       bootstrap,
       session: {
         project_profile: session.project_profile,
-        active_packs: session.active_packs,
+        active_specs: session.active_specs,
         developer: session.developer,
         last_files: session.last_files
       }

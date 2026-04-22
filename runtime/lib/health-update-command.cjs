@@ -28,7 +28,7 @@ function createHealthUpdateCommandHelpers(deps) {
     getProjectConfig,
     normalizeSession,
     loadProfile,
-    loadPack,
+    loadSpec,
     findChipProfileByModel,
     resolveSession,
     buildToolExecutionFromRecommendation,
@@ -875,12 +875,12 @@ function createHealthUpdateCommandHelpers(deps) {
           'project_config_valid',
           projectConfig ? 'pass' : 'fail',
           projectConfig ? 'project.json validation passed' : 'project.json is not initialized yet',
-          projectConfig
-            ? [
-                `profile=${projectConfig.project_profile || '(default)'}`,
-                `packs=${(projectConfig.active_packs || []).join(',') || '(none)'}`,
-                `chip_support_sources=${(projectConfig.chip_support_sources || []).length}`
-              ]
+              projectConfig
+                ? [
+                    `profile=${projectConfig.project_profile || '(default)'}`,
+                    `specs=${(projectConfig.active_specs || []).join(',') || '(none)'}`,
+                    `chip_support_sources=${(projectConfig.chip_support_sources || []).length}`
+                  ]
             : [path.relative(projectRoot, projectConfigPath)],
           projectConfig ? '' : 'Run init first to write the minimal project configuration.'
         )
@@ -1055,27 +1055,30 @@ function createHealthUpdateCommandHelpers(deps) {
       );
     }
 
-    const desiredPacks =
-      projectConfig && Array.isArray(projectConfig.active_packs) && projectConfig.active_packs.length > 0
-        ? projectConfig.active_packs
-        : RUNTIME_CONFIG.default_packs;
-    const unresolvedPacks = [];
-    desiredPacks.forEach(name => {
+    const desiredSpecs =
+      projectConfig && Array.isArray(projectConfig.active_specs) && projectConfig.active_specs.length > 0
+        ? projectConfig.active_specs
+        : (RUNTIME_CONFIG.default_specs || []);
+    const unresolvedSpecs = [];
+    desiredSpecs.forEach(name => {
       try {
-        loadPack(name);
+        const spec = loadSpec(name);
+        if (spec.selectable !== true) {
+          throw new Error(`Spec is not selectable: ${name}`);
+        }
       } catch (error) {
-        unresolvedPacks.push(`${name}: ${error.message}`);
+        unresolvedSpecs.push(`${name}: ${error.message}`);
       }
     });
     checks.push(
       createCheck(
-        'pack_resolution',
-        unresolvedPacks.length > 0 ? 'fail' : 'pass',
-        unresolvedPacks.length > 0 ? 'There are unresolved packs' : 'Current packs are resolvable',
-        unresolvedPacks.length > 0
-          ? unresolvedPacks
-          : [`packs=${desiredPacks.join(',') || '(none)'}`],
-        unresolvedPacks.length > 0 ? 'Fix the packs in project.json or add the matching pack.yaml.' : ''
+        'spec_resolution',
+        unresolvedSpecs.length > 0 ? 'fail' : 'pass',
+        unresolvedSpecs.length > 0 ? 'There are unresolved workflow specs' : 'Current workflow specs are resolvable',
+        unresolvedSpecs.length > 0
+          ? unresolvedSpecs
+          : [`specs=${desiredSpecs.join(',') || '(none)'}`],
+        unresolvedSpecs.length > 0 ? 'Fix the specs in project.json or add the matching workflow definition.' : ''
       )
     );
 

@@ -7,17 +7,13 @@ function createStateCommandHelpers(deps) {
     process,
     runtime,
     PROFILES_DIR,
-    PACKS_DIR,
     AGENTS_DIR,
     COMMANDS_DIR,
     commandVisibility,
     RUNTIME_CONFIG,
     getProjectProfilesDir,
-    getProjectPacksDir,
-    listPackNames,
     listSpecNames,
     loadProfile,
-    loadPack,
     loadSpec,
     loadCommandMarkdown,
     loadMarkdown,
@@ -296,44 +292,6 @@ function createStateCommandHelpers(deps) {
       });
     }
 
-    if (cmd === 'pack' && subcmd === 'list') {
-      if (typeof listPackNames === 'function') {
-        return listPackNames();
-      }
-      const builtIn = runtime.listNames(PACKS_DIR, '.yaml');
-      const projectPacksDir = getProjectPacksDir();
-      const projectLocal = fs.existsSync(projectPacksDir)
-        ? runtime.listNames(projectPacksDir, '.yaml')
-        : [];
-      return runtime.unique([...projectLocal, ...builtIn]);
-    }
-
-    if (cmd === 'pack' && subcmd === 'show') {
-      if (!rest[0]) throw new Error('Missing pack name');
-      return loadPack(rest[0]);
-    }
-
-    if (cmd === 'pack' && subcmd === 'add') {
-      if (!rest[0]) throw new Error('Missing pack name');
-      loadPack(rest[0]);
-      return updateSession(current => {
-        current.active_packs = runtime.unique([...(current.active_packs || []), rest[0]]);
-      });
-    }
-
-    if (cmd === 'pack' && subcmd === 'remove') {
-      if (!rest[0]) throw new Error('Missing pack name');
-      return updateSession(current => {
-        current.active_packs = runtime.removeValue(current.active_packs || [], rest[0]);
-      });
-    }
-
-    if (cmd === 'pack' && subcmd === 'clear') {
-      return updateSession(current => {
-        current.active_packs = [];
-      });
-    }
-
     if (cmd === 'spec' && subcmd === 'list') {
       if (typeof listSpecNames !== 'function') {
         return [];
@@ -341,7 +299,7 @@ function createStateCommandHelpers(deps) {
       updateSession(current => {
         current.last_command = 'spec list';
       });
-      return listSpecNames();
+      return listSpecNames({ selectable: true });
     }
 
     if (cmd === 'spec' && subcmd === 'show') {
@@ -353,6 +311,30 @@ function createStateCommandHelpers(deps) {
         current.last_command = 'spec show';
       });
       return loadSpec(rest[0]);
+    }
+
+    if (cmd === 'spec' && subcmd === 'add') {
+      if (!rest[0]) throw new Error('Missing spec name');
+      const spec = loadSpec(rest[0]);
+      if (spec.selectable !== true) {
+        throw new Error(`Spec is not selectable: ${rest[0]}`);
+      }
+      return updateSession(current => {
+        current.active_specs = runtime.unique([...(current.active_specs || []), rest[0]]);
+      });
+    }
+
+    if (cmd === 'spec' && subcmd === 'remove') {
+      if (!rest[0]) throw new Error('Missing spec name');
+      return updateSession(current => {
+        current.active_specs = runtime.removeValue(current.active_specs || [], rest[0]);
+      });
+    }
+
+    if (cmd === 'spec' && subcmd === 'clear') {
+      return updateSession(current => {
+        current.active_specs = [];
+      });
     }
 
     if (cmd === 'focus' && subcmd === 'get') {

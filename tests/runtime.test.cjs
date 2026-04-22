@@ -15,7 +15,7 @@ test('loadRuntimeConfig returns validated defaults', () => {
   assert.equal(config.runtime_version, 1);
   assert.equal(config.session_version, 1);
   assert.equal(config.default_profile, 'baremetal-8bit');
-  assert.deepEqual(config.default_packs, []);
+  assert.deepEqual(config.default_specs, []);
   assert.deepEqual(config.developer, { name: '', runtime: '' });
   assert.deepEqual(config.default_preferences, {
     truth_source_mode: 'hardware_first',
@@ -47,7 +47,7 @@ test('normalizeSession fills metadata and trims arrays', () => {
   const session = runtime.normalizeSession(
     {
       last_files: Array.from({ length: 20 }, (_, index) => `f${index}.c`),
-      active_packs: [],
+      active_specs: [],
       open_questions: ['q1'],
       known_risks: ['r1']
     },
@@ -59,7 +59,7 @@ test('normalizeSession fills metadata and trims arrays', () => {
   assert.equal(session.project_root, '/tmp/example-proj');
   assert.equal(session.project_name, 'example-proj');
   assert.equal(session.project_profile, '');
-  assert.deepEqual(session.active_packs, []);
+  assert.deepEqual(session.active_specs, []);
   assert.deepEqual(session.developer, { name: '', runtime: '' });
   assert.deepEqual(session.preferences, {
     truth_source_mode: 'hardware_first',
@@ -215,7 +215,7 @@ test('project state paths resolve outside runtime root and migrate legacy files'
   fs.writeFileSync(paths.legacySessionPath, JSON.stringify({ focus: 'legacy' }, null, 2) + '\n', 'utf8');
   fs.writeFileSync(
     paths.legacyHandoffPath,
-    JSON.stringify({ version: '1.0', status: 'paused', packs: [] }, null, 2) + '\n',
+    JSON.stringify({ version: '1.0', status: 'paused', specs: [] }, null, 2) + '\n',
     'utf8'
   );
 
@@ -259,7 +259,7 @@ test('project config defaults can override runtime defaults', () => {
     JSON.stringify(
       {
         project_profile: 'rtos-iot',
-        active_packs: ['connected-appliance'],
+        active_specs: ['connected-appliance'],
         executors: {
           build: {
             description: 'firmware build',
@@ -320,7 +320,7 @@ test('project config defaults can override runtime defaults', () => {
   const session = runtime.normalizeSession({}, paths, config, projectConfig);
 
   assert.equal(projectConfig.project_profile, 'rtos-iot');
-  assert.deepEqual(projectConfig.active_packs, ['connected-appliance']);
+  assert.deepEqual(projectConfig.active_specs, ['connected-appliance']);
   assert.deepEqual(projectConfig.executors.build.argv, ['make', '-C', 'firmware']);
   assert.equal(projectConfig.executors.build.allow_extra_args, true);
   assert.equal(projectConfig.executors.build.env.BUILD_MODE, 'release');
@@ -338,7 +338,7 @@ test('project config defaults can override runtime defaults', () => {
   assert.deepEqual(projectConfig.developer, { name: 'welkon', runtime: 'codex' });
   assert.deepEqual(projectConfig.arch_review.trigger_patterns, ['custom arch gate']);
   assert.equal(session.project_profile, 'rtos-iot');
-  assert.deepEqual(session.active_packs, ['connected-appliance']);
+  assert.deepEqual(session.active_specs, ['connected-appliance']);
   assert.deepEqual(session.developer, { name: 'welkon', runtime: 'codex' });
   assert.deepEqual(session.preferences, {
     truth_source_mode: 'code_first',
@@ -626,15 +626,15 @@ test('project config accepts intent router integration settings', () => {
   assert.equal(projectConfig.integrations.intent_router.provider, 'local-rules');
 });
 
-test('validators reject malformed profile/pack data', () => {
+test('validators reject malformed profile/project spec data', () => {
   assert.throws(
     () => runtime.validateProfile('broken', { name: 'broken', runtime_model: 'x' }),
     /concurrency_model/
   );
 
   assert.throws(
-    () => runtime.validatePack('broken', { name: 'broken', focus_areas: 'bad' }),
-    /focus_areas/
+    () => runtime.validateProjectConfig({ active_specs: 'sensor-node' }, runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'))),
+    /active_specs/
   );
 });
 
@@ -649,7 +649,7 @@ test('project state paths and handoff validator support lightweight handoff', ()
     {
       version: '1.0',
       status: 'paused',
-      packs: ['sensor-node'],
+      specs: ['sensor-node'],
       default_package: 'app',
       active_package: 'fw',
       last_files: ['main.c'],
@@ -660,7 +660,7 @@ test('project state paths and handoff validator support lightweight handoff', ()
   );
 
   assert.equal(handoff.status, 'paused');
-  assert.deepEqual(handoff.packs, ['sensor-node']);
+  assert.deepEqual(handoff.specs, ['sensor-node']);
   assert.equal(handoff.default_package, 'app');
   assert.equal(handoff.active_package, 'fw');
   assert.deepEqual(handoff.last_files, ['main.c']);
@@ -671,7 +671,7 @@ test('project state paths and handoff validator support lightweight handoff', ()
       generated_at: '2026-04-09T12:00:00.000Z',
       source: 'pause',
       profile: 'baremetal-8bit',
-      packs: ['sensor-node'],
+      specs: ['sensor-node'],
       default_package: 'app',
       active_package: 'fw',
       next_action: 'resume timer drift',

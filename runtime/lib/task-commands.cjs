@@ -1293,7 +1293,7 @@ function createTaskCommandHelpers(deps) {
     const summary = session || loadSession();
     return workflowRegistry.buildInjectedSpecSnapshot(rootDir, getProjectExtDir(), {
       profile: (summary && summary.project_profile) || '',
-      packs: (summary && summary.active_packs) || [],
+      specs: (summary && summary.active_specs) || [],
       task: taskLike || null,
       handoff: null
     }, { limit: 8 });
@@ -1459,7 +1459,7 @@ function createTaskCommandHelpers(deps) {
       '',
       `- Task: ${taskLike && taskLike.name ? taskLike.name : taskName}`,
       `- Profile: ${(session && session.project_profile) || ''}`,
-      `- Packs: ${((session && session.active_packs) || []).join(', ') || '-'}`,
+      `- Specs: ${((session && session.active_specs) || []).join(', ') || '-'}`,
       ''
     ];
 

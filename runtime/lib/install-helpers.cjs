@@ -1,6 +1,7 @@
 'use strict';
 
 const commandVisibility = require('./command-visibility.cjs');
+const { DEFAULT_SKILL_SOURCE_LOCATION } = require('./default-skill-source.cjs');
 
 function createInstallHelpers(deps) {
   const {
@@ -10,6 +11,7 @@ function createInstallHelpers(deps) {
     process,
     readline,
     promptInstallerChoices,
+    previewSkillSource,
     installTargets,
     runtimeHost,
     commandsSrc,
@@ -44,6 +46,9 @@ function createInstallHelpers(deps) {
     'emb-sys-reviewer': 'read-only',
     'emb-release-checker': 'read-only'
   };
+  const INTERACTIVE_CANCELLED_MESSAGE = 'Interactive install cancelled.';
+  const INTERACTIVE_SKILL_SELECTION_CHANGE_SOURCE = Symbol('interactive-skill-selection-change-source');
+  let cachedSkillSourcePreviewer = null;
 
   function usage() {
     process.stdout.write(
@@ -504,6 +509,468 @@ function createInstallHelpers(deps) {
     );
   }
 
+  function buildInteractiveSkillSourcePrompt() {
+    const { chalk } = createPromptStyler();
+    return renderInteractiveSection(
+      chalk,
+      '▶',
+      'Skill Source',
+      [
+        'Provide a path, npm:, pypi:, or git source for the initial skill bundle.',
+        `Press enter to use the default repository: ${DEFAULT_SKILL_SOURCE_LOCATION}`,
+        'Type `skip` to continue without installing initial skills.'
+      ],
+      [],
+      'Skill source > '
+    );
+  }
+
+  function buildInteractiveSkillSelectionPrompt(preview, options = {}) {
+    const { chalk } = createPromptStyler();
+    const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
+    const allowSourceChange = Boolean(options.allow_source_change);
+    const choiceLines = [
+      `  ${chalk.cyan('skip.')} ${chalk.white('Skip initial skill installation')}`,
+      '',
+      ...skills.map((skill, index) => {
+        const summarizedDescription = summarizeInteractiveSkillSelectionDescription(skill && skill.description);
+        const suffix = summarizedDescription ? ` ${chalk.gray(`- ${summarizedDescription}`)}` : '';
+        return `  ${chalk.cyan(`${index + 1}.`)} ${chalk.white(skill.name)}${suffix}`;
+      })
+    ];
+
+    const descriptionLines = [
+      `Plugin: ${preview && preview.plugin && preview.plugin.name ? preview.plugin.name : 'skill bundle'}`,
+      'Press enter or type `skip` to skip initial skill installation.',
+      'Use space-separated numbers to enable a subset.',
+      'Type `all` to enable every published skill from that bundle.'
+    ];
+    if (allowSourceChange) {
+      descriptionLines.push('Type `source` to use a different skill bundle source.');
+    }
+
+    return renderInteractiveSection(
+      chalk,
+      '▶',
+      'Skill Selection',
+      descriptionLines,
+      choiceLines,
+      allowSourceChange ? 'Choice [skip/all/source] > ' : 'Choice [skip/all] > '
+    );
+  }
+
+  function renderInteractiveSkillSelectionKeyboardUi(preview, state, options = {}) {
+    const { chalk } = createPromptStyler();
+    const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
+    const allowSourceChange = Boolean(options.allow_source_change);
+    const selected = state && state.selected instanceof Set ? state.selected : new Set();
+    const cursorIndex = Number.isInteger(state && state.cursorIndex) ? state.cursorIndex : 0;
+    const totalChoices = skills.length + 1;
+    const choiceLines = [
+      (() => {
+        const isActive = cursorIndex === 0;
+        const cursor = isActive ? chalk.cyan('›') : ' ';
+        const renderedLabel = isActive
+          ? chalk.bold(chalk.white('Skip initial skill installation'))
+          : chalk.white('Skip initial skill installation');
+        return `  ${cursor} ${chalk.cyan('skip')} ${renderedLabel}`;
+      })(),
+      ...skills.map((skill, index) => {
+        const entryIndex = index + 1;
+        const isActive = entryIndex === cursorIndex;
+        const isSelected = selected.has(skill.name);
+        const cursor = isActive ? chalk.cyan('›') : ' ';
+        const marker = isSelected ? chalk.green('●') : chalk.gray('○');
+        const summarizedDescription = summarizeInteractiveSkillSelectionDescription(skill && skill.description);
+        const renderedName = isActive ? chalk.bold(chalk.white(skill.name)) : chalk.white(skill.name);
+        const suffix = summarizedDescription ? ` ${chalk.gray(`- ${summarizedDescription}`)}` : '';
+        return `  ${cursor} ${marker} ${renderedName}${suffix}`;
+      })
+    ];
+
+    const descriptionLines = [
+      `Plugin: ${preview && preview.plugin && preview.plugin.name ? preview.plugin.name : 'skill bundle'}`,
+      'Use ↑/↓ to move and Space to toggle the highlighted skill.',
+      'Press Enter to confirm the current selection.',
+      'Highlight `skip` and press Enter to continue without installing initial skills.',
+      'Press Enter with no selected skills to skip initial skill installation.',
+      'Press `a` to toggle every published skill from that bundle.'
+    ];
+    if (allowSourceChange) {
+      descriptionLines.push('Press `s` to use a different skill bundle source.');
+    }
+    descriptionLines.push('Press `Esc`, `Ctrl+C`, or `Ctrl+D` to cancel installation.');
+
+    return [
+      ...buildPromptHeader(chalk),
+      renderInteractiveSection(
+        chalk,
+        '▶',
+        'Skill Selection',
+        descriptionLines,
+        choiceLines,
+        totalChoices > 1 ? '↑/↓=move  Space=toggle  Enter=confirm' : 'Enter=confirm'
+      )
+    ].join('\n');
+  }
+
+  function summarizeInteractiveSkillSelectionDescription(value, maxLength = 140) {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      return '';
+    }
+
+    const sentenceMatch = normalized.match(/^(.+?[.?!。！？])(?:\s|$)/);
+    const preferred = sentenceMatch && sentenceMatch[1] && sentenceMatch[1].length <= maxLength
+      ? sentenceMatch[1]
+      : normalized;
+
+    if (preferred.length <= maxLength) {
+      return preferred;
+    }
+    return `${preferred.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+  }
+
+  function normalizeInteractiveSkillSources(value) {
+    if (Array.isArray(value)) {
+      return value.map(item => String(item || '').trim()).filter(Boolean);
+    }
+
+    const source = String(value || '').trim();
+    return source ? [source] : [];
+  }
+
+  function normalizeInteractiveSkillNames(value) {
+    if (Array.isArray(value)) {
+      return value
+        .flatMap(item => String(item || '').split(','))
+        .map(item => item.trim())
+        .filter(Boolean);
+    }
+
+    return String(value || '')
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+
+  function readInteractiveBoolean(value, defaultValue) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      return defaultValue;
+    }
+
+    if (normalized === 'y' || normalized === 'yes' || normalized === 'true' || normalized === '1') {
+      return true;
+    }
+    if (normalized === 'n' || normalized === 'no' || normalized === 'false' || normalized === '0') {
+      return false;
+    }
+
+    return defaultValue;
+  }
+
+  function resolveInteractiveSkillArgs(prompted) {
+    const installSkillsProvided =
+      prompted && Object.prototype.hasOwnProperty.call(prompted, 'installSkills');
+    const requestedSkillSources = normalizeInteractiveSkillSources(prompted && prompted.skillSources);
+    const requestedSkillNames = normalizeInteractiveSkillNames(prompted && prompted.skillNames);
+    const installSkills = installSkillsProvided
+      ? readInteractiveBoolean(prompted.installSkills, false)
+      : requestedSkillSources.length > 0 || requestedSkillNames.length > 0;
+
+    if (!installSkills) {
+      return {
+        skillSources: [],
+        skillNames: []
+      };
+    }
+
+    return {
+      skillSources: requestedSkillSources.length > 0 ? requestedSkillSources : [DEFAULT_SKILL_SOURCE_LOCATION],
+      skillNames: requestedSkillNames
+    };
+  }
+
+  function parseInteractiveSkillSelection(value, preview) {
+    const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
+    if (skills.length === 0) {
+      return null;
+    }
+
+    const tokens = String(value || '')
+      .split(/[,\s]+/)
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    if (tokens.length === 0) {
+      return null;
+    }
+
+    const selected = [];
+    let requestedSkip = false;
+    tokens.forEach(token => {
+      const normalized = token.toLowerCase();
+      if (normalized === 'skip' || token === '0') {
+        requestedSkip = true;
+        return;
+      }
+      if (normalized === 'all') {
+        return;
+      }
+
+      const index = Number.parseInt(token, 10);
+      if (Number.isFinite(index) && String(index) === token && index >= 1 && index <= skills.length) {
+        selected.push(skills[index - 1].name);
+        return;
+      }
+
+      const matched = skills.find(skill => skill.name === token);
+      if (!matched) {
+        throw new Error(`Unknown skill selection: ${token}`);
+      }
+      selected.push(matched.name);
+    });
+
+    if (requestedSkip) {
+      if (selected.length > 0) {
+        throw new Error('Skip cannot be combined with skill selections.');
+      }
+      return null;
+    }
+
+    return Array.from(new Set(selected));
+  }
+
+  function supportsInteractiveSkillSelectionKeyboardUi() {
+    return Boolean(
+      process.stdin &&
+      process.stdin.isTTY &&
+      process.stdout &&
+      process.stdout.isTTY &&
+      typeof process.stdin.setRawMode === 'function' &&
+      typeof process.stdin.on === 'function' &&
+      (typeof process.stdin.off === 'function' || typeof process.stdin.removeListener === 'function')
+    );
+  }
+
+  function promptInteractiveSkillSelectionWithKeys(preview, options = {}) {
+    const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
+    if (skills.length === 0) {
+      return Promise.resolve(null);
+    }
+
+    const stdin = process.stdin;
+    const stdout = process.stdout;
+    const allowSourceChange = Boolean(options.allow_source_change);
+
+    return new Promise((resolve, reject) => {
+      const state = {
+        cursorIndex: skills.length > 0 ? 1 : 0,
+        selected: new Set()
+      };
+      const previousRawMode = Boolean(stdin.isRaw);
+      let settled = false;
+      const totalChoices = skills.length + 1;
+
+      function cleanup() {
+        if (typeof stdin.setRawMode === 'function') {
+          stdin.setRawMode(previousRawMode);
+        }
+        if (typeof stdin.pause === 'function') {
+          stdin.pause();
+        }
+        if (typeof stdin.off === 'function') {
+          stdin.off('data', handleKeypress);
+        } else if (typeof stdin.removeListener === 'function') {
+          stdin.removeListener('data', handleKeypress);
+        }
+        if (stdout && typeof stdout.write === 'function') {
+          stdout.write('\x1b[?25h\x1b[?1049l');
+        }
+      }
+
+      function settleWith(action, value) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        action(value);
+      }
+
+      function render() {
+        if (!stdout || typeof stdout.write !== 'function') {
+          return;
+        }
+        stdout.write('\x1b[2J\x1b[H');
+        stdout.write(`${renderInteractiveSkillSelectionKeyboardUi(preview, state, options)}\n`);
+      }
+
+      function toggleCurrentSkill() {
+        if (state.cursorIndex === 0) {
+          return;
+        }
+        const currentSkill = skills[state.cursorIndex - 1];
+        if (!currentSkill) {
+          return;
+        }
+        if (state.selected.has(currentSkill.name)) {
+          state.selected.delete(currentSkill.name);
+          return;
+        }
+        state.selected.add(currentSkill.name);
+      }
+
+      function toggleAllSkills() {
+        if (state.selected.size === skills.length) {
+          state.selected.clear();
+          return;
+        }
+        skills.forEach(skill => {
+          state.selected.add(skill.name);
+        });
+      }
+
+      function finalizeSelection() {
+        if (state.cursorIndex === 0) {
+          settleWith(resolve, null);
+          return;
+        }
+        const ordered = skills
+          .filter(skill => state.selected.has(skill.name))
+          .map(skill => skill.name);
+        settleWith(resolve, ordered.length > 0 ? ordered : null);
+      }
+
+      function handleKeypress(chunk) {
+        const input = String(chunk || '');
+        if (input === '\u001b[A') {
+          state.cursorIndex = (state.cursorIndex - 1 + totalChoices) % totalChoices;
+          render();
+          return;
+        }
+        if (input === '\u001b[B') {
+          state.cursorIndex = (state.cursorIndex + 1) % totalChoices;
+          render();
+          return;
+        }
+        if (input === ' ') {
+          toggleCurrentSkill();
+          render();
+          return;
+        }
+        if (input === '\r' || input === '\n') {
+          finalizeSelection();
+          return;
+        }
+        if (input === '0') {
+          settleWith(resolve, null);
+          return;
+        }
+        if (input === '\u0003' || input === '\u0004' || input === '\u001b') {
+          settleWith(reject, new Error(INTERACTIVE_CANCELLED_MESSAGE));
+          return;
+        }
+
+        const normalized = input.toLowerCase();
+        if (normalized === 'a') {
+          toggleAllSkills();
+          render();
+          return;
+        }
+        if (allowSourceChange && normalized === 's') {
+          settleWith(resolve, INTERACTIVE_SKILL_SELECTION_CHANGE_SOURCE);
+        }
+      }
+
+      try {
+        if (stdout && typeof stdout.write === 'function') {
+          stdout.write('\x1b[?1049h\x1b[?25l');
+        }
+        if (typeof stdin.setEncoding === 'function') {
+          stdin.setEncoding('utf8');
+        }
+        stdin.setRawMode(true);
+        if (typeof stdin.resume === 'function') {
+          stdin.resume();
+        }
+        stdin.on('data', handleKeypress);
+        render();
+      } catch (error) {
+        settleWith(reject, error);
+      }
+    });
+  }
+
+  function getSkillSourcePreviewer() {
+    if (typeof previewSkillSource === 'function') {
+      return previewSkillSource;
+    }
+    if (cachedSkillSourcePreviewer) {
+      return cachedSkillSourcePreviewer;
+    }
+
+    const runtime = require(path.join(runtimeSrc, 'lib', 'runtime.cjs'));
+    const skillRuntime = require(path.join(runtimeSrc, 'lib', 'skill-runtime.cjs'));
+    const runtimeConfig = runtime.loadRuntimeConfig(runtimeSrc);
+    const sourceRoot = path.resolve(runtimeSrc, '..');
+    const helper = skillRuntime.createSkillRuntimeHelpers({
+      childProcess: require('child_process'),
+      fs,
+      path,
+      process,
+      runtime,
+      runtimeConfig,
+      runtimeHost: () => runtimeHost.resolveRuntimeHost(runtimeSrc),
+      resolveProjectRoot: () => path.resolve(process.cwd()),
+      getProjectExtDir: () => runtime.getProjectExtDir(path.resolve(process.cwd())),
+      updateSession() {},
+      builtInSkillsDir: path.join(sourceRoot, 'skills'),
+      builtInDisplayRoot: sourceRoot
+    });
+    cachedSkillSourcePreviewer = helper.previewSkillSource;
+    return cachedSkillSourcePreviewer;
+  }
+
+  function previewInteractiveSkillSource(source, selectedSkillNames) {
+    const previewer = getSkillSourcePreviewer();
+    const argv = [source, '--scope', 'project'];
+    (Array.isArray(selectedSkillNames) ? selectedSkillNames : []).forEach(name => {
+      argv.push('--skill', name);
+    });
+    return Promise.resolve(previewer(argv));
+  }
+
+  function formatInteractiveSkillSourceWarning(error) {
+    const message = String(error && error.message ? error.message : '').trim();
+    if (/Skill source path does not exist:/i.test(message)) {
+      return 'That skill source path was not found. Enter another source or type `skip` to continue without initial skills.';
+    }
+    if (/No installable skill bundle was found under /i.test(message)) {
+      return 'That source does not publish an emb-agent skill bundle. Enter another source or type `skip` to continue without initial skills.';
+    }
+    if (/does not expose skill\(s\):/i.test(message)) {
+      return message;
+    }
+    if (/Skill source was not found or is not accessible\./i.test(message)) {
+      return 'That skill source was not found or is not accessible. Enter another source or type `skip` to continue without initial skills.';
+    }
+    if (/Could not reach skill source\. Check your network connection and try again\./i.test(message)) {
+      return 'That skill source cannot be reached right now. Check the network connection, enter another source, or type `skip` to continue without initial skills.';
+    }
+    if (/Skill source download timed out\./i.test(message)) {
+      return 'That skill source timed out while loading. Enter another source or type `skip` to continue without initial skills.';
+    }
+    if (/required local dependency is not available in this environment/i.test(message)) {
+      return 'That skill source cannot be inspected from this environment right now. Enter another source or type `skip` to continue without initial skills.';
+    }
+    if (/git clone failed|npm install failed|pip install failed/i.test(message)) {
+      return 'That skill source could not be inspected right now. Enter another source or type `skip` to continue without initial skills.';
+    }
+    return message || 'Could not inspect that skill source. Enter another source or type `skip` to continue without initial skills.';
+  }
+
   function writePromptConfirmation(label, value) {
     const { chalk } = createPromptStyler();
     writePromptOutput(`${chalk.green('✓')} ${chalk.cyan(label)} ${chalk.gray(value)}\n`);
@@ -519,23 +986,46 @@ function createInstallHelpers(deps) {
       throw new Error('Interactive install requires readline support');
     }
 
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout
       });
 
       let answered = false;
+      let settled = false;
+
+      function resolveOnce(value) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(value);
+      }
+
+      function rejectOnce(error) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(error);
+      }
+
       rl.on('close', () => {
         if (!answered) {
-          resolve('');
+          rejectOnce(new Error(INTERACTIVE_CANCELLED_MESSAGE));
         }
+      });
+      rl.on('SIGINT', () => {
+        answered = false;
+        rl.close();
+        rejectOnce(new Error(INTERACTIVE_CANCELLED_MESSAGE));
       });
 
       rl.question(question, answer => {
         answered = true;
         rl.close();
-        resolve(String(answer || '').trim());
+        resolveOnce(String(answer || '').trim());
       });
     });
   }
@@ -559,6 +1049,7 @@ function createInstallHelpers(deps) {
       const developer = String(prompted && prompted.developer ? prompted.developer : '').trim();
       const profile = normalizeInstallProfile(prompted && prompted.profile ? prompted.profile : 'core', '');
       const subagentBridgeCmd = String(prompted && prompted.subagentBridgeCmd ? prompted.subagentBridgeCmd : '').trim();
+      const interactiveSkills = resolveInteractiveSkillArgs(prompted);
       const subagentBridgeTimeoutProvided =
         prompted && prompted.subagentBridgeTimeoutMs !== undefined && prompted.subagentBridgeTimeoutMs !== null;
       if (!developer) {
@@ -584,8 +1075,8 @@ function createInstallHelpers(deps) {
         defaultAdapterSourceLocation: '',
         defaultAdapterSourceBranch: '',
         defaultAdapterSourceSubdir: '',
-        skillSources: [],
-        skillNames: [],
+        skillSources: interactiveSkills.skillSources,
+        skillNames: interactiveSkills.skillNames,
         uninstall: false,
         force: false,
         help: false
@@ -605,6 +1096,110 @@ function createInstallHelpers(deps) {
     const resolvedLocationAnswer = String(locationAnswer || (defaultLocation === 'local' ? '2' : '1')).trim();
     const isLocal = resolvedLocationAnswer === '2';
     writePromptConfirmation('Location:', isLocal ? 'Local project' : 'Global config');
+
+    let skillSources = [];
+    let skillNames = [];
+    let resolvedPreview = null;
+    let skipInitialSkills = false;
+
+    async function promptForSkillSourceOverride() {
+      while (!resolvedPreview) {
+        const skillSourceInput = await promptLine(buildInteractiveSkillSourcePrompt());
+        const normalizedInput = String(skillSourceInput || '').trim();
+        if (normalizedInput.toLowerCase() === 'skip') {
+          skipInitialSkills = true;
+          return;
+        }
+
+        const skillSource = normalizedInput || DEFAULT_SKILL_SOURCE_LOCATION;
+        try {
+          resolvedPreview = await previewInteractiveSkillSource(skillSource, []);
+          skillSources = [skillSource];
+          writePromptConfirmation('Skill source:', skillSource);
+          writePromptConfirmation(
+            'Skill bundle:',
+            `${resolvedPreview.plugin.name} (${resolvedPreview.skills.length} skill${resolvedPreview.skills.length === 1 ? '' : 's'})`
+          );
+        } catch (error) {
+          writePromptWarning(formatInteractiveSkillSourceWarning(error));
+        }
+      }
+    }
+
+    try {
+      resolvedPreview = await previewInteractiveSkillSource(DEFAULT_SKILL_SOURCE_LOCATION, []);
+      skillSources = [DEFAULT_SKILL_SOURCE_LOCATION];
+      writePromptConfirmation('Skill source:', DEFAULT_SKILL_SOURCE_LOCATION);
+      writePromptConfirmation(
+        'Skill bundle:',
+        `${resolvedPreview.plugin.name} (${resolvedPreview.skills.length} skill${resolvedPreview.skills.length === 1 ? '' : 's'})`
+      );
+    } catch (error) {
+      writePromptWarning(formatInteractiveSkillSourceWarning(error));
+      await promptForSkillSourceOverride();
+    }
+
+    while (resolvedPreview && !skipInitialSkills) {
+      if (supportsInteractiveSkillSelectionKeyboardUi()) {
+        const selectedSkillNames = await promptInteractiveSkillSelectionWithKeys(resolvedPreview, {
+          allow_source_change: true
+        });
+        if (selectedSkillNames === INTERACTIVE_SKILL_SELECTION_CHANGE_SOURCE) {
+          resolvedPreview = null;
+          skillSources = [];
+          skillNames = [];
+          await promptForSkillSourceOverride();
+          continue;
+        }
+        if (selectedSkillNames === null) {
+          skipInitialSkills = true;
+          break;
+        }
+        skillNames = selectedSkillNames;
+        writePromptConfirmation('Skill selection:', skillNames.join(', '));
+        break;
+      }
+
+      try {
+        const selectionInput = await promptLine(
+          buildInteractiveSkillSelectionPrompt(resolvedPreview, {
+            allow_source_change: true
+          })
+        );
+        const normalizedSelectionInput = String(selectionInput || '').trim().toLowerCase();
+        if (!normalizedSelectionInput || normalizedSelectionInput === 'skip') {
+          skipInitialSkills = true;
+          break;
+        }
+        if (normalizedSelectionInput === 'source') {
+          resolvedPreview = null;
+          skillSources = [];
+          skillNames = [];
+          await promptForSkillSourceOverride();
+          continue;
+        }
+
+        const selectedSkillNames = parseInteractiveSkillSelection(selectionInput, resolvedPreview);
+        if (selectedSkillNames === null) {
+          skipInitialSkills = true;
+          break;
+        }
+        skillNames = selectedSkillNames;
+        writePromptConfirmation(
+          'Skill selection:',
+          skillNames.length > 0 ? skillNames.join(', ') : 'all published skills'
+        );
+        break;
+      } catch (error) {
+        writePromptWarning(error.message);
+      }
+    }
+
+    if (!resolvedPreview || skipInitialSkills) {
+      skillSources = [];
+      skillNames = [];
+      writePromptConfirmation('Skills:', 'Skip initial bundle install');
+    }
 
     let developer = await promptLine(buildInteractiveDeveloperPrompt());
     while (!developer) {
@@ -626,8 +1221,8 @@ function createInstallHelpers(deps) {
       defaultAdapterSourceLocation: '',
       defaultAdapterSourceBranch: '',
       defaultAdapterSourceSubdir: '',
-      skillSources: [],
-      skillNames: [],
+      skillSources,
+      skillNames,
       uninstall: false,
       force: false,
       help: false
@@ -667,6 +1262,15 @@ function createInstallHelpers(deps) {
         }
       }
     }
+  }
+
+  function installRuntimeDependencies(runtimeDir) {
+    const sourceNodeModulesDir = path.join(path.resolve(runtimeSrc, '..'), 'node_modules');
+    if (!fs.existsSync(sourceNodeModulesDir)) {
+      throw new Error(`Runtime dependencies are not installed under: ${sourceNodeModulesDir}`);
+    }
+
+    copyDir(sourceNodeModulesDir, path.join(runtimeDir, 'node_modules'));
   }
 
   function shouldProcessTextFile(filePath) {
@@ -1399,34 +2003,12 @@ function createInstallHelpers(deps) {
     }
 
     const skillsRoot = path.join(path.resolve(targetDir, '..'), '.agents', 'skills');
-    ensureDir(skillsRoot);
-
     for (const skillName of listManagedCodexSkillNames()) {
       removeDirIfExists(path.join(skillsRoot, skillName));
     }
-
-    let installed = 0;
-
-    for (const file of fs.readdirSync(commandsSrc).filter(name => name.endsWith('.md')).sort()) {
-      const commandName = file.replace(/\.md$/, '');
-      if (!commandVisibility.isPublicCommandName(commandName)) {
-        continue;
-      }
-
-      const raw = fs.readFileSync(path.join(commandsSrc, file), 'utf8');
-      const rendered = replaceInstallPaths(raw, targetDir, target);
-      const skillName = `emb-${commandName}`;
-      const skillDir = path.join(skillsRoot, skillName);
-      ensureDir(skillDir);
-      fs.writeFileSync(
-        path.join(skillDir, 'SKILL.md'),
-        generateSharedSkillContent(commandName, rendered, runtimeDir),
-        'utf8'
-      );
-      installed += 1;
-    }
-
-    return installed;
+    removeDirIfEmpty(skillsRoot);
+    removeDirIfEmpty(path.dirname(skillsRoot));
+    return 0;
   }
 
   function installAgents(targetDir, target, args) {
@@ -1475,10 +2057,10 @@ function createInstallHelpers(deps) {
     copyDirWithReplacement(path.join(runtimeSrc, 'templates'), path.join(runtimeDir, 'templates'), targetDir, target);
     copyDir(path.join(runtimeSrc, 'registry'), path.join(runtimeDir, 'registry'));
     copyDir(path.join(runtimeSrc, 'profiles'), path.join(runtimeDir, 'profiles'));
-    copyDir(path.join(runtimeSrc, 'packs'), path.join(runtimeDir, 'packs'));
     copyDir(path.join(runtimeSrc, 'specs'), path.join(runtimeDir, 'specs'));
     copyDir(path.join(runtimeSrc, 'tools'), runtimeToolsDir);
     copyDir(path.join(runtimeSrc, 'chips'), runtimeChipsDir);
+    installRuntimeDependencies(runtimeDir);
     ensureDir(path.join(runtimeDir, 'state'));
     ensureDir(path.join(runtimeDir, 'state', 'projects'));
     fs.copyFileSync(
@@ -1583,11 +2165,11 @@ function createInstallHelpers(deps) {
     });
     const resolvedInitArgs = {
       ...parsedInitArgs,
-      packs: workflowSetup.activePacks
+      specs: workflowSetup.activeSpecs
     };
     const projectConfig = initProject.buildProjectConfig(projectRoot, resolvedInitArgs, {
       workflowCatalog: workflowSetup.workflowCatalog,
-      activePacks: workflowSetup.activePacks
+      activeSpecs: workflowSetup.activeSpecs
     });
     return initProject.scaffoldProject(projectRoot, projectConfig, false, {
       ...resolvedInitArgs,
@@ -1800,7 +2382,7 @@ function createInstallHelpers(deps) {
     }
   }
 
-  function installInitialSkills(runtimeDir, args) {
+  async function installInitialSkills(runtimeDir, args) {
     const sources = Array.isArray(args && args.skillSources) ? args.skillSources.filter(Boolean) : [];
     if (sources.length === 0) {
       return [];
@@ -1814,7 +2396,9 @@ function createInstallHelpers(deps) {
       ...((args && Array.isArray(args.skillNames) ? args.skillNames : []).flatMap(name => ['--skill', name]))
     ];
 
-    return sources.map(source => installedRuntime.installSkillSource([source, ...sharedArgs]));
+    return Promise.all(
+      sources.map(source => installedRuntime.installSkillSource([source, ...sharedArgs]))
+    );
   }
 
   async function main(argv) {
@@ -1913,7 +2497,7 @@ function createInstallHelpers(deps) {
     if (Array.isArray(args.skillSources) && args.skillSources.length > 0) {
       const skillsActivity = reporter.activity('Installing initial skill bundles');
       try {
-        installedSkillBundles = installInitialSkills(runtimeDir, args);
+        installedSkillBundles = await installInitialSkills(runtimeDir, args);
         skillsActivity.succeed(
           installedSkillBundles.length > 0
             ? `Installed ${installedSkillBundles.length} initial skill bundle${installedSkillBundles.length > 1 ? 's' : ''}`

@@ -1,4 +1,4 @@
-# Smart Pillbox Focus
+# Smart Pillbox
 
 - Make the medication schedule state machine explicit. Reminder due, acknowledged, lid opened, dose taken, skipped, snoozed, and manually corrected states should not be inferred from a single loose event.
 - Separate raw hardware events from medical-facing conclusions. Lid-open, compartment-open, weight change, button confirm, and timeout are evidence; "dose taken" is a higher-level decision with rules and uncertainty.

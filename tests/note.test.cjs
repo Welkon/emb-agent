@@ -67,7 +67,7 @@ test('note add can create missing connectivity note target from template', () =>
     process.chdir(tempProject);
     cli.main(['init']);
     cli.main(['profile', 'set', 'rtos-iot']);
-    cli.main(['pack', 'add', 'connected-appliance']);
+    cli.main(['spec', 'add', 'connected-appliance']);
     cli.main([
       'note',
       'add',

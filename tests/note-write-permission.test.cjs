@@ -181,7 +181,7 @@ test('review save honors write deny rules before touching review report', async 
   process.stdout.write = () => true;
 
   try {
-    initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--pack', 'connected-appliance']);
+    initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
     process.chdir(tempProject);
     await cli.main(['init']);
 

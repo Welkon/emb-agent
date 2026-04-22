@@ -107,11 +107,11 @@ function readInteractiveLineSync(hostProcess) {
   return collected.trim();
 }
 
-function buildWorkflowPackPrompt(entries, options = {}) {
+function buildWorkflowSpecPrompt(entries, options = {}) {
   const hostProcess = options.process || process;
   const chalk = createPromptStyler(hostProcess);
   const choiceLines = [
-    `  ${chalk.cyan('0.')} ${chalk.white('Skip for now')} ${chalk.gray('(continue without workflow packs)')}`
+    `  ${chalk.cyan('0.')} ${chalk.white('Skip for now')} ${chalk.gray('(continue without workflow specs)')}`
   ];
 
   entries.forEach((entry, index) => {
@@ -123,10 +123,10 @@ function buildWorkflowPackPrompt(entries, options = {}) {
 
   return [
     chalk.cyan(chalk.bold('emb-agent init')),
-    chalk.gray('  Select workflow packs for this project.'),
-    chalk.gray('  Press Enter to continue without packs, or use comma-separated numbers for multiple packs.'),
+    chalk.gray('  Select workflow specs for this project.'),
+    chalk.gray('  Press Enter to continue without extra specs, or use comma-separated numbers for multiple specs.'),
     '',
-    chalk.blue('▶ Select Workflow Packs'),
+    chalk.blue('▶ Select Workflow Specs'),
     '',
     ...choiceLines,
     '',
@@ -134,7 +134,7 @@ function buildWorkflowPackPrompt(entries, options = {}) {
   ].join('\n');
 }
 
-function parseWorkflowPackSelection(answer, entries) {
+function parseWorkflowSpecSelection(answer, entries) {
   const trimmed = String(answer || '').trim();
   if (!trimmed || trimmed === '0') {
     return [];
@@ -158,7 +158,7 @@ function parseWorkflowPackSelection(answer, entries) {
 
     const index = Number.parseInt(token, 10);
     if (!Number.isFinite(index) || index < 1 || index > entries.length) {
-      throw new Error(`Invalid workflow pack selection: ${token}`);
+      throw new Error(`Invalid workflow spec selection: ${token}`);
     }
 
     names.push(entries[index - 1].name);
@@ -167,17 +167,17 @@ function parseWorkflowPackSelection(answer, entries) {
   return runtime.unique(names);
 }
 
-function promptWorkflowPackSelection(entries, options = {}) {
+function promptWorkflowSpecSelection(entries, options = {}) {
   if (!Array.isArray(entries) || entries.length <= 1) {
     return [];
   }
 
-  if (typeof options.promptWorkflowPackChoices === 'function') {
-    const prompted = options.promptWorkflowPackChoices(entries);
+  if (typeof options.promptWorkflowSpecChoices === 'function') {
+    const prompted = options.promptWorkflowSpecChoices(entries);
     if (Array.isArray(prompted)) {
       return runtime.unique(prompted.map(item => String(item || '').trim()).filter(Boolean));
     }
-    return parseWorkflowPackSelection(prompted, entries);
+    return parseWorkflowSpecSelection(prompted, entries);
   }
 
   const hostProcess = options.process || process;
@@ -186,9 +186,9 @@ function promptWorkflowPackSelection(entries, options = {}) {
   }
 
   while (true) {
-    writePromptOutput(hostProcess, `${buildWorkflowPackPrompt(entries, options)}\n`);
+    writePromptOutput(hostProcess, `${buildWorkflowSpecPrompt(entries, options)}\n`);
     try {
-      return parseWorkflowPackSelection(readInteractiveLineSync(hostProcess), entries);
+      return parseWorkflowSpecSelection(readInteractiveLineSync(hostProcess), entries);
     } catch (error) {
       const chalk = createPromptStyler(hostProcess);
       writePromptOutput(hostProcess, `${chalk.yellow(`! ${error.message}`)}\n`);
@@ -202,7 +202,7 @@ function usage() {
       'init-project usage:',
       '  node scripts/init-project.cjs',
       '  node scripts/init-project.cjs --project <repo-root>',
-      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--pack <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>]',
+      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--spec <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>]',
       '  node scripts/init-project.cjs --force'
     ].join('\n') + '\n'
   );
@@ -212,7 +212,7 @@ function parseArgs(argv) {
   const result = {
     project: '',
     profile: '',
-    packs: [],
+    specs: [],
     runtime: '',
     runtimeSet: false,
     user: '',
@@ -256,8 +256,8 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (token === '--pack') {
-      result.packs.push(argv[index + 1] || '');
+    if (token === '--spec') {
+      result.specs.push(argv[index + 1] || '');
       index += 1;
       continue;
     }
@@ -317,8 +317,8 @@ function parseArgs(argv) {
   if (argv.includes('--profile') && !result.profile) {
     throw new Error('Missing name after --profile');
   }
-  if (result.packs.includes('')) {
-    throw new Error('Missing name after --pack');
+  if (result.specs.includes('')) {
+    throw new Error('Missing name after --spec');
   }
   if ((argv.includes('--user') || argv.includes('-u')) && !result.user) {
     throw new Error('Missing name after --user/-u');
@@ -488,13 +488,6 @@ function loadBuiltInProfile(name) {
   );
 }
 
-function loadBuiltInPack(name) {
-  return runtime.validatePack(
-    name,
-    runtime.parseSimpleYaml(path.join(ROOT, 'packs', `${name}.yaml`))
-  );
-}
-
 function loadWorkflowCatalog(projectRoot) {
   return workflowRegistry.loadWorkflowRegistry(ROOT, {
     projectExtDir: runtime.getProjectExtDir(projectRoot)
@@ -513,25 +506,34 @@ function prepareProjectWorkflowSetup(projectRoot, args, options = {}) {
       })
     : null;
   const workflowCatalog = loadWorkflowCatalog(projectRoot);
-  const explicitPacks = runtime.unique(((initOptions.packs || [])).filter(Boolean));
-  const activePacks = explicitPacks.length > 0
-    ? explicitPacks
-    : promptWorkflowPackSelection(workflowCatalog.packs || [], options);
+  const explicitSpecs = runtime.unique(((initOptions.specs || [])).filter(Boolean));
+  const selectableSpecs = (workflowCatalog.specs || []).filter(item => item.selectable === true);
+  const activeSpecs = explicitSpecs.length > 0
+    ? explicitSpecs
+    : promptWorkflowSpecSelection(selectableSpecs, options);
 
   return {
     workflowCatalog,
     workflowRegistryImport,
-    activePacks
+    activeSpecs
   };
 }
 
-function loadPackForProject(projectRoot, name, registry) {
+function loadSelectableSpecForProject(projectRoot, name, registry) {
   const catalog = registry || loadWorkflowCatalog(projectRoot);
-  const entry = (catalog.packs || []).find(item => item.name === name);
-  if (!entry || !entry.absolute_path) {
-    throw new Error(`Pack not found: ${name}`);
+  const entry = (catalog.specs || []).find(item => item.name === name);
+  if (!entry || entry.selectable !== true) {
+    throw new Error(`Selectable spec not found: ${name}`);
   }
-  return runtime.validatePack(name, runtime.parseSimpleYaml(entry.absolute_path));
+  return entry;
+}
+
+function ensureSelectableSpecExists(projectRoot, name, registry) {
+  const entry = loadSelectableSpecForProject(projectRoot, name, registry);
+  if (!entry || !entry.absolute_path) {
+    throw new Error(`Spec not found: ${name}`);
+  }
+  return entry;
 }
 
 function buildTemplateIndex(registry) {
@@ -570,7 +572,7 @@ function buildTemplateContext(projectRoot, projectConfig) {
     MCU_NAME: '',
     TARGET_NAME: '',
     PROFILE: projectConfig.project_profile,
-    PACKS: projectConfig.active_packs.join(','),
+    SPECS: projectConfig.active_specs.join(','),
     VERSION: String(RUNTIME_CONFIG.session_version || 1),
     SLUG: 'new-item',
     RUNTIME_MODEL: 'main_loop_plus_isr',
@@ -640,16 +642,16 @@ function buildProjectConfig(projectRoot, args, options = {}) {
   runtime.initProjectLayout(projectRoot);
   const workflowCatalog = options.workflowCatalog || loadWorkflowCatalog(projectRoot);
   const monorepo = detectMonorepoPackages(projectRoot);
-  const active_packs = runtime.unique(
-    (Array.isArray(options.activePacks) ? options.activePacks : args.packs || []).filter(Boolean)
+  const active_specs = runtime.unique(
+    (Array.isArray(options.activeSpecs) ? options.activeSpecs : args.specs || []).filter(Boolean)
   );
 
-  active_packs.forEach(name => loadPackForProject(projectRoot, name, workflowCatalog));
+  active_specs.forEach(name => ensureSelectableSpecExists(projectRoot, name, workflowCatalog));
 
   return runtime.validateProjectConfig(
-    {
-      project_profile,
-      active_packs,
+      {
+        project_profile,
+        active_specs,
       packages: monorepo.packages,
       default_package: monorepo.default_package,
       active_package: monorepo.default_package,
@@ -735,10 +737,10 @@ function buildDocsPlan(projectRoot, projectConfig, registry) {
     ? loadBuiltInProfile(projectConfig.project_profile)
     : { notes_targets: [] };
   const workflowCatalog = registry || loadWorkflowCatalog(projectRoot);
-  const packs = projectConfig.active_packs.map(name => loadPackForProject(projectRoot, name, workflowCatalog));
+  const selectedSpecs = projectConfig.active_specs.map(name => loadSelectableSpecForProject(projectRoot, name, workflowCatalog));
   const noteTargets = runtime.unique([
     ...(profile.notes_targets || []),
-    ...packs.flatMap(pack => pack.preferred_notes || [])
+    ...selectedSpecs.flatMap(spec => spec.preferred_notes || [])
   ]);
 
   const { byOutput } = buildTemplateIndex(workflowCatalog);
@@ -879,7 +881,7 @@ function buildBootstrapTaskNotes(projectConfig, docsPlan) {
     `4. Continue with ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])}.`,
     '',
     `Project profile: ${projectConfig.project_profile || '-'}`,
-    `Active packs: ${projectConfig.active_packs.join(', ') || '-'}`,
+    `Active specs: ${projectConfig.active_specs.join(', ') || '-'}`,
     '',
     'Deferred note targets:',
     ...noteTargets.map(target => `- ${target}`)
@@ -1213,11 +1215,11 @@ function main(argv) {
   });
   const resolvedArgs = {
     ...args,
-    packs: workflowSetup.activePacks
+    specs: workflowSetup.activeSpecs
   };
   const projectConfig = buildProjectConfig(projectRoot, resolvedArgs, {
     workflowCatalog: workflowSetup.workflowCatalog,
-    activePacks: workflowSetup.activePacks
+    activeSpecs: workflowSetup.activeSpecs
   });
   const result = scaffoldProject(projectRoot, projectConfig, args.force, {
     ...resolvedArgs,
@@ -1244,12 +1246,12 @@ module.exports = {
   buildBootstrapDocsPlan,
   buildTruthPlan,
   buildProjectConfig,
-  buildWorkflowPackPrompt,
+  buildWorkflowSpecPrompt,
   buildTemplateContext,
   applyTemplate,
-  parseWorkflowPackSelection,
+  parseWorkflowSpecSelection,
   prepareProjectWorkflowSetup,
-  promptWorkflowPackSelection,
+  promptWorkflowSpecSelection,
   scaffoldProject,
   main,
   parseArgs
