@@ -4,7 +4,10 @@ const os = require('os');
 
 const permissionGateHelpers = require('./permission-gates.cjs');
 const runtimeEventHelpers = require('./runtime-events.cjs');
+const runtimeHostHelpers = require('./runtime-host.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
+
+const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
 function createTaskCommandHelpers(deps) {
   const {
@@ -99,6 +102,11 @@ function createTaskCommandHelpers(deps) {
     { phase: 3, action: 'finish' },
     { phase: 4, action: 'create-pr' }
   ];
+  const TASK_CONVERGENCE_PROMPTS = [
+    'What is the smallest durable outcome for this task?',
+    'Which truth, hardware facts, or code entry points bound the change?',
+    'What evidence will prove the task is actually closed?'
+  ];
 
   function stripPermissionControlTokens(tokens) {
     const list = Array.isArray(tokens) ? tokens : [];
@@ -117,6 +125,10 @@ function createTaskCommandHelpers(deps) {
       tokens: filtered,
       explicit_confirmation: explicitConfirmation
     };
+  }
+
+  function buildCli(args) {
+    return runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, Array.isArray(args) ? args : []);
   }
 
   function applyTaskWritePermission(result, actionName, explicitConfirmation) {
@@ -1355,6 +1367,91 @@ function createTaskCommandHelpers(deps) {
     return path.relative(resolveProjectRoot(), prdPath).replace(/\\/g, '/');
   }
 
+  function buildTaskConvergence(taskLike, options = {}) {
+    const task = taskLike || {};
+    const resolved = resolveSession();
+    const settings = options && typeof options === 'object' ? options : {};
+    const activated = settings.activated === true;
+    const prdPath = String(
+      settings.prd_path ||
+      (task.artifacts && task.artifacts.prd) ||
+      (task.name ? `.emb-agent/tasks/${task.name}/prd.md` : '')
+    ).trim();
+    const hardware = resolved && resolved.hardware ? resolved.hardware : {};
+    const identity = hardware && hardware.identity ? hardware.identity : {};
+    const selectionMode = String(hardware && hardware.selection_mode ? hardware.selection_mode : '').trim();
+    const openQuestions = Array.isArray(task.open_questions) ? task.open_questions.filter(Boolean) : [];
+    const knownRisks = Array.isArray(task.known_risks) ? task.known_risks.filter(Boolean) : [];
+    const chipUnknown = !String(identity.model || '').trim();
+    const scanFirst = selectionMode === 'blank-project' || chipUnknown || openQuestions.length > 0;
+    const reviewBeforeDo = knownRisks.length > 0;
+    const planningCommands = activated
+      ? []
+      : [buildCli(['task', 'activate', String(task.name || '<name>')])];
+    const scanCli = buildCli(['scan']);
+    const planCli = buildCli(['plan']);
+    const doCli = buildCli(['do']);
+    const reviewCli = buildCli(['review']);
+    const recommendedPath = scanFirst ? 'scan-first' : 'plan-first';
+    const recommendedReason = scanFirst
+      ? 'Requirements, hardware truth, or decision inputs are still not explicit enough.'
+      : 'The task already has enough context to lock a micro-plan before execution.';
+    const summary = activated
+      ? 'Use the task PRD as the working contract. Re-read goal, constraints, acceptance, and open questions before choosing scan or plan.'
+      : 'Open the task PRD first and make goal, constraints, acceptance, and open questions explicit before execution.';
+
+    return {
+      status: activated ? 'active-task' : 'planning-task',
+      prd_path: prdPath,
+      summary,
+      prompts: TASK_CONVERGENCE_PROMPTS.slice(),
+      recommended_path: recommendedPath,
+      recommended_reason: recommendedReason,
+      next_cli: activated
+        ? (scanFirst ? scanCli : planCli)
+        : planningCommands[0] || '',
+      then_cli: activated
+        ? (scanFirst ? planCli : doCli)
+        : (scanFirst ? scanCli : planCli),
+      paths: [
+        {
+          id: 'scan-first',
+          when: 'Requirements, hardware truth, or the changed surface are still fuzzy.',
+          commands: runtime.unique([
+            ...planningCommands,
+            scanCli,
+            planCli
+          ]),
+          outcome: 'The PRD and project truth converge before mutation.'
+        },
+        {
+          id: 'plan-first',
+          when: 'Goal, boundaries, and acceptance are already explicit.',
+          commands: runtime.unique([
+            ...planningCommands,
+            planCli,
+            doCli
+          ]),
+          outcome: 'Execution starts from a short micro-plan instead of chat drift.'
+        },
+        {
+          id: 'review-before-do',
+          when: 'The task crosses timing, concurrency, release, or interface boundaries.',
+          commands: runtime.unique([
+            ...planningCommands,
+            scanCli,
+            planCli,
+            reviewCli
+          ]),
+          outcome: 'Structural risks are explicit before implementation moves forward.'
+        }
+      ],
+      review_hint: reviewBeforeDo
+        ? 'Known risks are already recorded on this task; review may be needed before closure if they cross structural boundaries.'
+        : ''
+    };
+  }
+
   function buildTaskAutoSpecsArtifact(taskName, taskLike, session) {
     const injected = buildInjectedSpecContext(taskLike, session);
     const lines = [
@@ -2554,7 +2651,11 @@ function createTaskCommandHelpers(deps) {
 
     return permissionGateHelpers.applyPermissionDecision({
       created: true,
-      task: readTask(name)
+      task: readTask(name),
+      task_convergence: buildTaskConvergence(readTask(name), {
+        activated: false,
+        prd_path: prdPath
+      })
     }, blocked.permission);
   }
 
@@ -2950,7 +3051,11 @@ function createTaskCommandHelpers(deps) {
       activated: true,
       task: activatedTask,
       workspace,
-      worktree: buildTaskWorktreeState(activatedTask, registryEntry)
+      worktree: buildTaskWorktreeState(activatedTask, registryEntry),
+      task_convergence: buildTaskConvergence(activatedTask, {
+        activated: true,
+        prd_path: prdPath
+      })
     }, blocked.permission);
   }
 

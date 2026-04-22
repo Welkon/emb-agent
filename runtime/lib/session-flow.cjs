@@ -1858,6 +1858,7 @@ function createSessionFlowHelpers(deps) {
     buildGuidance,
     buildResumeContext,
     buildNextContext,
+    buildWorkflowStage,
     shouldSuggestPlan,
     shouldSuggestReview,
     suggestFlow,

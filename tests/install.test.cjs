@@ -187,6 +187,9 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(startBeforeContext.external_agent, undefined);
     assert.match(startBeforeContext.immediate.cli, / next$/);
     assert.match(startBeforeContext.bootstrap.summary, /project type, intended inputs\/outputs, interfaces, and constraints/);
+    assert.equal(startBeforeContext.task_intake.status, 'blocked-by-bootstrap');
+    assert.equal(startBeforeContext.task_intake.recommended_entry, 'task add <summary>');
+    assert.match(startBeforeContext.task_intake.summary, /After bootstrap is ready, create a task and PRD first/i);
     assert.ok(nextBeforeContext.injected_specs.some(item => item.name === 'project-local'));
     assert.equal(nextBeforeContext.workflow_stage.name, 'selection');
     assert.equal(nextBeforeContext.workflow_stage.primary_command, 'scan');
