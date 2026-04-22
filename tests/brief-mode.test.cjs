@@ -114,6 +114,14 @@ test('task lifecycle --brief exposes convergence summary', async () => {
     assert.equal(activated.task_convergence.recommended_path, 'scan-first');
     assert.match(activated.task_convergence.next_cli, /emb-agent\.cjs scan$/);
     assert.match(activated.task_convergence.then_cli, /emb-agent\.cjs plan$/);
+
+    const next = await captureCliJson(['next', '--brief']);
+    assert.equal(next.output_mode, 'brief');
+    assert.equal(next.next.command, 'scan');
+    assert.equal(next.task.name, 'converge-comparator-timing');
+    assert.equal(next.task_convergence.recommended_path, 'scan-first');
+    assert.match(next.task_convergence.prd_path, /\.emb-agent\/tasks\/converge-comparator-timing\/prd\.md$/);
+    assert.ok(next.next_actions.some(item => item.startsWith('task_route=scan-first')));
   } finally {
     process.chdir(currentCwd);
   }

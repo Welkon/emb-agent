@@ -626,6 +626,7 @@ function buildBriefNextContext(value) {
       status: task.status || '',
       package: task.package || ''
     }),
+    task_convergence: summarizeTaskConvergence(value.task_convergence),
     next: compactObject({
       command: next.command || '',
       reason: next.reason || '',

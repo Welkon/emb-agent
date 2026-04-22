@@ -69,6 +69,19 @@ test('applyOutputMode builds brief next context payload', () => {
         ]
       }
     },
+    task_convergence: {
+      status: 'active-task',
+      prd_path: '.emb-agent/tasks/timer-drift/prd.md',
+      summary: 'Use the task PRD as the working contract.',
+      prompts: [
+        'What is the smallest durable outcome for this task?',
+        'Which truth, hardware facts, or code entry points bound the change?'
+      ],
+      recommended_path: 'plan-first',
+      recommended_reason: 'The task already has enough context to lock a micro-plan before execution.',
+      next_cli: 'node runtime/bin/emb-agent.cjs plan',
+      then_cli: 'node runtime/bin/emb-agent.cjs do'
+    },
     workflow_stage: {
       name: 'planning',
       why: 'complex task',
@@ -205,6 +218,8 @@ test('applyOutputMode builds brief next context payload', () => {
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.next.command, 'plan');
   assert.equal(output.workflow_stage.name, 'planning');
+  assert.equal(output.task_convergence.recommended_path, 'plan-first');
+  assert.equal(output.task_convergence.prd_path, '.emb-agent/tasks/timer-drift/prd.md');
   assert.equal(output.quality_gates.gate_status, 'pending');
   assert.equal(output.quality_gates.status_summary, 'Waiting for engineer confirmation: board-bench');
   assert.deepEqual(output.quality_gates.required_signoffs, ['board-bench']);
