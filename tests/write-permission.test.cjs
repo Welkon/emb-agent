@@ -899,8 +899,10 @@ test('session-report honors write ask rules before writing report files', async 
 
     const allowed = await captureJson(['session-report', '--confirm', 'capture current bring-up handoff']);
     assert.equal(allowed.permission_decision.decision, 'allow');
-    const reports = fs.readdirSync(reportDir).filter(name => name.endsWith('.md'));
+    const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
     assert.equal(reports.length, 1);
+    assert.equal(fs.existsSync(path.join(reportDir, 'CURRENT.md')), true);
+    assert.equal(fs.existsSync(path.join(reportDir, 'INDEX.md')), true);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

@@ -96,7 +96,7 @@ function main() {
   ensure(fs.existsSync(path.join(repoRoot, 'README.md')), 'README.md is required');
   ensure(fs.existsSync(path.join(repoRoot, 'RELEASE.md')), 'RELEASE.md is required');
 
-  run('run tests', process.execPath, ['scripts/run-tests.cjs']);
+  run('manual full-suite test handoff', process.execPath, ['scripts/run-tests.cjs']);
   run('run behavior drift gate', process.execPath, ['scripts/behavior-drift-check.cjs']);
   runPackDryRunCheck();
 

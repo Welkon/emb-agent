@@ -85,7 +85,7 @@ test('verify save creates verification report and appends structured entry', () 
     assert.match(content, /PASS: wakeup flag order matched expectation/);
     assert.match(content, /scope capture on PA0 wake edge/);
     assert.match(content, /Retest under low battery condition/);
-    assert.match(content, /next_command: plan/);
+    assert.match(content, /next_command: scan/);
     assert.match(content, /tool_recommendation: -/);
     assert.match(content, /chip_support_health: -/);
     assert.match(content, /primary_agent: /);

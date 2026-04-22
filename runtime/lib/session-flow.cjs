@@ -563,6 +563,11 @@ function createSessionFlowHelpers(deps) {
     const lastFiles = session.last_files || [];
     const focus = session.focus || '';
     const taskConvergence = buildTaskConvergenceForNext(resolved, activeTask);
+    const toolRecommendations = (resolved.effective && resolved.effective.tool_recommendations) || [];
+    const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
+    const primaryToolRecommendation = selectPrimaryToolRecommendation(toolRecommendations, resolved);
+    const peripheralWalkthrough = shouldSuggestPeripheralWalkthrough(resolved, toolRecommendations);
+    const suggestScanTool = shouldSuggestScanTool(resolved);
     const hasActiveContext =
       focus.trim() !== '' ||
       lastFiles.length > 0 ||
@@ -697,6 +702,33 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
+    if (taskConvergence && taskConvergence.recommended_path === 'plan-first' && !peripheralWalkthrough) {
+      const prdPath = taskConvergence.prd_path || `.emb-agent/tasks/${activeTask.name}/prd.md`;
+      const taskLabel = activeTask && activeTask.title ? activeTask.title : activeTask.name;
+      const firstTool = primaryToolRecommendation || suggestedTools[0] || null;
+      const toolName = firstTool && (firstTool.tool || firstTool.name) ? firstTool.tool || firstTool.name : '';
+      return {
+        command: 'plan',
+        reason: toolName
+          ? `Active task ${taskLabel} already has enough context in ${prdPath}; run plan first to lock the micro-plan before execution, then use ${toolName} as the first concrete tool path.`
+          : `Active task ${taskLabel} already has enough context in ${prdPath}; run plan first to lock the micro-plan before execution.`,
+        task_convergence: taskConvergence
+      };
+    }
+
+    if (suggestScanTool) {
+      const firstTool = primaryToolRecommendation || suggestedTools[0];
+      return {
+        command: 'scan',
+        reason: peripheralWalkthrough
+          ? 'Broad peripheral walkthrough detected. Run scan first, then walk every ready tool instead of stopping at the first one.'
+          : firstTool
+            ? `Hardware/formula/tool triage is more likely here. Run scan and evaluate ${firstTool.tool || firstTool.name} first.`
+            : 'Hardware truth, register, pin, or formula triage is more likely here. Run scan before choosing a tool.',
+        task_convergence: peripheralWalkthrough ? null : taskConvergence
+      };
+    }
+
     if (taskConvergence) {
       const prdPath = taskConvergence.prd_path || `.emb-agent/tasks/${activeTask.name}/prd.md`;
       const taskLabel = activeTask && activeTask.title ? activeTask.title : activeTask.name;
@@ -716,31 +748,10 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
-    if (openQuestions.length > 0 && !shouldSuggestScanTool(resolved)) {
+    if (openQuestions.length > 0 && !suggestScanTool) {
       return {
         command: 'debug',
         reason: `Open questions remain; narrow the root cause around "${openQuestions[0]}" first`
-      };
-    }
-
-    if (shouldSuggestScanTool(resolved)) {
-      const primaryToolRecommendation = selectPrimaryToolRecommendation(
-        (resolved.effective && resolved.effective.tool_recommendations) || [],
-        resolved
-      );
-      const peripheralWalkthrough = shouldSuggestPeripheralWalkthrough(
-        resolved,
-        (resolved.effective && resolved.effective.tool_recommendations) || []
-      );
-      const suggestedTools = (resolved.effective && resolved.effective.suggested_tools) || [];
-      const firstTool = primaryToolRecommendation || suggestedTools[0];
-      return {
-        command: 'scan',
-        reason: peripheralWalkthrough
-          ? 'Broad peripheral walkthrough detected. Run scan first, then walk every ready tool instead of stopping at the first one.'
-          : firstTool
-            ? `Hardware/formula/tool triage is more likely here. Run scan and evaluate ${firstTool.tool || firstTool.name} first.`
-            : 'Hardware truth, register, pin, or formula triage is more likely here. Run scan before choosing a tool.'
       };
     }
 
