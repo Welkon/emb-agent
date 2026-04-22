@@ -597,6 +597,7 @@ const {
   runSessionReport,
   listStoredSessionReports,
   buildCurrentSessionView,
+  writeSessionContinuityArtifacts,
   handleSessionReportCommands
 } = sessionReportCommandHelpers.createSessionReportCommandHelpers({
   fs,
@@ -738,6 +739,7 @@ function buildContextOverview() {
     session_state: sessionView ? sessionView.session_state : null,
     memory_summary: loadContextSummary(),
     handoff: sessionView ? sessionView.handoff : null,
+    continuity: sessionView ? sessionView.continuity || null : null,
     latest_report: sessionView ? sessionView.latest_report || null : null,
     reports: sessionView ? sessionView.reports : { reports: [] },
     status,
@@ -1290,6 +1292,7 @@ const {
   buildPausePayload,
   buildPauseContextSummary,
   maybeAutoExtractOnPause,
+  writeSessionContinuityArtifacts,
   buildContextOverview,
   buildCompressContextSummary,
   saveHandoff,
