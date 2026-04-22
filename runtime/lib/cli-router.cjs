@@ -188,6 +188,35 @@ function createCliRouter(deps) {
         return value.replace(/^health_command=/i, '').trim();
       }
 
+      if (/^task_convergence=/i.test(value)) {
+        return value.replace(/^task_convergence=/i, '').trim();
+      }
+
+      if (/^task_prd=/i.test(value)) {
+        const prd = value.replace(/^task_prd=/i, '').trim();
+        return prd ? `Task PRD: ${prd}` : '';
+      }
+
+      if (/^task_route=/i.test(value)) {
+        const route = value.replace(/^task_route=/i, '').trim();
+        if (!route) {
+          return '';
+        }
+        return `Task route: ${route.replace(/;\s*reason=/i, '. ')}`;
+      }
+
+      if (/^task_next=/i.test(value)) {
+        return value.replace(/^task_next=/i, '').trim();
+      }
+
+      if (/^task_then=/i.test(value)) {
+        return value.replace(/^task_then=/i, '').trim();
+      }
+
+      if (/^task_review=/i.test(value)) {
+        return value.replace(/^task_review=/i, '').trim();
+      }
+
       if (/^command=/i.test(value)) {
         return '';
       }
@@ -507,6 +536,7 @@ function createCliRouter(deps) {
 
       if (cmd === 'next' && !subcmd) {
         pushWorkflowStageLines(lines, workflowStage);
+        pushTaskConvergenceLines(lines, payload.task_convergence);
         if (payload.task && payload.task.package) {
           lines.push(terminalUi.renderKeyValue('Package', payload.task.package, 'info'));
         } else if (payload.current && payload.current.active_package) {

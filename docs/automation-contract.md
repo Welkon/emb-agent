@@ -93,6 +93,10 @@ Typical `next --brief` contract:
     "name": "selection",
     "primary_command": "scan"
   },
+  "task_convergence": {
+    "recommended_path": "scan-first",
+    "prd_path": ".emb-agent/tasks/<task>/prd.md"
+  },
   "action_card": {
     "stage": "selection",
     "first_cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs scan"
@@ -115,6 +119,11 @@ Good case:
 Base case:
 
 - wrapper needs to render one compact card plus follow-up commands
+
+Optional active-task hint:
+
+- `task_convergence`
+  Present when `next` is explicitly routing an active task back through its PRD before execution. Use it to surface `scan-first` vs `plan-first` and the task PRD path without parsing terminal text.
 
 Bad case:
 

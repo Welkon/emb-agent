@@ -354,6 +354,11 @@ test('task commands create activate manage context and resolve lightweight tasks
     const next = cli.buildNextContext();
     assert.ok(next.injected_specs.some(item => item.name === 'project-local'));
     assert.ok(next.task.injected_specs.some(item => item.name === 'project-local'));
+    assert.equal(next.next.command, 'plan');
+    assert.match(next.next.reason, /Active task/i);
+    assert.equal(next.task_convergence.recommended_path, 'plan-first');
+    assert.equal(next.task_convergence.prd_path, `.emb-agent/tasks/${taskName}/prd.md`);
+    assert.ok(next.next_actions.some(item => item.startsWith('task_route=plan-first')));
 
     const status = cli.buildStatus();
     assert.ok(status.injected_specs.some(item => item.name === 'project-local'));
@@ -683,6 +688,14 @@ test('task add and activate keep tty output human-readable for package tasks', a
     assert.match(activateTty.stderr, /Task: tty-package-task/);
     assert.match(activateTty.stderr, /Package: fw/);
     assert.match(activateTty.stderr, /Path:/);
+
+    const nextTty = await captureCliTtyOutput(['next']);
+    assert.equal(nextTty.stdout.trim(), '');
+    assert.match(nextTty.stderr, /PRD: \.emb-agent\/tasks\/tty-package-task\/prd\.md/);
+    assert.match(nextTty.stderr, /Converge: Use the task PRD as the working contract/);
+    assert.match(nextTty.stderr, /Route: scan-first/);
+    assert.match(nextTty.stderr, /Next: scan/);
+    assert.match(nextTty.stderr, /Reason: Active task/i);
   } finally {
     process.chdir(currentCwd);
   }

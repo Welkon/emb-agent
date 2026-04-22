@@ -68,6 +68,11 @@ const REVIEW_PATTERNS = [
   'upgrade',
   'release'
 ];
+const TASK_CONVERGENCE_PROMPTS = [
+  'What is the smallest durable outcome for this task?',
+  'Which truth, hardware facts, or code entry points bound the change?',
+  'What evidence will prove the task is actually closed?'
+];
 
 function createSessionFlowHelpers(deps) {
   const {
@@ -124,6 +129,75 @@ function createSessionFlowHelpers(deps) {
     } catch {
       return null;
     }
+  }
+
+  function buildTaskConvergenceForNext(resolved, taskLike) {
+    const task = taskLike && typeof taskLike === 'object' ? taskLike : null;
+    if (!task || !String(task.name || '').trim()) {
+      return null;
+    }
+
+    const hardware = resolved && resolved.hardware ? resolved.hardware : {};
+    const identity = hardware && hardware.identity ? hardware.identity : {};
+    const taskIdentity =
+      task.bindings &&
+      task.bindings.hardware &&
+      task.bindings.hardware.identity &&
+      typeof task.bindings.hardware.identity === 'object'
+        ? task.bindings.hardware.identity
+        : {};
+    const selectionMode = String(hardware && hardware.selection_mode ? hardware.selection_mode : '').trim();
+    const openQuestions = Array.isArray(task.open_questions) ? task.open_questions.filter(Boolean) : [];
+    const knownRisks = Array.isArray(task.known_risks) ? task.known_risks.filter(Boolean) : [];
+    const chipUnknown = !String(identity.model || taskIdentity.model || '').trim();
+    const scanFirst = selectionMode === 'blank-project' || chipUnknown || openQuestions.length > 0;
+    const reviewBeforeDo = knownRisks.length > 0;
+    const prdPath = String(
+      (task.artifacts && task.artifacts.prd) ||
+      (task.name ? `.emb-agent/tasks/${task.name}/prd.md` : '')
+    ).trim();
+    const scanCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['scan']);
+    const planCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['plan']);
+    const doCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['do']);
+    const reviewCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['review']);
+    const recommendedPath = scanFirst ? 'scan-first' : 'plan-first';
+    const recommendedReason = scanFirst
+      ? 'Requirements, hardware truth, or decision inputs are still not explicit enough.'
+      : 'The task already has enough context to lock a micro-plan before execution.';
+
+    return {
+      status: 'active-task',
+      prd_path: prdPath,
+      summary: 'Use the task PRD as the working contract. Re-read goal, constraints, acceptance, and open questions before choosing scan or plan.',
+      prompts: TASK_CONVERGENCE_PROMPTS.slice(),
+      recommended_path: recommendedPath,
+      recommended_reason: recommendedReason,
+      next_cli: scanFirst ? scanCli : planCli,
+      then_cli: scanFirst ? planCli : doCli,
+      paths: [
+        {
+          id: 'scan-first',
+          when: 'Requirements, hardware truth, or the changed surface are still fuzzy.',
+          commands: [scanCli, planCli],
+          outcome: 'The PRD and project truth converge before mutation.'
+        },
+        {
+          id: 'plan-first',
+          when: 'Goal, boundaries, and acceptance are already explicit.',
+          commands: [planCli, doCli],
+          outcome: 'Execution starts from a short micro-plan instead of chat drift.'
+        },
+        {
+          id: 'review-before-do',
+          when: 'The task crosses timing, concurrency, release, or interface boundaries.',
+          commands: [scanCli, planCli, reviewCli],
+          outcome: 'Structural risks are explicit before implementation moves forward.'
+        }
+      ],
+      review_hint: reviewBeforeDo
+        ? 'Known risks are already recorded on this task; review may be needed before closure if they cross structural boundaries.'
+        : ''
+    };
   }
 
   function getRecentSchematicAnalysis(resolved) {
@@ -482,11 +556,13 @@ function createSessionFlowHelpers(deps) {
 
   function buildNextCommand(resolved, handoff) {
     const session = resolved.session;
+    const activeTask = getActiveTask ? getActiveTask() : null;
     const preferences = getPreferences(session);
     const openQuestions = session.open_questions || [];
     const knownRisks = session.known_risks || [];
     const lastFiles = session.last_files || [];
     const focus = session.focus || '';
+    const taskConvergence = buildTaskConvergenceForNext(resolved, activeTask);
     const hasActiveContext =
       focus.trim() !== '' ||
       lastFiles.length > 0 ||
@@ -590,6 +666,49 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
+    if ((session.last_command || '').trim() === 'do' && hasActiveContext) {
+      return {
+        command: 'verify',
+        reason: 'A do step just finished. Run verify next to close the iteration with a result record.'
+      };
+    }
+
+    if (preferences.review_mode === 'always') {
+      return {
+        command: 'review',
+        reason: 'Review mode is forced. Run review before choosing the execution path.'
+      };
+    }
+
+    if (shouldSuggestArchReview(resolved)) {
+      return {
+        command: 'arch-review',
+        reason: 'Selection or solution preflight signals are active. Run arch-review before execution.'
+      };
+    }
+
+    if (shouldSuggestReview(resolved)) {
+      return {
+        command: 'review',
+        reason:
+          preferences.review_mode === 'always'
+            ? 'Review mode is forced. Run review before choosing the execution path.'
+            : 'A review signal is active. Run review before choosing the execution path.'
+      };
+    }
+
+    if (taskConvergence) {
+      const prdPath = taskConvergence.prd_path || `.emb-agent/tasks/${activeTask.name}/prd.md`;
+      const taskLabel = activeTask && activeTask.title ? activeTask.title : activeTask.name;
+      return {
+        command: taskConvergence.recommended_path === 'scan-first' ? 'scan' : 'plan',
+        reason: taskConvergence.recommended_path === 'scan-first'
+          ? `Active task ${taskLabel} still needs a convergence pass. Re-open ${prdPath} and run scan first before planning or mutation.`
+          : `Active task ${taskLabel} already has enough context in ${prdPath}; run plan first to lock the micro-plan before execution.`,
+        task_convergence: taskConvergence
+      };
+    }
+
     if (initGuidance && initGuidance.hardware_confirmation_required) {
       return {
         command: 'scan',
@@ -622,37 +741,6 @@ function createSessionFlowHelpers(deps) {
           : firstTool
             ? `Hardware/formula/tool triage is more likely here. Run scan and evaluate ${firstTool.tool || firstTool.name} first.`
             : 'Hardware truth, register, pin, or formula triage is more likely here. Run scan before choosing a tool.'
-      };
-    }
-
-    if ((session.last_command || '').trim() === 'do' && hasActiveContext) {
-      return {
-        command: 'verify',
-        reason: 'A do step just finished. Run verify next to close the iteration with a result record.'
-      };
-    }
-
-    if (preferences.review_mode === 'always') {
-      return {
-        command: 'review',
-        reason: 'Review mode is forced. Run review before choosing the execution path.'
-      };
-    }
-
-    if (shouldSuggestArchReview(resolved)) {
-      return {
-        command: 'arch-review',
-        reason: 'Selection or solution preflight signals are active. Run arch-review before execution.'
-      };
-    }
-
-    if (shouldSuggestReview(resolved)) {
-      return {
-        command: 'review',
-        reason:
-          preferences.review_mode === 'always'
-            ? 'Review mode is forced. Run review before choosing the execution path.'
-            : 'A review signal is active. Run review before choosing the execution path.'
       };
     }
 
@@ -1152,6 +1240,10 @@ function createSessionFlowHelpers(deps) {
       ? handoff.suggested_flow
       : suggestFlow(resolved);
     const next = buildNextCommand(resolved, handoff);
+    const taskConvergence =
+      next && next.task_convergence && typeof next.task_convergence === 'object'
+        ? next.task_convergence
+        : null;
     const contextHygiene = buildContextHygiene(resolved, handoff, next.command);
     const summaryTask =
       memorySummary &&
@@ -1191,6 +1283,7 @@ function createSessionFlowHelpers(deps) {
     return {
       suggested_flow: suggestedFlow,
       next,
+      task_convergence: taskConvergence,
       schematic_analysis: schematicAnalysis,
       hardware_doc_analysis: hardwareDocAnalysis,
       primary_tool_recommendation: primaryToolRecommendation,
@@ -1208,6 +1301,14 @@ function createSessionFlowHelpers(deps) {
         handoff && handoff.next_action ? `handoff_resume=${handoff.next_action}` : '',
         ...(handoff ? handoff.human_actions_pending.map(action => `manual_action=${action}`) : []),
         summaryTask ? `task_resume=${summaryTask.name}; title=${summaryTask.title}` : '',
+        taskConvergence && taskConvergence.prd_path ? `task_prd=${taskConvergence.prd_path}` : '',
+        taskConvergence && taskConvergence.summary ? `task_convergence=${taskConvergence.summary}` : '',
+        taskConvergence && taskConvergence.recommended_path
+          ? `task_route=${taskConvergence.recommended_path}; reason=${taskConvergence.recommended_reason || ''}`.trim()
+          : '',
+        taskConvergence && taskConvergence.next_cli ? `task_next=${taskConvergence.next_cli}` : '',
+        taskConvergence && taskConvergence.then_cli ? `task_then=${taskConvergence.then_cli}` : '',
+        taskConvergence && taskConvergence.review_hint ? `task_review=${taskConvergence.review_hint}` : '',
         ...walkthroughRuntimeActions,
         ...peripheralWalkthroughActions,
         summaryLatestForensics && summaryLatestForensics.report_file
@@ -1429,6 +1530,12 @@ function createSessionFlowHelpers(deps) {
         if (normalized.includes('do not stop at the first matching tool')) return 4;
       }
 
+      if (normalized.startsWith('task_convergence=')) return 0;
+      if (normalized.startsWith('task_route=')) return 1;
+      if (normalized.startsWith('task_prd=')) return 2;
+      if (normalized.startsWith('task_next=')) return 3;
+      if (normalized.startsWith('task_then=')) return 4;
+      if (normalized.startsWith('task_review=')) return 5;
       if (isHousekeepingHint(value)) return 50;
       if (normalized.startsWith('manual_action=')) return 40;
       if (normalized.startsWith('flow=')) return 60;
@@ -1522,6 +1629,7 @@ function createSessionFlowHelpers(deps) {
           health_quickstart: health && health.quickstart ? health.quickstart : null
         }
       : guidance.next;
+    const taskConvergence = gatedByHealth ? null : guidance.task_convergence;
     const contextHygiene = buildContextHygiene(resolved, handoff, nextCommand.command);
     const walkthroughMode = shouldSuggestPeripheralWalkthrough(
       resolved,
@@ -1638,6 +1746,7 @@ function createSessionFlowHelpers(deps) {
         tool_recommendation: guidance.primary_tool_recommendation,
         walkthrough_recommendation: guidance.walkthrough_recommendation
       },
+      task_convergence: taskConvergence,
       action_card: buildNextActionCard({
         ...nextCommand,
         cli: nextCli,
