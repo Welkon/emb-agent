@@ -28,7 +28,7 @@ Skill is the user-visible capability unit. Installable bundles can ship one or m
 - Discovery stays metadata-only; full skill bodies load only on `skills show` or `skills run`.
 - OpenAI-style bundled skills can live in directories with `SKILL.md`, optional `scripts/`, and supporting assets.
 - Executable skills can be referenced by project quality gates via `quality_gates.required_skills`, so `verify` and `next` can recommend `skills run <name>` directly.
-- When `source` is omitted, `skills install` falls back to the default skills repository configured by the runtime. The built-in default is `https://github.com/Welkon/emb-skills.git`.
+- When `source` is omitted, `skills install` falls back to the default skills repository configured by the runtime. The built-in default is `https://github.com/Welkon/emb-support.git` with the `skills/` subdirectory.
 - If the plugin bundle contains a root `package.json` or `requirements.txt`, `skills install` provisions those dependencies into the plugin-local runtime automatically so command skills are runnable immediately after install.
 - `plugin.json` can also declare `dependencies.node`, `dependencies.python`, and `dependencies.system_requirements` when the bundle needs explicit runtime setup.
 - Project-local installed skill bundles live under `.emb-agent/plugins/`.

@@ -1,6 +1,7 @@
 'use strict';
 
 const hardwareTruthHelpers = require('./hardware-truth.cjs');
+const projectInputIntake = require('./project-input-intake.cjs');
 const projectInputState = require('./project-input-state.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 
@@ -326,12 +327,17 @@ function createCliEntryHelpers(deps) {
     const configPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
     const projectConfig = fs.existsSync(configPath) ? runtime.readJson(configPath) : { chip_support_sources: [] };
     const sources = Array.isArray(projectConfig.chip_support_sources) ? projectConfig.chip_support_sources : [];
-    const detected = attachProjectCli.detectProjectInputs(projectRoot);
+    const pendingInputIntake = projectInputIntake.buildPendingProjectInputIntake(projectRoot, {
+      fs,
+      path,
+      runtime,
+      ingestDocCli,
+      detectProjectInputs: attachProjectCli.detectProjectInputs
+    });
+    const detected = pendingInputIntake.detected;
     const nextSteps = [];
     const hardwareReady = Boolean(hardware.model && hardware.package);
-    const candidateDocs = ((detected && detected.docs) || [])
-      .filter(item => String(item).toLowerCase().endsWith('.pdf'))
-      .slice(0, 4);
+    const candidateDocs = pendingInputIntake.docs.slice(0, 4);
     const candidateHardware = detectHardwareCandidates(projectRoot, detected);
     const meaningfulInputCount = runtime.unique(projectInputState.listMeaningfulProjectInputs(detected)).length;
     const blankProject = !hardwareReady && meaningfulInputCount === 0 && candidateHardware.length === 0;
@@ -378,6 +384,20 @@ function createCliEntryHelpers(deps) {
         nextSteps.push(`Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until you have a real chip candidate or hardware reference.`);
         nextSteps.push('If you already have materials, add datasheets/manuals under docs/ and schematics/BOM/board photos under hardware/ or docs/.');
       } else {
+        if (pendingInputIntake.preferred && pendingInputIntake.preferred.cli) {
+          agentActions.push({
+            kind: 'source-intake',
+            status: 'ready',
+            target_file: pendingInputIntake.preferred.file,
+            summary: pendingInputIntake.preferred.summary,
+            cli_fallback: pendingInputIntake.preferred.cli
+          });
+
+          nextSteps.push(
+            `Prefer ${pendingInputIntake.preferred.cli} first so emb-agent can normalize the detected ${pendingInputIntake.preferred.type === 'schematic' ? 'schematic' : 'hardware PDF'} before editing ${runtime.getProjectAssetRelativePath('hw.yaml')}.`
+          );
+        }
+
         agentActions.push({
           kind: 'confirm-hardware-identity',
           status: 'required',
@@ -516,6 +536,15 @@ function createCliEntryHelpers(deps) {
             vendor: selectedChipProfile.vendor,
             family: selectedChipProfile.family,
             package: selectedChipProfile.package
+          }
+        : null,
+      pending_source_intake: pendingInputIntake.preferred
+        ? {
+            type: pendingInputIntake.preferred.type,
+            file: pendingInputIntake.preferred.file,
+            summary: pendingInputIntake.preferred.summary,
+            command: pendingInputIntake.preferred.cli,
+            argv: pendingInputIntake.preferred.argv
           }
         : null,
       bootstrap_task: bootstrapTask,
@@ -940,6 +969,10 @@ function createCliEntryHelpers(deps) {
   function buildBootstrapSummary(initGuidance) {
     const guidance = initGuidance && typeof initGuidance === 'object' ? initGuidance : {};
     const actions = Array.isArray(guidance.agent_actions) ? guidance.agent_actions : [];
+    const pendingSourceIntake =
+      guidance.pending_source_intake && typeof guidance.pending_source_intake === 'object'
+        ? guidance.pending_source_intake
+        : null;
     const primaryAction =
       actions.find(item => item && ['required', 'recommended', 'ready'].includes(item.status)) ||
       actions.find(item => item && ['unconfigured', 'blocked', 'optional'].includes(item.status)) ||
@@ -951,6 +984,16 @@ function createCliEntryHelpers(deps) {
         stage: 'define-project-constraints',
         summary: `Project definition is still required. Fill ${runtime.getProjectAssetRelativePath('req.yaml')} with the project type, intended inputs/outputs, interfaces, and constraints. Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a real chip or board reference exists.`,
         command: primaryAction && primaryAction.cli_fallback ? primaryAction.cli_fallback : 'next',
+        bootstrap_task: guidance.bootstrap_task || null
+      };
+    }
+
+    if (pendingSourceIntake && pendingSourceIntake.command) {
+      return {
+        status: 'needs-source-intake',
+        stage: 'source-intake',
+        summary: pendingSourceIntake.summary,
+        command: pendingSourceIntake.command,
         bootstrap_task: guidance.bootstrap_task || null
       };
     }
@@ -1060,6 +1103,7 @@ function createCliEntryHelpers(deps) {
       initialized: true,
       init_alias: aliasUsed || 'init',
       bootstrap_task: guidance.bootstrap_task || null,
+      pending_source_intake: guidance.pending_source_intake || null,
       bootstrap,
       session: {
         project_profile: session.project_profile,

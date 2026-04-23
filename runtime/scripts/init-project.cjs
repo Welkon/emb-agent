@@ -539,6 +539,8 @@ function prepareProjectWorkflowSetup(projectRoot, args, options = {}) {
     ? workflowImport.importProjectWorkflowRegistry(projectRoot, initOptions.registry, {
         branch: initOptions.registryBranch,
         subdir: initOptions.registrySubdir,
+        project_profile: initOptions.profile,
+        selected_specs: initOptions.specs,
         force: options.force === true || initOptions.force === true
       })
     : null;
@@ -559,6 +561,8 @@ function prepareProjectWorkflowSetup(projectRoot, args, options = {}) {
         {
           branch: defaultWorkflowSource.branch,
           subdir: defaultWorkflowSource.subdir,
+          project_profile: initOptions.profile,
+          selected_specs: initOptions.specs,
           force: options.force === true || initOptions.force === true
         }
       );
@@ -852,6 +856,12 @@ function buildProjectAgentsGuide() {
     "If you're using Codex, project-scoped helpers may also live in:",
     '- `.codex/skills/` for emb-agent command mirrors',
     '- `.codex/agents/` for optional custom agents',
+    '',
+    'When writing or routing work in this project:',
+    '- Keep guidance hardware-first and name the real blocker.',
+    '- Give the exact next command or file before adding extra structure.',
+    '- Treat skills, hooks, and wrappers as integration surfaces; they must not override emb-agent runtime gates.',
+    '- Avoid generic AI or project-management wording when a concrete board action, artifact, or truth file is known.',
     '',
     "Keep this managed block so future emb-agent updates can refresh the instructions.",
     '',

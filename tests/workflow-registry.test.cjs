@@ -214,6 +214,7 @@ test('workflow registry supports package-aware auto injection', () => {
   return withSupportSourceEnv(() => {
     const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-package-'));
     const projectExtDir = runtime.initProjectLayout(tempProject);
+    workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true });
     const registryPath = path.join(projectExtDir, 'registry', 'workflow.json');
 
     const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));

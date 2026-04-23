@@ -404,18 +404,8 @@ function initProjectLayout(projectRoot) {
   const projectExtDir = migrateLegacyProjectExtDir(projectRoot);
 
   ensureDir(projectExtDir);
-  ensureDir(path.join(projectExtDir, 'cache'));
-  ensureDir(path.join(projectExtDir, 'cache', 'docs'));
-  ensureDir(path.join(projectExtDir, 'cache', 'chip-support-sources'));
   ensureDir(path.join(projectExtDir, 'tasks'));
-  ensureDir(path.join(projectExtDir, 'reports'));
-  ensureDir(path.join(projectExtDir, 'reports', 'forensics'));
-  ensureDir(path.join(projectExtDir, 'reports', 'sessions'));
-  ensureDir(path.join(projectExtDir, 'profiles'));
-  ensureDir(path.join(projectExtDir, 'chip-support'));
   ensureDir(path.join(projectExtDir, 'tasks', 'archive'));
-  ensureDir(path.join(path.resolve(projectRoot), 'docs'));
-  workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true });
 
   return projectExtDir;
 }
@@ -1498,6 +1488,16 @@ function loadRuntimeConfig(rootDir) {
 
 function validateProfile(name, profile) {
   expectObject(profile, `Profile ${name}`);
+  const defaultQualityGates =
+    profile.default_quality_gates &&
+    typeof profile.default_quality_gates === 'object' &&
+    !Array.isArray(profile.default_quality_gates)
+      ? profile.default_quality_gates
+      : {
+          required_skills: profile.default_quality_gate_skills || [],
+          required_executors: profile.default_quality_gate_executors || [],
+          required_signoffs: profile.default_quality_gate_signoffs || []
+        };
   return {
     name: ensureString(profile.name || name, `Profile ${name} name`),
     runtime_model: ensureString(profile.runtime_model, `Profile ${name} runtime_model`),
@@ -1508,6 +1508,7 @@ function validateProfile(name, profile) {
     review_axes: ensureStringArray(profile.review_axes || [], `Profile ${name} review_axes`),
     notes_targets: ensureStringArray(profile.notes_targets || [], `Profile ${name} notes_targets`),
     default_agents: ensureStringArray(profile.default_agents || [], `Profile ${name} default_agents`),
+    default_quality_gates: validateQualityGates(defaultQualityGates),
     arch_review_triggers: ensureStringArray(
       profile.arch_review_triggers || [],
       `Profile ${name} arch_review_triggers`

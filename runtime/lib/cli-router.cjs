@@ -1575,6 +1575,11 @@ function createCliRouter(deps) {
             return buildBootstrapRunResponse(stage, applied);
           }
 
+          if (stage.argv[0] === 'ingest' && stage.argv[1] && stage.argv[1] !== 'apply') {
+            const ingested = await runIngestCommand(stage.argv[1], stage.argv.slice(2));
+            return buildBootstrapRunResponse(stage, ingested);
+          }
+
           if (stage.argv[0] === 'support' || stage.argv[0] === 'adapter' || stage.argv[0] === 'tool') {
             const result = handleAdapterToolChipCommands(stage.argv[0], stage.argv[1], stage.argv.slice(2));
             return buildBootstrapRunResponse(stage, result);

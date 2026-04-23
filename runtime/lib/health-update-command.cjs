@@ -3,6 +3,7 @@
 const adapterQualityHelpers = require('./adapter-quality.cjs');
 const defaultAdapterSourceHelpers = require('./default-adapter-source.cjs');
 const hookTrustHelpers = require('./hook-trust.cjs');
+const projectInputIntake = require('./project-input-intake.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const updateCheckHelpers = require('./update-check.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
@@ -33,6 +34,7 @@ function createHealthUpdateCommandHelpers(deps) {
     resolveSession,
     buildToolExecutionFromRecommendation,
     ingestDocCli,
+    attachProjectCli,
     adapterSources,
     rootDir,
     getRuntimeHost,
@@ -62,6 +64,41 @@ function createHealthUpdateCommandHelpers(deps) {
     return {
       cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['adapter', 'derive', '--from-project']),
       argv: ['adapter', 'derive', '--from-project']
+    };
+  }
+
+  function findPendingProjectInputIntake(projectRoot, hardwareIdentity) {
+    const hardwareReady = Boolean(
+      hardwareIdentity &&
+      hardwareIdentity.model &&
+      hardwareIdentity.package
+    );
+    if (hardwareReady || !attachProjectCli || typeof attachProjectCli.detectProjectInputs !== 'function') {
+      return null;
+    }
+
+    const intake = projectInputIntake.buildPendingProjectInputIntake(projectRoot, {
+      fs,
+      path,
+      runtime,
+      ingestDocCli,
+      detectProjectInputs: attachProjectCli.detectProjectInputs
+    });
+
+    if (!intake || !intake.preferred || !intake.preferred.cli) {
+      return null;
+    }
+
+    return {
+      id: 'source-intake',
+      type: intake.preferred.type,
+      file: intake.preferred.file,
+      label: intake.preferred.type === 'schematic'
+        ? 'Normalize discovered schematic input'
+        : 'Parse discovered hardware document',
+      summary: intake.preferred.summary,
+      cli: intake.preferred.cli,
+      argv: intake.preferred.argv || []
     };
   }
 
@@ -250,6 +287,8 @@ function createHealthUpdateCommandHelpers(deps) {
         return 'project-init';
       case 'startup-hooks':
         return 'host-readiness';
+      case 'source-intake':
+        return 'normalize-discovered-inputs';
       case 'hardware-truth':
         return 'project-facts';
       case 'doc-truth-sync':
@@ -269,6 +308,8 @@ function createHealthUpdateCommandHelpers(deps) {
     switch (id) {
       case 'startup-hooks':
         return 'Host action required';
+      case 'source-intake':
+        return 'Normalize discovered input';
       case 'hardware-truth':
         return 'Project facts required';
       case 'doc-truth-sync':
@@ -318,6 +359,8 @@ function createHealthUpdateCommandHelpers(deps) {
         return 'restart-host-for-bootstrap';
       case 'fill-hardware-identity':
         return 'complete-project-facts';
+      case 'ingest-detected-input':
+        return 'normalize-discovered-inputs';
       case 'doc-apply-then-next':
         return 'apply-document-facts';
       case 'derive-then-next':
@@ -338,6 +381,10 @@ function createHealthUpdateCommandHelpers(deps) {
 
     if (stageId === 'fill-hardware-identity') {
       return 'Hardware identity is incomplete; update .emb-agent/hw.yaml or .emb-agent/req.yaml before continuing.';
+    }
+
+    if (stageId === 'ingest-detected-input') {
+      return 'emb-agent found a schematic or hardware PDF in the project; normalize it first so the agent can inspect machine-readable evidence before editing truth files.';
     }
 
     if (stageId === 'doc-apply-then-next') {
@@ -429,7 +476,7 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
-  function buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, adapterReusability) {
+  function buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, pendingSourceIntake, checks, adapterReusability) {
     const commands = Array.isArray(nextCommands) ? nextCommands : [];
     const allChecks = Array.isArray(checks) ? checks : [];
     const findCommand = (...keys) => commands.find(item => keys.includes(item.key));
@@ -439,11 +486,7 @@ function createHealthUpdateCommandHelpers(deps) {
       'project_config_file',
       'project_config_valid',
       'hw_truth',
-      'req_truth',
-      'docs_dir',
-      'doc_cache_dir',
-      'chip_support_cache_dir',
-      'chip_support_dir'
+      'req_truth'
     ].every(key => {
       const check = findCheck(key);
       return check && check.status === 'pass';
@@ -456,6 +499,14 @@ function createHealthUpdateCommandHelpers(deps) {
           kind: 'doc',
           cli: pendingDocApply.command,
           argv: pendingDocApply.argv || []
+        }
+      : null;
+    const sourceIntake = pendingSourceIntake && pendingSourceIntake.cli
+      ? {
+          ...pendingSourceIntake,
+          kind: 'ingest',
+          cli: pendingSourceIntake.cli,
+          argv: pendingSourceIntake.argv || []
         }
       : null;
     const bootstrap = findCommand('support-bootstrap', 'support-sync');
@@ -471,7 +522,7 @@ function createHealthUpdateCommandHelpers(deps) {
         'Initialize emb-agent project skeleton',
         {
           summary: initReady
-            ? 'Project skeleton and base caches already exist'
+            ? 'Project skeleton and core truth files already exist'
             : 'Create or rebuild .emb-agent skeleton before later bootstrap stages',
           cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['start']),
           kind: 'command',
@@ -508,8 +559,32 @@ function createHealthUpdateCommandHelpers(deps) {
 
     stages.push(
       createBootstrapStage(
+        'source-intake',
+        !initReady || !trustReady ? 'pending' : sourceIntake ? 'ready' : 'completed',
+        sourceIntake && sourceIntake.type === 'schematic'
+          ? 'Normalize discovered schematic input'
+          : 'Parse discovered hardware document',
+        {
+          summary: sourceIntake
+            ? sourceIntake.summary
+            : 'No unparsed schematic or hardware PDF bootstrap evidence remains',
+          cli: sourceIntake ? sourceIntake.cli : '',
+          kind: sourceIntake ? sourceIntake.kind : '',
+          argv: sourceIntake ? sourceIntake.argv : [],
+          evidence: sourceIntake
+            ? [
+                sourceIntake.file || '',
+                sourceIntake.type ? `type=${sourceIntake.type}` : ''
+              ]
+            : []
+        }
+      )
+    );
+
+    stages.push(
+      createBootstrapStage(
         'hardware-truth',
-        !initReady || !trustReady ? 'pending' : hardwareReady ? 'completed' : 'manual',
+        !initReady || !trustReady || Boolean(sourceIntake) ? 'pending' : hardwareReady ? 'completed' : 'manual',
         'Confirm or choose chip identity',
         {
           summary: hardwareReady
@@ -523,7 +598,7 @@ function createHealthUpdateCommandHelpers(deps) {
     stages.push(
       createBootstrapStage(
         'doc-truth-sync',
-        !initReady || !trustReady || !hardwareReady ? 'pending' : docApply ? 'ready' : 'completed',
+        !initReady || !trustReady || Boolean(sourceIntake) || !hardwareReady ? 'pending' : docApply ? 'ready' : 'completed',
         'Apply pending document truth',
         {
           summary: docApply
@@ -542,7 +617,7 @@ function createHealthUpdateCommandHelpers(deps) {
       stages.push(
         createBootstrapStage(
           bootstrap ? 'support-bootstrap' : 'support-derive',
-          !initReady || !trustReady || !hardwareReady || Boolean(docApply) ? 'pending' : 'ready',
+          !initReady || !trustReady || Boolean(sourceIntake) || !hardwareReady || Boolean(docApply) ? 'pending' : 'ready',
           bootstrap ? 'Install matching chip support' : 'Prepare project-local chip support',
           {
             summary: command.summary || '',
@@ -566,7 +641,7 @@ function createHealthUpdateCommandHelpers(deps) {
       stages.push(
         createBootstrapStage(
           'support-bootstrap',
-          !initReady || !trustReady || !hardwareReady || Boolean(docApply) ? 'pending' : 'completed',
+          !initReady || !trustReady || Boolean(sourceIntake) || !hardwareReady || Boolean(docApply) ? 'pending' : 'completed',
           'Install matching chip support',
           {
             summary: 'Chip support registration and hardware matching are already closed'
@@ -599,6 +674,8 @@ function createHealthUpdateCommandHelpers(deps) {
         ? 'fill-hardware-identity'
         : nextStage.id === 'startup-hooks'
           ? 'restart-host-hooks'
+        : nextStage.id === 'source-intake'
+          ? 'ingest-detected-input'
         : nextStage.id === 'doc-truth-sync'
           ? 'doc-apply-then-next'
           : nextStage.id === 'support-derive'
@@ -706,8 +783,8 @@ function createHealthUpdateCommandHelpers(deps) {
     };
   }
 
-  function buildQuickstartHint(workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, projectRoot, adapterReusability) {
-    const bootstrap = buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, checks, adapterReusability);
+  function buildQuickstartHint(workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, pendingSourceIntake, checks, projectRoot, adapterReusability) {
+    const bootstrap = buildBootstrapPlan(projectRoot, workspaceTrust, hardwareIdentity, nextCommands, pendingDocApply, pendingSourceIntake, checks, adapterReusability);
     return bootstrap.quickstart;
   }
 
@@ -898,18 +975,18 @@ function createHealthUpdateCommandHelpers(deps) {
     }
 
     [
-      ['hw_truth', hwPath, 'hw.yaml exists', 'hw.yaml is missing', `Complete ${runtime.getProjectAssetRelativePath('hw.yaml')} first to record MCU / pin / constraint ground truth.`],
-      ['req_truth', reqPath, 'req.yaml exists', 'req.yaml is missing', `Complete ${runtime.getProjectAssetRelativePath('req.yaml')} first to record goals / features / acceptance.`],
-      ['docs_dir', docsDir, 'docs directory exists', 'docs directory is missing', 'Create the docs directory first so later document ingestion and durable report persistence have a place to land.'],
-      ['doc_cache_dir', docCacheDir, 'Document cache directory exists', 'Document cache directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('cache', 'docs')}.`],
-      ['chip_support_cache_dir', adapterCacheDir, 'Chip support cache directory exists', 'Chip support cache directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('cache', 'chip-support-sources')}.`],
-      ['chip_support_dir', adaptersDir, 'Chip support directory exists', 'Chip support directory is missing', `Run init again to create ${runtime.getProjectAssetRelativePath('chip-support')}.`]
-    ].forEach(([key, targetPath, passSummary, failSummary, recommendation]) => {
+      ['hw_truth', hwPath, 'pass', 'hw.yaml exists', 'fail', 'hw.yaml is missing', `Complete ${runtime.getProjectAssetRelativePath('hw.yaml')} first to record MCU / pin / constraint ground truth.`],
+      ['req_truth', reqPath, 'pass', 'req.yaml exists', 'fail', 'req.yaml is missing', `Complete ${runtime.getProjectAssetRelativePath('req.yaml')} first to record goals / features / acceptance.`],
+      ['docs_dir', docsDir, 'pass', 'docs directory exists', 'info', 'docs directory has not been created yet', 'Created on first saved document or manual docs work.'],
+      ['doc_cache_dir', docCacheDir, 'pass', 'Document cache directory exists', 'info', 'Document cache directory has not been created yet', `Created on first document ingest under ${runtime.getProjectAssetRelativePath('cache', 'docs')}.`],
+      ['chip_support_cache_dir', adapterCacheDir, 'pass', 'Chip support cache directory exists', 'info', 'Chip support cache directory has not been created yet', `Created on first support bootstrap/sync under ${runtime.getProjectAssetRelativePath('cache', 'chip-support-sources')}.`],
+      ['chip_support_dir', adaptersDir, 'pass', 'Chip support directory exists', 'info', 'Chip support directory has not been created yet', `Created when project-local chip support is bootstrapped, synced, or derived under ${runtime.getProjectAssetRelativePath('chip-support')}.`]
+    ].forEach(([key, targetPath, passStatus, passSummary, failStatus, failSummary, recommendation]) => {
       const exists = fs.existsSync(targetPath);
       checks.push(
         createCheck(
           key,
-          exists ? 'pass' : 'fail',
+          exists ? passStatus : failStatus,
           exists ? passSummary : failSummary,
           [path.relative(projectRoot, targetPath)],
           exists ? '' : recommendation
@@ -1113,6 +1190,36 @@ function createHealthUpdateCommandHelpers(deps) {
             : [`model=${hardwareIdentity.model}`],
           chipProfile || localChipSupport ? '' : 'Tool auto-discovery can fully connect only after the adapter/chip profile is added.'
         )
+      );
+    }
+
+    const pendingSourceIntake = findPendingProjectInputIntake(projectRoot, hardwareIdentity);
+    if (pendingSourceIntake) {
+      checks.push(
+        createCheck(
+          'project_source_intake',
+          'warn',
+          pendingSourceIntake.type === 'schematic'
+            ? 'A discovered schematic has not been normalized yet'
+            : 'A discovered hardware PDF has not been parsed yet',
+          [
+            pendingSourceIntake.file,
+            `type=${pendingSourceIntake.type}`
+          ],
+          `Run ${pendingSourceIntake.cli} first so emb-agent can inspect machine-readable project evidence before manual truth edits.`
+        )
+      );
+      pushNextCommand(
+        nextCommands,
+        'source-intake',
+        pendingSourceIntake.summary,
+        pendingSourceIntake.cli,
+        'ingest',
+        {
+          argv: pendingSourceIntake.argv || [],
+          intake_type: pendingSourceIntake.type,
+          target_file: pendingSourceIntake.file
+        }
       );
     }
 
@@ -1587,6 +1694,7 @@ function createHealthUpdateCommandHelpers(deps) {
       hardwareIdentity,
       nextCommands,
       pendingDocApply,
+      pendingSourceIntake,
       checks,
       adapterReusability
     );
@@ -1618,6 +1726,7 @@ function createHealthUpdateCommandHelpers(deps) {
         hardwareIdentity,
         nextCommands,
         pendingDocApply,
+        pendingSourceIntake,
         checks,
         projectRoot,
         adapterReusability
@@ -1640,7 +1749,7 @@ function createHealthUpdateCommandHelpers(deps) {
     const projectDataPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
     const hadProjectLayout = fs.existsSync(projectExtDir) || fs.existsSync(projectDataPath);
     const workflowLayout = hadProjectLayout
-      ? workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true })
+      ? workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: false })
       : {
           project_ext_dir: projectExtDir,
           registry_path: 'registry/workflow.json',

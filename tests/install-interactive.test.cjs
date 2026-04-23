@@ -480,6 +480,194 @@ test('interactive prompts support arrow-key multi-select for skills', async () =
   assert.deepEqual(fakeStdin.setRawModeCalls, [true, false]);
 });
 
+test('interactive prompts support arrow-key multi-select for specs', async () => {
+  const askedQuestions = [];
+  const answers = ['1', '2', 'welkon'];
+  let stdout = '';
+  const fakeStdin = new EventEmitter();
+  fakeStdin.isTTY = true;
+  fakeStdin.isRaw = false;
+  fakeStdin.setRawModeCalls = [];
+  fakeStdin.setRawMode = value => {
+    fakeStdin.isRaw = Boolean(value);
+    fakeStdin.setRawModeCalls.push(Boolean(value));
+  };
+  fakeStdin.resume = () => {};
+  fakeStdin.pause = () => {};
+  fakeStdin.setEncoding = () => {};
+
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    argv: ['node', 'install.js'],
+    stdin: fakeStdin,
+    stdout: {
+      isTTY: true,
+      write(chunk) {
+        stdout += String(chunk);
+        return true;
+      }
+    },
+    stderr: {
+      isTTY: true,
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess, {
+    previewWorkflowSource(source, previewOptions = {}) {
+      assert.equal(source, DEFAULT_WORKFLOW_SOURCE_LOCATION);
+      assert.equal(previewOptions.subdir, DEFAULT_WORKFLOW_SOURCE_SUBDIR);
+      return {
+        source: {
+          location: source,
+          branch: String(previewOptions.branch || ''),
+          subdir: String(previewOptions.subdir || '')
+        },
+        specs: [
+          {
+            name: 'embedded-space',
+            summary: 'General embedded firmware scope.'
+          },
+          {
+            name: 'padauk-space',
+            summary: 'Padauk-specific embedded firmware scope.'
+          }
+        ]
+      };
+    },
+    previewSkillSource(argv) {
+      assert.deepEqual(argv, [DEFAULT_SKILL_SOURCE_LOCATION, '--subdir', DEFAULT_SKILL_SOURCE_SUBDIR, '--scope', 'project']);
+      return {
+        plugin: {
+          name: 'scope-ops-kit'
+        },
+        skills: []
+      };
+    },
+    readline: {
+      createInterface() {
+        return {
+          on() {},
+          close() {},
+          question(question, callback) {
+            askedQuestions.push(String(question));
+            const answer = String(answers.shift() || '');
+            callback(answer);
+            if (/Install Location/.test(String(question))) {
+              setImmediate(() => {
+                fakeStdin.emit('data', '\u001b[B');
+                fakeStdin.emit('data', ' ');
+                fakeStdin.emit('data', '\r');
+              });
+            }
+          }
+        };
+      }
+    }
+  });
+
+  const args = await helper.resolveArgs([]);
+
+  assert.equal(args.registry, DEFAULT_WORKFLOW_SOURCE_LOCATION);
+  assert.equal(args.registrySubdir, DEFAULT_WORKFLOW_SOURCE_SUBDIR);
+  assert.deepEqual(args.specs, ['padauk-space']);
+  assert.deepEqual(args.skillSources, []);
+  assert.deepEqual(args.skillNames, []);
+  assert.equal(askedQuestions.length, 3);
+  assert.match(stdout, /Spec Selection/);
+  assert.match(stdout, /toggle every selectable spec/);
+  assert.match(stdout, /embedded-space/);
+  assert.match(stdout, /padauk-space/);
+  assert.match(stdout, /Spec selection:\s+padauk-space/);
+  assert.deepEqual(fakeStdin.setRawModeCalls, [true, false]);
+});
+
+test('interactive spec keyboard selection can be cancelled with Ctrl\\+D', async () => {
+  const answers = ['1', '2'];
+  const fakeStdin = new EventEmitter();
+  fakeStdin.isTTY = true;
+  fakeStdin.isRaw = false;
+  fakeStdin.setRawModeCalls = [];
+  fakeStdin.setRawMode = value => {
+    fakeStdin.isRaw = Boolean(value);
+    fakeStdin.setRawModeCalls.push(Boolean(value));
+  };
+  fakeStdin.resume = () => {};
+  fakeStdin.pause = () => {};
+  fakeStdin.setEncoding = () => {};
+
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    argv: ['node', 'install.js'],
+    stdin: fakeStdin,
+    stdout: {
+      isTTY: true,
+      write() {
+        return true;
+      }
+    },
+    stderr: {
+      isTTY: true,
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess, {
+    previewWorkflowSource(source, previewOptions = {}) {
+      return {
+        source: {
+          location: source,
+          branch: String(previewOptions.branch || ''),
+          subdir: String(previewOptions.subdir || '')
+        },
+        specs: [
+          {
+            name: 'embedded-space',
+            summary: 'General embedded firmware scope.'
+          },
+          {
+            name: 'padauk-space',
+            summary: 'Padauk-specific embedded firmware scope.'
+          }
+        ]
+      };
+    },
+    previewSkillSource() {
+      return {
+        plugin: {
+          name: 'scope-ops-kit'
+        },
+        skills: []
+      };
+    },
+    readline: {
+      createInterface() {
+        return {
+          on() {},
+          close() {},
+          question(question, callback) {
+            callback(String(answers.shift() || ''));
+            if (/Install Location/.test(String(question))) {
+              setImmediate(() => {
+                fakeStdin.emit('data', '\u0004');
+              });
+            }
+          }
+        };
+      }
+    }
+  });
+
+  await assert.rejects(() => helper.resolveArgs([]), /Interactive install cancelled\./);
+  assert.deepEqual(fakeStdin.setRawModeCalls, [true, false]);
+});
+
 test('interactive prompts support selecting the direct skip option with arrow keys', async () => {
   const askedQuestions = [];
   const answers = ['1', '2', '1', 'welkon'];

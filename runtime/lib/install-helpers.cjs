@@ -50,7 +50,7 @@ function createInstallHelpers(deps) {
     'emb-release-checker': 'read-only'
   };
   const INTERACTIVE_CANCELLED_MESSAGE = 'Interactive install cancelled.';
-  const INTERACTIVE_SKILL_SELECTION_CHANGE_SOURCE = Symbol('interactive-skill-selection-change-source');
+  const INTERACTIVE_SELECTION_CHANGE_SOURCE = Symbol('interactive-selection-change-source');
   let cachedSkillSourcePreviewer = null;
   let cachedWorkflowSourcePreviewer = null;
 
@@ -596,126 +596,70 @@ function createInstallHelpers(deps) {
   }
 
   function buildInteractiveWorkflowSelectionPrompt(preview, options = {}) {
-    const { chalk } = createPromptStyler();
     const specs = Array.isArray(preview && preview.specs) ? preview.specs : [];
+    return buildInteractiveNamedSelectionPrompt({
+      title: 'Spec Selection',
+      context_label: 'Source',
+      context_value: preview && preview.source && preview.source.location ? preview.source.location : 'spec source',
+      entries: specs,
+      detail_key: 'summary',
+      skip_label: 'Skip external spec import',
+      empty_instruction: 'Press enter or type `skip` to continue without importing external specs.',
+      all_instruction: 'Type `all` to activate every selectable spec from that source.',
+      source_change_instruction: 'Type `source` to use a different spec source.',
+      allow_source_change: options.allow_source_change
+    });
+  }
+
+  function buildInteractiveSkillSelectionPrompt(preview, options = {}) {
+    const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
+    return buildInteractiveNamedSelectionPrompt({
+      title: 'Skill Selection',
+      context_label: 'Plugin',
+      context_value: preview && preview.plugin && preview.plugin.name ? preview.plugin.name : 'skill bundle',
+      entries: skills,
+      detail_key: 'description',
+      skip_label: 'Skip initial skill installation',
+      empty_instruction: 'Press enter or type `skip` to skip initial skill installation.',
+      all_instruction: 'Type `all` to enable every published skill from that bundle.',
+      source_change_instruction: 'Type `source` to use a different skill bundle source.',
+      allow_source_change: options.allow_source_change
+    });
+  }
+
+  function buildInteractiveNamedSelectionPrompt(options = {}) {
+    const { chalk } = createPromptStyler();
+    const entries = Array.isArray(options.entries) ? options.entries : [];
+    const detailKey = String(options.detail_key || 'description').trim() || 'description';
     const allowSourceChange = Boolean(options.allow_source_change);
     const choiceLines = [
-      `  ${chalk.cyan('skip.')} ${chalk.white('Skip external spec import')}`,
+      `  ${chalk.cyan('skip.')} ${chalk.white(String(options.skip_label || 'Skip').trim() || 'Skip')}`,
       '',
-      ...specs.map((entry, index) => {
-        const summary = summarizeInteractiveSkillSelectionDescription(entry && entry.summary);
-        const suffix = summary ? ` ${chalk.gray(`- ${summary}`)}` : '';
+      ...entries.map((entry, index) => {
+        const detail = summarizeInteractiveSkillSelectionDescription(entry && entry[detailKey]);
+        const suffix = detail ? ` ${chalk.gray(`- ${detail}`)}` : '';
         return `  ${chalk.cyan(`${index + 1}.`)} ${chalk.white(entry.name)}${suffix}`;
       })
     ];
 
     const descriptionLines = [
-      `Source: ${preview && preview.source && preview.source.location ? preview.source.location : 'spec source'}`,
-      'Press enter or type `skip` to continue without importing external specs.',
+      `${String(options.context_label || 'Source').trim() || 'Source'}: ${options.context_value || ''}`,
+      String(options.empty_instruction || 'Press enter or type `skip` to skip.'),
       'Use space-separated numbers to enable a subset.',
-      'Type `all` to activate every selectable spec from that source.'
+      String(options.all_instruction || 'Type `all` to enable every item.')
     ];
     if (allowSourceChange) {
-      descriptionLines.push('Type `source` to use a different spec source.');
+      descriptionLines.push(String(options.source_change_instruction || 'Type `source` to use a different source.'));
     }
 
     return renderInteractiveSection(
       chalk,
       '▶',
-      'Spec Selection',
+      String(options.title || 'Selection').trim() || 'Selection',
       descriptionLines,
       choiceLines,
       allowSourceChange ? 'Choice [skip/all/source] > ' : 'Choice [skip/all] > '
     );
-  }
-
-  function buildInteractiveSkillSelectionPrompt(preview, options = {}) {
-    const { chalk } = createPromptStyler();
-    const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
-    const allowSourceChange = Boolean(options.allow_source_change);
-    const choiceLines = [
-      `  ${chalk.cyan('skip.')} ${chalk.white('Skip initial skill installation')}`,
-      '',
-      ...skills.map((skill, index) => {
-        const summarizedDescription = summarizeInteractiveSkillSelectionDescription(skill && skill.description);
-        const suffix = summarizedDescription ? ` ${chalk.gray(`- ${summarizedDescription}`)}` : '';
-        return `  ${chalk.cyan(`${index + 1}.`)} ${chalk.white(skill.name)}${suffix}`;
-      })
-    ];
-
-    const descriptionLines = [
-      `Plugin: ${preview && preview.plugin && preview.plugin.name ? preview.plugin.name : 'skill bundle'}`,
-      'Press enter or type `skip` to skip initial skill installation.',
-      'Use space-separated numbers to enable a subset.',
-      'Type `all` to enable every published skill from that bundle.'
-    ];
-    if (allowSourceChange) {
-      descriptionLines.push('Type `source` to use a different skill bundle source.');
-    }
-
-    return renderInteractiveSection(
-      chalk,
-      '▶',
-      'Skill Selection',
-      descriptionLines,
-      choiceLines,
-      allowSourceChange ? 'Choice [skip/all/source] > ' : 'Choice [skip/all] > '
-    );
-  }
-
-  function renderInteractiveSkillSelectionKeyboardUi(preview, state, options = {}) {
-    const { chalk } = createPromptStyler();
-    const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
-    const allowSourceChange = Boolean(options.allow_source_change);
-    const selected = state && state.selected instanceof Set ? state.selected : new Set();
-    const cursorIndex = Number.isInteger(state && state.cursorIndex) ? state.cursorIndex : 0;
-    const totalChoices = skills.length + 1;
-    const choiceLines = [
-      (() => {
-        const isActive = cursorIndex === 0;
-        const cursor = isActive ? chalk.cyan('›') : ' ';
-        const renderedLabel = isActive
-          ? chalk.bold(chalk.white('Skip initial skill installation'))
-          : chalk.white('Skip initial skill installation');
-        return `  ${cursor} ${chalk.cyan('skip')} ${renderedLabel}`;
-      })(),
-      ...skills.map((skill, index) => {
-        const entryIndex = index + 1;
-        const isActive = entryIndex === cursorIndex;
-        const isSelected = selected.has(skill.name);
-        const cursor = isActive ? chalk.cyan('›') : ' ';
-        const marker = isSelected ? chalk.green('●') : chalk.gray('○');
-        const summarizedDescription = summarizeInteractiveSkillSelectionDescription(skill && skill.description);
-        const renderedName = isActive ? chalk.bold(chalk.white(skill.name)) : chalk.white(skill.name);
-        const suffix = summarizedDescription ? ` ${chalk.gray(`- ${summarizedDescription}`)}` : '';
-        return `  ${cursor} ${marker} ${renderedName}${suffix}`;
-      })
-    ];
-
-    const descriptionLines = [
-      `Plugin: ${preview && preview.plugin && preview.plugin.name ? preview.plugin.name : 'skill bundle'}`,
-      'Use ↑/↓ to move and Space to toggle the highlighted skill.',
-      'Press Enter to confirm the current selection.',
-      'Highlight `skip` and press Enter to continue without installing initial skills.',
-      'Press Enter with no selected skills to skip initial skill installation.',
-      'Press `a` to toggle every published skill from that bundle.'
-    ];
-    if (allowSourceChange) {
-      descriptionLines.push('Press `s` to use a different skill bundle source.');
-    }
-    descriptionLines.push('Press `Esc`, `Ctrl+C`, or `Ctrl+D` to cancel installation.');
-
-    return [
-      ...buildPromptHeader(chalk),
-      renderInteractiveSection(
-        chalk,
-        '▶',
-        'Skill Selection',
-        descriptionLines,
-        choiceLines,
-        totalChoices > 1 ? '↑/↓=move  Space=toggle  Enter=confirm' : 'Enter=confirm'
-      )
-    ].join('\n');
   }
 
   function summarizeInteractiveSkillSelectionDescription(value, maxLength = 140) {
@@ -879,8 +823,22 @@ function createInstallHelpers(deps) {
   }
 
   function parseInteractiveWorkflowSelection(value, preview) {
-    const specs = Array.isArray(preview && preview.specs) ? preview.specs : [];
-    if (specs.length === 0) {
+    return parseInteractiveNamedSelection(value, preview && preview.specs, {
+      item_label: 'spec',
+      all_mode: 'names'
+    });
+  }
+
+  function parseInteractiveSkillSelection(value, preview) {
+    return parseInteractiveNamedSelection(value, preview && preview.skills, {
+      item_label: 'skill',
+      all_mode: 'empty'
+    });
+  }
+
+  function parseInteractiveNamedSelection(value, entries, options = {}) {
+    const items = Array.isArray(entries) ? entries : [];
+    if (items.length === 0) {
       return null;
     }
 
@@ -888,7 +846,6 @@ function createInstallHelpers(deps) {
       .split(/[,\s]+/)
       .map(item => item.trim())
       .filter(Boolean);
-
     if (tokens.length === 0) {
       return null;
     }
@@ -896,6 +853,7 @@ function createInstallHelpers(deps) {
     const selected = [];
     let requestedSkip = false;
     let requestedAll = false;
+    const itemLabel = String(options.item_label || 'selection').trim() || 'selection';
 
     tokens.forEach(token => {
       const normalized = token.toLowerCase();
@@ -909,76 +867,28 @@ function createInstallHelpers(deps) {
       }
 
       const index = Number.parseInt(token, 10);
-      if (Number.isFinite(index) && String(index) === token && index >= 1 && index <= specs.length) {
-        selected.push(specs[index - 1].name);
+      if (Number.isFinite(index) && String(index) === token && index >= 1 && index <= items.length) {
+        selected.push(items[index - 1].name);
         return;
       }
 
-      const matched = specs.find(entry => entry.name === token);
+      const matched = items.find(entry => entry && entry.name === token);
       if (!matched) {
-        throw new Error(`Unknown spec selection: ${token}`);
+        throw new Error(`Unknown ${itemLabel} selection: ${token}`);
       }
       selected.push(matched.name);
     });
 
     if (requestedSkip && (requestedAll || selected.length > 0)) {
-      throw new Error('Skip cannot be combined with spec selections.');
+      throw new Error(`Skip cannot be combined with ${itemLabel} selections.`);
     }
     if (requestedSkip) {
       return null;
     }
     if (requestedAll) {
-      return specs.map(entry => entry.name);
-    }
-
-    return Array.from(new Set(selected));
-  }
-
-  function parseInteractiveSkillSelection(value, preview) {
-    const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
-    if (skills.length === 0) {
-      return null;
-    }
-
-    const tokens = String(value || '')
-      .split(/[,\s]+/)
-      .map(item => item.trim())
-      .filter(Boolean);
-
-    if (tokens.length === 0) {
-      return null;
-    }
-
-    const selected = [];
-    let requestedSkip = false;
-    tokens.forEach(token => {
-      const normalized = token.toLowerCase();
-      if (normalized === 'skip' || token === '0') {
-        requestedSkip = true;
-        return;
-      }
-      if (normalized === 'all') {
-        return;
-      }
-
-      const index = Number.parseInt(token, 10);
-      if (Number.isFinite(index) && String(index) === token && index >= 1 && index <= skills.length) {
-        selected.push(skills[index - 1].name);
-        return;
-      }
-
-      const matched = skills.find(skill => skill.name === token);
-      if (!matched) {
-        throw new Error(`Unknown skill selection: ${token}`);
-      }
-      selected.push(matched.name);
-    });
-
-    if (requestedSkip) {
-      if (selected.length > 0) {
-        throw new Error('Skip cannot be combined with skill selections.');
-      }
-      return null;
+      return options.all_mode === 'empty'
+        ? []
+        : items.map(entry => entry.name);
     }
 
     return Array.from(new Set(selected));
@@ -996,9 +906,9 @@ function createInstallHelpers(deps) {
     );
   }
 
-  function promptInteractiveSkillSelectionWithKeys(preview, options = {}) {
-    const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
-    if (skills.length === 0) {
+  function promptInteractiveSelectionWithKeys(entries, renderUi, options = {}) {
+    const items = Array.isArray(entries) ? entries : [];
+    if (items.length === 0) {
       return Promise.resolve(null);
     }
 
@@ -1008,12 +918,12 @@ function createInstallHelpers(deps) {
 
     return new Promise((resolve, reject) => {
       const state = {
-        cursorIndex: skills.length > 0 ? 1 : 0,
+        cursorIndex: items.length > 0 ? 1 : 0,
         selected: new Set()
       };
       const previousRawMode = Boolean(stdin.isRaw);
       let settled = false;
-      const totalChoices = skills.length + 1;
+      const totalChoices = items.length + 1;
 
       function cleanup() {
         if (typeof stdin.setRawMode === 'function') {
@@ -1046,31 +956,31 @@ function createInstallHelpers(deps) {
           return;
         }
         stdout.write('\x1b[2J\x1b[H');
-        stdout.write(`${renderInteractiveSkillSelectionKeyboardUi(preview, state, options)}\n`);
+        stdout.write(`${renderUi(state, options)}\n`);
       }
 
-      function toggleCurrentSkill() {
+      function toggleCurrentEntry() {
         if (state.cursorIndex === 0) {
           return;
         }
-        const currentSkill = skills[state.cursorIndex - 1];
-        if (!currentSkill) {
+        const currentEntry = items[state.cursorIndex - 1];
+        if (!currentEntry) {
           return;
         }
-        if (state.selected.has(currentSkill.name)) {
-          state.selected.delete(currentSkill.name);
+        if (state.selected.has(currentEntry.name)) {
+          state.selected.delete(currentEntry.name);
           return;
         }
-        state.selected.add(currentSkill.name);
+        state.selected.add(currentEntry.name);
       }
 
-      function toggleAllSkills() {
-        if (state.selected.size === skills.length) {
+      function toggleAllEntries() {
+        if (state.selected.size === items.length) {
           state.selected.clear();
           return;
         }
-        skills.forEach(skill => {
-          state.selected.add(skill.name);
+        items.forEach(entry => {
+          state.selected.add(entry.name);
         });
       }
 
@@ -1079,9 +989,9 @@ function createInstallHelpers(deps) {
           settleWith(resolve, null);
           return;
         }
-        const ordered = skills
-          .filter(skill => state.selected.has(skill.name))
-          .map(skill => skill.name);
+        const ordered = items
+          .filter(entry => state.selected.has(entry.name))
+          .map(entry => entry.name);
         settleWith(resolve, ordered.length > 0 ? ordered : null);
       }
 
@@ -1098,7 +1008,7 @@ function createInstallHelpers(deps) {
           return;
         }
         if (input === ' ') {
-          toggleCurrentSkill();
+          toggleCurrentEntry();
           render();
           return;
         }
@@ -1117,12 +1027,12 @@ function createInstallHelpers(deps) {
 
         const normalized = input.toLowerCase();
         if (normalized === 'a') {
-          toggleAllSkills();
+          toggleAllEntries();
           render();
           return;
         }
         if (allowSourceChange && normalized === 's') {
-          settleWith(resolve, INTERACTIVE_SKILL_SELECTION_CHANGE_SOURCE);
+          settleWith(resolve, INTERACTIVE_SELECTION_CHANGE_SOURCE);
         }
       }
 
@@ -1143,6 +1053,116 @@ function createInstallHelpers(deps) {
         settleWith(reject, error);
       }
     });
+  }
+
+  function renderInteractiveNamedSelectionKeyboardUi(options = {}, state) {
+    const { chalk } = createPromptStyler();
+    const entries = Array.isArray(options.entries) ? options.entries : [];
+    const detailKey = String(options.detail_key || 'description').trim() || 'description';
+    const allowSourceChange = Boolean(options.allow_source_change);
+    const selected = state && state.selected instanceof Set ? state.selected : new Set();
+    const cursorIndex = Number.isInteger(state && state.cursorIndex) ? state.cursorIndex : 0;
+    const totalChoices = entries.length + 1;
+    const choiceLines = [
+      (() => {
+        const isActive = cursorIndex === 0;
+        const cursor = isActive ? chalk.cyan('›') : ' ';
+        const renderedLabel = isActive
+          ? chalk.bold(chalk.white(String(options.skip_label || 'Skip').trim() || 'Skip'))
+          : chalk.white(String(options.skip_label || 'Skip').trim() || 'Skip');
+        return `  ${cursor} ${chalk.cyan('skip')} ${renderedLabel}`;
+      })(),
+      ...entries.map((entry, index) => {
+        const entryIndex = index + 1;
+        const isActive = entryIndex === cursorIndex;
+        const isSelected = selected.has(entry.name);
+        const cursor = isActive ? chalk.cyan('›') : ' ';
+        const marker = isSelected ? chalk.green('●') : chalk.gray('○');
+        const detail = summarizeInteractiveSkillSelectionDescription(entry && entry[detailKey]);
+        const renderedName = isActive ? chalk.bold(chalk.white(entry.name)) : chalk.white(entry.name);
+        const suffix = detail ? ` ${chalk.gray(`- ${detail}`)}` : '';
+        return `  ${cursor} ${marker} ${renderedName}${suffix}`;
+      })
+    ];
+
+    const descriptionLines = [
+      `${String(options.context_label || 'Source').trim() || 'Source'}: ${options.context_value || ''}`,
+      `Use ↑/↓ to move and Space to toggle the highlighted ${options.item_noun || 'entry'}.`,
+      'Press Enter to confirm the current selection.',
+      `Highlight \`skip\` and press Enter to continue without ${options.skip_action || 'continuing'}.`,
+      `Press Enter with no selected ${options.item_plural || 'entries'} to ${options.empty_action || 'skip'}.`,
+      String(options.toggle_all_instruction || 'Press `a` to toggle every entry.')
+    ];
+    if (allowSourceChange) {
+      descriptionLines.push(String(options.source_change_instruction || 'Press `s` to use a different source.'));
+    }
+    descriptionLines.push('Press `Esc`, `Ctrl+C`, or `Ctrl+D` to cancel installation.');
+
+    return [
+      ...buildPromptHeader(chalk),
+      renderInteractiveSection(
+        chalk,
+        '▶',
+        String(options.title || 'Selection').trim() || 'Selection',
+        descriptionLines,
+        choiceLines,
+        totalChoices > 1 ? '↑/↓=move  Space=toggle  Enter=confirm' : 'Enter=confirm'
+      )
+    ].join('\n');
+  }
+
+  function renderInteractiveWorkflowSelectionKeyboardUi(preview, state, options = {}) {
+    const specs = Array.isArray(preview && preview.specs) ? preview.specs : [];
+    return renderInteractiveNamedSelectionKeyboardUi({
+      title: 'Spec Selection',
+      context_label: 'Source',
+      context_value: preview && preview.source && preview.source.location ? preview.source.location : 'spec source',
+      entries: specs,
+      detail_key: 'summary',
+      skip_label: 'Skip external spec import',
+      item_noun: 'spec',
+      item_plural: 'specs',
+      skip_action: 'importing external specs',
+      empty_action: 'skip external spec import',
+      toggle_all_instruction: 'Press `a` to toggle every selectable spec from that source.',
+      source_change_instruction: 'Press `s` to use a different spec source.',
+      allow_source_change: options.allow_source_change
+    }, state);
+  }
+
+  function renderInteractiveSkillSelectionKeyboardUi(preview, state, options = {}) {
+    const skills = Array.isArray(preview && preview.skills) ? preview.skills : [];
+    return renderInteractiveNamedSelectionKeyboardUi({
+      title: 'Skill Selection',
+      context_label: 'Plugin',
+      context_value: preview && preview.plugin && preview.plugin.name ? preview.plugin.name : 'skill bundle',
+      entries: skills,
+      detail_key: 'description',
+      skip_label: 'Skip initial skill installation',
+      item_noun: 'skill',
+      item_plural: 'skills',
+      skip_action: 'installing initial skills',
+      empty_action: 'skip initial skill installation',
+      toggle_all_instruction: 'Press `a` to toggle every published skill from that bundle.',
+      source_change_instruction: 'Press `s` to use a different skill bundle source.',
+      allow_source_change: options.allow_source_change
+    }, state);
+  }
+
+  function promptInteractiveWorkflowSelectionWithKeys(preview, options = {}) {
+    return promptInteractiveSelectionWithKeys(
+      preview && preview.specs,
+      state => renderInteractiveWorkflowSelectionKeyboardUi(preview, state, options),
+      options
+    );
+  }
+
+  function promptInteractiveSkillSelectionWithKeys(preview, options = {}) {
+    return promptInteractiveSelectionWithKeys(
+      preview && preview.skills,
+      state => renderInteractiveSkillSelectionKeyboardUi(preview, state, options),
+      options
+    );
   }
 
   function getSkillSourcePreviewer() {
@@ -1508,6 +1528,32 @@ function createInstallHelpers(deps) {
       }
 
       while (resolvedWorkflowPreview && !skipWorkflowImport) {
+        if (
+          supportsInteractiveSkillSelectionKeyboardUi() &&
+          Array.isArray(resolvedWorkflowPreview.specs) &&
+          resolvedWorkflowPreview.specs.length > 1
+        ) {
+          const selectedSpecs = await promptInteractiveWorkflowSelectionWithKeys(resolvedWorkflowPreview, {
+            allow_source_change: true
+          });
+          if (selectedSpecs === INTERACTIVE_SELECTION_CHANGE_SOURCE) {
+            resolvedWorkflowPreview = null;
+            registry = '';
+            registryBranch = '';
+            registrySubdir = '';
+            specs = [];
+            await promptForWorkflowSourceOverride();
+            continue;
+          }
+          if (selectedSpecs === null) {
+            skipWorkflowImport = true;
+            break;
+          }
+          specs = selectedSpecs;
+          writePromptConfirmation('Spec selection:', specs.join(', '));
+          break;
+        }
+
         try {
           const selectionInput = await promptLine(
             buildInteractiveWorkflowSelectionPrompt(resolvedWorkflowPreview, {
@@ -1601,7 +1647,7 @@ function createInstallHelpers(deps) {
         const selectedSkillNames = await promptInteractiveSkillSelectionWithKeys(resolvedPreview, {
           allow_source_change: true
         });
-        if (selectedSkillNames === INTERACTIVE_SKILL_SELECTION_CHANGE_SOURCE) {
+        if (selectedSkillNames === INTERACTIVE_SELECTION_CHANGE_SOURCE) {
           resolvedPreview = null;
           skillSources = [];
           skillNames = [];
@@ -2372,6 +2418,7 @@ function createInstallHelpers(deps) {
       extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
     );
     const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+    const guardrails = buildCodexSkillGuardrails(commandName, runtimeCli);
 
     return [
       '---',
@@ -2387,6 +2434,14 @@ function createInstallHelpers(deps) {
       '',
       `- When this skill matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
       '- Use the runtime output as the source of truth for the next step instead of improvising a parallel workflow.',
+      ...(guardrails.length > 0
+        ? [
+            '',
+            '## Guardrails',
+            '',
+            ...guardrails
+          ]
+        : []),
       '',
       '## Original Guidance',
       '',
@@ -2402,6 +2457,7 @@ function createInstallHelpers(deps) {
       extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
     );
     const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+    const guardrails = buildCodexSkillGuardrails(commandName, runtimeCli);
 
     return [
       '---',
@@ -2417,6 +2473,14 @@ function createInstallHelpers(deps) {
       '',
       `- When this skill matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
       '- Use the runtime output as the source of truth for the next step instead of improvising a parallel workflow.',
+      ...(guardrails.length > 0
+        ? [
+            '',
+            '## Guardrails',
+            '',
+            ...guardrails
+          ]
+        : []),
       '',
       '## Original Guidance',
       '',
@@ -2459,6 +2523,38 @@ function createInstallHelpers(deps) {
     }
 
     return installed;
+  }
+
+  function buildCodexSkillGuardrails(commandName, runtimeCli) {
+    const startBrief = `${runtimeCli} start --brief`;
+    const nextBrief = `${runtimeCli} next --brief`;
+
+    if (commandName === 'start') {
+      return [
+        `- Prefer \`${startBrief}\` as the first routing check when you only need the shortest safe next action.`,
+        '- Treat `immediate.command` as authoritative. If it is not `next`, do that first instead of chaining directly into `next`, `scan`, or `do`.',
+        '- If `task_intake.recommended_entry` is present and there is no active task, create and activate the task before mutation work.'
+      ];
+    }
+
+    if (commandName === 'next') {
+      return [
+        `- Before forcing \`${commandName}\`, run \`${startBrief}\` whenever bootstrap, source intake, or task state might still be unresolved.`,
+        '- If `start --brief` returns an `immediate.command` other than `next`, follow that command first. Do not use `$emb-next` to bypass source intake, bootstrap, or task intake.',
+        `- After the entry route is clear, run \`${nextBrief}\` and obey the returned recommendation.`,
+        '- If `next.gated_by_health` is `true` or `next.command` is `health`, close the health blocker first instead of continuing into `scan` or `do`.'
+      ];
+    }
+
+    if (commandName === 'scan' || commandName === 'do') {
+      return [
+        `- Run \`${nextBrief}\` first and use it as the preflight gate before forcing \`${commandName}\`.`,
+        `- Only continue with \`${commandName}\` when \`next.command\` already equals \`${commandName}\` and \`next.gated_by_health\` is not true.`,
+        '- Never use this skill to bypass pending source intake, missing task intake, or health closure.'
+      ];
+    }
+
+    return [];
   }
 
   function installSharedCodexSkills(targetDir, target, runtimeDir, args) {

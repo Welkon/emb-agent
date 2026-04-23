@@ -30,6 +30,10 @@ default_agents:
   - hw-scout
   - fw-doer
   - bug-hunter
+default_quality_gate_skills:
+  - scope-capture
+default_quality_gate_signoffs:
+  - board-bench
 arch_review_triggers:
   - chip selection
   - device selection

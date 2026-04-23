@@ -88,7 +88,8 @@ function createSessionFlowHelpers(deps) {
     loadHandoff,
     loadContextSummary,
     enrichWithToolSuggestions,
-    getActiveTask
+    getActiveTask,
+    listSkills
   } = deps;
   const blankSelectionModeCache = new Map();
   const {
@@ -305,6 +306,13 @@ function createSessionFlowHelpers(deps) {
       typeof buildInitGuidance === 'function' && session.project_root
         ? buildInitGuidance(session.project_root)
         : null;
+    const pendingSourceIntake =
+      initGuidance && initGuidance.pending_source_intake && typeof initGuidance.pending_source_intake === 'object'
+        ? initGuidance.pending_source_intake
+        : null;
+    if (pendingSourceIntake && pendingSourceIntake.command) {
+      return true;
+    }
     if (
       initGuidance &&
       (initGuidance.project_definition_required || initGuidance.hardware_confirmation_required)
@@ -456,6 +464,41 @@ function createSessionFlowHelpers(deps) {
     return qualityGateHelpers.evaluateQualityGates(projectConfig, diagnostics);
   }
 
+  function listInstalledSkillNames() {
+    if (typeof listSkills !== 'function') {
+      return [];
+    }
+
+    try {
+      return runtime.unique(
+        listSkills()
+          .filter(item => item && item.enabled !== false)
+          .map(item => item.name)
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  function buildQualityGateInstallHints(qualityGates) {
+    const gates = qualityGates && typeof qualityGates === 'object' ? qualityGates : {};
+    const installed = new Set(listInstalledSkillNames());
+    const pendingSkills = Array.isArray(gates.pending_skills) ? gates.pending_skills : [];
+
+    return pendingSkills
+      .filter(name => !installed.has(name))
+      .map(name =>
+        `quality_gate_install=${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [
+          'skills',
+          'install',
+          '--scope',
+          'project',
+          '--skill',
+          name
+        ])}`
+      );
+  }
+
   function shouldSuggestScanTool(resolved) {
     const session = resolved.session;
     const texts = collectRoutingTexts(session);
@@ -589,6 +632,10 @@ function createSessionFlowHelpers(deps) {
     const initGuidance =
       typeof buildInitGuidance === 'function' && session.project_root
         ? buildInitGuidance(session.project_root)
+        : null;
+    const pendingSourceIntake =
+      initGuidance && initGuidance.pending_source_intake && typeof initGuidance.pending_source_intake === 'object'
+        ? initGuidance.pending_source_intake
         : null;
 
     if (hasQualityGateBlock) {
@@ -740,6 +787,19 @@ function createSessionFlowHelpers(deps) {
           ? `Active task ${taskLabel} still needs a convergence pass. Re-open ${prdPath} and run scan first before planning or mutation.`
           : `Active task ${taskLabel} already has enough context in ${prdPath}; run plan first to lock the micro-plan before execution.`,
         task_convergence: taskConvergence
+      };
+    }
+
+    if (pendingSourceIntake && pendingSourceIntake.command) {
+      const sourceLabel =
+        pendingSourceIntake.type === 'schematic'
+          ? 'schematic'
+          : pendingSourceIntake.type === 'doc'
+            ? 'hardware document'
+            : 'hardware input';
+      return {
+        command: 'scan',
+        reason: `Detected ${sourceLabel} ${pendingSourceIntake.file || ''}. Close source intake first so scan works from normalized project truth instead of raw files.`.trim()
       };
     }
 
@@ -1262,6 +1322,7 @@ function createSessionFlowHelpers(deps) {
         ? session.diagnostics.latest_skill
         : null;
     const qualityGates = getQualityGateSummary(resolved);
+    const qualityGateInstallHints = buildQualityGateInstallHints(qualityGates);
     const suggestedFlow = handoff && handoff.suggested_flow
       ? handoff.suggested_flow
       : suggestFlow(resolved);
@@ -1369,6 +1430,7 @@ function createSessionFlowHelpers(deps) {
         qualityGates.blocking_summary && qualityGates.blocking_summary !== qualityGates.status_summary
           ? `quality_gate_blocking=${qualityGates.blocking_summary}`
           : '',
+        ...qualityGateInstallHints,
         ...qualityGates.recommended_runs.map(item => `quality_gate_run=${item}`),
         ...qualityGates.recommended_signoffs.map(item => `quality_gate_signoff=${item}`),
         ...qualityGates.rejected_signoffs.map(item => `quality_gate_rejected=${item}`),
@@ -1669,12 +1731,17 @@ function createSessionFlowHelpers(deps) {
     const health = getHealthReport ? getHealthReport() : null;
     const activeTask = getActiveTask ? getActiveTask() : null;
     const gatedByHealth = shouldGateNextWithHealth(resolved, handoff, guidance.next.command, health);
+    const healthQuickstart = health && health.quickstart ? health.quickstart : null;
+    const healthGateReason =
+      healthQuickstart && healthQuickstart.stage === 'ingest-detected-input'
+        ? 'Detected hardware inputs still need source intake. Follow the health guidance to normalize the schematic or document before entering scan.'
+        : 'The base integration is not closed yet. Follow the health guidance to complete hardware truth or chip support install before entering scan.';
     const nextCommand = gatedByHealth
       ? {
           command: 'health',
-          reason: 'The base integration is not closed yet. Follow the health guidance to complete hardware truth or chip support install before entering scan',
+          reason: healthGateReason,
           health_next_commands: health && Array.isArray(health.next_commands) ? health.next_commands : [],
-          health_quickstart: health && health.quickstart ? health.quickstart : null
+          health_quickstart: healthQuickstart
         }
       : guidance.next;
     const taskConvergence = gatedByHealth ? null : guidance.task_convergence;
