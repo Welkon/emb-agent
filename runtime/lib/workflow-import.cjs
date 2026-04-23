@@ -151,6 +151,7 @@ function createWorkflowImportHelpers(deps) {
     const embeddedSubdir = segments.slice(2).join('/');
     const finalBranch = overrideBranch || embeddedBranch;
     const finalSubdir = overrideSubdir || embeddedSubdir;
+    const downloadSubdir = overrideSubdir ? '' : embeddedSubdir;
 
     return {
       provider,
@@ -158,7 +159,7 @@ function createWorkflowImportHelpers(deps) {
       subdir: finalSubdir,
       ref: finalBranch,
       host,
-      gigetSource: `${provider}:${repo}${finalSubdir ? `/${finalSubdir}` : ''}${finalBranch ? `#${finalBranch}` : ''}`
+      gigetSource: `${provider}:${repo}${downloadSubdir ? `/${downloadSubdir}` : ''}${finalBranch ? `#${finalBranch}` : ''}`
     };
   }
 
