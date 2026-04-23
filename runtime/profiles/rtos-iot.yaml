@@ -37,6 +37,10 @@ default_agents:
   - bug-hunter
   - sys-reviewer
   - release-checker
+default_quality_gate_skills:
+  - scope-capture
+default_quality_gate_signoffs:
+  - board-bench
 arch_review_triggers:
   - architecture preflight
   - system preflight

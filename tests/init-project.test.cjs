@@ -8,6 +8,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
+const workflowRegistry = require(path.join(repoRoot, 'runtime', 'lib', 'workflow-registry.cjs'));
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const { withDefaultWorkflowSourceEnv } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
@@ -163,6 +164,9 @@ test('init-project creates project defaults and defers note templates into a boo
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
     );
     const bootstrapTask = readBootstrapTask(tempProject);
+    const projectRegistry = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json'), 'utf8')
+    );
 
     assert.equal(projectConfig.project_profile, 'rtos-iot');
     assert.deepEqual(projectConfig.active_specs, ['connected-appliance']);
@@ -188,6 +192,18 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(projectConfig.integrations.szlcsc.match_type, 'fuzzy');
     assert.equal(projectConfig.integrations.szlcsc.page_size, 5);
     assert.equal(projectConfig.integrations.szlcsc.max_matches_per_component, 5);
+    assert.ok(projectRegistry.specs.some(item => item.name === 'connected-appliance'));
+    assert.ok(projectRegistry.specs.some(item => item.name === 'iot-device-focus'));
+    assert.ok(projectRegistry.specs.some(item => item.name === 'rtos-iot-focus'));
+    assert.ok(!projectRegistry.specs.some(item => item.name === 'sensor-node'));
+    assert.ok(!projectRegistry.specs.some(item => item.name === 'motor-drive'));
+    assert.ok(!projectRegistry.specs.some(item => item.name === 'baremetal-8bit-focus'));
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'connected-appliance-focus.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'iot-device-focus.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'rtos-iot-focus.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'sensor-node-focus.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'motor-drive-focus.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'baremetal-8bit-focus.md')), false);
     assert.equal(projectConfig.integrations.szlcsc.only_available, false);
     assert.equal(projectConfig.integrations.szlcsc.currency, '');
     assert.equal(projectConfig.integrations.szlcsc.timeout_ms, 15000);
@@ -201,9 +217,9 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'docs')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'docs')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.developer')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.current-task')), true);
     assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
@@ -224,6 +240,10 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), false);
     assert.match(fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'), /<!-- EMB-AGENT:START -->/);
     assert.match(fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'), /Use the `start` command when starting a new session/);
+    assert.match(
+      fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'),
+      /Treat skills, hooks, and wrappers as integration surfaces; they must not override emb-agent runtime gates/
+    );
     assert.equal(bootstrapTask.title, 'Bootstrap project notes');
     assert.equal(bootstrapTask.dev_type, 'docs');
     assert.ok(bootstrapTask.relatedFiles.includes('.emb-agent/hw.yaml'));
@@ -326,6 +346,7 @@ test('init-project honors project-local smart-pillbox spec and template', () => 
 
   try {
     const projectExtDir = runtime.initProjectLayout(tempProject);
+    workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true });
     const registryPath = path.join(projectExtDir, 'registry', 'workflow.json');
     const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
     registry.templates.push({
@@ -531,15 +552,15 @@ test('init preserves existing docs files without force', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.current-task')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workspace')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'templates')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'templates')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', '00-bootstrap-project', 'task.json')), true);
@@ -590,7 +611,7 @@ test('init returns onboarding guidance for chip support setup', () => {
   }
 });
 
-test('init scans existing project inputs and suggests hardware confirmation before doc parse', () => {
+test('init prioritizes discovered hardware PDF intake before manual hardware confirmation', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-detect-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -611,12 +632,44 @@ test('init scans existing project inputs and suggests hardware confirmation befo
     const result = JSON.parse(stdout);
 
     assert.equal(result.initialized, true);
-    assert.equal(result.bootstrap.status, 'needs-hardware-identity');
-    assert.equal(result.bootstrap.stage, 'confirm-hardware-identity');
-    assert.ok(result.bootstrap.command.includes('declare hardware --mcu <name> --package <name>'));
-    assert.match(result.bootstrap.summary, /Hardware identity.*missing/i);
+    assert.equal(result.bootstrap.status, 'needs-source-intake');
+    assert.equal(result.bootstrap.stage, 'source-intake');
+    assert.equal(result.bootstrap.command, 'ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware');
+    assert.match(result.bootstrap.summary, /Discovered hardware PDF/i);
     assert.match(result.bootstrap.summary, /\.emb-agent\/hw\.yaml/i);
-    assert.match(result.bootstrap.summary, /MCU and package/i);
+    assert.match(result.bootstrap.summary, /before confirming the MCU\/package/i);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('init prioritizes discovered schematics before manual hardware confirmation', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-schematic-detect-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  try {
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, 'docs', 'board.SchDoc'), 'fake schematic\n', 'utf8');
+    fs.writeFileSync(path.join(tempProject, 'docs', 'PMS150G.pdf'), 'PMS150G SOP8 datasheet\n', 'utf8');
+
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+    const result = JSON.parse(stdout);
+
+    assert.equal(result.initialized, true);
+    assert.equal(result.bootstrap.status, 'needs-source-intake');
+    assert.equal(result.bootstrap.stage, 'source-intake');
+    assert.equal(result.bootstrap.command, 'ingest schematic --file docs/board.SchDoc');
+    assert.match(result.bootstrap.summary, /Discovered schematic/i);
+    assert.match(result.bootstrap.summary, /\.emb-agent\/hw\.yaml/i);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

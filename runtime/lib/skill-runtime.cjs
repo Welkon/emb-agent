@@ -2725,6 +2725,54 @@ function createSkillRuntimeHelpers(deps) {
     };
   }
 
+  function buildExplicitSkillManifestEntries(normalizedManifest, selectedSkillNames) {
+    const selectedSet = new Set(uniqueStrings(selectedSkillNames));
+    return normalizedManifest.skills
+      .filter(skill => selectedSet.has(skill.name))
+      .map(skill => {
+        const relativePath = path.relative(normalizedManifest.plugin_root, skill.file_path).replace(/\\/g, '/');
+        return relativePath.startsWith('.') ? relativePath : `./${relativePath}`;
+      });
+  }
+
+  function pruneInstalledPluginPayloadToSelectedSkills(normalizedManifest, selectedSkillNames) {
+    const selectedSet = new Set(uniqueStrings(selectedSkillNames));
+    const selectedDirs = new Set(
+      normalizedManifest.skills
+        .filter(skill => selectedSet.has(skill.name))
+        .map(skill => path.dirname(skill.file_path))
+    );
+
+    normalizedManifest.skills.forEach(skill => {
+      if (selectedSet.has(skill.name)) {
+        return;
+      }
+
+      const skillFilePath = skill.file_path;
+      const skillDir = path.dirname(skillFilePath);
+      const isSkillMarkdown = path.basename(skillFilePath).toLowerCase() === 'skill.md';
+
+      if (isSkillMarkdown && !selectedDirs.has(skillDir)) {
+        removePathRecursive(skillDir);
+        return;
+      }
+
+      removePathRecursive(skillFilePath);
+    });
+  }
+
+  function rewriteInstalledPluginManifestForSelectedSkills(manifestPath, normalizedManifest, selectedSkillNames) {
+    const rawManifest = safeReadJson(manifestPath);
+    if (!isObject(rawManifest)) {
+      throw new Error(`Plugin manifest is invalid: ${manifestPath}`);
+    }
+
+    runtime.writeJson(manifestPath, {
+      ...rawManifest,
+      skills: buildExplicitSkillManifestEntries(normalizedManifest, selectedSkillNames)
+    });
+  }
+
   async function installSkillSource(tokens) {
     const parsed = parseSkillInstallArgs(tokens);
     const scopeRoot = ensureScopePluginRoot(parsed.scope);
@@ -2763,8 +2811,7 @@ function createSkillRuntimeHelpers(deps) {
       copyPathRecursive(stagingPayloadDir, path.join(installDir, PLUGIN_PAYLOAD_DIR));
 
       const installedManifestPath = path.join(installDir, PLUGIN_PAYLOAD_DIR, manifestRelativeToPayload);
-      const installedManifest = loadNormalizedPluginManifest(installedManifestPath);
-      const runtimeProvision = provisionPluginRuntime(installDir, installedManifest);
+      let installedManifest = loadNormalizedPluginManifest(installedManifestPath);
       const allSkillNames = installedManifest.skills.map(item => item.name);
       const enabledSkills = parsed.skill_names.length > 0
         ? uniqueStrings(parsed.skill_names)
@@ -2774,6 +2821,14 @@ function createSkillRuntimeHelpers(deps) {
       if (missingSkills.length > 0) {
         throw new Error(`Plugin ${installedManifest.name} does not expose skill(s): ${missingSkills.join(', ')}`);
       }
+
+      if (enabledSkills.length > 0 && enabledSkills.length < allSkillNames.length) {
+        pruneInstalledPluginPayloadToSelectedSkills(installedManifest, enabledSkills);
+        rewriteInstalledPluginManifestForSelectedSkills(installedManifestPath, installedManifest, enabledSkills);
+        installedManifest = loadNormalizedPluginManifest(installedManifestPath);
+      }
+
+      const runtimeProvision = provisionPluginRuntime(installDir, installedManifest);
 
       const state = {
         version: 1,

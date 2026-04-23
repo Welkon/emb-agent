@@ -161,6 +161,63 @@ test('health reports warn for incomplete hardware identity and fail for missing 
   }
 });
 
+test('health prioritizes discovered schematic intake before manual hardware identity', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-schematic-intake-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  const fixturePath = path.resolve(repoRoot, '..', '参考资料', 'docs', 'QP-SS26-0303电路图.SchDoc');
+  let stdout = '';
+
+  try {
+    if (!fs.existsSync(fixturePath)) {
+      throw new Error(`Missing SchDoc fixture: ${fixturePath}`);
+    }
+
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.copyFileSync(fixturePath, path.join(tempProject, 'docs', 'board.SchDoc'));
+
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    await cli.main(['init']);
+
+    stdout = '';
+    cli.main(['health']);
+    let report = JSON.parse(stdout);
+
+    assert.equal(report.checks.find(item => item.key === 'project_source_intake').status, 'warn');
+    assert.equal(report.bootstrap.current_stage, 'source-intake');
+    assert.equal(report.bootstrap.display_current_stage, 'normalize-discovered-inputs');
+    assert.equal(report.quickstart.stage, 'ingest-detected-input');
+    assert.equal(report.quickstart.display_stage, 'normalize-discovered-inputs');
+    assert.ok(report.bootstrap.next_stage.cli.includes('ingest schematic --file docs/board.SchDoc'));
+    assert.equal(report.action_card.action, 'Normalize discovered input');
+
+    stdout = '';
+    await cli.main(['bootstrap', 'run']);
+    const bootstrapRun = JSON.parse(stdout);
+
+    assert.equal(bootstrapRun.executed, true);
+    assert.equal(bootstrapRun.stage.id, 'source-intake');
+    assert.equal(bootstrapRun.result.status, 'ok');
+    assert.equal(bootstrapRun.result.domain, 'schematic');
+    assert.equal(bootstrapRun.bootstrap_after.current_stage, 'hardware-truth');
+  } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('health reports fallback session state path when primary state storage is readonly', { concurrency: false }, () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-fallback-'));
   const fallbackStateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-fallback-state-'));

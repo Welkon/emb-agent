@@ -13,6 +13,8 @@ const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
 
 const IGNORE_DIRS = new Set([
   '.git',
+  '.emb-agent',
+  'emb-agent',
   '.codex',
   '.claude',
   'node_modules',

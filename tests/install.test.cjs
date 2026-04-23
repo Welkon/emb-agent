@@ -145,6 +145,26 @@ test('installer lays down config/lib and runtime commands work', async () => {
       fs.readFileSync(path.join(tempHome, 'skills', 'emb-start', 'SKILL.md'), 'utf8'),
       /node .*emb-agent\/bin\/emb-agent\.cjs start/
     );
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-start', 'SKILL.md'), 'utf8'),
+      /Prefer `node .*emb-agent\/bin\/emb-agent\.cjs start --brief` as the first routing check/
+    );
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md'), 'utf8'),
+      /If `start --brief` returns an `immediate\.command` other than `next`, follow that command first/
+    );
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-do', 'SKILL.md'), 'utf8'),
+      /Only continue with `do` when `next\.command` already equals `do`/
+    );
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-scan', 'SKILL.md'), 'utf8'),
+      /Run `node .*emb-agent\/bin\/emb-agent\.cjs next --brief` first and use it as the preflight gate before forcing `scan`/
+    );
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-scan', 'SKILL.md'), 'utf8'),
+      /Never use this skill to bypass pending source intake, missing task intake, or health closure/
+    );
     const codexConfig = fs.readFileSync(path.join(tempHome, 'config.toml'), 'utf8');
     const codexHooks = JSON.parse(fs.readFileSync(path.join(tempHome, 'hooks.json'), 'utf8'));
     assert.doesNotMatch(codexConfig, /codex_hooks\s*=\s*true/);
@@ -177,15 +197,15 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['start']);
 
     assert.equal(fs.existsSync(sessionPath), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'AGENTS.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'CLAUDE.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'CODEX.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
 
@@ -234,6 +254,10 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const statusBeforeContext = installedCli.buildStatus();
     const startBeforeContext = installedCli.buildStartContext();
     assert.match(fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'), /# emb-agent Instructions/);
+    assert.match(
+      fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'),
+      /Avoid generic AI or project-management wording when a concrete board action, artifact, or truth file is known/
+    );
     assert.equal(nextBeforeContext.next.command, 'scan');
     assert.equal(nextBeforeContext.next.gated_by_health, false);
     assert.equal(nextBeforeContext.runtime_events[0].type, 'workflow-next');
@@ -247,7 +271,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(startBeforeContext.task_intake.status, 'blocked-by-bootstrap');
     assert.equal(startBeforeContext.task_intake.recommended_entry, 'task add <summary>');
     assert.match(startBeforeContext.task_intake.summary, /After bootstrap is ready, create a task and PRD first/i);
-    assert.ok(nextBeforeContext.injected_specs.some(item => item.name === 'project-local'));
+    assert.deepEqual(nextBeforeContext.injected_specs, []);
     assert.equal(nextBeforeContext.workflow_stage.name, 'selection');
     assert.equal(nextBeforeContext.workflow_stage.primary_command, 'scan');
     assert.match(nextBeforeContext.next.reason, /Project definition is still open/);
@@ -258,7 +282,6 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(orchestratorBeforeContext.workflow.strategy, 'inline');
     assert.equal(orchestratorBeforeContext.resolved_action, 'scan');
     assert.match(orchestratorBeforeContext.workflow.next_cli, / scan$/);
-
     installedCli.main(['prefs', 'set', 'plan_mode', 'always']);
     const nextWithForcedPlan = installedCli.buildNextContext();
     assert.equal(nextWithForcedPlan.next.command, 'plan');
@@ -281,16 +304,16 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const nextAfterPause = installedCli.buildNextContext();
     assert.equal(fs.existsSync(handoffPath), true);
     assert.equal(plan.scheduler.primary_agent, 'hw-scout');
-    assert.ok(plan.injected_specs.some(item => item.name === 'project-local'));
+    assert.deepEqual(plan.injected_specs, []);
     assert.equal(plan.agent_execution.primary_agent, 'emb-hw-scout');
     assert.equal(plan.agent_execution.mode, 'primary-recommended');
     assert.ok(plan.steps.some(item => item.includes('minimal scan')));
     assert.equal(scan.scheduler.primary_agent, 'hw-scout');
-    assert.ok(scan.injected_specs.some(item => item.name === 'project-local'));
+    assert.deepEqual(scan.injected_specs, []);
     assert.equal(scan.agent_execution.primary_agent, 'emb-hw-scout');
     assert.ok(scan.next_reads.some(item => item.includes('.emb-agent/req.yaml')));
     assert.equal(resume.summary.resume_source, 'handoff');
-    assert.ok(resume.injected_specs.some(item => item.name === 'project-local'));
+    assert.deepEqual(resume.injected_specs, []);
     assert.equal(resume.memory_summary.source, 'pause');
     assert.ok(resume.memory_summary.next_action.includes('resume irq race first'));
     assert.ok(resume.next_actions.some(item => item.includes('handoff')));
@@ -529,6 +552,10 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['profile', 'set', 'project-local']);
     const localProfileStatus = installedCli.buildStatus();
     assert.equal(localProfileStatus.project_profile, 'project-local');
+    const blockedDoBeforeTask = await captureCliJson(installedCli, ['do']);
+    assert.equal(blockedDoBeforeTask.action_card.status, 'blocked-by-task-intake');
+    assert.match(blockedDoBeforeTask.action_card.first_cli, /task add <summary>/);
+    assert.match(blockedDoBeforeTask.action_card.then_cli, /task activate <name>/);
   } catch (error) {
     console.error(error);
     throw error;
@@ -627,6 +654,143 @@ test('installer can preinstall project skill bundles during local setup', async 
   }
 });
 
+test('installer only installs selected skills from a bundle during local setup', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-skill-select-project-'));
+  const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-skill-select-bundle-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    writeFile(
+      path.join(bundleDir, '.emb-agent-plugin', 'plugin.json'),
+      JSON.stringify(
+        {
+          name: 'scope-ops-kit',
+          version: '0.2.0',
+          description: 'Scope operation skills.',
+          skills: './skills'
+        },
+        null,
+        2
+      ) + '\n'
+    );
+    writeFile(
+      path.join(bundleDir, 'skills', 'scope-connect', 'SKILL.md'),
+      [
+        '---',
+        'name: scope-connect',
+        'description: Connect to the configured oscilloscope.',
+        'execution_mode: command',
+        'command:',
+        '  - node',
+        '  - scripts/connect.cjs',
+        '---',
+        '',
+        '# scope-connect',
+        '',
+        'Connect to the scope and report the status.',
+        ''
+      ].join('\n')
+    );
+    writeFile(
+      path.join(bundleDir, 'skills', 'scope-connect', 'scripts', 'connect.cjs'),
+      [
+        "'use strict';",
+        '',
+        "process.stdout.write(JSON.stringify({ status: 'ok', connected: true }) + '\\n');",
+        ''
+      ].join('\n')
+    );
+    writeFile(
+      path.join(bundleDir, 'skills', 'scope-capture', 'SKILL.md'),
+      [
+        '---',
+        'name: scope-capture',
+        'description: Capture a waveform.',
+        'execution_mode: command',
+        'command:',
+        '  - node',
+        '  - scripts/capture.cjs',
+        '---',
+        '',
+        '# scope-capture',
+        '',
+        'Capture the active waveform and return the status.',
+        ''
+      ].join('\n')
+    );
+    writeFile(
+      path.join(bundleDir, 'skills', 'scope-capture', 'scripts', 'capture.cjs'),
+      [
+        "'use strict';",
+        '',
+        "process.stdout.write(JSON.stringify({ status: 'ok', captured: true }) + '\\n');",
+        ''
+      ].join('\n')
+    );
+
+    process.chdir(tempProject);
+    await installer.main([
+      '--codex',
+      '--local',
+      '--developer',
+      'welkon',
+      '--skill-source',
+      bundleDir,
+      '--skill',
+      'scope-capture'
+    ]);
+
+    const installedCli = require(path.join(tempProject, '.codex', 'emb-agent', 'bin', 'emb-agent.cjs'));
+    const listed = await captureCliJson(installedCli, ['skills', 'list']);
+    const listedAll = await captureCliJson(installedCli, ['skills', 'list', '--all']);
+    const runResult = await captureCliJson(installedCli, ['skills', 'run', 'scope-capture']);
+    const selectedEntryPath = path.join(tempProject, '.agents', 'skills', 'scope-capture', 'SKILL.md');
+    const unselectedEntryPath = path.join(tempProject, '.agents', 'skills', 'scope-connect', 'SKILL.md');
+    const selectedPayloadPath = path.join(
+      tempProject,
+      '.emb-agent',
+      'plugins',
+      'scope-ops-kit',
+      'payload',
+      'skills',
+      'scope-capture',
+      'SKILL.md'
+    );
+    const unselectedPayloadPath = path.join(
+      tempProject,
+      '.emb-agent',
+      'plugins',
+      'scope-ops-kit',
+      'payload',
+      'skills',
+      'scope-connect',
+      'SKILL.md'
+    );
+
+    assert.ok(listed.some(item => item.name === 'scope-capture' && item.plugin && item.plugin.name === 'scope-ops-kit'));
+    assert.ok(!listed.some(item => item.name === 'scope-connect'));
+    assert.ok(!listedAll.some(item => item.name === 'scope-connect'));
+    assert.equal(runResult.execution.mode, 'command');
+    assert.equal(runResult.command_result.status, 'ok');
+    assert.equal(runResult.command_result.parsed_output.captured, true);
+    assert.equal(fs.existsSync(selectedEntryPath), true);
+    assert.equal(fs.existsSync(unselectedEntryPath), false);
+    assert.equal(fs.existsSync(selectedPayloadPath), true);
+    assert.equal(fs.existsSync(unselectedPayloadPath), false);
+    assert.match(stdout, /Installed skill bundle: scope-ops-kit/);
+  } finally {
+    process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
+  }
+});
+
 test('installer can preconfigure project specs during local setup', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-spec-install-project-'));
   const currentCwd = process.cwd();
@@ -665,9 +829,24 @@ test('installer can preconfigure project specs during local setup', async () => 
     assert.deepEqual(projectConfig.active_specs, ['connected-appliance']);
     assert.deepEqual(status.active_specs, ['connected-appliance']);
     assert.ok(projectRegistry.specs.some(item => item.name === 'connected-appliance'));
+    assert.ok(projectRegistry.specs.some(item => item.name === 'iot-device-focus'));
+    assert.ok(!projectRegistry.specs.some(item => item.name === 'rtos-iot-focus'));
+    assert.ok(!projectRegistry.specs.some(item => item.name === 'sensor-node'));
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'connected-appliance-focus.md')),
       true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'iot-device-focus.md')),
+      true
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'rtos-iot-focus.md')),
+      false
+    );
+    assert.equal(
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'sensor-node-focus.md')),
+      false
     );
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
   } finally {

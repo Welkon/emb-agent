@@ -174,8 +174,8 @@ test('session start hook reminds active task context after clearable resume path
     assert.match(payload.hookSpecificOutput.additionalContext, /Task implement context:/);
     assert.match(payload.hookSpecificOutput.additionalContext, /emb-agent\/hw\.yaml/);
     assert.match(payload.hookSpecificOutput.additionalContext, /Core runtime protocols:/);
-    assert.match(payload.hookSpecificOutput.additionalContext, /Auto-injected workflow specs:/);
-    assert.match(payload.hookSpecificOutput.additionalContext, /project-local/);
+    assert.doesNotMatch(payload.hookSpecificOutput.additionalContext, /Auto-injected workflow specs:/);
+    assert.doesNotMatch(payload.hookSpecificOutput.additionalContext, /project-local/);
     assert.doesNotMatch(payload.hookSpecificOutput.additionalContext, /task-execution/);
     assert.doesNotMatch(payload.hookSpecificOutput.additionalContext, /Primary entrypoint: start/);
   } finally {

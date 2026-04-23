@@ -579,6 +579,54 @@ function createWorkflowImportHelpers(deps) {
     return list;
   }
 
+  function uniqueNormalizedStrings(value) {
+    return Array.from(new Set(
+      (Array.isArray(value) ? value : [])
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+    ));
+  }
+
+  function shouldImportExternalSpecEntry(entry, options = {}) {
+    const selectedSpecNames = uniqueNormalizedStrings(options.selected_specs);
+    if (selectedSpecNames.length === 0) {
+      return true;
+    }
+
+    const selectedSpecSet = new Set(selectedSpecNames);
+    if (entry && entry.selectable === true) {
+      return selectedSpecSet.has(String(entry.name || '').trim());
+    }
+
+    const applyWhen = entry && entry.apply_when && typeof entry.apply_when === 'object' && !Array.isArray(entry.apply_when)
+      ? entry.apply_when
+      : {};
+    const projectProfile = String(options.project_profile || '').trim();
+    const specTriggers = Array.isArray(applyWhen.specs)
+      ? applyWhen.specs.map(item => String(item || '').trim()).filter(Boolean)
+      : [];
+    const profileTriggers = Array.isArray(applyWhen.profiles)
+      ? applyWhen.profiles.map(item => String(item || '').trim()).filter(Boolean)
+      : [];
+
+    if (applyWhen.always === true) {
+      return true;
+    }
+    if (projectProfile && profileTriggers.includes(projectProfile)) {
+      return true;
+    }
+    if (specTriggers.some(name => selectedSpecSet.has(name))) {
+      return true;
+    }
+
+    return Boolean(
+      entry &&
+      entry.auto_inject === true &&
+      specTriggers.length === 0 &&
+      profileTriggers.length === 0
+    );
+  }
+
   function importProjectWorkflowRegistry(projectRoot, source, options = {}) {
     const force = options.force === true;
     const projectExtDir = runtime.getProjectExtDir(projectRoot);
@@ -609,6 +657,9 @@ function createWorkflowImportHelpers(deps) {
 
         mapping.forEach(({ kind, key, pathField }) => {
           (sourceRegistry[key] || []).forEach(entry => {
+            if (kind === 'spec' && !shouldImportExternalSpecEntry(entry, options)) {
+              return;
+            }
             const relativePath = String(entry[pathField] || '').trim();
             const sourcePath = sourceLayout.resolveEntrySourcePath(kind, entry);
             const targetPath = path.join(projectExtDir, relativePath);

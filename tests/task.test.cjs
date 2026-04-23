@@ -274,7 +274,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.ok(created.task.bindings.docs.some(item => item.doc_id));
     assert.ok(created.task.bindings.chip_support.some(item => item.source === 'default-support'));
     assert.ok(created.task.bindings.tools.some(item => item.tool === 'timer-calc'));
-    assert.ok(created.task.injected_specs.some(item => item.name === 'project-local'));
+    assert.deepEqual(created.task.injected_specs, []);
     assert.ok(created.task.context.implement.some(item => item.path === '.emb-agent/hw.yaml'));
     assert.ok(created.task.context.implement.some(item => item.path === 'docs/HARDWARE-LOGIC.md'));
     assert.ok(created.task.context.implement.some(item => item.path.includes('cache/docs/')));
@@ -302,7 +302,7 @@ test('task commands create activate manage context and resolve lightweight tasks
       fs.readFileSync(path.join(activated.workspace.path, '.emb-agent', '.current-task'), 'utf8').trim(),
       taskName
     );
-    assert.ok(activated.task.injected_specs.some(item => item.name === 'project-local'));
+    assert.deepEqual(activated.task.injected_specs, []);
     assert.equal(activated.task.artifacts.prd, `.emb-agent/tasks/${taskName}/prd.md`);
     assert.equal(fs.existsSync(path.join(activated.workspace.path, 'docs', 'SC8F072.pdf')), true);
     assert.equal(activated.worktree.exists, true);
@@ -348,12 +348,12 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(resume.task.worktree_path, activated.workspace.path);
     assert.equal(resume.task.artifacts.prd, `.emb-agent/tasks/${taskName}/prd.md`);
     assert.ok(resume.task.context.implement.some(item => item.path === 'src/timer.c'));
-    assert.ok(resume.injected_specs.some(item => item.name === 'project-local'));
-    assert.ok(resume.task.injected_specs.some(item => item.name === 'project-local'));
+    assert.deepEqual(resume.injected_specs, []);
+    assert.deepEqual(resume.task.injected_specs, []);
 
     const next = cli.buildNextContext();
-    assert.ok(next.injected_specs.some(item => item.name === 'project-local'));
-    assert.ok(next.task.injected_specs.some(item => item.name === 'project-local'));
+    assert.deepEqual(next.injected_specs, []);
+    assert.deepEqual(next.task.injected_specs, []);
     assert.equal(next.next.command, 'plan');
     assert.match(next.next.reason, /Active task/i);
     assert.equal(next.task_convergence.recommended_path, 'plan-first');
@@ -361,11 +361,11 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.ok(next.next_actions.some(item => item.startsWith('task_route=plan-first')));
 
     const status = cli.buildStatus();
-    assert.ok(status.injected_specs.some(item => item.name === 'project-local'));
-    assert.ok(status.active_task.injected_specs.some(item => item.name === 'project-local'));
+    assert.deepEqual(status.injected_specs, []);
+    assert.deepEqual(status.active_task.injected_specs, []);
 
     const plan = cli.buildActionOutput('plan');
-    assert.ok(plan.injected_specs.some(item => item.name === 'project-local'));
+    assert.deepEqual(plan.injected_specs, []);
 
     const blockedResolve = await captureCliJson(['task', 'resolve', taskName, 'adapter merged']);
     assert.equal(blockedResolve.status, 'aar-required');

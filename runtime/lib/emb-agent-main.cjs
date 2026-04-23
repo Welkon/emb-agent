@@ -121,6 +121,52 @@ function getProjectConfig() {
   return runtime.loadProjectConfig(resolveProjectRoot(), RUNTIME_CONFIG);
 }
 
+function hasConfiguredQualityGates(projectConfig) {
+  const gates =
+    projectConfig && projectConfig.quality_gates && typeof projectConfig.quality_gates === 'object'
+      ? projectConfig.quality_gates
+      : {};
+  return Boolean(
+    (Array.isArray(gates.required_skills) && gates.required_skills.length > 0) ||
+    (Array.isArray(gates.required_executors) && gates.required_executors.length > 0) ||
+    (Array.isArray(gates.required_signoffs) && gates.required_signoffs.length > 0)
+  );
+}
+
+function applyProfileQualityGateDefaults(profile, projectConfig, explicitProfileName = '') {
+  if (
+    !projectConfig ||
+    hasConfiguredQualityGates(projectConfig) ||
+    !String(explicitProfileName || '').trim()
+  ) {
+    return projectConfig;
+  }
+
+  const defaults =
+    profile && profile.default_quality_gates && typeof profile.default_quality_gates === 'object'
+      ? runtime.validateQualityGates(profile.default_quality_gates)
+      : null;
+  const hasDefaults =
+    defaults &&
+    (
+      defaults.required_skills.length > 0 ||
+      defaults.required_executors.length > 0 ||
+      defaults.required_signoffs.length > 0
+    );
+
+  if (!hasDefaults) {
+    return projectConfig;
+  }
+
+  return runtime.validateProjectConfig(
+    {
+      ...projectConfig,
+      quality_gates: defaults
+    },
+    RUNTIME_CONFIG
+  );
+}
+
 function normalizeSession(session, paths) {
   return runtime.normalizeSession(session, paths, RUNTIME_CONFIG, getProjectConfig());
 }
@@ -335,10 +381,12 @@ const {
 
 function resolveSession() {
   const session = loadSession();
-  const effectiveProfileName = session.project_profile || RUNTIME_CONFIG.default_profile;
+  const rawProjectConfig = getProjectConfig();
+  const explicitProfileName = session.project_profile || (rawProjectConfig && rawProjectConfig.project_profile) || '';
+  const effectiveProfileName = explicitProfileName || RUNTIME_CONFIG.default_profile;
   const profile = loadProfile(effectiveProfileName);
   const selectedSpecs = (session.active_specs || []).map(loadSelectedSpec);
-  const projectConfig = getProjectConfig();
+  const projectConfig = applyProfileQualityGateDefaults(profile, rawProjectConfig, explicitProfileName);
   const hardwareIdentity = hardwareTruthHelpers.loadHardwareTruth(runtime, session.project_root || resolveProjectRoot());
   const chipProfile = findChipProfileByModel(hardwareIdentity.model, hardwareIdentity.package);
   const recommendedSources = buildRecommendedSources(chipProfile);
@@ -444,7 +492,8 @@ const {
   loadHandoff,
   loadContextSummary,
   enrichWithToolSuggestions,
-  getActiveTask
+  getActiveTask,
+  listSkills: (...args) => listSkills(...args)
 });
 
 const {
@@ -552,6 +601,7 @@ const {
   resolveSession,
   buildToolExecutionFromRecommendation,
   ingestDocCli,
+  attachProjectCli,
   adapterSources,
   rootDir: ROOT,
   getRuntimeHost,
@@ -1254,7 +1304,10 @@ const {
   RUNTIME_CONFIG,
   resolveProjectRoot,
   resolveSession,
+  getActiveTask,
   updateSession,
+  buildNextContext,
+  buildStartContext,
   runSubAgentBridge,
   collectSubAgentBridgeJobs,
   buildActionOutput,

@@ -249,9 +249,9 @@ test('project layout migrates legacy emb-agent directory into .emb-agent', () =>
   assert.equal(fs.existsSync(path.join(currentDir, 'hw.yaml')), true);
   assert.equal(fs.existsSync(path.join(currentDir, 'cache', 'docs')), true);
   assert.equal(fs.existsSync(path.join(currentDir, 'tasks')), true);
-  assert.equal(fs.existsSync(path.join(currentDir, 'registry', 'workflow.json')), true);
-  assert.equal(fs.existsSync(path.join(currentDir, 'specs', 'project-local.md')), true);
-  assert.equal(fs.existsSync(path.join(currentDir, 'templates')), true);
+  assert.equal(fs.existsSync(path.join(currentDir, 'registry', 'workflow.json')), false);
+  assert.equal(fs.existsSync(path.join(currentDir, 'specs', 'project-local.md')), false);
+  assert.equal(fs.existsSync(path.join(currentDir, 'templates')), false);
   assert.equal(fs.existsSync(legacyDir), false);
 });
 

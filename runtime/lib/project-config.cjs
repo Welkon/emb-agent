@@ -666,6 +666,7 @@ function createProjectConfigHelpers(deps) {
         project_profile: resolved.session.project_profile,
         active_specs: resolved.session.active_specs,
         preferences: getPreferences(resolved.session),
+        quality_gates: resolved.project_config ? resolved.project_config.quality_gates : null,
         agents: resolved.effective.agents,
         review_agents: resolved.effective.review_agents,
         review_axes: resolved.effective.review_axes,
