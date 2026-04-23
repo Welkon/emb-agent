@@ -187,15 +187,17 @@ function createWorkflowImportHelpers(deps) {
 
   function downloadWorkflowRegistrySourceWithGiget(targetDir, source) {
     const execPath = hostProcess && hostProcess.execPath ? hostProcess.execPath : globalThis.process.execPath;
+    const gigetEntryPath = require.resolve('giget');
     const downloadScript = [
-      'const [source, dir, host] = process.argv.slice(1);',
-      'if (!source || !dir) {',
+      'const { pathToFileURL } = require("node:url");',
+      'const [source, dir, host, gigetEntry] = process.argv.slice(1);',
+      'if (!source || !dir || !gigetEntry) {',
       "  throw new Error('Missing giget workflow download arguments');",
       '}',
       'if (host) {',
       `  process.env.${GIGET_HOST_ENV_KEY} = "https://" + host;`,
       '}',
-      'import("giget")',
+      'import(pathToFileURL(gigetEntry).href)',
       '  .then(mod => {',
       '    const api = mod && typeof mod.downloadTemplate === "function"',
       '      ? mod',
@@ -215,7 +217,7 @@ function createWorkflowImportHelpers(deps) {
     ].join('\n');
 
     try {
-      childProcess.execFileSync(execPath, ['-e', downloadScript, source.gigetSource, targetDir, source.host || ''], {
+      childProcess.execFileSync(execPath, ['-e', downloadScript, source.gigetSource, targetDir, source.host || '', gigetEntryPath], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 30000

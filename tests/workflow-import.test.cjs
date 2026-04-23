@@ -19,10 +19,12 @@ function createMockChildProcess() {
     execFileSync(_execPath, argv) {
       const gigetSource = String(argv[2] || '');
       const targetDir = String(argv[3] || '');
+      const gigetEntryPath = String(argv[5] || '');
 
       calls.push({
         gigetSource,
-        targetDir
+        targetDir,
+        gigetEntryPath
       });
 
       fs.mkdirSync(targetDir, { recursive: true });
@@ -90,6 +92,7 @@ test('workflow import resolves remote git source with explicit subdir without do
     try {
       assert.equal(childProcess.calls.length, 1);
       assert.equal(childProcess.calls[0].gigetSource, 'gh:Welkon/emb-support');
+      assert.equal(childProcess.calls[0].gigetEntryPath, require.resolve('giget'));
       assert.equal(sourceLayout.kind, 'flat-markdown-specs');
       assert.ok(sourceLayout.registry.specs.some(item => item.name === 'connected-appliance'));
     } finally {
@@ -113,6 +116,7 @@ test('workflow import keeps embedded git subdir sources downloadable as flat mar
     try {
       assert.equal(childProcess.calls.length, 1);
       assert.equal(childProcess.calls[0].gigetSource, 'gh:Welkon/emb-support/specs#main');
+      assert.equal(childProcess.calls[0].gigetEntryPath, require.resolve('giget'));
       assert.equal(sourceLayout.kind, 'flat-markdown-specs');
       assert.ok(sourceLayout.registry.specs.some(item => item.name === 'connected-appliance'));
     } finally {
