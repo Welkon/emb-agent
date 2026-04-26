@@ -587,54 +587,101 @@ function createCliEntryHelpers(deps) {
     const advanced = Boolean(options && options.advanced);
     const compactSections = [
       {
-        title: 'Start here',
+        title: 'Workflow',
         entries: [
+          'init',
           'start',
+          'status',
           'bootstrap [run [--confirm]]',
           'next [run]',
-          'task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--package <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
+          'pause [note]',
+          'resume'
+        ]
+      },
+      {
+        title: 'Truth intake',
+        entries: [
+          'declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>]',
+          'ingest doc --file <path> [--provider mineru] [--kind datasheet] [--to hardware|requirements]',
+          'ingest schematic --file <path> [--format auto|altium-json|netlist]'
+        ]
+      },
+      {
+        title: 'Task',
+        entries: [
+          'task list',
+          'task add [--confirm] <summary> [--type implement|debug|review|investigate] [--priority P0|P1|P2|P3]',
           'task activate [--confirm] <name>',
+          'task show <name>',
+          'task resolve [--confirm] <name> [note]',
           'task worktree <list|status|show|create|cleanup> [name]'
         ]
       },
       {
-        title: 'Import truth',
+        title: 'Catalog & runtime',
         entries: [
-          'declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
-          '  [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
-          '  [--peripheral <name> --usage <text>]',
-          'ingest doc --file <path> [--provider mineru] [--kind datasheet] [--title <text>] [--pages <range>] [--language ch|en] [--ocr] [--force] [--to hardware|requirements]',
-          'ingest schematic --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force]'
+          'tool list',
+          'tool run <name> [options]',
+          'chip list',
+          'chip show <name>',
+          'skill list',
+          'skill run <name>',
+          'capability run <name>',
+          'executor run <name>'
         ]
       },
       {
-        title: 'Execute current work',
+        title: 'Support & adapter',
         entries: [
-          'capability run scan',
-          'capability run plan',
-          'capability run do',
-          'capability run debug'
+          'support status',
+          'support bootstrap [--confirm]',
+          'support sync [--all]',
+          'adapter derive [--from-project]',
+          'adapter generate [--from-project]'
         ]
       },
       {
-        title: 'Close and hand off',
+        title: 'Context & inspection',
         entries: [
-          'capability run review',
-          'capability run verify',
-          'bootstrap [run [--confirm]]',
-          'task show <name>',
-          'task resolve [--confirm] <name> [note]',
-          'pause [note]',
-          'resume',
-          'external <start|status|next|health|dispatch-next>'
+          'context show',
+          'context compress [note]',
+          'context focus get',
+          'context focus set <text>',
+          'config show',
+          'config profile list',
+          'config prefs show',
+          'session show',
+          'health'
         ]
       }
     ];
 
     const advancedSections = [
       {
+        title: 'Project setup',
+        entries: [
+          'init',
+          'config show',
+          'config set <key> <value>',
+          'config profile list',
+          'config profile show <name>',
+          'config profile set <name>',
+          'config prefs show',
+          'config prefs set <key> <value>',
+          'config prefs reset',
+          'config settings show',
+          'config settings set <key> <value>',
+          'config settings reset',
+          'project show [--effective] [--field <path>]',
+          'project set [--confirm] --field <path> --value <json-or-string>'
+        ]
+      },
+      {
         title: 'Truth and document intake',
         entries: [
+          'declare hardware [--confirm] [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
+          '  [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
+          '  [--peripheral <name> --usage <text>]',
           'ingest hardware [--confirm] [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
           '  [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
           '  [--peripheral <name> --usage <text>]',
@@ -652,19 +699,19 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Bootstrap and project state',
+        title: 'Workflow',
         entries: [
           'status',
+          'start',
           'bootstrap [run [--confirm]]',
+          'next [run]',
+          'pause [note]',
+          'pause show',
+          'pause clear',
+          'resume',
+          'resolve',
           'health',
-          'external <start|status|next|health|dispatch-next>',
           'update [check]',
-          'project show [--effective] [--field <path>]',
-          'project set [--confirm] --field <path> --value <json-or-string>',
-          'settings show',
-          'settings set <key> <value>',
-          'settings reset',
-          'config show',
           'session show',
           'session history',
           'session show [current|latest|<report-id>]',
@@ -672,36 +719,59 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Execution support and closure',
+        title: 'Catalog and runtime',
         entries: [
+          'tool list',
+          'tool show <name>',
+          'tool run <name> [options]',
+          'tool family list',
+          'tool family show <slug>',
+          'tool device list',
+          'tool device show <slug>',
+          'chip list',
+          'chip show <name>',
+          'skill list [--all]',
+          'skill show <name>',
+          'skill run <name> [--isolated] [input]',
+          'skill install [source] [--scope project|user] [--skill <name>] [--force]',
+          'skill enable <name>',
+          'skill disable <name>',
+          'skill remove <name>',
           'capability list [--all]',
           'capability show <name>',
           'capability run <name>',
           'capability materialize [<name>|all] [--force]',
-          'context compress [note]',
-          'context show',
-          'context clear',
           'executor list',
           'executor show <name>',
-          'executor run <name> [--confirm] [-- <args...>]',
-          'scan save [--confirm] <target> <summary> [--fact <text>] [--question <text>] [--read <text>]',
-          'plan save [--confirm] <summary> [--target <target>] [--risk <text>] [--step <text>] [--verify <text>]',
-          'review context',
-          'review axes',
-          'review save [--confirm] <summary> [--scope <text>] [--finding <text>] [--check <text>]',
-          'verify save [--confirm] <summary> [--target <target>] [--check <text>] [--result <text>] [--evidence <text>] [--followup <text>]',
-          'verify confirm [--confirm] <name> [note]',
-          'verify reject [--confirm] <name> [note]',
-          'note targets',
-          'note add [--confirm] <target> <summary> [--kind <kind>] [--evidence <text>] [--unverified <text>]',
-          'resolve'
+          'executor run <name> [--confirm] [-- <args...>]'
         ]
       },
       {
-        title: 'Task, skills, and memory',
+        title: 'Support and adapter',
+        entries: [
+          'support status [<name>]',
+          'support source list',
+          'support source show <name>',
+          'support source add <name> [--confirm] --type path|git --location <path-or-url> [--branch <name>] [--subdir <path>] [--disabled]',
+          'support source remove <name> [--confirm]',
+          'support bootstrap [<name>] [--confirm] [--type path|git --location <path-or-url>] [--branch <name>] [--subdir <path>] [--to project|runtime] [--force]',
+          'support sync <name> [--confirm] [--to project|runtime] [--force]',
+          'support sync --all [--confirm] [--to project|runtime] [--force]',
+          'adapter analysis init --chip <name> [--model <name>] [--vendor <name>] [--family <slug>] [--device <slug>] [--output <path>] [--force]',
+          'adapter derive [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--target project|runtime] [--force]',
+          'adapter export [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
+          'adapter publish [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
+          'adapter generate [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] --output-root <path> [--force]'
+        ]
+      },
+      {
+        title: 'Task',
         entries: [
           'task list',
           'task show <name>',
+          'task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--package <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
+          'task activate [--confirm] <name>',
+          'task resolve [--confirm] <name> [note]',
           'task set-branch [--confirm] <name> <branch>',
           'task set-base-branch [--confirm] <name> <branch>',
           'task subtask add [--confirm] <parent> <child>',
@@ -710,15 +780,37 @@ function createCliEntryHelpers(deps) {
           'task link-pr [--confirm] <name> <url> [--number <id>] [--status <state>]',
           'task context list <name> [implement|check|debug|all]',
           'task context add [--confirm] <name> <implement|check|debug> <path> [reason]',
-          'pause show',
-          'pause clear',
-          'skills list [--all]',
-          'skills show <name>',
-          'skills run <name> [--isolated] [input]',
-          'skills install [source] [--scope project|user] [--skill <name>] [--force]',
-          'skills enable <name>',
-          'skills disable <name>',
-          'skills remove <name>',
+          'task worktree list',
+          'task worktree status [name]',
+          'task worktree show <name>',
+          'task worktree create [--confirm] <name>',
+          'task worktree cleanup [--confirm] [name]',
+          'task scope infer <task-name>',
+          'task aar help',
+          'task aar scan',
+          'task aar record'
+        ]
+      },
+      {
+        title: 'Context and memory',
+        entries: [
+          'context show',
+          'context clear',
+          'context compress [note]',
+          'context focus get',
+          'context focus set <text>',
+          'context files list',
+          'context files add <path>',
+          'context files remove <path>',
+          'context files clear',
+          'context questions list',
+          'context questions add <text>',
+          'context questions remove <text>',
+          'context questions clear',
+          'context risks list',
+          'context risks add <text>',
+          'context risks remove <text>',
+          'context risks clear',
           'memory stack',
           'memory list',
           'memory show <entry>',
@@ -729,34 +821,22 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Workflow and scaffold authoring',
+        title: 'Actions and records',
         entries: [
-          'capability list [--all]',
-          'capability show <name>',
-          'capability materialize [<name>|all] [--force]',
-          'spec list',
-          'spec show <name>',
-          'workflow init [--force]',
-          'workflow list',
-          'workflow import registry <source> [--branch <name>] [--subdir <path>] [--force]',
-          'workflow show registry',
-          'workflow show <spec|template> <name>',
-          'workflow new spec <name> [--with-template [<name>]] [--output <path>] [--force]',
-          'workflow new spec <name> [--spec <name>|--always] [--with-template [<name>]] [--output <path>] [--force]',
-          'workflow new template <name> [--output <path>] [--force]',
-          'scaffold list',
-          'scaffold show <name>',
-          'scaffold install <name> [output] [--force] [KEY=VALUE ...]',
-          'profile list',
-          'profile show <name>',
-          'profile set <name>',
-          'spec add <name>',
-          'spec remove <name>',
-          'spec clear'
+          'scan save [--confirm] <target> <summary> [--fact <text>] [--question <text>] [--read <text>]',
+          'plan save [--confirm] <summary> [--target <target>] [--risk <text>] [--step <text>] [--verify <text>]',
+          'review context',
+          'review axes',
+          'review save [--confirm] <summary> [--scope <text>] [--finding <text>] [--check <text>]',
+          'verify save [--confirm] <summary> [--target <target>] [--check <text>] [--result <text>] [--evidence <text>] [--followup <text>]',
+          'verify confirm [--confirm] <name> [note]',
+          'verify reject [--confirm] <name> [note]',
+          'note targets',
+          'note add [--confirm] <target> <summary> [--kind <kind>] [--evidence <text>] [--unverified <text>]'
         ]
       },
       {
-        title: 'Delegation and chip support runtime',
+        title: 'Dispatch and orchestration',
         entries: [
           'dispatch show <action>',
           'dispatch next',
@@ -768,50 +848,40 @@ function createCliEntryHelpers(deps) {
           'orchestrate launch [next|<action>]',
           'orchestrate collect',
           'orchestrate run [next|<action>]',
-          'orchestrate show <action>',
-          'prefs show',
-          'prefs set <key> <value>',
-          'prefs reset',
-          'support status [<name>]',
-          'support source list',
-          'support source show <name>',
-          'support source add <name> [--confirm] --type path|git --location <path-or-url> [--branch <name>] [--subdir <path>] [--disabled]',
-          'support source remove <name> [--confirm]',
-          'support bootstrap [<name>] [--confirm] [--type path|git --location <path-or-url>] [--branch <name>] [--subdir <path>] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
-          'support sync <name> [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
-          'support sync --all [--confirm] [--to project|runtime] [--force] [--tool <name>] [--family <slug>] [--device <slug>] [--chip <slug>] [--match-project|--no-match-project]',
-          'adapter analysis init --chip <name> [--model <name>] [--vendor <name>] [--series <name>] [--family <slug>] [--device <slug>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--output <path>] [--force]',
-          'adapter derive [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] [--target project|runtime] [--force]',
-          'adapter export [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
-          'adapter publish [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
-          'adapter generate [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] --output-root <path> [--force]',
-          'chip list',
-          'chip show <name>'
+          'orchestrate show <action>'
         ]
       },
       {
-        title: 'Inspection and discovery',
+        title: 'Workflow and scaffold authoring',
         entries: [
-          'agents list',
-          'agents show <name>',
-          'commands list',
-          'commands list --all',
-          'commands show <name>',
-          'focus get',
-          'focus set <text>',
-          'last-files list',
-          'last-files add <path>',
-          'last-files remove <path>',
-          'last-files clear',
-          'question list',
-          'question add <text>',
-          'question remove <text>',
-          'question clear',
-          'risk list',
-          'risk add <text>',
-          'risk remove <text>',
-          'risk clear',
-          'help'
+          'workflow init [--force]',
+          'workflow list',
+          'workflow import registry <source> [--branch <name>] [--subdir <path>] [--force]',
+          'workflow show registry',
+          'workflow show <spec|template> <name>',
+          'workflow new spec <name> [--with-template [<name>]] [--output <path>] [--force]',
+          'workflow new template <name> [--output <path>] [--force]',
+          'scaffold list',
+          'scaffold show <name>',
+          'scaffold install <name> [output] [--force] [KEY=VALUE ...]',
+          'spec list',
+          'spec show <name>',
+          'spec add <name>',
+          'spec remove <name>',
+          'spec clear',
+          'help commands',
+          'help agents'
+        ]
+      },
+      {
+        title: 'External protocol',
+        entries: [
+          'external start',
+          'external status',
+          'external health',
+          'external next',
+          'external dispatch-next',
+          'external init'
         ]
       }
     ];
@@ -832,7 +902,7 @@ function createCliEntryHelpers(deps) {
       sections: advanced ? advancedSections : compactSections,
       followups: advanced
         ? []
-        : ['help advanced', 'help --all', '--help --all']
+        : ['help advanced', 'help --all']
     };
   }
 

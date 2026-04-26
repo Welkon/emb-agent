@@ -1184,13 +1184,45 @@ function createCliRouter(deps) {
       process.exit(0);
     }
 
+    function rewriteArgs(rawArgs) {
+      const [c, s, ...r] = rawArgs;
+
+      if (c === 'context' && s && ['focus', 'files', 'questions', 'risks'].includes(s)) {
+        const subMap = { focus: 'focus', files: 'last-files', questions: 'question', risks: 'risk' };
+        return [subMap[s], r[0], ...r.slice(1)];
+      }
+
+      if (c === 'config' && s && ['profile', 'prefs', 'settings'].includes(s)) {
+        const sub = r[0];
+        return [s, sub, ...r.slice(1)];
+      }
+
+      if (c === 'skill' && s) {
+        return ['skills', s, ...r];
+      }
+
+      if (c === 'help' && s && ['commands', 'agents'].includes(s)) {
+        return [s, 'list', ...r];
+      }
+
+      return rawArgs;
+    }
+
     if (args[0] === 'help' || args[0] === '--help') {
+      if (args[1] && ['commands', 'agents'].includes(args[1])) {
+        const rewritten = rewriteArgs(args);
+        const result = handleCatalogAndStateCommands(rewritten[0], rewritten[1], rewritten.slice(2));
+        if (result !== undefined) {
+          emitJson(result);
+          return;
+        }
+      }
       const advanced = args.includes('advanced') || args.includes('--all');
       emitUsage({ advanced });
       process.exit(0);
     }
 
-    const [cmd, subcmd, ...rest] = args;
+    const [cmd, subcmd, ...rest] = rewriteArgs(args);
 
     function isDefaultRemoteChipSupportBootstrapStage(stage) {
       return Boolean(
