@@ -10,7 +10,6 @@
     "commands",
     "agents",
     "runtime/bin",
-    "runtime/chips",
     "runtime/config.json",
     "runtime/hooks",
     "runtime/lib",
