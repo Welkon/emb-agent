@@ -526,7 +526,14 @@ function createCliEntryHelpers(deps) {
       nextSteps.push(`Optional: inspect deferred note targets with task show ${bootstrapTask.name}.`);
     }
 
+    const hwValidation = hardwareTruthHelpers.validateHwConfig(runtime, projectRoot);
+
     return {
+      hw_validation: hwValidation.valid ? null : {
+        valid: hwValidation.valid,
+        errors: hwValidation.errors,
+        warnings: hwValidation.warnings
+      },
       hardware_identity_present: Boolean(hardware.model),
       package_present: Boolean(hardware.package),
       declared_intent_present: Boolean(declaredIntentPresent),

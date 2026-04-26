@@ -1022,7 +1022,7 @@ function createSessionFlowHelpers(deps) {
     }
 
     const joined = collectHardwareIntentTexts(resolved).join(' ').toLowerCase();
-    return /exercise all supported|all supported .*peripheral|all peripheral|all supported tools|全部外设|所有外设|全外设/.test(joined);
+    return /exercise all supported|all supported .*peripheral|all peripheral|all supported tools/.test(joined);
   }
 
   function buildPeripheralWalkthroughActions(resolved, toolRecommendations) {

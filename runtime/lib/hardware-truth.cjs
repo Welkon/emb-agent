@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 
 function parseScalar(value) {
   const text = String(value || '').trim();
@@ -147,6 +148,74 @@ function loadHardwareTruth(runtime, projectRoot) {
   };
 }
 
+function validateHwConfig(runtime, projectRoot) {
+  const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
+  if (!fs.existsSync(hwPath)) {
+    return {
+      valid: false,
+      errors: ['hw.yaml not found. Run declare hardware to create it.'],
+      warnings: []
+    };
+  }
+
+  let hwConfig;
+  try {
+    hwConfig = runtime.parseSimpleYaml(hwPath);
+  } catch (err) {
+    return {
+      valid: false,
+      errors: [`Failed to parse hw.yaml: ${err.message}`],
+      warnings: []
+    };
+  }
+
+  const errors = [];
+  const warnings = [];
+
+  if (!hwConfig.chip || !String(hwConfig.chip).trim()) {
+    errors.push('Missing required field: chip (MCU model identifier, e.g. esp32-c3)');
+  }
+  if (!hwConfig.family || !String(hwConfig.family).trim()) {
+    errors.push('Missing required field: family (chip family, e.g. espressif, padauk)');
+  }
+
+  if (hwConfig.clock_hz !== undefined && hwConfig.clock_hz !== '') {
+    const clockHz = Number(hwConfig.clock_hz);
+    if (!Number.isFinite(clockHz) || clockHz < 0) {
+      errors.push('Invalid clock_hz: must be a non-negative integer');
+    }
+  }
+
+  if (hwConfig.datasheets !== undefined) {
+    if (Array.isArray(hwConfig.datasheets)) {
+      if (hwConfig.datasheets.length === 0) {
+        warnings.push('datasheets is empty - consider ingesting a datasheet for better guidance');
+      }
+    } else if (typeof hwConfig.datasheets === 'string') {
+      // single string is acceptable, normalize later
+    } else {
+      errors.push('datasheets must be a string or array of strings');
+    }
+  } else {
+    warnings.push('No datasheets declared. Run ingest doc to populate chip truth.');
+  }
+
+  if (hwConfig.peripherals !== undefined && !Array.isArray(hwConfig.peripherals)) {
+    errors.push('peripherals must be an array');
+  }
+
+  if (hwConfig.pins !== undefined && !Array.isArray(hwConfig.pins)) {
+    errors.push('pins must be an array of pin identifiers');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    hwConfig
+  };
+}
+
 module.exports = {
   parseScalar,
   parseScalarByKey,
@@ -154,5 +223,6 @@ module.exports = {
   readObjectList,
   normalizeSignalEntry,
   normalizePeripheralEntry,
-  loadHardwareTruth
+  loadHardwareTruth,
+  validateHwConfig
 };

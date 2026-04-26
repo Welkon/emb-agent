@@ -440,16 +440,15 @@ function parseSimpleYaml(filePath) {
     }
 
     if (line.startsWith('  - ')) {
-      if (!currentListKey) {
-        throw new Error(`Invalid YAML list item without key in ${filePath}`);
+      if (currentListKey) {
+        result[currentListKey].push(parseScalar(line.slice(4)));
       }
-      result[currentListKey].push(parseScalar(line.slice(4)));
       continue;
     }
 
     const match = line.match(/^([A-Za-z0-9_-]+):(?:\s*(.*))?$/);
     if (!match) {
-      throw new Error(`Unsupported YAML syntax in ${filePath}: ${line}`);
+      continue;
     }
 
     const key = match[1];

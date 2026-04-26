@@ -7,6 +7,8 @@ const runtimeEventHelpers = require('./runtime-events.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
 const capabilityCatalog = require('./capability-catalog.cjs');
+const pinChecker = require('./pin-checker.cjs');
+const supportLayout = require('./support-layout.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
@@ -36,22 +38,22 @@ function createTaskCommandHelpers(deps) {
     {
       id: 'new_pattern',
       flag: '--aar-new-pattern',
-      prompt: '新模式? — 用了未记录的模式或约定吗?'
+      prompt: 'New pattern? — used an undocumented pattern or convention?'
     },
     {
       id: 'new_trap',
       flag: '--aar-new-trap',
-      prompt: '新陷阱? — 遇到了不提前知道就会浪费大量时间的问题吗?'
+      prompt: 'New trap? — encountered an issue that would waste significant time if unknown?'
     },
     {
       id: 'missing_rule',
       flag: '--aar-missing-rule',
-      prompt: '缺失规则? — 因为缺少某条规则导致走了弯路吗?'
+      prompt: 'Missing rule? — took a detour because a rule was missing?'
     },
     {
       id: 'outdated_rule',
       flag: '--aar-outdated-rule',
-      prompt: '过时规则? — 发现现有规则已经不准确或不再适用吗?'
+      prompt: 'Outdated rule? — found an existing rule that is no longer accurate or applicable?'
     }
   ];
   const AAR_SKIP_REASON_ALIASES = {
@@ -64,38 +66,38 @@ function createTaskCommandHelpers(deps) {
     'refactor-no-lesson': 'no-new-lesson-refactor'
   };
   const AAR_SKIP_REASON_LABELS = {
-    'format-only': '仅格式化',
-    'comment-only': '仅注释',
-    'dependency-version-only': '仅依赖版本变更',
-    'no-new-lesson-refactor': '无新教训的重构'
+    'format-only': 'format only',
+    'comment-only': 'comment only',
+    'dependency-version-only': 'dependency version change only',
+    'no-new-lesson-refactor': 'refactor with no new lessons'
   };
   const AAR_RATIONALIZATIONS = [
     {
-      excuse: '这次任务很小,AAR 没必要',
-      rebuttal: '小任务正是教训藏身的地方。30 秒扫完,跳过比做还慢'
+      excuse: 'This task is too small, AAR is unnecessary',
+      rebuttal: 'Small tasks are where lessons hide. A 30-second scan is faster than skipping it.'
     },
     {
-      excuse: '等会话结束再一起补 AAR',
-      rebuttal: '你会忘。扫描必须在任务收尾做,不能批处理'
+      excuse: 'I will batch AAR at the end of the session',
+      rebuttal: 'You will forget. Scanning must happen at task close, not batched.'
     },
     {
-      excuse: '用户在赶时间',
-      rebuttal: '赶时间是最容易踩坑的时刻。压力是跑 AAR 的理由,不是跳过的理由'
+      excuse: 'The user is in a hurry',
+      rebuttal: 'Rushing is when you are most likely to step on traps. Pressure is a reason to run AAR, not skip it.'
     },
     {
-      excuse: '这条经验我已经知道了,不用记',
-      rebuttal: '记录是给未来的 Agent 看的,不是给现在的你'
+      excuse: 'I already know this lesson, no need to record it',
+      rebuttal: 'Records are for future agents, not for present you.'
     },
     {
-      excuse: '这个已经在现有规则里了',
-      rebuttal: '那 10 秒内就能扫完,跑了比争论快'
+      excuse: 'This is already covered by an existing rule',
+      rebuttal: 'Then the scan takes 10 seconds. Running it is faster than debating it.'
     }
   ];
   const AAR_RED_FLAGS = [
-    '发现自己在想"这次 AAR 就算了"',
-    '任务声明完成但没跑 30 秒扫描',
-    '把 gotcha 写进了 reference,但没更新对应 workflow 的完成清单',
-    '修了同一类 bug 第二次,但规则文件没动过'
+    'Catch yourself thinking "I will skip AAR this time"',
+    'Task declared complete but the 30-second scan was not run',
+    'Recorded a gotcha in reference but did not update the corresponding workflow checklist',
+    'Fixed the same class of bug a second time, but the rule file was never touched'
   ];
   const DEFAULT_TASK_PHASES = [
     { phase: 1, action: 'implement' },
@@ -897,9 +899,9 @@ function createTaskCommandHelpers(deps) {
   function buildAarGuidance() {
     return {
       protocol: [
-        '主体工作完成并验证',
-        '完成 30 秒 AAR 扫描',
-        '若任一答案为 yes, 必须完成录入并通过后才能声明任务完成'
+        'Main work completed and verified',
+        'Complete the 30-second AAR scan',
+        'If any answer is yes, recording must be completed before declaring the task done'
       ],
       skip_reasons: Object.entries(AAR_SKIP_REASON_LABELS).map(([key, label]) => ({
         id: key,
@@ -3419,7 +3421,61 @@ function createTaskCommandHelpers(deps) {
       return addTaskContext(rest.slice(1));
     }
 
+    if (subcmd === 'scope' && rest[0] === 'infer') {
+      return inferTaskScope(rest[1] || '');
+    }
+
     throw new Error(`Unknown task subcommand: ${subcmd}`);
+  }
+
+  function inferTaskScope(taskName) {
+    const projectRoot = resolveProjectRoot();
+    const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
+    if (!fs.existsSync(hwPath)) {
+      return {
+        status: 'no-hw-config',
+        summary: 'No hw.yaml found. Run declare hardware first to identify the chip.',
+        results: []
+      };
+    }
+
+    const hwConfig = runtime.parseSimpleYaml(hwPath);
+    const chipName = String(hwConfig.chip || hwConfig.model || '').trim();
+    if (!chipName) {
+      return {
+        status: 'no-chip',
+        summary: 'No chip declared in hw.yaml. Run declare hardware to specify the MCU.',
+        results: []
+      };
+    }
+
+    const adaptersDir = supportLayout.resolveBuiltInAdaptersDir(rootDir);
+    const checker = pinChecker.createPinCheckerHelpers({ fs, path });
+
+    const claimedFromHw = checker.extractClaimedPinsFromHwConfig(hwConfig);
+
+    let taskConfig = null;
+    let claimedFromTask = [];
+    if (taskName) {
+      const taskDir = path.join(getProjectExtDir(projectRoot), 'tasks', taskName);
+      const taskJsonPath = path.join(taskDir, 'task.json');
+      if (fs.existsSync(taskJsonPath)) {
+        try {
+          taskConfig = JSON.parse(fs.readFileSync(taskJsonPath, 'utf8'));
+          claimedFromTask = checker.extractClaimedPinsFromTask(taskConfig);
+        } catch {}
+      }
+    }
+
+    const allClaimed = [...new Set([...claimedFromHw, ...claimedFromTask])];
+    const result = checker.checkPinConflicts(adaptersDir, chipName, allClaimed, hwConfig, null);
+
+    return {
+      ...result,
+      hw_claimed_pins: claimedFromHw,
+      task_claimed_pins: claimedFromTask,
+      all_claimed_pins: allClaimed
+    };
   }
 
   return {
