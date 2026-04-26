@@ -155,7 +155,7 @@ test('ingest schematic parses raw SchDoc through the internal parser and keeps i
   }
 });
 
-test('ingest schematic keeps explicit controller marking in parsed data without auto-judging hardware identity', async () => {
+test('ingest schematic identifies MCU candidates and pre-fills hardware draft from schematic components', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-ingest-schematic-pmb180b-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -193,12 +193,12 @@ test('ingest schematic keeps explicit controller marking in parsed data without 
     assert.equal(ingested.agent_analysis.status, 'agent-review-required');
     assert.ok(Array.isArray(ingested.agent_analysis.candidate_components));
     assert.equal(ingested.session.last_files[0], ingested.artifacts.parsed);
-    assert.match(hardwareFacts, /vendor: ""/);
-    assert.match(hardwareFacts, /model: ""/);
+    assert.match(hardwareFacts, /vendor: "padauk"/);
+    assert.match(hardwareFacts, /model: ".+"/);
     assert.match(hardwareFacts, /package: ""/);
     assert.match(hardwareFacts, /PIR/);
     assert.match(hardwareFacts, /PWM/);
-    assert.match(hardwareFacts, /judged later by the agent from parsed\.json/);
+    assert.match(hardwareFacts, /Top MCU candidate/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

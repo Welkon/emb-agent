@@ -35,14 +35,6 @@ function createCliEntryHelpers(deps) {
     return capabilityCatalog.getCapabilityPrimaryArgs(name).join(' ');
   }
 
-  function materializeProjectCapabilities(force = false) {
-    if (!capabilityMaterializer || typeof capabilityMaterializer.materializeCapabilitySet !== 'function') {
-      return null;
-    }
-
-    return capabilityMaterializer.materializeCapabilitySet('all', { force });
-  }
-
   function loadInitHardwareTruth(projectRoot) {
     const truth = hardwareTruthHelpers.loadHardwareTruth(runtime, projectRoot);
     return {
@@ -1183,7 +1175,6 @@ function createCliEntryHelpers(deps) {
 
     if (fs.existsSync(existingProjectConfig) && !hasInitOptions) {
       initProjectLayout();
-      const capabilityMaterialization = materializeProjectCapabilities(force);
       const developer = loadInitDeveloperIdentity(resolveProjectRoot());
       const session = updateSession(current => {
         current.last_command = 'init';
@@ -1201,7 +1192,6 @@ function createCliEntryHelpers(deps) {
         project_profile: session.project_profile,
         active_specs: session.active_specs,
         developer: session.developer,
-        capability_materialization: capabilityMaterialization,
         bootstrap_task: guidance.bootstrap_task || null,
         bootstrap
       };
@@ -1209,7 +1199,6 @@ function createCliEntryHelpers(deps) {
 
     const attached = attachProjectCli.attachProject(rest);
     initProjectLayout();
-    const capabilityMaterialization = materializeProjectCapabilities(force);
     const developer = loadInitDeveloperIdentity(resolveProjectRoot());
     const session = updateSession(current => {
       current.last_command = 'init';
@@ -1225,7 +1214,6 @@ function createCliEntryHelpers(deps) {
       ...attached,
       initialized: true,
       init_alias: aliasUsed || 'init',
-      capability_materialization: capabilityMaterialization,
       bootstrap_task: guidance.bootstrap_task || null,
       pending_source_intake: guidance.pending_source_intake || null,
       bootstrap,

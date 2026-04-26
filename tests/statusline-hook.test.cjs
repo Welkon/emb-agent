@@ -75,7 +75,7 @@ test('statusline hook summarizes current task, branch, and developer', () => {
   assert.match(output, /in_progress/);
   assert.match(output, /Claude Sonnet/);
   assert.match(output, /feat\/statusline/);
-  assert.match(output, /ckpt/);
+  assert.match(output, /snapshot/);
   assert.match(output, /pkg:fw/);
   assert.match(output, /felix/);
   assert.match(output, /1 task\(s\)/);
@@ -117,5 +117,5 @@ test('statusline hook warns when the latest session checkpoint is from another b
   });
 
   assert.match(output, /feat\/current/);
-  assert.match(output, /ckpt!/);
+  assert.match(output, /snapshot!/);
 });
