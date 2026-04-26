@@ -248,6 +248,7 @@ function normalizeComponent(input) {
     comment: ensureString(input.comment || input.description || ''),
     library_ref: ensureString(input.libref || input.library_ref || input.symbol || ''),
     footprint: normalizePackage(input.footprint || input.package || input.pattern || ''),
+    datasheet: ensureString(input.datasheet || ''),
     pins: makeArray(input.pins).map(pin => ({
       number: ensureString(pin.number || pin.pin || ''),
       name: ensureString(pin.name || pin.label || ''),
@@ -433,7 +434,7 @@ function isUnnamedNet(name) {
   return /^UNNAMED_NET_\d+$/i.test(String(name || ''));
 }
 
-function buildHardwareDraft(sourcePath, parsed) {
+function buildHardwareDraft(sourcePath, parsed, mcuCandidates) {
   const components = parsed.components || [];
   const nets = parsed.nets || [];
   const namedNets = runtime.unique(
@@ -442,22 +443,25 @@ function buildHardwareDraft(sourcePath, parsed) {
       .filter(Boolean)
       .filter(name => !isUnnamedNet(name))
   );
+  const topCandidate = (mcuCandidates && mcuCandidates.length > 0) ? mcuCandidates[0] : null;
   const truths = runtime.unique([
     `Normalized schematic source: ${sourcePath}`,
     `Normalized ${components.length} components and ${nets.length} nets from the schematic input`,
-    namedNets.length > 0 ? `Named nets extracted: ${namedNets.join(', ')}` : 'No named nets were extracted from the schematic input'
-  ]);
+    namedNets.length > 0 ? `Named nets extracted: ${namedNets.join(', ')}` : 'No named nets were extracted from the schematic input',
+    topCandidate ? `Top MCU candidate: ${topCandidate.designator} (${topCandidate.libref || topCandidate.value || 'unknown model'}, ${topCandidate.footprint || 'unknown package'}, score=${topCandidate.score})` : ''
+  ].filter(Boolean));
   const unknowns = runtime.unique([
     'Component roles, controller identity, and signal direction should be judged later by the agent from parsed.json',
     components.length > 0 ? '' : 'No components were normalized from the schematic input',
-    nets.length > 0 ? '' : 'No nets were normalized from the schematic input'
+    nets.length > 0 ? '' : 'No nets were normalized from the schematic input',
+    !topCandidate ? 'No MCU candidate could be identified from the schematic components' : ''
   ].filter(Boolean));
 
   return {
     mcu: {
-      vendor: '',
-      model: '',
-      package: ''
+      vendor: topCandidate ? (topCandidate.vendor_guess || '') : '',
+      model: topCandidate ? (topCandidate.libref || topCandidate.value || '') : '',
+      package: topCandidate ? (topCandidate.footprint || '') : ''
     },
     signals: [],
     peripherals: [],
@@ -465,8 +469,161 @@ function buildHardwareDraft(sourcePath, parsed) {
     constraints: [],
     unknowns,
     sources: [sourcePath],
-    component_refs: []
+    component_refs: [],
+    mcu_candidates: mcuCandidates || []
   };
+}
+
+const MCU_PATTERNS = [
+  { pattern: /\bESP(?:32|8266)(?:-(?:C|S|H|P)\d)?\b/i, vendor: 'espressif' },
+  { pattern: /\bESP32-[A-Z]\d\b/i, vendor: 'espressif' },
+  { pattern: /\bSTM(?:32|8|32F|32L|32G|32H|32W|32U)\w*\b/i, vendor: 'stmicro' },
+  { pattern: /\bnRF(?:51|52|53|54|91)\w*\b/i, vendor: 'nordic' },
+  { pattern: /\bAT(?:mega|tiny|SAM|89|86)\w*\b/i, vendor: 'microchip' },
+  { pattern: /\bPIC(?:12|16|18|24|32|33)\w*\b/i, vendor: 'microchip' },
+  { pattern: /\bMSP430\w*\b/i, vendor: 'ti' },
+  { pattern: /\bCC(?:13|25|26|32)\w*\b/i, vendor: 'ti' },
+  { pattern: /\bTM4C\w*\b/i, vendor: 'ti' },
+  { pattern: /\bLPC\d{4}\w*\b/i, vendor: 'nxp' },
+  { pattern: /\bMK\d{2}\w*\b/i, vendor: 'nxp' },
+  { pattern: /\bGD32\w*\b/i, vendor: 'gigadevice' },
+  { pattern: /\bCH(?:32|55|57|58)\w*\b/i, vendor: 'wch' },
+  { pattern: /\bPM[CS]\w*\b/i, vendor: 'padauk' },
+  { pattern: /\bSC(?:8|32)\w*\b/i, vendor: 'scmcu' },
+  { pattern: /\bHC32\w*\b/i, vendor: 'hdsc' },
+  { pattern: /\bMM32\w*\b/i, vendor: 'mindmotion' },
+  { pattern: /\bBL(?:60|61|70)\w*\b/i, vendor: 'bouffalo' },
+  { pattern: /\bBK\d{4}\w*\b/i, vendor: 'beken' },
+  { pattern: /\bRP(?:2040|2350)\w*\b/i, vendor: 'raspberrypi' },
+  { pattern: /\bF1C\w*\b/i, vendor: 'allwinner' }
+];
+
+const MCU_PACKAGE_PATTERNS = [
+  /\b(?:L?QFP|TQFP|VQFP|HTQFP)[-]?\d*\b/i,
+  /\b(?:QFN|DQFN|VQFN|UQFN|HVQFN)[-]?\d*\b/i,
+  /\b(?:BGA|FBGA|LGA|WLCSP)[-]?\d*\b/i,
+  /\bSOP-(?:1[6-9]|[2-9]\d)\d*\b/i,
+  /\b(?:SSOP|TSSOP)-\d+\b/i,
+  /\b(?:SOIC)-\d+\b/i
+];
+
+const MCU_KEYWORD_PATTERN = /\b(?:MCU|microcontroller|SoC|processor|controller|wireless\s*MCU|BLE\s*SoC)\b/i;
+const PASSIVE_DESIGNATOR_RE = /^[Rr]\d+$/;
+const CAP_DESIGNATOR_RE = /^[Cc]\d+$/;
+const INDUCTOR_DESIGNATOR_RE = /^[Ll]\d+$/;
+const CONNECTOR_DESIGNATOR_RE = /^[JP]\d+$/;
+const CRYSTAL_DESIGNATOR_RE = /^[XY]\d+$/;
+const FUSE_DESIGNATOR_RE = /^[Ff]\d+$/;
+const TESTPOINT_RE = /^TP\d+$/i;
+const IC_DESIGNATOR_RE = /^[Uu]\d+$/;
+const MAYBE_IC_DESIGNATOR_RE = /^[DM]\d+$/;
+const RESISTOR_VALUE_RE = /^\d+\.?\d*\s*[KkMm]\s*(?:ohm|Ω|R)?$/;
+const CAPACITOR_VALUE_RE = /^\d+\.?\d*\s*(?:[pnuμ]?[Ff]|farad)$/;
+
+function identifyMcuCandidates(components) {
+  if (!components || components.length === 0) {
+    return [];
+  }
+
+  const candidates = [];
+
+  for (const component of components) {
+    const designator = component.designator || '';
+    const value = component.value || '';
+    const comment = component.comment || '';
+    const libref = component.library_ref || '';
+    const footprint = component.footprint || '';
+    const pinCount = (component.pins || []).length;
+    const datasheet = component.datasheet || '';
+
+    let score = 0;
+    const reasons = [];
+    let matchedVendor = '';
+
+    if (IC_DESIGNATOR_RE.test(designator)) {
+      score += 10;
+      reasons.push('IC designator (U)');
+    } else if (MAYBE_IC_DESIGNATOR_RE.test(designator)) {
+      score += 3;
+      reasons.push('possible IC designator');
+    }
+
+    if (PASSIVE_DESIGNATOR_RE.test(designator) ||
+        CAP_DESIGNATOR_RE.test(designator) ||
+        INDUCTOR_DESIGNATOR_RE.test(designator) ||
+        CONNECTOR_DESIGNATOR_RE.test(designator) ||
+        CRYSTAL_DESIGNATOR_RE.test(designator) ||
+        FUSE_DESIGNATOR_RE.test(designator) ||
+        TESTPOINT_RE.test(designator)) {
+      score -= 20;
+      reasons.push('passive/connector designator');
+    }
+
+    if (pinCount >= 48) {
+      score += 20;
+      reasons.push(`high pin count (${pinCount})`);
+    } else if (pinCount >= 20) {
+      score += 15;
+      reasons.push(`medium-high pin count (${pinCount})`);
+    } else if (pinCount >= 8) {
+      score += 8;
+      reasons.push(`moderate pin count (${pinCount})`);
+    } else if (pinCount >= 3 && pinCount <= 4) {
+      score -= 5;
+      reasons.push('low pin count');
+    } else if (pinCount <= 2) {
+      score -= 15;
+      reasons.push('passive pin count');
+    }
+
+    const searchText = `${value} ${libref} ${comment}`;
+    for (const { pattern, vendor } of MCU_PATTERNS) {
+      if (pattern.test(searchText)) {
+        score += 25;
+        matchedVendor = vendor;
+        reasons.push(`known MCU pattern: ${vendor}`);
+        break;
+      }
+    }
+
+    if (MCU_PACKAGE_PATTERNS.some(p => p.test(footprint))) {
+      score += 10;
+      reasons.push('MCU-like package');
+    }
+
+    if (MCU_KEYWORD_PATTERN.test(searchText)) {
+      score += 15;
+      reasons.push('MCU keyword');
+    }
+
+    if (RESISTOR_VALUE_RE.test(value) || CAPACITOR_VALUE_RE.test(value)) {
+      score -= 10;
+      reasons.push('passive-like value');
+    }
+
+    if (datasheet) {
+      score += 5;
+      reasons.push('has datasheet');
+    }
+
+    if (score > 0) {
+      candidates.push({
+        designator,
+        value,
+        comment,
+        libref,
+        footprint,
+        pin_count: pinCount,
+        score,
+        vendor_guess: matchedVendor,
+        reasons,
+        datasheet
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates.slice(0, 5);
 }
 
 function countNamedNets(parsed) {
@@ -475,7 +632,7 @@ function countNamedNets(parsed) {
     .filter(Boolean).length;
 }
 
-function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts) {
+function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts, mcuCandidates) {
   const components = makeArray(parsed && parsed.components);
   const candidateComponents = components
     .filter(component =>
@@ -496,12 +653,15 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts) {
       package: ensureString(component.package || component.footprint),
       datasheet: ensureString(component.datasheet)
     }));
+  const topMcuCandidates = (mcuCandidates || []).slice(0, 3);
 
   return {
     required: true,
     status: 'agent-review-required',
     recommended_agent: 'emb-hw-scout',
-    summary: 'Let emb-hw-scout inspect the normalized schematic before writing controller identity, signal roles, or peripheral truth into hw.yaml.',
+    summary: topMcuCandidates.length > 0
+      ? `MCU candidates identified: ${topMcuCandidates.map(c => `${c.designator} (${c.libref || c.value || '?'})`).join(', ')}. Let emb-hw-scout inspect the normalized schematic before writing controller identity into hw.yaml.`
+      : 'Let emb-hw-scout inspect the normalized schematic before writing controller identity, signal roles, or peripheral truth into hw.yaml.',
     inputs: [
       artifacts.parsed,
       artifacts.hardware_facts,
@@ -511,9 +671,11 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts) {
       components: components.length,
       named_nets: countNamedNets(parsed),
       components_with_package: components.filter(item => ensureString(item.package || item.footprint)).length,
-      components_with_datasheet: components.filter(item => ensureString(item.datasheet)).length
+      components_with_datasheet: components.filter(item => ensureString(item.datasheet)).length,
+      mcu_candidates_found: topMcuCandidates.length
     },
     candidate_components: candidateComponents,
+    mcu_candidates: topMcuCandidates,
     confirmation_targets: [
       'mcu.vendor',
       'mcu.model',
@@ -527,7 +689,9 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts) {
       'Propose confirmation candidates instead of writing truth directly.',
       'List what still needs datasheet, BOM, board photo, or manual confirmation.'
     ],
-    cli_hint: `Ask emb-hw-scout to inspect ${artifacts.parsed} and ${artifacts.hardware_facts} first.`
+    cli_hint: topMcuCandidates.length > 0
+      ? `Top MCU candidates from schematic: ${topMcuCandidates.map(c => c.designator).join(', ')}. Ask emb-hw-scout to inspect ${artifacts.parsed} and ${artifacts.hardware_facts} to confirm.`
+      : `Ask emb-hw-scout to inspect ${artifacts.parsed} and ${artifacts.hardware_facts} first.`
   };
 }
 
@@ -590,7 +754,8 @@ function ingestSchematic(argv, options) {
           ? parseAltiumRaw(sourceBuffer)
           : parsePlainText(sourceText);
 
-  const hardwareDraft = buildHardwareDraft(relativePath, parsed);
+  const mcuCandidates = identifyMcuCandidates(parsed.components || []);
+  const hardwareDraft = buildHardwareDraft(relativePath, parsed, mcuCandidates);
   const componentRefs = [];
   const signalCandidates = [];
   const artifacts = {
@@ -600,6 +765,9 @@ function ingestSchematic(argv, options) {
     hardware_facts_json: path.relative(projectRoot, artifactPaths.hardwareJson).replace(/\\/g, '/'),
     source: path.relative(projectRoot, artifactPaths.sourceJson).replace(/\\/g, '/')
   };
+  const topCandidateLabel = mcuCandidates.length > 0
+    ? `Top MCU candidate: ${mcuCandidates[0].designator} (${mcuCandidates[0].libref || mcuCandidates[0].value || 'unknown'}, score=${mcuCandidates[0].score})`
+    : '';
   const summary = {
     ...buildAnalysisOnlySemantics(artifacts),
     status: 'ok',
@@ -616,14 +784,16 @@ function ingestSchematic(argv, options) {
       components: (parsed.components || []).length,
       nets: (parsed.nets || []).length,
       signal_candidates: signalCandidates.length,
-      component_ref_candidates: componentRefs.length
+      component_ref_candidates: componentRefs.length,
+      mcu_candidates: mcuCandidates.length
     },
+    mcu_candidates: mcuCandidates,
     component_refs: componentRefs,
     signal_candidates: signalCandidates,
     next_steps: [
       `Use the generated hardware draft as a starting point before editing ${runtime.getProjectAssetRelativePath('hw.yaml')}`,
-      `Inspect ${path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/')} and let the agent judge controller, signals, and peripherals from the normalized data`
-    ],
+      topCandidateLabel || `Inspect ${path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/')} and let the agent judge controller, signals, and peripherals from the normalized data`
+    ].filter(Boolean),
     cache_dir: path.relative(projectRoot, cacheDir).replace(/\\/g, '/'),
     artifacts,
     agent_analysis: null,
@@ -633,7 +803,7 @@ function ingestSchematic(argv, options) {
       path.relative(projectRoot, artifactPaths.summaryJson).replace(/\\/g, '/')
     ]
   };
-  summary.agent_analysis = buildAgentAnalysisHandoff(relativePath, parsed, summary.artifacts);
+  summary.agent_analysis = buildAgentAnalysisHandoff(relativePath, parsed, summary.artifacts, mcuCandidates);
 
   runtime.writeJson(artifactPaths.sourceJson, {
     source_path: relativePath,
