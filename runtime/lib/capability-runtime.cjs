@@ -171,6 +171,16 @@ function createCapabilityRuntimeHelpers(deps) {
     const definition = capabilityCatalog.requireCapabilityDefinition(name, {
       include_runtime_surfaces: true
     });
+
+    if (
+      definition.materializable &&
+      definition.materialization &&
+      capabilityMaterializer &&
+      typeof capabilityMaterializer.materializeCapability === 'function'
+    ) {
+      capabilityMaterializer.materializeCapability(definition.name, { force: false });
+    }
+
     const skipSessionUpdate = options.skip_session_update === true;
     const sessionCommand = String(options.session_command || `capability run ${definition.name}`).trim();
 

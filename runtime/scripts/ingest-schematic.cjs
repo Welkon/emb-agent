@@ -9,6 +9,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const schdocParser = require(path.join(ROOT, 'lib', 'schdoc-parser.cjs'));
+const attachProject = require(path.join(ROOT, 'scripts', 'attach-project.cjs'));
 
 const RAW_ALTIUM_EXTS = new Set(['.schdoc']);
 const JSON_EXTS = new Set(['.json']);
@@ -19,8 +20,9 @@ function usage() {
   process.stdout.write(
     [
       'ingest-schematic usage:',
-      '  node scripts/ingest-schematic.cjs --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force]',
+      '  node scripts/ingest-schematic.cjs --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force] [--confirm-mcu <index>]',
       '  node scripts/ingest-schematic.cjs --file docs/board.json --format altium-json',
+      '  node scripts/ingest-schematic.cjs --file docs/board.json --format altium-json --confirm-mcu 0',
       '  node scripts/ingest-schematic.cjs --file docs/netlist.txt --format netlist'
     ].join('\n') + '\n'
   );
@@ -33,6 +35,7 @@ function parseArgs(argv) {
     format: 'auto',
     title: '',
     force: false,
+    confirmMcu: -1,
     help: false
   };
 
@@ -65,6 +68,19 @@ function parseArgs(argv) {
     }
     if (token === '--force') {
       result.force = true;
+      continue;
+    }
+    if (token === '--confirm-mcu') {
+      const raw = argv[index + 1];
+      if (raw === undefined || raw === '') {
+        throw new Error('Missing index after --confirm-mcu');
+      }
+      const parsed = parseInt(raw, 10);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error('--confirm-mcu expects a non-negative integer index');
+      }
+      result.confirmMcu = parsed;
+      index += 1;
       continue;
     }
 
@@ -705,6 +721,104 @@ function getArtifactPaths(projectRoot, cacheDir) {
   };
 }
 
+function confirmMcuToHardware(projectRoot, candidate, schematicPath, force) {
+  const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
+
+  if (!fs.existsSync(hwPath)) {
+    const templatePath = path.join(ROOT, 'templates', 'hw.yaml.tpl');
+    if (!fs.existsSync(templatePath)) {
+      throw new Error('hw.yaml template not found; cannot create .emb-agent/hw.yaml');
+    }
+    let templateContent = String(fs.readFileSync(templatePath, 'utf8') || '');
+    templateContent = templateContent
+      .replace(/\{\{MCU_NAME\}\}/g, candidate.libref || candidate.value || '')
+      .replace(/\{\{BOARD_NAME\}\}/g, '')
+      .replace(/\{\{TARGET_NAME\}\}/g, '')
+      .replace(/\{\{SIGNAL_1\}\}/g, '')
+      .replace(/\{\{PIN_1\}\}/g, '')
+      .replace(/\{\{DIR_1\}\}/g, '')
+      .replace(/\{\{STATE_1\}\}/g, '')
+      .replace(/\{\{NOTE_1\}\}/g, '')
+      .replace(/\{\{SIGNAL_2\}\}/g, '')
+      .replace(/\{\{PIN_2\}\}/g, '')
+      .replace(/\{\{DIR_2\}\}/g, '')
+      .replace(/\{\{STATE_2\}\}/g, '')
+      .replace(/\{\{NOTE_2\}\}/g, '');
+    fs.mkdirSync(path.dirname(hwPath), { recursive: true });
+    fs.writeFileSync(hwPath, templateContent, 'utf8');
+  }
+
+  let content = runtime.readText(hwPath);
+
+  content = attachProject.replaceScalarLine(content, '  vendor: ', candidate.vendor_guess || '', force);
+  content = attachProject.replaceScalarLine(content, '  model: ', candidate.libref || candidate.value || '', force);
+  content = attachProject.replaceScalarLine(content, '  package: ', candidate.footprint || '', force);
+
+  const schematicSources = readObjectListForSources(content, '  schematic:', '    ');
+  const schematicRelPath = schematicPath.replace(/\\/g, '/');
+  if (!schematicSources.includes(schematicRelPath)) {
+    schematicSources.push(schematicRelPath);
+    content = replaceObjectListBlockForSources(content, '  schematic:', '    ', schematicSources);
+  }
+
+  fs.writeFileSync(hwPath, content.endsWith('\n') ? content : `${content}\n`, 'utf8');
+
+  return {
+    target: runtime.getProjectAssetRelativePath('hw.yaml'),
+    updated: {
+      vendor: candidate.vendor_guess || '',
+      model: candidate.libref || candidate.value || '',
+      package: candidate.footprint || '',
+      schematic_source: schematicRelPath
+    }
+  };
+}
+
+function readObjectListForSources(content, keyLine, listIndent) {
+  const lines = String(content || '').split(/\r?\n/);
+  const start = lines.findIndex(line => line.trimStart() === keyLine.trimStart());
+  if (start === -1) {
+    return [];
+  }
+
+  const items = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim()) {
+      continue;
+    }
+    if (!line.startsWith(listIndent)) {
+      break;
+    }
+    const value = line.replace(`${listIndent}- `, '').trim();
+    if (value && value !== '""' && value !== "''") {
+      items.push(value.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1'));
+    }
+  }
+
+  return items;
+}
+
+function replaceObjectListBlockForSources(content, keyLine, listIndent, values) {
+  const lines = String(content || '').split(/\r?\n/);
+  const start = lines.findIndex(line => line.trimStart() === keyLine.trimStart());
+  if (start === -1) {
+    return content;
+  }
+
+  let end = start + 1;
+  while (end < lines.length && lines[end].startsWith(listIndent)) {
+    end += 1;
+  }
+
+  const rendered = values.length > 0
+    ? values.map(value => `${listIndent}- ${JSON.stringify(value)}`)
+    : [`${listIndent}- ""`];
+
+  lines.splice(start + 1, end - (start + 1), ...rendered);
+  return lines.join('\n');
+}
+
 function ingestSchematic(argv, options) {
   const args = parseArgs(argv || []);
   if (args.help) {
@@ -734,7 +848,7 @@ function ingestSchematic(argv, options) {
 
   runtime.ensureDir(getSchematicCacheRoot(projectRoot));
 
-  if (!args.force && fs.existsSync(artifactPaths.summaryJson) && fs.existsSync(artifactPaths.hardwareJson)) {
+  if (!args.force && args.confirmMcu < 0 && fs.existsSync(artifactPaths.summaryJson) && fs.existsSync(artifactPaths.hardwareJson)) {
     const cached = runtime.readJson(artifactPaths.summaryJson);
     return {
       ...normalizeSchematicResult(cached),
@@ -756,6 +870,22 @@ function ingestSchematic(argv, options) {
 
   const mcuCandidates = identifyMcuCandidates(parsed.components || []);
   const hardwareDraft = buildHardwareDraft(relativePath, parsed, mcuCandidates);
+
+  let confirmResult = null;
+  if (args.confirmMcu >= 0) {
+    if (args.confirmMcu >= mcuCandidates.length) {
+      throw new Error(
+        `--confirm-mcu index ${args.confirmMcu} out of range; only ${mcuCandidates.length} candidate(s) available`
+      );
+    }
+    confirmResult = confirmMcuToHardware(
+      projectRoot,
+      mcuCandidates[args.confirmMcu],
+      relativePath,
+      args.force || true
+    );
+  }
+
   const componentRefs = [];
   const signalCandidates = [];
   const artifacts = {
@@ -804,6 +934,13 @@ function ingestSchematic(argv, options) {
     ]
   };
   summary.agent_analysis = buildAgentAnalysisHandoff(relativePath, parsed, summary.artifacts, mcuCandidates);
+  if (confirmResult) {
+    summary.confirmed_mcu = {
+      index: args.confirmMcu,
+      candidate: mcuCandidates[args.confirmMcu],
+      written: confirmResult
+    };
+  }
 
   runtime.writeJson(artifactPaths.sourceJson, {
     source_path: relativePath,

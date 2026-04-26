@@ -533,7 +533,8 @@ function shouldAttemptDefaultWorkflowImport(initOptions, options, workflowCatalo
 
 function prepareProjectWorkflowSetup(projectRoot, args, options = {}) {
   const initOptions = args || {};
-  runtime.initProjectLayout(projectRoot);
+  const projectExtDir = runtime.initProjectLayout(projectRoot);
+  workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true });
 
   let workflowRegistryImport = initOptions.registry
     ? workflowImport.importProjectWorkflowRegistry(projectRoot, initOptions.registry, {
