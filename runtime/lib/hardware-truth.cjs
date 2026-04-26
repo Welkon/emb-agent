@@ -153,7 +153,7 @@ function validateHwConfig(runtime, projectRoot) {
   if (!fs.existsSync(hwPath)) {
     return {
       valid: false,
-      errors: ['hw.yaml not found. Run declare hardware to create it.'],
+      errors: ['.emb-agent/hw.yaml not found. Run declare hardware to create it.'],
       warnings: []
     };
   }
@@ -164,7 +164,7 @@ function validateHwConfig(runtime, projectRoot) {
   } catch (err) {
     return {
       valid: false,
-      errors: [`Failed to parse hw.yaml: ${err.message}`],
+      errors: [`Failed to parse .emb-agent/hw.yaml: ${err.message}`],
       warnings: []
     };
   }

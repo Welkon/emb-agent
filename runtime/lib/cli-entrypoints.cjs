@@ -599,7 +599,7 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Truth intake',
+        title: 'Project config',
         entries: [
           'declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>]',
           'ingest doc --file <path> [--provider mineru] [--kind datasheet] [--to hardware|requirements]',
@@ -677,7 +677,7 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Truth and document intake',
+        title: 'Document and hardware intake',
         entries: [
           'declare hardware [--confirm] [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
           '  [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
@@ -786,7 +786,7 @@ function createCliEntryHelpers(deps) {
           'task worktree create [--confirm] <name>',
           'task worktree cleanup [--confirm] [name]',
           'task scope infer <task-name>',
-          'task aar help',
+          'task aar help (After Action Review)',
           'task aar scan',
           'task aar record'
         ]

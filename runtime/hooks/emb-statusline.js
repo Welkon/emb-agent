@@ -194,12 +194,12 @@ function formatContextPercent(raw) {
     return 'ctx 0%';
   }
   if (value >= 90) {
-    return `ctx ${colorize(31, `${Math.round(value)}%`)}`;
+    return `context ${colorize(31, `${Math.round(value)}%`)}`;
   }
   if (value >= 70) {
-    return `ctx ${colorize(33, `${Math.round(value)}%`)}`;
+    return `context ${colorize(33, `${Math.round(value)}%`)}`;
   }
-  return `ctx ${colorize(32, `${Math.round(value)}%`)}`;
+  return `context ${colorize(32, `${Math.round(value)}%`)}`;
 }
 
 function formatDuration(rawMs) {
@@ -252,11 +252,11 @@ function buildStatusLine(input) {
   }
   if (sessionCheckpoint.present) {
     if (sessionCheckpoint.branch_status === 'mismatch') {
-      infoParts.push(colorize(33, 'ckpt!'));
+      infoParts.push(colorize(33, 'snapshot!'));
     } else if (sessionCheckpoint.branch_status === 'match') {
-      infoParts.push(colorize(32, 'ckpt'));
+      infoParts.push(colorize(32, 'snapshot'));
     } else {
-      infoParts.push(colorize(90, 'ckpt?'));
+      infoParts.push(colorize(90, 'snapshot?'));
     }
   }
   const packageName = task && task.package
@@ -275,6 +275,15 @@ function buildStatusLine(input) {
 
   const lines = [];
 
+  const stateLabels = {
+    unknown: 'no hardware',
+    hw_declared: 'chip identified',
+    datasheet_ingested: 'datasheet read',
+    bootstrap_ready: 'tools ready',
+    implementing: 'building',
+    board_verified: 'verified',
+    resolved: 'done'
+  };
   const stateColors = {
     unknown: 31,
     hw_declared: 33,
@@ -285,7 +294,8 @@ function buildStatusLine(input) {
     resolved: 32
   };
   const stateColor = stateColors[workflowState] || 90;
-  lines.push(`${colorize(stateColor, `[${workflowState}]`)}`);
+  const stateLabel = stateLabels[workflowState] || workflowState;
+  lines.push(`${colorize(stateColor, `[${stateLabel}]`)}`);
 
   if (task) {
     lines.push(`${colorize(36, `[${task.priority || 'P2'}]`)} ${task.title} ${colorize(33, `(${task.status || 'unknown'})`)}`);

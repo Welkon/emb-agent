@@ -3434,7 +3434,7 @@ function createTaskCommandHelpers(deps) {
     if (!fs.existsSync(hwPath)) {
       return {
         status: 'no-hw-config',
-        summary: 'No hw.yaml found. Run declare hardware first to identify the chip.',
+        summary: 'No .emb-agent/hw.yaml found. Run declare hardware first to identify the chip.',
         results: []
       };
     }
@@ -3444,7 +3444,7 @@ function createTaskCommandHelpers(deps) {
     if (!chipName) {
       return {
         status: 'no-chip',
-        summary: 'No chip declared in hw.yaml. Run declare hardware to specify the MCU.',
+        summary: 'No chip declared in .emb-agent/hw.yaml. Run declare hardware to specify the MCU.',
         results: []
       };
     }

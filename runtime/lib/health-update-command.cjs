@@ -1165,7 +1165,7 @@ function createHealthUpdateCommandHelpers(deps) {
         createCheck(
           'hardware_identity',
           'warn',
-          'hw.yaml does not contain the chip identity yet',
+          '.emb-agent/hw.yaml does not contain the chip identity yet',
           [hardwareIdentity.file],
           `If the chip is already known, add chip/package to ${runtime.getProjectAssetRelativePath('hw.yaml')} so emb-agent can match chip profiles later. If the project is still at concept stage, record goals and constraints in ${runtime.getProjectAssetRelativePath('req.yaml')} first and leave ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a real candidate exists.`
         )
