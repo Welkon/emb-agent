@@ -42,6 +42,15 @@ const ACTION_ALIASES = {
   decode: ['decode', 'interpret']
 };
 
+const EXCEPTION_ALIASES = {
+  'reset-loop': ['reset loop', 'watchdog reset loop', 'keeps rebooting', 'continuous reset', 'boot loop'],
+  'brownout-spike': ['brownout spike', 'power dip', 'voltage sag', 'supply droop', 'vdd spike', 'power glitch'],
+  'isr-jitter': ['isr jitter', 'interrupt latency', 'interrupt jitter', 'isr latency', 'irq timing'],
+  'flash-corruption': ['flash corruption', 'flash bit flip', 'eeprom corruption', 'nv corruption', 'flash error'],
+  'adc-noise': ['adc noise', 'adc drift', 'adc instability', 'adc jitter', 'noisy adc', 'adc fluctuation'],
+  'i2c-stuck-bus': ['i2c stuck', 'i2c bus hang', 'i2c sda stuck', 'i2c scl stuck', 'i2c locked']
+};
+
 const TARGET_ALIASES = {
   voltage: ['voltage', 'vdd', 'vref'],
   reference: ['reference', 'vref', 'vdd', 'ldo'],
@@ -210,8 +219,43 @@ function scoreIntentProfile(intent, intentProfile) {
   };
 }
 
+function detectExceptionPatterns(haystack) {
+  const normalized = normalizeIntentText(haystack);
+  const matches = [];
+
+  for (const [exception, patterns] of Object.entries(EXCEPTION_ALIASES)) {
+    for (const pattern of patterns) {
+      if (includesIntentKeyword(normalized, pattern)) {
+        matches.push({
+          exception,
+          matched_pattern: pattern,
+          diagnostic_route: getExceptionDiagnosticRoute(exception)
+        });
+        break;
+      }
+    }
+  }
+
+  return matches;
+}
+
+function getExceptionDiagnosticRoute(exception) {
+  const routes = {
+    'reset-loop': { agent: 'emb-bug-hunter', spec: 'specs/product/watchdog-policy.md', priority: 'P0' },
+    'brownout-spike': { agent: 'emb-hw-scout', spec: 'specs/board/power-budget.md', priority: 'P1' },
+    'isr-jitter': { agent: 'emb-bug-hunter', spec: 'specs/mcu/clock-tree.md', priority: 'P1' },
+    'flash-corruption': { agent: 'emb-hw-scout', spec: 'specs/mcu/rom-ram-budget.md', priority: 'P0' },
+    'adc-noise': { agent: 'emb-hw-scout', spec: 'specs/board/power-budget.md', priority: 'P2' },
+    'i2c-stuck-bus': { agent: 'emb-bug-hunter', spec: 'specs/board/pin-mux.md', priority: 'P1' }
+  };
+  return routes[exception] || { agent: 'emb-bug-hunter', spec: '', priority: 'P2' };
+}
+
 module.exports = {
   analyzeStructuredIntent,
   normalizeIntentText,
-  scoreIntentProfile
+  scoreIntentProfile,
+  detectExceptionPatterns,
+  getExceptionDiagnosticRoute,
+  EXCEPTION_ALIASES
 };

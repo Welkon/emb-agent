@@ -54,7 +54,17 @@
       "enum": ["backend", "frontend", "fullstack", "test", "docs", "embedded"]
     },
     "scope": {
-      "type": "string"
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["mcu", "board", "module/motor-drive", "module/ble-stack", "module/power-management", "product"]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "context_manifest": {
+      "type": "string",
+      "pattern": "^context\\.yaml$"
     },
     "priority": {
       "type": "string",

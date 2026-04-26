@@ -95,6 +95,65 @@ function getProjectPackageState(projectRoot) {
   };
 }
 
+function parseSimpleYaml(filePath) {
+  try {
+    const content = String(fs.readFileSync(filePath, 'utf8') || '');
+    const lines = content.split('\n');
+    const result = {};
+    let listKey = '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const colonIdx = trimmed.indexOf(':');
+      if (colonIdx === -1) continue;
+      const key = trimmed.substring(0, colonIdx).trim();
+      let value = trimmed.substring(colonIdx + 1).trim();
+      if (value === '' || value === '|') {
+        listKey = key;
+        result[key] = [];
+        continue;
+      }
+      if (trimmed.startsWith('- ') && listKey) {
+        result[listKey].push(trimmed.substring(2).trim());
+        continue;
+      }
+      listKey = '';
+      if (value.startsWith('"') && value.endsWith('"')) {
+        value = value.slice(1, -1);
+      }
+      result[key] = value;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function resolveWorkflowState(hwConfig, activeTask) {
+  if (!hwConfig || !hwConfig.chip) {
+    return 'unknown';
+  }
+  if (!hwConfig.datasheets || !Array.isArray(hwConfig.datasheets) || hwConfig.datasheets.length === 0) {
+    return 'hw_declared';
+  }
+  if (!activeTask) {
+    return 'bootstrap_ready';
+  }
+  if (activeTask.status === 'completed' || activeTask.status === 'rejected') {
+    return 'resolved';
+  }
+  if (activeTask.status === 'review') {
+    return 'board_verified';
+  }
+  return 'implementing';
+}
+
+function getWorkflowState(projectRoot, task) {
+  const hwPath = path.join(projectRoot, '.emb-agent', 'hw.yaml');
+  const hwConfig = fs.existsSync(hwPath) ? parseSimpleYaml(hwPath) : null;
+  return resolveWorkflowState(hwConfig, task);
+}
+
 function countTasks(projectRoot) {
   const tasksDir = path.join(projectRoot, '.emb-agent', 'tasks');
   if (!fs.existsSync(tasksDir) || !fs.statSync(tasksDir).isDirectory()) {
@@ -161,6 +220,7 @@ function buildStatusLine(input) {
   }
 
   const task = getCurrentTask(projectRoot);
+  const workflowState = getWorkflowState(projectRoot, task);
   const developer = getDeveloper(projectRoot);
   const branch = getGitBranch(projectRoot);
   const taskCount = countTasks(projectRoot);
@@ -214,6 +274,19 @@ function buildStatusLine(input) {
   }
 
   const lines = [];
+
+  const stateColors = {
+    unknown: 31,
+    hw_declared: 33,
+    datasheet_ingested: 33,
+    bootstrap_ready: 32,
+    implementing: 36,
+    board_verified: 35,
+    resolved: 32
+  };
+  const stateColor = stateColors[workflowState] || 90;
+  lines.push(`${colorize(stateColor, `[${workflowState}]`)}`);
+
   if (task) {
     lines.push(`${colorize(36, `[${task.priority || 'P2'}]`)} ${task.title} ${colorize(33, `(${task.status || 'unknown'})`)}`);
   }

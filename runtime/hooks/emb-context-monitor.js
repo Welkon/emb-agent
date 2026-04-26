@@ -122,11 +122,13 @@ function buildMetricsMessage(metrics, contextHygiene) {
     ? ` Signals: ${contextHygiene.reasons.join('; ')}.`
     : '';
 
+  const sessionReportCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['session-report']);
+
   if (isCritical) {
-    return `${prefix} Context window remaining=${Math.round(metrics.remaining)}%. Stop expanding scope. Run ${pauseCli} now, close the smallest pending unit, then follow ${resumeChain}.${reasons}`;
+    return `${prefix} Context window remaining=${Math.round(metrics.remaining)}%. Stop expanding scope. Run ${pauseCli} then ${sessionReportCli} to save checkpoint before clearing. Follow ${resumeChain}.${reasons}`;
   }
 
-  return `${prefix} Context window remaining=${Math.round(metrics.remaining)}%. Prepare to close scope before deeper exploration. Prefer pause first, then follow ${resumeChain}.${reasons}`;
+  return `${prefix} Context window remaining=${Math.round(metrics.remaining)}%. Prepare to close scope before deeper exploration. Consider ${sessionReportCli} to save checkpoint. Follow ${resumeChain}.${reasons}`;
 }
 
 function buildSessionMessage(contextHygiene) {

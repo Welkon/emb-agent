@@ -1,3 +1,3 @@
-- "就这一次跳过 AAR"
-- "任务很小不用扫"
-- "等会话结束一起补"
+- "I will skip AAR just this once"
+- "Task is too small to scan"
+- "I will batch them at session end"

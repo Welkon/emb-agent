@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://emb-agent.dev/schemas/context-manifest.schema.json",
+  "title": "emb-agent task context manifest",
+  "type": "object",
+  "required": ["implement", "check"],
+  "properties": {
+    "implement": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "File path relative to project root"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this file is needed for implementation"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "check": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "File path relative to project root"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this file is needed for verification"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

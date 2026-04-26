@@ -582,12 +582,16 @@ function summarizeQualityGates(value) {
     required_skills: truncateList(value.required_skills, 6),
     required_executors: truncateList(value.required_executors, 6),
     required_signoffs: truncateList(value.required_signoffs, 6),
+    required_hardware_checks: truncateList(value.required_hardware_checks, 6),
     pending_skills: truncateList(value.pending_skills, 6),
     failed_skills: truncateList(value.failed_skills, 6),
     pending_gates: truncateList(value.pending_gates, 6),
     failed_gates: truncateList(value.failed_gates, 6),
     pending_signoffs: truncateList(value.pending_signoffs, 6),
     rejected_signoffs: truncateList(value.rejected_signoffs, 6),
+    passed_hw_checks: truncateList(value.passed_hw_checks, 6),
+    failed_hw_checks: truncateList(value.failed_hw_checks, 6),
+    pending_hw_checks: truncateList(value.pending_hw_checks, 6),
     recommended_runs: truncateList(value.recommended_runs, 6),
     recommended_signoffs: truncateList(value.recommended_signoffs, 6)
   });
