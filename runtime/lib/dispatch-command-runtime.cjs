@@ -1,5 +1,7 @@
 'use strict';
 
+const capabilityCatalog = require('./capability-catalog.cjs');
+
 function createDispatchCommandRuntimeHelpers(deps) {
   const {
     scheduler,
@@ -10,6 +12,7 @@ function createDispatchCommandRuntimeHelpers(deps) {
     buildDispatchContext,
     buildOrchestratorContext,
     handleCatalogAndStateCommands,
+    executeCapability,
     handleActionCommands,
     handleAdapterToolChipCommands
   } = deps;
@@ -455,13 +458,22 @@ function createDispatchCommandRuntimeHelpers(deps) {
       throw new Error('Missing resolved action');
     }
 
-    if (action === 'health' || action === 'update') {
+    if (action === 'update') {
       return handleCatalogAndStateCommands(action, '', []);
     }
 
-    const actionResult = handleActionCommands(action, '', []);
-    if (actionResult !== undefined) {
-      return actionResult;
+    if (typeof executeCapability === 'function') {
+      return executeCapability(action, {
+        skip_session_update: true,
+        session_command: action
+      });
+    }
+
+    if (typeof handleActionCommands === 'function') {
+      const actionResult = handleActionCommands(action, '', []);
+      if (actionResult !== undefined) {
+        return actionResult;
+      }
     }
 
     throw new Error(`Unsupported executable action: ${action}`);
@@ -1074,7 +1086,7 @@ function createDispatchCommandRuntimeHelpers(deps) {
       return buildOrchestratorContext(rest[0]);
     }
 
-    if (cmd === 'orchestrate' && ['scan', 'plan', 'do', 'debug', 'review', 'verify', 'note', 'arch-review'].includes(subcmd)) {
+    if (cmd === 'orchestrate' && capabilityCatalog.getOrchestratableCapabilityNames().includes(subcmd)) {
       return buildOrchestratorContext(subcmd);
     }
 

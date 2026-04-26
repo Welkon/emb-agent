@@ -48,7 +48,7 @@ test('scan tty output shows workflow stage, exit criteria, and clean followup hi
     process.chdir(tempProject);
     await cli.main(['init']);
 
-    const output = await captureCliTtyOutput(['scan']);
+    const output = await captureCliTtyOutput(['capability', 'run', 'scan']);
 
     assert.equal(output.stdout.trim(), '');
     assert.match(output.stderr, /Workflow: selection/);
@@ -57,8 +57,8 @@ test('scan tty output shows workflow stage, exit criteria, and clean followup hi
       /Exit: Project constraints are explicit enough to shortlist a real chip candidate or first hardware target/
     );
     assert.match(output.stderr, /Stage: scan/);
-    assert.match(output.stderr, /CLI: .*emb-agent\.cjs plan/);
-    assert.match(output.stderr, /Then: .*emb-agent\.cjs verify/);
+    assert.match(output.stderr, /CLI: .*emb-agent\.cjs capability run plan/);
+    assert.match(output.stderr, /Then: .*emb-agent\.cjs capability run verify/);
     assert.doesNotMatch(output.stderr, /instruction=/);
     assert.doesNotMatch(output.stderr, /followup=/);
   } finally {

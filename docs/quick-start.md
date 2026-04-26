@@ -81,8 +81,8 @@ If the derived support is only good enough for the current repository, keep it l
 The public command surface is intentionally small:
 
 - Start / route: `start`, `ingest`, `next`, `task`
-- Execute: `scan`, `plan`, `do`, `debug`
-- Close: `review`, `verify`, `pause`, `resume`
+- Execute: `capability run scan`, `capability run plan`, `capability run do`, `capability run debug`
+- Close: `capability run review`, `capability run verify`, `pause`, `resume`
 
 If you want the full installed surface, use `help advanced` or `help --all`.
 

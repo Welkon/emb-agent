@@ -70,8 +70,8 @@ test('session command group records history and shows stored reports', async () 
   }
 });
 
-test('session-report writes lightweight session report with next guidance', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-'));
+test('session record writes lightweight session report with next guidance', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-record-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
 
@@ -85,7 +85,7 @@ test('session-report writes lightweight session report with next guidance', asyn
     await cli.main(['focus', 'set', 'capture bring-up summary']);
     await cli.main(['question', 'add', 'is pwm divider restored after sleep']);
     await cli.main(['risk', 'add', 'resume path may skip timer reload']);
-    await cli.main(['session-report', 'capture current bring-up handoff']);
+    await cli.main(['session', 'record', 'capture current bring-up handoff']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
     const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
@@ -116,7 +116,7 @@ test('session-report writes lightweight session report with next guidance', asyn
     assert.equal(continuityJson.reports.count, 1);
     assert.match(indexMarkdown, /# Session Report Index/);
     assert.match(indexMarkdown, /capture current bring-up handoff/);
-    assert.equal(cli.loadSession().last_command, 'session-report');
+    assert.equal(cli.loadSession().last_command, 'session record');
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -160,8 +160,8 @@ test('pause refreshes repo-visible continuity artifacts without creating a store
   }
 });
 
-test('session-report records package-aware monorepo context', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-package-'));
+test('session record reports package-aware monorepo context', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-record-package-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
 
@@ -190,7 +190,7 @@ test('session-report records package-aware monorepo context', async () => {
     await cli.main(['init']);
     const created = await captureCliJson(['task', 'add', 'Capture package-aware report', '--package', 'fw']);
     await captureCliJson(['task', 'activate', created.task.name]);
-    await cli.main(['session-report', 'capture package-aware state']);
+    await cli.main(['session', 'record', 'capture package-aware state']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
     const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
@@ -206,8 +206,8 @@ test('session-report records package-aware monorepo context', async () => {
   }
 });
 
-test('session-report also performs auto-memory extraction at session boundary', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-memory-'));
+test('session record also performs auto-memory extraction at session boundary', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-record-memory-'));
   const currentCwd = process.cwd();
 
   async function runQuiet(args) {
@@ -246,7 +246,7 @@ test('session-report also performs auto-memory extraction at session boundary', 
     await runQuiet(['focus', 'set', 'capture closure summary']);
     await runQuiet(['risk', 'add', 'resume path may skip timer reload']);
 
-    const report = await captureJson(['session-report', 'capture closure summary']);
+    const report = await captureJson(['session', 'record', 'capture closure summary']);
     assert.equal(report.generated, true);
     assert.ok(report.session_state);
     assert.equal(report.session_state.storage_mode, 'primary');
@@ -257,14 +257,14 @@ test('session-report also performs auto-memory extraction at session boundary', 
     const listed = await captureJson(['memory', 'list']);
     assert.ok(listed.length >= 1);
     const shown = await captureJson(['memory', 'show', listed[0].name]);
-    assert.match(shown.content, /session-report: capture closure summary/);
+    assert.match(shown.content, /session record: capture closure summary/);
   } finally {
     process.chdir(currentCwd);
   }
 });
 
-test('session-report records tool recommendation when scan tool is ready', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-tool-'));
+test('session record reports tool recommendation when scan tool is ready', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-record-tool-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
   const projectEmbDir = path.join(tempProject, '.emb-agent');
@@ -358,7 +358,7 @@ test('session-report records tool recommendation when scan tool is ready', async
       'utf8'
     );
 
-    await cli.main(['session-report', 'capture timer formula path']);
+    await cli.main(['session', 'record', 'capture timer formula path']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
     const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
@@ -378,8 +378,8 @@ test('session-report records tool recommendation when scan tool is ready', async
   }
 });
 
-test('session-report records walkthrough recommendation for broad peripheral exercise', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-walkthrough-'));
+test('session record reports walkthrough recommendation for broad peripheral exercise', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-record-walkthrough-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
   const projectEmbDir = path.join(tempProject, '.emb-agent');
@@ -578,7 +578,7 @@ test('session-report records walkthrough recommendation for broad peripheral exe
       updated_at: '2026-04-17T10:00:00.000Z'
     };
     runtime.writeJson(statePaths.sessionPath, session);
-    await cli.main(['session-report', 'capture peripheral walkthrough']);
+    await cli.main(['session', 'record', 'capture peripheral walkthrough']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
     const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
@@ -597,8 +597,8 @@ test('session-report records walkthrough recommendation for broad peripheral exe
   }
 });
 
-test('session-report records latest executor summary and routes failed executor to review', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-executor-'));
+test('session record reports latest executor summary and routes failed executor to review', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-record-executor-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
 
@@ -652,8 +652,8 @@ test('session-report records latest executor summary and routes failed executor 
   }
 });
 
-test('session-report includes delegation runtime summary from latest orchestrated run', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-delegation-'));
+test('session record includes delegation runtime summary from latest orchestrated run', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-record-delegation-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
   const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
@@ -667,7 +667,7 @@ test('session-report includes delegation runtime summary from latest orchestrate
     await cli.main(['init']);
     await cli.main(['risk', 'add', 'irq race']);
     await cli.main(['orchestrate', 'run', 'next']);
-    await cli.main(['session-report', 'capture delegation runtime']);
+    await cli.main(['session', 'record', 'capture delegation runtime']);
 
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
     const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
@@ -694,8 +694,8 @@ test('session-report includes delegation runtime summary from latest orchestrate
   }
 });
 
-test('session-report records the current git branch in session and stored artifacts', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-report-branch-'));
+test('session record reports the current git branch in session and stored artifacts', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-record-branch-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
 
@@ -710,7 +710,7 @@ test('session-report records the current git branch in session and stored artifa
     process.chdir(tempProject);
 
     await cli.main(['init']);
-    const reportResult = await captureCliJson(['session-report', 'capture branch-aware state']);
+    const reportResult = await captureCliJson(['session', 'record', 'capture branch-aware state']);
     const current = await captureCliJson(['session', 'show', 'current']);
     const history = await captureCliJson(['session', 'history']);
 

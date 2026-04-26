@@ -245,6 +245,38 @@ function summarizeActionCard(value) {
   });
 }
 
+function summarizeCapabilityRoute(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const primaryEntry = isObject(value.primary_entry) ? value.primary_entry : {};
+  return compactObject({
+    capability: value.capability || '',
+    category: value.category || '',
+    route_strategy: value.route_strategy || '',
+    product_role: value.product_role || '',
+    generator_owner: value.generator_owner || '',
+    repository_layout: value.repository_layout || '',
+    materialization_state: value.materialization_state || '',
+    host_targets: truncateList(value.host_targets, 5),
+    primary_entry: compactObject({
+      kind: primaryEntry.kind || '',
+      name: primaryEntry.name || '',
+      cli: primaryEntry.cli || ''
+    }),
+    generated_surfaces: truncateList(value.generated_surfaces, 4).map(item => compactObject({
+      kind: item && item.kind ? item.kind : '',
+      name: item && item.name ? item.name : '',
+      materialized:
+        item && Object.prototype.hasOwnProperty.call(item, 'materialized')
+          ? Boolean(item.materialized)
+          : undefined,
+      source: item && item.source ? item.source : ''
+    }))
+  });
+}
+
 function summarizeTaskRef(value) {
   if (!isObject(value)) {
     return null;
@@ -642,6 +674,7 @@ function buildBriefNextContext(value) {
       cli: next.cli || '',
       gated_by_health: Boolean(next.gated_by_health)
     }),
+    capability_route: summarizeCapabilityRoute(value.capability_route || next.capability_route),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     action_card: summarizeActionCard(value.action_card),
     quality_gates: summarizeQualityGates(value.quality_gates),
@@ -982,10 +1015,11 @@ function buildBriefDispatchOrchestrateOutput(value) {
     resolved_action: value.resolved_action || '',
     reason: value.reason || '',
     cli: value.cli || '',
+    capability_route: summarizeCapabilityRoute(value.capability_route),
     dispatch_ready: value.dispatch_ready === undefined ? undefined : Boolean(value.dispatch_ready),
     workflow: isObject(value.workflow)
       ? compactObject({
-        strategy: value.workflow.strategy || '',
+          strategy: value.workflow.strategy || '',
           next_cli: value.workflow.next_cli || ''
         })
       : null,
@@ -1014,6 +1048,15 @@ function buildBriefStatusOutput(value) {
     active_specs: truncateList(value.active_specs, 4),
     default_package: value.default_package || '',
     active_package: value.active_package || '',
+    capability_route: summarizeCapabilityRoute(value.capability_route),
+    next_action: isObject(value.next_action)
+      ? compactObject({
+          command: value.next_action.command || '',
+          reason: value.next_action.reason || '',
+          cli: value.next_action.cli || ''
+        })
+      : null,
+    next_capability_route: summarizeCapabilityRoute(value.next_capability_route),
     active_task: isObject(value.active_task)
       ? compactObject({
           name: value.active_task.name || '',

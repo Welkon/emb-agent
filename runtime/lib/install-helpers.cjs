@@ -2532,7 +2532,7 @@ function createInstallHelpers(deps) {
     if (commandName === 'start') {
       return [
         `- Prefer \`${startBrief}\` as the first routing check when you only need the shortest safe next action.`,
-        '- Treat `immediate.command` as authoritative. If it is not `next`, do that first instead of chaining directly into `next`, `scan`, or `do`.',
+        '- Treat `immediate.command` as authoritative. If it is not `next`, do that first instead of chaining directly into workflow capabilities.',
         '- If `task_intake.recommended_entry` is present and there is no active task, create and activate the task before mutation work.'
       ];
     }
@@ -2542,15 +2542,7 @@ function createInstallHelpers(deps) {
         `- Before forcing \`${commandName}\`, run \`${startBrief}\` whenever bootstrap, source intake, or task state might still be unresolved.`,
         '- If `start --brief` returns an `immediate.command` other than `next`, follow that command first. Do not use `$emb-next` to bypass source intake, bootstrap, or task intake.',
         `- After the entry route is clear, run \`${nextBrief}\` and obey the returned recommendation.`,
-        '- If `next.gated_by_health` is `true` or `next.command` is `health`, close the health blocker first instead of continuing into `scan` or `do`.'
-      ];
-    }
-
-    if (commandName === 'scan' || commandName === 'do') {
-      return [
-        `- Run \`${nextBrief}\` first and use it as the preflight gate before forcing \`${commandName}\`.`,
-        `- Only continue with \`${commandName}\` when \`next.command\` already equals \`${commandName}\` and \`next.gated_by_health\` is not true.`,
-        '- Never use this skill to bypass pending source intake, missing task intake, or health closure.'
+        '- If `next.gated_by_health` is `true` or `next.command` is `health`, close the health blocker first instead of continuing into workflow capabilities.'
       ];
     }
 

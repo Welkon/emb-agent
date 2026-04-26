@@ -45,7 +45,7 @@ function createSessionReportCommandHelpers(deps) {
   function applySessionReportPermission(result, explicitConfirmation) {
     const permission = permissionGateHelpers.evaluateExecutionPermission({
       action_kind: 'write',
-      action_name: 'session-report-save',
+      action_name: 'session-record-save',
       risk: 'normal',
       explicit_confirmation: explicitConfirmation === true,
       permissions:
@@ -832,8 +832,8 @@ function createSessionReportCommandHelpers(deps) {
         : false;
     const commandName =
       options && typeof options === 'object' && !Array.isArray(options)
-        ? String(options.command_name || 'session-report')
-        : 'session-report';
+        ? String(options.command_name || 'session record')
+        : 'session record';
     const blocked = applySessionReportPermission({
       generated: false,
       report_file: '',
@@ -849,7 +849,7 @@ function createSessionReportCommandHelpers(deps) {
     const report = buildSessionReport(summaryText);
     const artifacts = writeSessionReportArtifacts(report);
     const continuityArtifacts = writeSessionContinuityArtifacts({
-      source: 'session-report',
+      source: commandName,
       generated_at: report.generated_at,
       latest_report: artifacts.stored
     });
@@ -885,39 +885,32 @@ function createSessionReportCommandHelpers(deps) {
   }
 
   function handleSessionReportCommands(cmd, subcmd, rest) {
-    if (cmd !== 'session-report' && cmd !== 'session') {
+    if (cmd !== 'session') {
       return undefined;
     }
 
-    if (cmd === 'session') {
-      if (!subcmd || subcmd === 'show') {
-        const target = String(rest[0] || '').trim();
-        if (!target || target === 'current') {
-          return buildCurrentSessionView();
-        }
-        return showStoredSessionReport(target);
+    if (!subcmd || subcmd === 'show') {
+      const target = String(rest[0] || '').trim();
+      if (!target || target === 'current') {
+        return buildCurrentSessionView();
       }
-
-      if (subcmd === 'history' || subcmd === 'list') {
-        return listStoredSessionReports();
-      }
-
-      if (subcmd === 'record') {
-        const parsed = stripPermissionControlTokens(rest);
-        const summaryText = parsed.tokens.join(' ').trim();
-        return runSessionReport(summaryText, {
-          explicit_confirmation: parsed.explicit_confirmation,
-          command_name: 'session record'
-        });
-      }
+      return showStoredSessionReport(target);
     }
 
-    const parsed = stripPermissionControlTokens([subcmd, ...rest].filter(Boolean));
-    const summaryText = parsed.tokens.join(' ').trim();
-    return runSessionReport(summaryText, {
-      explicit_confirmation: parsed.explicit_confirmation,
-      command_name: 'session-report'
-    });
+    if (subcmd === 'history' || subcmd === 'list') {
+      return listStoredSessionReports();
+    }
+
+    if (subcmd === 'record') {
+      const parsed = stripPermissionControlTokens(rest);
+      const summaryText = parsed.tokens.join(' ').trim();
+      return runSessionReport(summaryText, {
+        explicit_confirmation: parsed.explicit_confirmation,
+        command_name: 'session record'
+      });
+    }
+
+    return undefined;
   }
 
   return {

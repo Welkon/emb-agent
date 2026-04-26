@@ -51,7 +51,7 @@ test('action --brief surfaces unified action cards and followups', async () => {
     process.chdir(tempProject);
     await cli.main(['init']);
 
-    const output = await captureCliJson(['scan', '--brief']);
+    const output = await captureCliJson(['capability', 'run', 'scan', '--brief']);
 
     assert.equal(output.output_mode, 'brief');
     assert.ok(output.workflow_stage);
@@ -59,7 +59,7 @@ test('action --brief surfaces unified action cards and followups', async () => {
     assert.ok(output.action_card);
     assert.equal(output.action_card.stage, 'scan');
     assert.equal(output.action_card.summary, 'Action=scan. Lock the real change surface before mutation.');
-    assert.match(output.action_card.then_cli, /emb-agent\.cjs verify/);
+    assert.match(output.action_card.then_cli, /emb-agent\.cjs capability run verify$/);
     assert.ok(Array.isArray(output.next_actions));
     assert.ok(output.next_actions.length > 0);
     assert.ok(output.next_actions.some(item => item.startsWith('instruction=')));
@@ -78,7 +78,7 @@ test('action --brief keeps action card reasons in key-value form', async () => {
     await cli.main(['init']);
     await cli.main(['question', 'add', 'why irq misses after wake']);
 
-    const output = await captureCliJson(['debug', '--brief']);
+    const output = await captureCliJson(['capability', 'run', 'debug', '--brief']);
 
     assert.equal(output.output_mode, 'brief');
     assert.ok(output.action_card);
@@ -105,15 +105,15 @@ test('task lifecycle --brief exposes convergence summary', async () => {
     assert.equal(created.task_convergence.recommended_path, 'scan-first');
     assert.match(created.task_convergence.prd_path, /\.emb-agent\/tasks\/converge-comparator-timing\/prd\.md$/);
     assert.match(created.task_convergence.next_cli, /task activate converge-comparator-timing$/);
-    assert.match(created.task_convergence.then_cli, /emb-agent\.cjs scan$/);
+    assert.match(created.task_convergence.then_cli, /emb-agent\.cjs capability run scan$/);
 
     const activated = await captureCliJson(['task', 'activate', 'converge-comparator-timing', '--brief']);
     assert.equal(activated.output_mode, 'brief');
     assert.equal(activated.activated, true);
     assert.equal(activated.task.status, 'in_progress');
     assert.equal(activated.task_convergence.recommended_path, 'scan-first');
-    assert.match(activated.task_convergence.next_cli, /emb-agent\.cjs scan$/);
-    assert.match(activated.task_convergence.then_cli, /emb-agent\.cjs plan$/);
+    assert.match(activated.task_convergence.next_cli, /emb-agent\.cjs capability run scan$/);
+    assert.match(activated.task_convergence.then_cli, /emb-agent\.cjs capability run plan$/);
 
     const next = await captureCliJson(['next', '--brief']);
     assert.equal(next.output_mode, 'brief');

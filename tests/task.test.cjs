@@ -10,6 +10,13 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
+function assertProjectLocalInjected(specs) {
+  assert.deepEqual(
+    (Array.isArray(specs) ? specs : []).map(item => item.name),
+    ['project-local']
+  );
+}
+
 function writeText(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, 'utf8');
@@ -274,7 +281,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.ok(created.task.bindings.docs.some(item => item.doc_id));
     assert.ok(created.task.bindings.chip_support.some(item => item.source === 'default-support'));
     assert.ok(created.task.bindings.tools.some(item => item.tool === 'timer-calc'));
-    assert.deepEqual(created.task.injected_specs, []);
+    assertProjectLocalInjected(created.task.injected_specs);
     assert.ok(created.task.context.implement.some(item => item.path === '.emb-agent/hw.yaml'));
     assert.ok(created.task.context.implement.some(item => item.path === 'docs/HARDWARE-LOGIC.md'));
     assert.ok(created.task.context.implement.some(item => item.path.includes('cache/docs/')));
@@ -286,7 +293,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(created.task_convergence.recommended_path, 'plan-first');
     assert.match(created.task_convergence.summary, /Open the task PRD first/i);
     assert.match(created.task_convergence.next_cli, new RegExp(`task activate ${taskName}$`));
-    assert.match(created.task_convergence.then_cli, /emb-agent\.cjs plan$/);
+    assert.match(created.task_convergence.then_cli, /emb-agent\.cjs capability run plan$/);
     assert.equal(created.task_convergence.prompts.length, 3);
 
     const activated = await captureCliJson(['task', 'activate', taskName]);
@@ -302,7 +309,7 @@ test('task commands create activate manage context and resolve lightweight tasks
       fs.readFileSync(path.join(activated.workspace.path, '.emb-agent', '.current-task'), 'utf8').trim(),
       taskName
     );
-    assert.deepEqual(activated.task.injected_specs, []);
+    assertProjectLocalInjected(activated.task.injected_specs);
     assert.equal(activated.task.artifacts.prd, `.emb-agent/tasks/${taskName}/prd.md`);
     assert.equal(fs.existsSync(path.join(activated.workspace.path, 'docs', 'SC8F072.pdf')), true);
     assert.equal(activated.worktree.exists, true);
@@ -311,8 +318,8 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(cli.loadSession().active_task.status, 'in_progress');
     assert.equal(activated.task_convergence.status, 'active-task');
     assert.equal(activated.task_convergence.recommended_path, 'plan-first');
-    assert.match(activated.task_convergence.next_cli, /emb-agent\.cjs plan$/);
-    assert.match(activated.task_convergence.then_cli, /emb-agent\.cjs do$/);
+    assert.match(activated.task_convergence.next_cli, /emb-agent\.cjs capability run plan$/);
+    assert.match(activated.task_convergence.then_cli, /emb-agent\.cjs capability run do$/);
     assert.equal(
       fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8').trim(),
       taskName
@@ -348,12 +355,12 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(resume.task.worktree_path, activated.workspace.path);
     assert.equal(resume.task.artifacts.prd, `.emb-agent/tasks/${taskName}/prd.md`);
     assert.ok(resume.task.context.implement.some(item => item.path === 'src/timer.c'));
-    assert.deepEqual(resume.injected_specs, []);
-    assert.deepEqual(resume.task.injected_specs, []);
+    assertProjectLocalInjected(resume.injected_specs);
+    assertProjectLocalInjected(resume.task.injected_specs);
 
     const next = cli.buildNextContext();
-    assert.deepEqual(next.injected_specs, []);
-    assert.deepEqual(next.task.injected_specs, []);
+    assertProjectLocalInjected(next.injected_specs);
+    assertProjectLocalInjected(next.task.injected_specs);
     assert.equal(next.next.command, 'plan');
     assert.match(next.next.reason, /Active task/i);
     assert.equal(next.task_convergence.recommended_path, 'plan-first');
@@ -361,11 +368,11 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.ok(next.next_actions.some(item => item.startsWith('task_route=plan-first')));
 
     const status = cli.buildStatus();
-    assert.deepEqual(status.injected_specs, []);
-    assert.deepEqual(status.active_task.injected_specs, []);
+    assertProjectLocalInjected(status.injected_specs);
+    assertProjectLocalInjected(status.active_task.injected_specs);
 
     const plan = cli.buildActionOutput('plan');
-    assert.deepEqual(plan.injected_specs, []);
+    assertProjectLocalInjected(plan.injected_specs);
 
     const blockedResolve = await captureCliJson(['task', 'resolve', taskName, 'adapter merged']);
     assert.equal(blockedResolve.status, 'aar-required');
@@ -672,7 +679,7 @@ test('task add and activate keep tty output human-readable for package tasks', a
     assert.match(addTty.stderr, /Converge: Open the task PRD first/);
     assert.match(addTty.stderr, /Route: scan-first/);
     assert.match(addTty.stderr, /Next: .*task activate tty-package-task/);
-    assert.match(addTty.stderr, /Then: .*emb-agent\.cjs scan/);
+    assert.match(addTty.stderr, /Then: .*emb-agent\.cjs capability run scan/);
     assert.match(addTty.stderr, /Created: yes/);
     assert.match(addTty.stderr, /Task: tty-package-task/);
     assert.match(addTty.stderr, /Package: fw/);
@@ -682,8 +689,8 @@ test('task add and activate keep tty output human-readable for package tasks', a
     assert.match(activateTty.stderr, /PRD: \.emb-agent\/tasks\/tty-package-task\/prd\.md/);
     assert.match(activateTty.stderr, /Converge: Use the task PRD as the working contract/);
     assert.match(activateTty.stderr, /Route: scan-first/);
-    assert.match(activateTty.stderr, /Next: .*emb-agent\.cjs scan/);
-    assert.match(activateTty.stderr, /Then: .*emb-agent\.cjs plan/);
+    assert.match(activateTty.stderr, /Next: .*emb-agent\.cjs capability run scan/);
+    assert.match(activateTty.stderr, /Then: .*emb-agent\.cjs capability run plan/);
     assert.match(activateTty.stderr, /Activated: yes/);
     assert.match(activateTty.stderr, /Task: tty-package-task/);
     assert.match(activateTty.stderr, /Package: fw/);
@@ -694,7 +701,7 @@ test('task add and activate keep tty output human-readable for package tasks', a
     assert.match(nextTty.stderr, /PRD: \.emb-agent\/tasks\/tty-package-task\/prd\.md/);
     assert.match(nextTty.stderr, /Converge: Use the task PRD as the working contract/);
     assert.match(nextTty.stderr, /Route: scan-first/);
-    assert.match(nextTty.stderr, /Next: scan/);
+    assert.match(nextTty.stderr, /Next: .*emb-agent\.cjs capability run scan/);
     assert.match(nextTty.stderr, /Reason: Active task/i);
   } finally {
     process.chdir(currentCwd);

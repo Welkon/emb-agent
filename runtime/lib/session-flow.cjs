@@ -11,6 +11,8 @@ const qualityGateHelpers = require('./quality-gates.cjs');
 const runtimeEventHelpers = require('./runtime-events.cjs');
 const intentProviderHelpers = require('./intent-provider.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
+const capabilityCatalog = require('./capability-catalog.cjs');
+const capabilityRouter = require('./capability-router.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
@@ -97,6 +99,22 @@ function createSessionFlowHelpers(deps) {
     normalizeIntentRouterConfig
   } = intentProviderHelpers.createIntentProviderHelpers({ ROOT });
 
+  function buildCli(args) {
+    return runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, Array.isArray(args) ? args : []);
+  }
+
+  function buildPreferredCapabilityCli(name) {
+    return buildCli(capabilityCatalog.getCapabilityPrimaryArgs(name));
+  }
+
+  function formatPreferredCapabilityCommand(name) {
+    return capabilityCatalog.getCapabilityPrimaryArgs(name).join(' ');
+  }
+
+  function formatCapabilityFlow(names) {
+    return names.map(formatPreferredCapabilityCommand).filter(Boolean).join(' -> ');
+  }
+
   function isBlankProjectSelectionMode(resolved) {
     const projectRoot = resolved && resolved.session ? resolved.session.project_root : '';
     const hardware = resolved && resolved.hardware ? resolved.hardware : {};
@@ -157,10 +175,10 @@ function createSessionFlowHelpers(deps) {
       (task.artifacts && task.artifacts.prd) ||
       (task.name ? `.emb-agent/tasks/${task.name}/prd.md` : '')
     ).trim();
-    const scanCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['scan']);
-    const planCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['plan']);
-    const doCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['do']);
-    const reviewCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['review']);
+    const scanCli = buildPreferredCapabilityCli('scan');
+    const planCli = buildPreferredCapabilityCli('plan');
+    const doCli = buildPreferredCapabilityCli('do');
+    const reviewCli = buildPreferredCapabilityCli('review');
     const recommendedPath = scanFirst ? 'scan-first' : 'plan-first';
     const recommendedReason = scanFirst
       ? 'Requirements, hardware truth, or decision inputs are still not explicit enough.'
@@ -443,7 +461,7 @@ function createSessionFlowHelpers(deps) {
         : null;
     const hasForensicsSignal = hasPattern(texts, FORENSICS_PATTERNS);
 
-    if ((session.last_command || '').startsWith('review')) {
+    if (lastCommandStartsWith(session, 'review')) {
       return false;
     }
 
@@ -462,6 +480,28 @@ function createSessionFlowHelpers(deps) {
     const diagnostics = resolved && resolved.session ? resolved.session.diagnostics : {};
     const projectConfig = resolved ? resolved.project_config : null;
     return qualityGateHelpers.evaluateQualityGates(projectConfig, diagnostics);
+  }
+
+  function normalizeLastWorkflowCommand(value) {
+    const raw = String(value || '').trim();
+    const capabilityRun = raw.match(/^capability\s+run\s+([a-z0-9-]+)/i);
+    if (capabilityRun) {
+      return capabilityRun[1].toLowerCase();
+    }
+    return raw.split(/\s+/)[0].toLowerCase();
+  }
+
+  function lastCommandIs(session, name) {
+    return normalizeLastWorkflowCommand(session && session.last_command) === String(name || '').trim().toLowerCase();
+  }
+
+  function lastCommandStartsWith(session, name) {
+    const raw = String((session && session.last_command) || '').trim().toLowerCase();
+    const expected = String(name || '').trim().toLowerCase();
+    return raw === expected ||
+      raw.startsWith(`${expected} `) ||
+      raw === `capability run ${expected}` ||
+      raw.startsWith(`capability run ${expected} `);
   }
 
   function listInstalledSkillNames() {
@@ -575,9 +615,15 @@ function createSessionFlowHelpers(deps) {
 
   function buildArchReviewContext() {
     const review = buildReviewContext();
+    const capabilityRoute = capabilityRouter.buildCapabilityRoute('arch-review', {
+      command: 'arch-review',
+      primary_entry_cli: buildPreferredCapabilityCli('arch-review'),
+      primary_agent: 'emb-arch-reviewer'
+    });
 
     return {
       ...review,
+      capability_route: capabilityRoute,
       mode: 'heavyweight_architecture_review',
       suggested_agent: 'emb-arch-reviewer',
       recommended_template: {
@@ -622,9 +668,9 @@ function createSessionFlowHelpers(deps) {
       qualityGates.enabled &&
       qualityGates.gate_status !== 'pass' &&
       (
-        (session.last_command || '').trim() === 'do' ||
-        (session.last_command || '').trim() === 'verify' ||
-        (session.last_command || '').startsWith('verify ') ||
+        lastCommandIs(session, 'do') ||
+        lastCommandIs(session, 'verify') ||
+        lastCommandStartsWith(session, 'verify') ||
         (session.last_command || '').startsWith('executor run')
       );
     const blankSelectionMode = isBlankProjectSelectionMode(resolved);
@@ -672,7 +718,7 @@ function createSessionFlowHelpers(deps) {
     }
 
     if (useBlankSelectionFlow) {
-      if ((session.last_command || '').trim() === 'do' || (session.last_command || '').startsWith('do ')) {
+      if (lastCommandStartsWith(session, 'do')) {
         return {
           command: 'verify',
           reason: 'A concept-stage do step just finished; verify that the recorded shortlist, constraints, and evidence are explicit before moving on'
@@ -700,14 +746,14 @@ function createSessionFlowHelpers(deps) {
         };
       }
 
-      if ((session.last_command || '').trim() === 'plan' || (session.last_command || '').startsWith('plan ')) {
+      if (lastCommandStartsWith(session, 'plan')) {
         return {
           command: 'do',
           reason: `Constraints are already structured; execute the smallest durable selection update in ${runtime.getProjectAssetRelativePath('req.yaml')} or supporting docs`
         };
       }
 
-      if (shouldSuggestPlan(resolved) || (session.last_command || '').trim() === 'scan' || (session.last_command || '').startsWith('scan ')) {
+      if (shouldSuggestPlan(resolved) || lastCommandStartsWith(session, 'scan')) {
         return {
           command: 'plan',
           reason: `Concept-stage scan is complete enough; turn ${runtime.getProjectAssetRelativePath('req.yaml')} into a ranked shortlist and explicit chip-selection criteria before executing updates`
@@ -720,7 +766,7 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
-    if ((session.last_command || '').trim() === 'do' && hasActiveContext) {
+    if (lastCommandIs(session, 'do') && hasActiveContext) {
       return {
         command: 'verify',
         reason: 'A do step just finished. Run verify next to close the iteration with a result record.'
@@ -1167,21 +1213,21 @@ function createSessionFlowHelpers(deps) {
     const openQuestions = session.open_questions || [];
 
     if (openQuestions.length > 0) {
-      return 'scan -> debug -> do -> verify';
+      return formatCapabilityFlow(['scan', 'debug', 'do', 'verify']);
     }
     if (preferences.review_mode === 'always') {
-      return 'scan -> review -> do -> verify';
+      return formatCapabilityFlow(['scan', 'review', 'do', 'verify']);
     }
     if (shouldSuggestArchReview(resolved)) {
-      return 'scan -> arch-review -> plan -> do -> verify';
+      return formatCapabilityFlow(['scan', 'arch-review', 'plan', 'do', 'verify']);
     }
     if (shouldSuggestReview(resolved)) {
-      return 'scan -> review -> do -> verify';
+      return formatCapabilityFlow(['scan', 'review', 'do', 'verify']);
     }
     if (shouldSuggestPlan(resolved)) {
-      return 'scan -> plan -> do -> verify';
+      return formatCapabilityFlow(['scan', 'plan', 'do', 'verify']);
     }
-    return 'scan -> do -> verify';
+    return formatCapabilityFlow(['scan', 'do', 'verify']);
   }
 
   function buildMemorySummaryRecoveryPointers() {
@@ -1705,7 +1751,7 @@ function createSessionFlowHelpers(deps) {
       ? (quickstart.followup || nextActions[1] || '')
       : (
           activeTask && activeTask.name && command.command === 'verify'
-            ? `Then: ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['task', 'aar', 'scan', activeTask.name])}`
+            ? `Then: ${buildCli(['task', 'aar', 'scan', activeTask.name])}`
             : (selectedHints.second || nextActions[1] || '')
         );
 
@@ -1780,7 +1826,11 @@ function createSessionFlowHelpers(deps) {
     });
     const permissionGateSummary = permissionGateHelpers.summarizePermissionGates(permissionGates);
     const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
-    const nextCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [nextCommand.command]);
+    const nextCli = buildPreferredCapabilityCli(nextCommand.command);
+    const capabilityRoute = capabilityRouter.buildCapabilityRoute(nextCommand.command, {
+      command: nextCommand.command,
+      primary_entry_cli: nextCli
+    });
     const result = enrichWithToolSuggestions({
       current: {
         project_root: resolved.session.project_root,
@@ -1852,6 +1902,7 @@ function createSessionFlowHelpers(deps) {
         command: nextCommand.command,
         reason: nextCommand.reason,
         cli: nextCli,
+        capability_route: capabilityRoute,
         gated_by_health: gatedByHealth,
         health_next_commands: nextCommand.health_next_commands || [],
         health_quickstart: nextCommand.health_quickstart || null,
@@ -1869,6 +1920,7 @@ function createSessionFlowHelpers(deps) {
         walkthrough_recommendation: guidance.walkthrough_recommendation
       },
       task_convergence: taskConvergence,
+      capability_route: capabilityRoute,
       action_card: buildNextActionCard({
         ...nextCommand,
         cli: nextCli,
@@ -1986,6 +2038,24 @@ function createSessionFlowHelpers(deps) {
     });
     const permissionGateSummary = permissionGateHelpers.summarizePermissionGates(permissionGates);
     const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
+    const nextAction = buildNextCommand(resolved, handoff);
+    const statusCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['status']);
+    const nextActionCli =
+      nextAction && nextAction.command
+        ? buildPreferredCapabilityCli(nextAction.command)
+        : '';
+    const statusCapabilityRoute = capabilityRouter.buildCapabilityRoute('status', {
+      command: 'status',
+      cli: statusCli
+    });
+    const nextCapabilityRoute =
+      nextAction && nextAction.command
+        ? capabilityRouter.buildCapabilityRoute(nextAction.command, {
+            command: nextAction.command,
+            primary_entry_cli: nextActionCli,
+            primary_agent: nextAction.command === 'arch-review' ? 'emb-arch-reviewer' : ''
+          })
+        : null;
     const statePaths = typeof getProjectStatePaths === 'function' ? getProjectStatePaths() : null;
     const sessionState = statePaths
       ? runtime.buildSessionStateView(statePaths, {
@@ -2007,6 +2077,16 @@ function createSessionFlowHelpers(deps) {
       preferences: getPreferences(resolved.session),
       project_defaults: projectConfig,
       intent_router: normalizeIntentRouterConfig(projectConfig),
+      capability_route: statusCapabilityRoute,
+      next_action:
+        nextAction && nextAction.command
+          ? {
+              command: nextAction.command,
+              reason: nextAction.reason,
+              cli: nextActionCli
+            }
+          : null,
+      next_capability_route: nextCapabilityRoute,
       agents: resolved.effective.agents,
       review_axes: resolved.effective.review_axes,
       note_targets: resolved.effective.note_targets,

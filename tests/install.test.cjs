@@ -13,6 +13,13 @@ const {
   workflowSourceRoot
 } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
+function assertProjectLocalInjected(specs) {
+  assert.deepEqual(
+    (Array.isArray(specs) ? specs : []).map(item => item.name),
+    ['project-local']
+  );
+}
+
 async function captureCliJson(cliImpl, args) {
   const originalWrite = process.stdout.write;
   let stdout = '';
@@ -83,6 +90,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-start', 'SKILL.md')), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-init', 'SKILL.md')), false);
     assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-capability', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-scan', 'SKILL.md')), false);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'config.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'HOST.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'runtime.cjs')), true);
@@ -123,11 +132,12 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'scheduler.cjs')), true);
     assert.equal(fs.existsSync(cliPath), true);
     assert.equal(fs.existsSync(path.join(tempHome, '.env.example')), true);
-    assert.equal(installedCommandFiles.length, 13);
+    assert.equal(installedCommandFiles.length, 8);
     assert.ok(installedCommandFiles.includes('help.md'));
     assert.ok(installedCommandFiles.includes('start.md'));
+    assert.ok(installedCommandFiles.includes('capability.md'));
     assert.ok(!installedCommandFiles.includes('init.md'));
-    assert.ok(installedCommandFiles.includes('verify.md'));
+    assert.ok(!installedCommandFiles.includes('verify.md'));
     assert.ok(!installedCommandFiles.includes('workflow.md'));
     assert.ok(!installedCommandFiles.includes('adapter.md'));
     assert.ok(!installedCommandFiles.includes('support.md'));
@@ -154,16 +164,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
       /If `start --brief` returns an `immediate\.command` other than `next`, follow that command first/
     );
     assert.match(
-      fs.readFileSync(path.join(tempHome, 'skills', 'emb-do', 'SKILL.md'), 'utf8'),
-      /Only continue with `do` when `next\.command` already equals `do`/
-    );
-    assert.match(
-      fs.readFileSync(path.join(tempHome, 'skills', 'emb-scan', 'SKILL.md'), 'utf8'),
-      /Run `node .*emb-agent\/bin\/emb-agent\.cjs next --brief` first and use it as the preflight gate before forcing `scan`/
-    );
-    assert.match(
-      fs.readFileSync(path.join(tempHome, 'skills', 'emb-scan', 'SKILL.md'), 'utf8'),
-      /Never use this skill to bypass pending source intake, missing task intake, or health closure/
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-capability', 'SKILL.md'), 'utf8'),
+      /capability run <name>/
     );
     const codexConfig = fs.readFileSync(path.join(tempHome, 'config.toml'), 'utf8');
     const codexHooks = JSON.parse(fs.readFileSync(path.join(tempHome, 'hooks.json'), 'utf8'));
@@ -179,7 +181,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.doesNotMatch(fs.readFileSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js'), 'utf8'), /\{\{EMB_VERSION\}\}/);
     assert.match(stdout, /Install profile: core/);
     assert.match(stdout, /Created env example:/);
-    assert.match(stdout, /Installed 13 Codex skills under:/);
+    assert.match(stdout, /Installed 8 Codex skills under:/);
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
     assert.match(stdout, /Default chip support source: git@github\.com:Welkon\/emb-agent-adapters\.git/);
@@ -271,7 +273,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(startBeforeContext.task_intake.status, 'blocked-by-bootstrap');
     assert.equal(startBeforeContext.task_intake.recommended_entry, 'task add <summary>');
     assert.match(startBeforeContext.task_intake.summary, /After bootstrap is ready, create a task and PRD first/i);
-    assert.deepEqual(nextBeforeContext.injected_specs, []);
+    assertProjectLocalInjected(nextBeforeContext.injected_specs);
     assert.equal(nextBeforeContext.workflow_stage.name, 'selection');
     assert.equal(nextBeforeContext.workflow_stage.primary_command, 'scan');
     assert.match(nextBeforeContext.next.reason, /Project definition is still open/);
@@ -281,7 +283,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const orchestratorBeforeContext = installedCli.buildOrchestratorContext('next');
     assert.equal(orchestratorBeforeContext.workflow.strategy, 'inline');
     assert.equal(orchestratorBeforeContext.resolved_action, 'scan');
-    assert.match(orchestratorBeforeContext.workflow.next_cli, / scan$/);
+    assert.match(orchestratorBeforeContext.workflow.next_cli, / capability run scan$/);
     installedCli.main(['prefs', 'set', 'plan_mode', 'always']);
     const nextWithForcedPlan = installedCli.buildNextContext();
     assert.equal(nextWithForcedPlan.next.command, 'plan');
@@ -304,16 +306,16 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const nextAfterPause = installedCli.buildNextContext();
     assert.equal(fs.existsSync(handoffPath), true);
     assert.equal(plan.scheduler.primary_agent, 'hw-scout');
-    assert.deepEqual(plan.injected_specs, []);
+    assertProjectLocalInjected(plan.injected_specs);
     assert.equal(plan.agent_execution.primary_agent, 'emb-hw-scout');
     assert.equal(plan.agent_execution.mode, 'primary-recommended');
     assert.ok(plan.steps.some(item => item.includes('minimal scan')));
     assert.equal(scan.scheduler.primary_agent, 'hw-scout');
-    assert.deepEqual(scan.injected_specs, []);
+    assertProjectLocalInjected(scan.injected_specs);
     assert.equal(scan.agent_execution.primary_agent, 'emb-hw-scout');
     assert.ok(scan.next_reads.some(item => item.includes('.emb-agent/req.yaml')));
     assert.equal(resume.summary.resume_source, 'handoff');
-    assert.deepEqual(resume.injected_specs, []);
+    assertProjectLocalInjected(resume.injected_specs);
     assert.equal(resume.memory_summary.source, 'pause');
     assert.ok(resume.memory_summary.next_action.includes('resume irq race first'));
     assert.ok(resume.next_actions.some(item => item.includes('handoff')));
@@ -386,9 +388,10 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['prefs', 'reset']);
     installedCli.main(['profile', 'set', 'baremetal-8bit']);
     installedCli.main(['focus', 'set', 'close loop after irq fix']);
-    installedCli.main(['do']);
+    installedCli.main(['capability', 'run', 'do']);
     const nextAfterDo = installedCli.buildNextContext();
-    assert.equal(nextAfterDo.current.last_command, 'do');
+    assert.equal(nextAfterDo.current.last_command, 'capability run do');
+    assert.equal(nextAfterDo.next.command, 'verify');
     const verify = installedCli.buildActionOutput('verify');
     assert.ok(verify.checklist.some(item => item.includes('abnormal inputs')));
     assert.ok(verify.result_template.some(item => item.includes('UNTESTED')));
@@ -552,7 +555,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['profile', 'set', 'project-local']);
     const localProfileStatus = installedCli.buildStatus();
     assert.equal(localProfileStatus.project_profile, 'project-local');
-    const blockedDoBeforeTask = await captureCliJson(installedCli, ['do']);
+    const blockedDoBeforeTask = await captureCliJson(installedCli, ['capability', 'run', 'do']);
     assert.equal(blockedDoBeforeTask.action_card.status, 'blocked-by-task-intake');
     assert.match(blockedDoBeforeTask.action_card.first_cli, /task add <summary>/);
     assert.match(blockedDoBeforeTask.action_card.then_cli, /task activate <name>/);
@@ -955,7 +958,7 @@ test('installer lays down claude agents and settings hooks', async () => {
     assert.equal(resolvedHost.subagentBridge.available, false);
     assert.equal(resolvedHost.subagentBridge.mode, 'disabled');
     assert.equal(resolvedHost.subagentBridge.source, 'none');
-    assert.match(stdout, /Installed 13 Claude commands under:/);
+    assert.match(stdout, /Installed 8 Claude commands under:/);
     assert.match(stdout, /Updated Claude Code config:/);
   } finally {
     process.stdout.write = originalWrite;
@@ -989,7 +992,7 @@ test('installer defaults Claude to project-scoped .claude layout', async () => {
       type: 'command',
       command: 'node ".claude/emb-agent/hooks/emb-statusline.js"'
     });
-    assert.match(stdout, /Installed 13 Claude commands under:/);
+    assert.match(stdout, /Installed 8 Claude commands under:/);
     assert.match(stdout, /\.claude\/commands\/emb/);
   } finally {
     process.chdir(currentCwd);
@@ -1040,7 +1043,7 @@ test('installer lays down cursor commands and settings hooks', async () => {
     assert.equal(resolvedHost.subagentBridge.available, false);
     assert.equal(resolvedHost.subagentBridge.mode, 'disabled');
     assert.equal(resolvedHost.subagentBridge.source, 'none');
-    assert.match(stdout, /Installed 13 Cursor commands under:/);
+    assert.match(stdout, /Installed 8 Cursor commands under:/);
     assert.match(stdout, /Updated Cursor config:/);
   } finally {
     process.stdout.write = originalWrite;
@@ -1072,7 +1075,7 @@ test('installer defaults Cursor to project-scoped .cursor layout', async () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
-    assert.match(stdout, /Installed 13 Cursor commands under:/);
+    assert.match(stdout, /Installed 8 Cursor commands under:/);
     assert.match(stdout, /\.cursor\/commands/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /open a Cursor session\. emb-agent will inject the startup context automatically\./);
@@ -1127,9 +1130,9 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     assert.equal(configData.legacy_project_state_dir, 'state/projects');
 
     installedCli.main(['start']);
-    assert.match(stdout, /Installed 13 Codex skills under:/);
+    assert.match(stdout, /Installed 8 Codex skills under:/);
     assert.match(stdout, /\.codex\/skills/);
-    assert.doesNotMatch(stdout, /Installed 13 shared skills under:/);
+    assert.doesNotMatch(stdout, /Installed 8 shared skills under:/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /Bootstrap task:/);
     assert.match(stdout, /open a Codex session\. emb-agent will inject the startup context automatically\./);

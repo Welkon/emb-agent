@@ -145,7 +145,7 @@ test('real session regression covers source intake through verify closure hints'
       .filter(name => name !== '00-bootstrap-project' && name !== 'archive')[0];
     await cli.main(['task', 'activate', createdTaskName, '--confirm']);
     await cli.main(['focus', 'set', 'close the integrated regression loop']);
-    await cli.main(['do']);
+    await cli.main(['capability', 'run', 'do']);
 
     const nextAfterDo = cli.buildNextContext();
 

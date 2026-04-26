@@ -6,12 +6,7 @@ const PUBLIC_COMMAND_NAMES = [
   'ingest',
   'next',
   'task',
-  'scan',
-  'plan',
-  'do',
-  'debug',
-  'review',
-  'verify',
+  'capability',
   'pause',
   'resume'
 ];

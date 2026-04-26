@@ -558,9 +558,12 @@ test('init preserves existing docs files without force', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workspace')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'templates')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'templates')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'project-local.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'capability-scan.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'templates', 'scan-workflow.md.tpl')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', '00-bootstrap-project', 'task.json')), true);

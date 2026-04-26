@@ -89,7 +89,7 @@ test('adapter derive creates extension registries and profile skeletons', async 
 
     const result = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'derive',
         '--family',
         'scmcu-sc8f0xx',
@@ -261,7 +261,7 @@ test('adapter derive can infer family device chip and tools from project truth',
 
     const result = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'derive',
         '--from-project'
       ])
@@ -302,7 +302,7 @@ test('adapter derive can infer family device chip and tools from project truth',
   }
 });
 
-test('support publish copies reusable-candidate support into a shared path source', async () => {
+test('adapter publish copies reusable-candidate support into a shared path source', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-project-'));
   const tempCatalog = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-catalog-'));
   const currentCwd = process.cwd();
@@ -375,7 +375,7 @@ test('support publish copies reusable-candidate support into a shared path sourc
 
     const derived = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'derive',
         '--from-project'
       ])
@@ -383,7 +383,7 @@ test('support publish copies reusable-candidate support into a shared path sourc
     seedPromotionEvidence(tempProject);
     const published = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'publish',
         'shared-pack',
         '--confirm',
@@ -426,7 +426,7 @@ test('support publish copies reusable-candidate support into a shared path sourc
   }
 });
 
-test('support export allows reusable-candidate support to be copied without review or verification evidence', async () => {
+test('adapter export allows reusable-candidate support to be copied without review or verification evidence', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-gate-'));
   const tempCatalog = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-gate-catalog-'));
   const currentCwd = process.cwd();
@@ -497,7 +497,7 @@ test('support export allows reusable-candidate support to be copied without revi
 
     const derived = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'derive',
         '--from-project'
       ])
@@ -506,7 +506,7 @@ test('support export allows reusable-candidate support to be copied without revi
     assert.equal(derived.reusability.status, 'reusable-candidate');
     const exported = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'export',
         'shared-pack',
         '--confirm',
@@ -526,7 +526,7 @@ test('support export allows reusable-candidate support to be copied without revi
   }
 });
 
-test('support publish blocks reusable-candidate support when review or verification evidence is missing', async () => {
+test('adapter publish blocks reusable-candidate support when review or verification evidence is missing', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-publish-gate-'));
   const tempCatalog = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-publish-gate-catalog-'));
   const currentCwd = process.cwd();
@@ -597,7 +597,7 @@ test('support publish blocks reusable-candidate support when review or verificat
 
     const derived = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'derive',
         '--from-project'
       ])
@@ -606,7 +606,7 @@ test('support publish blocks reusable-candidate support when review or verificat
     assert.equal(derived.reusability.status, 'reusable-candidate');
     await assert.rejects(
       () => cli.main([
-        'support',
+        'adapter',
         'publish',
         'shared-pack',
         '--confirm',
@@ -620,7 +620,7 @@ test('support publish blocks reusable-candidate support when review or verificat
   }
 });
 
-test('support publish blocks project-only support unless --force is used', async () => {
+test('adapter publish blocks project-only support unless --force is used', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-block-'));
   const tempOutput = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-output-'));
   const currentCwd = process.cwd();
@@ -632,7 +632,7 @@ test('support publish blocks project-only support unless --force is used', async
 
     const result = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'derive',
         '--family',
         'scmcu-sc8f0xx',
@@ -654,7 +654,7 @@ test('support publish blocks project-only support unless --force is used', async
     assert.equal(result.reusability.status, 'project-only');
     await assert.rejects(
       () => cli.main([
-        'support',
+        'adapter',
         'publish',
         '--confirm',
         '--chip',
@@ -669,7 +669,7 @@ test('support publish blocks project-only support unless --force is used', async
   }
 });
 
-test('support publish allows evidence gate override with --force', async () => {
+test('adapter publish allows evidence gate override with --force', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-force-'));
   const tempOutput = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-promote-force-output-'));
   const currentCwd = process.cwd();
@@ -727,14 +727,14 @@ test('support publish allows evidence gate override with --force', async () => {
 
     const derived = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'derive',
         '--from-project'
       ])
     );
     const published = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'publish',
         '--confirm',
         '--chip',
@@ -840,7 +840,7 @@ test('adapter derive drafts chip pins and richer bindings from project signals',
 
     const result = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'derive',
         '--from-project',
         '--tool',
@@ -934,7 +934,7 @@ test('adapter derive can infer from hardware doc draft and attach doc metadata',
 
     const result = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'derive',
         '--from-doc',
         ingested.doc_id,
@@ -1080,7 +1080,7 @@ test('adapter derive can consume AI analysis artifact as structured input', asyn
 
     const result = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'derive',
         '--from-analysis',
         '.emb-agent/analysis/esp32-c3.json'
@@ -1209,7 +1209,7 @@ test('adapter derive rejects malformed analysis artifacts before writing adapter
 
     await assert.rejects(
       () => cli.main([
-        'support',
+        'adapter',
         'derive',
         '--from-analysis',
         '.emb-agent/analysis/invalid.json'
@@ -1280,7 +1280,7 @@ test('adapter generate can write emb-style output to arbitrary root', async () =
 
     const result = await captureJson(() =>
       cli.main([
-        'support',
+        'adapter',
         'generate',
         '--from-project',
         '--output-root',

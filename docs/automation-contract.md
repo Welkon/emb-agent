@@ -87,7 +87,11 @@ Typical `next --brief` contract:
   "next": {
     "command": "scan",
     "reason": "Project is still in definition and chip-selection mode.",
-    "cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs scan"
+    "cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs capability run scan"
+  },
+  "capability_route": {
+    "capability": "scan",
+    "route_strategy": "capability-first"
   },
   "workflow_stage": {
     "name": "selection",
@@ -99,10 +103,10 @@ Typical `next --brief` contract:
   },
   "action_card": {
     "stage": "selection",
-    "first_cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs scan"
+    "first_cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs capability run scan"
   },
   "next_actions": [
-    "Suggested flow: scan -> do -> verify"
+    "Suggested flow: capability run scan -> capability run do -> capability run verify"
   ],
   "runtime_events": {
     "status": "pending",
@@ -174,7 +178,7 @@ Typical external `next` contract:
     "total": 1
   },
   "next": {
-    "cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs scan"
+    "cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs capability run scan"
   }
 }
 ```

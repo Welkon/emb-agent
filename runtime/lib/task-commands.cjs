@@ -6,6 +6,7 @@ const permissionGateHelpers = require('./permission-gates.cjs');
 const runtimeEventHelpers = require('./runtime-events.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
+const capabilityCatalog = require('./capability-catalog.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
@@ -129,6 +130,10 @@ function createTaskCommandHelpers(deps) {
 
   function buildCli(args) {
     return runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, Array.isArray(args) ? args : []);
+  }
+
+  function buildPreferredCapabilityCli(name) {
+    return buildCli(capabilityCatalog.getCapabilityPrimaryArgs(name));
   }
 
   function applyTaskWritePermission(result, actionName, explicitConfirmation) {
@@ -1388,10 +1393,10 @@ function createTaskCommandHelpers(deps) {
     const planningCommands = activated
       ? []
       : [buildCli(['task', 'activate', String(task.name || '<name>')])];
-    const scanCli = buildCli(['scan']);
-    const planCli = buildCli(['plan']);
-    const doCli = buildCli(['do']);
-    const reviewCli = buildCli(['review']);
+    const scanCli = buildPreferredCapabilityCli('scan');
+    const planCli = buildPreferredCapabilityCli('plan');
+    const doCli = buildPreferredCapabilityCli('do');
+    const reviewCli = buildPreferredCapabilityCli('review');
     const recommendedPath = scanFirst ? 'scan-first' : 'plan-first';
     const recommendedReason = scanFirst
       ? 'Requirements, hardware truth, or decision inputs are still not explicit enough.'
