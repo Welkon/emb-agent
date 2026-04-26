@@ -787,7 +787,7 @@ test('adapter derive and generate honor write rules before writing derived outpu
     });
 
     const blockedDerive = await captureJson([
-      'support',
+      'adapter',
       'derive',
       '--family',
       'scmcu-sc8f0xx',
@@ -813,7 +813,7 @@ test('adapter derive and generate honor write rules before writing derived outpu
     );
 
     const allowedDerive = await captureJson([
-      'support',
+      'adapter',
       'derive',
       '--confirm',
       '--family',
@@ -845,7 +845,7 @@ test('adapter derive and generate honor write rules before writing derived outpu
 
     const outputRoot = path.join(tempProject, 'generated-chip-support');
     const blockedGenerate = await captureJson([
-      'support',
+      'adapter',
       'generate',
       '--family',
       'scmcu-sc8f0xx',
@@ -873,8 +873,8 @@ test('adapter derive and generate honor write rules before writing derived outpu
   }
 });
 
-test('session-report honors write ask rules before writing report files', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-write-session-report-'));
+test('session record honors write ask rules before writing report files', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-write-session-record-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
 
@@ -886,10 +886,10 @@ test('session-report honors write ask rules before writing report files', async 
     await cli.main(['init']);
 
     updateProjectConfig(tempProject, config => {
-      config.permissions.writes.ask = ['session-report-save'];
+      config.permissions.writes.ask = ['session-record-save'];
     });
 
-    const blocked = await captureJson(['session-report', 'capture current bring-up handoff']);
+    const blocked = await captureJson(['session', 'record', 'capture current bring-up handoff']);
     assert.equal(blocked.status, 'permission-pending');
     const reportDir = path.join(tempProject, '.emb-agent', 'reports', 'sessions');
     assert.equal(
@@ -897,7 +897,7 @@ test('session-report honors write ask rules before writing report files', async 
       0
     );
 
-    const allowed = await captureJson(['session-report', '--confirm', 'capture current bring-up handoff']);
+    const allowed = await captureJson(['session', 'record', '--confirm', 'capture current bring-up handoff']);
     assert.equal(allowed.permission_decision.decision, 'allow');
     const reports = fs.readdirSync(reportDir).filter(name => /^report-.+\.md$/i.test(name));
     assert.equal(reports.length, 1);

@@ -66,23 +66,23 @@ function createAdapterToolChipCommandHelpers(deps) {
       return syncNamedAdapterSource(rest[0], parseAdapterSyncArgs(rest.slice(1)));
     }
 
-    if ((isChipSupportCommand || isAdapterCommand) && subcmd === 'derive') {
+    if (isAdapterCommand && subcmd === 'derive') {
       return runAdapterDerive(rest);
     }
 
-    if ((isChipSupportCommand || isAdapterCommand) && subcmd === 'generate') {
+    if (isAdapterCommand && subcmd === 'generate') {
       return runAdapterGenerate(rest);
     }
 
-    if ((isChipSupportCommand || isAdapterCommand) && subcmd === 'analysis' && rest[0] === 'init') {
+    if (isAdapterCommand && subcmd === 'analysis' && rest[0] === 'init') {
       return runAdapterAnalysisInit(rest.slice(1));
     }
 
-    if ((isChipSupportCommand || isAdapterCommand) && subcmd === 'export') {
+    if (isAdapterCommand && subcmd === 'export') {
       return runAdapterExport(rest);
     }
 
-    if ((isChipSupportCommand || isAdapterCommand) && subcmd === 'publish') {
+    if (isAdapterCommand && subcmd === 'publish') {
       return runAdapterPublish(rest);
     }
 

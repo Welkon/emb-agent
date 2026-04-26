@@ -59,7 +59,7 @@ test('next suggests installing missing profile-default verification skills befor
     process.chdir(tempProject);
     await cli.main(['init']);
     await cli.main(['focus', 'set', 'close loop after pwm change']);
-    await cli.main(['do']);
+    await cli.main(['capability', 'run', 'do']);
 
     const next = cli.buildNextContext();
 

@@ -69,7 +69,7 @@ test('next stays in verify loop until required quality gates pass', async () => 
     ]);
 
     await cli.main(['focus', 'set', 'close loop with required gates']);
-    await cli.main(['do']);
+    await cli.main(['capability', 'run', 'do']);
 
     const beforeRun = cli.buildNextContext();
     assert.equal(beforeRun.next.command, 'verify');
@@ -236,7 +236,7 @@ test('verify loop can close required skill gates through skills run', async () =
       JSON.stringify(['scope-debug'])
     ]);
     await cli.main(['focus', 'set', 'close loop with required scope debug skill']);
-    await cli.main(['do']);
+    await cli.main(['capability', 'run', 'do']);
 
     const beforeRun = cli.buildNextContext();
     assert.equal(beforeRun.next.command, 'verify');
@@ -289,7 +289,7 @@ test('verify confirm and reject update human signoff gates', async () => {
       JSON.stringify(['board-bench', 'thermal-check'])
     ]);
     await cli.main(['focus', 'set', 'wait for human board validation']);
-    await cli.main(['do']);
+    await cli.main(['capability', 'run', 'do']);
 
     const beforeConfirm = cli.buildNextContext();
     assert.equal(beforeConfirm.quality_gates.gate_status, 'pending');

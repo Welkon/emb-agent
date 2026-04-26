@@ -5,6 +5,8 @@ const path = require('path');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const permissionGateHelpers = require('./permission-gates.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
+const capabilityCatalog = require('./capability-catalog.cjs');
+const capabilityRouter = require('./capability-router.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
@@ -27,6 +29,10 @@ function createActionContractHelpers(deps) {
     return runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, Array.isArray(args) ? args : []);
   }
 
+  function buildPreferredCapabilityCli(name) {
+    return buildCli(capabilityCatalog.getCapabilityPrimaryArgs(name));
+  }
+
   function buildActionFollowup(action, resolved, activeTask) {
     const scanWorkflowStage = action === 'scan' && typeof buildWorkflowStage === 'function'
       ? buildWorkflowStage({ command: 'scan' }, resolved)
@@ -44,23 +50,23 @@ function createActionContractHelpers(deps) {
       const nextAction = blankSelection ? 'plan' : 'do';
       return {
         label: blankSelection ? 'Continue with plan' : 'Continue with do',
-        cli: buildCli([nextAction]),
-        followup: `Then: ${buildCli(['verify'])}`
+        cli: buildPreferredCapabilityCli(nextAction),
+        followup: `Then: ${buildPreferredCapabilityCli('verify')}`
       };
     }
 
     if (action === 'plan') {
       return {
         label: 'Continue with do',
-        cli: buildCli(['do']),
-        followup: `Then: ${buildCli(['verify'])}`
+        cli: buildPreferredCapabilityCli('do'),
+        followup: `Then: ${buildPreferredCapabilityCli('verify')}`
       };
     }
 
     if (action === 'do') {
       return {
         label: 'Continue with verify',
-        cli: buildCli(['verify']),
+        cli: buildPreferredCapabilityCli('verify'),
         followup: activeTask && activeTask.name
           ? `Then: ${buildCli(['task', 'aar', 'scan', activeTask.name])}`
           : ''
@@ -70,16 +76,16 @@ function createActionContractHelpers(deps) {
     if (action === 'debug') {
       return {
         label: 'Return to do once the branch is clear',
-        cli: buildCli(['do']),
-        followup: `Then: ${buildCli(['verify'])}`
+        cli: buildPreferredCapabilityCli('do'),
+        followup: `Then: ${buildPreferredCapabilityCli('verify')}`
       };
     }
 
     if (action === 'review') {
       return {
         label: 'Continue with do after structural risks are explicit',
-        cli: buildCli(['do']),
-        followup: `Then: ${buildCli(['verify'])}`
+        cli: buildPreferredCapabilityCli('do'),
+        followup: `Then: ${buildPreferredCapabilityCli('verify')}`
       };
     }
 
@@ -102,8 +108,8 @@ function createActionContractHelpers(deps) {
     if (action === 'forensics') {
       return {
         label: 'Return to debug with the narrowed evidence',
-        cli: buildCli(['debug']),
-        followup: `Then: ${buildCli(['do'])}`
+        cli: buildPreferredCapabilityCli('debug'),
+        followup: `Then: ${buildPreferredCapabilityCli('do')}`
       };
     }
 
@@ -352,20 +358,17 @@ function createActionContractHelpers(deps) {
     const workflowStage = typeof buildWorkflowStage === 'function'
       ? buildWorkflowStage({ command: action }, resolved)
       : null;
+    const capabilityDefinition = capabilityCatalog.getCapabilityDefinition(action, {
+      include_runtime_surfaces: true
+    });
     let output;
 
-    if (action === 'scan') {
-      output = scheduler.buildScanOutput(resolved);
-    } else if (action === 'plan') {
-      output = scheduler.buildPlanOutput(resolved);
-    } else if (action === 'do') {
-      output = scheduler.buildDoOutput(resolved);
-    } else if (action === 'debug') {
-      output = scheduler.buildDebugOutput(resolved);
-    } else if (action === 'review') {
-      output = scheduler.buildReviewOutput(resolved);
-    } else if (action === 'verify') {
-      output = scheduler.buildVerifyOutput(resolved);
+    if (capabilityDefinition && capabilityDefinition.execution_kind === 'workflow-action') {
+      const builderName = capabilityDefinition.scheduler_builder;
+      if (!builderName || typeof scheduler[builderName] !== 'function') {
+        throw new Error(`Scheduler builder is not available for capability: ${action}`);
+      }
+      output = scheduler[builderName](resolved);
     } else if (action === 'forensics') {
       output = scheduler.buildForensicsOutput(resolved);
     } else if (action === 'note') {
@@ -408,11 +411,20 @@ function createActionContractHelpers(deps) {
         : scheduler.buildAgentExecution(action, resolved),
       context_hygiene: buildContextHygiene(resolved, handoff, action)
     }, resolved);
+    const capabilityRoute = capabilityRouter.buildCapabilityRoute(action, {
+      command: action,
+      primary_entry_cli: buildPreferredCapabilityCli(action),
+      primary_agent:
+        enriched.agent_execution && enriched.agent_execution.primary_agent
+          ? enriched.agent_execution.primary_agent
+          : ''
+    });
 
     const actionCard = buildActionCard(action, enriched, resolved, activeTask);
 
     return {
       ...enriched,
+      capability_route: capabilityRoute,
       workflow_stage: workflowStage,
       action_card: actionCard,
       next_actions: buildActionNextActions(action, actionCard, enriched),
@@ -427,7 +439,7 @@ function createActionContractHelpers(deps) {
       requested_action: 'arch-review',
       resolved_action: 'arch-review',
       reason: context.warning,
-      cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['arch-review']),
+      cli: buildPreferredCapabilityCli('arch-review'),
       dispatch_ready: true,
       agent_execution: {
         available: true,

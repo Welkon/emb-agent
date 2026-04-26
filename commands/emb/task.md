@@ -25,9 +25,9 @@ allowed-tools:
 - Run `$emb-task` when this command matches the current problem.
 - Prefer the lightest subcommand that keeps facts, evidence, and project truth aligned.
 - Usually `start` should decide when you need `task add` or `task activate`; use `task` directly once the task lifecycle is already explicit.
-- If the change surface is still unclear, create the task first so `prd.md` exists, then use `scan` to converge scope before `plan` or `do`.
-- After `task add`, treat the generated `prd.md` as the lightweight convergence point: lock goal, constraints, acceptance, and open questions before deciding whether the next command is `scan` or `plan`.
-- After `task activate`, keep the same PRD in the loop instead of jumping straight into mutation; if the task still drifts, run `scan` first, otherwise move into `plan`.
+- If the change surface is still unclear, create the task first so `prd.md` exists, then use `capability run scan` to converge scope before `capability run plan` or `capability run do`.
+- After `task add`, treat the generated `prd.md` as the lightweight convergence point: lock goal, constraints, acceptance, and open questions before deciding whether the next capability is `scan` or `plan`.
+- After `task activate`, keep the same PRD in the loop instead of jumping straight into mutation; if the task still drifts, run `capability run scan` first, otherwise move into `capability run plan`.
 - Use `task add --parent <name>` or `task subtask add <parent> <child>` when larger work needs a visible task tree.
 - In monorepo projects, use `task add --package <name>` to bind the task to one package and carry that package into activation and status.
 - Package-bound tasks automatically prioritize that package in their default context and expose package scope in `task worktree show/status`.

@@ -90,7 +90,7 @@ function createCliRouter(deps) {
     function buildOperationText(cmd, subcmd, rest) {
       const scope = [cmd, subcmd].filter(Boolean).join(' ');
 
-      if (cmd === 'init' || cmd === 'attach') {
+      if (cmd === 'init') {
         return 'Initializing emb-agent project';
       }
       if (cmd === 'ingest' && subcmd === 'doc') {
@@ -120,8 +120,17 @@ function createCliRouter(deps) {
       if (cmd === 'next' && subcmd === 'run') {
         return 'Entering the recommended next stage';
       }
-      if (['scan', 'plan', 'do', 'debug', 'review', 'verify'].includes(cmd) && !subcmd) {
-        return `Preparing ${cmd} action context`;
+      if (cmd === 'capability' && subcmd === 'list') {
+        return 'Listing capability catalog';
+      }
+      if (cmd === 'capability' && subcmd === 'show') {
+        return `Inspecting capability ${rest[0] || ''}`.trim();
+      }
+      if (cmd === 'capability' && subcmd === 'run') {
+        return `Running capability ${rest[0] || ''}`.trim();
+      }
+      if (cmd === 'capability' && subcmd === 'materialize') {
+        return `Materializing capability ${rest[0] || 'all'}`.trim();
       }
       if (cmd === 'executor' && subcmd === 'run') {
         return `Running executor ${rest[0] || ''}`.trim();
@@ -137,16 +146,16 @@ function createCliRouter(deps) {
       if (cmd === 'support' && subcmd === 'bootstrap') {
         return 'Bootstrapping chip support source';
       }
-      if ((cmd === 'support' || cmd === 'adapter') && subcmd === 'analysis' && rest[0] === 'init') {
+      if (cmd === 'adapter' && subcmd === 'analysis' && rest[0] === 'init') {
         return 'Initializing chip support analysis artifact';
       }
-      if ((cmd === 'support' || cmd === 'adapter') && subcmd === 'export') {
+      if (cmd === 'adapter' && subcmd === 'export') {
         return 'Exporting derived chip support into a private target';
       }
-      if ((cmd === 'support' || cmd === 'adapter') && subcmd === 'publish') {
+      if (cmd === 'adapter' && subcmd === 'publish') {
         return 'Publishing derived chip support into a shared catalog';
       }
-      if ((cmd === 'support' || cmd === 'adapter') && (subcmd === 'derive' || subcmd === 'generate')) {
+      if (cmd === 'adapter' && (subcmd === 'derive' || subcmd === 'generate')) {
         return `Generating chip support artifacts via ${scope}`;
       }
 
@@ -372,7 +381,7 @@ function createCliRouter(deps) {
         (payload.result && payload.result.action_context && payload.result.action_context.action_card) ||
         null;
 
-      if ((cmd === 'init' || cmd === 'attach') && payload.project_root) {
+      if (cmd === 'init' && payload.project_root) {
         lines.push(terminalUi.renderKeyValue('Project', payload.project_root, 'info'));
         if (payload.bootstrap && payload.bootstrap.status) {
           lines.push(terminalUi.renderKeyValue('Bootstrap', payload.bootstrap.status, 'success'));
@@ -433,7 +442,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Bootstrap', bootstrapStage, 'info'));
         }
         if (immediate.command) {
-          lines.push(terminalUi.renderKeyValue('Next', immediate.command, 'success'));
+          lines.push(terminalUi.renderKeyValue('Next', immediate.cli || immediate.command, 'success'));
         }
         if (immediate.reason) {
           lines.push(terminalUi.renderKeyValue('Reason', immediate.reason, 'muted'));
@@ -489,7 +498,13 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Task', payload.summary.active_task.name, 'info'));
         }
         if (payload.next && payload.next.next && payload.next.next.command) {
-          lines.push(terminalUi.renderKeyValue('Next', payload.next.next.command, 'success'));
+          lines.push(
+            terminalUi.renderKeyValue(
+              'Next',
+              payload.next.next.cli || payload.next.next.command,
+              'success'
+            )
+          );
         }
         if (payload.health && payload.health.status) {
           lines.push(terminalUi.renderKeyValue('Health', payload.health.status, 'success'));
@@ -550,7 +565,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Default Package', payload.current.default_package, 'muted'));
         }
         if (payload.next && payload.next.command) {
-          lines.push(terminalUi.renderKeyValue('Next', payload.next.command, 'success'));
+          lines.push(terminalUi.renderKeyValue('Next', payload.next.cli || payload.next.command, 'success'));
         }
         if (payload.next && payload.next.reason) {
           lines.push(terminalUi.renderKeyValue('Reason', payload.next.reason, 'muted'));
@@ -645,79 +660,8 @@ function createCliRouter(deps) {
         return appendRuntimeEventsSummary(lines, payload);
       }
 
-      if (cmd === 'scan' && !subcmd) {
+      if (cmd === 'capability' && subcmd === 'run') {
         pushWorkflowStageLines(lines, workflowStage);
-        lines.push(terminalUi.renderKeyValue('Files', String((payload.relevant_files || []).length), 'info'));
-        lines.push(terminalUi.renderKeyValue('Questions', String((payload.open_questions || []).length), 'success'));
-        if (Array.isArray(payload.next_reads) && payload.next_reads.length > 0) {
-          lines.push(terminalUi.renderKeyValue('Read Next', payload.next_reads[0], 'muted'));
-        }
-        pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions, nestedActionCard);
-        return appendRuntimeEventsSummary(lines, payload);
-      }
-
-      if (cmd === 'plan' && !subcmd) {
-        pushWorkflowStageLines(lines, workflowStage);
-        lines.push(terminalUi.renderKeyValue('Goal', payload.goal, 'info'));
-        lines.push(terminalUi.renderKeyValue('Steps', String((payload.steps || []).length), 'success'));
-        if (Array.isArray(payload.verification) && payload.verification.length > 0) {
-          lines.push(terminalUi.renderKeyValue('Verify', payload.verification[0], 'muted'));
-        }
-        pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions, nestedActionCard);
-        return appendRuntimeEventsSummary(lines, payload);
-      }
-
-      if (cmd === 'do' && !subcmd) {
-        pushWorkflowStageLines(lines, workflowStage);
-        if (payload.chosen_agent) {
-          lines.push(terminalUi.renderKeyValue('Agent', payload.chosen_agent, 'info'));
-        }
-        lines.push(terminalUi.renderKeyValue('Checks', String((payload.safety_checks || []).length), 'success'));
-        if (payload.execution_brief && Array.isArray(payload.execution_brief.suggested_steps) && payload.execution_brief.suggested_steps.length > 0) {
-          lines.push(terminalUi.renderKeyValue('Execute', payload.execution_brief.suggested_steps[0], 'muted'));
-        }
-        pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions, nestedActionCard);
-        return appendRuntimeEventsSummary(lines, payload);
-      }
-
-      if (cmd === 'debug' && !subcmd) {
-        pushWorkflowStageLines(lines, workflowStage);
-        if (payload.chosen_agent) {
-          lines.push(terminalUi.renderKeyValue('Agent', payload.chosen_agent, 'info'));
-        }
-        lines.push(terminalUi.renderKeyValue('Hypotheses', String((payload.hypotheses || []).length), 'success'));
-        if (payload.next_step) {
-          lines.push(terminalUi.renderKeyValue('Next Step', payload.next_step, 'muted'));
-        }
-        pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions, nestedActionCard);
-        return appendRuntimeEventsSummary(lines, payload);
-      }
-
-      if (cmd === 'review' && !subcmd) {
-        pushWorkflowStageLines(lines, workflowStage);
-        lines.push(terminalUi.renderKeyValue('Axes', String((payload.axes || []).length), 'info'));
-        lines.push(terminalUi.renderKeyValue('Checks', String((payload.required_checks || []).length), 'success'));
-        if (Array.isArray(payload.review_agents) && payload.review_agents.length > 0) {
-          lines.push(terminalUi.renderKeyValue('Reviewers', payload.review_agents.join(', '), 'muted'));
-        }
-        pushActionCardLines(lines, nestedActionCard);
-        pushNextActions(lines, payload.next_actions, nestedActionCard);
-        return appendRuntimeEventsSummary(lines, payload);
-      }
-
-      if (cmd === 'verify' && !subcmd) {
-        pushWorkflowStageLines(lines, workflowStage);
-        lines.push(terminalUi.renderKeyValue('Checklist', String((payload.checklist || []).length), 'info'));
-        if (payload.closure_status) {
-          lines.push(terminalUi.renderKeyValue('Closure', payload.closure_status, 'success'));
-        }
-        if (payload.next_step) {
-          lines.push(terminalUi.renderKeyValue('Next Step', payload.next_step, 'muted'));
-        }
         pushActionCardLines(lines, nestedActionCard);
         pushNextActions(lines, payload.next_actions, nestedActionCard);
         return appendRuntimeEventsSummary(lines, payload);
@@ -994,7 +938,7 @@ function createCliRouter(deps) {
         return appendRuntimeEventsSummary(lines, payload);
       }
 
-      if (cmd === 'session-report' || (cmd === 'session' && subcmd === 'record')) {
+      if (cmd === 'session' && subcmd === 'record') {
         if (payload.generated === true) {
           lines.push(terminalUi.renderKeyValue('Generated', 'yes', 'success'));
         }
@@ -1002,7 +946,7 @@ function createCliRouter(deps) {
           lines.push(terminalUi.renderKeyValue('Report', payload.report_file, 'info'));
         }
         if (payload.next && payload.next.command) {
-          lines.push(terminalUi.renderKeyValue('Next', payload.next.command, 'success'));
+          lines.push(terminalUi.renderKeyValue('Next', payload.next.cli || payload.next.command, 'success'));
         }
         if (payload.next && payload.next.reason) {
           lines.push(terminalUi.renderKeyValue('Reason', payload.next.reason, 'muted'));
@@ -1438,21 +1382,6 @@ function createCliRouter(deps) {
       return;
     }
 
-    if (cmd === 'attach') {
-      const initialized = runWithTerminalUi({
-        cmd,
-        subcmd,
-        text: buildOperationText(cmd, subcmd, rest),
-        success_text: 'emb-agent project is attached',
-        failure_text: 'emb-agent attach failed'
-      }, () => runInitCommand(args.slice(1), 'attach'));
-      if (initialized) {
-        initialized.legacy_alias = true;
-        emitCommandResult({ cmd, subcmd }, initialized, { summary_already_rendered: true });
-      }
-      return;
-    }
-
     if (cmd === 'ingest') {
       emitCommandResult({ cmd, subcmd }, await runWithTerminalUi({
         cmd,
@@ -1848,7 +1777,6 @@ function createCliRouter(deps) {
 
       if (
         (cmd === 'task' && ['add', 'activate', 'show', 'create-pr', 'link-pr'].includes(subcmd || '')) ||
-        cmd === 'session-report' ||
         (cmd === 'session' && subcmd === 'record')
       ) {
         emitCommandResult(
@@ -1887,18 +1815,18 @@ function createCliRouter(deps) {
 
     const actionCommandResult = handleActionCommands(cmd, subcmd, rest);
     if (actionCommandResult !== undefined) {
-      if (['scan', 'plan', 'do', 'debug', 'review', 'verify'].includes(cmd) && !subcmd) {
+      if (cmd === 'capability' && subcmd === 'run') {
         emitCommandResult({ cmd, subcmd }, runWithTerminalUi({
           cmd,
           subcmd,
           text: buildOperationText(cmd, subcmd, rest),
-          success_text: `${cmd} context updated`,
-          failure_text: `${cmd} failed`,
+          success_text: `${rest[0] || 'capability'} context updated`,
+          failure_text: `${rest[0] || 'capability'} failed`,
           activity: false
         }, () => actionCommandResult), { summary_already_rendered: true });
-      } else {
-        emitJson(actionCommandResult);
+        return;
       }
+      emitJson(actionCommandResult);
       return;
     }
 
@@ -1924,8 +1852,7 @@ function createCliRouter(deps) {
     const supportTerminalUiCommand =
       cmd === 'support' &&
       (
-        ['bootstrap', 'sync', 'derive', 'generate'].includes(subcmd || '') ||
-        (subcmd === 'analysis' && rest[0] === 'init')
+        ['bootstrap', 'sync'].includes(subcmd || '')
       );
     const adapterTerminalUiCommand =
       cmd === 'adapter' &&

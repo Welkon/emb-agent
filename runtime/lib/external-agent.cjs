@@ -101,6 +101,49 @@ function createExternalAgentHelpers() {
     return runtimeEventHelpers.summarizeRuntimeEvents(source && source.runtime_events);
   }
 
+  function summarizeCapabilityRoute(route) {
+    const source = route && typeof route === 'object' && !Array.isArray(route) ? route : null;
+
+    if (!source) {
+      return null;
+    }
+
+    const primaryEntry =
+      source.primary_entry && typeof source.primary_entry === 'object' && !Array.isArray(source.primary_entry)
+        ? source.primary_entry
+        : {};
+    return compactObject({
+      capability: source.capability || '',
+      category: source.category || '',
+      route_strategy: source.route_strategy || '',
+      product_role: source.product_role || '',
+      generator_owner: source.generator_owner || '',
+      repository_layout: source.repository_layout || '',
+      materialization_state: source.materialization_state || '',
+      host_targets: Array.isArray(source.host_targets) ? source.host_targets.slice(0, 5) : undefined,
+      primary_entry: compactObject({
+        kind: primaryEntry.kind || '',
+        name: primaryEntry.name || '',
+        cli: primaryEntry.cli || ''
+      }),
+      generated_surfaces: Array.isArray(source.generated_surfaces)
+        ? source.generated_surfaces
+            .slice(0, 4)
+            .map(item =>
+              compactObject({
+                kind: item && item.kind ? item.kind : '',
+                name: item && item.name ? item.name : '',
+                materialized:
+                  item && Object.prototype.hasOwnProperty.call(item, 'materialized')
+                    ? Boolean(item.materialized)
+                    : undefined,
+                source: item && item.source ? item.source : ''
+              })
+            )
+        : undefined
+    });
+  }
+
   function buildStartProtocol(runtimeHost, context) {
     const source = context && typeof context === 'object' && !Array.isArray(context) ? context : {};
     const summary = source.summary && typeof source.summary === 'object' && !Array.isArray(source.summary)
@@ -136,6 +179,7 @@ function createExternalAgentHelpers() {
       status: stage.name || 'next',
       summary: next.reason || '',
       runtime_events: summarizeProtocolRuntimeEvents(source),
+      capability_route: summarizeCapabilityRoute(source.capability_route || next.capability_route),
       recommended_flow:
         source.recommended_flow && typeof source.recommended_flow === 'object' && !Array.isArray(source.recommended_flow)
           ? compactObject({
@@ -186,6 +230,8 @@ function createExternalAgentHelpers() {
       status: 'inspection',
       summary: 'Run next to continue the workflow.',
       runtime_events: summarizeProtocolRuntimeEvents(source),
+      capability_route: summarizeCapabilityRoute(source.capability_route),
+      next_capability_route: summarizeCapabilityRoute(source.next_capability_route),
       session_state:
         source.session_state && typeof source.session_state === 'object' && !Array.isArray(source.session_state)
           ? source.session_state
@@ -272,6 +318,7 @@ function createExternalAgentHelpers() {
       status: mode,
       summary: source.reason || '',
       runtime_events: summarizeProtocolRuntimeEvents(source),
+      capability_route: summarizeCapabilityRoute(source.capability_route),
       next: compactObject({
         kind: recommendedKind,
         cli: recommendedCli

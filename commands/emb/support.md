@@ -41,4 +41,3 @@ allowed-tools:
 - `adapter export` copies the current project's derived family/device/chip files into a private path-based source or explicit output root and rebuilds destination registries without requiring shared-catalog publication evidence.
 - `adapter publish` is the maintainer-side closure step. It copies the current project's derived family/device/chip files into a path-based shared catalog or an explicit output root and rebuilds destination registries.
 - By default, `adapter publish` requires saved entries in `docs/REVIEW-REPORT.md` and `docs/VERIFICATION.md`; use `--force` only when you intentionally override that publication gate.
-- Backward-compatible aliases remain available for `support analysis init`, `support derive`, `support export`, `support publish`, and `support generate`.

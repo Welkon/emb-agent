@@ -77,21 +77,23 @@ async function captureCliTtyOutput(args, cliImpl = cli) {
   return { stdout, stderr };
 }
 
-test('help markdown does not expose emb-attach as an official command', () => {
+test('help markdown does not expose removed attach alias as an official command', () => {
   const helpPath = path.join(repoRoot, 'commands', 'emb', 'help.md');
   const content = fs.readFileSync(helpPath, 'utf8');
 
   assert.doesNotMatch(content, /\$emb-attach/);
 });
 
-test('commands list hides legacy attach alias', async () => {
+test('commands list hides removed aliases and exposes capability surface', async () => {
   const listed = await captureCliJson(['commands', 'list']);
 
   assert.ok(Array.isArray(listed));
-  assert.equal(listed.length, 13);
+  assert.equal(listed.length, 8);
   assert.ok(listed.includes('help'));
   assert.ok(listed.includes('start'));
-  assert.ok(listed.includes('review'));
+  assert.ok(listed.includes('capability'));
+  assert.ok(!listed.includes('scan'));
+  assert.ok(!listed.includes('review'));
   assert.ok(!listed.includes('init'));
   assert.ok(!listed.includes('workflow'));
   assert.ok(!listed.includes('attach'));
@@ -109,16 +111,10 @@ test('commands list --all exposes installed advanced commands', async () => {
   assert.ok(!listed.includes('adapter'));
   assert.ok(listed.includes('dispatch'));
   assert.ok(listed.includes('orchestrate'));
-  assert.ok(listed.includes('attach'));
+  assert.ok(!listed.includes('attach'));
   assert.ok(listed.includes('init-project'));
-});
-
-test('commands show keeps legacy attach alias accessible', async () => {
-  const shown = await captureCliJson(['commands', 'show', 'attach']);
-
-  assert.equal(shown.name, 'attach');
-  assert.equal(shown.path, 'commands/emb/attach.md');
-  assert.match(shown.content, /legacy alias kept for compatibility/);
+  assert.ok(!listed.includes('scan'));
+  assert.ok(!listed.includes('review'));
 });
 
 test('commands show keeps hidden init-project command accessible', async () => {
@@ -210,7 +206,7 @@ test('next run resolves and enters the recommended stage directly', async () => 
 
     await cli.main(['question', 'clear']);
     await cli.main(['focus', 'set', 'close loop after irq fix']);
-    await cli.main(['do']);
+    await cli.main(['capability', 'run', 'do']);
     const runAfterDo = await captureCliJson(['next', 'run']);
     assert.equal(runAfterDo.resolved_action, 'verify');
     assert.equal(runAfterDo.workflow_stage.name, 'closure');
@@ -315,7 +311,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /adapter analysis init --chip <name>/);
   assert.match(advanced, /adapter export \[<source>\]/);
   assert.match(advanced, /adapter publish \[<source>\]/);
-  assert.match(advanced, /support analysis init \.\.\. \[alias of `adapter analysis init`\]/);
+  assert.doesNotMatch(advanced, /support analysis init/);
   assert.doesNotMatch(advanced, /support promote \[<source>\]/);
   assert.doesNotMatch(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
@@ -455,7 +451,7 @@ test('start and next expose package-aware monorepo entry context', async () => {
     const output = await captureCliTtyOutput(['next']);
     assert.equal(output.stdout.trim(), '');
     assert.match(output.stderr, /Package: app/);
-    assert.match(output.stderr, /Next: scan/);
+    assert.match(output.stderr, /Next: .*emb-agent\.cjs capability run scan/);
   } finally {
     process.chdir(currentCwd);
   }
@@ -492,11 +488,14 @@ test('text mode next surfaces runtime event summary in tty output', async () => 
     const output = await captureCliTtyOutput(['next']);
 
     assert.match(output.stderr, /Workflow: selection/);
-    assert.match(output.stderr, /Next: scan/);
-    assert.match(output.stderr, /First: Follow the recommended flow: scan -> do -> verify\./);
+    assert.match(output.stderr, /Next: .*emb-agent\.cjs capability run scan/);
+    assert.match(
+      output.stderr,
+      /First: Follow the recommended flow: capability run scan -> capability run do -> capability run verify\./
+    );
     assert.doesNotMatch(output.stderr, /Hint:/);
     assert.doesNotMatch(output.stderr, /Next Hint:/);
-    assert.doesNotMatch(output.stderr, /flow=scan -> do -> verify/);
+    assert.doesNotMatch(output.stderr, /flow=capability run scan -> capability run do -> capability run verify/);
     assert.doesNotMatch(output.stderr, /command=scan; reason=/);
     assert.match(output.stderr, /Events: ok \/ 1 \(workflow-next\)/);
   } finally {

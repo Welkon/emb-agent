@@ -306,12 +306,12 @@ test('blank project next flow advances from scan to plan to do to verify', async
     assert.equal(nextBeforeContext.next.command, 'scan');
     assert.equal(nextBeforeContext.workflow_stage.primary_command, 'scan');
 
-    await cli.main(['scan']);
+    await cli.main(['capability', 'run', 'scan']);
     const nextAfterScan = cli.buildNextContext();
     assert.equal(nextAfterScan.next.command, 'plan');
     assert.equal(nextAfterScan.workflow_stage.primary_command, 'plan');
 
-    await cli.main(['plan']);
+    await cli.main(['capability', 'run', 'plan']);
     const nextAfterPlan = cli.buildNextContext();
     assert.equal(nextAfterPlan.next.command, 'do');
     assert.equal(nextAfterPlan.workflow_stage.primary_command, 'do');
@@ -319,7 +319,7 @@ test('blank project next flow advances from scan to plan to do to verify', async
     assert.ok(conceptDo.prerequisites.some(item => item.includes('.emb-agent/req.yaml')));
     assert.ok(conceptDo.execution_brief.suggested_steps.some(item => item.includes('smallest durable selection update')));
 
-    await cli.main(['do']);
+    await cli.main(['capability', 'run', 'do']);
     const nextAfterDo = cli.buildNextContext();
     assert.equal(nextAfterDo.next.command, 'verify');
     assert.equal(nextAfterDo.workflow_stage.primary_command, 'verify');

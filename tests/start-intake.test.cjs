@@ -75,11 +75,14 @@ test('start exposes Trellis-style task intake guidance during bootstrap', async 
       start.task_intake.paths.map(item => item.id),
       ['known-change', 'unclear-scope', 'system-change']
     );
-    assert.match(start.workflow.steps[1].commands.join(' | '), /If scope is unclear: scan -> plan/);
+    assert.match(
+      start.workflow.steps[1].commands.join(' | '),
+      /If scope is unclear: capability run scan -> capability run plan/
+    );
 
     const tty = await captureCliTtyOutput(['start']);
     assert.equal(tty.stdout.trim(), '');
-    assert.match(tty.stderr, /Next: next/);
+    assert.match(tty.stderr, /Next: .*emb-agent\.cjs next/);
     assert.match(tty.stderr, /First: Open \.emb-agent\/req\.yaml/);
     assert.match(tty.stderr, /Task Intake: After bootstrap is ready, create a task and PRD first\./);
   } finally {

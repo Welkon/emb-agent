@@ -9,6 +9,7 @@ function createWorkflowAuthoringHelpers(deps) {
     runtime,
     workflowRegistry,
     workflowImport,
+    capabilityMaterializer,
     templateCli,
     getProjectExtDir,
     loadSpec,
@@ -363,9 +364,14 @@ function createWorkflowAuthoringHelpers(deps) {
   function initWorkflowLayout(args) {
     const force = Array.isArray(args) && args.includes('--force');
     const result = ensureProjectWorkflowLayout(force);
+    const capabilityMaterialization =
+      capabilityMaterializer && typeof capabilityMaterializer.materializeCapabilitySet === 'function'
+        ? capabilityMaterializer.materializeCapabilitySet('all', { force })
+        : null;
     return {
       command: 'workflow init',
-      workflow_layout: result.layout
+      workflow_layout: result.layout,
+      capability_materialization: capabilityMaterialization
     };
   }
 

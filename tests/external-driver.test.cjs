@@ -103,7 +103,9 @@ test('external init and next expose fixed driver payload for external agents', a
     assert.equal(next.entrypoint, 'next');
     assert.match(next.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
     assert.equal(next.status, 'selection');
-    assert.match(next.next.cli, / scan$/);
+    assert.match(next.next.cli, / capability run scan$/);
+    assert.equal(next.capability_route.capability, 'scan');
+    assert.equal(next.capability_route.route_strategy, 'capability-first');
     assert.ok(next.runtime_events);
     assert.ok(next.runtime_events.total >= 1);
     assert.equal('workflow_stage' in next, false);
@@ -113,6 +115,9 @@ test('external init and next expose fixed driver payload for external agents', a
     assert.match(status.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
     assert.equal(status.status, 'inspection');
     assert.match(status.summary, /next/i);
+    assert.equal(status.capability_route.capability, 'status');
+    assert.equal(status.next_capability_route.capability, 'scan');
+    assert.equal(status.next_capability_route.route_strategy, 'capability-first');
     assert.ok(status.session_state);
     assert.equal(status.session_state.storage_mode, 'primary');
     assert.equal(status.session_state.session.exists, true);
@@ -138,8 +143,10 @@ test('external dispatch-next exposes minimal execution decision protocol', async
     assert.equal(dispatch.entrypoint, 'dispatch-next');
     assert.match(dispatch.runtime_cli, /emb-agent\/bin\/emb-agent\.cjs$/);
     assert.equal(dispatch.status, 'inline');
-    assert.match(dispatch.next.cli, / scan$/);
+    assert.match(dispatch.next.cli, / capability run scan$/);
     assert.equal(dispatch.next.kind, 'action');
+    assert.equal(dispatch.capability_route.capability, 'scan');
+    assert.equal(dispatch.capability_route.route_strategy, 'capability-first');
     assert.ok(dispatch.runtime_events);
     assert.equal(typeof dispatch.runtime_events.status, 'string');
     assert.equal(typeof dispatch.runtime_events.total, 'number');

@@ -19,7 +19,7 @@ emb-agent is a hardware-first AI workflow layer for embedded firmware repositori
 It keeps hardware truth in the repo, keeps the default command flow small, and gives the agent one consistent path from "what chip is this?" to "what should I do next?".
 
 Installable skill bundles can add executable capabilities such as scope control, build, flash, or debug flows without expanding the default core workflow.
-When a project wants those executable skills to participate in closure, declare them in `quality_gates.required_skills` so `verify` and `next` can drive `skills run` before manual signoff.
+When a project wants those executable skills to participate in closure, declare them in `quality_gates.required_skills` so `capability run verify` and `next` can drive `skills run` before manual signoff.
 
 emb-agent is not just a skill bundle or prompt wrapper. Skills, commands, hooks, and `AGENTS.md` files are host integration surfaces for Codex, Claude Code, Cursor, and similar runtimes. The product itself is the embedded workflow plus the chip-support runtime behind it.
 

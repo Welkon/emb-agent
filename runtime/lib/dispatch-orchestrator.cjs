@@ -2,6 +2,8 @@
 
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const permissionGateHelpers = require('./permission-gates.cjs');
+const capabilityCatalog = require('./capability-catalog.cjs');
+const capabilityRouter = require('./capability-router.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
@@ -17,6 +19,14 @@ function createDispatchHelpers(deps) {
     buildActionOutput,
     buildArchReviewDispatchContext
   } = deps;
+
+  function buildCli(args) {
+    return runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, Array.isArray(args) ? args : []);
+  }
+
+  function buildPreferredCapabilityCli(name) {
+    return buildCli(capabilityCatalog.getCapabilityPrimaryArgs(name));
+  }
 
   function getDiagnostics(session) {
     return session && session.diagnostics
@@ -112,12 +122,21 @@ function createDispatchHelpers(deps) {
 
       if (resolvedAction === 'arch-review') {
         const archDispatch = buildArchReviewDispatchContext();
+        const capabilityRoute = capabilityRouter.buildCapabilityRoute(resolvedAction, {
+          command: resolvedAction,
+          primary_entry_cli: archDispatch.cli,
+          primary_agent:
+            archDispatch.agent_execution && archDispatch.agent_execution.primary_agent
+              ? archDispatch.agent_execution.primary_agent
+              : ''
+        });
         return {
           source: 'next',
           requested_action: 'next',
           resolved_action: resolvedAction,
           reason: next.next.reason,
           cli: archDispatch.cli,
+          capability_route: capabilityRoute,
           dispatch_ready: archDispatch.dispatch_ready,
           agent_execution: archDispatch.agent_execution,
           workflow_stage: next.workflow_stage || null,
@@ -139,12 +158,21 @@ function createDispatchHelpers(deps) {
         resolvedAction === 'scan'
           ? buildToolExecutionFromNext(next)
           : null;
+      const capabilityRoute = capabilityRouter.buildCapabilityRoute(resolvedAction, {
+        command: resolvedAction,
+        primary_entry_cli: next.next.cli,
+        primary_agent:
+          output.agent_execution && output.agent_execution.primary_agent
+            ? output.agent_execution.primary_agent
+            : ''
+      });
       return {
         source: 'next',
         requested_action: 'next',
         resolved_action: resolvedAction,
         reason: next.next.reason,
         cli: next.next.cli,
+        capability_route: capabilityRoute,
         dispatch_ready: Boolean(output.agent_execution && output.agent_execution.available),
         agent_execution: output.agent_execution || null,
         workflow_stage: next.workflow_stage || null,
@@ -164,9 +192,19 @@ function createDispatchHelpers(deps) {
     }
 
     if (action === 'arch-review') {
+      const archDispatch = buildArchReviewDispatchContext();
+      const capabilityRoute = capabilityRouter.buildCapabilityRoute(action, {
+        command: action,
+        primary_entry_cli: archDispatch.cli,
+        primary_agent:
+          archDispatch.agent_execution && archDispatch.agent_execution.primary_agent
+            ? archDispatch.agent_execution.primary_agent
+            : ''
+      });
       return {
         source: 'action',
-        ...buildArchReviewDispatchContext()
+        capability_route: capabilityRoute,
+        ...archDispatch
       };
     }
 
@@ -174,13 +212,23 @@ function createDispatchHelpers(deps) {
     const resolved = resolveSession();
     const diagnostics = getDiagnostics(resolved.session);
     const executorSignal = buildExecutorSignal(diagnostics.latest_executor);
+    const cli = buildPreferredCapabilityCli(action);
+    const capabilityRoute = capabilityRouter.buildCapabilityRoute(action, {
+      command: action,
+      primary_entry_cli: cli,
+      primary_agent:
+        output.agent_execution && output.agent_execution.primary_agent
+          ? output.agent_execution.primary_agent
+          : ''
+    });
 
     return {
       source: 'action',
       requested_action: action,
       resolved_action: action,
       reason: `direct dispatch for ${action}`,
-      cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, [action]),
+      cli,
+      capability_route: capabilityRoute,
       dispatch_ready: Boolean(output.agent_execution && output.agent_execution.available),
       agent_execution: output.agent_execution || null,
       context_hygiene: output.context_hygiene || null,

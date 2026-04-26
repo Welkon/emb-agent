@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
-const commandGroupHelpers = require(path.join(repoRoot, 'runtime', 'lib', 'command-groups.cjs'));
+const capabilityRuntimeHelpers = require(path.join(repoRoot, 'runtime', 'lib', 'capability-runtime.cjs'));
 
 function createHelpers(overrides = {}) {
   const calls = {
@@ -14,28 +14,6 @@ function createHelpers(overrides = {}) {
   };
 
   const deps = {
-    runtime: {
-      unique(items) {
-        return Array.from(new Set((items || []).filter(Boolean)));
-      }
-    },
-    scheduler: {},
-    toolCatalog: {},
-    toolRuntime: {},
-    chipCatalog: {},
-    ROOT: repoRoot,
-    RUNTIME_CONFIG: {
-      max_last_files: 8
-    },
-    resolveProjectRoot() {
-      return repoRoot;
-    },
-    resolveSession() {
-      return {};
-    },
-    getActiveTask() {
-      return null;
-    },
     updateSession() {
       calls.updateSession += 1;
     },
@@ -53,12 +31,6 @@ function createHelpers(overrides = {}) {
           command: 'next'
         }
       };
-    },
-    runSubAgentBridge() {
-      return null;
-    },
-    collectSubAgentBridgeJobs() {
-      return [];
     },
     buildActionOutput(action) {
       calls.buildActionOutput.push(action);
@@ -81,77 +53,23 @@ function createHelpers(overrides = {}) {
     buildArchReviewContext() {
       return {};
     },
-    buildDispatchContext() {
+    buildStatus() {
       return {};
     },
-    buildOrchestratorContext() {
-      return {};
-    },
-    buildAdapterStatus() {
-      return {};
-    },
-    addAdapterSource() {
-      return {};
-    },
-    removeAdapterSource() {
-      return {};
-    },
-    bootstrapAdapterSource() {
-      return {};
-    },
-    parseAdapterSyncArgs() {
-      return {};
-    },
-    syncNamedAdapterSource() {
-      return {};
-    },
-    syncAllAdapterSources() {
-      return {};
-    },
-    runAdapterDerive() {
-      return {};
-    },
-    runAdapterGenerate() {
-      return {};
-    },
-    runAdapterAnalysisInit() {
-      return {};
-    },
-    runAdapterExport() {
-      return {};
-    },
-    runAdapterPublish() {
-      return {};
+    getActiveTask() {
+      return null;
     },
     handleCatalogAndStateCommands() {
       return undefined;
     },
-    saveScanReport() {
-      return {};
-    },
-    savePlanReport() {
-      return {};
-    },
-    saveReviewReport() {
-      return {};
-    },
-    confirmVerifySignoff() {
-      return {};
-    },
-    rejectVerifySignoff() {
-      return {};
-    },
-    saveVerifyReport() {
-      return {};
-    },
-    addNoteEntry() {
-      return {};
-    },
-    ingestDocCli: {},
-    referenceLookupCli: {}
+    capabilityMaterializer: {
+      buildMaterializationPlan() {
+        return null;
+      }
+    }
   };
 
-  const helpers = commandGroupHelpers.createCommandGroupHelpers({
+  const helpers = capabilityRuntimeHelpers.createCapabilityRuntimeHelpers({
     ...deps,
     ...overrides
   });
@@ -184,10 +102,10 @@ test('scan is blocked by health closure when next is health-gated', () => {
     }
   });
 
-  const result = helpers.handleActionCommands('scan', '', []);
+  const result = helpers.executeCapability('scan');
 
   assert.deepEqual(calls.buildActionOutput, ['health']);
-  assert.equal(calls.updateSession, 0);
+  assert.equal(calls.updateSession, 1);
   assert.equal(result.blocked_action, 'scan');
   assert.equal(result.action_card.status, 'blocked-by-health');
   assert.equal(result.workflow_stage.name, 'health-gate');
@@ -215,7 +133,7 @@ test('do keeps health closure ahead of missing task intake', () => {
     }
   });
 
-  const result = helpers.handleActionCommands('do', '', []);
+  const result = helpers.executeCapability('do');
 
   assert.deepEqual(calls.buildActionOutput, ['health']);
   assert.equal(calls.updateSession, 1);
@@ -234,10 +152,10 @@ test('scan is blocked by task intake once bootstrap is already ready', () => {
     }
   });
 
-  const result = helpers.handleActionCommands('scan', '', []);
+  const result = helpers.executeCapability('scan');
 
   assert.deepEqual(calls.buildActionOutput, ['scan']);
-  assert.equal(calls.updateSession, 0);
+  assert.equal(calls.updateSession, 1);
   assert.equal(result.action_card.status, 'blocked-by-task-intake');
   assert.match(result.action_card.first_cli, /task add <summary>/);
   assert.match(result.action_card.then_cli, /task activate <name>/);

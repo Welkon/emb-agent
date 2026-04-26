@@ -36,13 +36,31 @@ test('applyOutputMode builds brief next context payload', () => {
       specs: ['sensor-node'],
       focus: 'bringup',
       last_command: 'scan',
-      suggested_flow: 'scan -> do -> verify'
+      suggested_flow: 'capability run scan -> capability run do -> capability run verify'
     },
     next: {
       command: 'plan',
       reason: 'complex tasks should converge first',
-      cli: 'node runtime/bin/emb-agent.cjs plan',
+      cli: 'node runtime/bin/emb-agent.cjs capability run plan',
       gated_by_health: false,
+      capability_route: {
+        capability: 'plan',
+        category: 'workflow-action',
+        route_strategy: 'capability-first',
+        product_role: 'template-workflow-generator',
+        generator_owner: 'emb-agent',
+        repository_layout: 'generator-templates-plus-runtime',
+        materialization_state: 'generator-addressable',
+        host_targets: ['host-skill', 'workflow-spec'],
+        primary_entry: {
+          kind: 'capability',
+          name: 'plan',
+          cli: 'node runtime/bin/emb-agent.cjs capability run plan'
+        },
+        generated_surfaces: [
+          { kind: 'host-skill', name: 'emb-plan', materialized: false, source: 'generator' }
+        ]
+      },
       tool_recommendation: {
         tool: 'timer-calc',
         status: 'ready',
@@ -79,14 +97,32 @@ test('applyOutputMode builds brief next context payload', () => {
       ],
       recommended_path: 'plan-first',
       recommended_reason: 'The task already has enough context to lock a micro-plan before execution.',
-      next_cli: 'node runtime/bin/emb-agent.cjs plan',
-      then_cli: 'node runtime/bin/emb-agent.cjs do'
+      next_cli: 'node runtime/bin/emb-agent.cjs capability run plan',
+      then_cli: 'node runtime/bin/emb-agent.cjs capability run do'
     },
     workflow_stage: {
       name: 'planning',
       why: 'complex task',
       exit_criteria: 'plan has clear steps',
       primary_command: 'plan'
+    },
+    capability_route: {
+      capability: 'plan',
+      category: 'workflow-action',
+      route_strategy: 'capability-first',
+      product_role: 'template-workflow-generator',
+      generator_owner: 'emb-agent',
+      repository_layout: 'generator-templates-plus-runtime',
+      materialization_state: 'generator-addressable',
+      host_targets: ['host-skill', 'workflow-spec'],
+      primary_entry: {
+        kind: 'capability',
+        name: 'plan',
+        cli: 'node runtime/bin/emb-agent.cjs capability run plan'
+      },
+      generated_surfaces: [
+        { kind: 'host-skill', name: 'emb-plan', materialized: false, source: 'generator' }
+      ]
     },
     quality_gates: {
       gate_status: 'pending',
@@ -217,6 +253,9 @@ test('applyOutputMode builds brief next context payload', () => {
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.next.command, 'plan');
+  assert.equal(output.capability_route.capability, 'plan');
+  assert.equal(output.capability_route.route_strategy, 'capability-first');
+  assert.equal(output.capability_route.compatibility_command, undefined);
   assert.equal(output.workflow_stage.name, 'planning');
   assert.equal(output.task_convergence.recommended_path, 'plan-first');
   assert.equal(output.task_convergence.prd_path, '.emb-agent/tasks/timer-drift/prd.md');
@@ -300,7 +339,7 @@ test('applyOutputMode builds brief start context payload with external driver hi
     next: {
       command: 'scan',
       reason: 'Project definition is already closed.',
-      cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs scan'
+      cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs capability run scan'
     }
   }, true);
 
@@ -366,7 +405,7 @@ test('applyOutputMode keeps runtime event summaries compact for automation calle
     next: {
       command: 'scan',
       reason: 'Project definition is still open.',
-      cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs scan'
+      cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs capability run scan'
     },
     runtime_events: [
       {
@@ -429,6 +468,41 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
     project_profile: 'baremetal-8bit',
     default_package: 'app',
     active_package: 'fw',
+    capability_route: {
+      capability: 'status',
+      category: 'runtime-surface',
+      route_strategy: 'command-first',
+      product_role: 'template-workflow-generator',
+      generator_owner: 'emb-agent',
+      repository_layout: 'generator-templates-plus-runtime',
+      materialization_state: 'runtime-native',
+      host_targets: ['runtime-command'],
+      primary_entry: {
+        kind: 'command',
+        name: 'status',
+        cli: 'node runtime/bin/emb-agent.cjs status'
+      }
+    },
+    next_action: {
+      command: 'plan',
+      reason: 'complex task',
+      cli: 'node runtime/bin/emb-agent.cjs capability run plan'
+    },
+    next_capability_route: {
+      capability: 'plan',
+      category: 'workflow-action',
+      route_strategy: 'capability-first',
+      product_role: 'template-workflow-generator',
+      generator_owner: 'emb-agent',
+      repository_layout: 'generator-templates-plus-runtime',
+      materialization_state: 'generator-addressable',
+      host_targets: ['host-skill', 'workflow-spec'],
+      primary_entry: {
+        kind: 'capability',
+        name: 'plan',
+        cli: 'node runtime/bin/emb-agent.cjs capability run plan'
+      }
+    },
     active_task: {
       name: 'adc-path',
       status: 'in_progress',
@@ -476,6 +550,21 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
     requested_action: 'next',
     resolved_action: 'plan',
     reason: 'complex task',
+    capability_route: {
+      capability: 'plan',
+      category: 'workflow-action',
+      route_strategy: 'capability-first',
+      product_role: 'template-workflow-generator',
+      generator_owner: 'emb-agent',
+      repository_layout: 'generator-templates-plus-runtime',
+      materialization_state: 'generator-addressable',
+      host_targets: ['host-skill', 'workflow-spec'],
+      primary_entry: {
+        kind: 'capability',
+        name: 'plan',
+        cli: 'node runtime/bin/emb-agent.cjs capability run plan'
+      }
+    },
     subagent_bridge: {
       available: true,
       mode: 'mock',
@@ -513,6 +602,9 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
   assert.equal(statusOutput.delegation_runtime.pattern, 'coordinator');
   assert.equal(statusOutput.runtime_events.status, 'ok');
   assert.equal(statusOutput.external_agent, undefined);
+  assert.equal(statusOutput.capability_route.capability, 'status');
+  assert.equal(statusOutput.next_action.command, 'plan');
+  assert.equal(statusOutput.next_capability_route.capability, 'plan');
   assert.deepEqual(statusOutput.delegation_runtime.worker_results, ['emb-hw-scout:ok']);
   assert.equal(statusOutput.delegation_runtime.review.stage_a, 'passed');
   assert.equal(statusOutput.delegation_runtime.review.stage_b, 'main-thread-review-required');
@@ -520,6 +612,7 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
   assert.equal(dispatchOutput.delegation_runtime.synthesis.status, 'ready');
   assert.equal(dispatchOutput.delegation_runtime.review.redispatch_required, false);
   assert.equal(dispatchOutput.runtime_events.status, 'pending');
+  assert.equal(dispatchOutput.capability_route.capability, 'plan');
 });
 
 test('applyOutputMode omits external driver summary in brief status output', () => {

@@ -555,7 +555,7 @@ function createMemoryRuntimeHelpers(deps) {
   }
 
   function maybeAutoExtractOnSessionReport(noteText) {
-    return maybeAutoExtractAtBoundary(noteText, 'session-report');
+    return maybeAutoExtractAtBoundary(noteText, 'session record');
   }
 
   return {

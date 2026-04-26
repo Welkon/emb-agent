@@ -9,8 +9,8 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
-test('attach seeds hw and req truth from existing project inputs', () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-attach-'));
+test('init seeds hw and req truth from existing project inputs', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
 
@@ -26,7 +26,7 @@ test('attach seeds hw and req truth from existing project inputs', () => {
 
     process.chdir(tempProject);
     cli.main([
-      'attach',
+      'init',
       '--mcu',
       'PMS150G',
       '--board',

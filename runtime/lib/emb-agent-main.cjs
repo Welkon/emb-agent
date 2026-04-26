@@ -53,6 +53,8 @@ const executorCommandHelpers = require(path.join(ROOT, 'lib', 'executor-command.
 const externalAgentHelpers = require(path.join(ROOT, 'lib', 'external-agent.cjs'));
 const commandVisibility = require(path.join(ROOT, 'lib', 'command-visibility.cjs'));
 const workflowAuthoringHelpers = require(path.join(ROOT, 'lib', 'workflow-authoring.cjs'));
+const capabilityMaterializerHelpers = require(path.join(ROOT, 'lib', 'capability-materializer.cjs'));
+const capabilityRuntimeHelpers = require(path.join(ROOT, 'lib', 'capability-runtime.cjs'));
 const scaffoldAuthoringHelpers = require(path.join(ROOT, 'lib', 'scaffold-authoring.cjs'));
 const subAgentRuntimeHelpers = require(path.join(ROOT, 'lib', 'sub-agent-runtime.cjs'));
 const skillRuntimeHelpers = require(path.join(ROOT, 'lib', 'skill-runtime.cjs'));
@@ -698,6 +700,13 @@ const {
     runtime,
     workflowRegistry
   }),
+  capabilityMaterializer: capabilityMaterializerHelpers.createCapabilityMaterializerHelpers({
+    fs,
+    path,
+    runtime,
+    workflowRegistry,
+    getProjectExtDir
+  }),
   templateCli,
   getProjectExtDir,
   loadSpec,
@@ -1064,11 +1073,18 @@ const {
   initProjectLayout,
   ensureSession,
   updateSession,
-    attachProjectCli,
-    chipCatalog,
-    ingestTruthCli,
-    ingestDocCli,
-    ingestSchematicCli
+  capabilityMaterializer: capabilityMaterializerHelpers.createCapabilityMaterializerHelpers({
+    fs,
+    path,
+    runtime,
+    workflowRegistry,
+    getProjectExtDir
+  }),
+  attachProjectCli,
+  chipCatalog,
+  ingestTruthCli,
+  ingestDocCli,
+  ingestSchematicCli
 });
 
 function buildStartContext() {
@@ -1287,6 +1303,29 @@ const {
   buildArchReviewDispatchContext
 });
 
+const capabilityMaterializer = capabilityMaterializerHelpers.createCapabilityMaterializerHelpers({
+  fs,
+  path,
+  runtime,
+  workflowRegistry,
+  getProjectExtDir
+});
+
+const {
+  handleCapabilityCommands,
+  executeCapability
+} = capabilityRuntimeHelpers.createCapabilityRuntimeHelpers({
+  updateSession,
+  buildActionOutput,
+  buildArchReviewContext,
+  buildNextContext,
+  buildStartContext,
+  buildStatus,
+  getActiveTask,
+  handleCatalogAndStateCommands,
+  capabilityMaterializer
+});
+
 const {
   handleDocCommands,
   handleActionCommands,
@@ -1311,6 +1350,7 @@ const {
   runSubAgentBridge,
   collectSubAgentBridgeJobs,
   buildActionOutput,
+  executeCapability,
   buildReviewContext,
   buildArchReviewContext,
   buildDispatchContext,
@@ -1328,6 +1368,7 @@ const {
   runAdapterExport,
   runAdapterPublish,
   handleCatalogAndStateCommands,
+  handleCapabilityCommands,
   saveScanReport,
     savePlanReport,
     saveReviewReport,
@@ -1400,6 +1441,7 @@ module.exports = {
   main,
   runIngestCommand,
   buildActionOutput,
+  executeCapability,
   buildDispatchContext,
   buildOrchestratorContext,
   buildContextHygiene,

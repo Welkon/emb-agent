@@ -4,6 +4,7 @@ const hardwareTruthHelpers = require('./hardware-truth.cjs');
 const projectInputIntake = require('./project-input-intake.cjs');
 const projectInputState = require('./project-input-state.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
+const capabilityCatalog = require('./capability-catalog.cjs');
 
 function createCliEntryHelpers(deps) {
   const {
@@ -18,6 +19,7 @@ function createCliEntryHelpers(deps) {
     initProjectLayout,
     ensureSession,
     updateSession,
+    capabilityMaterializer,
     attachProjectCli,
     chipCatalog,
     ingestTruthCli,
@@ -27,6 +29,18 @@ function createCliEntryHelpers(deps) {
 
   function toArray(value) {
     return Array.isArray(value) ? value : [];
+  }
+
+  function buildPreferredCapabilityCommand(name) {
+    return capabilityCatalog.getCapabilityPrimaryArgs(name).join(' ');
+  }
+
+  function materializeProjectCapabilities(force = false) {
+    if (!capabilityMaterializer || typeof capabilityMaterializer.materializeCapabilitySet !== 'function') {
+      return null;
+    }
+
+    return capabilityMaterializer.materializeCapabilitySet('all', { force });
   }
 
   function loadInitHardwareTruth(projectRoot) {
@@ -589,17 +603,17 @@ function createCliEntryHelpers(deps) {
       {
         title: 'Execute current work',
         entries: [
-          'scan',
-          'plan',
-          'do',
-          'debug'
+          'capability run scan',
+          'capability run plan',
+          'capability run do',
+          'capability run debug'
         ]
       },
       {
         title: 'Close and hand off',
         entries: [
-          'review',
-          'verify',
+          'capability run review',
+          'capability run verify',
           'bootstrap [run [--confirm]]',
           'task show <name>',
           'task resolve [--confirm] <name> [note]',
@@ -647,13 +661,16 @@ function createCliEntryHelpers(deps) {
           'session show',
           'session history',
           'session show [current|latest|<report-id>]',
-          'session record [--confirm] [summary]',
-          'session-report [--confirm] [summary]'
+          'session record [--confirm] [summary]'
         ]
       },
       {
         title: 'Execution support and closure',
         entries: [
+          'capability list [--all]',
+          'capability show <name>',
+          'capability run <name>',
+          'capability materialize [<name>|all] [--force]',
           'context compress [note]',
           'context show',
           'context clear',
@@ -662,15 +679,12 @@ function createCliEntryHelpers(deps) {
           'executor run <name> [--confirm] [-- <args...>]',
           'scan save [--confirm] <target> <summary> [--fact <text>] [--question <text>] [--read <text>]',
           'plan save [--confirm] <summary> [--target <target>] [--risk <text>] [--step <text>] [--verify <text>]',
-          'arch-review',
-          'review',
           'review context',
           'review axes',
           'review save [--confirm] <summary> [--scope <text>] [--finding <text>] [--check <text>]',
           'verify save [--confirm] <summary> [--target <target>] [--check <text>] [--result <text>] [--evidence <text>] [--followup <text>]',
           'verify confirm [--confirm] <name> [note]',
           'verify reject [--confirm] <name> [note]',
-          'note',
           'note targets',
           'note add [--confirm] <target> <summary> [--kind <kind>] [--evidence <text>] [--unverified <text>]',
           'resolve'
@@ -710,6 +724,9 @@ function createCliEntryHelpers(deps) {
       {
         title: 'Workflow and scaffold authoring',
         entries: [
+          'capability list [--all]',
+          'capability show <name>',
+          'capability materialize [<name>|all] [--force]',
           'spec list',
           'spec show <name>',
           'workflow init [--force]',
@@ -761,11 +778,6 @@ function createCliEntryHelpers(deps) {
           'adapter export [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
           'adapter publish [<source>] [--confirm] [--chip <slug>] [--device <slug>] [--family <slug>] [--output-root <path>] [--force]',
           'adapter generate [--confirm] [--from-project] [--from-doc <doc-id>] [--from-analysis <path>] [--family <slug>] [--device <slug>] [--chip <slug>] [--tool <name>] [--vendor <name>] [--series <name>] [--package <name>] [--pin-count <n>] [--architecture <text>] [--runtime-model <name>] --output-root <path> [--force]',
-          'support analysis init ... [alias of `adapter analysis init`]',
-          'support derive ... [alias of `adapter derive`]',
-          'support export ... [alias of `adapter export`]',
-          'support publish ... [alias of `adapter publish`]',
-          'support generate ... [alias of `adapter generate`]',
           'chip list',
           'chip show <name>'
         ]
@@ -899,8 +911,8 @@ function createCliEntryHelpers(deps) {
           : [
               'task add <summary>',
               'task activate <name>',
-              'If scope is unclear: scan -> plan',
-              'If scope is already explicit: plan -> do'
+              `If scope is unclear: ${buildPreferredCapabilityCommand('scan')} -> ${buildPreferredCapabilityCommand('plan')}`,
+              `If scope is already explicit: ${buildPreferredCapabilityCommand('plan')} -> ${buildPreferredCapabilityCommand('do')}`
             ],
         outcome: 'The current change has an isolated task context and PRD.'
       },
@@ -908,8 +920,21 @@ function createCliEntryHelpers(deps) {
         id: 'execution-loop',
         title: 'Execution loop',
         commands: hasHandoff
-          ? ['resume', 'next', 'do/debug', 'verify', 'task aar scan', 'task resolve']
-          : ['next', 'do/debug', 'verify', 'task aar scan', 'task resolve'],
+          ? [
+              'resume',
+              'next',
+              `${buildPreferredCapabilityCommand('do')} / ${buildPreferredCapabilityCommand('debug')}`,
+              buildPreferredCapabilityCommand('verify'),
+              'task aar scan',
+              'task resolve'
+            ]
+          : [
+              'next',
+              `${buildPreferredCapabilityCommand('do')} / ${buildPreferredCapabilityCommand('debug')}`,
+              buildPreferredCapabilityCommand('verify'),
+              'task aar scan',
+              'task resolve'
+            ],
         outcome: 'The active task is implemented, verified, and closed with AAR.'
       }
     ];
@@ -941,25 +966,42 @@ function createCliEntryHelpers(deps) {
       status: bootstrapPending ? 'blocked-by-bootstrap' : 'ready',
       recommended_entry: 'task add <summary>',
       summary: bootstrapPending
-        ? 'After bootstrap is ready, create a task and PRD first. Use scan when requirements, hardware truth, or the change surface are still unclear; use plan when the path is already explicit.'
-        : 'Create a task and PRD first. Use scan when requirements, hardware truth, or the change surface are still unclear; use plan when the path is already explicit.',
+        ? `After bootstrap is ready, create a task and PRD first. Use ${buildPreferredCapabilityCommand('scan')} when requirements, hardware truth, or the change surface are still unclear; use ${buildPreferredCapabilityCommand('plan')} when the path is already explicit.`
+        : `Create a task and PRD first. Use ${buildPreferredCapabilityCommand('scan')} when requirements, hardware truth, or the change surface are still unclear; use ${buildPreferredCapabilityCommand('plan')} when the path is already explicit.`,
       paths: [
         {
           id: 'known-change',
           when: 'The target files and acceptance check are already explicit.',
-          commands: ['task add <summary>', 'task activate <name>', 'plan', 'do'],
+          commands: [
+            'task add <summary>',
+            'task activate <name>',
+            buildPreferredCapabilityCommand('plan'),
+            buildPreferredCapabilityCommand('do')
+          ],
           outcome: 'Execution can move directly into an implementation plan.'
         },
         {
           id: 'unclear-scope',
           when: 'Requirements, hardware truth, or the changed surface are still fuzzy.',
-          commands: ['task add <summary>', 'task activate <name>', 'scan', 'plan'],
+          commands: [
+            'task add <summary>',
+            'task activate <name>',
+            buildPreferredCapabilityCommand('scan'),
+            buildPreferredCapabilityCommand('plan')
+          ],
           outcome: 'The task PRD and project facts converge before mutation.'
         },
         {
           id: 'system-change',
           when: 'The work crosses timing, concurrency, release, or interface boundaries.',
-          commands: ['task add <summary>', 'task activate <name>', 'scan', 'plan', 'review', 'verify'],
+          commands: [
+            'task add <summary>',
+            'task activate <name>',
+            buildPreferredCapabilityCommand('scan'),
+            buildPreferredCapabilityCommand('plan'),
+            buildPreferredCapabilityCommand('review'),
+            buildPreferredCapabilityCommand('verify')
+          ],
           outcome: 'Cross-boundary risks stay explicit through closure.'
         }
       ]
@@ -1031,6 +1073,7 @@ function createCliEntryHelpers(deps) {
 
   function runInitCommand(tokens, aliasUsed) {
     const rest = tokens || [];
+    const force = rest.includes('--force');
     if (rest.includes('--help') || rest.includes('-h')) {
       usage();
       return null;
@@ -1063,6 +1106,7 @@ function createCliEntryHelpers(deps) {
 
     if (fs.existsSync(existingProjectConfig) && !hasInitOptions) {
       initProjectLayout();
+      const capabilityMaterialization = materializeProjectCapabilities(force);
       const developer = loadInitDeveloperIdentity(resolveProjectRoot());
       const session = updateSession(current => {
         current.last_command = 'init';
@@ -1080,6 +1124,7 @@ function createCliEntryHelpers(deps) {
         project_profile: session.project_profile,
         active_specs: session.active_specs,
         developer: session.developer,
+        capability_materialization: capabilityMaterialization,
         bootstrap_task: guidance.bootstrap_task || null,
         bootstrap
       };
@@ -1087,6 +1132,7 @@ function createCliEntryHelpers(deps) {
 
     const attached = attachProjectCli.attachProject(rest);
     initProjectLayout();
+    const capabilityMaterialization = materializeProjectCapabilities(force);
     const developer = loadInitDeveloperIdentity(resolveProjectRoot());
     const session = updateSession(current => {
       current.last_command = 'init';
@@ -1102,6 +1148,7 @@ function createCliEntryHelpers(deps) {
       ...attached,
       initialized: true,
       init_alias: aliasUsed || 'init',
+      capability_materialization: capabilityMaterialization,
       bootstrap_task: guidance.bootstrap_task || null,
       pending_source_intake: guidance.pending_source_intake || null,
       bootstrap,

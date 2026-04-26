@@ -22,6 +22,5 @@ allowed-tools:
 
 - Run `$emb-session` when the task is about continuity, handoff, or session history.
 - Use `session show` for the live state, `session history` for stored reports, and `session record` when you want to capture a new report.
-- `session-report` remains available as a compatibility alias for `session record`.
 - Read `.emb-agent/reports/sessions/CURRENT.md` when a human needs the shortest repo-visible continuity summary.
 - Read `.emb-agent/reports/sessions/INDEX.md` when you need a compact list of stored checkpoints without scanning raw files.
