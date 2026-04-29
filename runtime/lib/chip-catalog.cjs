@@ -94,11 +94,14 @@ function runtimePathExists(filePath) {
 }
 
 function loadRegistry(rootDir) {
+  const devices = [];
   const filePath = path.join(chipsRoot(rootDir), 'registry.json');
-  const raw = runtime.readJson(filePath);
-  ensureObject(raw, 'Chip registry');
 
-  const devices = ensureStringArray(raw.devices || [], 'registry.devices');
+  if (runtimePathExists(filePath)) {
+    const raw = runtime.readJson(filePath);
+    ensureObject(raw, 'Chip registry');
+    devices.push(...ensureStringArray(raw.devices || [], 'registry.devices'));
+  }
 
   for (const extRoot of extensionChipsRoots(rootDir)) {
     const registryPath = path.join(extRoot, 'registry.json');
