@@ -5,7 +5,7 @@ summary: Device/app/cloud contract checks for provisioning, sync ordering, idemp
 auto_inject: true
 selectable: false
 priority: 61
-apply_when.profiles: [rtos-iot]
+apply_when.profiles: [tasked-runtime]
 apply_when.specs: [connected-appliance, smart-pillbox]
 ---
 # IoT Device Contract Focus

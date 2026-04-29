@@ -1,7 +1,7 @@
 {
   "runtime_version": 1,
   "session_version": 1,
-  "default_profile": "baremetal-8bit",
+  "default_profile": "baremetal-loop",
   "default_specs": [],
   "developer": {
     "name": "",

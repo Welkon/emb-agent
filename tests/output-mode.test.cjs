@@ -32,7 +32,7 @@ test('parseOutputModeArgs supports next --brief and keeps tool-local --brief', (
 test('applyOutputMode builds brief next context payload', () => {
   const input = {
     current: {
-      profile: 'baremetal-8bit',
+      profile: 'baremetal-loop',
       specs: ['sensor-node'],
       focus: 'bringup',
       last_command: 'scan',
@@ -393,7 +393,7 @@ test('applyOutputMode builds brief init output with external driver hints', () =
 test('applyOutputMode keeps runtime event summaries compact for automation callers', () => {
   const output = outputMode.applyOutputMode({
     current: {
-      profile: 'baremetal-8bit',
+      profile: 'baremetal-loop',
       default_package: 'app',
       active_package: 'fw'
     },
@@ -465,7 +465,7 @@ test('applyOutputMode keeps host bridge and delegation summary in brief status/d
     session_version: 1,
     runtime_host: 'codex',
     project_root: '/tmp/demo',
-    project_profile: 'baremetal-8bit',
+    project_profile: 'baremetal-loop',
     default_package: 'app',
     active_package: 'fw',
     capability_route: {
@@ -620,7 +620,7 @@ test('applyOutputMode omits external driver summary in brief status output', () 
     session_version: 1,
     runtime_host: 'external',
     project_root: '/tmp/demo',
-    project_profile: 'baremetal-8bit',
+    project_profile: 'baremetal-loop',
     context_hygiene: { level: 'ok' }
   }, true);
 

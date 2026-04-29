@@ -155,7 +155,7 @@ test('init-project creates project defaults and defers note templates into a boo
         '--project',
         tempProject,
         '--profile',
-        'rtos-iot',
+        'tasked-runtime',
         '--spec',
         'connected-appliance'
       ]);
@@ -168,7 +168,7 @@ test('init-project creates project defaults and defers note templates into a boo
       fs.readFileSync(path.join(tempProject, '.emb-agent', 'registry', 'workflow.json'), 'utf8')
     );
 
-    assert.equal(projectConfig.project_profile, 'rtos-iot');
+    assert.equal(projectConfig.project_profile, 'tasked-runtime');
     assert.deepEqual(projectConfig.active_specs, ['connected-appliance']);
     assert.deepEqual(projectConfig.chip_support_sources, []);
     assert.deepEqual(projectConfig.executors, {});
@@ -194,16 +194,16 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(projectConfig.integrations.szlcsc.max_matches_per_component, 5);
     assert.ok(projectRegistry.specs.some(item => item.name === 'connected-appliance'));
     assert.ok(projectRegistry.specs.some(item => item.name === 'iot-device-focus'));
-    assert.ok(projectRegistry.specs.some(item => item.name === 'rtos-iot-focus'));
+    assert.ok(projectRegistry.specs.some(item => item.name === 'tasked-runtime-focus'));
     assert.ok(!projectRegistry.specs.some(item => item.name === 'sensor-node'));
     assert.ok(!projectRegistry.specs.some(item => item.name === 'motor-drive'));
-    assert.ok(!projectRegistry.specs.some(item => item.name === 'baremetal-8bit-focus'));
+    assert.ok(!projectRegistry.specs.some(item => item.name === 'baremetal-loop-focus'));
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'connected-appliance-focus.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'iot-device-focus.md')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'rtos-iot-focus.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'tasked-runtime-focus.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'sensor-node-focus.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'motor-drive-focus.md')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'baremetal-8bit-focus.md')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'baremetal-loop-focus.md')), false);
     assert.equal(projectConfig.integrations.szlcsc.only_available, false);
     assert.equal(projectConfig.integrations.szlcsc.currency, '');
     assert.equal(projectConfig.integrations.szlcsc.timeout_ms, 15000);
@@ -258,11 +258,11 @@ test('init-project creates project defaults and defers note templates into a boo
     cli.main(['init']);
 
     const status = cli.buildStatus();
-    assert.equal(status.project_profile, 'rtos-iot');
+    assert.equal(status.project_profile, 'tasked-runtime');
     assert.deepEqual(status.active_specs, ['connected-appliance']);
     assert.equal(status.preferences.truth_source_mode, 'hardware_first');
     assert.deepEqual(status.developer, { name: '', runtime: '' });
-    assert.equal(status.project_defaults.project_profile, 'rtos-iot');
+    assert.equal(status.project_defaults.project_profile, 'tasked-runtime');
     assert.deepEqual(status.project_defaults.arch_review.trigger_patterns, []);
     assert.ok(Array.isArray(status.arch_review_triggers));
     } finally {
@@ -284,7 +284,7 @@ test('init-project with battery-charger spec adds deferred power charging note t
         '--project',
         tempProject,
         '--profile',
-        'baremetal-8bit',
+        'baremetal-loop',
         '--spec',
         'battery-charger'
       ]);
@@ -294,7 +294,7 @@ test('init-project with battery-charger spec adds deferred power charging note t
     );
     const bootstrapTask = readBootstrapTask(tempProject);
 
-    assert.equal(projectConfig.project_profile, 'baremetal-8bit');
+    assert.equal(projectConfig.project_profile, 'baremetal-loop');
     assert.deepEqual(projectConfig.active_specs, ['battery-charger']);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-CHARGING.md')), false);
     assert.ok(bootstrapTask.relatedFiles.includes('docs/POWER-CHARGING.md'));
@@ -317,7 +317,7 @@ test('init-project with Padauk firmware spec adds deferred implementation-style 
         '--project',
         tempProject,
         '--profile',
-        'baremetal-8bit',
+        'baremetal-loop',
         '--spec',
         'padauk-firmware'
       ]);
@@ -327,7 +327,7 @@ test('init-project with Padauk firmware spec adds deferred implementation-style 
     );
     const bootstrapTask = readBootstrapTask(tempProject);
 
-    assert.equal(projectConfig.project_profile, 'baremetal-8bit');
+    assert.equal(projectConfig.project_profile, 'baremetal-loop');
     assert.deepEqual(projectConfig.active_specs, ['padauk-firmware']);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'IMPLEMENTATION-STYLE.md')), false);
     assert.ok(bootstrapTask.relatedFiles.includes('docs/IMPLEMENTATION-STYLE.md'));
@@ -394,7 +394,7 @@ test('init-project honors project-local smart-pillbox spec and template', () => 
       '--project',
       tempProject,
       '--profile',
-      'baremetal-8bit',
+      'baremetal-loop',
       '--spec',
       'smart-pillbox'
     ]);
@@ -404,7 +404,7 @@ test('init-project honors project-local smart-pillbox spec and template', () => 
     );
     const bootstrapTask = readBootstrapTask(tempProject);
 
-    assert.equal(projectConfig.project_profile, 'baremetal-8bit');
+    assert.equal(projectConfig.project_profile, 'baremetal-loop');
     assert.deepEqual(projectConfig.active_specs, ['smart-pillbox']);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MEDICATION-FLOW.md')), false);
     assert.ok(bootstrapTask.relatedFiles.includes('docs/MEDICATION-FLOW.md'));
@@ -508,7 +508,7 @@ test('init-project with motor-drive spec adds deferred motor note targets to boo
         '--project',
         tempProject,
         '--profile',
-        'baremetal-8bit',
+        'baremetal-loop',
         '--spec',
         'motor-drive'
       ]);
@@ -518,7 +518,7 @@ test('init-project with motor-drive spec adds deferred motor note targets to boo
     );
     const bootstrapTask = readBootstrapTask(tempProject);
 
-    assert.equal(projectConfig.project_profile, 'baremetal-8bit');
+    assert.equal(projectConfig.project_profile, 'baremetal-loop');
     assert.deepEqual(projectConfig.active_specs, ['motor-drive']);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MOTOR-CONTROL.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'POWER-STAGE.md')), false);

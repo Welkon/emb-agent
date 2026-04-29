@@ -1,4 +1,4 @@
-name: rtos-iot
+name: tasked-runtime
 runtime_model: task_scheduler_plus_isr
 concurrency_model: tasks_queues_locks_timers
 resource_priority:

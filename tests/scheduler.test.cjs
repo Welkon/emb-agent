@@ -82,7 +82,7 @@ function buildResolved(profileName, specNames, sessionOverrides = {}) {
 }
 
 test('baremetal sensor profile routes scan plan debug do to lightweight agents', () => {
-  const resolved = buildResolved('baremetal-8bit', ['sensor-node']);
+  const resolved = buildResolved('baremetal-loop', ['sensor-node']);
 
   const scan = scheduler.buildScanOutput(resolved);
   const plan = scheduler.buildPlanOutput(resolved);
@@ -129,7 +129,7 @@ test('baremetal sensor profile routes scan plan debug do to lightweight agents',
 });
 
 test('rtos connected profile routes review note to system and release aware outputs', () => {
-  const resolved = buildResolved('rtos-iot', ['connected-appliance'], {
+  const resolved = buildResolved('tasked-runtime', ['connected-appliance'], {
     focus: 'review ota and reconnect path',
     last_files: ['src/net/ota.c'],
     known_risks: ['rollback path not verified']
@@ -172,7 +172,7 @@ test('rtos connected profile routes review note to system and release aware outp
 });
 
 test('verify output summarizes configured quality gates', () => {
-  const resolved = buildResolved('baremetal-8bit', ['sensor-node'], {
+  const resolved = buildResolved('baremetal-loop', ['sensor-node'], {
     diagnostics: {
       latest_executor: {
         name: 'bench',
@@ -227,7 +227,7 @@ test('verify output summarizes configured quality gates', () => {
 });
 
 test('preferences can switch truth source ordering and strict verification', () => {
-  const resolved = buildResolved('baremetal-8bit', ['sensor-node'], {
+  const resolved = buildResolved('baremetal-loop', ['sensor-node'], {
     last_files: ['main.c'],
     preferences: {
       truth_source_mode: 'code_first',
@@ -245,7 +245,7 @@ test('preferences can switch truth source ordering and strict verification', () 
 });
 
 test('scan prioritizes normalized schematic parsed data when recent schematic ingest exists', () => {
-  const resolved = buildResolved('baremetal-8bit', ['sensor-node'], {
+  const resolved = buildResolved('baremetal-loop', ['sensor-node'], {
     last_files: [
       '.emb-agent/cache/schematics/schematic-abc123/parsed.json',
       '.emb-agent/cache/schematics/schematic-abc123/facts.hardware.yaml',
@@ -269,7 +269,7 @@ test('blank project selection mode prioritizes req truth and constraint question
   fs.writeFileSync(path.join(embDir, 'req.yaml'), 'goals:\n  - choose first MCU\n', 'utf8');
   fs.writeFileSync(path.join(embDir, 'hw.yaml'), 'mcu:\n  vendor: ""\n  model: ""\n  package: ""\n', 'utf8');
 
-  const resolved = buildResolved('baremetal-8bit', ['sensor-node'], {
+  const resolved = buildResolved('baremetal-loop', ['sensor-node'], {
     project_root: tempProject
   });
 
@@ -335,7 +335,7 @@ test('blank project next flow advances from scan to plan to do to verify', async
 });
 
 test('preferences can switch delegation pattern to fork or swarm', () => {
-  const forkResolved = buildResolved('baremetal-8bit', ['sensor-node'], {
+  const forkResolved = buildResolved('baremetal-loop', ['sensor-node'], {
     preferences: {
       truth_source_mode: 'hardware_first',
       plan_mode: 'auto',
@@ -344,7 +344,7 @@ test('preferences can switch delegation pattern to fork or swarm', () => {
       orchestration_mode: 'fork'
     }
   });
-  const swarmResolved = buildResolved('rtos-iot', ['connected-appliance'], {
+  const swarmResolved = buildResolved('tasked-runtime', ['connected-appliance'], {
     preferences: {
       truth_source_mode: 'hardware_first',
       plan_mode: 'auto',
@@ -374,7 +374,7 @@ test('project truth files are preferred when present', () => {
   fs.writeFileSync(path.join(embDir, 'hw.yaml'), 'mcu:\n  model: test\n', 'utf8');
   fs.writeFileSync(path.join(embDir, 'req.yaml'), 'goals:\n  - test\n', 'utf8');
 
-  const resolved = buildResolved('baremetal-8bit', ['sensor-node'], {
+  const resolved = buildResolved('baremetal-loop', ['sensor-node'], {
     project_root: tempProject,
     last_files: ['main.c']
   });

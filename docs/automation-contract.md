@@ -82,7 +82,7 @@ Typical `next --brief` contract:
 {
   "output_mode": "brief",
   "current": {
-    "profile": "baremetal-8bit"
+    "profile": "baremetal-loop"
   },
   "next": {
     "command": "scan",

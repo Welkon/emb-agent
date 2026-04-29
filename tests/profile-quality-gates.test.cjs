@@ -18,7 +18,7 @@ test('profile default quality gates appear in effective status without mutating 
   process.stdout.write = () => true;
 
   try {
-    initProject.main(['--project', tempProject, '--profile', 'baremetal-8bit']);
+    initProject.main(['--project', tempProject, '--profile', 'baremetal-loop']);
 
     process.chdir(tempProject);
     await cli.main(['init']);
@@ -54,7 +54,7 @@ test('next suggests installing missing profile-default verification skills befor
   process.stdout.write = () => true;
 
   try {
-    initProject.main(['--project', tempProject, '--profile', 'baremetal-8bit']);
+    initProject.main(['--project', tempProject, '--profile', 'baremetal-loop']);
 
     process.chdir(tempProject);
     await cli.main(['init']);
