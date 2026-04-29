@@ -653,6 +653,10 @@ function normalizeDiagnostics(value) {
     !source.walkthrough_runtime || typeof source.walkthrough_runtime !== 'object' || Array.isArray(source.walkthrough_runtime)
       ? {}
       : source.walkthrough_runtime;
+  const latestTranscriptImportSource =
+    !source.latest_transcript_import || typeof source.latest_transcript_import !== 'object' || Array.isArray(source.latest_transcript_import)
+      ? {}
+      : source.latest_transcript_import;
 
   function normalizeExecutorDiagnostic(entry, label, fallbackName) {
     const safeEntry = !entry || typeof entry !== 'object' || Array.isArray(entry) ? {} : entry;
@@ -991,6 +995,89 @@ function normalizeDiagnostics(value) {
     latest_executor: normalizeExecutorDiagnostic(latestExecutorSource, 'diagnostics.latest_executor', ''),
     executor_history: executorHistory,
     human_signoffs: humanSignoffs,
+    latest_transcript_import: {
+      provider: ensureOptionalString(
+        latestTranscriptImportSource.provider,
+        'diagnostics.latest_transcript_import.provider'
+      ),
+      source_id: ensureOptionalString(
+        latestTranscriptImportSource.source_id,
+        'diagnostics.latest_transcript_import.source_id'
+      ),
+      source_file: normalizeProjectRelativePath(
+        ensureOptionalString(
+          latestTranscriptImportSource.source_file,
+          'diagnostics.latest_transcript_import.source_file'
+        )
+      ),
+      analysis_file: normalizeProjectRelativePath(
+        ensureOptionalString(
+          latestTranscriptImportSource.analysis_file,
+          'diagnostics.latest_transcript_import.analysis_file'
+        )
+      ),
+      ai_review_file: normalizeProjectRelativePath(
+        ensureOptionalString(
+          latestTranscriptImportSource.ai_review_file,
+          'diagnostics.latest_transcript_import.ai_review_file'
+        )
+      ),
+      generated_at: ensureOptionalString(
+        latestTranscriptImportSource.generated_at,
+        'diagnostics.latest_transcript_import.generated_at'
+      ),
+      confirmed_facts: ensureStringArray(
+        latestTranscriptImportSource.confirmed_facts || [],
+        'diagnostics.latest_transcript_import.confirmed_facts'
+      ),
+      user_preferences: ensureStringArray(
+        latestTranscriptImportSource.user_preferences || [],
+        'diagnostics.latest_transcript_import.user_preferences'
+      ),
+      pin_state_candidates: ensureStringArray(
+        latestTranscriptImportSource.pin_state_candidates || [],
+        'diagnostics.latest_transcript_import.pin_state_candidates'
+      ),
+      semantic_review:
+        latestTranscriptImportSource.semantic_review &&
+        typeof latestTranscriptImportSource.semantic_review === 'object' &&
+        !Array.isArray(latestTranscriptImportSource.semantic_review)
+          ? {
+              required: ensureBoolean(
+                latestTranscriptImportSource.semantic_review.required,
+                'diagnostics.latest_transcript_import.semantic_review.required',
+                true
+              ),
+              status: ensureOptionalString(
+                latestTranscriptImportSource.semantic_review.status,
+                'diagnostics.latest_transcript_import.semantic_review.status'
+              ),
+              reviewer: ensureOptionalString(
+                latestTranscriptImportSource.semantic_review.reviewer,
+                'diagnostics.latest_transcript_import.semantic_review.reviewer'
+              )
+            }
+          : {
+              required: false,
+              status: '',
+              reviewer: ''
+            },
+      recommended_next:
+        latestTranscriptImportSource.recommended_next &&
+        typeof latestTranscriptImportSource.recommended_next === 'object' &&
+        !Array.isArray(latestTranscriptImportSource.recommended_next)
+          ? {
+              route: ensureOptionalString(
+                latestTranscriptImportSource.recommended_next.route,
+                'diagnostics.latest_transcript_import.recommended_next.route'
+              ),
+              reason: ensureOptionalString(
+                latestTranscriptImportSource.recommended_next.reason,
+                'diagnostics.latest_transcript_import.recommended_next.reason'
+              )
+            }
+          : null
+    },
     delegation_runtime: delegationRuntime,
     walkthrough_runtime: walkthroughRuntime
   };
