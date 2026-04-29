@@ -108,7 +108,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'VERSION')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'command-docs')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'tools', 'registry.json')), true);
-    assert.equal(fs.existsSync(path.join(runtimeRoot, 'chips', 'registry.json')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'chips', 'registry.json')), false);
     assert.equal(
       require.resolve('chalk', { paths: [path.join(runtimeRoot, 'lib')] }).startsWith(
         path.join(runtimeRoot, 'node_modules')

@@ -12,7 +12,7 @@ Core responsibilities:
 - project truth files such as `hw.yaml` and `req.yaml`
 - task manifests and task-local context
 - session continuity and pause/resume
-- abstract tool/chip registries and command contracts
+- abstract tool/chip catalog contracts and extension-registry readers
 
 Core should not pretend every embedded vendor stack shares the same build, flash, or debug implementation.
 
@@ -37,6 +37,8 @@ Chip support should own:
 - chip profiles and package-specific pin information
 - vendor-specific derived constraints and binding rules
 - draft bindings generated from structured analysis artifacts
+
+Core must not ship concrete chip profiles. `chip list` and `chip show` read project/runtime extension registries produced by `support sync`, `support bootstrap`, or `adapter derive`; an empty result means no chip support has been installed or generated yet, not that core owns an empty chip database.
 
 Examples:
 

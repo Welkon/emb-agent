@@ -50,8 +50,8 @@ Project state is stored by default at:
   Built-in catalog metadata for templates and workflow-registry merging.
 - `tools/`
   Core abstract tool specs.
-- `chips/`
-  Core abstract chip registry.
+- `lib/chip-catalog.cjs`
+  Core chip catalog contract. Concrete chip profiles are loaded from extension registries created by chip-support sync or derive, not shipped in core.
 - package-root `memory/`
   Built-in instruction-memory layers such as organization guidance that can be stacked with user, project, and local memory.
 - `extensions/`

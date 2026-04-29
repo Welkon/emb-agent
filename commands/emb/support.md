@@ -27,6 +27,7 @@ allowed-tools:
 - Keep source registration, sync, bootstrap, and status under `support`; use `adapter` as the canonical command family for analysis, derive, generate, export, and publish.
 - Normal users should be able to derive project-local support first and only think about shared sources later.
 - `support source add` / `support sync` are primarily for installing or maintaining shared reusable support catalogs.
+- `chip list` / `chip show` report installed or project-local chip support from extension registries; emb-agent core does not ship concrete chip profiles.
 - When you want an agent / AI to interpret a datasheet and persist the result as a structured draft, initialize a fixed artifact first:
   `adapter analysis init --chip <name>`
 - When a datasheet or schematic needs semantic analysis before support can be derived, let the agent fill a structured analysis artifact first, then run:
