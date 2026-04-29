@@ -139,6 +139,57 @@ function createSessionFlowHelpers(deps) {
     };
   }
 
+  function getReviewedTranscriptNext(session) {
+    const latest =
+      session &&
+      session.diagnostics &&
+      session.diagnostics.latest_transcript_import &&
+      typeof session.diagnostics.latest_transcript_import === 'object'
+        ? session.diagnostics.latest_transcript_import
+        : null;
+    const review =
+      latest &&
+      latest.semantic_review &&
+      typeof latest.semantic_review === 'object'
+        ? latest.semantic_review
+        : null;
+    const recommended =
+      latest &&
+      latest.recommended_next &&
+      typeof latest.recommended_next === 'object'
+        ? latest.recommended_next
+        : null;
+    const route = recommended && recommended.route ? String(recommended.route) : '';
+
+    if (!latest || !review || review.status !== 'accepted' || !lastCommandStartsWith(session, 'transcript apply') || !route) {
+      return null;
+    }
+
+    const routeCommands = {
+      'debug-forensics': 'review',
+      'power-sleep-checklist': 'scan',
+      'scan-first': 'scan',
+      'review-before-do': 'review'
+    };
+    const command = routeCommands[route] || '';
+    if (!command) {
+      return null;
+    }
+
+    return {
+      command,
+      reason: recommended.reason
+        ? `Transcript review recommends ${route}: ${recommended.reason}`
+        : `Transcript review recommends ${route}.`,
+      transcript_recommendation: {
+        route,
+        reason: recommended.reason || '',
+        provider: latest.provider || '',
+        source_id: latest.source_id || ''
+      }
+    };
+  }
+
   function formatPreferredCapabilityCommand(name) {
     return capabilityCatalog.getCapabilityPrimaryArgs(name).join(' ');
   }
@@ -716,6 +767,7 @@ function createSessionFlowHelpers(deps) {
         ? initGuidance.pending_source_intake
         : null;
     const pendingTranscriptReview = getPendingTranscriptReview(session);
+    const reviewedTranscriptNext = getReviewedTranscriptNext(session);
 
     if (hasQualityGateBlock) {
       const blockingItems = runtime.unique([
@@ -744,6 +796,10 @@ function createSessionFlowHelpers(deps) {
         cli: pendingTranscriptReview.cli,
         transcript_review: pendingTranscriptReview
       };
+    }
+
+    if (reviewedTranscriptNext) {
+      return reviewedTranscriptNext;
     }
 
     if (shouldSuggestForensics(resolved)) {
@@ -1827,7 +1883,10 @@ function createSessionFlowHelpers(deps) {
     const guidance = buildGuidance(resolved, handoff, memorySummary);
     const health = getHealthReport ? getHealthReport() : null;
     const activeTask = getActiveTask ? getActiveTask() : null;
-    const gatedByHealth = shouldGateNextWithHealth(resolved, handoff, guidance.next.command, health);
+    const gatedByHealth =
+      guidance.next.command === 'transcript-review'
+        ? false
+        : shouldGateNextWithHealth(resolved, handoff, guidance.next.command, health);
     const healthQuickstart = health && health.quickstart ? health.quickstart : null;
     const healthGateReason =
       healthQuickstart && healthQuickstart.stage === 'ingest-detected-input'
@@ -1969,7 +2028,8 @@ function createSessionFlowHelpers(deps) {
             : null,
         tool_recommendation: guidance.primary_tool_recommendation,
         walkthrough_recommendation: guidance.walkthrough_recommendation,
-        transcript_review: nextCommand.transcript_review || null
+        transcript_review: nextCommand.transcript_review || null,
+        transcript_recommendation: nextCommand.transcript_recommendation || null
       },
       task_convergence: taskConvergence,
       capability_route: capabilityRoute,

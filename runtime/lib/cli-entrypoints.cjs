@@ -821,7 +821,8 @@ function createCliEntryHelpers(deps) {
           'transcript import --provider codex --id <session-id>',
           'transcript import --provider claude|cursor|generic --file <transcript>',
           'transcript analyze --from <transcript-or-analysis-json>',
-          'transcript review --from <analysis-json> --accept',
+          'transcript review --from <analysis-json> --reviewed-file <reviewed-analysis-json>',
+          'transcript review --from <analysis-json> --accept-heuristic',
           'transcript apply --from <analysis-json> --confirm'
         ]
       },

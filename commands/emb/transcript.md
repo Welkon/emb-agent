@@ -28,10 +28,10 @@ This is not the normal emb-agent continuity path. Prefer `session record`, `task
   Import a host-independent transcript file.
 - `transcript analyze --from <transcript-or-analysis-json>`
   Re-run the deterministic prepass and write reviewable artifacts, including an AI review prompt.
-- `transcript review --from <analysis-json> --accept`
-  Mark a transcript analysis as reviewed by the active AI assistant and write a `*.reviewed.json` artifact.
 - `transcript review --from <analysis-json> --reviewed-file <reviewed-analysis-json>`
-  Use an AI-authored reviewed analysis instead of accepting the heuristic buckets as-is.
+  Use an AI-authored reviewed analysis and write a `*.reviewed.json` artifact.
+- `transcript review --from <analysis-json> --accept-heuristic`
+  Explicitly accept the heuristic buckets as a shortcut when no AI-authored reviewed file is available.
 - `transcript apply --from <analysis-json> --confirm`
   Apply only reviewed recovery signals to live session state. This updates questions, risks, and transcript diagnostics; it does not mutate project truth files.
 
@@ -40,6 +40,7 @@ This is not the normal emb-agent continuity path. Prefer `session record`, `task
 - Import writes review-only artifacts under `.emb-agent/imports/`.
 - The built-in parser is only a prepass: it removes host/system noise and proposes candidate buckets.
 - Semantic judgment belongs to the active AI assistant reviewing the generated `*.ai-review.md` file.
+- `--reviewed-file` is the preferred review path; `--accept-heuristic` is an explicit shortcut.
 - `apply` is blocked until semantic review is accepted, unless `--allow-unreviewed` is passed explicitly.
 - Apply requires `--confirm`.
 - Project truth files such as `.emb-agent/hw.yaml` and `.emb-agent/req.yaml` are never changed automatically.

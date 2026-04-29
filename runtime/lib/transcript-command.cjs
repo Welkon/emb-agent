@@ -31,7 +31,9 @@ function createTranscriptCommandHelpers(deps) {
       output_dir: '',
       explicit_confirmation: false,
       allow_unreviewed: false,
-      accept_review: false
+      accept_review: false,
+      accept_heuristic: false,
+      deprecated_accept: false
     };
 
     for (let index = 0; index < (argv || []).length; index += 1) {
@@ -74,8 +76,13 @@ function createTranscriptCommandHelpers(deps) {
         result.allow_unreviewed = true;
         continue;
       }
+      if (token === '--accept-heuristic') {
+        result.accept_heuristic = true;
+        continue;
+      }
       if (token === '--accept') {
         result.accept_review = true;
+        result.deprecated_accept = true;
         continue;
       }
       if (token === '--help' || token === '-h') {
@@ -100,7 +107,7 @@ function createTranscriptCommandHelpers(deps) {
         'transcript import --provider cursor --file <transcript>',
         'transcript import --provider generic --file <jsonl|json|md|txt>',
         'transcript analyze --from <analysis-or-transcript-json>',
-        'transcript review --from <analysis-json> --accept',
+        'transcript review --from <analysis-json> --accept-heuristic',
         'transcript review --from <analysis-json> --reviewed-file <reviewed-analysis-json>',
         'transcript apply --from <analysis-json> --confirm'
       ],
@@ -805,7 +812,83 @@ function createTranscriptCommandHelpers(deps) {
     return Boolean(review && review.status === 'accepted');
   }
 
-  function markAnalysisReviewed(analysis) {
+  function isObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function assertStringArray(value, label) {
+    if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) {
+      throw new Error(`${label} must be an array of strings`);
+    }
+    return value;
+  }
+
+  function assertRequiredString(value, label, options = {}) {
+    if (typeof value !== 'string') {
+      throw new Error(`${label} must be a string`);
+    }
+    if (options.nonEmpty && value.trim() === '') {
+      throw new Error(`${label} must be a non-empty string`);
+    }
+    return value;
+  }
+
+  function validateReviewedAnalysisInput(value, filePath) {
+    if (!isObject(value)) {
+      throw new Error(`Reviewed analysis must be a JSON object: ${filePath}`);
+    }
+    if (!isObject(value.semantic_review)) {
+      throw new Error('reviewed analysis semantic_review must be an object');
+    }
+    if (value.semantic_review.status !== 'accepted') {
+      throw new Error('reviewed analysis semantic_review.status must be accepted');
+    }
+    if (typeof value.semantic_review.reviewer !== 'string' || value.semantic_review.reviewer.trim() === '') {
+      throw new Error('reviewed analysis semantic_review.reviewer must be a non-empty string');
+    }
+    if (!isObject(value.session_signals)) {
+      throw new Error('reviewed analysis session_signals must be an object');
+    }
+    if (!isObject(value.truth_candidates)) {
+      throw new Error('reviewed analysis truth_candidates must be an object');
+    }
+    if (!isObject(value.task_candidates)) {
+      throw new Error('reviewed analysis task_candidates must be an object');
+    }
+    if (!isObject(value.recommended_next)) {
+      throw new Error('reviewed analysis recommended_next must be an object');
+    }
+
+    return {
+      ...value,
+      semantic_review: {
+        ...value.semantic_review,
+        required: true,
+        status: 'accepted',
+        reviewer: value.semantic_review.reviewer
+      },
+      session_signals: {
+        open_questions: assertStringArray(value.session_signals.open_questions, 'reviewed analysis session_signals.open_questions'),
+        known_risks: assertStringArray(value.session_signals.known_risks, 'reviewed analysis session_signals.known_risks'),
+        focus: assertRequiredString(value.session_signals.focus, 'reviewed analysis session_signals.focus')
+      },
+      truth_candidates: {
+        hardware: assertStringArray(value.truth_candidates.hardware, 'reviewed analysis truth_candidates.hardware'),
+        requirements: assertStringArray(value.truth_candidates.requirements, 'reviewed analysis truth_candidates.requirements')
+      },
+      task_candidates: {
+        suggested_task: assertRequiredString(value.task_candidates.suggested_task, 'reviewed analysis task_candidates.suggested_task'),
+        verification_needed: assertStringArray(value.task_candidates.verification_needed, 'reviewed analysis task_candidates.verification_needed')
+      },
+      discarded_items: assertStringArray(value.discarded_items, 'reviewed analysis discarded_items'),
+      recommended_next: {
+        route: assertRequiredString(value.recommended_next.route, 'reviewed analysis recommended_next.route', { nonEmpty: true }),
+        reason: assertRequiredString(value.recommended_next.reason, 'reviewed analysis recommended_next.reason')
+      }
+    };
+  }
+
+  function markAnalysisReviewed(analysis, options = {}) {
     const source = analysis && typeof analysis === 'object' ? analysis : {};
     const review = source.semantic_review && typeof source.semantic_review === 'object'
       ? source.semantic_review
@@ -814,6 +897,7 @@ function createTranscriptCommandHelpers(deps) {
       ...source,
       analysis_method: 'ai-reviewed',
       reviewed_at: new Date().toISOString(),
+      review_mode: options.heuristic ? 'accepted-heuristic' : 'reviewed-file',
       semantic_review: {
         ...review,
         required: true,
@@ -987,7 +1071,7 @@ function createTranscriptCommandHelpers(deps) {
       ? loaded.analysis
       : analyzeTranscript(loaded.transcript);
 
-    if (!input.accept_review && !input.reviewed_file) {
+    if (!input.accept_heuristic && !input.accept_review && !input.reviewed_file) {
       const semanticReview = baseAnalysis.semantic_review || buildSemanticReview({
         provider: baseAnalysis.provider,
         source_id: baseAnalysis.source_id,
@@ -1005,17 +1089,15 @@ function createTranscriptCommandHelpers(deps) {
           required: true,
           status: semanticReview.status || 'pending'
         },
-        required_action: 'Active AI must review the generated ai-review artifact, then rerun transcript review with --accept or --reviewed-file.',
-        accept_cli: `transcript review --from ${input.from} --accept`
+        required_action: 'Active AI must review the generated ai-review artifact, then rerun transcript review with --reviewed-file. Use --accept-heuristic only as an explicit shortcut.',
+        reviewed_file_cli: `transcript review --from ${input.from} --reviewed-file <reviewed-analysis-json>`,
+        accept_heuristic_cli: `transcript review --from ${input.from} --accept-heuristic`
       };
     }
 
     let reviewedAnalysis = null;
     if (input.reviewed_file) {
-      reviewedAnalysis = runtime.readJson(path.resolve(input.reviewed_file));
-      if (!reviewedAnalysis || typeof reviewedAnalysis !== 'object' || Array.isArray(reviewedAnalysis)) {
-        throw new Error(`Reviewed analysis must be a JSON object: ${input.reviewed_file}`);
-      }
+      reviewedAnalysis = validateReviewedAnalysisInput(runtime.readJson(path.resolve(input.reviewed_file)), input.reviewed_file);
       reviewedAnalysis = markAnalysisReviewed({
         ...baseAnalysis,
         ...reviewedAnalysis,
@@ -1024,7 +1106,7 @@ function createTranscriptCommandHelpers(deps) {
         source_file: reviewedAnalysis.source_file || baseAnalysis.source_file
       });
     } else {
-      reviewedAnalysis = markAnalysisReviewed(baseAnalysis);
+      reviewedAnalysis = markAnalysisReviewed(baseAnalysis, { heuristic: true });
     }
 
     const files = writeReviewedArtifacts(reviewedAnalysis, input);
@@ -1043,6 +1125,9 @@ function createTranscriptCommandHelpers(deps) {
       source_id: reviewedAnalysis.source_id,
       files,
       analysis: reviewedAnalysis,
+      warning: input.deprecated_accept
+        ? 'transcript review --accept is deprecated; use --accept-heuristic for this shortcut or --reviewed-file for AI-authored review.'
+        : '',
       guidance: {
         default_behavior: 'reviewed-but-not-applied',
         apply_cli: `transcript apply --from ${files.reviewed_analysis_file} --confirm`
@@ -1075,7 +1160,8 @@ function createTranscriptCommandHelpers(deps) {
         applied: false,
         status: 'semantic-review-pending',
         reason: 'transcript apply requires an AI-reviewed analysis by default; run transcript review first or pass --allow-unreviewed explicitly.',
-        required_cli: `transcript review --from ${input.from} --accept`,
+        required_cli: `transcript review --from ${input.from} --reviewed-file <reviewed-analysis-json>`,
+        shortcut_cli: `transcript review --from ${input.from} --accept-heuristic`,
         override_cli: `transcript apply --from ${input.from} --confirm --allow-unreviewed`
       };
     }
