@@ -208,6 +208,43 @@ function parseComponentLookupArgs(argv) {
   return result;
 }
 
+function parseSchematicQueryArgs(argv) {
+  const state = parseCommonLookupArgs(argv || [], {
+    name: '',
+    record: '',
+    help: false
+  });
+  const result = state.result;
+  const tokens = argv || [];
+  let index = state.index;
+  if (!state.handled) {
+    while (index < tokens.length) {
+      const token = tokens[index];
+      if (token === '--name' || token === '--net') {
+        result.name = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (token === '--record') {
+        result.record = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (token === '--ref') {
+        result.ref = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (parseBooleanFlag(token, result, '--confirm')) {
+        index += 1;
+        continue;
+      }
+      throw new Error(`Unknown schematic argument: ${token}`);
+    }
+  }
+  return result;
+}
+
 function normalizeComponentProvider(value) {
   const normalized = String(value || 'local').trim().toLowerCase() || 'local';
   if (normalized === 'lcsc') {
@@ -700,6 +737,111 @@ async function lookupComponents(projectRootInput, argv, deps) {
   };
 }
 
+function querySchematic(projectRootInput, subject, argv, deps) {
+  const args = Array.isArray(argv) ? parseSchematicQueryArgs(argv) : (argv || {});
+  const normalizedSubject = String(subject || 'summary').trim() || 'summary';
+  if (args.help) {
+    return {
+      command: `schematic ${normalizedSubject}`,
+      usage: 'schematic <summary|components|component|nets|net|bom|raw> [--parsed <parsed.json>] [--file <schematic>] [--ref <designator>] [--name <net>] [--record <n>] [--limit <n>]'
+    };
+  }
+
+  const projectRoot = resolveProjectRoot(args.project || projectRootInput);
+  const entries = loadParsedSchematicEntries(projectRoot, args, deps);
+  const entry = entries[0] || { parsed_path: '', source_path: '', parsed: {} };
+  const parsed = entry.parsed || {};
+  const components = Array.isArray(parsed.components) ? parsed.components : [];
+  const nets = Array.isArray(parsed.nets) ? parsed.nets : [];
+  const bom = Array.isArray(parsed.bom) ? parsed.bom : [];
+  const objects = Array.isArray(parsed.objects) ? parsed.objects : [];
+  const limit = args.limit || 20;
+
+  const base = {
+    result_mode: 'analysis-only',
+    command: `schematic ${normalizedSubject}`,
+    scope: {
+      project_root: projectRoot,
+      parsed: entry.parsed_path || args.parsed || '',
+      source_schematic: entry.source_path || args.file || ''
+    }
+  };
+
+  if (normalizedSubject === 'summary') {
+    return {
+      ...base,
+      summary: {
+        parser_mode: parsed.parser_mode || '',
+        components: components.length,
+        nets: nets.length,
+        objects: objects.length,
+        bom_lines: bom.length,
+        visual_netlist: parsed.visual_netlist || null,
+        raw_summary: parsed.raw_summary || {}
+      }
+    };
+  }
+
+  if (normalizedSubject === 'components') {
+    return {
+      ...base,
+      components: components.slice(0, limit)
+    };
+  }
+
+  if (normalizedSubject === 'component') {
+    const ref = String(args.ref || '').trim().toLowerCase();
+    const component = components.find(item => String(item.designator || '').toLowerCase() === ref) || null;
+    return {
+      ...base,
+      ref: args.ref || '',
+      component,
+      pins: component ? (component.pins || []) : []
+    };
+  }
+
+  if (normalizedSubject === 'nets') {
+    return {
+      ...base,
+      nets: nets.slice(0, limit).map(net => ({
+        name: net.name || '',
+        members: net.members || [],
+        confidence: net.confidence || '',
+        evidence_count: Array.isArray(net.evidence) ? net.evidence.length : 0
+      }))
+    };
+  }
+
+  if (normalizedSubject === 'net') {
+    const name = String(args.name || '').trim().toLowerCase();
+    const net = nets.find(item => String(item.name || '').toLowerCase() === name) || null;
+    return {
+      ...base,
+      name: args.name || '',
+      net
+    };
+  }
+
+  if (normalizedSubject === 'bom') {
+    return {
+      ...base,
+      bom: bom.slice(0, limit)
+    };
+  }
+
+  if (normalizedSubject === 'raw') {
+    const recordIndex = String(args.record || '').trim();
+    const object = objects.find(item => String(item.record_index || '') === recordIndex) || null;
+    return {
+      ...base,
+      record: recordIndex,
+      object
+    };
+  }
+
+  throw new Error(`Unknown schematic command: ${normalizedSubject}`);
+}
+
 function sanitizeFileName(value) {
   const normalized = String(value || '').trim().replace(/[?#].*$/, '');
   const basename = path.basename(normalized || 'downloaded.pdf').replace(/[^a-zA-Z0-9._-]+/g, '-');
@@ -839,7 +981,9 @@ module.exports = {
   parseDocLookupArgs,
   parseDocFetchArgs,
   parseComponentLookupArgs,
+  parseSchematicQueryArgs,
   lookupDocs,
   lookupComponents,
+  querySchematic,
   fetchDocument
 };

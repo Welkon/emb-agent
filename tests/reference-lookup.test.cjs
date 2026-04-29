@@ -137,6 +137,71 @@ test('component lookup builds szlcsc-style query inputs from schematic data', as
   }
 });
 
+test('schematic query commands expose parsed components nets bom and raw objects', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-schematic-query-'));
+  const currentCwd = process.cwd();
+
+  try {
+    initProject.main(['--project', tempProject]);
+    fs.mkdirSync(path.join(tempProject, '.emb-agent', 'cache', 'schematics', 'fixture'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'cache', 'schematics', 'fixture', 'parsed.json'),
+      JSON.stringify({
+        parser_mode: 'fixture',
+        components: [
+          {
+            designator: 'U1',
+            value: 'SC8F072',
+            footprint: 'SOP8',
+            pins: [{ number: '1', name: 'PWM', net: 'PWM_OUT' }]
+          }
+        ],
+        nets: [
+          {
+            name: 'PWM_OUT',
+            members: ['U1.1', 'R1.1'],
+            confidence: 'heuristic-named',
+            evidence: [{ kind: 'net_label', record_index: 12, text: 'PWM_OUT' }]
+          }
+        ],
+        objects: [
+          { kind: 'component', record_index: 1, designator: 'U1' },
+          { kind: 'net_label', record_index: 12, text: 'PWM_OUT' }
+        ],
+        bom: [
+          { designators: ['U1'], quantity: 1, value: 'SC8F072', footprint: 'SOP8' }
+        ],
+        visual_netlist: {
+          graph: { components: 1, nets: 1, named_nets: 1 }
+        }
+      }, null, 2)
+    );
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'cache', 'schematics', 'fixture', 'source.json'),
+      JSON.stringify({ source_path: 'docs/board.SchDoc' }, null, 2)
+    );
+
+    process.chdir(tempProject);
+
+    const summary = await captureCliJson(['schematic', 'summary', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json']);
+    const component = await captureCliJson(['schematic', 'component', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json', '--ref', 'U1']);
+    const net = await captureCliJson(['schematic', 'net', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json', '--name', 'PWM_OUT']);
+    const bom = await captureCliJson(['schematic', 'bom', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json']);
+    const raw = await captureCliJson(['schematic', 'raw', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json', '--record', '12']);
+
+    assert.equal(summary.command, 'schematic summary');
+    assert.equal(summary.summary.components, 1);
+    assert.equal(summary.summary.nets, 1);
+    assert.equal(component.component.designator, 'U1');
+    assert.equal(component.pins[0].net, 'PWM_OUT');
+    assert.equal(net.net.evidence[0].kind, 'net_label');
+    assert.equal(bom.bom[0].quantity, 1);
+    assert.equal(raw.object.kind, 'net_label');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('component lookup enriches schematic components through szlcsc provider', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-component-lookup-szlcsc-'));
   const currentCwd = process.cwd();

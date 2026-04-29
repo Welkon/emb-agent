@@ -163,6 +163,19 @@ function createCommandGroupHelpers(deps) {
       return result;
     }
 
+    if (cmd === 'schematic') {
+      const subject = subcmd || 'summary';
+      const result = referenceLookupCli.querySchematic(resolveProjectRoot(), subject, rest);
+      rememberDocFiles(
+        [
+          result && result.scope && result.scope.parsed,
+          result && result.scope && result.scope.source_schematic
+        ].filter(Boolean),
+        `schematic ${subject}`
+      );
+      return result;
+    }
+
     return undefined;
   }
 

@@ -272,8 +272,15 @@ function normalizeComponent(input) {
     value: ensureString(input.value || input.comment || input.description || ''),
     comment: ensureString(input.comment || input.description || ''),
     library_ref: ensureString(input.libref || input.library_ref || input.symbol || ''),
+    libref: ensureString(input.libref || input.library_ref || input.symbol || ''),
     footprint: normalizePackage(input.footprint || input.package || input.pattern || ''),
+    package: normalizePackage(input.footprint || input.package || input.pattern || ''),
     datasheet: ensureString(input.datasheet || ''),
+    manufacturer: ensureString(input.manufacturer || input.mfr || ''),
+    mpn: ensureString(input.mpn || input.part_number || input.manufacturer_part_number || ''),
+    parameters: input.parameters && typeof input.parameters === 'object' && !Array.isArray(input.parameters)
+      ? input.parameters
+      : {},
     pins: makeArray(input.pins).map(pin => ({
       number: ensureString(pin.number || pin.pin || ''),
       name: ensureString(pin.name || pin.label || ''),
@@ -331,8 +338,77 @@ function normalizeNet(input) {
           );
         })
         .filter(Boolean)
-    )
+    ),
+    evidence: makeArray(input.evidence),
+    confidence: ensureString(input.confidence || ''),
+    source_paths: makeArray(input.source_paths).map(ensureString).filter(Boolean),
+    sheets: makeArray(input.sheets).map(ensureString).filter(Boolean)
   };
+}
+
+function buildParsedObjects(components, nets) {
+  const objects = [];
+  makeArray(components).forEach(component => {
+    objects.push({
+      kind: 'component',
+      designator: component.designator || '',
+      value: component.value || '',
+      comment: component.comment || '',
+      libref: component.libref || component.library_ref || '',
+      footprint: component.footprint || component.package || '',
+      datasheet: component.datasheet || '',
+      parameters: component.parameters || {}
+    });
+    makeArray(component.pins).forEach(pin => {
+      objects.push({
+        kind: 'pin',
+        owner: component.designator || '',
+        number: pin.number || '',
+        name: pin.name || '',
+        net: pin.net || ''
+      });
+    });
+  });
+  makeArray(nets).forEach(net => {
+    objects.push({
+      kind: 'net',
+      name: net.name || '',
+      members: makeArray(net.members)
+    });
+  });
+  return objects;
+}
+
+function buildBom(components) {
+  const groups = new Map();
+  makeArray(components).forEach(component => {
+    const key = [
+      component.value || component.comment || component.libref || component.library_ref || '',
+      component.footprint || component.package || '',
+      component.datasheet || ''
+    ].join('|');
+    const current = groups.get(key) || {
+      designators: [],
+      quantity: 0,
+      value: component.value || '',
+      comment: component.comment || '',
+      libref: component.libref || component.library_ref || '',
+      footprint: component.footprint || component.package || '',
+      datasheet: component.datasheet || '',
+      manufacturer: component.manufacturer || '',
+      mpn: component.mpn || '',
+      parameters: component.parameters || {}
+    };
+    current.designators.push(component.designator);
+    current.quantity += 1;
+    groups.set(key, current);
+  });
+  return Array.from(groups.values())
+    .map(item => ({
+      ...item,
+      designators: item.designators.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }))
+    }))
+    .sort((a, b) => String(a.designators[0] || '').localeCompare(String(b.designators[0] || ''), undefined, { numeric: true }));
 }
 
 function parseAltiumJson(text) {
@@ -354,6 +430,8 @@ function parseAltiumJson(text) {
     parser_mode: 'heuristic-json',
     components,
     nets,
+    objects: buildParsedObjects(components, nets),
+    bom: buildBom(components),
     raw_summary: {
       top_level_keys: raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.keys(raw).slice(0, 12) : [],
       object_count: objects.length
@@ -367,7 +445,9 @@ function parseBomCsv(text) {
     return {
       parser_mode: 'bom-csv',
       components: [],
-      nets: []
+      nets: [],
+      objects: [],
+      bom: []
     };
   }
 
@@ -393,7 +473,9 @@ function parseBomCsv(text) {
   return {
     parser_mode: 'bom-csv',
     components,
-    nets: []
+    nets: [],
+    objects: buildParsedObjects(components, []),
+    bom: buildBom(components)
   };
 }
 
@@ -431,7 +513,9 @@ function parseNetlistText(text) {
   return {
     parser_mode: 'netlist-text',
     components: components.filter((item, index, list) => index === list.findIndex(other => other.designator === item.designator)),
-    nets: nets.filter((item, index, list) => index === list.findIndex(other => other.name === item.name))
+    nets: nets.filter((item, index, list) => index === list.findIndex(other => other.name === item.name)),
+    objects: buildParsedObjects(components, nets),
+    bom: buildBom(components)
   };
 }
 
@@ -451,6 +535,8 @@ function parseAltiumRaw(buffer) {
       .map(net => normalizeNet(net))
       .filter(Boolean)
       .filter((item, index, list) => index === list.findIndex(other => other.name === item.name)),
+    objects: makeArray(raw.objects),
+    bom: makeArray(raw.bom),
     raw_summary: raw.raw_summary || {}
   };
 }
@@ -469,6 +555,16 @@ function annotateParsedSource(parsed, sourcePath, sourceIndex) {
     source_path: component.source_path || sourcePath,
     sheet: component.sheet || sheetId
   }));
+  next.objects = makeArray(next.objects).map(object => ({
+    ...object,
+    source_path: object.source_path || sourcePath,
+    sheet: object.sheet || sheetId
+  }));
+  next.bom = makeArray(next.bom).map(item => ({
+    ...item,
+    source_paths: runtime.unique([...(makeArray(item.source_paths)), sourcePath]),
+    sheets: runtime.unique([...(makeArray(item.sheets)), sheetId])
+  }));
   next.nets = makeArray(next.nets).map(net => {
     const name = ensureString(net.name);
     const normalizedName = isUnnamedNet(name) ? `${sheetId}:${name}` : name;
@@ -476,6 +572,7 @@ function annotateParsedSource(parsed, sourcePath, sourceIndex) {
       ...net,
       name: normalizedName,
       source_path: net.source_path || sourcePath,
+      source_paths: runtime.unique([...(makeArray(net.source_paths)), sourcePath]),
       sheets: runtime.unique([...(makeArray(net.sheets)), sheetId])
     };
   });
@@ -505,10 +602,22 @@ function mergeNets(nets) {
     const current = byName.get(name) || {
       name,
       members: [],
+      evidence: [],
+      confidence: '',
       source_paths: [],
       sheets: []
     };
     current.members = runtime.unique(current.members.concat(makeArray(net.members).map(ensureString).filter(Boolean)));
+    current.evidence = runtime.unique(
+      current.evidence.concat(makeArray(net.evidence).map(item => JSON.stringify(item)))
+    ).map(item => {
+      try {
+        return JSON.parse(item);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+    current.confidence = current.confidence || ensureString(net.confidence || '');
     current.source_paths = runtime.unique(current.source_paths.concat([ensureString(net.source_path)].filter(Boolean)));
     current.sheets = runtime.unique(current.sheets.concat(makeArray(net.sheets).map(ensureString).filter(Boolean)));
     byName.set(name, current);
@@ -524,6 +633,8 @@ function combineParsedSources(parsedSources) {
 
   const components = [];
   const nets = [];
+  const objects = [];
+  const bom = [];
   const sheets = [];
   const parserModes = [];
 
@@ -532,6 +643,8 @@ function combineParsedSources(parsedSources) {
     parserModes.push(parsed.parser_mode || source.format || '');
     components.push(...makeArray(parsed.components));
     nets.push(...makeArray(parsed.nets));
+    objects.push(...makeArray(parsed.objects));
+    bom.push(...makeArray(parsed.bom));
     sheets.push(...makeArray(parsed.sheets));
   });
 
@@ -540,6 +653,8 @@ function combineParsedSources(parsedSources) {
     source_paths: parsedSources.map(source => source.relative_path),
     components,
     nets: mergeNets(nets),
+    objects,
+    bom,
     sheets,
     raw_summary: {
       sources: parsedSources.length,
@@ -584,6 +699,14 @@ function buildVisualNetlistAnalysis(sourcePaths, parsed) {
       members: makeArray(net.members).slice(0, 12),
       sheets: makeArray(net.sheets)
     }));
+  const netDetails = nets.slice(0, 100).map(net => ({
+    name: ensureString(net.name),
+    members: makeArray(net.members),
+    sheets: makeArray(net.sheets),
+    source_paths: makeArray(net.source_paths),
+    confidence: ensureString(net.confidence || ''),
+    evidence: makeArray(net.evidence).slice(0, 24)
+  }));
 
   return {
     version: 1,
@@ -604,6 +727,7 @@ function buildVisualNetlistAnalysis(sourcePaths, parsed) {
       cross_sheet_nets: crossSheetNets.length,
       dangling_nets: danglingNets.length
     },
+    nets: netDetails,
     cross_sheet_nets: crossSheetNets,
     dangling_nets: danglingNets,
     signal_candidates: signalCandidates,
