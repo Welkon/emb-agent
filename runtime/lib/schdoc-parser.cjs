@@ -363,6 +363,16 @@ function normalizeComponentInput(partRecord, relatedRecords) {
     /[a-z]/i.test(String(comment || ''));
   const value = preferCommentAsValue ? comment : rawValue;
   const datasheet = findNamedText(relatedRecords, 'Datasheet');
+  const parameters = {};
+  relatedRecords
+    .filter(item => item.RECORD === '41' || item.RECORD === '34')
+    .forEach(item => {
+      const name = getField(item, 'Name', 'NAME');
+      const text = getField(item, '%UTF8%Text', 'Text', 'TEXT');
+      if (name && text && !['Designator', 'Comment', 'Value', 'Footprint', 'Datasheet'].includes(name)) {
+        parameters[name] = text;
+      }
+    });
   const pins = relatedRecords
     .filter(item => item.RECORD === '2')
     .map(pin => ({
@@ -381,6 +391,7 @@ function normalizeComponentInput(partRecord, relatedRecords) {
     footprint,
     package: footprint,
     datasheet,
+    parameters,
     pins,
     raw_part_index: partRecord.index
   };
@@ -430,7 +441,7 @@ function buildDevice(record, partMap) {
     };
   }
 
-  if (record.RECORD === '17' || record.RECORD === '25') {
+  if (['17', '18', '25', '29'].includes(record.RECORD)) {
     return {
       ...record,
       coords: [[
@@ -441,6 +452,20 @@ function buildDevice(record, partMap) {
   }
 
   return null;
+}
+
+function deviceKind(device) {
+  if (device.RECORD === '2') return 'pin';
+  if (device.RECORD === '17') return 'power_port';
+  if (device.RECORD === '18') return 'port';
+  if (device.RECORD === '25') return 'net_label';
+  if (device.RECORD === '27') return 'wire';
+  if (device.RECORD === '29') return 'junction';
+  return 'unknown';
+}
+
+function getDeviceNetText(device) {
+  return getField(device || {}, '%UTF8%Text', 'Text', 'TEXT');
 }
 
 function pointOnSegment(point, segmentStart, segmentEnd) {
@@ -496,12 +521,9 @@ function devicesConnected(a, b) {
     }
   }
 
-  if (
-    a.RECORD === '17' &&
-    b.RECORD === '17' &&
-    getField(a, 'Text', 'TEXT') &&
-    getField(a, 'Text', 'TEXT') === getField(b, 'Text', 'TEXT')
-  ) {
+  const aText = getDeviceNetText(a);
+  const bText = getDeviceNetText(b);
+  if (aText && bText && aText === bText && ['17', '18', '25'].includes(a.RECORD) && ['17', '18', '25'].includes(b.RECORD)) {
     return true;
   }
 
@@ -510,7 +532,7 @@ function devicesConnected(a, b) {
 
 function buildNets(records, partMap) {
   const devices = records
-    .filter(record => ['2', '17', '25', '27'].includes(record.RECORD))
+    .filter(record => ['2', '17', '18', '25', '27', '29'].includes(record.RECORD))
     .map(record => buildDevice(record, partMap))
     .filter(Boolean);
   const visited = new Set();
@@ -540,8 +562,8 @@ function buildNets(records, partMap) {
       });
     }
 
-    const namedDevice = group.find(item => item.RECORD === '17' || item.RECORD === '25');
-    const name = getField(namedDevice || {}, '%UTF8%Text', 'Text', 'TEXT') || `UNNAMED_NET_${nets.length + 1}`;
+    const namedDevice = group.find(item => ['17', '18', '25'].includes(item.RECORD));
+    const name = getDeviceNetText(namedDevice) || `UNNAMED_NET_${nets.length + 1}`;
     const members = runtimeLikeUnique(
       group
         .filter(item => item.RECORD === '2' && item.component_designator)
@@ -550,14 +572,104 @@ function buildNets(records, partMap) {
           return `${item.component_designator}.${pinId}`;
         })
     );
+    const evidence = group.map(item => ({
+      kind: deviceKind(item),
+      record_index: item.index,
+      text: getDeviceNetText(item),
+      component: item.component_designator || '',
+      pin: item.pin_number || item.pin_name || '',
+      coords: item.coords || []
+    }));
 
     nets.push({
       name,
-      members
+      members,
+      evidence,
+      confidence: name.startsWith('UNNAMED_NET_') ? 'heuristic-unnamed' : 'heuristic-named'
     });
   });
 
   return nets;
+}
+
+function buildTypedObjects(records, partMap) {
+  return records
+    .map(record => {
+      if (record.RECORD === '1') {
+        const component = partMap.get(String(record.index));
+        return component ? {
+          kind: 'component',
+          record_index: record.index,
+          designator: component.designator || '',
+          value: component.value || '',
+          comment: component.comment || '',
+          libref: component.libref || '',
+          footprint: component.footprint || '',
+          datasheet: component.datasheet || '',
+          parameters: component.parameters || {}
+        } : null;
+      }
+      if (record.RECORD === '2') {
+        const pin = buildDevice(record, partMap);
+        return pin ? {
+          kind: 'pin',
+          record_index: record.index,
+          owner: pin.component_designator || '',
+          number: pin.pin_number || '',
+          name: pin.pin_name || '',
+          coords: pin.coords || []
+        } : null;
+      }
+      if (record.RECORD === '27') {
+        const wire = buildDevice(record, partMap);
+        return wire ? {
+          kind: 'wire',
+          record_index: record.index,
+          points: wire.coords || []
+        } : null;
+      }
+      if (['17', '18', '25', '29'].includes(record.RECORD)) {
+        const device = buildDevice(record, partMap);
+        return device ? {
+          kind: deviceKind(device),
+          record_index: record.index,
+          text: getDeviceNetText(device),
+          coords: device.coords || []
+        } : null;
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function buildBom(components) {
+  const groups = new Map();
+  (components || []).forEach(component => {
+    const key = [
+      component.value || component.comment || component.libref || '',
+      component.footprint || component.package || '',
+      component.datasheet || ''
+    ].join('|');
+    const current = groups.get(key) || {
+      designators: [],
+      quantity: 0,
+      value: component.value || '',
+      comment: component.comment || '',
+      libref: component.libref || '',
+      footprint: component.footprint || component.package || '',
+      datasheet: component.datasheet || '',
+      parameters: component.parameters || {}
+    };
+    current.designators.push(component.designator);
+    current.quantity += 1;
+    groups.set(key, current);
+  });
+  return Array.from(groups.values())
+    .map(item => ({
+      ...item,
+      designators: item.designators.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }))
+    }))
+    .sort((a, b) => String(a.designators[0] || '').localeCompare(String(b.designators[0] || ''), undefined, { numeric: true }));
 }
 
 function runtimeLikeUnique(items) {
@@ -657,15 +769,21 @@ function parseSchDocBuffer(fileBuffer) {
   const nets = buildNets(parsed.records, partMap);
   applyNetMembership(components, nets);
   const visualSummary = buildVisualSummary(parsed.records, partMap);
+  const objects = buildTypedObjects(parsed.records, partMap);
+  const bom = buildBom(components);
 
   return {
     parser_mode: 'altium-raw-internal',
     components,
     nets,
+    objects,
+    bom,
     raw_summary: {
       records: parsed.records.length,
       components: components.length,
       nets: nets.length,
+      objects: objects.length,
+      bom_lines: bom.length,
       visual: visualSummary,
       file_header_size: parsed.file_header_size
     }

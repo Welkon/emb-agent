@@ -173,6 +173,9 @@ test('ingest schematic merges repeated files into visual netlist analysis', asyn
     assert.equal(visualNetlist.page_count, 2);
     assert.equal(visualNetlist.cross_sheet_nets[0].name, 'UART_TX');
     assert.equal(visualNetlist.signal_candidates[0].name, 'UART_TX');
+    assert.ok(parsedJson.objects.some(item => item.kind === 'component' && item.designator === 'U1'));
+    assert.ok(parsedJson.objects.some(item => item.kind === 'net' && item.name === 'UART_TX'));
+    assert.equal(parsedJson.bom.some(item => item.designators.includes('U1')), true);
     assert.match(hardwareFacts, /Multi-page schematic ingest: 2 pages, 1 cross-sheet named nets/);
     assert.ok(ingested.agent_analysis.inputs.includes(ingested.artifacts.visual_netlist));
   } finally {
@@ -221,6 +224,9 @@ test('ingest schematic parses raw SchDoc through the internal parser and keeps i
     assert.equal(parsedJson.visual_netlist.status, 'analysis-only');
     assert.equal(parsedJson.visual_netlist.page_count, 1);
     assert.ok(parsedJson.visual_netlist.graph.nets > 0);
+    assert.ok(parsedJson.objects.some(item => item.kind === 'wire'));
+    assert.ok(parsedJson.bom.some(item => item.designators.includes('U1')));
+    assert.ok(parsedJson.nets.some(item => item.evidence && item.evidence.length > 0));
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.summary)), true);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.source)), true);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.hardware_facts)), true);

@@ -1263,6 +1263,12 @@ const referenceLookupCli = {
       ingestSchematicCli
     });
   },
+  querySchematic(projectRoot, subject, args) {
+    return referenceLookupHelpers.querySchematic(projectRoot, subject, args, {
+      runtime,
+      ingestSchematicCli
+    });
+  },
   fetchDocument(projectRoot, args, options) {
     return referenceLookupHelpers.fetchDocument(projectRoot, args, options);
   }
