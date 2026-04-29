@@ -153,10 +153,11 @@ test('transcript apply requires confirmation and stores only session recovery si
       'review',
       '--from',
       analysisPath,
-      '--accept'
+      '--accept-heuristic'
     ]);
     assert.equal(reviewed.reviewed, true);
     assert.equal(reviewed.analysis.analysis_method, 'ai-reviewed');
+    assert.equal(reviewed.analysis.review_mode, 'accepted-heuristic');
     assert.equal(reviewed.analysis.semantic_review.status, 'accepted');
     assert.ok(fs.existsSync(path.join(tempProject, reviewed.files.reviewed_analysis_file)));
 
@@ -179,6 +180,174 @@ test('transcript apply requires confirmation and stores only session recovery si
     assert.equal(session.diagnostics.latest_transcript_import.semantic_review.required, true);
     assert.equal(session.diagnostics.latest_transcript_import.semantic_review.status, 'accepted');
     assert.deepEqual(session.diagnostics.latest_transcript_import.confirmed_facts, ['RB4 red LED is active high']);
+    assert.equal(cli.buildNextContext().next.command, 'scan');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('transcript review accepts strict AI reviewed schema', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-transcript-reviewed-file-'));
+  const currentCwd = process.cwd();
+
+  try {
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    await runQuiet(['init']);
+
+    const analysisPath = path.join(tempProject, 'analysis.json');
+    fs.writeFileSync(
+      analysisPath,
+      JSON.stringify({
+        version: '1.0',
+        provider: 'codex',
+        source_id: 'old-session',
+        source_file: 'conversation.jsonl',
+        confirmed_facts: ['raw fact should be reviewed'],
+        open_questions: ['raw question?'],
+        open_risks: ['raw risk'],
+        recommended_next: {
+          route: 'review-before-do',
+          reason: 'raw route'
+        },
+        semantic_review: {
+          required: true,
+          status: 'pending',
+          reviewer: 'host-ai'
+        }
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    const reviewedPath = path.join(tempProject, 'reviewed.json');
+    fs.writeFileSync(
+      reviewedPath,
+      JSON.stringify({
+        semantic_review: {
+          required: true,
+          status: 'accepted',
+          reviewer: 'codex'
+        },
+        session_signals: {
+          open_questions: ['AI reviewed question'],
+          known_risks: ['AI reviewed risk'],
+          focus: 'AI reviewed focus'
+        },
+        truth_candidates: {
+          hardware: ['RB4 active high red LED'],
+          requirements: ['no helper wrappers']
+        },
+        task_candidates: {
+          suggested_task: 'review recovered USB detection issue',
+          verification_needed: ['bench USB insert/remove']
+        },
+        discarded_items: ['tool chatter'],
+        recommended_next: {
+          route: 'review-before-do',
+          reason: 'AI reviewed route'
+        }
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    const reviewed = await captureCliJson([
+      '--json',
+      'transcript',
+      'review',
+      '--from',
+      analysisPath,
+      '--reviewed-file',
+      reviewedPath
+    ]);
+    assert.equal(reviewed.reviewed, true);
+    assert.equal(reviewed.analysis.review_mode, 'reviewed-file');
+    assert.equal(reviewed.analysis.semantic_review.reviewer, 'codex');
+    assert.deepEqual(reviewed.analysis.session_signals.open_questions, ['AI reviewed question']);
+    assert.deepEqual(reviewed.analysis.truth_candidates.hardware, ['RB4 active high red LED']);
+
+    const applied = await captureCliJson([
+      '--json',
+      'transcript',
+      'apply',
+      '--from',
+      path.join(tempProject, reviewed.files.reviewed_analysis_file),
+      '--confirm'
+    ]);
+    assert.equal(applied.applied, true);
+    assert.deepEqual(applied.added.open_questions, ['AI reviewed question']);
+    assert.deepEqual(applied.added.known_risks, ['AI reviewed risk']);
+    assert.equal(cli.buildNextContext().next.command, 'review');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('transcript review rejects incomplete reviewed schema', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-transcript-invalid-reviewed-file-'));
+  const currentCwd = process.cwd();
+
+  try {
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    await runQuiet(['init']);
+
+    const analysisPath = path.join(tempProject, 'analysis.json');
+    fs.writeFileSync(
+      analysisPath,
+      JSON.stringify({
+        version: '1.0',
+        provider: 'codex',
+        source_id: 'old-session',
+        semantic_review: {
+          required: true,
+          status: 'pending',
+          reviewer: 'host-ai'
+        }
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    const reviewedPath = path.join(tempProject, 'reviewed-incomplete.json');
+    fs.writeFileSync(
+      reviewedPath,
+      JSON.stringify({
+        semantic_review: {
+          status: 'accepted',
+          reviewer: 'codex'
+        },
+        session_signals: {
+          open_questions: [],
+          focus: ''
+        },
+        truth_candidates: {
+          hardware: [],
+          requirements: []
+        },
+        task_candidates: {
+          suggested_task: '',
+          verification_needed: []
+        },
+        discarded_items: [],
+        recommended_next: {
+          route: 'scan-first',
+          reason: ''
+        }
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    await assert.rejects(
+      captureCliJson([
+        '--json',
+        'transcript',
+        'review',
+        '--from',
+        analysisPath,
+        '--reviewed-file',
+        reviewedPath
+      ]),
+      /session_signals\.known_risks must be an array of strings/
+    );
   } finally {
     process.chdir(currentCwd);
   }
