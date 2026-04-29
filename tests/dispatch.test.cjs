@@ -643,6 +643,8 @@ test('dispatch run persists delegation runtime snapshot into session diagnostics
     assert.ok(delegationRuntime.phases.some(item => item.id === 'synthesis'));
     assert.ok(delegationRuntime.launch_requests.some(item => item.agent === 'emb-hw-scout'));
     assert.equal(delegationRuntime.synthesis.required, true);
+    assert.equal(delegationRuntime.synthesis.status, 'manual-workers-required');
+    assert.equal(delegationRuntime.review.stage_a.status, 'pending-worker-results');
     assert.equal(delegationRuntime.integration.status, 'completed-inline');
     assert.equal(delegationRuntime.integration.execution_kind, 'action');
     assert.equal(delegationRuntime.integration.entered_via, 'dispatch run next');
@@ -723,6 +725,35 @@ test('dispatch launch registers async delegation jobs and collect persists compl
     assert.equal(collected.worker_results[0].status, 'ok');
     assert.equal(collectedSession.diagnostics.delegation_runtime.worker_results.length, 1);
     assert.equal(collectedSession.diagnostics.delegation_runtime.jobs[0].status, 'completed');
+  } finally {
+    if (originalBridgeCmd === undefined) {
+      delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    } else {
+      process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
+  }
+});
+
+test('dispatch launch falls back to manual worker requests without host bridge', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-dispatch-launch-manual-'));
+  const currentCwd = process.cwd();
+  const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+
+  try {
+    process.chdir(tempProject);
+    delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    await cli.main(['init']);
+    await cli.main(['risk', 'add', 'irq race']);
+
+    const launch = await captureCliJson(['dispatch', 'launch', 'next']);
+
+    assert.equal(launch.launched, false);
+    assert.equal(launch.subagent_bridge.status, 'bridge-unavailable');
+    assert.equal(launch.delegation_jobs.length, 0);
+    assert.ok(launch.delegation_runtime.launch_requests.some(item => item.agent === 'emb-hw-scout'));
+    assert.equal(launch.delegation_runtime.synthesis.status, 'manual-workers-required');
+    assert.equal(launch.delegation_runtime.review.stage_a.status, 'pending-worker-results');
   } finally {
     if (originalBridgeCmd === undefined) {
       delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;

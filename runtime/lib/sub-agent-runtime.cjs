@@ -22,6 +22,8 @@ function createSubAgentRuntimeHelpers(deps) {
     return typeof runtimeHost === 'function' ? runtimeHost() : runtimeHost;
   }
 
+  const MANUAL_WORKER_SYNTHESIS_STATUS = 'manual-workers-required';
+
   function toStringArray(value) {
     return Array.isArray(value) ? value.map(item => String(item)) : [];
   }
@@ -772,7 +774,7 @@ function createSubAgentRuntimeHelpers(deps) {
       synthesisStatus = workerResults.some(item => item && item.status === 'ok')
         ? 'ready'
         : jobs.some(item => item.status === 'blocked')
-          ? 'blocked-no-host-bridge'
+          ? MANUAL_WORKER_SYNTHESIS_STATUS
           : 'blocked-worker-results';
     }
 
@@ -812,7 +814,7 @@ function createSubAgentRuntimeHelpers(deps) {
         launch_requests: launchEnvelopes.map(item => item.worker),
         jobs: [],
         worker_results: [],
-        synthesis_status: 'blocked-no-host-bridge'
+        synthesis_status: MANUAL_WORKER_SYNTHESIS_STATUS
       };
     }
 
@@ -844,7 +846,7 @@ function createSubAgentRuntimeHelpers(deps) {
     const synthesisStatus = waitForResults
       ? (workerResults.some(item => item.status === 'ok')
         ? 'ready'
-        : (lastBridge.status === 'bridge-unavailable' ? 'blocked-no-host-bridge' : 'blocked-worker-results'))
+        : (lastBridge.status === 'bridge-unavailable' ? MANUAL_WORKER_SYNTHESIS_STATUS : 'blocked-worker-results'))
       : 'running';
 
     return {
