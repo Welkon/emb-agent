@@ -586,6 +586,57 @@ function applyNetMembership(components, nets) {
   return components;
 }
 
+function collectPointBounds(points) {
+  const validPoints = (points || [])
+    .filter(point => Array.isArray(point) && point.length >= 2)
+    .map(point => [Number(point[0]), Number(point[1])])
+    .filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+
+  if (validPoints.length === 0) {
+    return null;
+  }
+
+  return validPoints.reduce((bounds, point) => ({
+    min_x: Math.min(bounds.min_x, point[0]),
+    min_y: Math.min(bounds.min_y, point[1]),
+    max_x: Math.max(bounds.max_x, point[0]),
+    max_y: Math.max(bounds.max_y, point[1])
+  }), {
+    min_x: validPoints[0][0],
+    min_y: validPoints[0][1],
+    max_x: validPoints[0][0],
+    max_y: validPoints[0][1]
+  });
+}
+
+function buildVisualSummary(records, partMap) {
+  const devices = records
+    .filter(record => ['2', '17', '25', '27'].includes(record.RECORD))
+    .map(record => buildDevice(record, partMap))
+    .filter(Boolean);
+  const recordCounts = {};
+
+  records.forEach(record => {
+    const key = String(record.RECORD || 'unknown');
+    recordCounts[key] = (recordCounts[key] || 0) + 1;
+  });
+
+  return {
+    primitives: {
+      parts: recordCounts['1'] || 0,
+      pins: recordCounts['2'] || 0,
+      wires: recordCounts['27'] || 0,
+      net_labels: recordCounts['25'] || 0,
+      power_ports: recordCounts['17'] || 0,
+      junctions: recordCounts['29'] || 0,
+      ports: recordCounts['18'] || 0,
+      sheet_symbols: recordCounts['15'] || 0
+    },
+    record_counts: recordCounts,
+    bounds: collectPointBounds(devices.flatMap(device => Array.isArray(device.coords) ? device.coords : []))
+  };
+}
+
 function parseSchDocBuffer(fileBuffer) {
   const parsed = parseSchDocRecords(fileBuffer);
   const relatedByOwner = groupByOwner(parsed.records);
@@ -605,6 +656,7 @@ function parseSchDocBuffer(fileBuffer) {
 
   const nets = buildNets(parsed.records, partMap);
   applyNetMembership(components, nets);
+  const visualSummary = buildVisualSummary(parsed.records, partMap);
 
   return {
     parser_mode: 'altium-raw-internal',
@@ -614,6 +666,7 @@ function parseSchDocBuffer(fileBuffer) {
       records: parsed.records.length,
       components: components.length,
       nets: nets.length,
+      visual: visualSummary,
       file_header_size: parsed.file_header_size
     }
   };

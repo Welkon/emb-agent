@@ -28,10 +28,12 @@ allowed-tools:
   `doc lookup --chip <name> --vendor <name>`
 - For schematics or schematic exports, prefer:
   `ingest schematic --file <path>`
+- For multi-page schematics exported as separate sheets, pass each sheet in order:
+  `ingest schematic --file <sheet-1> --file <sheet-2>`
 - `declare hardware` / `ingest hardware` return `write_mode: truth-write` because they update truth files directly.
 - `ingest doc` returns `write_mode: staged-truth` when it has a target truth file; review `apply_ready` and then use `ingest apply doc ...` to write the selected fields.
 - `ingest schematic` returns `write_mode: analysis-only`, `truth_write.direct: false`, and `apply_ready: null`; it only prepares artifacts for agent analysis.
-- After schematic ingest, use the returned parsed artifacts as agent input and confirm controller/signals/peripherals before writing truth.
+- After schematic ingest, use the returned `parsed.json` and `analysis.visual-netlist.json` artifacts as agent input and confirm controller/signals/peripherals before writing truth.
 - For normalized part-search inputs from a schematic, use:
   `component lookup --file <path>`
 - For explicit supplier candidates from SZLCSC / LCSC, use:
