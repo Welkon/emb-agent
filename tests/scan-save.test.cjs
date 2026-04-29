@@ -45,7 +45,7 @@ test('scan save appends scan snapshot to hardware logic doc', () => {
     assert.match(content, /main\.c is current entry reference/);
     assert.match(content, /Need pin map confirmation from schematic/);
     assert.match(content, /docs\/PMS150G-manual\.md/);
-    assert.match(content, /profile=baremetal-8bit/);
+    assert.match(content, /profile=baremetal-loop/);
     assert.match(hwTruth, /main\.c is current entry reference/);
     assert.match(hwTruth, /Need pin map confirmation from schematic/);
     assert.match(hwTruth, /docs\/PMS150G-manual\.md/);

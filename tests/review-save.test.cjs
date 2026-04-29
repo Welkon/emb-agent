@@ -20,7 +20,7 @@ test('review save creates review report from template and appends structured ent
 
   return withDefaultWorkflowSourceEnv(() => {
     try {
-      initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
+      initProject.main(['--project', tempProject, '--profile', 'tasked-runtime', '--spec', 'connected-appliance']);
 
     process.chdir(tempProject);
     cli.main(['init']);

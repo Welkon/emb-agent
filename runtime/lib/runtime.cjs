@@ -1527,7 +1527,7 @@ function validateRuntimeConfig(config) {
   const normalized = {
     runtime_version: Number(config.runtime_version || 1),
     session_version: Number(config.session_version || 1),
-    default_profile: ensureString(config.default_profile || 'baremetal-8bit', 'default_profile'),
+    default_profile: ensureString(config.default_profile || 'baremetal-loop', 'default_profile'),
     default_specs: ensureStringArray(config.default_specs || [], 'default_specs'),
     developer: validateDeveloperConfig(config.developer || {}),
     default_preferences: normalizePreferences(config.default_preferences || {}, {

@@ -1,11 +1,11 @@
-name: baremetal-8bit
+name: baremetal-loop
 runtime_model: main_loop_plus_isr
 concurrency_model: interrupt_shared_state
 resource_priority:
-  - rom
+  - flash
   - ram
   - stack
-  - isr_time
+  - isr_latency
 search_priority:
   - hardware_truth
   - registers
@@ -21,7 +21,7 @@ review_axes:
   - interrupt_safety
   - shared_state
   - timing_path
-  - rom_ram_budget
+  - memory_budget
   - pin_mux_conflicts
 notes_targets:
   - docs/HARDWARE-LOGIC.md

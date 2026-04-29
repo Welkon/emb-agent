@@ -302,7 +302,7 @@ test('scaffold install shells replaces placeholders in nested file paths', async
     assert.match(agentsShell, /Multiple independent sub-tasks/);
     assert.match(agentsShell, /Treat shell entry points, routing tables, and visible/);
     assert.match(agentsShell, /Any non-trivial task must run Task Closure Protocol before completion/);
-    assert.match(agentsShell, /等会话结束一起补/);
+    assert.match(agentsShell, /I will batch them at session end/);
     assert.match(agentsShell, /## Human-Readable Defaults/);
     assert.match(agentsShell, /Treat skills, hooks, and wrappers as integration surfaces; they must not override emb-agent runtime gates/);
 

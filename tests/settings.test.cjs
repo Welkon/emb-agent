@@ -28,20 +28,20 @@ test('settings facade manages profile specs and preferences together', () => {
       process.chdir(tempProject);
       cli.main(['init']);
       importSupportWorkflowRegistry(tempProject);
-      cli.main(['settings', 'set', 'profile', 'rtos-iot']);
+      cli.main(['settings', 'set', 'profile', 'tasked-runtime']);
       cli.main(['settings', 'set', 'specs', 'sensor-node,connected-appliance']);
       cli.main(['settings', 'set', 'plan_mode', 'always']);
       cli.main(['settings', 'set', 'verification_mode', 'strict']);
 
       let session = cli.loadSession();
-      assert.equal(session.project_profile, 'rtos-iot');
+      assert.equal(session.project_profile, 'tasked-runtime');
       assert.deepEqual(session.active_specs, ['sensor-node', 'connected-appliance']);
       assert.equal(session.preferences.plan_mode, 'always');
       assert.equal(session.preferences.verification_mode, 'strict');
 
       cli.main(['settings', 'reset']);
       session = cli.loadSession();
-      assert.equal(session.project_profile, 'baremetal-8bit');
+      assert.equal(session.project_profile, 'baremetal-loop');
       assert.deepEqual(session.active_specs, []);
       assert.equal(session.preferences.plan_mode, 'auto');
       assert.equal(session.preferences.verification_mode, 'lean');

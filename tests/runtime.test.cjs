@@ -14,7 +14,7 @@ test('loadRuntimeConfig returns validated defaults', () => {
 
   assert.equal(config.runtime_version, 1);
   assert.equal(config.session_version, 1);
-  assert.equal(config.default_profile, 'baremetal-8bit');
+  assert.equal(config.default_profile, 'baremetal-loop');
   assert.deepEqual(config.default_specs, []);
   assert.deepEqual(config.developer, { name: '', runtime: '' });
   assert.deepEqual(config.default_preferences, {
@@ -121,6 +121,23 @@ test('normalizeSession fills metadata and trims arrays', () => {
     },
     executor_history: {},
     human_signoffs: {},
+    latest_transcript_import: {
+      provider: '',
+      source_id: '',
+      source_file: '',
+      analysis_file: '',
+      ai_review_file: '',
+      generated_at: '',
+      confirmed_facts: [],
+      user_preferences: [],
+      pin_state_candidates: [],
+      semantic_review: {
+        required: false,
+        status: '',
+        reviewer: ''
+      },
+      recommended_next: null
+    },
     delegation_runtime: {
       pattern: '',
       strategy: '',
@@ -264,7 +281,7 @@ test('project config defaults can override runtime defaults', () => {
     path.join(projectConfigDir, 'project.json'),
     JSON.stringify(
       {
-        project_profile: 'rtos-iot',
+        project_profile: 'tasked-runtime',
         active_specs: ['connected-appliance'],
         executors: {
           build: {
@@ -325,7 +342,7 @@ test('project config defaults can override runtime defaults', () => {
   const paths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), tempProject, config);
   const session = runtime.normalizeSession({}, paths, config, projectConfig);
 
-  assert.equal(projectConfig.project_profile, 'rtos-iot');
+  assert.equal(projectConfig.project_profile, 'tasked-runtime');
   assert.deepEqual(projectConfig.active_specs, ['connected-appliance']);
   assert.deepEqual(projectConfig.executors.build.argv, ['make', '-C', 'firmware']);
   assert.equal(projectConfig.executors.build.allow_extra_args, true);
@@ -343,7 +360,7 @@ test('project config defaults can override runtime defaults', () => {
   assert.deepEqual(projectConfig.permissions.writes.deny, ['project-set']);
   assert.deepEqual(projectConfig.developer, { name: 'welkon', runtime: 'codex' });
   assert.deepEqual(projectConfig.arch_review.trigger_patterns, ['custom arch gate']);
-  assert.equal(session.project_profile, 'rtos-iot');
+  assert.equal(session.project_profile, 'tasked-runtime');
   assert.deepEqual(session.active_specs, ['connected-appliance']);
   assert.deepEqual(session.developer, { name: 'welkon', runtime: 'codex' });
   assert.deepEqual(session.preferences, {
@@ -676,7 +693,7 @@ test('project state paths and handoff validator support lightweight handoff', ()
       version: '1.0',
       generated_at: '2026-04-09T12:00:00.000Z',
       source: 'pause',
-      profile: 'baremetal-8bit',
+      profile: 'baremetal-loop',
       specs: ['sensor-node'],
       default_package: 'app',
       active_package: 'fw',

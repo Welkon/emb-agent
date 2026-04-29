@@ -49,7 +49,7 @@ test('workflow registry merges built-in and project specs and resolves auto inje
       projectExtDir
     });
     const injected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
-      profile: 'baremetal-8bit',
+      profile: 'baremetal-loop',
       specs: ['sensor-node'],
       task: { type: 'implement', status: 'active' }
     });
@@ -70,14 +70,14 @@ test('workflow registry injects iot device focus for connected projects without 
       projectExtDir
     });
     const injected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
-      profile: 'baremetal-8bit',
+      profile: 'baremetal-loop',
       specs: ['connected-appliance'],
       task: { type: 'implement', status: 'planning' }
     }, { limit: 8 });
 
     assert.ok(injected.some(item => item.name === 'connected-appliance'));
     assert.ok(injected.some(item => item.name === 'iot-device-focus'));
-    assert.ok(!injected.some(item => item.name === 'rtos-iot-focus'));
+    assert.ok(!injected.some(item => item.name === 'tasked-runtime-focus'));
   });
 });
 
@@ -134,14 +134,14 @@ test('workflow registry injects project-local smart pillbox focus plus shared io
       projectExtDir
     });
     const injected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
-      profile: 'baremetal-8bit',
+      profile: 'baremetal-loop',
       specs: ['smart-pillbox'],
       task: { type: 'implement', status: 'planning' }
     }, { limit: 8 });
 
     assert.ok(injected.some(item => item.name === 'smart-pillbox'));
     assert.ok(injected.some(item => item.name === 'iot-device-focus'));
-    assert.ok(!injected.some(item => item.name === 'rtos-iot-focus'));
+    assert.ok(!injected.some(item => item.name === 'tasked-runtime-focus'));
   });
 });
 
@@ -155,7 +155,7 @@ test('workflow registry injects motor drive focus for motor control projects', (
       projectExtDir
     });
     const injected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
-      profile: 'baremetal-8bit',
+      profile: 'baremetal-loop',
       specs: ['motor-drive'],
       task: { type: 'implement', status: 'planning' }
     }, { limit: 8 });
@@ -175,7 +175,7 @@ test('workflow registry injects Padauk firmware focus for constrained-toolchain 
       projectExtDir
     });
     const injected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
-      profile: 'baremetal-8bit',
+      profile: 'baremetal-loop',
       specs: ['padauk-firmware'],
       task: { type: 'implement', status: 'planning' }
     }, { limit: 8 });
@@ -195,7 +195,7 @@ test('workflow registry keeps implementation style as a template and leaves core
       projectExtDir
     });
     const injected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
-      profile: 'baremetal-8bit',
+      profile: 'baremetal-loop',
       specs: [],
       task: { type: 'implement', status: 'active' }
     }, { limit: 8 });
@@ -245,7 +245,7 @@ test('workflow registry supports package-aware auto injection', () => {
       projectExtDir
     });
     const injected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
-      profile: 'baremetal-8bit',
+      profile: 'baremetal-loop',
       specs: [],
       active_package: 'fw',
       default_package: 'app',

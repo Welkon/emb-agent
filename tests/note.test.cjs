@@ -72,7 +72,7 @@ test('note add can create missing connectivity note target from template', () =>
       process.chdir(tempProject);
       cli.main(['init']);
       importSupportWorkflowRegistry(tempProject);
-      cli.main(['profile', 'set', 'rtos-iot']);
+      cli.main(['profile', 'set', 'tasked-runtime']);
       cli.main(['spec', 'add', 'connected-appliance']);
       cli.main([
         'note',

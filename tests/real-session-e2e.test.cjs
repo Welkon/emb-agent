@@ -27,7 +27,7 @@ test('real session regression covers source intake through verify closure hints'
   try {
     process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
 
-    initProject.main(['--project', tempProject, '--profile', 'baremetal-8bit']);
+    initProject.main(['--project', tempProject, '--profile', 'baremetal-loop']);
     writeFile(path.join(tempProject, 'docs', 'PMS150G.pdf'), 'fake pdf payload\n');
 
     process.chdir(tempProject);

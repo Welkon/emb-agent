@@ -381,12 +381,12 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(pwmResult.status, 'chip-support-required');
     installedCli.main(['focus', 'set', 'review ota rollback path']);
     installedCli.main(['prefs', 'set', 'review_mode', 'always']);
-    installedCli.main(['profile', 'set', 'rtos-iot']);
+    installedCli.main(['profile', 'set', 'tasked-runtime']);
     const nextWithForcedReview = installedCli.buildNextContext();
     assert.equal(nextWithForcedReview.current.preferences.review_mode, 'always');
 
     installedCli.main(['prefs', 'reset']);
-    installedCli.main(['profile', 'set', 'baremetal-8bit']);
+    installedCli.main(['profile', 'set', 'baremetal-loop']);
     installedCli.main(['focus', 'set', 'close loop after irq fix']);
     installedCli.main(['capability', 'run', 'do']);
     const nextAfterDo = installedCli.buildNextContext();
@@ -476,7 +476,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     const initProject = require(path.join(runtimeRoot, 'scripts', 'init-project.cjs'));
 
     withDefaultWorkflowSourceEnv(() => {
-      initProject.main(['--project', configuredProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
+      initProject.main(['--project', configuredProject, '--profile', 'tasked-runtime', '--spec', 'connected-appliance']);
     });
 
     const projectConfigPath = path.join(configuredProject, '.emb-agent', 'project.json');
@@ -488,13 +488,13 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['project', 'set', '--field', 'preferences.truth_source_mode', '--value', 'code_first']);
     installedCli.main(['project', 'set', '--field', 'preferences.plan_mode', '--value', 'always']);
     const configuredStatus = installedCli.buildStatus();
-    assert.equal(configuredStatus.project_profile, 'rtos-iot');
+    assert.equal(configuredStatus.project_profile, 'tasked-runtime');
     assert.deepEqual(configuredStatus.active_specs, ['connected-appliance']);
     assert.equal(configuredStatus.preferences.truth_source_mode, 'code_first');
     assert.deepEqual(configuredStatus.project_defaults.arch_review.trigger_patterns, []);
     const configuredProjectView = installedCli.buildProjectShow(true);
-    assert.equal(configuredProjectView.config.project_profile, 'rtos-iot');
-    assert.equal(configuredProjectView.effective.project_profile, 'rtos-iot');
+    assert.equal(configuredProjectView.config.project_profile, 'tasked-runtime');
+    assert.equal(configuredProjectView.effective.project_profile, 'tasked-runtime');
     assert.ok(Array.isArray(configuredProjectView.effective.arch_review_triggers));
     const configuredProjectField = installedCli.buildProjectShow(true, 'effective.arch_review_triggers');
     assert.equal(configuredProjectField.field, 'effective.arch_review_triggers');
@@ -833,7 +833,7 @@ test('installer can preconfigure project specs during local setup', async () => 
     assert.deepEqual(status.active_specs, ['connected-appliance']);
     assert.ok(projectRegistry.specs.some(item => item.name === 'connected-appliance'));
     assert.ok(projectRegistry.specs.some(item => item.name === 'iot-device-focus'));
-    assert.ok(!projectRegistry.specs.some(item => item.name === 'rtos-iot-focus'));
+    assert.ok(!projectRegistry.specs.some(item => item.name === 'tasked-runtime-focus'));
     assert.ok(!projectRegistry.specs.some(item => item.name === 'sensor-node'));
     assert.equal(
       fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'connected-appliance-focus.md')),
@@ -844,7 +844,7 @@ test('installer can preconfigure project specs during local setup', async () => 
       true
     );
     assert.equal(
-      fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'rtos-iot-focus.md')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'tasked-runtime-focus.md')),
       false
     );
     assert.equal(

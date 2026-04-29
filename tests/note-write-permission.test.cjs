@@ -183,7 +183,7 @@ test('review save honors write deny rules before touching review report', async 
 
   return withDefaultWorkflowSourceEnv(async () => {
     try {
-      initProject.main(['--project', tempProject, '--profile', 'rtos-iot', '--spec', 'connected-appliance']);
+      initProject.main(['--project', tempProject, '--profile', 'tasked-runtime', '--spec', 'connected-appliance']);
       process.chdir(tempProject);
       await cli.main(['init']);
 

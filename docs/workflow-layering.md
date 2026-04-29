@@ -23,8 +23,8 @@ Profiles describe execution shape, not product category.
 
 Examples:
 
-- `baremetal-8bit` for `main_loop_plus_isr`
-- `rtos-iot` for `task_scheduler_plus_isr`
+- `baremetal-loop` for `main_loop_plus_isr`
+- `tasked-runtime` for `task_scheduler_plus_isr`
 
 If a rule is really about tasks, queues, locks, ISR boundaries, or scheduler behavior, it probably belongs in a profile or profile-linked spec.
 
