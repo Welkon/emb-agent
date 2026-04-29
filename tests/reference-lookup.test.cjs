@@ -173,12 +173,27 @@ test('schematic query commands expose parsed components nets bom and raw objects
         ],
         visual_netlist: {
           graph: { components: 1, nets: 1, named_nets: 1 }
+        },
+        preview: {
+          summary: {
+            renderer: 'emb-agent-schdoc-svg-preview-v1',
+            wires: 1,
+            pins: 1
+          }
         }
       }, null, 2)
     );
     fs.writeFileSync(
       path.join(tempProject, '.emb-agent', 'cache', 'schematics', 'fixture', 'source.json'),
       JSON.stringify({ source_path: 'docs/board.SchDoc' }, null, 2)
+    );
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'cache', 'schematics', 'fixture', 'preview.input.json'),
+      JSON.stringify({ renderer: 'emb-agent-schdoc-svg-preview-v1' }, null, 2)
+    );
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'cache', 'schematics', 'fixture', 'preview.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg"></svg>\n'
     );
 
     process.chdir(tempProject);
@@ -187,6 +202,7 @@ test('schematic query commands expose parsed components nets bom and raw objects
     const component = await captureCliJson(['schematic', 'component', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json', '--ref', 'U1']);
     const net = await captureCliJson(['schematic', 'net', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json', '--name', 'PWM_OUT']);
     const bom = await captureCliJson(['schematic', 'bom', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json']);
+    const preview = await captureCliJson(['schematic', 'preview', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json']);
     const raw = await captureCliJson(['schematic', 'raw', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json', '--record', '12']);
 
     assert.equal(summary.command, 'schematic summary');
@@ -196,6 +212,10 @@ test('schematic query commands expose parsed components nets bom and raw objects
     assert.equal(component.pins[0].net, 'PWM_OUT');
     assert.equal(net.net.evidence[0].kind, 'net_label');
     assert.equal(bom.bom[0].quantity, 1);
+    assert.equal(preview.preview.available, true);
+    assert.equal(preview.preview.summary.renderer, 'emb-agent-schdoc-svg-preview-v1');
+    assert.equal(preview.preview.artifacts.svg, '.emb-agent/cache/schematics/fixture/preview.svg');
+    assert.equal(preview.preview.artifacts.input, '.emb-agent/cache/schematics/fixture/preview.input.json');
     assert.equal(raw.object.kind, 'net_label');
   } finally {
     process.chdir(currentCwd);
