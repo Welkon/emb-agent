@@ -184,6 +184,8 @@ function buildAnalysisOnlySemantics(artifacts) {
   const sourceArtifacts = [
     artifacts && artifacts.parsed,
     artifacts && artifacts.visual_netlist,
+    artifacts && artifacts.preview_svg,
+    artifacts && artifacts.preview_input,
     artifacts && artifacts.hardware_facts,
     artifacts && artifacts.hardware_facts_json
   ].filter(Boolean);
@@ -537,6 +539,7 @@ function parseAltiumRaw(buffer) {
       .filter((item, index, list) => index === list.findIndex(other => other.name === item.name)),
     objects: makeArray(raw.objects),
     bom: makeArray(raw.bom),
+    preview: raw.preview || null,
     raw_summary: raw.raw_summary || {}
   };
 }
@@ -565,6 +568,13 @@ function annotateParsedSource(parsed, sourcePath, sourceIndex) {
     source_paths: runtime.unique([...(makeArray(item.source_paths)), sourcePath]),
     sheets: runtime.unique([...(makeArray(item.sheets)), sheetId])
   }));
+  if (next.preview && typeof next.preview === 'object') {
+    next.preview = {
+      ...next.preview,
+      source_path: next.preview.source_path || sourcePath,
+      sheet: next.preview.sheet || sheetId
+    };
+  }
   next.nets = makeArray(next.nets).map(net => {
     const name = ensureString(net.name);
     const normalizedName = isUnnamedNet(name) ? `${sheetId}:${name}` : name;
@@ -637,6 +647,7 @@ function combineParsedSources(parsedSources) {
   const bom = [];
   const sheets = [];
   const parserModes = [];
+  const previews = [];
 
   parsedSources.forEach(source => {
     const parsed = source.parsed || {};
@@ -646,6 +657,9 @@ function combineParsedSources(parsedSources) {
     objects.push(...makeArray(parsed.objects));
     bom.push(...makeArray(parsed.bom));
     sheets.push(...makeArray(parsed.sheets));
+    if (parsed.preview) {
+      previews.push(parsed.preview);
+    }
   });
 
   return {
@@ -655,6 +669,11 @@ function combineParsedSources(parsedSources) {
     nets: mergeNets(nets),
     objects,
     bom,
+    preview: previews.length === 1 ? previews[0] : (previews.length > 1 ? { pages: previews.map(item => ({
+      source_path: item.source_path || '',
+      sheet: item.sheet || '',
+      summary: item.summary || {}
+    })) } : null),
     sheets,
     raw_summary: {
       sources: parsedSources.length,
@@ -980,6 +999,8 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts, mcuCandidates)
     inputs: [
       artifacts.parsed,
       artifacts.visual_netlist,
+      artifacts.preview_svg,
+      artifacts.preview_input,
       artifacts.hardware_facts,
       sourcePath
     ].filter(Boolean),
@@ -1019,6 +1040,8 @@ function getArtifactPaths(projectRoot, cacheDir) {
   return {
     parsedJson: path.join(cacheDir, 'parsed.json'),
     visualNetlistJson: path.join(cacheDir, 'analysis.visual-netlist.json'),
+    previewInputJson: path.join(cacheDir, 'preview.input.json'),
+    previewSvg: path.join(cacheDir, 'preview.svg'),
     summaryJson: path.join(cacheDir, 'summary.json'),
     hardwareYaml: path.join(cacheDir, 'facts.hardware.yaml'),
     hardwareJson: path.join(cacheDir, 'facts.hardware.json'),
@@ -1220,6 +1243,7 @@ function ingestSchematic(argv, options) {
 
   const componentRefs = [];
   const signalCandidates = makeArray(parsed.visual_netlist && parsed.visual_netlist.signal_candidates);
+  const hasPreview = Boolean(parsed.preview && parsed.preview.input && parsed.preview.svg);
   const artifacts = {
     parsed: path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),
     visual_netlist: path.relative(projectRoot, artifactPaths.visualNetlistJson).replace(/\\/g, '/'),
@@ -1228,6 +1252,10 @@ function ingestSchematic(argv, options) {
     hardware_facts_json: path.relative(projectRoot, artifactPaths.hardwareJson).replace(/\\/g, '/'),
     source: path.relative(projectRoot, artifactPaths.sourceJson).replace(/\\/g, '/')
   };
+  if (hasPreview) {
+    artifacts.preview_input = path.relative(projectRoot, artifactPaths.previewInputJson).replace(/\\/g, '/');
+    artifacts.preview_svg = path.relative(projectRoot, artifactPaths.previewSvg).replace(/\\/g, '/');
+  }
   const topCandidateLabel = mcuCandidates.length > 0
     ? `Top MCU candidate: ${mcuCandidates[0].designator} (${mcuCandidates[0].libref || mcuCandidates[0].value || 'unknown'}, score=${mcuCandidates[0].score})`
     : '';
@@ -1250,6 +1278,7 @@ function ingestSchematic(argv, options) {
       pages: parsed.visual_netlist.page_count || relativePaths.length,
       cross_sheet_nets: parsed.visual_netlist.graph ? parsed.visual_netlist.graph.cross_sheet_nets : 0,
       dangling_nets: parsed.visual_netlist.graph ? parsed.visual_netlist.graph.dangling_nets : 0,
+      preview: hasPreview ? 'svg' : '',
       signal_candidates: signalCandidates.length,
       component_ref_candidates: componentRefs.length,
       mcu_candidates: mcuCandidates.length
@@ -1267,6 +1296,7 @@ function ingestSchematic(argv, options) {
     last_files: [
       path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),
       path.relative(projectRoot, artifactPaths.visualNetlistJson).replace(/\\/g, '/'),
+      ...(hasPreview ? [path.relative(projectRoot, artifactPaths.previewSvg).replace(/\\/g, '/')] : []),
       path.relative(projectRoot, artifactPaths.hardwareYaml).replace(/\\/g, '/'),
       path.relative(projectRoot, artifactPaths.summaryJson).replace(/\\/g, '/')
     ]
@@ -1294,6 +1324,10 @@ function ingestSchematic(argv, options) {
   });
   runtime.writeJson(artifactPaths.parsedJson, parsed);
   runtime.writeJson(artifactPaths.visualNetlistJson, parsed.visual_netlist);
+  if (hasPreview) {
+    runtime.writeJson(artifactPaths.previewInputJson, parsed.preview.input);
+    fs.writeFileSync(artifactPaths.previewSvg, parsed.preview.svg, 'utf8');
+  }
   runtime.writeJson(artifactPaths.hardwareJson, hardwareDraft);
   fs.writeFileSync(artifactPaths.hardwareYaml, `${toYaml(hardwareDraft)}\n`, 'utf8');
   runtime.writeJson(artifactPaths.summaryJson, summary);

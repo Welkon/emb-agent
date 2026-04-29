@@ -227,11 +227,18 @@ test('ingest schematic parses raw SchDoc through the internal parser and keeps i
     assert.ok(parsedJson.objects.some(item => item.kind === 'wire'));
     assert.ok(parsedJson.bom.some(item => item.designators.includes('U1')));
     assert.ok(parsedJson.nets.some(item => item.evidence && item.evidence.length > 0));
+    assert.equal(parsedJson.preview.summary.renderer, 'emb-agent-schdoc-svg-preview-v1');
+    assert.ok(parsedJson.preview.summary.pins > 0);
+    assert.ok(parsedJson.preview.summary.wires > 0);
+    assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.preview_input)), true);
+    assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.preview_svg)), true);
+    assert.match(fs.readFileSync(path.join(tempProject, ingested.artifacts.preview_svg), 'utf8'), /<svg[\s\S]+preview-wire/);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.summary)), true);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.source)), true);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.hardware_facts)), true);
     assert.equal(ingested.agent_analysis.required, true);
     assert.equal(ingested.agent_analysis.recommended_agent, 'emb-hw-scout');
+    assert.ok(ingested.agent_analysis.inputs.includes(ingested.artifacts.preview_svg));
     assert.ok(ingested.agent_analysis.confirmation_targets.includes('mcu.model'));
     assert.equal(ingested.session.last_files[0], ingested.artifacts.parsed);
     assert.match(hardwareFacts, /docs\/board\.SchDoc/);

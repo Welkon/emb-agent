@@ -33,7 +33,7 @@ allowed-tools:
 - `declare hardware` / `ingest hardware` return `write_mode: truth-write` because they update truth files directly.
 - `ingest doc` returns `write_mode: staged-truth` when it has a target truth file; review `apply_ready` and then use `ingest apply doc ...` to write the selected fields.
 - `ingest schematic` returns `write_mode: analysis-only`, `truth_write.direct: false`, and `apply_ready: null`; it only prepares artifacts for agent analysis.
-- After schematic ingest, use the returned `parsed.json` and `analysis.visual-netlist.json` artifacts as agent input and confirm controller/signals/peripherals before writing truth.
+- After schematic ingest, use the returned `parsed.json`, `analysis.visual-netlist.json`, and `preview.svg` artifacts as agent input and confirm controller/signals/peripherals before writing truth.
 - For targeted schematic inspection after ingest, use `schematic summary --parsed <parsed.json>`, `schematic component --ref <designator> --parsed <parsed.json>`, or `schematic net --name <net> --parsed <parsed.json>`.
 - For normalized part-search inputs from a schematic, use:
   `component lookup --file <path>`

@@ -743,7 +743,7 @@ function querySchematic(projectRootInput, subject, argv, deps) {
   if (args.help) {
     return {
       command: `schematic ${normalizedSubject}`,
-      usage: 'schematic <summary|components|component|nets|net|bom|raw> [--parsed <parsed.json>] [--file <schematic>] [--ref <designator>] [--name <net>] [--record <n>] [--limit <n>]'
+      usage: 'schematic <summary|components|component|nets|net|bom|preview|raw> [--parsed <parsed.json>] [--file <schematic>] [--ref <designator>] [--name <net>] [--record <n>] [--limit <n>]'
     };
   }
 
@@ -776,6 +776,7 @@ function querySchematic(projectRootInput, subject, argv, deps) {
         nets: nets.length,
         objects: objects.length,
         bom_lines: bom.length,
+        preview: parsed.preview && parsed.preview.summary ? parsed.preview.summary : null,
         visual_netlist: parsed.visual_netlist || null,
         raw_summary: parsed.raw_summary || {}
       }
@@ -826,6 +827,31 @@ function querySchematic(projectRootInput, subject, argv, deps) {
     return {
       ...base,
       bom: bom.slice(0, limit)
+    };
+  }
+
+  if (normalizedSubject === 'preview') {
+    const parsedPath = entry.parsed_path || args.parsed || '';
+    const parsedDir = parsedPath ? path.dirname(path.resolve(projectRoot, parsedPath)) : '';
+    const previewSvgPath = parsedDir ? path.join(parsedDir, 'preview.svg') : '';
+    const previewInputPath = parsedDir ? path.join(parsedDir, 'preview.input.json') : '';
+    const svgRelative = previewSvgPath && fs.existsSync(previewSvgPath)
+      ? normalizePath(path.relative(projectRoot, previewSvgPath))
+      : '';
+    const inputRelative = previewInputPath && fs.existsSync(previewInputPath)
+      ? normalizePath(path.relative(projectRoot, previewInputPath))
+      : '';
+    return {
+      ...base,
+      preview: {
+        available: Boolean(parsed.preview && parsed.preview.summary),
+        summary: parsed.preview && parsed.preview.summary ? parsed.preview.summary : null,
+        artifacts: {
+          svg: svgRelative,
+          input: inputRelative
+        },
+        note: 'Preview is an orientation aid generated from SchDoc drawing primitives; keep net evidence as the source for connectivity.'
+      }
     };
   }
 
