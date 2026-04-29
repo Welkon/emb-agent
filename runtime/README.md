@@ -257,7 +257,7 @@ Bridge contract:
 - Output: one JSON payload containing `status` and `worker_result`.
 - Runtime users can steer the pattern with `prefs set orchestration_mode <auto|coordinator|fork|swarm>`.
 - `skills run <name> --isolated` also uses the bridge when a skill declares isolated execution.
-- Fallback: if no bridge is configured, emb-agent keeps the launch request and marks synthesis as `blocked-no-host-bridge` instead of pretending delegation already happened.
+- Fallback: if no bridge is configured, emb-agent keeps the launch request, marks synthesis as `manual-workers-required`, and continues the inline action path. The bridge is optional automation, not a runtime gate.
 
 ## Maintenance Boundaries
 

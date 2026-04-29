@@ -314,13 +314,13 @@ test('orchestrate run exposes delegation runtime synthesis and integration artif
     assert.equal(run.delegation_runtime.requested_action, 'next');
     assert.equal(run.delegation_runtime.resolved_action, 'plan');
     assert.equal(run.delegation_runtime.synthesis.required, true);
-    assert.equal(run.delegation_runtime.synthesis.status, 'blocked-no-host-bridge');
+    assert.equal(run.delegation_runtime.synthesis.status, 'manual-workers-required');
     assert.match(run.delegation_runtime.synthesis.rule, /Synthesize, do not delegate understanding/);
     assert.equal(run.delegation_runtime.integration.status, 'completed-inline');
     assert.equal(run.delegation_runtime.integration.execution_kind, 'action');
     assert.equal(run.delegation_runtime.review.required, true);
     assert.equal(run.delegation_runtime.review.stage_a.id, 'contract-review');
-    assert.equal(run.delegation_runtime.review.stage_a.status, 'blocked-no-worker-results');
+    assert.equal(run.delegation_runtime.review.stage_a.status, 'pending-worker-results');
     assert.equal(run.delegation_runtime.review.stage_b.status, 'blocked-by-stage-a');
     assert.equal(run.redispatch_required, false);
     assert.ok(run.delegation_runtime.launch_requests.some(item => item.agent === 'emb-hw-scout'));
@@ -400,6 +400,36 @@ test('orchestrate launch keeps orchestration metadata while async jobs are colle
     assert.equal(collected.delegation_runtime.review.stage_a.status, 'passed');
     assert.equal(session.diagnostics.delegation_runtime.jobs[0].status, 'completed');
     assert.equal(session.diagnostics.delegation_runtime.worker_results[0].status, 'ok');
+  } finally {
+    if (originalBridgeCmd === undefined) {
+      delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    } else {
+      process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD = originalBridgeCmd;
+    }
+    process.chdir(currentCwd);
+  }
+});
+
+test('orchestrate launch falls back to manual worker requests without host bridge', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-orchestrate-launch-manual-'));
+  const currentCwd = process.cwd();
+  const originalBridgeCmd = process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+
+  try {
+    process.chdir(tempProject);
+    delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;
+    await cli.main(['init']);
+    await cli.main(['risk', 'add', 'irq race']);
+
+    const launch = await captureCliJson(['orchestrate', 'launch', 'next']);
+
+    assert.equal(launch.launched, false);
+    assert.equal(launch.mode, 'lightweight-action-orchestrator');
+    assert.equal(launch.subagent_bridge.status, 'bridge-unavailable');
+    assert.equal(launch.delegation_jobs.length, 0);
+    assert.ok(launch.delegation_runtime.launch_requests.some(item => item.agent === 'emb-hw-scout'));
+    assert.equal(launch.delegation_runtime.synthesis.status, 'manual-workers-required');
+    assert.equal(launch.delegation_runtime.review.stage_a.status, 'pending-worker-results');
   } finally {
     if (originalBridgeCmd === undefined) {
       delete process.env.EMB_AGENT_SUBAGENT_BRIDGE_CMD;

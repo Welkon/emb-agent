@@ -94,7 +94,7 @@ function createDispatchCommandRuntimeHelpers(deps) {
       Boolean(synthesis.required) &&
       !workerOk &&
       !workerFailed &&
-      ['blocked-no-host-bridge', 'blocked-worker-results'].includes(String(synthesis.status || ''));
+      String(synthesis.status || '') === 'blocked-worker-results';
 
     let stageAStatus = reviewContract.required ? 'pending' : 'not-required';
     if (reviewContract.required) {
@@ -943,7 +943,7 @@ function createDispatchCommandRuntimeHelpers(deps) {
     persistDelegationRuntime(delegationRuntime);
 
     return {
-      launched: true,
+      launched: delegationRuntime.jobs.length > 0,
       source: dispatch.source,
       requested_action: dispatch.requested_action,
       resolved_action: dispatch.resolved_action,
