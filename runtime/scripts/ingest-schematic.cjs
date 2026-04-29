@@ -20,10 +20,11 @@ function usage() {
   process.stdout.write(
     [
       'ingest-schematic usage:',
-      '  node scripts/ingest-schematic.cjs --file <path> [--format auto|altium-json|netlist|bom-csv|text] [--title <text>] [--force] [--confirm-mcu <index>]',
+      '  node scripts/ingest-schematic.cjs --file <path> [--file <path> ...] [--format auto|altium-json|altium-raw|netlist|bom-csv|text] [--title <text>] [--force] [--confirm-mcu <index>]',
       '  node scripts/ingest-schematic.cjs --file docs/board.json --format altium-json',
       '  node scripts/ingest-schematic.cjs --file docs/board.json --format altium-json --confirm-mcu 0',
-      '  node scripts/ingest-schematic.cjs --file docs/netlist.txt --format netlist'
+      '  node scripts/ingest-schematic.cjs --file docs/netlist.txt --format netlist',
+      '  node scripts/ingest-schematic.cjs --file docs/power.SchDoc --file docs/mcu.SchDoc'
     ].join('\n') + '\n'
   );
 }
@@ -32,6 +33,7 @@ function parseArgs(argv) {
   const result = {
     project: '',
     file: '',
+    files: [],
     format: 'auto',
     title: '',
     force: false,
@@ -53,6 +55,9 @@ function parseArgs(argv) {
     }
     if (token === '--file') {
       result.file = argv[index + 1] || '';
+      if (result.file) {
+        result.files.push(result.file);
+      }
       index += 1;
       continue;
     }
@@ -91,11 +96,14 @@ function parseArgs(argv) {
     return result;
   }
 
-  if (!result.file) {
+  if (result.files.length === 0 && result.file) {
+    result.files.push(result.file);
+  }
+  if (result.files.length === 0) {
     throw new Error('Missing path after --file');
   }
-  if (!['auto', 'altium-json', 'netlist', 'bom-csv', 'text'].includes(result.format)) {
-    throw new Error('format must be auto, altium-json, netlist, bom-csv, or text');
+  if (!['auto', 'altium-json', 'altium-raw', 'netlist', 'bom-csv', 'text'].includes(result.format)) {
+    throw new Error('format must be auto, altium-json, altium-raw, netlist, bom-csv, or text');
   }
 
   return result;
@@ -175,6 +183,7 @@ function getSchematicCacheRoot(projectRoot) {
 function buildAnalysisOnlySemantics(artifacts) {
   const sourceArtifacts = [
     artifacts && artifacts.parsed,
+    artifacts && artifacts.visual_netlist,
     artifacts && artifacts.hardware_facts,
     artifacts && artifacts.hardware_facts_json
   ].filter(Boolean);
@@ -446,13 +455,176 @@ function parseAltiumRaw(buffer) {
   };
 }
 
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value || {}));
+}
+
+function annotateParsedSource(parsed, sourcePath, sourceIndex) {
+  const sheetId = `sheet-${sourceIndex + 1}`;
+  const next = cloneJson(parsed);
+  next.source_path = sourcePath;
+  next.sheet_id = sheetId;
+  next.components = makeArray(next.components).map(component => ({
+    ...component,
+    source_path: component.source_path || sourcePath,
+    sheet: component.sheet || sheetId
+  }));
+  next.nets = makeArray(next.nets).map(net => {
+    const name = ensureString(net.name);
+    const normalizedName = isUnnamedNet(name) ? `${sheetId}:${name}` : name;
+    return {
+      ...net,
+      name: normalizedName,
+      source_path: net.source_path || sourcePath,
+      sheets: runtime.unique([...(makeArray(net.sheets)), sheetId])
+    };
+  });
+  next.sheets = makeArray(next.sheets).length > 0
+    ? next.sheets.map(sheet => ({
+        ...sheet,
+        id: sheet.id || sheetId,
+        source_path: sheet.source_path || sourcePath
+      }))
+    : [{
+        id: sheetId,
+        source_path: sourcePath,
+        parser_mode: next.parser_mode || '',
+        raw_summary: next.raw_summary || {}
+      }];
+  return next;
+}
+
+function mergeNets(nets) {
+  const byName = new Map();
+
+  makeArray(nets).forEach(net => {
+    const name = ensureString(net && net.name);
+    if (!name) {
+      return;
+    }
+    const current = byName.get(name) || {
+      name,
+      members: [],
+      source_paths: [],
+      sheets: []
+    };
+    current.members = runtime.unique(current.members.concat(makeArray(net.members).map(ensureString).filter(Boolean)));
+    current.source_paths = runtime.unique(current.source_paths.concat([ensureString(net.source_path)].filter(Boolean)));
+    current.sheets = runtime.unique(current.sheets.concat(makeArray(net.sheets).map(ensureString).filter(Boolean)));
+    byName.set(name, current);
+  });
+
+  return Array.from(byName.values());
+}
+
+function combineParsedSources(parsedSources) {
+  if (parsedSources.length === 1) {
+    return parsedSources[0].parsed;
+  }
+
+  const components = [];
+  const nets = [];
+  const sheets = [];
+  const parserModes = [];
+
+  parsedSources.forEach(source => {
+    const parsed = source.parsed || {};
+    parserModes.push(parsed.parser_mode || source.format || '');
+    components.push(...makeArray(parsed.components));
+    nets.push(...makeArray(parsed.nets));
+    sheets.push(...makeArray(parsed.sheets));
+  });
+
+  return {
+    parser_mode: 'multi-source-schematic',
+    source_paths: parsedSources.map(source => source.relative_path),
+    components,
+    nets: mergeNets(nets),
+    sheets,
+    raw_summary: {
+      sources: parsedSources.length,
+      parser_modes: runtime.unique(parserModes.filter(Boolean)),
+      components: components.length,
+      nets: mergeNets(nets).length
+    }
+  };
+}
+
+function isPowerNetName(name) {
+  return /^(?:gnd|ground|agnd|dgnd|vss|vdd|vcc|vin|vbat|bat\+?|3v3|3\.3v|5v|12v|24v|\+?\d+(?:\.\d+)?v)$/i.test(String(name || '').trim());
+}
+
+function buildVisualNetlistAnalysis(sourcePaths, parsed) {
+  const components = makeArray(parsed && parsed.components);
+  const nets = makeArray(parsed && parsed.nets);
+  const sheets = makeArray(parsed && parsed.sheets);
+  const namedNets = nets.filter(net => ensureString(net.name) && !isUnnamedNet(ensureString(net.name)) && !ensureString(net.name).includes(':UNNAMED_NET_'));
+  const crossSheetNets = namedNets
+    .filter(net => makeArray(net.sheets).length > 1 || makeArray(net.source_paths).length > 1)
+    .map(net => ({
+      name: ensureString(net.name),
+      sheets: makeArray(net.sheets),
+      source_paths: makeArray(net.source_paths),
+      members: makeArray(net.members)
+    }));
+  const danglingNets = nets
+    .filter(net => makeArray(net.members).length <= 1)
+    .slice(0, 50)
+    .map(net => ({
+      name: ensureString(net.name),
+      members: makeArray(net.members),
+      sheets: makeArray(net.sheets)
+    }));
+  const signalCandidates = namedNets
+    .filter(net => !isPowerNetName(net.name))
+    .filter(net => /(?:ir|uart|rx|tx|pwm|key|sda|scl|spi|mosi|miso|clk|rst|reset|adc|dac|i2c|swclk|swdio)/i.test(net.name))
+    .slice(0, 32)
+    .map(net => ({
+      name: ensureString(net.name),
+      members: makeArray(net.members).slice(0, 12),
+      sheets: makeArray(net.sheets)
+    }));
+
+  return {
+    version: 1,
+    status: 'analysis-only',
+    source_paths: makeArray(sourcePaths),
+    page_count: Math.max(sheets.length, makeArray(sourcePaths).length),
+    pages: sheets.map((sheet, index) => ({
+      id: ensureString(sheet.id) || `sheet-${index + 1}`,
+      source_path: ensureString(sheet.source_path),
+      parser_mode: ensureString(sheet.parser_mode),
+      raw_summary: sheet.raw_summary || {}
+    })),
+    graph: {
+      components: components.length,
+      nets: nets.length,
+      named_nets: namedNets.length,
+      unnamed_nets: nets.filter(net => isUnnamedNet(net.name) || ensureString(net.name).includes(':UNNAMED_NET_')).length,
+      cross_sheet_nets: crossSheetNets.length,
+      dangling_nets: danglingNets.length
+    },
+    cross_sheet_nets: crossSheetNets,
+    dangling_nets: danglingNets,
+    signal_candidates: signalCandidates,
+    review_focus: [
+      'Confirm whether same-name nets are intended to be global across sheets.',
+      'Review dangling and unnamed nets before deriving pin roles.',
+      'Use datasheets or MCU manuals before promoting schematic-derived signal roles into hw.yaml.'
+    ]
+  };
+}
+
 function isUnnamedNet(name) {
   return /^UNNAMED_NET_\d+$/i.test(String(name || ''));
 }
 
 function buildHardwareDraft(sourcePath, parsed, mcuCandidates) {
+  const sourcePaths = Array.isArray(sourcePath) ? sourcePath : [sourcePath].filter(Boolean);
+  const sourceSummary = sourcePaths.join(', ');
   const components = parsed.components || [];
   const nets = parsed.nets || [];
+  const visualNetlist = parsed.visual_netlist || {};
   const namedNets = runtime.unique(
     nets
       .map(net => ensureString(net.name))
@@ -461,8 +633,9 @@ function buildHardwareDraft(sourcePath, parsed, mcuCandidates) {
   );
   const topCandidate = (mcuCandidates && mcuCandidates.length > 0) ? mcuCandidates[0] : null;
   const truths = runtime.unique([
-    `Normalized schematic source: ${sourcePath}`,
+    `Normalized schematic source: ${sourceSummary}`,
     `Normalized ${components.length} components and ${nets.length} nets from the schematic input`,
+    visualNetlist.page_count > 1 ? `Multi-page schematic ingest: ${visualNetlist.page_count} pages, ${visualNetlist.graph ? visualNetlist.graph.cross_sheet_nets : 0} cross-sheet named nets` : '',
     namedNets.length > 0 ? `Named nets extracted: ${namedNets.join(', ')}` : 'No named nets were extracted from the schematic input',
     topCandidate ? `Top MCU candidate: ${topCandidate.designator} (${topCandidate.libref || topCandidate.value || 'unknown model'}, ${topCandidate.footprint || 'unknown package'}, score=${topCandidate.score})` : ''
   ].filter(Boolean));
@@ -484,7 +657,7 @@ function buildHardwareDraft(sourcePath, parsed, mcuCandidates) {
     truths,
     constraints: [],
     unknowns,
-    sources: [sourcePath],
+    sources: sourcePaths,
     component_refs: [],
     mcu_candidates: mcuCandidates || []
   };
@@ -670,6 +843,8 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts, mcuCandidates)
       datasheet: ensureString(component.datasheet)
     }));
   const topMcuCandidates = (mcuCandidates || []).slice(0, 3);
+  const visualNetlist = parsed && parsed.visual_netlist ? parsed.visual_netlist : {};
+  const graph = visualNetlist.graph || {};
 
   return {
     required: true,
@@ -680,12 +855,16 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts, mcuCandidates)
       : 'Let emb-hw-scout inspect the normalized schematic before writing controller identity, signal roles, or peripheral truth into hw.yaml.',
     inputs: [
       artifacts.parsed,
+      artifacts.visual_netlist,
       artifacts.hardware_facts,
       sourcePath
     ].filter(Boolean),
     evidence: {
       components: components.length,
       named_nets: countNamedNets(parsed),
+      pages: visualNetlist.page_count || 1,
+      cross_sheet_nets: graph.cross_sheet_nets || 0,
+      dangling_nets: graph.dangling_nets || 0,
       components_with_package: components.filter(item => ensureString(item.package || item.footprint)).length,
       components_with_datasheet: components.filter(item => ensureString(item.datasheet)).length,
       mcu_candidates_found: topMcuCandidates.length
@@ -702,6 +881,7 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts, mcuCandidates)
     ],
     expected_output: [
       'Separate explicit schematic facts from engineering inference.',
+      'Check visual-netlist cross-sheet and dangling-net findings before deriving signal roles.',
       'Propose confirmation candidates instead of writing truth directly.',
       'List what still needs datasheet, BOM, board photo, or manual confirmation.'
     ],
@@ -714,6 +894,7 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts, mcuCandidates)
 function getArtifactPaths(projectRoot, cacheDir) {
   return {
     parsedJson: path.join(cacheDir, 'parsed.json'),
+    visualNetlistJson: path.join(cacheDir, 'analysis.visual-netlist.json'),
     summaryJson: path.join(cacheDir, 'summary.json'),
     hardwareYaml: path.join(cacheDir, 'facts.hardware.yaml'),
     hardwareJson: path.join(cacheDir, 'facts.hardware.json'),
@@ -827,20 +1008,39 @@ function ingestSchematic(argv, options) {
   }
 
   const projectRoot = path.resolve(args.project || ((options && options.projectRoot) || process.cwd()));
-  const absolutePath = path.resolve(projectRoot, args.file);
-  if (!fs.existsSync(absolutePath)) {
-    throw new Error(`Schematic source not found: ${args.file}`);
-  }
-
   runtime.initProjectLayout(projectRoot);
-  const sourceBuffer = fs.readFileSync(absolutePath);
-  const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
-  const detectedFormat = detectFormat(absolutePath, args.format);
+  const sourceInputs = args.files.map(file => {
+    const absolutePath = path.resolve(projectRoot, file);
+    if (!fs.existsSync(absolutePath)) {
+      throw new Error(`Schematic source not found: ${file}`);
+    }
+    const sourceBuffer = fs.readFileSync(absolutePath);
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
+    const detectedFormat = detectFormat(absolutePath, args.format);
+    return {
+      file,
+      absolute_path: absolutePath,
+      relative_path: relativePath,
+      detected_format: detectedFormat,
+      source_buffer: sourceBuffer,
+      source_text: sourceBuffer.toString('utf8'),
+      content_hash: hashString(sourceBuffer)
+    };
+  });
+  const relativePath = sourceInputs[0].relative_path;
+  const relativePaths = sourceInputs.map(input => input.relative_path);
+  const detectedFormat = sourceInputs.length === 1
+    ? sourceInputs[0].detected_format
+    : 'multi-source';
   const cacheKey = hashString(JSON.stringify({
-    file: relativePath,
+    files: sourceInputs.map(input => ({
+      file: input.relative_path,
+      format: input.detected_format,
+      content_hash: input.content_hash
+    })),
     format: detectedFormat,
     title: args.title,
-    content_hash: hashString(sourceBuffer)
+    parser: 'visual-netlist-v1'
   }));
   const schematicId = `schematic-${cacheKey.slice(0, 12)}`;
   const cacheDir = path.join(getSchematicCacheRoot(projectRoot), schematicId);
@@ -857,19 +1057,27 @@ function ingestSchematic(argv, options) {
     };
   }
 
-  const sourceText = sourceBuffer.toString('utf8');
-  const parsed = detectedFormat === 'altium-json'
-    ? parseAltiumJson(sourceText)
-    : detectedFormat === 'bom-csv'
-      ? parseBomCsv(sourceText)
-      : detectedFormat === 'netlist'
-        ? parseNetlistText(sourceText)
-        : detectedFormat === 'altium-raw'
-          ? parseAltiumRaw(sourceBuffer)
-          : parsePlainText(sourceText);
+  const parsedSources = sourceInputs.map((input, index) => {
+    const parsedSource = input.detected_format === 'altium-json'
+      ? parseAltiumJson(input.source_text)
+      : input.detected_format === 'bom-csv'
+        ? parseBomCsv(input.source_text)
+        : input.detected_format === 'netlist'
+          ? parseNetlistText(input.source_text)
+          : input.detected_format === 'altium-raw'
+            ? parseAltiumRaw(input.source_buffer)
+            : parsePlainText(input.source_text);
+    return {
+      relative_path: input.relative_path,
+      format: input.detected_format,
+      parsed: annotateParsedSource(parsedSource, input.relative_path, index)
+    };
+  });
+  const parsed = combineParsedSources(parsedSources);
+  parsed.visual_netlist = buildVisualNetlistAnalysis(relativePaths, parsed);
 
   const mcuCandidates = identifyMcuCandidates(parsed.components || []);
-  const hardwareDraft = buildHardwareDraft(relativePath, parsed, mcuCandidates);
+  const hardwareDraft = buildHardwareDraft(relativePaths, parsed, mcuCandidates);
 
   let confirmResult = null;
   if (args.confirmMcu >= 0) {
@@ -887,9 +1095,10 @@ function ingestSchematic(argv, options) {
   }
 
   const componentRefs = [];
-  const signalCandidates = [];
+  const signalCandidates = makeArray(parsed.visual_netlist && parsed.visual_netlist.signal_candidates);
   const artifacts = {
     parsed: path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),
+    visual_netlist: path.relative(projectRoot, artifactPaths.visualNetlistJson).replace(/\\/g, '/'),
     summary: path.relative(projectRoot, artifactPaths.summaryJson).replace(/\\/g, '/'),
     hardware_facts: path.relative(projectRoot, artifactPaths.hardwareYaml).replace(/\\/g, '/'),
     hardware_facts_json: path.relative(projectRoot, artifactPaths.hardwareJson).replace(/\\/g, '/'),
@@ -904,15 +1113,19 @@ function ingestSchematic(argv, options) {
     domain: 'schematic',
     cached: false,
     source_path: relativePath,
+    source_paths: relativePaths,
     format: detectedFormat,
     schematic_id: schematicId,
     parser: {
       mode: parsed.parser_mode || detectedFormat,
-      summary: 'Schematic input was normalized into reusable board facts; all inferred pins and roles still need datasheet/manual confirmation'
+      summary: 'Schematic input was normalized into reusable board facts and visual-netlist analysis; all inferred pins and roles still need datasheet/manual confirmation'
     },
     summary: {
       components: (parsed.components || []).length,
       nets: (parsed.nets || []).length,
+      pages: parsed.visual_netlist.page_count || relativePaths.length,
+      cross_sheet_nets: parsed.visual_netlist.graph ? parsed.visual_netlist.graph.cross_sheet_nets : 0,
+      dangling_nets: parsed.visual_netlist.graph ? parsed.visual_netlist.graph.dangling_nets : 0,
       signal_candidates: signalCandidates.length,
       component_ref_candidates: componentRefs.length,
       mcu_candidates: mcuCandidates.length
@@ -929,11 +1142,12 @@ function ingestSchematic(argv, options) {
     agent_analysis: null,
     last_files: [
       path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),
+      path.relative(projectRoot, artifactPaths.visualNetlistJson).replace(/\\/g, '/'),
       path.relative(projectRoot, artifactPaths.hardwareYaml).replace(/\\/g, '/'),
       path.relative(projectRoot, artifactPaths.summaryJson).replace(/\\/g, '/')
     ]
   };
-  summary.agent_analysis = buildAgentAnalysisHandoff(relativePath, parsed, summary.artifacts, mcuCandidates);
+  summary.agent_analysis = buildAgentAnalysisHandoff(relativePaths.join(', '), parsed, summary.artifacts, mcuCandidates);
   if (confirmResult) {
     summary.confirmed_mcu = {
       index: args.confirmMcu,
@@ -944,11 +1158,18 @@ function ingestSchematic(argv, options) {
 
   runtime.writeJson(artifactPaths.sourceJson, {
     source_path: relativePath,
+    source_paths: relativePaths,
     title: args.title || path.basename(relativePath),
     format: detectedFormat,
-    parser_mode: parsed.parser_mode || detectedFormat
+    parser_mode: parsed.parser_mode || detectedFormat,
+    sheets: parsedSources.map(source => ({
+      source_path: source.relative_path,
+      format: source.format,
+      parser_mode: source.parsed.parser_mode || source.format
+    }))
   });
   runtime.writeJson(artifactPaths.parsedJson, parsed);
+  runtime.writeJson(artifactPaths.visualNetlistJson, parsed.visual_netlist);
   runtime.writeJson(artifactPaths.hardwareJson, hardwareDraft);
   fs.writeFileSync(artifactPaths.hardwareYaml, `${toYaml(hardwareDraft)}\n`, 'utf8');
   runtime.writeJson(artifactPaths.summaryJson, summary);

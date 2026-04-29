@@ -64,6 +64,8 @@ For a schematic:
 ingest schematic --file <path>
 ```
 
+For multi-page schematics exported as separate sheets, repeat `--file` for each sheet. emb-agent will emit both `parsed.json` and `analysis.visual-netlist.json` so the agent can review cross-sheet nets and dangling nets before writing hardware truth.
+
 Review the result, apply staged truth if needed, then return to `next`.
 
 If `health` or `next` starts talking about chip support after document ingest, prefer this path:
