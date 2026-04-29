@@ -48,6 +48,7 @@ const taskCommandHelpers = require(path.join(ROOT, 'lib', 'task-commands.cjs'));
 const projectStateStoreHelpers = require(path.join(ROOT, 'lib', 'project-state-store.cjs'));
 const settingsCommandHelpers = require(path.join(ROOT, 'lib', 'settings-command.cjs'));
 const sessionReportCommandHelpers = require(path.join(ROOT, 'lib', 'session-report-command.cjs'));
+const transcriptCommandHelpers = require(path.join(ROOT, 'lib', 'transcript-command.cjs'));
 const healthUpdateCommandHelpers = require(path.join(ROOT, 'lib', 'health-update-command.cjs'));
 const executorCommandHelpers = require(path.join(ROOT, 'lib', 'executor-command.cjs'));
 const externalAgentHelpers = require(path.join(ROOT, 'lib', 'external-agent.cjs'));
@@ -681,6 +682,18 @@ const {
 });
 
 const {
+  handleTranscriptCommands
+} = transcriptCommandHelpers.createTranscriptCommandHelpers({
+  fs,
+  os,
+  path,
+  runtime,
+  getProjectExtDir,
+  updateSession,
+  getRuntimeHost
+});
+
+const {
   handleWorkflowCommands
 } = workflowAuthoringHelpers.createWorkflowAuthoringHelpers({
   fs,
@@ -757,6 +770,7 @@ const {
   handleExecutorCommands,
   handleSettingsCommands,
   handleSessionReportCommands,
+  handleTranscriptCommands,
   listSkills,
   loadSkill,
   runSkill,

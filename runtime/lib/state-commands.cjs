@@ -31,6 +31,7 @@ function createStateCommandHelpers(deps) {
     handleExecutorCommands,
     handleSettingsCommands,
     handleSessionReportCommands,
+    handleTranscriptCommands,
     listSkills,
     loadSkill,
     runSkill,
@@ -97,6 +98,13 @@ function createStateCommandHelpers(deps) {
       : undefined;
     if (sessionReportResult !== undefined) {
       return sessionReportResult;
+    }
+
+    const transcriptResult = handleTranscriptCommands
+      ? handleTranscriptCommands(cmd, subcmd, rest)
+      : undefined;
+    if (transcriptResult !== undefined) {
+      return transcriptResult;
     }
 
     if (cmd === 'session' && subcmd === 'show') {

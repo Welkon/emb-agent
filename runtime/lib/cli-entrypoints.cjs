@@ -579,19 +579,17 @@ function createCliEntryHelpers(deps) {
     const advanced = Boolean(options && options.advanced);
     const compactSections = [
       {
-        title: 'Workflow',
+        title: 'Start here',
         entries: [
           'init',
           'start',
           'status',
           'bootstrap [run [--confirm]]',
-          'next [run]',
-          'pause [note]',
-          'resume'
+          'next [run]'
         ]
       },
       {
-        title: 'Project config',
+        title: 'Import truth',
         entries: [
           'declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>]',
           'ingest doc --file <path> [--provider mineru] [--kind datasheet] [--to hardware|requirements]',
@@ -599,37 +597,26 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Task',
+        title: 'Execute current work',
         entries: [
           'task list',
           'task add [--confirm] <summary> [--type implement|debug|review|investigate] [--priority P0|P1|P2|P3]',
           'task activate [--confirm] <name>',
           'task show <name>',
-          'task resolve [--confirm] <name> [note]',
-          'task worktree <list|status|show|create|cleanup> [name]'
-        ]
-      },
-      {
-        title: 'Catalog & runtime',
-        entries: [
-          'tool list',
-          'tool run <name> [options]',
-          'chip list',
-          'chip show <name>',
-          'skill list',
-          'skill run <name>',
+          'task worktree <list|status|show|create|cleanup> [name]',
           'capability run <name>',
           'executor run <name>'
         ]
       },
       {
-        title: 'Support & adapter',
+        title: 'Close and hand off',
         entries: [
-          'support status',
-          'support bootstrap [--confirm]',
-          'support sync [--all]',
-          'adapter derive [--from-project]',
-          'adapter generate [--from-project]'
+          'task resolve [--confirm] <name> [note]',
+          'session show',
+          'pause [note]',
+          'resume',
+          'health',
+          'external <start|status|next|health|dispatch-next>'
         ]
       },
       {
@@ -641,16 +628,14 @@ function createCliEntryHelpers(deps) {
           'context focus set <text>',
           'config show',
           'config profile list',
-          'config prefs show',
-          'session show',
-          'health'
+          'config prefs show'
         ]
       }
     ];
 
     const advancedSections = [
       {
-        title: 'Project setup',
+        title: 'Bootstrap and project state',
         entries: [
           'init',
           'config show',
@@ -669,7 +654,7 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Document and hardware intake',
+        title: 'Truth and document intake',
         entries: [
           'declare hardware [--confirm] [--mcu <name>] [--board <name>] [--target <name>] [--truth <text>] [--constraint <text>] [--unknown <text>] [--source <path>]',
           '  [--signal <name> [--pin <pin>] --dir <direction> [--auto-pin] [--default-state <state>] [--note <text>] [--confirmed <true|false>]]',
@@ -691,7 +676,7 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Workflow',
+        title: 'Execution support and closure',
         entries: [
           'status',
           'start',
@@ -711,7 +696,7 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Catalog and runtime',
+        title: 'Task, skills, and memory',
         entries: [
           'tool list',
           'tool show <name>',
@@ -722,13 +707,13 @@ function createCliEntryHelpers(deps) {
           'tool device show <slug>',
           'chip list',
           'chip show <name>',
-          'skill list [--all]',
-          'skill show <name>',
-          'skill run <name> [--isolated] [input]',
-          'skill install [source] [--scope project|user] [--skill <name>] [--force]',
-          'skill enable <name>',
-          'skill disable <name>',
-          'skill remove <name>',
+          'skills list [--all]',
+          'skills show <name>',
+          'skills run <name> [--isolated] [input]',
+          'skills install [source] [--scope project|user] [--skill <name>] [--force]',
+          'skills enable <name>',
+          'skills disable <name>',
+          'skills remove <name>',
           'capability list [--all]',
           'capability show <name>',
           'capability run <name>',
@@ -739,7 +724,7 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Support and adapter',
+        title: 'Delegation and chip support runtime',
         entries: [
           'support status [<name>]',
           'support source list',
@@ -784,7 +769,7 @@ function createCliEntryHelpers(deps) {
         ]
       },
       {
-        title: 'Context and memory',
+        title: 'Inspection and discovery',
         entries: [
           'context show',
           'context clear',
@@ -809,7 +794,10 @@ function createCliEntryHelpers(deps) {
           'memory remember [--confirm] --type <user|feedback|project|reference> <summary> [--detail <text>]',
           'memory extract [--confirm] [note]',
           'memory audit',
-          'memory promote [--confirm] <entry> --to <organization|user|project|local>'
+          'memory promote [--confirm] <entry> --to <organization|user|project|local>',
+          'commands list',
+          'commands list --all',
+          'commands show <name>'
         ]
       },
       {
@@ -825,6 +813,16 @@ function createCliEntryHelpers(deps) {
           'verify reject [--confirm] <name> [note]',
           'note targets',
           'note add [--confirm] <target> <summary> [--kind <kind>] [--evidence <text>] [--unverified <text>]'
+        ]
+      },
+      {
+        title: 'Transcript recovery',
+        entries: [
+          'transcript import --provider codex --id <session-id>',
+          'transcript import --provider claude|cursor|generic --file <transcript>',
+          'transcript analyze --from <transcript-or-analysis-json>',
+          'transcript review --from <analysis-json> --accept',
+          'transcript apply --from <analysis-json> --confirm'
         ]
       },
       {
@@ -868,6 +866,7 @@ function createCliEntryHelpers(deps) {
       {
         title: 'External protocol',
         entries: [
+          'external <start|status|next|health|dispatch-next>',
           'external start',
           'external status',
           'external health',

@@ -107,6 +107,38 @@ function createSessionFlowHelpers(deps) {
     return buildCli(capabilityCatalog.getCapabilityPrimaryArgs(name));
   }
 
+  function getPendingTranscriptReview(session) {
+    const latest =
+      session &&
+      session.diagnostics &&
+      session.diagnostics.latest_transcript_import &&
+      typeof session.diagnostics.latest_transcript_import === 'object'
+        ? session.diagnostics.latest_transcript_import
+        : null;
+    const review =
+      latest &&
+      latest.semantic_review &&
+      typeof latest.semantic_review === 'object'
+        ? latest.semantic_review
+        : null;
+
+    if (!latest || !review || review.required !== true || review.status === 'accepted') {
+      return null;
+    }
+    if (!latest.analysis_file) {
+      return null;
+    }
+
+    return {
+      analysis_file: latest.analysis_file,
+      ai_review_file: latest.ai_review_file || '',
+      provider: latest.provider || '',
+      source_id: latest.source_id || '',
+      status: review.status || 'pending',
+      cli: buildCli(['transcript', 'review', '--from', latest.analysis_file])
+    };
+  }
+
   function formatPreferredCapabilityCommand(name) {
     return capabilityCatalog.getCapabilityPrimaryArgs(name).join(' ');
   }
@@ -683,6 +715,7 @@ function createSessionFlowHelpers(deps) {
       initGuidance && initGuidance.pending_source_intake && typeof initGuidance.pending_source_intake === 'object'
         ? initGuidance.pending_source_intake
         : null;
+    const pendingTranscriptReview = getPendingTranscriptReview(session);
 
     if (hasQualityGateBlock) {
       const blockingItems = runtime.unique([
@@ -701,6 +734,15 @@ function createSessionFlowHelpers(deps) {
               ? `Quality gates failed (${blockingItems.join(', ')}); close executor checks or human signoffs before leaving verify`
               : `Quality gates are pending (${blockingItems.join(', ')}); run executor checks or confirm human signoffs before leaving verify`
           )
+      };
+    }
+
+    if (pendingTranscriptReview) {
+      return {
+        command: 'transcript-review',
+        reason: `Imported transcript ${pendingTranscriptReview.source_id || pendingTranscriptReview.provider || ''} requires AI semantic review before its signals can steer the workflow.`.trim(),
+        cli: pendingTranscriptReview.cli,
+        transcript_review: pendingTranscriptReview
       };
     }
 
@@ -1545,6 +1587,15 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
+    if (command === 'transcript-review') {
+      return {
+        name: 'recovery-review',
+        why: 'Imported transcript context is only a heuristic prepass until the active AI reviews it',
+        exit_criteria: 'Transcript analysis is marked ai-reviewed or intentionally bypassed with an explicit unreviewed apply',
+        primary_command: command
+      };
+    }
+
     if (command === 'scan') {
       return {
         name: blankSelectionMode ? 'selection' : 'triage',
@@ -1826,7 +1877,7 @@ function createSessionFlowHelpers(deps) {
     });
     const permissionGateSummary = permissionGateHelpers.summarizePermissionGates(permissionGates);
     const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
-    const nextCli = buildPreferredCapabilityCli(nextCommand.command);
+    const nextCli = nextCommand.cli || buildPreferredCapabilityCli(nextCommand.command);
     const capabilityRoute = capabilityRouter.buildCapabilityRoute(nextCommand.command, {
       command: nextCommand.command,
       primary_entry_cli: nextCli
@@ -1917,7 +1968,8 @@ function createSessionFlowHelpers(deps) {
             ? guidance.hardware_doc_analysis.handoff_protocol
             : null,
         tool_recommendation: guidance.primary_tool_recommendation,
-        walkthrough_recommendation: guidance.walkthrough_recommendation
+        walkthrough_recommendation: guidance.walkthrough_recommendation,
+        transcript_review: nextCommand.transcript_review || null
       },
       task_convergence: taskConvergence,
       capability_route: capabilityRoute,
@@ -2042,7 +2094,7 @@ function createSessionFlowHelpers(deps) {
     const statusCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['status']);
     const nextActionCli =
       nextAction && nextAction.command
-        ? buildPreferredCapabilityCli(nextAction.command)
+        ? (nextAction.cli || buildPreferredCapabilityCli(nextAction.command))
         : '';
     const statusCapabilityRoute = capabilityRouter.buildCapabilityRoute('status', {
       command: 'status',
