@@ -15,6 +15,8 @@ This command family is intentionally separate from `workflow`. `workflow` author
 
 This is support-maintenance surface for the embedded workflow, not default firmware-project flow.
 
+Use skill scaffolds only for project-specific host integration or repeatable local capabilities. Do not absorb generic skill packs wholesale into emb-agent core; reusable engineering discipline belongs in commands, agents, workflow specs, or project truth, while executable host skills remain optional integration surfaces.
+
 ## Commands
 
 - `scaffold list`

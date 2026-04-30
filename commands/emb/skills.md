@@ -35,3 +35,5 @@ Skill is the user-visible capability unit. Installable bundles can ship one or m
 - Project-scope installs also materialize host-visible entry skills under host skill directories such as `.codex/skills/` and the shared `.agents/skills/` layer when available.
 - User-scope installed skill bundles live under the runtime home plugin directory.
 - `--isolated` uses the configured host sub-agent bridge when available.
+- Skills are optional integration surfaces, not emb-agent core policy. General engineering methods should be absorbed into commands, agents, workflow specs, or project truth when they become part of the default embedded workflow.
+- Do not install or enable broad personal, productivity, or deprecated skill packs by default. Prefer selected hardware, firmware, instrument, debug, parser, or project-specific skills that add executable capability.

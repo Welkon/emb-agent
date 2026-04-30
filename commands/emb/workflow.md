@@ -13,6 +13,8 @@ Use `workflow` for project-local workflow authoring.
 
 Keep this out of the default command path. It is an advanced surface for writing repo-visible workflow assets under `.emb-agent/`.
 
+Use workflow assets when a practice should become part of the embedded project path, such as debug reproduction, hardware review, verification closure, or task slicing. Use installed skills only when the practice needs host-level routing or executable bundle behavior.
+
 ## Commands
 
 - `workflow init`
