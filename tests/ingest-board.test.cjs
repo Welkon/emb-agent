@@ -11,6 +11,7 @@ const workspaceRoot = path.resolve(repoRoot, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const altiumPcbDocParser = require(path.join(repoRoot, 'runtime', 'lib', 'altium-pcbdoc-parser.cjs'));
+const boardEvidence = require(path.join(repoRoot, 'runtime', 'lib', 'board-evidence.cjs'));
 
 async function captureCliJson(args) {
   const originalWrite = process.stdout.write;
@@ -132,4 +133,55 @@ test('ingest board normalizes Altium PcbDoc into layout and advice artifacts', a
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }
+});
+
+test('board evidence is optional and missing PCB never blocks start or next', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-board-evidence-missing-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main(['--project', tempProject]);
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const evidence = boardEvidence.summarizeBoardEvidence(tempProject);
+    assert.equal(evidence.state, 'missing');
+    assert.equal(evidence.required, false);
+    assert.equal(evidence.blocking, false);
+    assert.equal(evidence.can_continue, true);
+    assert.ok(evidence.skipped_checks.includes('routing'));
+
+    const start = cli.buildStartContext();
+    assert.equal(start.board_evidence.state, 'missing');
+    assert.equal(start.board_evidence.blocking, false);
+    assert.equal(start.board_evidence.can_continue, true);
+
+    const next = cli.buildNextContext();
+    assert.equal(next.board_evidence.state, 'missing');
+    assert.equal(next.board_evidence.blocking, false);
+    assert.equal(next.board_evidence.can_continue, true);
+    assert.ok(next.optional_evidence_actions.some(item => item.includes('No PCB layout file was found')));
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('board evidence surfaces optional board ingest when PCB exists', async () => {
+  const fixturePath = path.join(workspaceRoot, 'QP-XY25-1201_2.PcbDoc');
+  if (!fs.existsSync(fixturePath)) {
+    return;
+  }
+
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-board-evidence-available-'));
+  fs.copyFileSync(fixturePath, path.join(tempProject, 'board.PcbDoc'));
+
+  const evidence = boardEvidence.summarizeBoardEvidence(tempProject);
+  assert.equal(evidence.state, 'available');
+  assert.equal(evidence.blocking, false);
+  assert.equal(evidence.can_continue, true);
+  assert.match(evidence.command, /ingest board --file board\.PcbDoc/);
 });

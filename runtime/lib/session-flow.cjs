@@ -13,6 +13,7 @@ const intentProviderHelpers = require('./intent-provider.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
 const capabilityCatalog = require('./capability-catalog.cjs');
 const capabilityRouter = require('./capability-router.cjs');
+const boardEvidence = require('./board-evidence.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
@@ -1931,6 +1932,9 @@ function createSessionFlowHelpers(deps) {
         ]);
     const workflowStage = buildWorkflowStage(nextCommand, resolved);
     const qualityGates = getQualityGateSummary(resolved);
+    const boardEvidenceSummary = boardEvidence.summarizeBoardEvidence(resolved.session.project_root, {
+      limit: 8
+    });
     const permissionGates = permissionGateHelpers.buildPermissionGates({
       quality_gates: qualityGates
     });
@@ -2031,6 +2035,7 @@ function createSessionFlowHelpers(deps) {
         transcript_review: nextCommand.transcript_review || null,
         transcript_recommendation: nextCommand.transcript_recommendation || null
       },
+      board_evidence: boardEvidenceSummary,
       task_convergence: taskConvergence,
       capability_route: capabilityRoute,
       action_card: buildNextActionCard({
@@ -2041,6 +2046,10 @@ function createSessionFlowHelpers(deps) {
       workflow_stage: workflowStage,
       context_hygiene: contextHygiene,
       next_actions: nextActions,
+      optional_evidence_actions: runtime.unique([
+        boardEvidenceSummary.command ? `board_evidence=${boardEvidenceSummary.command}` : '',
+        boardEvidenceSummary.optional_next_step ? `board_evidence_note=${boardEvidenceSummary.optional_next_step}` : ''
+      ]),
       hardware_doc_analysis: guidance.hardware_doc_analysis,
       recommended_flow:
         guidance.hardware_doc_analysis && guidance.hardware_doc_analysis.recommended_flow
@@ -2080,7 +2089,9 @@ function createSessionFlowHelpers(deps) {
         workflow_stage: workflowStage.name || '',
         gated_by_health: gatedByHealth,
         permission_gates: permissionGateSummary.status || 'clear',
-        reason: nextCommand.reason || ''
+        reason: nextCommand.reason || '',
+        board_evidence_state: boardEvidenceSummary.state,
+        board_evidence_blocking: false
       }
     });
   }

@@ -38,6 +38,7 @@ const dispatchHelpers = require(path.join(ROOT, 'lib', 'dispatch-orchestrator.cj
 const runtimeEventHelpers = require(path.join(ROOT, 'lib', 'runtime-events.cjs'));
 const sessionFlowHelpers = require(path.join(ROOT, 'lib', 'session-flow.cjs'));
 const referenceLookupHelpers = require(path.join(ROOT, 'lib', 'reference-lookup.cjs'));
+const boardEvidence = require(path.join(ROOT, 'lib', 'board-evidence.cjs'));
 const hardwareTruthHelpers = require(path.join(ROOT, 'lib', 'hardware-truth.cjs'));
 const projectConfigHelpers = require(path.join(ROOT, 'lib', 'project-config.cjs'));
 const stateCommandHelpers = require(path.join(ROOT, 'lib', 'state-commands.cjs'));
@@ -1117,6 +1118,9 @@ function buildStartContext() {
   const resumeContext = initialized ? buildResumeContext() : null;
   const activeTask = getActiveTask();
   const handoff = loadHandoff();
+  const boardEvidenceSummary = boardEvidence.summarizeBoardEvidence(projectRoot, {
+    limit: 8
+  });
   const bootstrapPending = Boolean(
     initialized &&
     bootstrap &&
@@ -1202,6 +1206,7 @@ function buildStartContext() {
           cli: nextContext.next.cli
         }
       : null,
+    board_evidence: boardEvidenceSummary,
     resume: resumeContext
       ? {
           context_hygiene: resumeContext.context_hygiene,
@@ -1221,7 +1226,9 @@ function buildStartContext() {
     details: {
       initialized,
       handoff_present: Boolean(handoff),
-      active_task: activeTask ? activeTask.name : ''
+      active_task: activeTask ? activeTask.name : '',
+      board_evidence_state: boardEvidenceSummary.state,
+      board_evidence_blocking: false
     }
   });
 }

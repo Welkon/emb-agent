@@ -141,8 +141,11 @@ function buildAnalysisOnlySemantics(artifacts) {
 
 function buildHardwareReviewHandoff(parsed, artifacts) {
   return {
-    required: true,
+    required: false,
+    status: 'optional-review-evidence',
+    evidence_role: 'optional-layout-evidence',
     blocking: false,
+    advisory_only: true,
     can_continue: true,
     command: artifacts && artifacts.layout ? `board advice --parsed ${artifacts.layout}` : 'board advice',
     inputs: [
@@ -151,7 +154,8 @@ function buildHardwareReviewHandoff(parsed, artifacts) {
     ].filter(Boolean),
     summary: parsed && parsed.coverage ? parsed.coverage : {},
     reminder_policy: 'repeat-on-next-and-related-debug',
-    note: 'PCB layout review is advisory-only; continue work while repeating relevant placement/routing reminders until dismissed, fixed, or accepted as board intent.'
+    skipped_when_missing: ['placement', 'routing', 'copper-area', 'via-count', 'connector-access', 'dfm', 'emi-layout'],
+    note: 'PCB layout review is optional and advisory-only; missing PCB files must not block firmware, schematic, datasheet, or task workflow progress.'
   };
 }
 
@@ -225,6 +229,12 @@ function ingestBoard(argv, options) {
     parser: {
       mode: parsed.parser_mode,
       summary: 'Altium PcbDoc was read directly from its OLE/CFB container and normalized across Board, Component, Net, Pad, Track, Via, Arc, Polygon, and Region streams.'
+    },
+    evidence_policy: {
+      role: 'optional-layout-evidence',
+      blocking: false,
+      can_continue_without_board: true,
+      missing_board_behavior: 'skip layout-dependent checks and continue with schematic, datasheet, firmware, and task workflow evidence'
     },
     summary: {
       records: parsed.coverage.records,
