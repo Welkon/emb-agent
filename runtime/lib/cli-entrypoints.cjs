@@ -24,7 +24,8 @@ function createCliEntryHelpers(deps) {
     chipCatalog,
     ingestTruthCli,
     ingestDocCli,
-    ingestSchematicCli
+    ingestSchematicCli,
+    ingestBoardCli
   } = deps;
 
   function toArray(value) {
@@ -593,7 +594,8 @@ function createCliEntryHelpers(deps) {
         entries: [
           'declare hardware [--confirm] [--mcu <name>] [--package <name>] [--board <name>]',
           'ingest doc --file <path> [--provider mineru] [--kind datasheet] [--to hardware|requirements]',
-          'ingest schematic --file <path> [--file <path> ...] [--format auto|altium-json|altium-raw|netlist]'
+          'ingest schematic --file <path> [--file <path> ...] [--format auto|altium-json|altium-raw|netlist]',
+          'ingest board --file <path.PcbDoc>'
         ]
       },
       {
@@ -667,7 +669,9 @@ function createCliEntryHelpers(deps) {
           'ingest apply doc <doc-id> --from-last-diff',
           'ingest apply doc <doc-id> --preset <name>',
           'ingest schematic --file <path> [--file <path> ...] [--format auto|altium-json|altium-raw|netlist|bom-csv|text] [--title <text>] [--force]',
+          'ingest board --file <path.PcbDoc> [--format auto|altium-pcbdoc] [--title <text>] [--force]',
           'schematic <summary|components|component|nets|net|bom|advice|preview|raw> [--parsed <parsed.json>] [--ref <designator>] [--name <net>] [--record <n>]',
+          'board <summary|components|pads|tracks|vias|texts|nets|advice|raw> [--parsed <analysis.board-layout.json>] [--ref <designator>] [--name <net>] [--record <n>]',
           'doc list',
           'doc lookup [--chip <name>] [--vendor <name>] [--package <name>] [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--limit <n>]',
           'doc fetch --url <http(s)-url> [--output <path>] [--confirm]',
@@ -1245,6 +1249,12 @@ function createCliEntryHelpers(deps) {
       lastFiles = ingested.last_files || [];
     } else if (subcmd === 'schematic') {
       ingested = ingestSchematicCli.ingestSchematic(rest, {
+        projectRoot: resolveProjectRoot(),
+        ...(options || {})
+      });
+      lastFiles = ingested.last_files || [];
+    } else if (subcmd === 'board') {
+      ingested = ingestBoardCli.ingestBoard(rest, {
         projectRoot: resolveProjectRoot(),
         ...(options || {})
       });

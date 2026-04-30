@@ -176,6 +176,19 @@ function createCommandGroupHelpers(deps) {
       return result;
     }
 
+    if (cmd === 'board') {
+      const subject = subcmd || 'summary';
+      const result = referenceLookupCli.queryBoard(resolveProjectRoot(), subject, rest);
+      rememberDocFiles(
+        [
+          result && result.scope && result.scope.parsed,
+          result && result.scope && result.scope.source_board
+        ].filter(Boolean),
+        `board ${subject}`
+      );
+      return result;
+    }
+
     return undefined;
   }
 

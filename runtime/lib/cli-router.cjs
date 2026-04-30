@@ -102,6 +102,9 @@ function createCliRouter(deps) {
       if (cmd === 'ingest' && subcmd === 'schematic') {
         return 'Ingesting schematic artifacts';
       }
+      if (cmd === 'ingest' && subcmd === 'board') {
+        return 'Ingesting PCB layout artifacts';
+      }
       if (cmd === 'doc' && subcmd === 'fetch') {
         return 'Downloading remote document';
       }
