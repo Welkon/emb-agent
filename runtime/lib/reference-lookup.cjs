@@ -245,6 +245,43 @@ function parseSchematicQueryArgs(argv) {
   return result;
 }
 
+function parseBoardQueryArgs(argv) {
+  const state = parseCommonLookupArgs(argv || [], {
+    name: '',
+    record: '',
+    help: false
+  });
+  const result = state.result;
+  const tokens = argv || [];
+  let index = state.index;
+  if (!state.handled) {
+    while (index < tokens.length) {
+      const token = tokens[index];
+      if (token === '--name' || token === '--net') {
+        result.name = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (token === '--record') {
+        result.record = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (token === '--ref') {
+        result.ref = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (parseBooleanFlag(token, result, '--confirm')) {
+        index += 1;
+        continue;
+      }
+      throw new Error(`Unknown board argument: ${token}`);
+    }
+  }
+  return result;
+}
+
 function normalizeComponentProvider(value) {
   const normalized = String(value || 'local').trim().toLowerCase() || 'local';
   if (normalized === 'lcsc') {
@@ -431,6 +468,71 @@ function loadParsedSchematicEntries(projectRoot, args, deps) {
 
   directories.forEach(name => {
     const parsedPath = path.join(cacheRoot, name, 'parsed.json');
+    const sourcePath = path.join(cacheRoot, name, 'source.json');
+    if (!fs.existsSync(parsedPath)) {
+      return;
+    }
+    const source = fs.existsSync(sourcePath) ? runtime.readJson(sourcePath) : {};
+    entries.push({
+      parsed_path: normalizePath(path.relative(projectRoot, parsedPath)),
+      source_path: normalizePath(source.source_path || ''),
+      parsed: runtime.readJson(parsedPath)
+    });
+  });
+
+  return entries;
+}
+
+function loadParsedBoardEntries(projectRoot, args, deps) {
+  const runtime = deps.runtime;
+  const ingestBoardCli = deps.ingestBoardCli;
+  const entries = [];
+
+  function pushParsed(parsedPath, sourcePath) {
+    const absoluteParsed = path.resolve(projectRoot, parsedPath);
+    if (!fs.existsSync(absoluteParsed)) {
+      return;
+    }
+    entries.push({
+      parsed_path: normalizePath(path.relative(projectRoot, absoluteParsed)),
+      source_path: normalizePath(sourcePath || ''),
+      parsed: runtime.readJson(absoluteParsed)
+    });
+  }
+
+  if (args.parsed) {
+    pushParsed(args.parsed, args.file || '');
+    return entries;
+  }
+
+  if (args.file) {
+    if (normalizePath(args.file).toLowerCase().endsWith('analysis.board-layout.json')) {
+      pushParsed(args.file, '');
+      return entries;
+    }
+
+    const result = ingestBoardCli.ingestBoard(['--project', projectRoot, '--file', args.file], {
+      projectRoot
+    });
+    if (result && result.artifacts && result.artifacts.layout) {
+      pushParsed(result.artifacts.layout, result.source_path || args.file);
+    }
+    return entries;
+  }
+
+  const cacheRoot = path.join(projectRoot, '.emb-agent', 'cache', 'boards');
+  if (!fs.existsSync(cacheRoot)) {
+    return entries;
+  }
+
+  const directories = fs.readdirSync(cacheRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .sort()
+    .reverse();
+
+  directories.forEach(name => {
+    const parsedPath = path.join(cacheRoot, name, 'analysis.board-layout.json');
     const sourcePath = path.join(cacheRoot, name, 'source.json');
     if (!fs.existsSync(parsedPath)) {
       return;
@@ -896,6 +998,152 @@ function querySchematic(projectRootInput, subject, argv, deps) {
   throw new Error(`Unknown schematic command: ${normalizedSubject}`);
 }
 
+function queryBoard(projectRootInput, subject, argv, deps) {
+  const args = Array.isArray(argv) ? parseBoardQueryArgs(argv) : (argv || {});
+  const runtime = deps.runtime;
+  const normalizedSubject = String(subject || 'summary').trim() || 'summary';
+  if (args.help) {
+    return {
+      command: `board ${normalizedSubject}`,
+      usage: 'board <summary|components|pads|tracks|vias|texts|nets|advice|raw> [--parsed <analysis.board-layout.json>] [--file <board.PcbDoc>] [--ref <designator>] [--name <net>] [--record <n>] [--limit <n>]'
+    };
+  }
+
+  const projectRoot = resolveProjectRoot(args.project || projectRootInput);
+  const entries = loadParsedBoardEntries(projectRoot, args, deps);
+  const entry = entries[0] || { parsed_path: '', source_path: '', parsed: {} };
+  const parsed = entry.parsed || {};
+  const components = Array.isArray(parsed.components) ? parsed.components : [];
+  const pads = Array.isArray(parsed.pads) ? parsed.pads : [];
+  const tracks = Array.isArray(parsed.tracks) ? parsed.tracks : [];
+  const vias = Array.isArray(parsed.vias) ? parsed.vias : [];
+  const texts = Array.isArray(parsed.texts) ? parsed.texts : [];
+  const nets = Array.isArray(parsed.nets) ? parsed.nets : [];
+  const objects = Array.isArray(parsed.objects) ? parsed.objects : [];
+  const limit = args.limit || 20;
+
+  const base = {
+    result_mode: 'analysis-only',
+    command: `board ${normalizedSubject}`,
+    scope: {
+      project_root: projectRoot,
+      parsed: entry.parsed_path || args.parsed || '',
+      source_board: entry.source_path || args.file || ''
+    }
+  };
+
+  if (normalizedSubject === 'summary') {
+    return {
+      ...base,
+      summary: {
+        parser_mode: parsed.parser_mode || '',
+        metadata: parsed.metadata || {},
+        coverage: parsed.coverage || {},
+        board: parsed.board || {},
+        layer_stack: Array.isArray(parsed.layer_stack) ? parsed.layer_stack.slice(0, limit) : [],
+        advice: parsed.board_advice && parsed.board_advice.summary ? parsed.board_advice.summary : null
+      }
+    };
+  }
+
+  if (normalizedSubject === 'components') {
+    const ref = String(args.ref || '').trim().toLowerCase();
+    return {
+      ...base,
+      components: components
+        .filter(component => !ref || String(component.designator || '').toLowerCase() === ref)
+        .slice(0, limit)
+    };
+  }
+
+  if (normalizedSubject === 'pads') {
+    const ref = String(args.ref || '').trim().toLowerCase();
+    const name = String(args.name || '').trim().toLowerCase();
+    return {
+      ...base,
+      pads: pads
+        .filter(pad => !ref || String(pad.component || '').toLowerCase() === ref)
+        .filter(pad => !name || String(pad.net || '').toLowerCase() === name)
+        .slice(0, limit)
+    };
+  }
+
+  if (normalizedSubject === 'tracks') {
+    const name = String(args.name || '').trim().toLowerCase();
+    return {
+      ...base,
+      tracks: tracks
+        .filter(track => !name || String(track.net || '').toLowerCase() === name)
+        .slice(0, limit)
+    };
+  }
+
+  if (normalizedSubject === 'vias') {
+    const name = String(args.name || '').trim().toLowerCase();
+    return {
+      ...base,
+      vias: vias
+        .filter(via => !name || String(via.net || '').toLowerCase() === name)
+        .slice(0, limit)
+    };
+  }
+
+  if (normalizedSubject === 'texts') {
+    const name = String(args.name || '').trim().toLowerCase();
+    return {
+      ...base,
+      texts: texts
+        .filter(text => !name || String(text.text || '').toLowerCase().includes(name))
+        .slice(0, limit)
+    };
+  }
+
+  if (normalizedSubject === 'nets') {
+    return {
+      ...base,
+      nets: nets.slice(0, limit)
+    };
+  }
+
+  if (normalizedSubject === 'advice') {
+    const parsedPath = entry.parsed_path || args.parsed || '';
+    const parsedDir = parsedPath ? path.dirname(path.resolve(projectRoot, parsedPath)) : '';
+    const advicePath = parsedDir ? path.join(parsedDir, 'analysis.board-advice.json') : '';
+    const adviceRelative = advicePath && fs.existsSync(advicePath)
+      ? normalizePath(path.relative(projectRoot, advicePath))
+      : '';
+    let advice = parsed.board_advice || null;
+    if (!advice && advicePath && fs.existsSync(advicePath)) {
+      advice = runtime.readJson(advicePath);
+    }
+    const findings = Array.isArray(advice && advice.findings) ? advice.findings : [];
+    return {
+      ...base,
+      advice: {
+        available: Boolean(advice),
+        summary: advice && advice.summary ? advice.summary : null,
+        findings: findings.slice(0, limit),
+        artifacts: {
+          advice: adviceRelative
+        },
+        note: 'Board layout advice findings are dismissible engineering review prompts; confirm against schematic intent, datasheets, current limits, mechanical constraints, and fabrication rules.'
+      }
+    };
+  }
+
+  if (normalizedSubject === 'raw') {
+    const recordIndex = String(args.record || '').trim();
+    const object = objects.find(item => String(item.index || '') === recordIndex) || null;
+    return {
+      ...base,
+      record: recordIndex,
+      object
+    };
+  }
+
+  throw new Error(`Unknown board command: ${normalizedSubject}`);
+}
+
 function sanitizeFileName(value) {
   const normalized = String(value || '').trim().replace(/[?#].*$/, '');
   const basename = path.basename(normalized || 'downloaded.pdf').replace(/[^a-zA-Z0-9._-]+/g, '-');
@@ -1036,8 +1284,10 @@ module.exports = {
   parseDocFetchArgs,
   parseComponentLookupArgs,
   parseSchematicQueryArgs,
+  parseBoardQueryArgs,
   lookupDocs,
   lookupComponents,
   querySchematic,
+  queryBoard,
   fetchDocument
 };

@@ -286,6 +286,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(compact, /declare hardware/);
   assert.match(compact, /next \[run\]/);
   assert.match(compact, /ingest schematic --file <path>/);
+  assert.match(compact, /ingest board --file <path\.PcbDoc>/);
   assert.match(compact, /bootstrap \[run \[--confirm\]\]/);
   assert.match(compact, /task worktree <list\|status\|show\|create\|cleanup> \[name\]/);
   assert.match(compact, /external <start\|status\|next\|health\|dispatch-next>/);
@@ -316,10 +317,12 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.doesNotMatch(advanced, /adapter source add/);
   assert.match(advanced, /bootstrap \[run \[--confirm\]\]/);
   assert.match(advanced, /ingest schematic --file <path>/);
+  assert.match(advanced, /ingest board --file <path\.PcbDoc>/);
   assert.match(advanced, /doc lookup \[--chip <name>/);
   assert.match(advanced, /doc fetch --url <http\(s\)-url>/);
   assert.match(advanced, /component lookup \[--file <schematic>/);
   assert.match(advanced, /schematic <summary\|components\|component\|nets\|net\|bom\|advice\|preview\|raw>/);
+  assert.match(advanced, /board <summary\|components\|pads\|tracks\|vias\|texts\|nets\|advice\|raw>/);
   assert.match(advanced, /context compress \[note\]/);
   assert.match(advanced, /skills list/);
   assert.match(advanced, /memory stack/);

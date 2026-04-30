@@ -23,6 +23,7 @@ const attachProjectCli = require(path.join(ROOT, 'scripts', 'attach-project.cjs'
 const ingestTruthCli = require(path.join(ROOT, 'scripts', 'ingest-truth.cjs'));
 const ingestDocCli = require(path.join(ROOT, 'scripts', 'ingest-doc.cjs'));
 const ingestSchematicCli = require(path.join(ROOT, 'scripts', 'ingest-schematic.cjs'));
+const ingestBoardCli = require(path.join(ROOT, 'scripts', 'ingest-board.cjs'));
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const scheduler = require(path.join(ROOT, 'lib', 'scheduler.cjs'));
 const toolCatalog = require(path.join(ROOT, 'lib', 'tool-catalog.cjs'));
@@ -1098,7 +1099,8 @@ const {
   chipCatalog,
   ingestTruthCli,
   ingestDocCli,
-  ingestSchematicCli
+  ingestSchematicCli,
+  ingestBoardCli
 });
 
 function buildStartContext() {
@@ -1267,6 +1269,12 @@ const referenceLookupCli = {
     return referenceLookupHelpers.querySchematic(projectRoot, subject, args, {
       runtime,
       ingestSchematicCli
+    });
+  },
+  queryBoard(projectRoot, subject, args) {
+    return referenceLookupHelpers.queryBoard(projectRoot, subject, args, {
+      runtime,
+      ingestBoardCli
     });
   },
   fetchDocument(projectRoot, args, options) {
