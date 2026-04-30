@@ -223,7 +223,7 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.developer')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.current-task')), true);
     assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
-    assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'src')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'README.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), true);
@@ -607,7 +607,7 @@ test('init returns onboarding guidance for chip support setup', () => {
     assert.match(result.bootstrap.summary, /\.emb-agent\/hw\.yaml.*unknown/i);
     assert.equal(result.bootstrap.bootstrap_task.name, '00-bootstrap-project');
     assert.equal(result.bootstrap_task.name, '00-bootstrap-project');
-    assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'src')), false);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

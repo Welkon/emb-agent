@@ -1140,7 +1140,6 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   const projectConfigPath = path.join(projectConfigDir, 'project.json');
   const developerPath = path.join(projectConfigDir, '.developer');
   const currentTaskPath = path.join(projectConfigDir, '.current-task');
-  const srcDirPath = path.join(projectRoot, 'src');
   const initOptions = options || {};
   const shouldUpdateDeveloper = Boolean(initOptions.userSet || initOptions.runtimeSet);
 
@@ -1216,15 +1215,6 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     }
   } else {
     reused.push(path.relative(projectRoot, currentTaskPath));
-  }
-
-  if (!fs.existsSync(srcDirPath)) {
-    ensureDir(srcDirPath);
-    created.push(path.relative(projectRoot, srcDirPath));
-  } else if (fs.statSync(srcDirPath).isDirectory()) {
-    reused.push(path.relative(projectRoot, srcDirPath));
-  } else {
-    throw new Error(`src path exists but is not a directory: ${srcDirPath}`);
   }
 
   const context = buildTemplateContext(projectRoot, effectiveProjectConfig);
