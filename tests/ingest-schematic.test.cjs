@@ -69,6 +69,7 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     assert.deepEqual(ingested.truth_write.source_artifacts, [
       ingested.artifacts.parsed,
       ingested.artifacts.visual_netlist,
+      ingested.artifacts.schematic_advice,
       ingested.artifacts.hardware_facts,
       ingested.artifacts.hardware_facts_json
     ]);
@@ -79,7 +80,12 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     assert.equal(ingested.component_refs.length, 0);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.hardware_facts)), true);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.visual_netlist)), true);
+    assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.schematic_advice)), true);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.hardware_facts_json)), true);
+    const adviceJson = JSON.parse(fs.readFileSync(path.join(tempProject, ingested.artifacts.schematic_advice), 'utf8'));
+    assert.equal(adviceJson.status, 'analysis-only');
+    assert.equal(adviceJson.policy.advisory_only, true);
+    assert.ok(adviceJson.findings.some(item => item.category === 'gpio-bias' && item.evidence.net === 'IR_RX'));
     assert.match(hardwareFacts, /Normalized 1 components and 2 nets/);
     assert.match(hardwareFacts, /Named nets extracted: IR_RX, VDD/);
     assert.match(hardwareFacts, /Component roles, controller identity, and signal direction should be judged later by the agent from parsed.json/);
@@ -92,6 +98,7 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     assert.equal(summaryJson.agent_analysis.recommended_agent, 'emb-hw-scout');
     assert.ok(summaryJson.agent_analysis.inputs.includes(ingested.artifacts.parsed));
     assert.ok(summaryJson.agent_analysis.inputs.includes(ingested.artifacts.visual_netlist));
+    assert.ok(summaryJson.agent_analysis.inputs.includes(ingested.artifacts.schematic_advice));
     assert.equal(nextContext.next.schematic_analysis.recommended_agent, 'emb-hw-scout');
     assert.ok(nextContext.next_actions.some(item => item.includes('schematic_analysis=emb-hw-scout')));
     assert.ok(nextContext.next_actions.some(item => item.startsWith('schematic_confirm=')));
@@ -224,6 +231,8 @@ test('ingest schematic parses raw SchDoc through the internal parser and keeps i
     assert.equal(parsedJson.visual_netlist.status, 'analysis-only');
     assert.equal(parsedJson.visual_netlist.page_count, 1);
     assert.ok(parsedJson.visual_netlist.graph.nets > 0);
+    assert.equal(parsedJson.schematic_advice.status, 'analysis-only');
+    assert.ok(parsedJson.schematic_advice.policy.user_can_dismiss);
     assert.ok(parsedJson.objects.some(item => item.kind === 'wire'));
     assert.ok(parsedJson.bom.some(item => item.designators.includes('U1')));
     assert.ok(parsedJson.nets.some(item => item.evidence && item.evidence.length > 0));
@@ -232,6 +241,7 @@ test('ingest schematic parses raw SchDoc through the internal parser and keeps i
     assert.ok(parsedJson.preview.summary.wires > 0);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.preview_input)), true);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.preview_svg)), true);
+    assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.schematic_advice)), true);
     assert.match(fs.readFileSync(path.join(tempProject, ingested.artifacts.preview_svg), 'utf8'), /<svg[\s\S]+preview-wire/);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.summary)), true);
     assert.equal(fs.existsSync(path.join(tempProject, ingested.artifacts.source)), true);
@@ -239,6 +249,7 @@ test('ingest schematic parses raw SchDoc through the internal parser and keeps i
     assert.equal(ingested.agent_analysis.required, true);
     assert.equal(ingested.agent_analysis.recommended_agent, 'emb-hw-scout');
     assert.ok(ingested.agent_analysis.inputs.includes(ingested.artifacts.preview_svg));
+    assert.ok(ingested.agent_analysis.inputs.includes(ingested.artifacts.schematic_advice));
     assert.ok(ingested.agent_analysis.confirmation_targets.includes('mcu.model'));
     assert.equal(ingested.session.last_files[0], ingested.artifacts.parsed);
     assert.match(hardwareFacts, /docs\/board\.SchDoc/);

@@ -667,7 +667,7 @@ function createCliEntryHelpers(deps) {
           'ingest apply doc <doc-id> --from-last-diff',
           'ingest apply doc <doc-id> --preset <name>',
           'ingest schematic --file <path> [--file <path> ...] [--format auto|altium-json|altium-raw|netlist|bom-csv|text] [--title <text>] [--force]',
-          'schematic <summary|components|component|nets|net|bom|preview|raw> [--parsed <parsed.json>] [--ref <designator>] [--name <net>] [--record <n>]',
+          'schematic <summary|components|component|nets|net|bom|advice|preview|raw> [--parsed <parsed.json>] [--ref <designator>] [--name <net>] [--record <n>]',
           'doc list',
           'doc lookup [--chip <name>] [--vendor <name>] [--package <name>] [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--limit <n>]',
           'doc fetch --url <http(s)-url> [--output <path>] [--confirm]',

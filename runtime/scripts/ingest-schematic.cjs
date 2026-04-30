@@ -9,6 +9,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
 const schdocParser = require(path.join(ROOT, 'lib', 'schdoc-parser.cjs'));
+const schematicAdvisor = require(path.join(ROOT, 'lib', 'schematic-advisor.cjs'));
 const attachProject = require(path.join(ROOT, 'scripts', 'attach-project.cjs'));
 
 const RAW_ALTIUM_EXTS = new Set(['.schdoc']);
@@ -184,6 +185,7 @@ function buildAnalysisOnlySemantics(artifacts) {
   const sourceArtifacts = [
     artifacts && artifacts.parsed,
     artifacts && artifacts.visual_netlist,
+    artifacts && artifacts.schematic_advice,
     artifacts && artifacts.preview_svg,
     artifacts && artifacts.preview_input,
     artifacts && artifacts.hardware_facts,
@@ -999,6 +1001,7 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts, mcuCandidates)
     inputs: [
       artifacts.parsed,
       artifacts.visual_netlist,
+      artifacts.schematic_advice,
       artifacts.preview_svg,
       artifacts.preview_input,
       artifacts.hardware_facts,
@@ -1027,6 +1030,7 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts, mcuCandidates)
     expected_output: [
       'Separate explicit schematic facts from engineering inference.',
       'Check visual-netlist cross-sheet and dangling-net findings before deriving signal roles.',
+      'Review schematic advice findings as dismissible engineering prompts, not automatic truth.',
       'Propose confirmation candidates instead of writing truth directly.',
       'List what still needs datasheet, BOM, board photo, or manual confirmation.'
     ],
@@ -1040,6 +1044,7 @@ function getArtifactPaths(projectRoot, cacheDir) {
   return {
     parsedJson: path.join(cacheDir, 'parsed.json'),
     visualNetlistJson: path.join(cacheDir, 'analysis.visual-netlist.json'),
+    schematicAdviceJson: path.join(cacheDir, 'analysis.schematic-advice.json'),
     previewInputJson: path.join(cacheDir, 'preview.input.json'),
     previewSvg: path.join(cacheDir, 'preview.svg'),
     summaryJson: path.join(cacheDir, 'summary.json'),
@@ -1222,6 +1227,7 @@ function ingestSchematic(argv, options) {
   });
   const parsed = combineParsedSources(parsedSources);
   parsed.visual_netlist = buildVisualNetlistAnalysis(relativePaths, parsed);
+  parsed.schematic_advice = schematicAdvisor.analyzeSchematicAdvice(parsed);
 
   const mcuCandidates = identifyMcuCandidates(parsed.components || []);
   const hardwareDraft = buildHardwareDraft(relativePaths, parsed, mcuCandidates);
@@ -1247,6 +1253,7 @@ function ingestSchematic(argv, options) {
   const artifacts = {
     parsed: path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),
     visual_netlist: path.relative(projectRoot, artifactPaths.visualNetlistJson).replace(/\\/g, '/'),
+    schematic_advice: path.relative(projectRoot, artifactPaths.schematicAdviceJson).replace(/\\/g, '/'),
     summary: path.relative(projectRoot, artifactPaths.summaryJson).replace(/\\/g, '/'),
     hardware_facts: path.relative(projectRoot, artifactPaths.hardwareYaml).replace(/\\/g, '/'),
     hardware_facts_json: path.relative(projectRoot, artifactPaths.hardwareJson).replace(/\\/g, '/'),
@@ -1279,6 +1286,8 @@ function ingestSchematic(argv, options) {
       cross_sheet_nets: parsed.visual_netlist.graph ? parsed.visual_netlist.graph.cross_sheet_nets : 0,
       dangling_nets: parsed.visual_netlist.graph ? parsed.visual_netlist.graph.dangling_nets : 0,
       preview: hasPreview ? 'svg' : '',
+      advice_findings: parsed.schematic_advice && parsed.schematic_advice.summary ? parsed.schematic_advice.summary.findings : 0,
+      advice_warnings: parsed.schematic_advice && parsed.schematic_advice.summary ? parsed.schematic_advice.summary.warnings : 0,
       signal_candidates: signalCandidates.length,
       component_ref_candidates: componentRefs.length,
       mcu_candidates: mcuCandidates.length
@@ -1296,6 +1305,7 @@ function ingestSchematic(argv, options) {
     last_files: [
       path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),
       path.relative(projectRoot, artifactPaths.visualNetlistJson).replace(/\\/g, '/'),
+      path.relative(projectRoot, artifactPaths.schematicAdviceJson).replace(/\\/g, '/'),
       ...(hasPreview ? [path.relative(projectRoot, artifactPaths.previewSvg).replace(/\\/g, '/')] : []),
       path.relative(projectRoot, artifactPaths.hardwareYaml).replace(/\\/g, '/'),
       path.relative(projectRoot, artifactPaths.summaryJson).replace(/\\/g, '/')
@@ -1324,6 +1334,7 @@ function ingestSchematic(argv, options) {
   });
   runtime.writeJson(artifactPaths.parsedJson, parsed);
   runtime.writeJson(artifactPaths.visualNetlistJson, parsed.visual_netlist);
+  runtime.writeJson(artifactPaths.schematicAdviceJson, parsed.schematic_advice);
   if (hasPreview) {
     runtime.writeJson(artifactPaths.previewInputJson, parsed.preview.input);
     fs.writeFileSync(artifactPaths.previewSvg, parsed.preview.svg, 'utf8');
