@@ -82,6 +82,22 @@ function summarizeMemorySummary(value) {
   });
 }
 
+function summarizeBoardEvidence(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    state: value.state || '',
+    required: Boolean(value.required),
+    blocking: Boolean(value.blocking),
+    can_continue: value.can_continue === undefined ? undefined : Boolean(value.can_continue),
+    command: value.command || '',
+    optional_next_step: value.optional_next_step || '',
+    skipped_checks: truncateList(value.skipped_checks, 8)
+  });
+}
+
 function summarizeScheduler(value) {
   if (!isObject(value)) {
     return null;
@@ -693,6 +709,8 @@ function buildBriefNextContext(value) {
     context_hygiene: summarizeContextHygiene(value.context_hygiene),
     recommended_flow: summarizeRecommendedFlow(value.recommended_flow || next.recommended_flow),
     handoff_protocol: summarizeHandoffProtocol(value.handoff_protocol || next.handoff_protocol),
+    board_evidence: summarizeBoardEvidence(value.board_evidence),
+    optional_evidence_actions: truncateList(value.optional_evidence_actions, 3),
     next_actions: truncateList(value.next_actions, 5),
     health: summarizeHealth(value.health)
   });
@@ -743,6 +761,7 @@ function buildBriefStartContext(value) {
       command: value.bootstrap && value.bootstrap.command || '',
       summary: value.bootstrap && value.bootstrap.summary || ''
     }),
+    board_evidence: summarizeBoardEvidence(value.board_evidence),
     runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),
     next: isObject(value.next)
       ? compactObject({

@@ -40,6 +40,7 @@ allowed-tools:
 - For targeted schematic inspection after ingest, use `schematic summary --parsed <parsed.json>`, `schematic component --ref <designator> --parsed <parsed.json>`, or `schematic net --name <net> --parsed <parsed.json>`.
 - `ingest board` directly reads Altium `.PcbDoc` OLE/CFB containers and returns `write_mode: analysis-only`; it prepares `analysis.board-layout.json` and `analysis.board-advice.json` without writing truth.
 - Board advice findings are review prompts only. Users may dismiss or ignore them after confirming schematic intent, datasheet layout guidance, current limits, mechanical constraints, and fabrication rules.
+- PCB layout evidence is optional. If no board file is available, continue and mark placement, routing, copper, connector-access, DFM, and EMI-layout checks as skipped rather than blocked.
 - For targeted PCB inspection after ingest, use `board summary --parsed <analysis.board-layout.json>`, `board pads --ref <designator> --parsed <analysis.board-layout.json>`, `board tracks --name <net> --parsed <analysis.board-layout.json>`, `board advice --parsed <analysis.board-layout.json>`, or `board raw --record <n> --parsed <analysis.board-layout.json>`.
 - For normalized part-search inputs from a schematic, use:
   `component lookup --file <path>`

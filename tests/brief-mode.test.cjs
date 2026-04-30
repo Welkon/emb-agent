@@ -41,6 +41,9 @@ test('next --brief returns condensed next context', async () => {
   assert.ok(output.runtime_events.total >= 1);
   assert.ok(Array.isArray(output.runtime_events.types));
   assert.ok(output.runtime_events.types.includes('workflow-next'));
+  assert.ok(output.board_evidence);
+  assert.equal(output.board_evidence.blocking, false);
+  assert.equal(output.board_evidence.can_continue, true);
 });
 
 test('action --brief surfaces unified action cards and followups', async () => {
