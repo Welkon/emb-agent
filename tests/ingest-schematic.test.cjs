@@ -85,7 +85,9 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     const adviceJson = JSON.parse(fs.readFileSync(path.join(tempProject, ingested.artifacts.schematic_advice), 'utf8'));
     assert.equal(adviceJson.status, 'analysis-only');
     assert.equal(adviceJson.policy.advisory_only, true);
-    assert.ok(adviceJson.findings.some(item => item.category === 'gpio-bias' && item.evidence.net === 'IR_RX'));
+    const irRxBias = adviceJson.findings.find(item => item.category === 'gpio-bias' && item.evidence.net === 'IR_RX');
+    assert.ok(irRxBias);
+    assert.equal(irRxBias.severity, 'warning');
     assert.match(hardwareFacts, /Normalized 1 components and 2 nets/);
     assert.match(hardwareFacts, /Named nets extracted: IR_RX, VDD/);
     assert.match(hardwareFacts, /Component roles, controller identity, and signal direction should be judged later by the agent from parsed.json/);
@@ -104,6 +106,76 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     assert.ok(nextContext.next_actions.some(item => item.startsWith('schematic_confirm=')));
     assert.ok(scanContext.next_reads.some(item => item.includes('schematic_handoff=')));
     assert.equal(ingested.session.last_files[0], ingested.artifacts.parsed);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('ingest schematic rebuilds stale caches missing required advice artifact', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-ingest-schematic-cache-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main(['--project', tempProject]);
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempProject, 'docs', 'button-board.json'),
+      JSON.stringify({
+        title: 'Button board',
+        components: [
+          {
+            designator: 'U1',
+            value: 'SC8F072',
+            footprint: 'SOP8',
+            pins: [
+              { number: '1', name: 'KEY', net: 'KEY' },
+              { number: '8', name: 'GND', net: 'GND' }
+            ]
+          },
+          {
+            designator: 'SW1',
+            value: 'KEY',
+            pins: [
+              { number: '1', name: '1', net: 'KEY' },
+              { number: '2', name: '2', net: 'GND' }
+            ]
+          }
+        ],
+        nets: [
+          { name: 'KEY', members: ['U1.1', 'SW1.1'] },
+          { name: 'GND', members: ['U1.8', 'SW1.2'] }
+        ]
+      }, null, 2) + '\n',
+      'utf8'
+    );
+
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const first = await cli.runIngestCommand(
+      'schematic',
+      ['--file', 'docs/button-board.json', '--format', 'altium-json']
+    );
+    assert.equal(first.cached, false);
+    fs.unlinkSync(path.join(tempProject, first.artifacts.schematic_advice));
+
+    const second = await cli.runIngestCommand(
+      'schematic',
+      ['--file', 'docs/button-board.json', '--format', 'altium-json']
+    );
+    assert.equal(second.cached, false);
+    assert.equal(fs.existsSync(path.join(tempProject, second.artifacts.schematic_advice)), true);
+
+    const adviceJson = JSON.parse(fs.readFileSync(path.join(tempProject, second.artifacts.schematic_advice), 'utf8'));
+    const keyBias = adviceJson.findings.find(item => item.category === 'gpio-bias' && item.evidence.net === 'KEY');
+    assert.ok(keyBias);
+    assert.equal(keyBias.severity, 'info');
+    assert.match(keyBias.summary, /MCU weak pull-up/);
+    assert.ok(keyBias.recommended_checks.some(item => item.includes('internal weak pull-up')));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

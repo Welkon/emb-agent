@@ -169,6 +169,44 @@ function hasExternalBiasCandidate(net, byDesignator) {
   return netHasRole(net, 'resistor', byDesignator) || isPowerNetName(net.name);
 }
 
+function connectedNetsForComponent(component, indexes) {
+  return collectComponentNets(component, indexes);
+}
+
+function isSwitchToGroundNet(net, indexes) {
+  if (!netHasRole(net, 'switch', indexes.byDesignator)) return false;
+  return makeArray(net.members).some(member => {
+    const component = componentForMember(member, indexes.byDesignator);
+    return component &&
+      guessComponentRole(component) === 'switch' &&
+      connectedNetsForComponent(component, indexes).some(componentNet => /^(?:gnd|ground|agnd|dgnd|vss)$/i.test(componentNet.name));
+  });
+}
+
+function buildGpioBiasAdvice(name, net, indexes) {
+  if (isSwitchToGroundNet(net, indexes) || /(?:key|button|sw)/i.test(name)) {
+    return {
+      severity: 'info',
+      summary: `Signal ${name} is a switch/input net without an external bias resistor; default to MCU weak pull-up when board cost is prioritized.`,
+      recommended_checks: [
+        'Confirm firmware enables the internal weak pull-up before sampling the input.',
+        'Check reset, boot, sleep, and wake-up behavior because internal pull-ups may be disabled during some states.',
+        'Use an external bias resistor only if leakage, EMI/noise margin, long wiring, or deterministic pre-firmware state requires it.'
+      ]
+    };
+  }
+
+  return {
+    severity: 'warning',
+    summary: `Signal ${name} reaches an IC/MCU input-like net but no external pull-up or pull-down candidate was detected.`,
+    recommended_checks: [
+      'Confirm whether the MCU pin has an internal pull-up/down and when firmware enables it.',
+      'Check reset, sleep, and boot-time behavior before relying only on firmware bias.',
+      'Add or verify an external bias resistor if the input must be deterministic without firmware.'
+    ]
+  };
+}
+
 function addDanglingNetFindings(findings, indexes, visualNetlist) {
   const dangling = makeArray(visualNetlist && visualNetlist.dangling_nets).length > 0
     ? makeArray(visualNetlist.dangling_nets)
@@ -203,17 +241,14 @@ function addFloatingInputFindings(findings, indexes) {
     if (!(signalLike || hasSwitch) || !hasIc || hasExternalBiasCandidate(net, indexes.byDesignator)) {
       return;
     }
+    const biasAdvice = buildGpioBiasAdvice(name, net, indexes);
     findings.push(buildFinding(
       'gpio-bias',
-      'warning',
+      biasAdvice.severity,
       'medium',
-      `Signal ${name} reaches an IC/MCU input-like net but no external pull-up or pull-down candidate was detected.`,
+      biasAdvice.summary,
       { net: name, members },
-      [
-        'Confirm whether the MCU pin has an internal pull-up/down and when firmware enables it.',
-        'Check reset, sleep, and boot-time behavior before relying only on firmware bias.',
-        'Add or verify an external bias resistor if the input must be deterministic without firmware.'
-      ]
+      biasAdvice.recommended_checks
     ));
   });
 }

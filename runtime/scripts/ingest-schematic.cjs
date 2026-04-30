@@ -1054,6 +1054,31 @@ function getArtifactPaths(projectRoot, cacheDir) {
   };
 }
 
+function schematicCacheIsComplete(artifactPaths) {
+  const requiredPaths = [
+    artifactPaths.parsedJson,
+    artifactPaths.visualNetlistJson,
+    artifactPaths.schematicAdviceJson,
+    artifactPaths.summaryJson,
+    artifactPaths.hardwareYaml,
+    artifactPaths.hardwareJson,
+    artifactPaths.sourceJson
+  ];
+  if (!requiredPaths.every(filePath => fs.existsSync(filePath))) {
+    return false;
+  }
+
+  const summary = runtime.readJson(artifactPaths.summaryJson);
+  const artifacts = summary && summary.artifacts ? summary.artifacts : {};
+  if (artifacts.preview_svg && !fs.existsSync(artifactPaths.previewSvg)) {
+    return false;
+  }
+  if (artifacts.preview_input && !fs.existsSync(artifactPaths.previewInputJson)) {
+    return false;
+  }
+  return true;
+}
+
 function confirmMcuToHardware(projectRoot, candidate, schematicPath, force) {
   const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
 
@@ -1200,7 +1225,7 @@ function ingestSchematic(argv, options) {
 
   runtime.ensureDir(getSchematicCacheRoot(projectRoot));
 
-  if (!args.force && args.confirmMcu < 0 && fs.existsSync(artifactPaths.summaryJson) && fs.existsSync(artifactPaths.hardwareJson)) {
+  if (!args.force && args.confirmMcu < 0 && schematicCacheIsComplete(artifactPaths)) {
     const cached = runtime.readJson(artifactPaths.summaryJson);
     return {
       ...normalizeSchematicResult(cached),
