@@ -209,7 +209,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'extensions')), false);
-    assert.equal(fs.existsSync(path.join(tempProject, 'src')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'src')), false);
 
     const configData = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'config.json'), 'utf8'));
     const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
