@@ -112,6 +112,29 @@ function findingId(category, parts) {
     .join('-');
 }
 
+function evidenceRequiredForCategory(category) {
+  if (category === 'gpio-bias') {
+    return ['schematic', 'mcu-datasheet', 'firmware-init'];
+  }
+  if (category === 'transistor-drive') {
+    return ['schematic', 'mcu-datasheet', 'transistor-datasheet', 'load-current'];
+  }
+  if (category === 'power-decoupling') {
+    return ['schematic', 'mcu-datasheet', 'layout-or-board-photo'];
+  }
+  if (category === 'led-current-limit') {
+    return ['schematic', 'bom-values', 'led-datasheet'];
+  }
+  return ['schematic'];
+}
+
+function reminderPolicyForSeverity(severity) {
+  if (severity === 'warning' || severity === 'error') {
+    return 'repeat-on-next-and-related-debug';
+  }
+  return 'repeat-on-related-debug';
+}
+
 function buildFinding(category, severity, confidence, summary, evidence, recommendedChecks) {
   const idParts = [
     evidence && evidence.net,
@@ -128,6 +151,9 @@ function buildFinding(category, severity, confidence, summary, evidence, recomme
     recommended_checks: makeArray(recommendedChecks),
     status: 'open',
     dismissible: true,
+    blocking: false,
+    reminder_policy: reminderPolicyForSeverity(severity),
+    evidence_required: evidenceRequiredForCategory(category),
     note: 'Advisory only; confirm against datasheets, firmware defaults, BOM values, and board requirements before changing hardware truth.'
   };
 }
@@ -395,7 +421,9 @@ function analyzeSchematicAdvice(parsed) {
     policy: {
       advisory_only: true,
       truth_write: false,
-      user_can_dismiss: true
+      user_can_dismiss: true,
+      blocking: false,
+      manual_override_allowed: true
     },
     summary: summarizeFindings(deduped),
     findings: deduped,

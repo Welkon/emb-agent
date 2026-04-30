@@ -1040,6 +1040,37 @@ function buildAgentAnalysisHandoff(sourcePath, parsed, artifacts, mcuCandidates)
   };
 }
 
+function buildHardwareReviewHandoff(parsed, artifacts) {
+  const advice = parsed && parsed.schematic_advice ? parsed.schematic_advice : {};
+  const summary = advice.summary || {};
+  const warnings = Number(summary.warnings || 0);
+  const errors = Number(summary.errors || 0);
+  const findings = Number(summary.findings || 0);
+  return {
+    required: findings > 0,
+    status: findings > 0 ? 'review-reminder' : 'no-review-findings',
+    blocking: false,
+    advisory_only: true,
+    can_continue: true,
+    command: artifacts && artifacts.parsed ? `schematic advice --parsed ${artifacts.parsed}` : 'schematic advice',
+    artifact: artifacts && artifacts.schematic_advice ? artifacts.schematic_advice : '',
+    findings,
+    warnings,
+    errors,
+    reminder_policy: warnings > 0 || errors > 0 ? 'repeat-on-next-and-related-debug' : 'repeat-on-related-debug',
+    next_step: warnings > 0 || errors > 0
+      ? 'Review warnings with schematic evidence and relevant datasheets before promoting facts to hw.yaml; do not block user progress.'
+      : 'Keep advice available for related debug or manual review; do not block user progress.',
+    evidence_order: [
+      'schematic evidence',
+      'datasheets/manuals',
+      'BOM values',
+      'firmware defaults',
+      'board intent or measurement'
+    ]
+  };
+}
+
 function getArtifactPaths(projectRoot, cacheDir) {
   return {
     parsedJson: path.join(cacheDir, 'parsed.json'),
@@ -1327,6 +1358,7 @@ function ingestSchematic(argv, options) {
     cache_dir: path.relative(projectRoot, cacheDir).replace(/\\/g, '/'),
     artifacts,
     agent_analysis: null,
+    hardware_review: buildHardwareReviewHandoff(parsed, artifacts),
     last_files: [
       path.relative(projectRoot, artifactPaths.parsedJson).replace(/\\/g, '/'),
       path.relative(projectRoot, artifactPaths.visualNetlistJson).replace(/\\/g, '/'),

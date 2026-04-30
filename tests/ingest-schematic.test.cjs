@@ -85,9 +85,14 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     const adviceJson = JSON.parse(fs.readFileSync(path.join(tempProject, ingested.artifacts.schematic_advice), 'utf8'));
     assert.equal(adviceJson.status, 'analysis-only');
     assert.equal(adviceJson.policy.advisory_only, true);
+    assert.equal(adviceJson.policy.blocking, false);
+    assert.equal(adviceJson.policy.manual_override_allowed, true);
     const irRxBias = adviceJson.findings.find(item => item.category === 'gpio-bias' && item.evidence.net === 'IR_RX');
     assert.ok(irRxBias);
     assert.equal(irRxBias.severity, 'warning');
+    assert.equal(irRxBias.blocking, false);
+    assert.equal(irRxBias.reminder_policy, 'repeat-on-next-and-related-debug');
+    assert.ok(irRxBias.evidence_required.includes('mcu-datasheet'));
     assert.match(hardwareFacts, /Normalized 1 components and 2 nets/);
     assert.match(hardwareFacts, /Named nets extracted: IR_RX, VDD/);
     assert.match(hardwareFacts, /Component roles, controller identity, and signal direction should be judged later by the agent from parsed.json/);
@@ -98,6 +103,11 @@ test('ingest schematic normalizes exported json into raw board data artifacts', 
     assert.equal(summaryJson.component_refs.length, 0);
     assert.equal(summaryJson.agent_analysis.required, true);
     assert.equal(summaryJson.agent_analysis.recommended_agent, 'emb-hw-scout');
+    assert.equal(summaryJson.hardware_review.required, true);
+    assert.equal(summaryJson.hardware_review.blocking, false);
+    assert.equal(summaryJson.hardware_review.can_continue, true);
+    assert.equal(summaryJson.hardware_review.command, `schematic advice --parsed ${ingested.artifacts.parsed}`);
+    assert.equal(ingested.hardware_review.blocking, false);
     assert.ok(summaryJson.agent_analysis.inputs.includes(ingested.artifacts.parsed));
     assert.ok(summaryJson.agent_analysis.inputs.includes(ingested.artifacts.visual_netlist));
     assert.ok(summaryJson.agent_analysis.inputs.includes(ingested.artifacts.schematic_advice));
@@ -174,6 +184,8 @@ test('ingest schematic rebuilds stale caches missing required advice artifact', 
     const keyBias = adviceJson.findings.find(item => item.category === 'gpio-bias' && item.evidence.net === 'KEY');
     assert.ok(keyBias);
     assert.equal(keyBias.severity, 'info');
+    assert.equal(keyBias.blocking, false);
+    assert.equal(keyBias.reminder_policy, 'repeat-on-related-debug');
     assert.match(keyBias.summary, /MCU weak pull-up/);
     assert.ok(keyBias.recommended_checks.some(item => item.includes('internal weak pull-up')));
   } finally {
