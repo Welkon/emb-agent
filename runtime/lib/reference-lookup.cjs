@@ -739,11 +739,12 @@ async function lookupComponents(projectRootInput, argv, deps) {
 
 function querySchematic(projectRootInput, subject, argv, deps) {
   const args = Array.isArray(argv) ? parseSchematicQueryArgs(argv) : (argv || {});
+  const runtime = deps.runtime;
   const normalizedSubject = String(subject || 'summary').trim() || 'summary';
   if (args.help) {
     return {
       command: `schematic ${normalizedSubject}`,
-      usage: 'schematic <summary|components|component|nets|net|bom|preview|raw> [--parsed <parsed.json>] [--file <schematic>] [--ref <designator>] [--name <net>] [--record <n>] [--limit <n>]'
+      usage: 'schematic <summary|components|component|nets|net|bom|advice|preview|raw> [--parsed <parsed.json>] [--file <schematic>] [--ref <designator>] [--name <net>] [--record <n>] [--limit <n>]'
     };
   }
 
@@ -776,6 +777,7 @@ function querySchematic(projectRootInput, subject, argv, deps) {
         nets: nets.length,
         objects: objects.length,
         bom_lines: bom.length,
+        advice: parsed.schematic_advice && parsed.schematic_advice.summary ? parsed.schematic_advice.summary : null,
         preview: parsed.preview && parsed.preview.summary ? parsed.preview.summary : null,
         visual_netlist: parsed.visual_netlist || null,
         raw_summary: parsed.raw_summary || {}
@@ -827,6 +829,32 @@ function querySchematic(projectRootInput, subject, argv, deps) {
     return {
       ...base,
       bom: bom.slice(0, limit)
+    };
+  }
+
+  if (normalizedSubject === 'advice') {
+    const parsedPath = entry.parsed_path || args.parsed || '';
+    const parsedDir = parsedPath ? path.dirname(path.resolve(projectRoot, parsedPath)) : '';
+    const advicePath = parsedDir ? path.join(parsedDir, 'analysis.schematic-advice.json') : '';
+    const adviceRelative = advicePath && fs.existsSync(advicePath)
+      ? normalizePath(path.relative(projectRoot, advicePath))
+      : '';
+    let advice = parsed.schematic_advice || null;
+    if (!advice && advicePath && fs.existsSync(advicePath)) {
+      advice = runtime.readJson(advicePath);
+    }
+    const findings = Array.isArray(advice && advice.findings) ? advice.findings : [];
+    return {
+      ...base,
+      advice: {
+        available: Boolean(advice),
+        summary: advice && advice.summary ? advice.summary : null,
+        findings: findings.slice(0, limit),
+        artifacts: {
+          advice: adviceRelative
+        },
+        note: 'Advice findings are dismissible engineering review prompts; confirm with datasheets, BOM values, firmware defaults, and board intent before changing hardware truth.'
+      }
     };
   }
 

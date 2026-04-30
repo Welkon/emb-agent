@@ -174,6 +174,38 @@ test('schematic query commands expose parsed components nets bom and raw objects
         visual_netlist: {
           graph: { components: 1, nets: 1, named_nets: 1 }
         },
+        schematic_advice: {
+          version: 1,
+          status: 'analysis-only',
+          policy: {
+            advisory_only: true,
+            truth_write: false,
+            user_can_dismiss: true
+          },
+          summary: {
+            findings: 1,
+            errors: 0,
+            warnings: 1,
+            info: 0,
+            categories: {
+              'gpio-bias': 1
+            }
+          },
+          findings: [
+            {
+              id: 'gpio-bias-pwm-out',
+              category: 'gpio-bias',
+              severity: 'warning',
+              confidence: 'medium',
+              summary: 'Signal PWM_OUT reaches an IC/MCU input-like net but no external pull-up or pull-down candidate was detected.',
+              evidence: { net: 'PWM_OUT', members: ['U1.1', 'R1.1'] },
+              recommended_checks: ['Confirm the MCU pin bias and firmware default state.'],
+              status: 'open',
+              dismissible: true
+            }
+          ],
+          review_focus: ['Treat findings as review prompts, not schematic errors.']
+        },
         preview: {
           summary: {
             renderer: 'emb-agent-schdoc-svg-preview-v1',
@@ -192,6 +224,41 @@ test('schematic query commands expose parsed components nets bom and raw objects
       JSON.stringify({ renderer: 'emb-agent-schdoc-svg-preview-v1' }, null, 2)
     );
     fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'cache', 'schematics', 'fixture', 'analysis.schematic-advice.json'),
+      JSON.stringify({
+        version: 1,
+        status: 'analysis-only',
+        policy: {
+          advisory_only: true,
+          truth_write: false,
+          user_can_dismiss: true
+        },
+        summary: {
+          findings: 1,
+          errors: 0,
+          warnings: 1,
+          info: 0,
+          categories: {
+            'gpio-bias': 1
+          }
+        },
+        findings: [
+          {
+            id: 'gpio-bias-pwm-out',
+            category: 'gpio-bias',
+            severity: 'warning',
+            confidence: 'medium',
+            summary: 'Signal PWM_OUT reaches an IC/MCU input-like net but no external pull-up or pull-down candidate was detected.',
+            evidence: { net: 'PWM_OUT', members: ['U1.1', 'R1.1'] },
+            recommended_checks: ['Confirm the MCU pin bias and firmware default state.'],
+            status: 'open',
+            dismissible: true
+          }
+        ],
+        review_focus: ['Treat findings as review prompts, not schematic errors.']
+      }, null, 2)
+    );
+    fs.writeFileSync(
       path.join(tempProject, '.emb-agent', 'cache', 'schematics', 'fixture', 'preview.svg'),
       '<svg xmlns="http://www.w3.org/2000/svg"></svg>\n'
     );
@@ -202,16 +269,23 @@ test('schematic query commands expose parsed components nets bom and raw objects
     const component = await captureCliJson(['schematic', 'component', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json', '--ref', 'U1']);
     const net = await captureCliJson(['schematic', 'net', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json', '--name', 'PWM_OUT']);
     const bom = await captureCliJson(['schematic', 'bom', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json']);
+    const advice = await captureCliJson(['schematic', 'advice', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json']);
     const preview = await captureCliJson(['schematic', 'preview', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json']);
     const raw = await captureCliJson(['schematic', 'raw', '--parsed', '.emb-agent/cache/schematics/fixture/parsed.json', '--record', '12']);
 
     assert.equal(summary.command, 'schematic summary');
     assert.equal(summary.summary.components, 1);
     assert.equal(summary.summary.nets, 1);
+    assert.equal(summary.summary.advice.findings, 1);
     assert.equal(component.component.designator, 'U1');
     assert.equal(component.pins[0].net, 'PWM_OUT');
     assert.equal(net.net.evidence[0].kind, 'net_label');
     assert.equal(bom.bom[0].quantity, 1);
+    assert.equal(advice.advice.available, true);
+    assert.equal(advice.advice.summary.findings, 1);
+    assert.equal(advice.advice.findings[0].category, 'gpio-bias');
+    assert.equal(advice.advice.artifacts.advice, '.emb-agent/cache/schematics/fixture/analysis.schematic-advice.json');
+    assert.match(advice.advice.note, /dismissible engineering review prompts/);
     assert.equal(preview.preview.available, true);
     assert.equal(preview.preview.summary.renderer, 'emb-agent-schdoc-svg-preview-v1');
     assert.equal(preview.preview.artifacts.svg, '.emb-agent/cache/schematics/fixture/preview.svg');
