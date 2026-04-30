@@ -27,6 +27,9 @@ allowed-tools:
 - Usually `start` should decide when you need `task add` or `task activate`; use `task` directly once the task lifecycle is already explicit.
 - If the change surface is still unclear, create the task first so `prd.md` exists, then use `capability run scan` to converge scope before `capability run plan` or `capability run do`.
 - After `task add`, treat the generated `prd.md` as the lightweight convergence point: lock goal, constraints, acceptance, and open questions before deciding whether the next capability is `scan` or `plan`.
+- When converting conversation into a task, synthesize what is already known first. Ask only for missing load-bearing decisions, and prefer reading project files, `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, schematics, PCB artifacts, manuals, and task context over interviewing the user.
+- For large work, split into task/subtask vertical slices: each slice should produce a narrow but complete, verifiable path through the relevant firmware, hardware truth, support, documentation, and verification surfaces.
+- Mark slices that need human judgment, bench access, part selection, or schematic/layout acceptance as human-gated instead of pretending they are agent-ready.
 - After `task activate`, keep the same PRD in the loop instead of jumping straight into mutation; if the task still drifts, run `capability run scan` first, otherwise move into `capability run plan`.
 - Use `task add --parent <name>` or `task subtask add <parent> <child>` when larger work needs a visible task tree.
 - In monorepo projects, use `task add --package <name>` to bind the task to one package and carry that package into activation and status.
@@ -36,4 +39,5 @@ allowed-tools:
 - Use `task worktree create <name>` when you need the workspace before moving task status to `in_progress`.
 - Use `task worktree status` or `task worktree show <name>` to inspect workspace state, registry, current-task pointers, package submodule metadata, and PR readiness.
 - Prefer `task worktree status` or `task worktree show <name>` before `create` or `cleanup`; they expose `workspace_state`, `attention`, and a plain-language summary for the operator.
+- During debugging tasks, require a feedback loop before mutation when practical: failing test, CLI fixture, parser fixture, captured trace, simulator run, bench step, or a clearly documented non-reproducible gap.
 - Before `task resolve`, complete `task aar scan`. If any answer is `yes`, complete `task aar record` first.

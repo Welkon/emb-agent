@@ -8,6 +8,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const agentsDir = path.join(repoRoot, 'agents');
 const commandsDir = path.join(repoRoot, 'commands', 'emb');
+const packageJsonPath = path.join(repoRoot, 'package.json');
 
 function readMarkdownFiles(dir) {
   return fs.readdirSync(dir)
@@ -73,4 +74,25 @@ test('all emb commands declare allowed-tools with at least one entry', () => {
     assert.ok(description, `${file} is missing description`);
     assert.ok(allowedTools.length > 0, `${file} is missing allowed-tools entries`);
   }
+});
+
+test('absorbed engineering workflow stays in commands and agents, not core skills', () => {
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  assert.equal(fs.existsSync(path.join(repoRoot, 'skills')), false, 'emb-agent core should not ship a top-level skills catalog');
+  assert.equal(
+    packageJson.files.includes('skills'),
+    false,
+    'package.json should not publish a generic top-level skills catalog'
+  );
+
+  const bugHunter = fs.readFileSync(path.join(agentsDir, 'emb-bug-hunter.md'), 'utf8');
+  const fwDoer = fs.readFileSync(path.join(agentsDir, 'emb-fw-doer.md'), 'utf8');
+  const taskCommand = fs.readFileSync(path.join(commandsDir, 'task.md'), 'utf8');
+  const skillsCommand = fs.readFileSync(path.join(commandsDir, 'skills.md'), 'utf8');
+
+  assert.match(bugHunter, /fast feedback loop/);
+  assert.match(bugHunter, /falsifiable prediction/);
+  assert.match(fwDoer, /vertical slices/);
+  assert.match(taskCommand, /vertical slices/);
+  assert.match(skillsCommand, /optional integration surfaces/);
 });
