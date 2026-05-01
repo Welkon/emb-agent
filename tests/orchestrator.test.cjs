@@ -426,6 +426,8 @@ test('orchestrate launch falls back to manual worker requests without host bridg
     assert.equal(launch.launched, false);
     assert.equal(launch.mode, 'lightweight-action-orchestrator');
     assert.equal(launch.subagent_bridge.status, 'bridge-unavailable');
+    assert.equal(launch.subagent_bridge.manual_workers_required, true);
+    assert.match(launch.subagent_bridge.summary, /manual execution/);
     assert.equal(launch.delegation_jobs.length, 0);
     assert.ok(launch.delegation_runtime.launch_requests.some(item => item.agent === 'emb-hw-scout'));
     assert.equal(launch.delegation_runtime.synthesis.status, 'manual-workers-required');
