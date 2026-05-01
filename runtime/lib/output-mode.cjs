@@ -709,6 +709,16 @@ function buildBriefNextContext(value) {
     context_hygiene: summarizeContextHygiene(value.context_hygiene),
     recommended_flow: summarizeRecommendedFlow(value.recommended_flow || next.recommended_flow),
     handoff_protocol: summarizeHandoffProtocol(value.handoff_protocol || next.handoff_protocol),
+    knowledge_graph: isObject(value.knowledge_graph)
+      ? compactObject({
+          state: value.knowledge_graph.state || '',
+          stale: value.knowledge_graph.stale === true,
+          next_step:
+            Array.isArray(value.knowledge_graph.next_steps) && value.knowledge_graph.next_steps.length > 0
+              ? value.knowledge_graph.next_steps[0]
+              : ''
+        })
+      : null,
     board_evidence: summarizeBoardEvidence(value.board_evidence),
     optional_evidence_actions: truncateList(value.optional_evidence_actions, 3),
     next_actions: truncateList(value.next_actions, 5),
@@ -1058,6 +1068,16 @@ function buildBriefDispatchOrchestrateOutput(value) {
     subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
     delegation_runtime: summarizeDelegationRuntime(value.delegation_runtime),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
+    knowledge_graph: isObject(value.knowledge_graph)
+      ? compactObject({
+          state: value.knowledge_graph.state || '',
+          stale: value.knowledge_graph.stale === true,
+          next_step:
+            Array.isArray(value.knowledge_graph.next_steps) && value.knowledge_graph.next_steps.length > 0
+              ? value.knowledge_graph.next_steps[0]
+              : ''
+        })
+      : null,
     runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),
     context_hygiene: summarizeContextHygiene(value.context_hygiene)
   });

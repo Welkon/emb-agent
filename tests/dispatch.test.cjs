@@ -103,6 +103,8 @@ test('dispatch next follows next routing and returns debug contract when questio
     assert.match(dispatch.cli, / debug$/);
     assert.equal(dispatch.workflow_stage.name, 'execution');
     assert.equal(dispatch.workflow_stage.primary_command, 'debug');
+    assert.equal(dispatch.knowledge_graph.state, 'missing');
+    assert.ok(dispatch.knowledge_graph.next_steps.includes('knowledge graph refresh'));
     assert.equal(dispatch.agent_execution.primary_agent, 'emb-bug-hunter');
     assert.equal(dispatch.agent_execution.dispatch_contract.primary.spawn_fallback.fallback_agent_type, 'default');
     assert.ok(dispatch.reason.includes('Open questions'));
