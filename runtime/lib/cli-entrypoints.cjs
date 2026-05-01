@@ -800,6 +800,12 @@ function createCliEntryHelpers(deps) {
           'memory extract [--confirm] [note]',
           'memory audit',
           'memory promote [--confirm] <entry> --to <organization|user|project|local>',
+          'knowledge init',
+          'knowledge index [--rebuild]',
+          'knowledge log [--tail <n>]',
+          'knowledge lint',
+          'knowledge save-query [--confirm] <title> [--summary <text>] [--body <text>] [--kind <query|decision|risk|chip|peripheral|board>]',
+          'knowledge ingest [--confirm] <source-title> [--summary <text>] [--body <text>]',
           'commands list',
           'commands list --all',
           'commands show <name>'

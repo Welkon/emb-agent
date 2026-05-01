@@ -66,6 +66,7 @@ const {
   subAgentRuntimeHelpers,
   skillRuntimeHelpers,
   memoryRuntimeHelpers,
+  knowledgeRuntimeHelpers,
   workflowRegistry,
   workflowImportHelpers,
   RUNTIME_CONFIG,
@@ -518,6 +519,19 @@ const {
 });
 
 const {
+  handleKnowledgeCommands
+} = knowledgeRuntimeHelpers.createKnowledgeRuntimeHelpers({
+  fs,
+  path,
+  process,
+  runtime,
+  permissionGateHelpers,
+  getProjectExtDir,
+  getProjectConfig,
+  updateSession
+});
+
+const {
   runSessionReport,
   listStoredSessionReports,
   buildCurrentSessionView,
@@ -627,6 +641,7 @@ const {
   handleSettingsCommands,
   handleSessionReportCommands,
   handleTranscriptCommands,
+  handleKnowledgeCommands,
   listSkills,
   loadSkill,
   runSkill,
