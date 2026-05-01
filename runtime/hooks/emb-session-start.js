@@ -5,7 +5,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const childProcess = require('child_process');
 const hookDispatchHelpers = require('../lib/hook-dispatch.cjs');
 const hookTrustHelpers = require('../lib/hook-trust.cjs');
@@ -17,6 +16,7 @@ const workflowRegistry = require('../lib/workflow-registry.cjs');
 const sessionReportStoreHelpers = require('../lib/session-report-store.cjs');
 const specLoader = require('../lib/spec-loader.cjs');
 const workflowStateHelpers = require('../lib/workflow-state.cjs');
+const knowledgeGraphState = require('../lib/knowledge-graph-state.cjs');
 
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const HOOK_VERSION = '{{EMB_VERSION}}';
@@ -106,83 +106,6 @@ function buildUpdateLines() {
   }
 
   return lines;
-}
-
-function listFilesRecursive(dirPath, predicate) {
-  if (!fs.existsSync(dirPath)) {
-    return [];
-  }
-  const files = [];
-  function walk(currentDir) {
-    fs.readdirSync(currentDir, { withFileTypes: true }).forEach(entry => {
-      const filePath = path.join(currentDir, entry.name);
-      if (entry.isDirectory()) {
-        walk(filePath);
-        return;
-      }
-      if (entry.isFile() && (!predicate || predicate(filePath))) {
-        files.push(filePath);
-      }
-    });
-  }
-  walk(dirPath);
-  return files.sort();
-}
-
-function sha256Text(value) {
-  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
-}
-
-function readTextIfExists(filePath) {
-  return fs.existsSync(filePath) ? String(fs.readFileSync(filePath, 'utf8') || '') : '';
-}
-
-function buildGraphTrackedManifest(projectRoot) {
-  const projectExtDir = runtime.getProjectExtDir(projectRoot);
-  const wikiDir = path.join(projectExtDir, 'wiki');
-  const wikiPages = listFilesRecursive(wikiDir, filePath => {
-    if (!/\.md$/i.test(filePath)) return false;
-    const relativePath = path.relative(wikiDir, filePath).replace(/\\/g, '/');
-    return relativePath !== 'index.md' && relativePath !== 'log.md';
-  });
-  const trackedFiles = [
-    path.join(projectExtDir, 'project.json'),
-    path.join(projectExtDir, 'hw.yaml'),
-    path.join(projectExtDir, 'req.yaml'),
-    ...listFilesRecursive(path.join(projectExtDir, 'formulas'), filePath => /\.json$/i.test(filePath)),
-    ...listFilesRecursive(path.join(projectExtDir, 'runs'), filePath => /\.json$/i.test(filePath)),
-    ...listFilesRecursive(path.join(projectExtDir, 'firmware-snippets'), filePath => /\.md$/i.test(filePath)),
-    ...wikiPages
-  ];
-  const manifest = {};
-  trackedFiles.forEach(filePath => {
-    if (!fs.existsSync(filePath)) return;
-    const relativePath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
-    manifest[relativePath] = sha256Text(readTextIfExists(filePath));
-  });
-  return manifest;
-}
-
-function detectKnowledgeGraphFreshness(projectRoot, graph) {
-  const projectExtDir = runtime.getProjectExtDir(projectRoot);
-  const manifestPath = path.join(projectExtDir, 'graph', 'cache', 'manifest.json');
-  let stored = graph && graph.manifest && typeof graph.manifest === 'object' && !Array.isArray(graph.manifest)
-    ? graph.manifest
-    : {};
-  if (fs.existsSync(manifestPath)) {
-    try {
-      stored = JSON.parse(String(fs.readFileSync(manifestPath, 'utf8') || '{}'));
-    } catch {
-      stored = {};
-    }
-  }
-  const current = buildGraphTrackedManifest(projectRoot);
-  const keys = [...new Set([...Object.keys(stored), ...Object.keys(current)])].sort();
-  const changedFiles = keys.filter(key => stored[key] !== current[key]);
-  return {
-    stale: changedFiles.length > 0,
-    changed_files: changedFiles
-  };
 }
 
 function buildInjectedWorkflowSpecLines(projectRoot, resume) {
@@ -457,7 +380,11 @@ function runHook(rawInput) {
             `Graph summary: nodes=${graph.stats.nodes || 0}, edges=${graph.stats.edges || 0}, ambiguous=${graph.stats.ambiguous_edges || 0}`
           );
         }
-        const freshness = detectKnowledgeGraphFreshness(projectRoot, graph);
+        const freshness = knowledgeGraphState.readKnowledgeGraphFreshness(projectRoot, graph, {
+          fs,
+          path,
+          runtime
+        });
         if (freshness.stale) {
           graphLines.push(`Knowledge graph stale: ${freshness.changed_files.length} tracked file(s) changed; run knowledge graph refresh`);
           freshness.changed_files.slice(0, 5).forEach(file => {

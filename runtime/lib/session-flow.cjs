@@ -1,6 +1,5 @@
 'use strict';
 
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -15,6 +14,7 @@ const workflowRegistry = require('./workflow-registry.cjs');
 const capabilityCatalog = require('./capability-catalog.cjs');
 const capabilityRouter = require('./capability-router.cjs');
 const boardEvidence = require('./board-evidence.cjs');
+const knowledgeGraphState = require('./knowledge-graph-state.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
@@ -103,126 +103,6 @@ function createSessionFlowHelpers(deps) {
 
   function buildCli(args) {
     return runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, Array.isArray(args) ? args : []);
-  }
-
-  function readTextIfExists(filePath) {
-    return fs.existsSync(filePath) ? String(fs.readFileSync(filePath, 'utf8') || '') : '';
-  }
-
-  function readJsonIfExists(filePath) {
-    try {
-      return fs.existsSync(filePath) ? JSON.parse(String(fs.readFileSync(filePath, 'utf8') || '{}')) : null;
-    } catch {
-      return null;
-    }
-  }
-
-  function sha256Text(value) {
-    return crypto.createHash('sha256').update(String(value || '')).digest('hex');
-  }
-
-  function listFilesRecursive(dirPath, predicate) {
-    if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) {
-      return [];
-    }
-    const found = [];
-    fs.readdirSync(dirPath, { withFileTypes: true }).forEach(entry => {
-      const entryPath = path.join(dirPath, entry.name);
-      if (entry.isDirectory()) {
-        found.push(...listFilesRecursive(entryPath, predicate));
-        return;
-      }
-      if (entry.isFile() && (!predicate || predicate(entryPath))) {
-        found.push(entryPath);
-      }
-    });
-    return found.sort();
-  }
-
-  function buildKnowledgeGraphManifest(projectRoot) {
-    const projectExtDir = runtime.getProjectExtDir(projectRoot);
-    const wikiDir = path.join(projectExtDir, 'wiki');
-    const wikiPages = listFilesRecursive(wikiDir, filePath => {
-      if (!/\.md$/i.test(filePath)) return false;
-      const relativePath = path.relative(wikiDir, filePath).replace(/\\/g, '/');
-      return relativePath !== 'index.md' && relativePath !== 'log.md';
-    });
-    const trackedFiles = [
-      path.join(projectExtDir, 'project.json'),
-      path.join(projectExtDir, 'hw.yaml'),
-      path.join(projectExtDir, 'req.yaml'),
-      ...listFilesRecursive(path.join(projectExtDir, 'formulas'), filePath => /\.json$/i.test(filePath)),
-      ...listFilesRecursive(path.join(projectExtDir, 'runs'), filePath => /\.json$/i.test(filePath)),
-      ...listFilesRecursive(path.join(projectExtDir, 'firmware-snippets'), filePath => /\.md$/i.test(filePath)),
-      ...wikiPages
-    ];
-    const manifest = {};
-    trackedFiles.forEach(filePath => {
-      if (!fs.existsSync(filePath)) return;
-      const relativePath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
-      manifest[relativePath] = sha256Text(readTextIfExists(filePath));
-    });
-    return manifest;
-  }
-
-  function buildKnowledgeGraphSummary(projectRoot) {
-    const projectExtDir = runtime.getProjectExtDir(projectRoot);
-    const graphPath = path.join(projectExtDir, 'graph', 'graph.json');
-    const graphRelativePath = runtime.getProjectAssetRelativePath('graph', 'graph.json');
-    const refreshStep = 'knowledge graph refresh';
-    if (!fs.existsSync(graphPath)) {
-      return {
-        initialized: false,
-        state: 'missing',
-        stale: false,
-        graph_file: graphRelativePath,
-        changed_files: [],
-        added_files: [],
-        modified_files: [],
-        removed_files: [],
-        next_steps: [refreshStep]
-      };
-    }
-    const graph = readJsonIfExists(graphPath) || {};
-    const manifestPath = path.join(projectExtDir, 'graph', 'cache', 'manifest.json');
-    const stored =
-      readJsonIfExists(manifestPath) ||
-      (graph && graph.manifest && typeof graph.manifest === 'object' && !Array.isArray(graph.manifest)
-        ? graph.manifest
-        : {});
-    const current = buildKnowledgeGraphManifest(projectRoot);
-    const keys = [...new Set([...Object.keys(stored), ...Object.keys(current)])].sort();
-    const added = [];
-    const modified = [];
-    const removed = [];
-    keys.forEach(key => {
-      if (!Object.prototype.hasOwnProperty.call(stored, key)) {
-        added.push(key);
-        return;
-      }
-      if (!Object.prototype.hasOwnProperty.call(current, key)) {
-        removed.push(key);
-        return;
-      }
-      if (stored[key] !== current[key]) {
-        modified.push(key);
-      }
-    });
-    const changedFiles = [...added, ...modified, ...removed];
-    const stale = changedFiles.length > 0;
-    return {
-      initialized: true,
-      state: stale ? 'stale' : 'fresh',
-      stale,
-      graph_file: graphRelativePath,
-      manifest_file: runtime.getProjectAssetRelativePath('graph', 'cache', 'manifest.json'),
-      stats: graph.stats || null,
-      changed_files: changedFiles,
-      added_files: added,
-      modified_files: modified,
-      removed_files: removed,
-      next_steps: stale ? [refreshStep] : []
-    };
   }
 
   function buildPreferredCapabilityCli(name) {
@@ -2056,7 +1936,11 @@ function createSessionFlowHelpers(deps) {
     const boardEvidenceSummary = boardEvidence.summarizeBoardEvidence(resolved.session.project_root, {
       limit: 8
     });
-    const knowledgeGraph = buildKnowledgeGraphSummary(resolved.session.project_root);
+    const knowledgeGraph = knowledgeGraphState.summarizeKnowledgeGraph(resolved.session.project_root, {
+      fs,
+      path,
+      runtime
+    });
     const permissionGates = permissionGateHelpers.buildPermissionGates({
       quality_gates: qualityGates
     });
