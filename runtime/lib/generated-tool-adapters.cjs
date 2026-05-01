@@ -215,13 +215,29 @@ function buildRegisterWritePlan(sourceValues, defaults, keys) {
           'binding evidence',
           'selected tool candidate',
           'local SDK/HAL headers',
-          'current firmware style'
+          'current firmware style',
+          'worktree status and dirty source files',
+          'neighboring ISR clock low-power and init-order code'
         ]
+      },
+      workflow: [
+        'inspect local firmware files before writing code',
+        'author a project-local review artifact by default',
+        'write the artifact under .emb-agent/firmware-snippets/ when source files are dirty or the integration is behavior-changing',
+        'patch firmware sources only when explicitly requested and the integration plan covers affected call sites'
+      ],
+      artifact_policy: {
+        default_directory: '.emb-agent/firmware-snippets',
+        source_editing: 'review-artifact-first',
+        dirty_worktree: 'do not overwrite stage or reformat dirty firmware source files',
+        template_policy: 'do not use a hand-maintained snippet template library'
       },
       required_output: [
         'code_snippet',
         'assumptions',
         'required_symbols',
+        'source_edit_policy',
+        'behavior_couplings',
         'write_ordering',
         'safety_notes',
         'verification_evidence',
@@ -230,11 +246,15 @@ function buildRegisterWritePlan(sourceValues, defaults, keys) {
       gates: [
         'link generated code back to register_writes.registers[] values',
         'compile or static-check when a local toolchain is available',
+        'mark source patches blocked when dirty source files or unreviewed behavior couplings exist',
         'keep snippet draft until review or verification evidence exists'
       ],
       constraints: [
         'do not invent handles channels macros or init order',
         'prefer project-local firmware style over generic vendor examples',
+        'do not add helper functions solely to wrap generated register writes',
+        'do not patch firmware sources when relevant source files are dirty unless the user explicitly requests that integration',
+        'do not treat generated C or HAL statements as final firmware without local context review',
         'state missing SDK HAL context explicitly'
       ]
     }

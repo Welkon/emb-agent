@@ -399,7 +399,27 @@ test('generated draft timer route can execute first-pass timer search', async ()
     );
     assert.ok(result.best_candidate.register_writes.firmware_snippet_request.required_output.includes('code_snippet'));
     assert.ok(
+      result.best_candidate.register_writes.firmware_snippet_request.required_output.includes('source_edit_policy')
+    );
+    assert.ok(
+      result.best_candidate.register_writes.firmware_snippet_request.required_output.includes('behavior_couplings')
+    );
+    assert.equal(
+      result.best_candidate.register_writes.firmware_snippet_request.artifact_policy.default_directory,
+      '.emb-agent/firmware-snippets'
+    );
+    assert.equal(
+      result.best_candidate.register_writes.firmware_snippet_request.artifact_policy.source_editing,
+      'review-artifact-first'
+    );
+    assert.ok(
+      result.best_candidate.register_writes.firmware_snippet_request.workflow.some(item => item.includes('project-local review artifact'))
+    );
+    assert.ok(
       result.best_candidate.register_writes.firmware_snippet_request.gates.some(item => item.includes('compile'))
+    );
+    assert.ok(
+      result.best_candidate.register_writes.firmware_snippet_request.gates.some(item => item.includes('behavior couplings'))
     );
     assert.ok(Array.isArray(result.candidates));
     assert.ok(result.candidates.length > 0);
@@ -608,6 +628,16 @@ test('generated draft pwm route can execute first-pass pwm search', async () => 
     assert.ok(
       result.best_candidate.register_writes.firmware_snippet_request.constraints.includes(
         'do not invent handles channels macros or init order'
+      )
+    );
+    assert.ok(
+      result.best_candidate.register_writes.firmware_snippet_request.constraints.includes(
+        'do not add helper functions solely to wrap generated register writes'
+      )
+    );
+    assert.ok(
+      result.best_candidate.register_writes.firmware_snippet_request.constraints.includes(
+        'do not patch firmware sources when relevant source files are dirty unless the user explicitly requests that integration'
       )
     );
     assert.ok(Array.isArray(result.candidates));
