@@ -1,6 +1,8 @@
 'use strict';
 
 const knowledgeGraphState = require('./knowledge-graph-state.cjs');
+const knowledgeFollowups = require('./knowledge-followups.cjs');
+const registerWriteArtifact = require('./register-write-artifact.cjs');
 
 function createKnowledgeRuntimeHelpers(deps) {
   const {
@@ -515,30 +517,10 @@ function createKnowledgeRuntimeHelpers(deps) {
       throw new Error(`Tool output JSON not found or invalid: ${sourceArg}`);
     }
 
-    let selected = null;
-    const pending = [toolOutput.best_candidate, toolOutput.threshold_selection, toolOutput.selection, toolOutput.result, toolOutput];
-    while (!selected && pending.length > 0) {
-      const current = pending.shift();
-      if (!current || typeof current !== 'object' || Array.isArray(current)) {
-        continue;
-      }
-      if (
-        current.register_writes &&
-        typeof current.register_writes === 'object' &&
-        !Array.isArray(current.register_writes) &&
-        Array.isArray(current.register_writes.registers)
-      ) {
-        selected = current;
-        break;
-      }
-      Object.values(current).forEach(child => {
-        if (child && typeof child === 'object') {
-          pending.push(child);
-        }
-      });
-    }
-    const registerWrites = selected ? selected.register_writes : findRegisterWrites(toolOutput);
-    const registers = normalizeRegisterNames(registerWrites);
+    const foundRegisterWrites = registerWriteArtifact.findRegisterWriteCandidate(toolOutput);
+    const selected = foundRegisterWrites ? foundRegisterWrites.candidate : null;
+    const registerWrites = foundRegisterWrites ? foundRegisterWrites.register_writes : null;
+    const registers = registerWriteArtifact.normalizeRegisterNames(registerWrites);
     if (registers.length === 0) {
       throw new Error('No register writes found in tool output');
     }
@@ -660,11 +642,10 @@ function createKnowledgeRuntimeHelpers(deps) {
     const formulasDir = path.join(getProjectExtDir(), 'formulas');
     const targetPath = path.join(formulasDir, `${chipSlug}.json`);
     const targetDisplay = runtime.getProjectAssetRelativePath('formulas', `${chipSlug}.json`);
-    const nextSteps = [
-      'knowledge graph refresh',
-      `knowledge graph explain formula:${formulas[0].id}`,
-      `knowledge graph query ${registers[0]}`
-    ];
+    const nextSteps = knowledgeFollowups.buildFormulaDraftFollowups({
+      formulaId: formulas[0].id,
+      firstRegister: registers[0]
+    });
     if (!explicitConfirmation) {
       return {
         status: 'confirmation-required',
@@ -1253,38 +1234,6 @@ function createKnowledgeRuntimeHelpers(deps) {
     return String(parsed.chip || parsed.model || parsed.device || '').trim();
   }
 
-  function findRegisterWrites(value) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return null;
-    }
-    if (
-      value.register_writes &&
-      typeof value.register_writes === 'object' &&
-      !Array.isArray(value.register_writes) &&
-      Array.isArray(value.register_writes.registers)
-    ) {
-      return value.register_writes;
-    }
-    if (Array.isArray(value.registers) && value.firmware_snippet_request) {
-      return value;
-    }
-    for (const key of ['best_candidate', 'threshold_selection', 'selection', 'result']) {
-      const found = findRegisterWrites(value[key]);
-      if (found) return found;
-    }
-    for (const child of Object.values(value)) {
-      const found = findRegisterWrites(child);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  function normalizeRegisterNames(registerWrites) {
-    return (registerWrites && Array.isArray(registerWrites.registers) ? registerWrites.registers : [])
-      .map(item => String(item && item.register ? item.register : '').trim())
-      .filter(Boolean);
-  }
-
   function registerNodeIdFor(chip, registerName) {
     return buildGraphNodeId('register', slugify(`${chip || 'project'}-${registerName}`));
   }
@@ -1318,8 +1267,8 @@ function createKnowledgeRuntimeHelpers(deps) {
       }
       const relativePath = path.relative(getProjectExtDir(), filePath).replace(/\\/g, '/');
       const displayPath = runtime.getProjectAssetRelativePath(relativePath);
-      const registerWrites = findRegisterWrites(parsed);
-      const registerNames = normalizeRegisterNames(registerWrites);
+      const registerWrites = registerWriteArtifact.findRegisterWrites(parsed);
+      const registerNames = registerWriteArtifact.normalizeRegisterNames(registerWrites);
       const toolName = String(parsed.tool || parsed.name || path.basename(filePath, '.json')).trim();
       const chip = String(
         parsed.chip ||
