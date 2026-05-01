@@ -193,7 +193,51 @@ function buildRegisterWritePlan(sourceValues, defaults, keys) {
     fields,
     registers,
     c_statements: registers.map(item => item.c_statement),
-    hal_statements: registers.map(item => item.hal_statement)
+    hal_statements: registers.map(item => item.hal_statement),
+    firmware_snippet_request: {
+      protocol: 'emb-agent.firmware-snippet-request/1',
+      authoring: 'ai-authored',
+      status: 'draft-until-verified',
+      goal: 'Generate project-local firmware code from this register write plan without inventing hardware facts.',
+      inputs: {
+        register_write_plan: 'register_writes',
+        registers: registers.map(item => ({
+          register: item.register,
+          mask_hex: item.mask_hex,
+          write_value_hex: item.write_value_hex,
+          fields: item.fields,
+          c_statement: item.c_statement,
+          hal_statement: item.hal_statement
+        })),
+        required_context: [
+          'hardware truth',
+          'chip profile',
+          'binding evidence',
+          'selected tool candidate',
+          'local SDK/HAL headers',
+          'current firmware style'
+        ]
+      },
+      required_output: [
+        'code_snippet',
+        'assumptions',
+        'required_symbols',
+        'write_ordering',
+        'safety_notes',
+        'verification_evidence',
+        'residual_risks'
+      ],
+      gates: [
+        'link generated code back to register_writes.registers[] values',
+        'compile or static-check when a local toolchain is available',
+        'keep snippet draft until review or verification evidence exists'
+      ],
+      constraints: [
+        'do not invent handles channels macros or init order',
+        'prefer project-local firmware style over generic vendor examples',
+        'state missing SDK HAL context explicitly'
+      ]
+    }
   };
 }
 
