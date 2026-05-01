@@ -1,5 +1,8 @@
 'use strict';
 
+const knowledgeFollowups = require('./knowledge-followups.cjs');
+const registerWriteArtifact = require('./register-write-artifact.cjs');
+
 function createFirmwareSnippetRuntimeHelpers(deps) {
   const {
     childProcess,
@@ -104,53 +107,6 @@ function createFirmwareSnippetRuntimeHelpers(deps) {
     } catch (error) {
       throw new Error(`Failed to parse tool output JSON: ${error.message}`);
     }
-  }
-
-  function isObject(value) {
-    return value && typeof value === 'object' && !Array.isArray(value);
-  }
-
-  function findRegisterWrites(value, trail = []) {
-    if (!isObject(value)) {
-      return null;
-    }
-    if (isObject(value.register_writes) && isObject(value.register_writes.firmware_snippet_request)) {
-      return {
-        register_writes: value.register_writes,
-        path: [...trail, 'register_writes'].join('.'),
-        candidate: value
-      };
-    }
-    if (isObject(value.firmware_snippet_request) && Array.isArray(value.registers)) {
-      return {
-        register_writes: value,
-        path: trail.join('.') || '<root>',
-        candidate: value
-      };
-    }
-    const preferredKeys = ['best_candidate', 'threshold_selection', 'selection', 'result'];
-    for (const key of preferredKeys) {
-      const found = findRegisterWrites(value[key], [...trail, key]);
-      if (found) return found;
-    }
-    for (const [key, child] of Object.entries(value)) {
-      if (preferredKeys.includes(key)) continue;
-      const found = findRegisterWrites(child, [...trail, key]);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  function normalizeRegisters(registerWrites) {
-    const registers = Array.isArray(registerWrites.registers) ? registerWrites.registers : [];
-    return registers.map(item => ({
-      register: String(item.register || '').trim(),
-      mask_hex: String(item.mask_hex || '').trim(),
-      write_value_hex: String(item.write_value_hex || '').trim(),
-      fields: Array.isArray(item.fields) ? item.fields.map(field => String(field || '').trim()).filter(Boolean) : [],
-      c_statement: String(item.c_statement || '').trim(),
-      hal_statement: String(item.hal_statement || '').trim()
-    })).filter(item => item.register);
   }
 
   function parseGitStatusLine(line) {
@@ -425,7 +381,7 @@ function createFirmwareSnippetRuntimeHelpers(deps) {
 
   function draftFirmwareSnippet(parsed) {
     const source = readJsonFile(parsed.from_tool_output);
-    const found = findRegisterWrites(source.data);
+    const found = registerWriteArtifact.findRegisterWriteCandidate(source.data);
     if (!found) {
       throw new Error('No register_writes.firmware_snippet_request found in tool output');
     }
@@ -434,7 +390,7 @@ function createFirmwareSnippetRuntimeHelpers(deps) {
     if (request.protocol !== 'emb-agent.firmware-snippet-request/1') {
       throw new Error(`Unsupported firmware snippet protocol: ${request.protocol || '(missing)'}`);
     }
-    const registers = normalizeRegisters(registerWrites);
+    const registers = registerWriteArtifact.normalizeRegisters(registerWrites);
     if (registers.length === 0) {
       throw new Error('No register writes found for firmware snippet draft');
     }
@@ -517,14 +473,10 @@ function createFirmwareSnippetRuntimeHelpers(deps) {
         files: firmwareFiles,
         style: firmwareStyle
       },
-      next_steps: [
-        `Review ${relativePath}`,
-        'Compile or static-check the project before applying source edits',
-        'Patch firmware sources only after behavior couplings are reviewed',
-        'knowledge graph refresh',
-        `knowledge graph explain ${registers[0].register}`,
-        `knowledge graph query ${registers[0].register}`
-      ]
+      next_steps: knowledgeFollowups.buildFirmwareSnippetFollowups({
+        artifactPath: relativePath,
+        firstRegister: registers[0].register
+      })
     };
   }
 

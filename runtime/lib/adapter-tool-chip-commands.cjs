@@ -2,6 +2,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const knowledgeFollowups = require('./knowledge-followups.cjs');
+const registerWriteArtifact = require('./register-write-artifact.cjs');
 
 function createAdapterToolChipCommandHelpers(deps) {
   const {
@@ -64,28 +66,6 @@ function createAdapterToolChipCommandHelpers(deps) {
     };
   }
 
-  function findFirmwareSnippetRequest(value) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return null;
-    }
-    if (
-      value.register_writes &&
-      typeof value.register_writes === 'object' &&
-      !Array.isArray(value.register_writes) &&
-      value.register_writes.firmware_snippet_request
-    ) {
-      return value.register_writes.firmware_snippet_request;
-    }
-    if (value.firmware_snippet_request) {
-      return value.firmware_snippet_request;
-    }
-    for (const child of Object.values(value)) {
-      const found = findFirmwareSnippetRequest(child);
-      if (found) return found;
-    }
-    return null;
-  }
-
   function saveToolRunOutput(toolName, result, parsed) {
     const projectRoot = path.resolve(process.cwd());
     const relativePath = parsed.output_path
@@ -98,47 +78,13 @@ function createAdapterToolChipCommandHelpers(deps) {
       saved_output: relativePath
     };
     const nextSteps = Array.isArray(next.next_steps) ? next.next_steps.slice() : [];
-    const snippetRequest = findFirmwareSnippetRequest(next);
-    if (snippetRequest && snippetRequest.protocol === 'emb-agent.firmware-snippet-request/1') {
-      const draftCommand = `snippet draft --from-tool-output ${relativePath} --confirm`;
-      nextSteps.push(draftCommand);
-    }
-    let firstRegister = '';
-    const pending = [next];
-    while (!firstRegister && pending.length > 0) {
-      const current = pending.shift();
-      if (!current || typeof current !== 'object' || Array.isArray(current)) {
-        continue;
-      }
-      const registerWrites =
-        current.register_writes &&
-        typeof current.register_writes === 'object' &&
-        !Array.isArray(current.register_writes) &&
-        Array.isArray(current.register_writes.registers)
-          ? current.register_writes
-          : null;
-      const registers = registerWrites
-        ? registerWrites.registers
-        : (Array.isArray(current.registers) ? current.registers : []);
-      const first = registers.find(item => item && String(item.register || '').trim());
-      if (first) {
-        firstRegister = String(first.register || '').trim();
-        break;
-      }
-      Object.values(current).forEach(child => {
-        if (child && typeof child === 'object') {
-          pending.push(child);
-        }
-      });
-    }
-    if (firstRegister) {
-      nextSteps.push(`knowledge formula draft --from-tool-output ${relativePath} --confirm`);
-      nextSteps.push('knowledge graph refresh');
-      nextSteps.push(`knowledge graph explain ${firstRegister}`);
-    } else {
-      nextSteps.push('knowledge graph refresh');
-    }
-    next.next_steps = [...new Set(nextSteps)];
+    const snippetRequest = registerWriteArtifact.findFirmwareSnippetRequest(next);
+    next.next_steps = knowledgeFollowups.buildSavedToolRunFollowups({
+      existing: nextSteps,
+      relativePath,
+      firstRegister: registerWriteArtifact.firstRegisterName(next),
+      hasSnippetRequest: snippetRequest && snippetRequest.protocol === 'emb-agent.firmware-snippet-request/1'
+    });
     fs.writeFileSync(absolutePath, JSON.stringify(next, null, 2) + '\n', 'utf8');
     return next;
   }
