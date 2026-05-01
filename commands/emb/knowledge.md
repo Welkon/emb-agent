@@ -30,6 +30,7 @@ allowed-tools:
 - `knowledge show <wiki/path>`
 - `knowledge graph build`
 - `knowledge graph update`
+- `knowledge graph refresh`
 - `knowledge graph report`
 - `knowledge graph query <term>`
 - `knowledge graph path <from> <to>`
@@ -42,7 +43,7 @@ allowed-tools:
 1. Run `knowledge init` to create the wiki scaffold.
 2. After ingesting a datasheet, schematic, board file, or useful analysis, run `knowledge ingest <source-title>` to draft a durable source synthesis page.
 3. When a question produces a reusable engineering answer, run `knowledge save-query <title>` to preview the page, then re-run with `--confirm` after checking the content.
-4. Run `knowledge graph build` after wiki/truth/task/tool/snippet changes to refresh `.emb-agent/graph/graph.json`, `.emb-agent/graph/GRAPH_REPORT.md`, and `.emb-agent/graph/cache/manifest.json`.
+4. Run `knowledge graph refresh` after wiki/truth/task/tool/snippet changes to rebuild `.emb-agent/graph/graph.json`, `.emb-agent/graph/GRAPH_REPORT.md`, and `.emb-agent/graph/cache/manifest.json` only when missing or stale.
 5. For formulas that must be reused by agents, add a JSON registry under `.emb-agent/formulas/` with `chip`, `formulas[].expression`, `variables`, `registers`, and `evidence` fields before rebuilding the graph.
 6. Run `knowledge graph report` or `knowledge graph lint` to detect stale graph manifests after tracked files change.
 7. Run `knowledge graph query <term>` or `knowledge graph path <from> <to>` before broad searches when you need relationship-oriented context.
@@ -55,6 +56,6 @@ allowed-tools:
 - Treat graph edges with `basis: AMBIGUOUS` as review prompts, not confirmed truth.
 - Treat formula registries as draft engineering evidence unless their `status` and source review explicitly say otherwise.
 - Treat `.emb-agent/runs/*.json` and `.emb-agent/firmware-snippets/*.md` as reusable artifacts that should stay linked to registers, formulas, and chips through the graph.
-- Rebuild the graph when `knowledge graph report` returns `stale: true` or `knowledge graph lint` reports `graph-stale`.
+- Refresh the graph when `knowledge graph report` returns `stale: true` or `knowledge graph lint` reports `graph-stale`.
 - Prefer small linked pages over one large catch-all page.
 - Keep source pages under `wiki/sources/`, chip pages under `wiki/chips/`, decisions under `wiki/decisions/`, and risks under `wiki/risks/`.

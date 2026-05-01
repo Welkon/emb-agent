@@ -163,7 +163,7 @@ test('snippet draft previews then writes artifact without patching dirty firmwar
     assert.equal(written.artifact_path, '.emb-agent/firmware-snippets/sc8p052b-pwm1-1khz.md');
     assert.equal(fs.existsSync(artifactPath), true);
     assert.equal(fs.readFileSync(path.join(tempProject, 'src', 'main.c'), 'utf8'), beforeSource);
-    assert.ok(written.next_steps.includes('knowledge graph build'));
+    assert.ok(written.next_steps.includes('knowledge graph refresh'));
     assert.ok(written.next_steps.includes('knowledge graph query PWMTL'));
 
     const content = fs.readFileSync(artifactPath, 'utf8');

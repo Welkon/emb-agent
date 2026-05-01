@@ -806,6 +806,7 @@ function createCliEntryHelpers(deps) {
           'knowledge lint',
           'knowledge graph build',
           'knowledge graph update',
+          'knowledge graph refresh',
           'knowledge graph report',
           'knowledge graph query <term>',
           'knowledge graph path <from> <to>',

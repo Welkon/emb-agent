@@ -486,11 +486,57 @@ test('knowledge graph report and lint detect stale tracked artifacts', async () 
     assert.equal(staleReport.stale, true);
     assert.ok(staleReport.changed_files.includes('.emb-agent/runs/timer-calc.json'));
     assert.ok(staleReport.added_files.includes('.emb-agent/runs/timer-calc.json'));
-    assert.ok(staleReport.next_steps.includes('knowledge graph build'));
+    assert.ok(staleReport.next_steps.includes('knowledge graph refresh'));
     assert.equal(lint.stale, true);
     assert.ok(lint.changed_files.includes('.emb-agent/runs/timer-calc.json'));
     assert.ok(lint.issues.some(issue => issue.code === 'graph-stale'));
-    assert.ok(lint.next_steps.includes('Run knowledge graph build.'));
+    assert.ok(lint.next_steps.includes('Run knowledge graph refresh.'));
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('knowledge graph refresh rebuilds only missing or stale graphs', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-knowledge-graph-refresh-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['knowledge', 'init']);
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      ['chip: SC8P052B', 'package: SOP8', ''].join('\n'),
+      'utf8'
+    );
+
+    const missing = await captureCliJson(['knowledge', 'graph', 'refresh']);
+    assert.equal(missing.status, 'built');
+    assert.equal(missing.refreshed, true);
+    assert.equal(missing.reason, 'graph-missing');
+
+    const fresh = await captureCliJson(['knowledge', 'graph', 'refresh']);
+    assert.equal(fresh.status, 'fresh');
+    assert.equal(fresh.skipped, true);
+    assert.equal(fresh.stale, false);
+    assert.deepEqual(fresh.next_steps, []);
+
+    const runsDir = path.join(tempProject, '.emb-agent', 'runs');
+    fs.mkdirSync(runsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runsDir, 'timer-calc.json'),
+      JSON.stringify({ tool: 'timer-calc', status: 'ok' }, null, 2) + '\n',
+      'utf8'
+    );
+
+    const stale = await captureCliJson(['knowledge', 'graph', 'refresh']);
+    assert.equal(stale.status, 'built');
+    assert.equal(stale.refreshed, true);
+    assert.equal(stale.reason, 'stale');
+    assert.ok(stale.changed_files.includes('.emb-agent/runs/timer-calc.json'));
+
+    const report = await captureCliJson(['knowledge', 'graph', 'report']);
+    assert.equal(report.stale, false);
   } finally {
     process.chdir(currentCwd);
   }
@@ -504,4 +550,5 @@ test('knowledge command is visible in advanced command inventory', async () => {
   assert.equal(shown.name, 'knowledge');
   assert.match(shown.content, /persistent knowledge wiki/i);
   assert.match(shown.content, /knowledge graph build/);
+  assert.match(shown.content, /knowledge graph refresh/);
 });

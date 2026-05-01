@@ -1512,7 +1512,7 @@ function createKnowledgeRuntimeHelpers(deps) {
         initialized: false,
         graph_file: getGraphRelativePath('graph.json'),
         report_file: getGraphRelativePath('GRAPH_REPORT.md'),
-        next_steps: ['knowledge graph build']
+        next_steps: ['knowledge graph refresh']
       };
     }
     const freshness = readGraphFreshness(graph);
@@ -1527,7 +1527,7 @@ function createKnowledgeRuntimeHelpers(deps) {
       added_files: freshness.added_files,
       modified_files: freshness.modified_files,
       removed_files: freshness.removed_files,
-      next_steps: freshness.stale ? ['knowledge graph build'] : [],
+      next_steps: freshness.stale ? ['knowledge graph refresh'] : [],
       content: readTextIfExists(reportPath)
     };
   }
@@ -1631,10 +1631,10 @@ function createKnowledgeRuntimeHelpers(deps) {
             severity: 'warn',
             code: 'graph-missing',
             summary: 'Knowledge graph has not been built.',
-            recommendation: 'Run knowledge graph build.'
+            recommendation: 'Run knowledge graph refresh.'
           }
         ],
-        next_steps: ['knowledge graph build']
+        next_steps: ['knowledge graph refresh']
       };
     }
     const issues = [];
@@ -1645,7 +1645,7 @@ function createKnowledgeRuntimeHelpers(deps) {
         code: 'graph-stale',
         summary: 'Knowledge graph tracked files changed after the last build.',
         changed_files: freshness.changed_files.slice(0, 25),
-        recommendation: 'Run knowledge graph build.'
+        recommendation: 'Run knowledge graph refresh.'
       });
     }
     const degrees = graphDegrees(graph);
@@ -1701,6 +1701,52 @@ function createKnowledgeRuntimeHelpers(deps) {
     const args = Array.isArray(rest) ? rest : [];
     if (!action || action === 'build' || action === 'update') {
       return buildKnowledgeGraph();
+    }
+    if (action === 'refresh') {
+      const graph = loadKnowledgeGraph({ buildIfMissing: false });
+      const reportPath = getGraphPath('GRAPH_REPORT.md');
+      if (!graph || !fs.existsSync(reportPath)) {
+        const built = buildKnowledgeGraph();
+        return {
+          ...built,
+          status: 'built',
+          refreshed: true,
+          reason: graph ? 'report-missing' : 'graph-missing'
+        };
+      }
+      const freshness = readGraphFreshness(graph);
+      if (freshness.stale) {
+        const built = buildKnowledgeGraph();
+        return {
+          ...built,
+          status: 'built',
+          refreshed: true,
+          reason: 'stale',
+          changed_files: freshness.changed_files,
+          added_files: freshness.added_files,
+          modified_files: freshness.modified_files,
+          removed_files: freshness.removed_files
+        };
+      }
+      updateSession(current => {
+        current.last_command = 'knowledge graph refresh';
+        current.last_files = runtime.unique([
+          getGraphRelativePath('GRAPH_REPORT.md'),
+          getGraphRelativePath('graph.json'),
+          ...(current.last_files || [])
+        ]).slice(0, 8);
+      });
+      return {
+        status: 'fresh',
+        skipped: true,
+        graph_file: getGraphRelativePath('graph.json'),
+        report_file: getGraphRelativePath('GRAPH_REPORT.md'),
+        manifest_file: freshness.manifest_file,
+        stats: graph.stats,
+        stale: false,
+        changed_files: [],
+        next_steps: []
+      };
     }
     if (action === 'report') {
       return readKnowledgeGraphReport();

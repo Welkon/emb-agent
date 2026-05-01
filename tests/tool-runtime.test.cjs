@@ -455,14 +455,14 @@ test('generated draft timer route can execute first-pass timer search', async ()
     assert.equal(saved.inputs.options['save-output'], undefined);
     assert.equal(saved.inputs.options['output-file'], undefined);
     assert.ok(saved.next_steps.includes('snippet draft --from-tool-output .emb-agent/runs/timer-calc.json --confirm'));
-    assert.ok(saved.next_steps.includes('knowledge graph build'));
+    assert.ok(saved.next_steps.includes('knowledge graph refresh'));
     assert.ok(
       saved.next_steps.indexOf('snippet draft --from-tool-output .emb-agent/runs/timer-calc.json --confirm') <
-      saved.next_steps.indexOf('knowledge graph build')
+      saved.next_steps.indexOf('knowledge graph refresh')
     );
     const savedFile = JSON.parse(fs.readFileSync(savedPath, 'utf8'));
     assert.equal(savedFile.saved_output, '.emb-agent/runs/timer-calc.json');
-    assert.ok(savedFile.next_steps.includes('knowledge graph build'));
+    assert.ok(savedFile.next_steps.includes('knowledge graph refresh'));
     assert.equal(savedFile.best_candidate.register_writes.firmware_snippet_request.protocol, 'emb-agent.firmware-snippet-request/1');
   } finally {
     process.chdir(currentCwd);

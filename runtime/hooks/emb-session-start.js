@@ -459,7 +459,7 @@ function runHook(rawInput) {
         }
         const freshness = detectKnowledgeGraphFreshness(projectRoot, graph);
         if (freshness.stale) {
-          graphLines.push(`Knowledge graph stale: ${freshness.changed_files.length} tracked file(s) changed; run knowledge graph build`);
+          graphLines.push(`Knowledge graph stale: ${freshness.changed_files.length} tracked file(s) changed; run knowledge graph refresh`);
           freshness.changed_files.slice(0, 5).forEach(file => {
             graphLines.push(`- stale: ${file}`);
           });
@@ -469,7 +469,7 @@ function runHook(rawInput) {
           graphLines.push(...reportLines);
         }
       } catch {
-        graphLines.push('Knowledge graph: .emb-agent/graph/graph.json (report unreadable; run knowledge graph build)');
+        graphLines.push('Knowledge graph: .emb-agent/graph/graph.json (report unreadable; run knowledge graph refresh)');
       }
     }
     const message = buildSessionContext(projectRoot, start, resume, {
