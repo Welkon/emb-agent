@@ -67,6 +67,7 @@ const {
   skillRuntimeHelpers,
   memoryRuntimeHelpers,
   knowledgeRuntimeHelpers,
+  firmwareSnippetRuntimeHelpers,
   workflowRegistry,
   workflowImportHelpers,
   RUNTIME_CONFIG,
@@ -532,6 +533,19 @@ const {
 });
 
 const {
+  handleSnippetCommands
+} = firmwareSnippetRuntimeHelpers.createFirmwareSnippetRuntimeHelpers({
+  childProcess,
+  fs,
+  path,
+  runtime,
+  permissionGateHelpers,
+  getProjectConfig,
+  getProjectExtDir,
+  updateSession
+});
+
+const {
   runSessionReport,
   listStoredSessionReports,
   buildCurrentSessionView,
@@ -642,6 +656,7 @@ const {
   handleSessionReportCommands,
   handleTranscriptCommands,
   handleKnowledgeCommands,
+  handleSnippetCommands,
   listSkills,
   loadSkill,
   runSkill,

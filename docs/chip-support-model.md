@@ -147,6 +147,14 @@ Generated register write plans carry this as `register_writes.firmware_snippet_r
 }
 ```
 
+The request can be materialized into a project-local review artifact with:
+
+```bash
+emb-agent snippet draft --from-tool-output <tool-output.json> --title <name> --confirm
+```
+
+This command writes under `.emb-agent/firmware-snippets/`, records dirty source status and behavior couplings, and leaves firmware sources unchanged. Applying the snippet to production code is a later integration step that must cover the affected ISR, clock, low-power, SDK/HAL, and initialization paths.
+
 ## Repository roles
 
 emb-agent should treat chip support as a three-layer system:

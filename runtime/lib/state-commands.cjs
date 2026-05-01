@@ -33,6 +33,7 @@ function createStateCommandHelpers(deps) {
     handleSessionReportCommands,
     handleTranscriptCommands,
     handleKnowledgeCommands,
+    handleSnippetCommands,
     listSkills,
     loadSkill,
     runSkill,
@@ -113,6 +114,13 @@ function createStateCommandHelpers(deps) {
       : undefined;
     if (knowledgeResult !== undefined) {
       return knowledgeResult;
+    }
+
+    const snippetResult = handleSnippetCommands
+      ? handleSnippetCommands(cmd, subcmd, rest)
+      : undefined;
+    if (snippetResult !== undefined) {
+      return snippetResult;
     }
 
     if (cmd === 'session' && subcmd === 'show') {

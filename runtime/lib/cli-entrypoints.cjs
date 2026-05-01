@@ -812,6 +812,7 @@ function createCliEntryHelpers(deps) {
           'knowledge graph lint',
           'knowledge save-query [--confirm] <title> [--summary <text>] [--body <text>] [--kind <query|decision|risk|chip|peripheral|board>]',
           'knowledge ingest [--confirm] <source-title> [--summary <text>] [--body <text>]',
+          'snippet draft [--confirm] --from-tool-output <file> [--title <name>] [--output <path>] [--force]',
           'commands list',
           'commands list --all',
           'commands show <name>'

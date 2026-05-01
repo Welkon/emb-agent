@@ -79,6 +79,7 @@ function createRuntimeContainer(options = {}) {
     skillRuntimeHelpers: require(path.join(rootDir, 'lib', 'skill-runtime.cjs')),
     memoryRuntimeHelpers: require(path.join(rootDir, 'lib', 'memory-runtime.cjs')),
     knowledgeRuntimeHelpers: require(path.join(rootDir, 'lib', 'knowledge-runtime.cjs')),
+    firmwareSnippetRuntimeHelpers: require(path.join(rootDir, 'lib', 'firmware-snippet-runtime.cjs')),
     workflowRegistry: require(path.join(rootDir, 'lib', 'workflow-registry.cjs')),
     workflowImportHelpers: require(path.join(rootDir, 'lib', 'workflow-import.cjs')),
     RUNTIME_CONFIG: runtime.loadRuntimeConfig(rootDir),
