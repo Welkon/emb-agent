@@ -3102,8 +3102,10 @@ function createInstallHelpers(deps) {
               : [])
           ]),
       `Developer identity: ${args.developer} (${target.name})`,
-      ...(args.subagentBridgeCmd
-        ? [`Sub-agent bridge: ${args.subagentBridgeCmd} (timeout: ${args.subagentBridgeTimeoutMs} ms)`]
+      ...(installedRuntimeHost.subagentBridge && installedRuntimeHost.subagentBridge.available
+        ? [
+            `Sub-agent bridge: ${installedRuntimeHost.subagentBridge.command} (timeout: ${installedRuntimeHost.subagentBridge.timeout_ms} ms)`
+          ]
         : []),
       ...(args.defaultAdapterSourceLocation
         ? [`Default chip support source: ${args.defaultAdapterSourceLocation}`]
