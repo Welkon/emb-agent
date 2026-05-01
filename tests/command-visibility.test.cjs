@@ -326,6 +326,8 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /context compress \[note\]/);
   assert.match(advanced, /skills list/);
   assert.match(advanced, /memory stack/);
+  assert.match(advanced, /knowledge graph build/);
+  assert.match(advanced, /knowledge graph query <term>/);
   assert.match(advanced, /external <start\|status\|next\|health\|dispatch-next>/);
   assert.match(advanced, /Global option: --brief .*runtime_events/);
   assert.match(advanced, /spec list/);
@@ -355,7 +357,9 @@ test('help supports explicit json output mode', async () => {
   assert.ok(advanced.sections.some(section => section.title === 'Delegation and chip support runtime'));
   assert.ok(
     advanced.sections.some(
-      section => section.title === 'Inspection and discovery' && section.entries.includes('commands list --all')
+      section => section.title === 'Inspection and discovery' &&
+        section.entries.includes('commands list --all') &&
+        section.entries.includes('knowledge graph build')
     )
   );
 });

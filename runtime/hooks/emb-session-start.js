@@ -283,6 +283,9 @@ function buildSessionContext(projectRoot, start, resume, options) {
   if (Array.isArray(settings.sessionReportLines) && settings.sessionReportLines.length > 0) {
     lines.push(...settings.sessionReportLines);
   }
+  if (Array.isArray(settings.graphLines) && settings.graphLines.length > 0) {
+    lines.push(...settings.graphLines);
+  }
   if (Array.isArray(settings.specLines) && settings.specLines.length > 0) {
     lines.push(...settings.specLines);
   }
@@ -358,11 +361,38 @@ function runHook(rawInput) {
       projectRoot,
       session && session.git_branch ? session.git_branch : ''
     );
+    const graphLines = [];
+    const graphPath = path.join(runtime.getProjectExtDir(projectRoot), 'graph', 'graph.json');
+    const graphReportPath = path.join(runtime.getProjectExtDir(projectRoot), 'graph', 'GRAPH_REPORT.md');
+    if (fs.existsSync(graphPath) && fs.existsSync(graphReportPath)) {
+      try {
+        const graph = JSON.parse(String(fs.readFileSync(graphPath, 'utf8') || '{}'));
+        const reportLines = String(fs.readFileSync(graphReportPath, 'utf8') || '')
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line && !line.startsWith('#'))
+          .filter(line => /^-\s+(Nodes|Edges|Ambiguous edges|knowledge graph query|[^:]+:\s+\d+)/.test(line))
+          .slice(0, 12);
+        graphLines.push('Knowledge graph: .emb-agent/graph/graph.json');
+        if (graph.stats && typeof graph.stats === 'object') {
+          graphLines.push(
+            `Graph summary: nodes=${graph.stats.nodes || 0}, edges=${graph.stats.edges || 0}, ambiguous=${graph.stats.ambiguous_edges || 0}`
+          );
+        }
+        if (reportLines.length > 0) {
+          graphLines.push('Graph report highlights:');
+          graphLines.push(...reportLines);
+        }
+      } catch {
+        graphLines.push('Knowledge graph: .emb-agent/graph/graph.json (report unreadable; run knowledge graph build)');
+      }
+    }
     const message = buildSessionContext(projectRoot, start, resume, {
       initializedDuringHook: !hadProjectConfig && fs.existsSync(projectConfigPath),
       updateLines,
       specLines: [...coreProtocolLines, ...workflowSpecLines, ...workflowStateLines, ...constraintSpecLines],
-      sessionReportLines
+      sessionReportLines,
+      graphLines
     });
 
     if (!message) {
