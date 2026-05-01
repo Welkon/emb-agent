@@ -263,6 +263,8 @@ test('applyOutputMode builds brief next context payload', () => {
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.next.command, 'plan');
+  assert.equal(output.next.product_layer.id, 'embedded_workflow');
+  assert.equal(output.next.product_layer.label, 'Embedded workflow');
   assert.equal(output.product_layer.id, 'embedded_workflow');
   assert.equal(output.product_layer.label, 'Embedded workflow');
   assert.equal(output.capability_route.capability, 'plan');
