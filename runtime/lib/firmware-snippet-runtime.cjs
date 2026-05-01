@@ -522,6 +522,7 @@ function createFirmwareSnippetRuntimeHelpers(deps) {
         'Compile or static-check the project before applying source edits',
         'Patch firmware sources only after behavior couplings are reviewed',
         'knowledge graph refresh',
+        `knowledge graph explain ${registers[0].register}`,
         `knowledge graph query ${registers[0].register}`
       ]
     };

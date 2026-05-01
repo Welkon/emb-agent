@@ -104,6 +104,37 @@ function createAdapterToolChipCommandHelpers(deps) {
       nextSteps.push(draftCommand);
     }
     nextSteps.push('knowledge graph refresh');
+    let firstRegister = '';
+    const pending = [next];
+    while (!firstRegister && pending.length > 0) {
+      const current = pending.shift();
+      if (!current || typeof current !== 'object' || Array.isArray(current)) {
+        continue;
+      }
+      const registerWrites =
+        current.register_writes &&
+        typeof current.register_writes === 'object' &&
+        !Array.isArray(current.register_writes) &&
+        Array.isArray(current.register_writes.registers)
+          ? current.register_writes
+          : null;
+      const registers = registerWrites
+        ? registerWrites.registers
+        : (Array.isArray(current.registers) ? current.registers : []);
+      const first = registers.find(item => item && String(item.register || '').trim());
+      if (first) {
+        firstRegister = String(first.register || '').trim();
+        break;
+      }
+      Object.values(current).forEach(child => {
+        if (child && typeof child === 'object') {
+          pending.push(child);
+        }
+      });
+    }
+    if (firstRegister) {
+      nextSteps.push(`knowledge graph explain ${firstRegister}`);
+    }
     next.next_steps = [...new Set(nextSteps)];
     fs.writeFileSync(absolutePath, JSON.stringify(next, null, 2) + '\n', 'utf8');
     return next;

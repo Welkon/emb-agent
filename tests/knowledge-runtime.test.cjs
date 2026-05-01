@@ -185,7 +185,10 @@ test('knowledge graph build writes graph artifacts from truth and wiki links', a
       edge.type === 'links_to'
     ));
     assert.ok(graph.edges.some(edge => edge.basis === 'AMBIGUOUS'));
-    assert.match(fs.readFileSync(reportPath, 'utf8'), /Knowledge Graph Report/);
+    const report = fs.readFileSync(reportPath, 'utf8');
+    assert.match(report, /Knowledge Graph Report/);
+    assert.match(report, /## Suggested Explanations/);
+    assert.match(report, /knowledge graph explain wiki:queries\/timer-contention/);
   } finally {
     process.chdir(currentCwd);
   }
