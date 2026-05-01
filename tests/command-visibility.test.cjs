@@ -327,6 +327,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /skills list/);
   assert.match(advanced, /memory stack/);
   assert.match(advanced, /knowledge graph build/);
+  assert.match(advanced, /knowledge graph refresh/);
   assert.match(advanced, /knowledge graph query <term>/);
   assert.match(advanced, /external <start\|status\|next\|health\|dispatch-next>/);
   assert.match(advanced, /Global option: --brief .*runtime_events/);
@@ -359,7 +360,8 @@ test('help supports explicit json output mode', async () => {
     advanced.sections.some(
       section => section.title === 'Inspection and discovery' &&
         section.entries.includes('commands list --all') &&
-        section.entries.includes('knowledge graph build')
+        section.entries.includes('knowledge graph build') &&
+        section.entries.includes('knowledge graph refresh')
     )
   );
 });
