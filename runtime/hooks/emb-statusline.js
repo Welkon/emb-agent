@@ -4,12 +4,12 @@
 'use strict';
 
 const childProcess = require('child_process');
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const runtime = require('../lib/runtime.cjs');
 const sessionReportStoreHelpers = require('../lib/session-report-store.cjs');
 const workflowStateHelpers = require('../lib/workflow-state.cjs');
+const knowledgeGraphState = require('../lib/knowledge-graph-state.cjs');
 
 const sessionReportStore = sessionReportStoreHelpers.createSessionReportStoreHelpers({
   fs,
@@ -48,80 +48,12 @@ function readText(filePath) {
   }
 }
 
-function readTextIfExists(filePath) {
-  return fs.existsSync(filePath) ? String(fs.readFileSync(filePath, 'utf8') || '') : '';
-}
-
-function sha256Text(value) {
-  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
-}
-
-function listFilesRecursive(dirPath, predicate) {
-  if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) {
-    return [];
-  }
-
-  const found = [];
-  fs.readdirSync(dirPath, { withFileTypes: true }).forEach(entry => {
-    const entryPath = path.join(dirPath, entry.name);
-    if (entry.isDirectory()) {
-      found.push(...listFilesRecursive(entryPath, predicate));
-      return;
-    }
-    if (!entry.isFile()) {
-      return;
-    }
-    if (!predicate || predicate(entryPath)) {
-      found.push(entryPath);
-    }
-  });
-  return found.sort();
-}
-
-function buildGraphTrackedManifest(projectRoot) {
-  const projectExtDir = runtime.getProjectExtDir(projectRoot);
-  const wikiDir = path.join(projectExtDir, 'wiki');
-  const wikiPages = listFilesRecursive(wikiDir, filePath => {
-    if (!/\.md$/i.test(filePath)) return false;
-    const relativePath = path.relative(wikiDir, filePath).replace(/\\/g, '/');
-    return relativePath !== 'index.md' && relativePath !== 'log.md';
-  });
-  const trackedFiles = [
-    path.join(projectExtDir, 'project.json'),
-    path.join(projectExtDir, 'hw.yaml'),
-    path.join(projectExtDir, 'req.yaml'),
-    ...listFilesRecursive(path.join(projectExtDir, 'formulas'), filePath => /\.json$/i.test(filePath)),
-    ...listFilesRecursive(path.join(projectExtDir, 'runs'), filePath => /\.json$/i.test(filePath)),
-    ...listFilesRecursive(path.join(projectExtDir, 'firmware-snippets'), filePath => /\.md$/i.test(filePath)),
-    ...wikiPages
-  ];
-  const manifest = {};
-  trackedFiles.forEach(filePath => {
-    if (!fs.existsSync(filePath)) return;
-    const relativePath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
-    manifest[relativePath] = sha256Text(readTextIfExists(filePath));
-  });
-  return manifest;
-}
-
 function getKnowledgeGraphState(projectRoot) {
-  const projectExtDir = runtime.getProjectExtDir(projectRoot);
-  const graphPath = path.join(projectExtDir, 'graph', 'graph.json');
-  if (!fs.existsSync(graphPath)) {
-    return 'missing';
-  }
-
-  const graph = readJson(graphPath);
-  const manifestPath = path.join(projectExtDir, 'graph', 'cache', 'manifest.json');
-  let stored = graph && graph.manifest && typeof graph.manifest === 'object' && !Array.isArray(graph.manifest)
-    ? graph.manifest
-    : {};
-  if (fs.existsSync(manifestPath)) {
-    stored = readJson(manifestPath);
-  }
-  const current = buildGraphTrackedManifest(projectRoot);
-  const keys = [...new Set([...Object.keys(stored), ...Object.keys(current)])].sort();
-  return keys.some(key => stored[key] !== current[key]) ? 'stale' : 'fresh';
+  return knowledgeGraphState.summarizeKnowledgeGraph(projectRoot, {
+    fs,
+    path,
+    runtime
+  }).state;
 }
 
 function getGitBranch(projectRoot) {

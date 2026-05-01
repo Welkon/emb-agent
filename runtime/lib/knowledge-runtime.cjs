@@ -1,6 +1,6 @@
 'use strict';
 
-const crypto = require('crypto');
+const knowledgeGraphState = require('./knowledge-graph-state.cjs');
 
 function createKnowledgeRuntimeHelpers(deps) {
   const {
@@ -81,10 +81,6 @@ function createKnowledgeRuntimeHelpers(deps) {
     } catch {
       return null;
     }
-  }
-
-  function sha256Text(value) {
-    return crypto.createHash('sha256').update(String(value || '')).digest('hex');
   }
 
   function buildGraphNodeId(type, value) {
@@ -1305,68 +1301,30 @@ function createKnowledgeRuntimeHelpers(deps) {
   }
 
   function buildGraphManifest(files) {
-    const manifest = {};
-    files.forEach(filePath => {
-      if (!fs.existsSync(filePath)) return;
-      const relativePath = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
-      manifest[relativePath] = sha256Text(readTextIfExists(filePath));
-    });
-    return manifest;
+    return knowledgeGraphState.buildKnowledgeGraphManifest(process.cwd(), {
+      fs,
+      path,
+      runtime,
+      getProjectExtDir
+    }, files);
   }
 
   function getGraphTrackedFiles() {
-    return [
-      path.join(getProjectExtDir(), 'project.json'),
-      path.join(getProjectExtDir(), 'hw.yaml'),
-      path.join(getProjectExtDir(), 'req.yaml'),
-      ...listFilesRecursive(path.join(getProjectExtDir(), 'formulas'), filePath => /\.json$/i.test(filePath)),
-      ...listFilesRecursive(path.join(getProjectExtDir(), 'runs'), filePath => /\.json$/i.test(filePath)),
-      ...listFilesRecursive(path.join(getProjectExtDir(), 'firmware-snippets'), filePath => /\.md$/i.test(filePath)),
-      ...listMarkdownPages().map(page => getWikiPath(page.path))
-    ];
-  }
-
-  function compareGraphManifest(previous, current) {
-    const before = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {};
-    const after = current && typeof current === 'object' && !Array.isArray(current) ? current : {};
-    const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
-    const added = [];
-    const modified = [];
-    const removed = [];
-    keys.forEach(key => {
-      if (!Object.prototype.hasOwnProperty.call(before, key)) {
-        added.push(key);
-        return;
-      }
-      if (!Object.prototype.hasOwnProperty.call(after, key)) {
-        removed.push(key);
-        return;
-      }
-      if (before[key] !== after[key]) {
-        modified.push(key);
-      }
+    return knowledgeGraphState.listKnowledgeGraphTrackedFiles(process.cwd(), {
+      fs,
+      path,
+      runtime,
+      getProjectExtDir
     });
-    return {
-      stale: added.length > 0 || modified.length > 0 || removed.length > 0,
-      changed_files: [...added, ...modified, ...removed],
-      added_files: added,
-      modified_files: modified,
-      removed_files: removed
-    };
   }
 
   function readGraphFreshness(graph) {
-    const currentManifest = buildGraphManifest(getGraphTrackedFiles());
-    const storedManifestPath = getGraphPath('cache', 'manifest.json');
-    const storedManifest = readJsonIfExists(storedManifestPath) || (
-      graph && graph.manifest && typeof graph.manifest === 'object' && !Array.isArray(graph.manifest)
-        ? graph.manifest
-        : {}
-    );
-    return {
-      ...compareGraphManifest(storedManifest, currentManifest),
-      manifest_file: getGraphRelativePath('cache', 'manifest.json')
-    };
+    return knowledgeGraphState.readKnowledgeGraphFreshness(process.cwd(), graph, {
+      fs,
+      path,
+      runtime,
+      getProjectExtDir
+    });
   }
 
   function buildKnowledgeGraph() {
