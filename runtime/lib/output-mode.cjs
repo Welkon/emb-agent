@@ -508,7 +508,9 @@ function summarizeSubagentBridge(value) {
     invoked: value.invoked === undefined ? undefined : Boolean(value.invoked),
     mode: value.mode || '',
     source: value.source || '',
-    status: value.status || ''
+    status: value.status || '',
+    summary: value.summary || '',
+    manual_workers_required: value.manual_workers_required === true ? true : undefined
   });
 }
 

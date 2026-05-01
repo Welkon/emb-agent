@@ -23,6 +23,7 @@ function createSubAgentRuntimeHelpers(deps) {
   }
 
   const MANUAL_WORKER_SYNTHESIS_STATUS = 'manual-workers-required';
+  const MANUAL_WORKER_BRIDGE_SUMMARY = 'Host sub-agent bridge is not configured; worker prompts were generated for manual execution.';
 
   function toStringArray(value) {
     return Array.isArray(value) ? value.map(item => String(item)) : [];
@@ -107,13 +108,16 @@ function createSubAgentRuntimeHelpers(deps) {
 
   function summarizeBridgeForOutput(bridge, overrideStatus) {
     const source = isObject(bridge) ? bridge : {};
+    const status = overrideStatus || source.status || '';
     return {
       available: Boolean(source.available),
       invoked: source.invoked === undefined ? false : Boolean(source.invoked),
       mode: source.mode || '',
       source: source.source || '',
       command: source.command || '',
-      status: overrideStatus || source.status || ''
+      status,
+      summary: source.summary || (status === 'bridge-unavailable' ? MANUAL_WORKER_BRIDGE_SUMMARY : ''),
+      manual_workers_required: status === 'bridge-unavailable' ? true : undefined
     };
   }
 
@@ -440,11 +444,13 @@ function createSubAgentRuntimeHelpers(deps) {
           invoked: false,
           source: bridge.source || 'none',
           command: '',
-          status: 'bridge-unavailable'
+          status: 'bridge-unavailable',
+          summary: MANUAL_WORKER_BRIDGE_SUMMARY,
+          manual_workers_required: true
         },
         worker_result: normalizeWorkerResult(launchEnvelope, {
           status: 'bridge-unavailable',
-          summary: 'Host sub-agent bridge is not configured'
+          summary: MANUAL_WORKER_BRIDGE_SUMMARY
         })
       };
     }
@@ -604,7 +610,9 @@ function createSubAgentRuntimeHelpers(deps) {
         updated_at: now,
         bridge: {
           ...record.bridge,
-          status: 'bridge-unavailable'
+          status: 'bridge-unavailable',
+          summary: MANUAL_WORKER_BRIDGE_SUMMARY,
+          manual_workers_required: true
         }
       };
       writeJobFile(jobFile, {
