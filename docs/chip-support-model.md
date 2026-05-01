@@ -118,9 +118,11 @@ This is intentionally a macro-level HAL bridge, not a full vendor driver call ge
 
 The next layer should be AI-authored firmware snippets, not a hand-maintained template library. emb-agent should provide the generation contract:
 
-- inputs: hardware truth, chip profile, binding evidence, register write plan, selected candidate, local SDK/HAL headers, and current firmware style
-- required output: code snippet, assumptions, required includes/handles/channels, write ordering, safety notes, and residual review items
-- gates: compile or static-check evidence when available, link back to the calculated register values, and mark unverified snippets as draft
+- inputs: hardware truth, chip profile, binding evidence, register write plan, selected candidate, local SDK/HAL headers, current firmware style, worktree status, and neighboring ISR/clock/low-power/init-order code
+- workflow: inspect local firmware first, author a project-local review artifact by default, and write it under `.emb-agent/firmware-snippets/` when source files are dirty or the integration is behavior-changing
+- required output: code snippet, assumptions, required includes/handles/channels, source edit policy, behavior couplings, write ordering, safety notes, and residual review items
+- gates: compile or static-check evidence when available, link back to the calculated register values, block source patches when dirty source files or unreviewed behavior couplings exist, and mark unverified snippets as draft
+- constraints: do not invent handles/channels/macros/init order, do not add helper functions solely to wrap generated register writes, and do not use a hand-maintained snippet template library
 
 That keeps the reusable core small. The AI writes the STM32/GD32/nRF/PADAUK/SCMCU/PUYA-specific code from the current project's evidence and SDK surface; emb-agent records the inputs, provenance, and verification status. Reusable examples can be promoted later, but they should not be the primary mechanism.
 
@@ -135,6 +137,8 @@ Generated register write plans carry this as `register_writes.firmware_snippet_r
     "code_snippet",
     "assumptions",
     "required_symbols",
+    "source_edit_policy",
+    "behavior_couplings",
     "write_ordering",
     "safety_notes",
     "verification_evidence",
