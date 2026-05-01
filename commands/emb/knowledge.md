@@ -17,6 +17,7 @@ allowed-tools:
 
 - Maintain `.emb-agent/wiki/` as a persistent synthesis layer between raw sources and project truth.
 - Maintain `.emb-agent/graph/` as a deterministic relationship index over truth files, wiki pages, tasks, reports, and schematic artifacts.
+- Maintain optional `.emb-agent/formulas/*.json` registries for structured formula, register, parameter, and evidence relationships.
 - Keep durable engineering conclusions, source summaries, decisions, risks, and cross-references visible in markdown.
 - Preserve `hw.yaml` and `req.yaml` as confirmed structured truth; wiki pages and graph candidates may contain draft synthesis, gaps, and ambiguous relationships.
 
@@ -42,13 +43,15 @@ allowed-tools:
 2. After ingesting a datasheet, schematic, board file, or useful analysis, run `knowledge ingest <source-title>` to draft a durable source synthesis page.
 3. When a question produces a reusable engineering answer, run `knowledge save-query <title>` to preview the page, then re-run with `--confirm` after checking the content.
 4. Run `knowledge graph build` after wiki/truth/task changes to refresh `.emb-agent/graph/graph.json`, `.emb-agent/graph/GRAPH_REPORT.md`, and `.emb-agent/graph/cache/manifest.json`.
-5. Run `knowledge graph query <term>` or `knowledge graph path <from> <to>` before broad searches when you need relationship-oriented context.
-6. Run `knowledge lint` and `knowledge graph lint` periodically to find missing control files, orphan pages, unindexed pages, chip truth with no matching chip wiki page, and ambiguous graph relationships.
+5. For formulas that must be reused by agents, add a JSON registry under `.emb-agent/formulas/` with `chip`, `formulas[].expression`, `variables`, `registers`, and `evidence` fields before rebuilding the graph.
+6. Run `knowledge graph query <term>` or `knowledge graph path <from> <to>` before broad searches when you need relationship-oriented context.
+7. Run `knowledge lint` and `knowledge graph lint` periodically to find missing control files, orphan pages, unindexed pages, chip truth with no matching chip wiki page, and ambiguous graph relationships.
 
 ## Rules
 
 - Do not promote wiki claims into `hw.yaml` or `req.yaml` without explicit evidence review.
 - Treat wiki pages and graph edges as persistent synthesis/navigation, not runtime gates.
 - Treat graph edges with `basis: AMBIGUOUS` as review prompts, not confirmed truth.
+- Treat formula registries as draft engineering evidence unless their `status` and source review explicitly say otherwise.
 - Prefer small linked pages over one large catch-all page.
 - Keep source pages under `wiki/sources/`, chip pages under `wiki/chips/`, decisions under `wiki/decisions/`, and risks under `wiki/risks/`.

@@ -884,6 +884,120 @@ function createKnowledgeRuntimeHelpers(deps) {
     });
   }
 
+  function addFormulaGraph(nodes, edges) {
+    const formulasDir = path.join(getProjectExtDir(), 'formulas');
+    listFilesRecursive(formulasDir, filePath => /\.json$/i.test(filePath)).forEach(filePath => {
+      const parsed = readJsonIfExists(filePath);
+      if (!parsed || !Array.isArray(parsed.formulas)) {
+        return;
+      }
+      const relativePath = path.relative(getProjectExtDir(), filePath).replace(/\\/g, '/');
+      const displayPath = runtime.getProjectAssetRelativePath(relativePath);
+      const fileNode = addFileNode(nodes, displayPath, 'Structured formula registry.');
+      const chip = String(parsed.chip || parsed.device || '').trim();
+      const chipNode = chip
+        ? pushGraphNode(nodes, {
+            id: buildGraphNodeId('chip', slugify(chip)),
+            type: 'chip',
+            label: chip,
+            summary: 'Chip referenced by formula registry.',
+            status: 'draft',
+            sources: [displayPath]
+          })
+        : '';
+      if (chipNode) {
+        pushGraphEdge(edges, buildGraphEdge(fileNode, chipNode, 'targets_chip', {
+          source: displayPath,
+          status: 'draft'
+        }));
+      }
+
+      parsed.formulas.forEach(item => {
+        const id = String(item.id || item.name || '').trim();
+        if (!id) {
+          return;
+        }
+        const formulaNode = pushGraphNode(nodes, {
+          id: buildGraphNodeId('formula', id),
+          type: 'formula',
+          label: item.label || id,
+          path: displayPath,
+          summary: item.summary || item.expression || '',
+          expression: item.expression || '',
+          status: item.status || parsed.status || 'draft',
+          sources: [displayPath]
+        });
+        pushGraphEdge(edges, buildGraphEdge(fileNode, formulaNode, 'declares', {
+          source: displayPath,
+          status: item.status || parsed.status || 'draft',
+          summary: 'Formula registry declares formula.'
+        }));
+        if (chipNode) {
+          pushGraphEdge(edges, buildGraphEdge(formulaNode, chipNode, 'belongs_to_chip', {
+            source: displayPath,
+            status: item.status || parsed.status || 'draft'
+          }));
+        }
+        const peripheral = String(item.peripheral || item.module || '').trim();
+        if (peripheral) {
+          const peripheralNode = pushGraphNode(nodes, {
+            id: buildGraphNodeId('peripheral', slugify(`${chip || 'project'}-${peripheral}`)),
+            type: 'peripheral',
+            label: peripheral,
+            summary: 'Peripheral referenced by formula registry.',
+            status: item.status || parsed.status || 'draft',
+            sources: [displayPath]
+          });
+          pushGraphEdge(edges, buildGraphEdge(formulaNode, peripheralNode, 'belongs_to_peripheral', {
+            source: displayPath,
+            status: item.status || parsed.status || 'draft'
+          }));
+        }
+        (item.registers || []).forEach(register => {
+          const registerName = String(register || '').trim();
+          if (!registerName) return;
+          const registerNode = pushGraphNode(nodes, {
+            id: buildGraphNodeId('register', slugify(`${chip || 'project'}-${registerName}`)),
+            type: 'register',
+            label: registerName,
+            summary: 'Register used by formula.',
+            status: item.status || parsed.status || 'draft',
+            sources: [displayPath]
+          });
+          pushGraphEdge(edges, buildGraphEdge(formulaNode, registerNode, 'uses_register', {
+            source: displayPath,
+            status: item.status || parsed.status || 'draft'
+          }));
+        });
+        const variables = item.variables && typeof item.variables === 'object' ? item.variables : {};
+        Object.keys(variables).forEach(name => {
+          const parameterNode = pushGraphNode(nodes, {
+            id: buildGraphNodeId('parameter', slugify(`${id}-${name}`)),
+            type: 'parameter',
+            label: name,
+            summary: String(variables[name] || ''),
+            status: item.status || parsed.status || 'draft',
+            sources: [displayPath]
+          });
+          pushGraphEdge(edges, buildGraphEdge(formulaNode, parameterNode, 'uses_parameter', {
+            source: displayPath,
+            status: item.status || parsed.status || 'draft'
+          }));
+        });
+        const evidence = item.evidence && typeof item.evidence === 'object' ? item.evidence : {};
+        const evidenceSource = String(evidence.source || parsed.source || '').trim();
+        if (evidenceSource) {
+          const evidenceNode = addFileNode(nodes, evidenceSource, evidence.section || 'Formula evidence source.');
+          pushGraphEdge(edges, buildGraphEdge(formulaNode, evidenceNode, 'evidenced_by', {
+            source: displayPath,
+            status: item.status || parsed.status || 'draft',
+            summary: evidence.section || ''
+          }));
+        }
+      });
+    });
+  }
+
   function addTaskGraph(nodes, edges) {
     const tasksDir = path.join(getProjectExtDir(), 'tasks');
     listFilesRecursive(tasksDir, filePath => path.basename(filePath) === 'task.json').forEach(filePath => {
@@ -1003,6 +1117,7 @@ function createKnowledgeRuntimeHelpers(deps) {
     addTruthFileGraph(nodes, edges, 'hw.yaml', 'Hardware truth.');
     addTruthFileGraph(nodes, edges, 'req.yaml', 'Requirement truth.');
     addWikiGraph(nodes, edges);
+    addFormulaGraph(nodes, edges);
     addTaskGraph(nodes, edges);
     addSessionReportGraph(nodes, edges);
     addSchematicGraph(nodes, edges);
@@ -1013,6 +1128,7 @@ function createKnowledgeRuntimeHelpers(deps) {
       path.join(getProjectExtDir(), 'project.json'),
       path.join(getProjectExtDir(), 'hw.yaml'),
       path.join(getProjectExtDir(), 'req.yaml'),
+      ...listFilesRecursive(path.join(getProjectExtDir(), 'formulas'), filePath => /\.json$/i.test(filePath)),
       ...listMarkdownPages().map(page => getWikiPath(page.path))
     ];
     const graph = {
