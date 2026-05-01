@@ -36,3 +36,4 @@ emb-agent tool run <name> [options] --save-output --output-file .emb-agent/runs/
 - `--output-file <path>` chooses an explicit output path and implies `--save-output`.
 - Save flags are removed before the project-local adapter runs, so they do not pollute tool parameters.
 - If the result includes `register_writes.firmware_snippet_request`, the JSON result includes a `next_steps` entry for `snippet draft --from-tool-output <saved-file> --confirm`.
+- Saved outputs include `knowledge graph build` in `next_steps` so `.emb-agent/runs/*.json` can be indexed immediately.

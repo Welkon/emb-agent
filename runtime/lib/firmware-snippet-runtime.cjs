@@ -520,7 +520,9 @@ function createFirmwareSnippetRuntimeHelpers(deps) {
       next_steps: [
         `Review ${relativePath}`,
         'Compile or static-check the project before applying source edits',
-        'Patch firmware sources only after behavior couplings are reviewed'
+        'Patch firmware sources only after behavior couplings are reviewed',
+        'knowledge graph build',
+        `knowledge graph query ${registers[0].register}`
       ]
     };
   }
