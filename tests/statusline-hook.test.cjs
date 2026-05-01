@@ -3,12 +3,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const childProcess = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const statuslineHook = require(path.join(repoRoot, 'runtime', 'hooks', 'emb-statusline.js'));
+
+function sha256Text(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
 
 test('statusline hook returns empty output outside emb-agent projects', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-statusline-empty-'));
@@ -185,4 +190,67 @@ test('statusline hook shows next recommendation after bootstrap is ready', () =>
   assert.match(output, /tools ready/);
   assert.match(output, /next: next/);
   assert.match(output, /pkg:fw/);
+});
+
+test('statusline hook shows knowledge graph freshness', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-statusline-graph-'));
+  const embDir = path.join(tempProject, '.emb-agent');
+  const graphDir = path.join(embDir, 'graph');
+  const graphCacheDir = path.join(graphDir, 'cache');
+
+  fs.mkdirSync(embDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(embDir, 'project.json'),
+    JSON.stringify({ default_package: 'fw', active_package: 'fw' }, null, 2) + '\n',
+    'utf8'
+  );
+  fs.writeFileSync(path.join(embDir, 'hw.yaml'), 'chip: SC8P052B\n', 'utf8');
+  fs.writeFileSync(path.join(embDir, 'req.yaml'), 'project: dimmer\n', 'utf8');
+
+  const missing = statuslineHook.buildStatusLine({
+    cwd: tempProject,
+    model: { display_name: 'GPT-5' },
+    context_window: { used_percentage: 12 }
+  });
+  assert.match(missing, /graph missing/);
+
+  fs.mkdirSync(graphCacheDir, { recursive: true });
+  const manifest = {
+    '.emb-agent/project.json': sha256Text(fs.readFileSync(path.join(embDir, 'project.json'), 'utf8')),
+    '.emb-agent/hw.yaml': sha256Text(fs.readFileSync(path.join(embDir, 'hw.yaml'), 'utf8')),
+    '.emb-agent/req.yaml': sha256Text(fs.readFileSync(path.join(embDir, 'req.yaml'), 'utf8'))
+  };
+  fs.writeFileSync(
+    path.join(graphDir, 'graph.json'),
+    JSON.stringify({
+      version: 'emb-agent.graph/1',
+      stats: { nodes: 1, edges: 0, ambiguous_edges: 0 },
+      nodes: [],
+      edges: [],
+      manifest
+    }, null, 2) + '\n',
+    'utf8'
+  );
+  fs.writeFileSync(path.join(graphCacheDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+
+  const fresh = statuslineHook.buildStatusLine({
+    cwd: tempProject,
+    model: { display_name: 'GPT-5' },
+    context_window: { used_percentage: 12 }
+  });
+  assert.match(fresh, /graph fresh/);
+
+  fs.mkdirSync(path.join(embDir, 'runs'), { recursive: true });
+  fs.writeFileSync(
+    path.join(embDir, 'runs', 'timer-calc.json'),
+    JSON.stringify({ tool: 'timer-calc', status: 'ok' }, null, 2) + '\n',
+    'utf8'
+  );
+
+  const stale = statuslineHook.buildStatusLine({
+    cwd: tempProject,
+    model: { display_name: 'GPT-5' },
+    context_window: { used_percentage: 12 }
+  });
+  assert.match(stale, /graph stale/);
 });
