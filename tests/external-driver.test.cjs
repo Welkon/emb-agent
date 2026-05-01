@@ -106,6 +106,7 @@ test('external init and next expose fixed driver payload for external agents', a
     assert.match(next.next.cli, / capability run scan$/);
     assert.equal(next.capability_route.capability, 'scan');
     assert.equal(next.capability_route.route_strategy, 'capability-first');
+    assert.equal(next.product_layer.id, 'embedded_workflow');
     assert.equal(next.knowledge_graph.state, 'missing');
     assert.equal(next.knowledge_graph.next, 'knowledge graph refresh');
     assert.deepEqual(next.knowledge_graph.next_steps, ['knowledge graph refresh']);

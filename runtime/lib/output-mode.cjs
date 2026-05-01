@@ -684,6 +684,11 @@ function buildBriefNextContext(value) {
       last_command: current.last_command || '',
       suggested_flow: current.suggested_flow || ''
     }),
+    product_layer: isObject(value.product_layer) ? compactObject({
+      id: value.product_layer.id || '',
+      label: value.product_layer.label || '',
+      summary: value.product_layer.summary || ''
+    }) : null,
     task: compactObject({
       name: task.name || '',
       status: task.status || '',
