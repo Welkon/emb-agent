@@ -114,7 +114,15 @@ MODIFY_REG(TIM3->ARR, 0xFFFFFFFF, 0x3FF);
 MODIFY_REG(TIM3->CCR1, 0x3FF, 0x200);
 ```
 
-This is intentionally a macro-level HAL bridge, not a full vendor driver call generator. Full HAL APIs such as `HAL_TIM_PWM_ConfigChannel()` or `__HAL_TIM_SET_COMPARE()` need semantic inputs that are outside a generic register write plan: handle names, channel constants, initialization order, clock enable state, preload behavior, and update-event timing. Those should come from family-specific chip support templates once a vendor binding proves the required contract.
+This is intentionally a macro-level HAL bridge, not a full vendor driver call generator. Full HAL APIs such as `HAL_TIM_PWM_ConfigChannel()` or `__HAL_TIM_SET_COMPARE()` need semantic inputs that are outside a generic register write plan: handle names, channel constants, initialization order, clock enable state, preload behavior, and update-event timing.
+
+The next layer should be AI-authored firmware snippets, not a hand-maintained template library. emb-agent should provide the generation contract:
+
+- inputs: hardware truth, chip profile, binding evidence, register write plan, selected candidate, local SDK/HAL headers, and current firmware style
+- required output: code snippet, assumptions, required includes/handles/channels, write ordering, safety notes, and residual review items
+- gates: compile or static-check evidence when available, link back to the calculated register values, and mark unverified snippets as draft
+
+That keeps the reusable core small. The AI writes the STM32/GD32/nRF/PADAUK/SCMCU/PUYA-specific code from the current project's evidence and SDK surface; emb-agent records the inputs, provenance, and verification status. Reusable examples can be promoted later, but they should not be the primary mechanism.
 
 ## Repository roles
 
