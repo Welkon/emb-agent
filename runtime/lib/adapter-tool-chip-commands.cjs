@@ -97,13 +97,14 @@ function createAdapterToolChipCommandHelpers(deps) {
       ...(result && typeof result === 'object' && !Array.isArray(result) ? result : { result }),
       saved_output: relativePath
     };
+    const nextSteps = Array.isArray(next.next_steps) ? next.next_steps.slice() : [];
     const snippetRequest = findFirmwareSnippetRequest(next);
     if (snippetRequest && snippetRequest.protocol === 'emb-agent.firmware-snippet-request/1') {
       const draftCommand = `snippet draft --from-tool-output ${relativePath} --confirm`;
-      next.next_steps = Array.isArray(next.next_steps)
-        ? [...new Set([...next.next_steps, draftCommand])]
-        : [draftCommand];
+      nextSteps.push(draftCommand);
     }
+    nextSteps.push('knowledge graph build');
+    next.next_steps = [...new Set(nextSteps)];
     fs.writeFileSync(absolutePath, JSON.stringify(next, null, 2) + '\n', 'utf8');
     return next;
   }
