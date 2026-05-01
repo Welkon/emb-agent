@@ -100,6 +100,13 @@ Each plan key names the calculated value being written, such as `period_value`, 
 
 This is the core mechanism for broad chip coverage. STM32/GD32 can map timer results to `PSC`, `ARR`, and `CCRn`; Nordic can map compare values to `CC[n]`; small 8-bit parts can split one calculated value across low/high registers such as `PWMTL` and `PWMTH`. Core only slices fields from bindings; it does not need vendor-specific register-write branches.
 
+The generated output includes both structured register entries and C statement strings. For every merged register write, `register_writes.registers[]` carries `register`, `mask`, `mask_hex`, `write_value`, `write_value_hex`, `fields`, and `c_statement`. The plan also exposes `register_writes.c_statements[]` as a flat firmware-oriented list. The generated C preserves unrelated bits through a masked read-modify-write form:
+
+```c
+ARR = (ARR & ~0xFFFFFFFF) | 0x3FF;
+CCR1 = (CCR1 & ~0x3FF) | 0x200;
+```
+
 ## Repository roles
 
 emb-agent should treat chip support as a three-layer system:

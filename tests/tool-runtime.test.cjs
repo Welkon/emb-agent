@@ -377,6 +377,8 @@ test('generated draft timer route can execute first-pass timer search', async ()
     assert.equal(result.best_candidate.register_writes.registers[0].register, 'PR2');
     assert.equal(result.best_candidate.register_writes.registers[0].write_value, 255);
     assert.equal(result.best_candidate.register_writes.registers[0].mask, 255);
+    assert.equal(result.best_candidate.register_writes.registers[0].c_statement, 'PR2 = (PR2 & ~0xFF) | 0xFF;');
+    assert.deepEqual(result.best_candidate.register_writes.c_statements, ['PR2 = (PR2 & ~0xFF) | 0xFF;']);
     assert.ok(Array.isArray(result.candidates));
     assert.ok(result.candidates.length > 0);
     assert.ok(
@@ -557,6 +559,17 @@ test('generated draft pwm route can execute first-pass pwm search', async () => 
       ]
     );
     assert.equal(result.best_candidate.register_writes.registers[0].mask_hex, '0xFFFFFFFF');
+    assert.equal(
+      result.best_candidate.register_writes.registers[0].c_statement,
+      'ARR = (ARR & ~0xFFFFFFFF) | 0x3FF;'
+    );
+    assert.deepEqual(
+      result.best_candidate.register_writes.c_statements,
+      [
+        'ARR = (ARR & ~0xFFFFFFFF) | 0x3FF;',
+        'CCR1 = (CCR1 & ~0x3FF) | 0x200;'
+      ]
+    );
     assert.ok(Array.isArray(result.candidates));
     assert.ok(result.candidates.length > 0);
     assert.ok(
@@ -882,6 +895,7 @@ test('generated draft comparator route can execute first-pass threshold feasibil
     assert.equal(result.threshold_selection.register_writes.registers[0].register, 'CMPREF');
     assert.equal(result.threshold_selection.register_writes.registers[0].write_value, 16);
     assert.equal(result.threshold_selection.register_writes.registers[0].mask, 48);
+    assert.equal(result.threshold_selection.register_writes.registers[0].c_statement, 'CMPREF = (CMPREF & ~0x30) | 0x10;');
   } finally {
     process.chdir(currentCwd);
   }
