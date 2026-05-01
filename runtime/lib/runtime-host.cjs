@@ -192,6 +192,15 @@ function quoteShellPath(filePath) {
   return JSON.stringify(filePath);
 }
 
+function buildBundledCodexBridgeCommand(targetDir, target) {
+  if (!target || target.name !== 'codex') {
+    return '';
+  }
+  const runtimeDir = path.resolve(targetDir, target.runtimeDirName || 'emb-agent');
+  const bridgePath = path.join(runtimeDir, 'bin', 'emb-codex-subagent-bridge.cjs');
+  return `node ${quoteShellPath(bridgePath.replace(/\\/g, '/'))}`;
+}
+
 function getSourceCliDisplayPath(name) {
   const host = getHostDefaults(name);
   return `~/${host.defaultHomeDirName}/emb-agent/bin/emb-agent.cjs`;
@@ -253,12 +262,14 @@ function createInstallHostMetadata(targetDir, target, args) {
     runtime_dir_name: target.runtimeDirName || 'emb-agent'
   };
 
-  const subagentBridgeCommand = String((args && args.subagentBridgeCmd) || '').trim();
+  const explicitSubagentBridgeCommand = String((args && args.subagentBridgeCmd) || '').trim();
+  const subagentBridgeCommand = explicitSubagentBridgeCommand || buildBundledCodexBridgeCommand(targetDir, target);
   const subagentBridgeTimeoutMs = Number(args && args.subagentBridgeTimeoutMs);
 
   if (subagentBridgeCommand) {
     metadata.subagent_bridge = {
       command: subagentBridgeCommand,
+      bundled: explicitSubagentBridgeCommand ? undefined : true,
       timeout_ms: Number.isInteger(subagentBridgeTimeoutMs) && subagentBridgeTimeoutMs > 0
         ? subagentBridgeTimeoutMs
         : DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS
@@ -271,6 +282,7 @@ function createInstallHostMetadata(targetDir, target, args) {
 module.exports = {
   DEFAULT_SUBAGENT_BRIDGE_TIMEOUT_MS,
   buildCliCommand,
+  buildBundledCodexBridgeCommand,
   createInstallHostMetadata,
   getHostMetadataPath,
   getHostDefaults,

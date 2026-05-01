@@ -1126,13 +1126,23 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', '00-bootstrap-project', 'task.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'default-session.json')), true);
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'state', 'projects')), true);
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'bin', 'emb-codex-subagent-bridge.cjs')), true);
     assert.equal(configData.project_state_dir, 'state/projects');
     assert.equal(configData.legacy_project_state_dir, 'state/projects');
+    const runtimeHost = require(path.join(runtimeRoot, 'lib', 'runtime-host.cjs'));
+    const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
+    const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
+    assert.equal(hostMetadata.subagent_bridge.bundled, true);
+    assert.match(hostMetadata.subagent_bridge.command, /emb-codex-subagent-bridge\.cjs/);
+    assert.equal(resolvedHost.subagentBridge.available, true);
+    assert.equal(resolvedHost.subagentBridge.mode, 'stdio-json');
+    assert.match(resolvedHost.subagentBridge.command, /emb-codex-subagent-bridge\.cjs/);
 
     installedCli.main(['start']);
     assert.match(stdout, /Installed 8 Codex skills under:/);
     assert.match(stdout, /\.codex\/skills/);
     assert.doesNotMatch(stdout, /Installed 8 shared skills under:/);
+    assert.match(stdout, /Sub-agent bridge: .*emb-codex-subagent-bridge\.cjs/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /Bootstrap task:/);
     assert.match(stdout, /open a Codex session\. emb-agent will inject the startup context automatically\./);

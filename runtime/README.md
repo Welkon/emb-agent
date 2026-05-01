@@ -245,7 +245,7 @@ Delegation pattern is selected from `preferences.orchestration_mode`:
 - `swarm`
   Flat peer roster with one `peer-lead` and supporting `peer` workers.
 
-If the host wants emb-agent to actually launch sub-agents, configure a bridge command that accepts a JSON payload on `stdin` and returns a JSON worker result on `stdout`:
+Codex installs include a bundled stdio bridge at `runtime/bin/emb-codex-subagent-bridge.cjs` and write it into `HOST.json` automatically. Other hosts, or custom Codex deployments, can configure a bridge command that accepts a JSON payload on `stdin` and returns a JSON worker result on `stdout`:
 
 ```bash
 export EMB_AGENT_SUBAGENT_BRIDGE_CMD='node /path/to/host-subagent-bridge.cjs'
@@ -255,6 +255,7 @@ Bridge contract:
 
 - Input: one JSON payload containing session summary, dispatch contract, worker envelope, and a self-contained worker prompt.
 - Output: one JSON payload containing `status` and `worker_result`.
+- Bundled Codex bridge: runs `codex exec` in read-only mode with approval policy `never`, asks the worker to return compact JSON, and preserves the normal emb-agent worker result envelope.
 - Runtime users can steer the pattern with `prefs set orchestration_mode <auto|coordinator|fork|swarm>`.
 - `skills run <name> --isolated` also uses the bridge when a skill declares isolated execution.
 - Fallback: if no bridge is configured, emb-agent keeps the launch request, marks synthesis as `manual-workers-required`, and continues the inline action path. The bridge is optional automation, not a runtime gate.
