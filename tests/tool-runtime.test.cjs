@@ -426,6 +426,38 @@ test('generated draft timer route can execute first-pass timer search', async ()
     assert.ok(
       result.candidates.some(item => item.prescaler === 4 && item.period_value === 255 && item.actual_us === 64)
     );
+
+    const savedStdout = await captureStdout(() =>
+      cli.main([
+        'tool',
+        'run',
+        'timer-calc',
+        '--family',
+        'vendor-family',
+        '--device',
+        'vendor-device',
+        '--clock-source',
+        'sysclk',
+        '--clock-hz',
+        '16000000',
+        '--target-us',
+        '64',
+        '--save-output',
+        '--output-file',
+        '.emb-agent/runs/timer-calc.json'
+      ])
+    );
+    const saved = JSON.parse(savedStdout);
+    const savedPath = path.join(tempProject, '.emb-agent', 'runs', 'timer-calc.json');
+    assert.equal(saved.status, 'ok');
+    assert.equal(saved.saved_output, '.emb-agent/runs/timer-calc.json');
+    assert.equal(fs.existsSync(savedPath), true);
+    assert.equal(saved.inputs.options['save-output'], undefined);
+    assert.equal(saved.inputs.options['output-file'], undefined);
+    assert.ok(saved.next_steps.includes('snippet draft --from-tool-output .emb-agent/runs/timer-calc.json --confirm'));
+    const savedFile = JSON.parse(fs.readFileSync(savedPath, 'utf8'));
+    assert.equal(savedFile.saved_output, '.emb-agent/runs/timer-calc.json');
+    assert.equal(savedFile.best_candidate.register_writes.firmware_snippet_request.protocol, 'emb-agent.firmware-snippet-request/1');
   } finally {
     process.chdir(currentCwd);
   }

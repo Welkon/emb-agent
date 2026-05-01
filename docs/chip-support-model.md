@@ -150,6 +150,7 @@ Generated register write plans carry this as `register_writes.firmware_snippet_r
 The request can be materialized into a project-local review artifact with:
 
 ```bash
+emb-agent tool run <tool> [options] --save-output
 emb-agent snippet draft --from-tool-output <tool-output.json> --title <name> --confirm
 ```
 
