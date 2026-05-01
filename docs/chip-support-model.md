@@ -46,6 +46,25 @@ Examples:
 - PWM output pin constraints for one device line
 - chip-specific peripheral availability
 
+## Coverage strategy
+
+emb-agent should not scale to STM32, nRF, GD32, PADAUK, PUYA, SCMCU, or other families by adding vendor branches to core.
+
+The scalable unit is a binding, not a hard-coded chip. Core tool routes should stay generic and read structured binding parameters such as:
+
+- timer registers: `period_register`, `period_max`, `prescalers`, `postscalers`, and reload/count offsets
+- PWM registers: `period_registers`, `duty_registers`, `prescalers`, `period_bits`, and duty/count offsets
+- comparator thresholds: source ranges plus table rows for selectable threshold bits
+- evidence links: datasheet/manual sections, formula registries, and wiki pages
+
+That lets different vendors map their own names onto the same tool contract:
+
+- STM32 / GD32 timers can bind `PSC`, `ARR`, and `CCRn`
+- Nordic timers can bind `PRESCALER`, `CC[n]`, and bit width limits
+- PADAUK / SCMCU / PUYA 8-bit parts can bind `PR2`, `PWMT`, `PWMDx`, or vendor-specific threshold tables
+
+When a family needs behavior that does not fit a generic route, add a family-specific route under chip support. Do not move that exception into emb-agent core until several families prove the abstraction is genuinely common.
+
 ## Repository roles
 
 emb-agent should treat chip support as a three-layer system:
