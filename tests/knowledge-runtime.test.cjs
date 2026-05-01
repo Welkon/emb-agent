@@ -125,6 +125,127 @@ test('knowledge lint reports declared chip without matching chip page', async ()
   }
 });
 
+test('knowledge graph build writes graph artifacts from truth and wiki links', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-knowledge-graph-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['knowledge', 'init']);
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      ['chip: SC8F072', 'package: SOP8', ''].join('\n'),
+      'utf8'
+    );
+
+    await captureCliJson([
+      'knowledge',
+      'save-query',
+      'SC8F072',
+      '--kind',
+      'chip',
+      '--summary',
+      'SC8F072 chip synthesis page.',
+      '--body',
+      'Timer and GPIO evidence should be reviewed before promotion.',
+      '--confirm'
+    ]);
+    await captureCliJson([
+      'knowledge',
+      'save-query',
+      'Timer contention',
+      '--summary',
+      'IR decode and PWM may compete for timer resources.',
+      '--body',
+      'Compare timer ownership against [[chips/sc8f072]] and [[missing/peripheral-note]].',
+      '--link',
+      'chips/sc8f072',
+      '--link',
+      'missing/peripheral-note',
+      '--confirm'
+    ]);
+
+    const built = await captureCliJson(['knowledge', 'graph', 'build']);
+    const graphPath = path.join(tempProject, '.emb-agent', 'graph', 'graph.json');
+    const reportPath = path.join(tempProject, '.emb-agent', 'graph', 'GRAPH_REPORT.md');
+    const manifestPath = path.join(tempProject, '.emb-agent', 'graph', 'cache', 'manifest.json');
+    const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
+
+    assert.equal(built.status, 'built');
+    assert.equal(built.graph_file, '.emb-agent/graph/graph.json');
+    assert.equal(fs.existsSync(reportPath), true);
+    assert.equal(fs.existsSync(manifestPath), true);
+    assert.ok(graph.nodes.some(node => node.id === 'chip:sc8f072'));
+    assert.ok(graph.nodes.some(node => node.id === 'wiki:chips/sc8f072'));
+    assert.ok(graph.nodes.some(node => node.id === 'wiki:queries/timer-contention'));
+    assert.ok(graph.edges.some(edge =>
+      edge.from === 'wiki:queries/timer-contention' &&
+      edge.to === 'wiki:chips/sc8f072' &&
+      edge.type === 'links_to'
+    ));
+    assert.ok(graph.edges.some(edge => edge.basis === 'AMBIGUOUS'));
+    assert.match(fs.readFileSync(reportPath, 'utf8'), /Knowledge Graph Report/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('knowledge graph query path and lint expose graph navigation', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-knowledge-graph-query-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['knowledge', 'init']);
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      ['chip: SC8F072', 'package: SOP8', ''].join('\n'),
+      'utf8'
+    );
+
+    await captureCliJson([
+      'knowledge',
+      'save-query',
+      'SC8F072',
+      '--kind',
+      'chip',
+      '--summary',
+      'SC8F072 chip synthesis page.',
+      '--body',
+      'Chip notes.',
+      '--confirm'
+    ]);
+    await captureCliJson([
+      'knowledge',
+      'save-query',
+      'Timer contention',
+      '--summary',
+      'Timer relationship page.',
+      '--body',
+      'Review [[chips/sc8f072]] and [[missing/timer-note]].',
+      '--confirm'
+    ]);
+    await captureCliJson(['knowledge', 'graph', 'build']);
+
+    const query = await captureCliJson(['knowledge', 'graph', 'query', 'sc8f072']);
+    const pathResult = await captureCliJson(['knowledge', 'graph', 'path', 'timer-contention', 'chips/sc8f072']);
+    const lint = await captureCliJson(['knowledge', 'graph', 'lint']);
+
+    assert.equal(query.query, 'sc8f072');
+    assert.ok(query.nodes.some(node => node.id === 'chip:sc8f072'));
+    assert.equal(pathResult.found, true);
+    assert.ok(pathResult.path.includes('wiki:queries/timer-contention'));
+    assert.ok(pathResult.path.includes('wiki:chips/sc8f072'));
+    assert.equal(lint.status, 'warn');
+    assert.ok(lint.issues.some(issue => issue.code === 'ambiguous-edge'));
+    assert.ok(lint.next_steps.some(step => /Review the linked wiki page/.test(step)));
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('knowledge command is visible in advanced command inventory', async () => {
   const listed = await captureCliJson(['commands', 'list', '--all']);
   const shown = await captureCliJson(['commands', 'show', 'knowledge']);
@@ -132,4 +253,5 @@ test('knowledge command is visible in advanced command inventory', async () => {
   assert.ok(listed.includes('knowledge'));
   assert.equal(shown.name, 'knowledge');
   assert.match(shown.content, /persistent knowledge wiki/i);
+  assert.match(shown.content, /knowledge graph build/);
 });

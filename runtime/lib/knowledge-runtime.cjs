@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('crypto');
+
 function createKnowledgeRuntimeHelpers(deps) {
   const {
     fs,
@@ -40,6 +42,18 @@ function createKnowledgeRuntimeHelpers(deps) {
     return runtime.getProjectAssetRelativePath('wiki', ...parts);
   }
 
+  function getGraphDir() {
+    return path.join(getProjectExtDir(), 'graph');
+  }
+
+  function getGraphPath(...parts) {
+    return path.join(getGraphDir(), ...parts);
+  }
+
+  function getGraphRelativePath(...parts) {
+    return runtime.getProjectAssetRelativePath('graph', ...parts);
+  }
+
   function ensureKnowledgeDirs() {
     const wikiDir = getWikiDir();
     runtime.ensureDir(wikiDir);
@@ -47,8 +61,47 @@ function createKnowledgeRuntimeHelpers(deps) {
     return wikiDir;
   }
 
+  function ensureGraphDirs() {
+    const graphDir = getGraphDir();
+    runtime.ensureDir(graphDir);
+    runtime.ensureDir(path.join(graphDir, 'cache'));
+    return graphDir;
+  }
+
   function readTextIfExists(filePath) {
     return fs.existsSync(filePath) ? String(fs.readFileSync(filePath, 'utf8') || '') : '';
+  }
+
+  function readJsonIfExists(filePath) {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    try {
+      return JSON.parse(String(fs.readFileSync(filePath, 'utf8') || '{}'));
+    } catch {
+      return null;
+    }
+  }
+
+  function sha256Text(value) {
+    return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+  }
+
+  function buildGraphNodeId(type, value) {
+    return `${type}:${String(value || '').trim().replace(/^\.emb-agent\//, '')}`;
+  }
+
+  function buildGraphEdge(from, to, type, options = {}) {
+    return {
+      from,
+      to,
+      type,
+      basis: options.basis || 'EXTRACTED',
+      status: options.status || 'confirmed',
+      confidence: typeof options.confidence === 'number' ? options.confidence : 1,
+      source: options.source || '',
+      summary: options.summary || ''
+    };
   }
 
   function extractFrontmatter(content) {
@@ -638,6 +691,638 @@ function createKnowledgeRuntimeHelpers(deps) {
     };
   }
 
+  function listFilesRecursive(dirPath, predicate) {
+    if (!fs.existsSync(dirPath)) {
+      return [];
+    }
+    const files = [];
+    function walk(currentDir) {
+      fs.readdirSync(currentDir, { withFileTypes: true }).forEach(entry => {
+        const filePath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          walk(filePath);
+          return;
+        }
+        if (entry.isFile() && (!predicate || predicate(filePath))) {
+          files.push(filePath);
+        }
+      });
+    }
+    walk(dirPath);
+    return files.sort();
+  }
+
+  function pushGraphNode(nodes, node) {
+    const existing = nodes.get(node.id);
+    if (existing) {
+      nodes.set(node.id, {
+        ...existing,
+        ...node,
+        sources: runtime.unique([...(existing.sources || []), ...(node.sources || [])])
+      });
+      return node.id;
+    }
+    nodes.set(node.id, {
+      ...node,
+      sources: runtime.unique(node.sources || [])
+    });
+    return node.id;
+  }
+
+  function pushGraphEdge(edges, edge) {
+    const key = `${edge.from}\u0000${edge.type}\u0000${edge.to}\u0000${edge.source || ''}`;
+    if (!edges.has(key)) {
+      edges.set(key, edge);
+    }
+  }
+
+  function addFileNode(nodes, relativePath, summary) {
+    return pushGraphNode(nodes, {
+      id: buildGraphNodeId('file', relativePath),
+      type: 'file',
+      label: relativePath,
+      path: relativePath,
+      summary: summary || '',
+      status: 'confirmed',
+      sources: [relativePath]
+    });
+  }
+
+  function addTruthFileGraph(nodes, edges, relativePath, summary) {
+    const projectExtDir = getProjectExtDir();
+    const filePath = path.join(projectExtDir, relativePath);
+    if (!fs.existsSync(filePath)) {
+      return;
+    }
+    const displayPath = runtime.getProjectAssetRelativePath(relativePath);
+    const fileNode = addFileNode(nodes, displayPath, summary);
+    const content = readTextIfExists(filePath);
+    const parsed = relativePath.endsWith('.json')
+      ? readJsonIfExists(filePath)
+      : runtime.parseSimpleYaml(filePath);
+
+    if (relativePath === 'hw.yaml') {
+      const chip = parsed && parsed.chip ? String(parsed.chip).trim() : '';
+      const pkg = parsed && parsed.package ? String(parsed.package).trim() : '';
+      if (chip) {
+        const chipNode = pushGraphNode(nodes, {
+          id: buildGraphNodeId('chip', slugify(chip)),
+          type: 'chip',
+          label: chip,
+          summary: 'Chip declared in hardware truth.',
+          status: 'confirmed',
+          sources: [displayPath]
+        });
+        pushGraphEdge(edges, buildGraphEdge(fileNode, chipNode, 'declares', {
+          source: displayPath,
+          summary: 'hw.yaml declares chip identity.'
+        }));
+      }
+      if (pkg) {
+        const packageNode = pushGraphNode(nodes, {
+          id: buildGraphNodeId('package', slugify(pkg)),
+          type: 'package',
+          label: pkg,
+          summary: 'Package declared in hardware truth.',
+          status: 'confirmed',
+          sources: [displayPath]
+        });
+        pushGraphEdge(edges, buildGraphEdge(fileNode, packageNode, 'declares', {
+          source: displayPath,
+          summary: 'hw.yaml declares package identity.'
+        }));
+      }
+      const signalMatches = [...content.matchAll(/(?:name|signal):\s*"?([^"\n#]+)"?/g)]
+        .map(match => match[1].trim())
+        .filter(Boolean);
+      signalMatches.forEach(signal => {
+        const signalNode = pushGraphNode(nodes, {
+          id: buildGraphNodeId('signal', slugify(signal)),
+          type: 'signal',
+          label: signal,
+          summary: 'Signal mentioned in hardware truth.',
+          status: 'confirmed',
+          sources: [displayPath]
+        });
+        pushGraphEdge(edges, buildGraphEdge(fileNode, signalNode, 'mentions', {
+          source: displayPath
+        }));
+      });
+    }
+
+    if (relativePath === 'req.yaml') {
+      ['goal', 'goals', 'interface', 'interfaces', 'acceptance', 'risk', 'risks'].forEach(key => {
+        const pattern = new RegExp(`(?:^|\\n)\\s*${key}:\\s*"?([^"\\n#]+)"?`, 'g');
+        [...content.matchAll(pattern)].forEach(match => {
+          const value = match[1].trim();
+          if (!value) return;
+          const reqNode = pushGraphNode(nodes, {
+            id: buildGraphNodeId(`requirement-${key}`, slugify(value)),
+            type: key.includes('risk') ? 'risk' : 'requirement',
+            label: value,
+            summary: `Requirement ${key} mentioned in req.yaml.`,
+            status: 'confirmed',
+            sources: [displayPath]
+          });
+          pushGraphEdge(edges, buildGraphEdge(fileNode, reqNode, 'declares', {
+            source: displayPath
+          }));
+        });
+      });
+    }
+  }
+
+  function addWikiGraph(nodes, edges) {
+    const pages = listMarkdownPages();
+    const pageByKey = new Map(pages.map(page => [page.path.replace(/\.md$/, ''), page]));
+    pages.forEach(page => {
+      const displayPath = getWikiRelativePath(page.path);
+      const pageNode = pushGraphNode(nodes, {
+        id: buildGraphNodeId('wiki', page.path.replace(/\.md$/, '')),
+        type: 'wiki_page',
+        label: page.title,
+        path: displayPath,
+        summary: page.summary,
+        status: 'draft',
+        sources: [displayPath]
+      });
+      const content = readTextIfExists(getWikiPath(page.path));
+      extractWikiLinks(content).forEach(link => {
+        const normalized = link.replace(/^wiki\//, '').replace(/\.md$/, '');
+        const targetPage = pageByKey.get(normalized);
+        const targetNode = targetPage
+          ? buildGraphNodeId('wiki', normalized)
+          : pushGraphNode(nodes, {
+              id: buildGraphNodeId('concept', slugify(normalized)),
+              type: 'concept',
+              label: normalized,
+              summary: 'Mentioned by a wiki link but no matching wiki page exists.',
+              status: 'candidate',
+              sources: [displayPath]
+            });
+        pushGraphEdge(edges, buildGraphEdge(pageNode, targetNode, targetPage ? 'links_to' : 'mentions', {
+          source: displayPath,
+          basis: targetPage ? 'EXTRACTED' : 'AMBIGUOUS',
+          status: targetPage ? 'confirmed' : 'candidate',
+          confidence: targetPage ? 1 : 0.45
+        }));
+      });
+      const frontmatter = extractFrontmatter(content);
+      if (frontmatter.kind) {
+        const kindNode = pushGraphNode(nodes, {
+          id: buildGraphNodeId('knowledge-kind', frontmatter.kind),
+          type: 'knowledge_kind',
+          label: frontmatter.kind,
+          summary: 'Knowledge page category.',
+          status: 'confirmed',
+          sources: [displayPath]
+        });
+        pushGraphEdge(edges, buildGraphEdge(pageNode, kindNode, 'classified_as', {
+          source: displayPath
+        }));
+      }
+    });
+  }
+
+  function addTaskGraph(nodes, edges) {
+    const tasksDir = path.join(getProjectExtDir(), 'tasks');
+    listFilesRecursive(tasksDir, filePath => path.basename(filePath) === 'task.json').forEach(filePath => {
+      const task = readJsonIfExists(filePath);
+      if (!task || !task.name) {
+        return;
+      }
+      const relativeTaskPath = runtime.getProjectAssetRelativePath(
+        path.relative(getProjectExtDir(), filePath).replace(/\\/g, '/')
+      );
+      const taskNode = pushGraphNode(nodes, {
+        id: buildGraphNodeId('task', task.name),
+        type: 'task',
+        label: task.title || task.name,
+        path: relativeTaskPath,
+        summary: task.description || '',
+        status: task.status || 'unknown',
+        sources: [relativeTaskPath]
+      });
+      (task.related_files || []).forEach(file => {
+        const fileNode = addFileNode(nodes, file, 'Task related file.');
+        pushGraphEdge(edges, buildGraphEdge(taskNode, fileNode, 'depends_on', {
+          source: relativeTaskPath,
+          status: task.status || 'unknown'
+        }));
+      });
+    });
+  }
+
+  function addSessionReportGraph(nodes, edges) {
+    const indexPath = path.join(getProjectExtDir(), 'reports', 'sessions', 'INDEX.md');
+    if (!fs.existsSync(indexPath)) {
+      return;
+    }
+    const displayPath = runtime.getProjectAssetRelativePath('reports', 'sessions', 'INDEX.md');
+    const indexNode = addFileNode(nodes, displayPath, 'Session report index.');
+    const content = readTextIfExists(indexPath);
+    [...content.matchAll(/\]\(([^)]+report-[^)]+\.md)\)/g)].forEach(match => {
+      const reportPath = match[1].replace(/^\.?\//, '');
+      const reportNode = pushGraphNode(nodes, {
+        id: buildGraphNodeId('report', reportPath),
+        type: 'report',
+        label: path.basename(reportPath, '.md'),
+        path: reportPath,
+        summary: 'Stored session report.',
+        status: 'confirmed',
+        sources: [displayPath]
+      });
+      pushGraphEdge(edges, buildGraphEdge(indexNode, reportNode, 'indexes', {
+        source: displayPath
+      }));
+    });
+  }
+
+  function addSchematicGraph(nodes, edges) {
+    const projectExtDir = getProjectExtDir();
+    listFilesRecursive(projectExtDir, filePath => /\.json$/i.test(filePath) && /schematic|netlist|parsed/i.test(filePath))
+      .slice(0, 20)
+      .forEach(filePath => {
+        const parsed = readJsonIfExists(filePath);
+        if (!parsed || (!Array.isArray(parsed.components) && !Array.isArray(parsed.nets))) {
+          return;
+        }
+        const relativePath = runtime.getProjectAssetRelativePath(path.relative(projectExtDir, filePath).replace(/\\/g, '/'));
+        const artifactNode = addFileNode(nodes, relativePath, 'Schematic analysis artifact.');
+        (parsed.components || []).slice(0, 200).forEach(component => {
+          const ref = component.ref || component.designator || component.id || '';
+          if (!ref) return;
+          const componentNode = pushGraphNode(nodes, {
+            id: buildGraphNodeId('component', ref),
+            type: 'component',
+            label: ref,
+            summary: component.value || component.libref || '',
+            status: 'candidate',
+            sources: [relativePath]
+          });
+          pushGraphEdge(edges, buildGraphEdge(artifactNode, componentNode, 'contains', {
+            source: relativePath,
+            status: 'candidate'
+          }));
+        });
+        (parsed.nets || []).slice(0, 200).forEach(net => {
+          const name = net.name || net.id || '';
+          if (!name) return;
+          const netNode = pushGraphNode(nodes, {
+            id: buildGraphNodeId('net', name),
+            type: 'net',
+            label: name,
+            summary: 'Schematic net.',
+            status: 'candidate',
+            sources: [relativePath]
+          });
+          pushGraphEdge(edges, buildGraphEdge(artifactNode, netNode, 'contains', {
+            source: relativePath,
+            status: 'candidate'
+          }));
+        });
+      });
+  }
+
+  function buildGraphManifest(files) {
+    const manifest = {};
+    files.forEach(filePath => {
+      if (!fs.existsSync(filePath)) return;
+      const relativePath = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
+      manifest[relativePath] = sha256Text(readTextIfExists(filePath));
+    });
+    return manifest;
+  }
+
+  function buildKnowledgeGraph() {
+    ensureKnowledgeDirs();
+    ensureGraphDirs();
+    const nodes = new Map();
+    const edges = new Map();
+    addTruthFileGraph(nodes, edges, 'project.json', 'Project configuration truth.');
+    addTruthFileGraph(nodes, edges, 'hw.yaml', 'Hardware truth.');
+    addTruthFileGraph(nodes, edges, 'req.yaml', 'Requirement truth.');
+    addWikiGraph(nodes, edges);
+    addTaskGraph(nodes, edges);
+    addSessionReportGraph(nodes, edges);
+    addSchematicGraph(nodes, edges);
+
+    const nodeList = [...nodes.values()].sort((a, b) => a.id.localeCompare(b.id));
+    const edgeList = [...edges.values()].sort((a, b) => `${a.from}:${a.type}:${a.to}`.localeCompare(`${b.from}:${b.type}:${b.to}`));
+    const trackedFiles = [
+      path.join(getProjectExtDir(), 'project.json'),
+      path.join(getProjectExtDir(), 'hw.yaml'),
+      path.join(getProjectExtDir(), 'req.yaml'),
+      ...listMarkdownPages().map(page => getWikiPath(page.path))
+    ];
+    const graph = {
+      version: 'emb-agent.graph/1',
+      generated_at: new Date().toISOString(),
+      graph_dir: getGraphRelativePath(),
+      stats: {
+        nodes: nodeList.length,
+        edges: edgeList.length,
+        ambiguous_edges: edgeList.filter(edge => edge.basis === 'AMBIGUOUS').length
+      },
+      nodes: nodeList,
+      edges: edgeList,
+      manifest: buildGraphManifest(trackedFiles)
+    };
+    const graphPath = getGraphPath('graph.json');
+    const reportPath = getGraphPath('GRAPH_REPORT.md');
+    fs.writeFileSync(graphPath, JSON.stringify(graph, null, 2) + '\n', 'utf8');
+    fs.writeFileSync(reportPath, buildGraphReportMarkdown(graph), 'utf8');
+    fs.writeFileSync(getGraphPath('cache', 'manifest.json'), JSON.stringify(graph.manifest, null, 2) + '\n', 'utf8');
+    appendLog('graph', 'Build knowledge graph', [
+      `Wrote ${getGraphRelativePath('graph.json')}`,
+      `Wrote ${getGraphRelativePath('GRAPH_REPORT.md')}`,
+      `Nodes: ${graph.stats.nodes}; edges: ${graph.stats.edges}`
+    ]);
+    updateSession(current => {
+      current.last_command = 'knowledge graph build';
+      current.last_files = runtime.unique([
+        getGraphRelativePath('GRAPH_REPORT.md'),
+        getGraphRelativePath('graph.json'),
+        ...(current.last_files || [])
+      ]).slice(0, 8);
+    });
+    return {
+      status: 'built',
+      graph_file: getGraphRelativePath('graph.json'),
+      report_file: getGraphRelativePath('GRAPH_REPORT.md'),
+      manifest_file: getGraphRelativePath('cache', 'manifest.json'),
+      stats: graph.stats
+    };
+  }
+
+  function loadKnowledgeGraph(options = {}) {
+    const graphPath = getGraphPath('graph.json');
+    if (!fs.existsSync(graphPath)) {
+      if (options.buildIfMissing) {
+        buildKnowledgeGraph();
+      } else {
+        return null;
+      }
+    }
+    return readJsonIfExists(graphPath);
+  }
+
+  function graphDegrees(graph) {
+    const degrees = new Map();
+    (graph.nodes || []).forEach(node => degrees.set(node.id, 0));
+    (graph.edges || []).forEach(edge => {
+      degrees.set(edge.from, (degrees.get(edge.from) || 0) + 1);
+      degrees.set(edge.to, (degrees.get(edge.to) || 0) + 1);
+    });
+    return degrees;
+  }
+
+  function buildGraphReportMarkdown(graph) {
+    const degrees = graphDegrees(graph);
+    const nodeById = new Map((graph.nodes || []).map(node => [node.id, node]));
+    const hotNodes = [...degrees.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([id, degree]) => ({ node: nodeById.get(id), degree }))
+      .filter(item => item.node);
+    const ambiguousEdges = (graph.edges || []).filter(edge => edge.basis === 'AMBIGUOUS').slice(0, 10);
+    const types = {};
+    (graph.nodes || []).forEach(node => {
+      types[node.type] = (types[node.type] || 0) + 1;
+    });
+    const lines = [
+      '# Knowledge Graph Report',
+      '',
+      `Generated: ${graph.generated_at}`,
+      '',
+      '## Summary',
+      '',
+      `- Nodes: ${graph.stats.nodes}`,
+      `- Edges: ${graph.stats.edges}`,
+      `- Ambiguous edges: ${graph.stats.ambiguous_edges}`,
+      '',
+      '## Node Types',
+      '',
+      ...Object.keys(types).sort().map(type => `- ${type}: ${types[type]}`),
+      '',
+      '## Hot Nodes',
+      ''
+    ];
+    if (hotNodes.length === 0) {
+      lines.push('- No connected nodes yet.');
+    } else {
+      hotNodes.forEach(item => {
+        lines.push(`- ${item.node.id} (${item.degree}) - ${item.node.summary || item.node.label || ''}`);
+      });
+    }
+    lines.push('', '## Ambiguous Edges', '');
+    if (ambiguousEdges.length === 0) {
+      lines.push('- No ambiguous edges recorded.');
+    } else {
+      ambiguousEdges.forEach(edge => {
+        lines.push(`- ${edge.from} --${edge.type}--> ${edge.to}: ${edge.summary || 'review needed'}`);
+      });
+    }
+    lines.push('', '## Suggested Queries', '');
+    ['chip', 'risk', 'task', 'timer', 'pin'].forEach(term => {
+      lines.push(`- knowledge graph query ${term}`);
+    });
+    lines.push('');
+    return `${lines.join('\n').trim()}\n`;
+  }
+
+  function readKnowledgeGraphReport() {
+    const graph = loadKnowledgeGraph({ buildIfMissing: false });
+    const reportPath = getGraphPath('GRAPH_REPORT.md');
+    if (!graph || !fs.existsSync(reportPath)) {
+      return {
+        initialized: false,
+        graph_file: getGraphRelativePath('graph.json'),
+        report_file: getGraphRelativePath('GRAPH_REPORT.md'),
+        next_steps: ['knowledge graph build']
+      };
+    }
+    return {
+      initialized: true,
+      graph_file: getGraphRelativePath('graph.json'),
+      report_file: getGraphRelativePath('GRAPH_REPORT.md'),
+      stats: graph.stats,
+      content: readTextIfExists(reportPath)
+    };
+  }
+
+  function queryKnowledgeGraph(term) {
+    const query = String(term || '').trim().toLowerCase();
+    if (!query) {
+      throw new Error('Missing graph query text');
+    }
+    const graph = loadKnowledgeGraph({ buildIfMissing: true });
+    const nodes = (graph.nodes || []).filter(node => {
+      const haystack = [node.id, node.type, node.label, node.path, node.summary, node.status].join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+    const matchedNodeIds = new Set(nodes.map(node => node.id));
+    const edges = (graph.edges || []).filter(edge => {
+      const haystack = [edge.from, edge.to, edge.type, edge.basis, edge.status, edge.summary, edge.source].join(' ').toLowerCase();
+      return haystack.includes(query) || matchedNodeIds.has(edge.from) || matchedNodeIds.has(edge.to);
+    });
+    return {
+      query,
+      graph_file: getGraphRelativePath('graph.json'),
+      nodes: nodes.slice(0, 25),
+      edges: edges.slice(0, 50),
+      total_matches: {
+        nodes: nodes.length,
+        edges: edges.length
+      }
+    };
+  }
+
+  function shortestGraphPath(from, to) {
+    const source = String(from || '').trim();
+    const target = String(to || '').trim();
+    if (!source || !target) {
+      throw new Error('Missing graph path endpoints');
+    }
+    const graph = loadKnowledgeGraph({ buildIfMissing: true });
+    const nodes = graph.nodes || [];
+    const edges = graph.edges || [];
+    const resolveIds = value => nodes
+      .filter(node => node.id === value || node.id.includes(value) || String(node.label || '').toLowerCase().includes(value.toLowerCase()))
+      .map(node => node.id);
+    const starts = resolveIds(source);
+    const targets = new Set(resolveIds(target));
+    if (starts.length === 0 || targets.size === 0) {
+      return {
+        found: false,
+        from: source,
+        to: target,
+        reason: starts.length === 0 ? 'from-not-found' : 'to-not-found',
+        path: []
+      };
+    }
+    const adjacency = new Map();
+    edges.forEach(edge => {
+      if (!adjacency.has(edge.from)) adjacency.set(edge.from, []);
+      if (!adjacency.has(edge.to)) adjacency.set(edge.to, []);
+      adjacency.get(edge.from).push({ next: edge.to, edge });
+      adjacency.get(edge.to).push({ next: edge.from, edge });
+    });
+    const queue = starts.map(id => ({ id, path: [id], via: [] }));
+    const seen = new Set(starts);
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (targets.has(current.id)) {
+        return {
+          found: true,
+          from: source,
+          to: target,
+          path: current.path,
+          edges: current.via
+        };
+      }
+      (adjacency.get(current.id) || []).forEach(item => {
+        if (seen.has(item.next)) return;
+        seen.add(item.next);
+        queue.push({
+          id: item.next,
+          path: [...current.path, item.next],
+          via: [...current.via, item.edge]
+        });
+      });
+    }
+    return {
+      found: false,
+      from: source,
+      to: target,
+      reason: 'no-path',
+      path: []
+    };
+  }
+
+  function lintKnowledgeGraph() {
+    const graph = loadKnowledgeGraph({ buildIfMissing: false });
+    if (!graph) {
+      return {
+        status: 'missing',
+        issues: [
+          {
+            severity: 'warn',
+            code: 'graph-missing',
+            summary: 'Knowledge graph has not been built.',
+            recommendation: 'Run knowledge graph build.'
+          }
+        ],
+        next_steps: ['knowledge graph build']
+      };
+    }
+    const issues = [];
+    const degrees = graphDegrees(graph);
+    (graph.nodes || [])
+      .filter(node => node.type === 'wiki_page' && (degrees.get(node.id) || 0) === 0)
+      .forEach(node => {
+        issues.push({
+          severity: 'info',
+          code: 'graph-orphan-wiki-page',
+          node: node.id,
+          path: node.path || '',
+          summary: 'Wiki page has no graph edges.',
+          recommendation: 'Add wiki links or rebuild after related truth/tasks exist.'
+        });
+      });
+    (graph.edges || [])
+      .filter(edge => edge.basis === 'AMBIGUOUS')
+      .forEach(edge => {
+        issues.push({
+          severity: 'warn',
+          code: 'ambiguous-edge',
+          edge: `${edge.from} ${edge.type} ${edge.to}`,
+          summary: edge.summary || 'Ambiguous graph relationship requires review.',
+          recommendation: 'Review the linked wiki page or source artifact.'
+        });
+      });
+    const hasChip = (graph.nodes || []).some(node => node.type === 'chip');
+    const hasChipWiki = (graph.nodes || []).some(node => node.type === 'wiki_page' && String(node.path || '').includes('/chips/'));
+    if (hasChip && !hasChipWiki) {
+      issues.push({
+        severity: 'info',
+        code: 'chip-without-wiki-page',
+        summary: 'Graph has a chip node but no chip wiki page.',
+        recommendation: 'Run knowledge save-query --kind chip <chip> --confirm after reviewing evidence.'
+      });
+    }
+    return {
+      status: issues.some(item => item.severity === 'warn') ? 'warn' : 'ok',
+      graph_file: getGraphRelativePath('graph.json'),
+      report_file: getGraphRelativePath('GRAPH_REPORT.md'),
+      stats: graph.stats,
+      issues,
+      next_steps: issues.length > 0
+        ? runtime.unique(issues.map(item => item.recommendation).filter(Boolean)).slice(0, 5)
+        : []
+    };
+  }
+
+  function handleKnowledgeGraphCommands(action, rest) {
+    const args = Array.isArray(rest) ? rest : [];
+    if (!action || action === 'build' || action === 'update') {
+      return buildKnowledgeGraph();
+    }
+    if (action === 'report') {
+      return readKnowledgeGraphReport();
+    }
+    if (action === 'query') {
+      return queryKnowledgeGraph(args.join(' '));
+    }
+    if (action === 'path') {
+      return shortestGraphPath(args[0], args[1]);
+    }
+    if (action === 'lint') {
+      return lintKnowledgeGraph();
+    }
+    throw new Error(`Unknown knowledge graph command: ${action}`);
+  }
+
   function handleKnowledgeCommands(cmd, subcmd, rest) {
     if (cmd !== 'knowledge') {
       return undefined;
@@ -656,6 +1341,9 @@ function createKnowledgeRuntimeHelpers(deps) {
     }
     if (subcmd === 'show') {
       return showKnowledgePage(rest[0]);
+    }
+    if (subcmd === 'graph') {
+      return handleKnowledgeGraphCommands(rest[0], rest.slice(1));
     }
     if (subcmd === 'save-query') {
       return saveKnowledgePage(
@@ -680,6 +1368,9 @@ function createKnowledgeRuntimeHelpers(deps) {
     lintKnowledgeWiki,
     readKnowledgeIndex,
     readKnowledgeLog,
+    buildKnowledgeGraph,
+    lintKnowledgeGraph,
+    queryKnowledgeGraph,
     saveKnowledgePage
   };
 }
