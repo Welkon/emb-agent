@@ -316,6 +316,143 @@ test('knowledge graph build indexes structured formula registries', async () => 
   }
 });
 
+test('knowledge graph build indexes saved tool runs and firmware snippets', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-knowledge-tool-run-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['knowledge', 'init']);
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      ['chip: SC8P052B', 'package: SOP8', ''].join('\n'),
+      'utf8'
+    );
+
+    const formulasDir = path.join(tempProject, '.emb-agent', 'formulas');
+    fs.mkdirSync(formulasDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(formulasDir, 'sc8p052b.json'),
+      JSON.stringify(
+        {
+          version: 'emb-agent.formulas/1',
+          chip: 'SC8P052B',
+          formulas: [
+            {
+              id: 'sc8p052b.pwm.period',
+              label: 'SC8P052B PWM period',
+              peripheral: 'PWM',
+              expression: '(PWMT + 1) * T_HSI * CLKDIV',
+              variables: {
+                PWMT: '10-bit PWM period register value'
+              },
+              registers: ['PWMTL'],
+              evidence: {
+                source: '.emb-agent/cache/docs/full/parse.md',
+                section: 'PWM period register'
+              },
+              status: 'draft'
+            }
+          ]
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    const runsDir = path.join(tempProject, '.emb-agent', 'runs');
+    fs.mkdirSync(runsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runsDir, 'timer-calc.json'),
+      JSON.stringify(
+        {
+          tool: 'timer-calc',
+          status: 'ok',
+          saved_output: '.emb-agent/runs/timer-calc.json',
+          best_candidate: {
+            register_writes: {
+              registers: [
+                {
+                  register: 'PWMTL',
+                  mask_hex: '0xFF',
+                  write_value_hex: '0xE7',
+                  fields: ['PWMT<7:0>'],
+                  c_statement: 'PWMTL = (PWMTL & ~0xFF) | 0xE7;',
+                  hal_statement: 'MODIFY_REG(PWMTL, 0xFF, 0xE7);'
+                }
+              ],
+              firmware_snippet_request: {
+                protocol: 'emb-agent.firmware-snippet-request/1',
+                status: 'draft-until-verified'
+              }
+            }
+          }
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    const snippetsDir = path.join(tempProject, '.emb-agent', 'firmware-snippets');
+    fs.mkdirSync(snippetsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(snippetsDir, 'pwm-init.md'),
+      [
+        '---',
+        'title: "SC8P052B PWM init"',
+        'status: "draft"',
+        'protocol: "emb-agent.firmware-snippet-request/1"',
+        'source_tool_output: ".emb-agent/runs/timer-calc.json"',
+        '---',
+        '',
+        '# SC8P052B PWM init',
+        '',
+        '## Register Writes',
+        '',
+        '- `PWMTL`: mask `0xFF`, value `0xE7`, fields `PWMT<7:0>`.',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    await captureCliJson(['knowledge', 'graph', 'build']);
+    const graph = JSON.parse(fs.readFileSync(path.join(tempProject, '.emb-agent', 'graph', 'graph.json'), 'utf8'));
+    const query = await captureCliJson(['knowledge', 'graph', 'query', 'PWMTL']);
+
+    assert.ok(graph.nodes.some(node => node.id === 'tool-run:runs/timer-calc.json'));
+    assert.ok(graph.nodes.some(node => node.id === 'firmware-snippet:firmware-snippets/pwm-init.md'));
+    assert.ok(graph.nodes.some(node => node.id === 'register:sc8p052b-pwmtl'));
+    assert.ok(graph.edges.some(edge =>
+      edge.from === 'tool-run:runs/timer-calc.json' &&
+      edge.to === 'register:sc8p052b-pwmtl' &&
+      edge.type === 'writes_register'
+    ));
+    assert.ok(graph.edges.some(edge =>
+      edge.from === 'tool-run:runs/timer-calc.json' &&
+      edge.to === 'formula:sc8p052b.pwm.period' &&
+      edge.type === 'uses_formula'
+    ));
+    assert.ok(graph.edges.some(edge =>
+      edge.from === 'tool-run:runs/timer-calc.json' &&
+      edge.to === 'firmware-snippet:firmware-snippets/pwm-init.md' &&
+      edge.type === 'materialized_by'
+    ));
+    assert.ok(graph.edges.some(edge =>
+      edge.from === 'firmware-snippet:firmware-snippets/pwm-init.md' &&
+      edge.to === 'register:sc8p052b-pwmtl' &&
+      edge.type === 'writes_register'
+    ));
+    assert.ok(query.nodes.some(node => node.id === 'tool-run:runs/timer-calc.json'));
+    assert.ok(query.nodes.some(node => node.id === 'firmware-snippet:firmware-snippets/pwm-init.md'));
+    assert.ok(query.edges.some(edge => edge.from === 'formula:sc8p052b.pwm.period'));
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('knowledge command is visible in advanced command inventory', async () => {
   const listed = await captureCliJson(['commands', 'list', '--all']);
   const shown = await captureCliJson(['commands', 'show', 'knowledge']);
