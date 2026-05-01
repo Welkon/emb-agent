@@ -73,6 +73,120 @@ function resolveRegisterLimit(defaults, primaryKey, bitKeys, fallbackBits) {
   return fallbackBits > 0 ? (2 ** fallbackBits) - 1 : 0;
 }
 
+function formatHex(value) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0) {
+    return '';
+  }
+  return `0x${number.toString(16).toUpperCase()}`;
+}
+
+function parseRegisterValue(value, spec) {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 ? value : NaN;
+  }
+  const text = String(value === undefined || value === null ? '' : value).trim();
+  if (!text) {
+    return NaN;
+  }
+  const base = Number(spec && (spec.value_base || spec.base));
+  if (Number.isInteger(base) && base >= 2 && base <= 36) {
+    const parsed = parseInt(text, base);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : NaN;
+  }
+  if (/^0x[0-9a-f]+$/i.test(text)) {
+    return parseInt(text, 16);
+  }
+  if (/^[01]+$/.test(text) && text.length > 1) {
+    return parseInt(text, 2);
+  }
+  const parsed = Number(text);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : NaN;
+}
+
+function collectRegisterWriteSpecs(defaults, keys) {
+  const plans = defaults && typeof defaults.register_writes === 'object' && !Array.isArray(defaults.register_writes)
+    ? defaults.register_writes
+    : {};
+  return keys.flatMap(key => {
+    return toArray(plans[key]).map(spec => {
+      return spec && typeof spec === 'object' && !Array.isArray(spec)
+        ? { ...spec, plan: key }
+        : null;
+    }).filter(Boolean);
+  });
+}
+
+function buildRegisterWritePlan(sourceValues, defaults, keys) {
+  const specs = collectRegisterWriteSpecs(defaults, keys);
+  const fields = specs.map(spec => {
+    const register = String(spec.register || '').trim();
+    if (!register) {
+      return null;
+    }
+    const valueKey = String(spec.value_key || spec.source_key || spec.plan || '').trim();
+    const sourceValue = parseRegisterValue(sourceValues[valueKey], spec);
+    if (!Number.isFinite(sourceValue)) {
+      return null;
+    }
+    const width = Number.isInteger(Number(spec.width)) && Number(spec.width) > 0 ? Number(spec.width) : 1;
+    const sourceLsb = Number.isInteger(Number(spec.source_lsb)) && Number(spec.source_lsb) >= 0 ? Number(spec.source_lsb) : 0;
+    const targetLsb = Number.isInteger(Number(spec.target_lsb)) && Number(spec.target_lsb) >= 0 ? Number(spec.target_lsb) : 0;
+    const fieldMask = (2 ** width) - 1;
+    const fieldValue = Math.floor(sourceValue / (2 ** sourceLsb)) % (2 ** width);
+    const writeMask = fieldMask * (2 ** targetLsb);
+    const writeValue = fieldValue * (2 ** targetLsb);
+
+    return {
+      plan: spec.plan,
+      value_key: valueKey,
+      register,
+      field: String(spec.field || valueKey).trim() || valueKey,
+      source_value: sourceValue,
+      source_lsb: sourceLsb,
+      width,
+      target_lsb: targetLsb,
+      field_value: fieldValue,
+      field_value_hex: formatHex(fieldValue),
+      mask: writeMask,
+      mask_hex: formatHex(writeMask),
+      write_value: writeValue,
+      write_value_hex: formatHex(writeValue),
+      note: String(spec.note || '').trim()
+    };
+  }).filter(Boolean);
+
+  if (fields.length === 0) {
+    return null;
+  }
+
+  const byRegister = new Map();
+  fields.forEach(field => {
+    const current = byRegister.get(field.register) || {
+      register: field.register,
+      mask: 0,
+      write_value: 0,
+      fields: []
+    };
+    current.mask = Number(BigInt(current.mask) | BigInt(field.mask));
+    current.write_value = Number(BigInt(current.write_value) | BigInt(field.write_value));
+    current.fields.push(field.field);
+    byRegister.set(field.register, current);
+  });
+
+  return {
+    fields,
+    registers: [...byRegister.values()].map(item => ({
+      register: item.register,
+      mask: item.mask,
+      mask_hex: formatHex(item.mask),
+      write_value: item.write_value,
+      write_value_hex: formatHex(item.write_value),
+      fields: item.fields
+    }))
+  };
+}
+
 function resolveTimerBinding(binding, options) {
   const params = (binding && binding.params) || {};
   const variants = params.timer_variants && typeof params.timer_variants === 'object' ? params.timer_variants : {};
@@ -244,6 +358,12 @@ function buildTimerRegisterCandidates(clockHz, targetUs, timerName, defaults, op
         const actualHz = 1e6 / actualUs;
         const errorUs = actualUs - targetUs;
         const errorPct = targetUs === 0 ? 0 : (errorUs / targetUs) * 100;
+        const registerWrites = buildRegisterWritePlan({
+          period_value: periodValue,
+          reload_value: periodValue,
+          prescaler,
+          postscaler
+        }, defaults, ['timer', 'period_value', 'reload_value', 'prescaler', 'postscaler']);
 
         candidates.push({
           timer: timerName,
@@ -256,7 +376,8 @@ function buildTimerRegisterCandidates(clockHz, targetUs, timerName, defaults, op
           actual_us: Number(actualUs.toFixed(6)),
           actual_hz: Number(actualHz.toFixed(6)),
           error_us: Number(errorUs.toFixed(6)),
-          error_pct: Number(errorPct.toFixed(6))
+          error_pct: Number(errorPct.toFixed(6)),
+          ...(registerWrites ? { register_writes: registerWrites } : {})
         });
       });
     });
@@ -376,6 +497,11 @@ function buildPwmRegisterCandidates(clockHz, targetHz, targetDuty, pwmName, defa
       const dutyValue = Math.max(0, Math.min(maxPeriodValue, dutyCounts - dutyOffset));
       const actualDuty = ((dutyValue + dutyOffset) / periodCounts) * 100;
       const dutyErrorPct = actualDuty - targetDuty;
+      const registerWrites = buildRegisterWritePlan({
+        period_value: periodValue,
+        duty_value: dutyValue,
+        prescaler
+      }, defaults, ['pwm', 'period_value', 'duty_value', 'prescaler']);
 
       candidates.push({
         pwm: pwmName,
@@ -390,7 +516,8 @@ function buildPwmRegisterCandidates(clockHz, targetHz, targetDuty, pwmName, defa
         actual_duty: Number(actualDuty.toFixed(6)),
         freq_error_hz: Number(freqErrorHz.toFixed(6)),
         freq_error_pct: Number(freqErrorPct.toFixed(6)),
-        duty_error_pct: Number(dutyErrorPct.toFixed(6))
+        duty_error_pct: Number(dutyErrorPct.toFixed(6)),
+        ...(registerWrites ? { register_writes: registerWrites } : {})
       });
     });
   });
@@ -1243,6 +1370,9 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
       return Math.abs(left.error_v) - Math.abs(right.error_v) ||
         left.threshold_v - right.threshold_v;
     })[0] || null;
+  const registerWrites = thresholdSelection
+    ? buildRegisterWritePlan(thresholdSelection, defaults, ['threshold_selection', 'comparator_threshold'])
+    : null;
 
   return {
     tool: context.toolName,
@@ -1285,7 +1415,13 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
       negative_reference_ok: negativeFeasible,
       recommended_reference_side: recommendedReferenceSide
     },
-    threshold_selection: thresholdSelection,
+    threshold_selection: thresholdSelection
+      ? {
+          ...thresholdSelection,
+          ...(registerWrites ? { register_writes: registerWrites } : {})
+        }
+      : null,
+    ...(registerWrites ? { register_writes: registerWrites } : {}),
     notes: [
       'This is the first generic feasibility-check implementation for comparator-threshold, based on input-source ranges and the target threshold.',
       thresholdSelection

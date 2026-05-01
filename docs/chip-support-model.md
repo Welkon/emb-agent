@@ -65,6 +65,39 @@ That lets different vendors map their own names onto the same tool contract:
 
 When a family needs behavior that does not fit a generic route, add a family-specific route under chip support. Do not move that exception into emb-agent core until several families prove the abstraction is genuinely common.
 
+## Register write bindings
+
+Generic generated routes can also emit firmware-useful register write plans. A binding can add `register_writes` under the tool params:
+
+```json
+{
+  "register_writes": {
+    "period_value": [
+      {
+        "register": "ARR",
+        "field": "ARR<31:0>",
+        "value_key": "period_value",
+        "source_lsb": 0,
+        "width": 32,
+        "target_lsb": 0
+      }
+    ]
+  }
+}
+```
+
+Each plan key names the calculated value being written, such as `period_value`, `duty_value`, `reload_value`, or `threshold_selection`. Each field entry maps one source value into one register field:
+
+- `register`: destination register name
+- `field`: human-readable field name
+- `value_key`: key in the calculated candidate or selected table row
+- `source_lsb`: first source bit to copy
+- `width`: number of bits to copy
+- `target_lsb`: destination bit position in the register
+- `value_base`: optional base for string values, such as binary threshold codes
+
+This is the core mechanism for broad chip coverage. STM32/GD32 can map timer results to `PSC`, `ARR`, and `CCRn`; Nordic can map compare values to `CC[n]`; small 8-bit parts can split one calculated value across low/high registers such as `PWMTL` and `PWMTH`. Core only slices fields from bindings; it does not need vendor-specific register-write branches.
+
 ## Repository roles
 
 emb-agent should treat chip support as a three-layer system:
