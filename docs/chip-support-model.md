@@ -100,12 +100,21 @@ Each plan key names the calculated value being written, such as `period_value`, 
 
 This is the core mechanism for broad chip coverage. STM32/GD32 can map timer results to `PSC`, `ARR`, and `CCRn`; Nordic can map compare values to `CC[n]`; small 8-bit parts can split one calculated value across low/high registers such as `PWMTL` and `PWMTH`. Core only slices fields from bindings; it does not need vendor-specific register-write branches.
 
-The generated output includes both structured register entries and C statement strings. For every merged register write, `register_writes.registers[]` carries `register`, `mask`, `mask_hex`, `write_value`, `write_value_hex`, `fields`, and `c_statement`. The plan also exposes `register_writes.c_statements[]` as a flat firmware-oriented list. The generated C preserves unrelated bits through a masked read-modify-write form:
+The generated output includes structured register entries, direct C statement strings, and CMSIS/HAL-style macro strings. For every merged register write, `register_writes.registers[]` carries `register`, `mask`, `mask_hex`, `write_value`, `write_value_hex`, `fields`, `c_statement`, and `hal_statement`. The plan also exposes `register_writes.c_statements[]` and `register_writes.hal_statements[]` as flat firmware-oriented lists. The generated direct C preserves unrelated bits through a masked read-modify-write form:
 
 ```c
 ARR = (ARR & ~0xFFFFFFFF) | 0x3FF;
 CCR1 = (CCR1 & ~0x3FF) | 0x200;
 ```
+
+For CMSIS/HAL-style code, the same plan emits `MODIFY_REG()` statements:
+
+```c
+MODIFY_REG(TIM3->ARR, 0xFFFFFFFF, 0x3FF);
+MODIFY_REG(TIM3->CCR1, 0x3FF, 0x200);
+```
+
+This is intentionally a macro-level HAL bridge, not a full vendor driver call generator. Full HAL APIs such as `HAL_TIM_PWM_ConfigChannel()` or `__HAL_TIM_SET_COMPARE()` need semantic inputs that are outside a generic register write plan: handle names, channel constants, initialization order, clock enable state, preload behavior, and update-event timing. Those should come from family-specific chip support templates once a vendor binding proves the required contract.
 
 ## Repository roles
 
