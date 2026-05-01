@@ -1,75 +1,76 @@
 #!/usr/bin/env node
 
-const childProcess = require('child_process');
-const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const SOURCE_ROOT = path.resolve(ROOT, '..');
-const runtimeHost = require(path.join(ROOT, 'lib', 'runtime-host.cjs'));
-const SOURCE_LAYOUT = runtimeHost.isSourceRuntimeLayout(ROOT);
-const PROFILES_DIR = path.join(ROOT, 'profiles');
-const AGENTS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'agents') : path.join(ROOT, 'agents');
-const COMMANDS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'commands', 'emb') : path.join(ROOT, 'commands');
-const COMMAND_DOCS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'commands', 'emb') : path.join(ROOT, 'command-docs');
-const SKILLS_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'skills') : path.join(ROOT, 'skills');
-const MEMORY_DIR = SOURCE_LAYOUT ? path.join(SOURCE_ROOT, 'memory') : path.join(ROOT, 'memory');
-const { TEMPLATES_DIR } = require(path.join(ROOT, 'lib', 'template-registry.cjs'));
-const templateCli = require(path.join(ROOT, 'scripts', 'template.cjs'));
-const adapterDeriveCli = require(path.join(ROOT, 'scripts', 'adapter-derive.cjs'));
-const supportAnalysisCli = require(path.join(ROOT, 'scripts', 'support-analysis.cjs'));
-const attachProjectCli = require(path.join(ROOT, 'scripts', 'attach-project.cjs'));
-const ingestTruthCli = require(path.join(ROOT, 'scripts', 'ingest-truth.cjs'));
-const ingestDocCli = require(path.join(ROOT, 'scripts', 'ingest-doc.cjs'));
-const ingestSchematicCli = require(path.join(ROOT, 'scripts', 'ingest-schematic.cjs'));
-const ingestBoardCli = require(path.join(ROOT, 'scripts', 'ingest-board.cjs'));
-const runtime = require(path.join(ROOT, 'lib', 'runtime.cjs'));
-const scheduler = require(path.join(ROOT, 'lib', 'scheduler.cjs'));
-const toolCatalog = require(path.join(ROOT, 'lib', 'tool-catalog.cjs'));
-const toolRuntime = require(path.join(ROOT, 'lib', 'tool-runtime.cjs'));
-const toolSuggestionHelpers = require(path.join(ROOT, 'lib', 'tool-suggestions.cjs'));
-const chipCatalog = require(path.join(ROOT, 'lib', 'chip-catalog.cjs'));
-const adapterSources = require(path.join(ROOT, 'lib', 'adapter-sources.cjs'));
-const docCache = require(path.join(ROOT, 'lib', 'doc-cache.cjs'));
-const permissionGateHelpers = require(path.join(ROOT, 'lib', 'permission-gates.cjs'));
-const noteReportHelpers = require(path.join(ROOT, 'lib', 'note-reports.cjs'));
-const dispatchHelpers = require(path.join(ROOT, 'lib', 'dispatch-orchestrator.cjs'));
-const runtimeEventHelpers = require(path.join(ROOT, 'lib', 'runtime-events.cjs'));
-const sessionFlowHelpers = require(path.join(ROOT, 'lib', 'session-flow.cjs'));
-const referenceLookupHelpers = require(path.join(ROOT, 'lib', 'reference-lookup.cjs'));
-const boardEvidence = require(path.join(ROOT, 'lib', 'board-evidence.cjs'));
-const hardwareTruthHelpers = require(path.join(ROOT, 'lib', 'hardware-truth.cjs'));
-const projectConfigHelpers = require(path.join(ROOT, 'lib', 'project-config.cjs'));
-const stateCommandHelpers = require(path.join(ROOT, 'lib', 'state-commands.cjs'));
-const actionContractHelpers = require(path.join(ROOT, 'lib', 'action-contracts.cjs'));
-const commandGroupHelpers = require(path.join(ROOT, 'lib', 'command-groups.cjs'));
-const cliEntryHelpers = require(path.join(ROOT, 'lib', 'cli-entrypoints.cjs'));
-const cliRouterHelpers = require(path.join(ROOT, 'lib', 'cli-router.cjs'));
-const taskCommandHelpers = require(path.join(ROOT, 'lib', 'task-commands.cjs'));
-const projectStateStoreHelpers = require(path.join(ROOT, 'lib', 'project-state-store.cjs'));
-const settingsCommandHelpers = require(path.join(ROOT, 'lib', 'settings-command.cjs'));
-const sessionReportCommandHelpers = require(path.join(ROOT, 'lib', 'session-report-command.cjs'));
-const transcriptCommandHelpers = require(path.join(ROOT, 'lib', 'transcript-command.cjs'));
-const healthUpdateCommandHelpers = require(path.join(ROOT, 'lib', 'health-update-command.cjs'));
-const executorCommandHelpers = require(path.join(ROOT, 'lib', 'executor-command.cjs'));
-const externalAgentHelpers = require(path.join(ROOT, 'lib', 'external-agent.cjs'));
-const commandVisibility = require(path.join(ROOT, 'lib', 'command-visibility.cjs'));
-const workflowAuthoringHelpers = require(path.join(ROOT, 'lib', 'workflow-authoring.cjs'));
-const capabilityMaterializerHelpers = require(path.join(ROOT, 'lib', 'capability-materializer.cjs'));
-const capabilityRuntimeHelpers = require(path.join(ROOT, 'lib', 'capability-runtime.cjs'));
-const scaffoldAuthoringHelpers = require(path.join(ROOT, 'lib', 'scaffold-authoring.cjs'));
-const subAgentRuntimeHelpers = require(path.join(ROOT, 'lib', 'sub-agent-runtime.cjs'));
-const skillRuntimeHelpers = require(path.join(ROOT, 'lib', 'skill-runtime.cjs'));
-const memoryRuntimeHelpers = require(path.join(ROOT, 'lib', 'memory-runtime.cjs'));
-const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs'));
-const workflowImportHelpers = require(path.join(ROOT, 'lib', 'workflow-import.cjs'));
-
-const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
-const externalAgent = externalAgentHelpers.createExternalAgentHelpers({
+const {
+  childProcess,
+  fs,
+  os,
+  SOURCE_ROOT,
+  runtimeHost,
+  SOURCE_LAYOUT,
+  PROFILES_DIR,
+  AGENTS_DIR,
+  COMMANDS_DIR,
+  COMMAND_DOCS_DIR,
+  SKILLS_DIR,
+  MEMORY_DIR,
+  TEMPLATES_DIR,
+  templateCli,
+  adapterDeriveCli,
+  supportAnalysisCli,
+  attachProjectCli,
+  ingestTruthCli,
+  ingestDocCli,
+  ingestSchematicCli,
+  ingestBoardCli,
   runtime,
-  runtimeHostHelpers: runtimeHost
-});
+  scheduler,
+  toolCatalog,
+  toolRuntime,
+  toolSuggestionHelpers,
+  chipCatalog,
+  adapterCommandRuntimeHelpers,
+  adapterSources,
+  docCache,
+  permissionGateHelpers,
+  noteReportHelpers,
+  noteReportRuntimeHelpers,
+  contextProtocolRuntimeHelpers,
+  dispatchHelpers,
+  runtimeEventHelpers,
+  sessionFlowHelpers,
+  referenceLookupHelpers,
+  boardEvidence,
+  hardwareTruthHelpers,
+  catalogLoaderHelpers,
+  projectConfigHelpers,
+  stateCommandHelpers,
+  actionContractHelpers,
+  commandGroupHelpers,
+  cliEntryHelpers,
+  cliRouterHelpers,
+  taskCommandHelpers,
+  projectStateStoreHelpers,
+  settingsCommandHelpers,
+  sessionReportCommandHelpers,
+  transcriptCommandHelpers,
+  healthUpdateCommandHelpers,
+  executorCommandHelpers,
+  commandVisibility,
+  workflowAuthoringHelpers,
+  capabilityMaterializerHelpers,
+  capabilityRuntimeHelpers,
+  scaffoldAuthoringHelpers,
+  subAgentRuntimeHelpers,
+  skillRuntimeHelpers,
+  memoryRuntimeHelpers,
+  workflowRegistry,
+  workflowImportHelpers,
+  RUNTIME_CONFIG,
+  externalAgent
+} = require(path.join(ROOT, 'lib', 'runtime-container.cjs')).createRuntimeContainer({ rootDir: ROOT });
 
 const REVIEW_AGENT_NAMES = [
   'hw-scout',
@@ -108,18 +109,8 @@ function getProjectExtDir() {
   return runtime.getProjectExtDir(resolveProjectRoot());
 }
 
-function getProjectProfilesDir() {
-  return path.join(getProjectExtDir(), 'profiles');
-}
-
 function getProjectStatePaths() {
   return runtime.getProjectStatePaths(ROOT, resolveProjectRoot(), RUNTIME_CONFIG);
-}
-
-function loadWorkflowCatalog() {
-  return workflowRegistry.loadWorkflowRegistry(ROOT, {
-    projectExtDir: getProjectExtDir()
-  });
 }
 
 function getProjectConfig() {
@@ -209,166 +200,29 @@ const {
   readDefaultSession
 });
 
-function resolveYamlPath(projectDir, builtInDir, name) {
-  const projectPath = path.join(projectDir, `${name}.yaml`);
-  if (fs.existsSync(projectPath)) {
-    return projectPath;
-  }
-
-  const builtInPath = path.join(builtInDir, `${name}.yaml`);
-  if (fs.existsSync(builtInPath)) {
-    return builtInPath;
-  }
-
-  return '';
-}
-
-function loadProfile(name) {
-  const filePath = resolveYamlPath(getProjectProfilesDir(), PROFILES_DIR, name);
-  if (!filePath) {
-    throw new Error(`Profile not found: ${name}`);
-  }
-  return runtime.validateProfile(name, runtime.parseSimpleYaml(filePath));
-}
-
-function getCatalogSpecEntry(name, options = {}) {
-  const entry = (loadWorkflowCatalog().specs || []).find(item => item.name === name);
-  if (!entry) {
-    throw new Error(`Spec not found: ${name}`);
-  }
-  if (options.selectable === true && entry.selectable !== true) {
-    throw new Error(`Spec is not selectable: ${name}`);
-  }
-  return entry;
-}
-
-function buildSpecView(entry, options = {}) {
-  const includeContent = options.includeContent !== false;
-  return {
-    name: entry.name,
-    title: entry.title || entry.name,
-    path: entry.display_path,
-    scope: entry.scope,
-    summary: entry.summary,
-    auto_inject: entry.auto_inject,
-    selectable: entry.selectable === true,
-    priority: entry.priority,
-    apply_when: entry.apply_when,
-    focus_areas: entry.focus_areas || [],
-    extra_review_axes: entry.extra_review_axes || [],
-    preferred_notes: entry.preferred_notes || [],
-    default_agents: entry.default_agents || [],
-    ...(includeContent ? { content: runtime.readText(entry.absolute_path) } : {})
-  };
-}
-
-function listSpecNames(options = {}) {
-  const selectableOnly = options.selectable === true;
-  return runtime.unique(
-    (loadWorkflowCatalog().specs || [])
-      .filter(item => (selectableOnly ? item.selectable === true : true))
-      .map(item => item.name)
-  );
-}
-
-function loadSpec(name) {
-  const entry = getCatalogSpecEntry(name);
-  return buildSpecView(entry, { includeContent: true });
-}
-
-function loadSelectedSpec(name) {
-  const entry = getCatalogSpecEntry(name, { selectable: true });
-
-  return buildSpecView(entry, { includeContent: true });
-}
-
-function loadMarkdown(dirPath, name, kind) {
-  const filePath = path.join(dirPath, `${name}.md`);
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`${kind} not found: ${name}`);
-  }
-
-  const displayRoot = SOURCE_LAYOUT ? SOURCE_ROOT : ROOT;
-
-  return {
-    name,
-    path: path.relative(displayRoot, filePath).replace(/\\/g, '/'),
-    content: runtime.readText(filePath)
-  };
-}
-
-function loadCommandMarkdown(name) {
-  const resolvedName = name;
-  const fileName = `${resolvedName}.md`;
-  const publicPath = path.join(COMMANDS_DIR, fileName);
-  if (fs.existsSync(publicPath)) {
-    const command = loadMarkdown(COMMANDS_DIR, resolvedName, 'Command');
-    return {
-      ...command,
-      name
-    };
-  }
-
-  const hiddenPath = path.join(COMMAND_DOCS_DIR, fileName);
-  if (fs.existsSync(hiddenPath)) {
-    const displayRoot = SOURCE_LAYOUT ? SOURCE_ROOT : ROOT;
-    return {
-      name,
-      path: path.relative(displayRoot, hiddenPath).replace(/\\/g, '/'),
-      content: runtime.readText(hiddenPath)
-    };
-  }
-
-  throw new Error(`Command not found: ${name}`);
-}
-
-function normalizeHardwareSlug(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function compactHardwareSlug(value) {
-  return normalizeHardwareSlug(value).replace(/-/g, '');
-}
-
-function findChipProfileByModel(model, packageName) {
-  const normalizedModel = String(model || '').trim();
-  const normalizedPackage = String(packageName || '').trim();
-  if (!normalizedModel) {
-    return null;
-  }
-
-  const candidates = runtime.unique([
-    normalizedModel,
-    compactHardwareSlug(normalizedModel),
-    normalizedPackage ? compactHardwareSlug(`${normalizedModel}${normalizedPackage}`) : '',
-    normalizedPackage ? compactHardwareSlug(`${normalizedModel}-${normalizedPackage}`) : ''
-  ].filter(Boolean));
-
-  for (const candidate of candidates) {
-    try {
-      return chipCatalog.loadChip(ROOT, candidate);
-    } catch {
-      // keep trying fallback candidates
-    }
-  }
-
-  const matched = chipCatalog
-    .listChips(ROOT)
-    .find(item => {
-      const itemName = String(item.name || '').toLowerCase();
-      return candidates.some(candidate => itemName === String(candidate).toLowerCase());
-    });
-
-  if (!matched) {
-    return null;
-  }
-
-  return chipCatalog.loadChip(ROOT, matched.name);
-}
+const {
+  findChipProfileByModel,
+  getProjectProfilesDir,
+  listSpecNames,
+  loadCommandMarkdown,
+  loadMarkdown,
+  loadProfile,
+  loadSelectedSpec,
+  loadSpec
+} = catalogLoaderHelpers.createCatalogLoaders({
+  fs,
+  path,
+  ROOT,
+  SOURCE_ROOT,
+  SOURCE_LAYOUT,
+  PROFILES_DIR,
+  COMMANDS_DIR,
+  COMMAND_DOCS_DIR,
+  runtime,
+  workflowRegistry,
+  chipCatalog,
+  getProjectExtDir
+});
 
 const {
   buildRecommendedSources,
@@ -793,269 +647,41 @@ const {
   parseMemoryPromoteArgs
 });
 
-function buildContextOverview() {
-  const resolved = resolveSession();
-  const sessionView = buildCurrentSessionView();
-  const status = buildStatus();
-  const next = buildNextContext();
-  const start = buildStartContext();
-  const bootstrap = buildBootstrapReport();
-  const health = buildHealthReport();
-
-  return {
-    entry: 'context',
-    project_root: resolved && resolved.session ? resolved.session.project_root : resolveProjectRoot(),
-    summary: {
-      profile: resolved && resolved.session ? resolved.session.project_profile : '',
-      specs: resolved && resolved.session ? resolved.session.active_specs || [] : [],
-      focus: resolved && resolved.session ? resolved.session.focus || '' : '',
-      last_command: resolved && resolved.session ? resolved.session.last_command || '' : '',
-      active_task:
-        status && status.active_task && status.active_task.name
-          ? {
-              name: status.active_task.name,
-              title: status.active_task.title || '',
-              status: status.active_task.status || ''
-            }
-          : null,
-      handoff_present: Boolean(sessionView && sessionView.handoff),
-      stored_reports:
-        sessionView &&
-        sessionView.reports &&
-        Array.isArray(sessionView.reports.reports)
-          ? sessionView.reports.reports.length
-          : 0,
-      latest_report_present: Boolean(sessionView && sessionView.latest_report)
-    },
-    session_state: sessionView ? sessionView.session_state : null,
-    memory_summary: loadContextSummary(),
-    handoff: sessionView ? sessionView.handoff : null,
-    continuity: sessionView ? sessionView.continuity || null : null,
-    latest_report: sessionView ? sessionView.latest_report || null : null,
-    reports: sessionView ? sessionView.reports : { reports: [] },
-    status,
-    next,
-    start,
-    bootstrap,
-    health
-  };
-}
-
 function printJson(value) {
   process.stdout.write(JSON.stringify(value, null, 2) + '\n');
 }
 
-function applyAdapterWritePermission(result, actionName, explicitConfirmation) {
-  const permissionDecision = permissionGateHelpers.evaluateExecutionPermission({
-    action_kind: 'write',
-    action_name: actionName,
-    risk: 'normal',
-    explicit_confirmation: explicitConfirmation === true,
-    permissions: (getProjectConfig() && getProjectConfig().permissions) || {}
-  });
-
-  return {
-    permission: permissionDecision,
-    result: permissionGateHelpers.applyPermissionDecision(result, permissionDecision)
-  };
-}
-
-function runAdapterDerive(args) {
-  const parsed = adapterDeriveCli.parseArgs(args || []);
-  if (parsed.help) {
-    return adapterDeriveCli.deriveProfiles(args, {
-      runtimeRoot: ROOT,
-      projectRoot: resolveProjectRoot()
-    });
-  }
-
-  const actionName =
-    parsed.target === 'runtime'
-      ? 'support-derive-runtime'
-      : parsed.target === 'path'
-        ? 'support-derive-path'
-        : 'support-derive-project';
-  const blocked = applyAdapterWritePermission({
-    status: 'permission-pending',
-    target: parsed.target,
-    output_root: parsed.outputRoot || '',
-    family: parsed.family,
-    device: parsed.device,
-    chip: parsed.chip,
-    tools: parsed.tools
-  }, actionName, parsed.explicit_confirmation);
-
-  if (blocked.permission.decision !== 'allow') {
-    return blocked.result;
-  }
-
-  return permissionGateHelpers.applyPermissionDecision(adapterDeriveCli.deriveProfiles(args, {
-    runtimeRoot: ROOT,
-    projectRoot: resolveProjectRoot()
-  }), blocked.permission);
-}
-
-function runAdapterGenerate(args) {
-  const parsed = adapterDeriveCli.parseArgs(args || []);
-  if (parsed.help) {
-    return adapterDeriveCli.deriveProfiles(args, {
-      runtimeRoot: ROOT,
-      projectRoot: resolveProjectRoot()
-    });
-  }
-
-  const blocked = applyAdapterWritePermission({
-    status: 'permission-pending',
-    target: parsed.target,
-    output_root: parsed.outputRoot || '',
-    family: parsed.family,
-    device: parsed.device,
-    chip: parsed.chip,
-    tools: parsed.tools
-  }, 'support-generate', parsed.explicit_confirmation);
-
-  if (blocked.permission.decision !== 'allow') {
-    return blocked.result;
-  }
-
-  return permissionGateHelpers.applyPermissionDecision(adapterDeriveCli.deriveProfiles(args, {
-    runtimeRoot: ROOT,
-    projectRoot: resolveProjectRoot()
-  }), blocked.permission);
-}
-
-function runAdapterAnalysisInit(args) {
-  const parsed = supportAnalysisCli.parseInitArgs(args || []);
-  if (parsed.help) {
-    return supportAnalysisCli.initAnalysis(args, {
-      projectRoot: resolveProjectRoot()
-    });
-  }
-
-  const blocked = applyAdapterWritePermission({
-    status: 'permission-pending',
-    target: 'project',
-    output_root: parsed.output || '',
-    family: parsed.family,
-    device: parsed.device,
-    chip: parsed.chip || parsed.model,
-    tools: []
-  }, 'support-analysis-init', true);
-
-  if (blocked.permission.decision !== 'allow') {
-    return blocked.result;
-  }
-
-  return permissionGateHelpers.applyPermissionDecision(supportAnalysisCli.initAnalysis(args, {
-    projectRoot: resolveProjectRoot()
-  }), blocked.permission);
-}
-
-function buildDerivedSupportTransferInspection(parsed) {
-  return adapterDeriveCli.inspectDerivedSupport({
-    projectRoot: resolveProjectRoot(),
-    family: parsed.family,
-    device: parsed.device,
-    chip: parsed.chip
-  });
-}
-
-function runAdapterExport(args) {
-  const parsed = parseAdapterExportArgs(args || []);
-  const inspection = buildDerivedSupportTransferInspection(parsed);
-  const actionName = parsed.output_root ? 'support-export-path' : 'support-export-source';
-  const blocked = applyAdapterWritePermission({
-    status: 'permission-pending',
-    target: parsed.output_root ? 'path' : 'source',
-    output_root: parsed.output_root || '',
-    family: inspection.family,
-    device: inspection.device,
-    chip: inspection.chip,
-    tools: inspection.tools || []
-  }, actionName, parsed.explicit_confirmation);
-
-  if (blocked.permission.decision !== 'allow') {
-    return blocked.result;
-  }
-
-  return permissionGateHelpers.applyPermissionDecision(adapterSources.exportDerivedSupport(
-    ROOT,
-    resolveProjectRoot(),
-    getProjectConfig(),
-    {
-      sourceName: parsed.source_name,
-      outputRoot: parsed.output_root,
-      force: parsed.force,
-      inspection
-    }
-  ), blocked.permission);
-}
-
-function runAdapterPublish(args) {
-  const parsed = parseAdapterPublishArgs(args || []);
-  const inspection = buildDerivedSupportTransferInspection(parsed);
-  const actionName = parsed.output_root ? 'support-publish-path' : 'support-publish-source';
-  const blocked = applyAdapterWritePermission({
-    status: 'permission-pending',
-    target: parsed.output_root ? 'path' : 'source',
-    output_root: parsed.output_root || '',
-    family: inspection.family,
-    device: inspection.device,
-    chip: inspection.chip,
-    tools: inspection.tools || []
-  }, actionName, parsed.explicit_confirmation);
-
-  if (blocked.permission.decision !== 'allow') {
-    return blocked.result;
-  }
-
-  return permissionGateHelpers.applyPermissionDecision(adapterSources.publishDerivedSupport(
-    ROOT,
-    resolveProjectRoot(),
-    getProjectConfig(),
-    {
-      sourceName: parsed.source_name,
-      outputRoot: parsed.output_root,
-      force: parsed.force,
-      inspection
-    }
-  ), blocked.permission);
-}
+const {
+  runAdapterAnalysisInit,
+  runAdapterDerive,
+  runAdapterExport,
+  runAdapterGenerate,
+  runAdapterPublish
+} = adapterCommandRuntimeHelpers.createAdapterCommandRuntime({
+  ROOT,
+  adapterDeriveCli,
+  supportAnalysisCli,
+  adapterSources,
+  permissionGateHelpers,
+  resolveProjectRoot,
+  getProjectConfig,
+  parseAdapterExportArgs,
+  parseAdapterPublishArgs
+});
 
 const {
-  parseNoteAddArgs,
-  normalizeTargetAlias,
-  resolveKnownDocTarget,
-  resolveNoteTarget,
-  ensureNoteTargetDoc,
-  buildNoteEntry,
-  appendNoteEntryToDoc,
-  parseReviewSaveArgs,
-  buildReviewReportEntry,
-  appendSectionEntry,
-  findSummaryLine,
-  splitSectionEntries,
-  upsertSectionEntry,
   saveReviewReport,
-  parseScanSaveArgs,
-  parsePlanSaveArgs,
-  buildScanEntry,
-  buildPlanEntry,
-  syncHardwareTruthFromScan,
   saveScanReport,
-  syncRequirementsFromPlan,
   savePlanReport,
-  parseVerifySaveArgs,
-  parseVerifySignoffArgs,
-  buildVerifyEntry,
   confirmVerifySignoff,
   rejectVerifySignoff,
   saveVerifyReport,
   addNoteEntry
-} = noteReportHelpers.createNoteReportHelpers({
+} = noteReportRuntimeHelpers.createNoteReportRuntime({
   fs,
   path,
   process,
+  noteReportHelpers,
   runtime,
   scheduler,
   ingestTruthCli,
@@ -1104,159 +730,40 @@ const {
   ingestBoardCli
 });
 
-function buildStartContext() {
-  const projectRoot = resolveProjectRoot();
-  if (!fs.existsSync(runtime.resolveProjectDataPath(projectRoot, 'project.json'))) {
-    runInitCommand([], 'start');
-  }
-  const initialized = fs.existsSync(runtime.resolveProjectDataPath(projectRoot, 'project.json'));
-  const resolved = initialized ? resolveSession() : null;
-  const initGuidance = buildInitGuidance(projectRoot);
-  const bootstrap = buildBootstrapSummary(initGuidance);
-  const bootstrapReport = initialized ? buildBootstrapReport() : null;
-  const nextContext = initialized ? buildNextContext() : null;
-  const resumeContext = initialized ? buildResumeContext() : null;
-  const activeTask = getActiveTask();
-  const handoff = loadHandoff();
-  const boardEvidenceSummary = boardEvidence.summarizeBoardEvidence(projectRoot, {
-    limit: 8
-  });
-  const bootstrapPending = Boolean(
-    initialized &&
-    bootstrap &&
-    (
-      bootstrap.status !== 'ready-for-next' ||
-      (bootstrap.command && bootstrap.command !== 'next')
-    )
-  );
-  const bootstrapCommand = bootstrapPending && bootstrap && bootstrap.command
-    ? bootstrap.command
-    : '';
-  const taskIntake = buildTaskIntake({
-    activeTask,
-    hasHandoff: Boolean(handoff),
-    bootstrapPending
-  });
-  const immediateCommand = handoff
-    ? 'resume'
-    : bootstrapCommand
-      ? bootstrapCommand
-    : activeTask
-      ? 'next'
-      : initialized
-        ? 'task add <summary>'
-        : 'start';
-  const immediateReason = handoff
-    ? 'An unconsumed handoff exists and should be restored before any new work.'
-    : bootstrapCommand
-      ? bootstrap.summary
-    : activeTask
-      ? 'An active task already exists. Continue that task before starting new work.'
-      : initialized
-        ? 'The emb-agent project bootstrap already exists. Create and activate a task before execution.'
-        : 'The emb-agent project has just been initialized in this workspace.';
-
-  return runtimeEventHelpers.appendRuntimeEvent({
-    entry: 'start',
-    summary: {
-      project_root: projectRoot,
-      initialized,
-      active_task: activeTask
-        ? {
-            name: activeTask.name,
-            title: activeTask.title,
-            status: activeTask.status,
-            package: activeTask.package || '',
-            worktree_path: activeTask.worktree_path,
-            prd_path: `.emb-agent/tasks/${activeTask.name}/prd.md`
-          }
-        : null,
-      handoff_present: Boolean(handoff),
-      default_package: resolved && resolved.session ? resolved.session.default_package || '' : '',
-      active_package: resolved && resolved.session ? resolved.session.active_package || '' : '',
-      hardware_identity: initGuidance.selected_identity
-    },
-    immediate: {
-      command: immediateCommand,
-      reason: immediateReason,
-      cli: `${getRuntimeHost().cliCommand} ${immediateCommand}`
-    },
-    task_intake: taskIntake,
-    workflow: {
-      mode: 'linear-default',
-      steps: buildStartWorkflow(initGuidance, {
-        initialized,
-        activeTask,
-        hasHandoff: Boolean(handoff)
-      })
-    },
-    bootstrap: bootstrapReport
-      ? {
-          ...bootstrap,
-          quickstart: bootstrapReport.quickstart || null,
-          next_stage: bootstrapReport.next_stage || null,
-          action_card: bootstrapReport.action_card || null
-        }
-      : bootstrap,
-    next: nextContext
-      ? {
-          command: nextContext.next.command,
-          reason: nextContext.next.reason,
-          workflow_stage: nextContext.workflow_stage,
-          cli: nextContext.next.cli
-        }
-      : null,
-    board_evidence: boardEvidenceSummary,
-    resume: resumeContext
-      ? {
-          context_hygiene: resumeContext.context_hygiene,
-          handoff: resumeContext.handoff,
-          task: resumeContext.task
-        }
-      : null
-  }, {
-    type: 'workflow-start',
-    category: 'workflow',
-    status: bootstrapCommand ? 'pending' : 'ok',
-    severity: bootstrapCommand ? 'normal' : 'info',
-    summary: immediateReason,
-    action: immediateCommand,
-    command: `${getRuntimeHost().cliCommand} ${immediateCommand}`,
-    source: 'emb-agent-main',
-    details: {
-      initialized,
-      handoff_present: Boolean(handoff),
-      active_task: activeTask ? activeTask.name : '',
-      board_evidence_state: boardEvidenceSummary.state,
-      board_evidence_blocking: false
-    }
-  });
-}
-
-function buildExternalStartProtocol() {
-  return externalAgent.buildStartProtocol(getRuntimeHost(), buildStartContext());
-}
-
-function buildExternalNextProtocol() {
-  return externalAgent.buildNextProtocol(getRuntimeHost(), buildNextContext());
-}
-
-function buildExternalStatusProtocol() {
-  return externalAgent.buildStatusProtocol(getRuntimeHost(), buildStatus());
-}
-
-function buildExternalHealthProtocol() {
-  return externalAgent.buildHealthProtocol(getRuntimeHost(), buildHealthReport());
-}
-
-function buildExternalDispatchNextProtocol() {
-  return externalAgent.buildDispatchNextProtocol(getRuntimeHost(), buildDispatchContext('next'));
-}
-
-function buildExternalInitProtocol(tokens, aliasUsed) {
-  const initialized = runInitCommand(tokens, aliasUsed);
-  return initialized ? externalAgent.buildInitProtocol(getRuntimeHost(), initialized) : null;
-}
+const {
+  buildContextOverview,
+  buildStartContext,
+  buildExternalStartProtocol,
+  buildExternalNextProtocol,
+  buildExternalStatusProtocol,
+  buildExternalHealthProtocol,
+  buildExternalDispatchNextProtocol,
+  buildExternalInitProtocol
+} = contextProtocolRuntimeHelpers.createContextProtocolRuntime({
+  fs,
+  runtime,
+  runtimeEventHelpers,
+  externalAgent,
+  boardEvidence,
+  resolveProjectRoot,
+  getRuntimeHost,
+  resolveSession,
+  buildCurrentSessionView,
+  buildStatus,
+  buildNextContext,
+  buildBootstrapReport,
+  buildHealthReport,
+  loadContextSummary,
+  runInitCommand,
+  buildInitGuidance,
+  buildBootstrapSummary,
+  buildResumeContext,
+  getActiveTask,
+  loadHandoff,
+  buildTaskIntake,
+  buildStartWorkflow,
+  buildDispatchContext: (...args) => buildDispatchContext(...args)
+});
 
 const referenceLookupCli = {
   lookupDocs(projectRoot, args) {
