@@ -103,7 +103,6 @@ function createAdapterToolChipCommandHelpers(deps) {
       const draftCommand = `snippet draft --from-tool-output ${relativePath} --confirm`;
       nextSteps.push(draftCommand);
     }
-    nextSteps.push('knowledge graph refresh');
     let firstRegister = '';
     const pending = [next];
     while (!firstRegister && pending.length > 0) {
@@ -133,7 +132,11 @@ function createAdapterToolChipCommandHelpers(deps) {
       });
     }
     if (firstRegister) {
+      nextSteps.push(`knowledge formula draft --from-tool-output ${relativePath} --confirm`);
+      nextSteps.push('knowledge graph refresh');
       nextSteps.push(`knowledge graph explain ${firstRegister}`);
+    } else {
+      nextSteps.push('knowledge graph refresh');
     }
     next.next_steps = [...new Set(nextSteps)];
     fs.writeFileSync(absolutePath, JSON.stringify(next, null, 2) + '\n', 'utf8');
