@@ -124,6 +124,25 @@ The next layer should be AI-authored firmware snippets, not a hand-maintained te
 
 That keeps the reusable core small. The AI writes the STM32/GD32/nRF/PADAUK/SCMCU/PUYA-specific code from the current project's evidence and SDK surface; emb-agent records the inputs, provenance, and verification status. Reusable examples can be promoted later, but they should not be the primary mechanism.
 
+Generated register write plans carry this as `register_writes.firmware_snippet_request`:
+
+```json
+{
+  "protocol": "emb-agent.firmware-snippet-request/1",
+  "authoring": "ai-authored",
+  "status": "draft-until-verified",
+  "required_output": [
+    "code_snippet",
+    "assumptions",
+    "required_symbols",
+    "write_ordering",
+    "safety_notes",
+    "verification_evidence",
+    "residual_risks"
+  ]
+}
+```
+
 ## Repository roles
 
 emb-agent should treat chip support as a three-layer system:

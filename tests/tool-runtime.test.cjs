@@ -381,6 +381,26 @@ test('generated draft timer route can execute first-pass timer search', async ()
     assert.equal(result.best_candidate.register_writes.registers[0].hal_statement, 'MODIFY_REG(PR2, 0xFF, 0xFF);');
     assert.deepEqual(result.best_candidate.register_writes.c_statements, ['PR2 = (PR2 & ~0xFF) | 0xFF;']);
     assert.deepEqual(result.best_candidate.register_writes.hal_statements, ['MODIFY_REG(PR2, 0xFF, 0xFF);']);
+    assert.equal(
+      result.best_candidate.register_writes.firmware_snippet_request.protocol,
+      'emb-agent.firmware-snippet-request/1'
+    );
+    assert.equal(result.best_candidate.register_writes.firmware_snippet_request.authoring, 'ai-authored');
+    assert.deepEqual(
+      result.best_candidate.register_writes.firmware_snippet_request.inputs.registers[0],
+      {
+        register: 'PR2',
+        mask_hex: '0xFF',
+        write_value_hex: '0xFF',
+        fields: ['PR2<7:0>'],
+        c_statement: 'PR2 = (PR2 & ~0xFF) | 0xFF;',
+        hal_statement: 'MODIFY_REG(PR2, 0xFF, 0xFF);'
+      }
+    );
+    assert.ok(result.best_candidate.register_writes.firmware_snippet_request.required_output.includes('code_snippet'));
+    assert.ok(
+      result.best_candidate.register_writes.firmware_snippet_request.gates.some(item => item.includes('compile'))
+    );
     assert.ok(Array.isArray(result.candidates));
     assert.ok(result.candidates.length > 0);
     assert.ok(
@@ -582,6 +602,13 @@ test('generated draft pwm route can execute first-pass pwm search', async () => 
         'MODIFY_REG(ARR, 0xFFFFFFFF, 0x3FF);',
         'MODIFY_REG(CCR1, 0x3FF, 0x200);'
       ]
+    );
+    assert.equal(result.best_candidate.register_writes.firmware_snippet_request.status, 'draft-until-verified');
+    assert.equal(result.best_candidate.register_writes.firmware_snippet_request.inputs.registers.length, 2);
+    assert.ok(
+      result.best_candidate.register_writes.firmware_snippet_request.constraints.includes(
+        'do not invent handles channels macros or init order'
+      )
     );
     assert.ok(Array.isArray(result.candidates));
     assert.ok(result.candidates.length > 0);
@@ -910,6 +937,10 @@ test('generated draft comparator route can execute first-pass threshold feasibil
     assert.equal(result.threshold_selection.register_writes.registers[0].mask, 48);
     assert.equal(result.threshold_selection.register_writes.registers[0].c_statement, 'CMPREF = (CMPREF & ~0x30) | 0x10;');
     assert.equal(result.threshold_selection.register_writes.registers[0].hal_statement, 'MODIFY_REG(CMPREF, 0x30, 0x10);');
+    assert.equal(
+      result.threshold_selection.register_writes.firmware_snippet_request.protocol,
+      'emb-agent.firmware-snippet-request/1'
+    );
   } finally {
     process.chdir(currentCwd);
   }
