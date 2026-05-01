@@ -182,6 +182,13 @@ function createExternalAgentHelpers() {
       status: stage.name || 'next',
       summary: next.reason || '',
       runtime_events: summarizeProtocolRuntimeEvents(source),
+      product_layer:
+        source.product_layer && typeof source.product_layer === 'object' && !Array.isArray(source.product_layer)
+          ? compactObject({
+              id: source.product_layer.id || '',
+              label: source.product_layer.label || ''
+            })
+          : undefined,
       capability_route: summarizeCapabilityRoute(source.capability_route || next.capability_route),
       recommended_flow:
         source.recommended_flow && typeof source.recommended_flow === 'object' && !Array.isArray(source.recommended_flow)

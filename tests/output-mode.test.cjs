@@ -42,6 +42,11 @@ test('applyOutputMode builds brief next context payload', () => {
       command: 'plan',
       reason: 'complex tasks should converge first',
       cli: 'node runtime/bin/emb-agent.cjs capability run plan',
+      product_layer: {
+        id: 'embedded_workflow',
+        label: 'Embedded workflow',
+        summary: 'Project truth and workflow closure.'
+      },
       gated_by_health: false,
       capability_route: {
         capability: 'plan',
@@ -86,6 +91,11 @@ test('applyOutputMode builds brief next context payload', () => {
           }
         ]
       }
+    },
+    product_layer: {
+      id: 'embedded_workflow',
+      label: 'Embedded workflow',
+      summary: 'Project truth and workflow closure.'
     },
     task_convergence: {
       status: 'active-task',
@@ -253,6 +263,8 @@ test('applyOutputMode builds brief next context payload', () => {
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.next.command, 'plan');
+  assert.equal(output.product_layer.id, 'embedded_workflow');
+  assert.equal(output.product_layer.label, 'Embedded workflow');
   assert.equal(output.capability_route.capability, 'plan');
   assert.equal(output.capability_route.route_strategy, 'capability-first');
   assert.equal(output.capability_route.compatibility_command, undefined);

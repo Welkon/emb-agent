@@ -690,6 +690,8 @@ test('next context exposes knowledge graph freshness without rerouting workflow'
     await cli.main(['init']);
 
     const missing = cli.buildNextContext();
+    assert.equal(missing.product_layer.id, 'embedded_workflow');
+    assert.equal(missing.next.product_layer.id, 'embedded_workflow');
     assert.equal(missing.knowledge_graph.initialized, false);
     assert.equal(missing.knowledge_graph.state, 'missing');
     assert.deepEqual(missing.knowledge_graph.next_steps, ['knowledge graph refresh']);

@@ -12,6 +12,7 @@ const runtimeEventHelpers = require('./runtime-events.cjs');
 const intentProviderHelpers = require('./intent-provider.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
 const capabilityCatalog = require('./capability-catalog.cjs');
+const productLayers = require('./product-layers.cjs');
 const capabilityRouter = require('./capability-router.cjs');
 const boardEvidence = require('./board-evidence.cjs');
 const knowledgeGraphState = require('./knowledge-graph-state.cjs');
@@ -1951,6 +1952,7 @@ function createSessionFlowHelpers(deps) {
       command: nextCommand.command,
       primary_entry_cli: nextCli
     });
+    const productLayer = productLayers.summarizeProductLayer(nextCommand.command);
     const result = enrichWithToolSuggestions({
       current: {
         project_root: resolved.session.project_root,
@@ -2022,6 +2024,7 @@ function createSessionFlowHelpers(deps) {
         command: nextCommand.command,
         reason: nextCommand.reason,
         cli: nextCli,
+        product_layer: productLayer,
         capability_route: capabilityRoute,
         gated_by_health: gatedByHealth,
         health_next_commands: nextCommand.health_next_commands || [],
@@ -2051,6 +2054,7 @@ function createSessionFlowHelpers(deps) {
       board_evidence: boardEvidenceSummary,
       task_convergence: taskConvergence,
       capability_route: capabilityRoute,
+      product_layer: productLayer,
       action_card: buildNextActionCard({
         ...nextCommand,
         cli: nextCli,
