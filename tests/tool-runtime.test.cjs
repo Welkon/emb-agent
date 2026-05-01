@@ -285,6 +285,18 @@ test('generated draft timer route can execute first-pass timer search', async ()
               registers: {
                 period: 'PR2',
                 counter: 'TMR2'
+              },
+              register_writes: {
+                period_value: [
+                  {
+                    register: 'PR2',
+                    field: 'PR2<7:0>',
+                    value_key: 'period_value',
+                    source_lsb: 0,
+                    width: 8,
+                    target_lsb: 0
+                  }
+                ]
               }
             }
           }
@@ -362,6 +374,9 @@ test('generated draft timer route can execute first-pass timer search', async ()
     assert.equal(result.best_candidate.error_us, 0);
     assert.equal(result.best_candidate.period_register, 'PR2');
     assert.equal(result.best_candidate.period_value, 255);
+    assert.equal(result.best_candidate.register_writes.registers[0].register, 'PR2');
+    assert.equal(result.best_candidate.register_writes.registers[0].write_value, 255);
+    assert.equal(result.best_candidate.register_writes.registers[0].mask, 255);
     assert.ok(Array.isArray(result.candidates));
     assert.ok(result.candidates.length > 0);
     assert.ok(
@@ -428,7 +443,29 @@ test('generated draft pwm route can execute first-pass pwm search', async () => 
               prescalers: [1, 4, 16],
               counter_bits: [8, 10],
               period_registers: ['ARR'],
-              duty_registers: ['CCR1']
+              duty_registers: ['CCR1'],
+              register_writes: {
+                period_value: [
+                  {
+                    register: 'ARR',
+                    field: 'ARR<31:0>',
+                    value_key: 'period_value',
+                    source_lsb: 0,
+                    width: 32,
+                    target_lsb: 0
+                  }
+                ],
+                duty_value: [
+                  {
+                    register: 'CCR1',
+                    field: 'CCR1<9:0>',
+                    value_key: 'duty_value',
+                    source_lsb: 0,
+                    width: 10,
+                    target_lsb: 0
+                  }
+                ]
+              }
             }
           }
         },
@@ -512,6 +549,14 @@ test('generated draft pwm route can execute first-pass pwm search', async () => 
     assert.deepEqual(result.best_candidate.duty_registers, ['CCR1']);
     assert.equal(result.best_candidate.period_value, 1023);
     assert.equal(result.best_candidate.duty_value, 512);
+    assert.deepEqual(
+      result.best_candidate.register_writes.registers.map(item => [item.register, item.write_value, item.mask]),
+      [
+        ['ARR', 1023, 4294967295],
+        ['CCR1', 512, 1023]
+      ]
+    );
+    assert.equal(result.best_candidate.register_writes.registers[0].mask_hex, '0xFFFFFFFF');
     assert.ok(Array.isArray(result.candidates));
     assert.ok(result.candidates.length > 0);
     assert.ok(
@@ -734,13 +779,27 @@ test('generated draft comparator route can execute first-pass threshold feasibil
               threshold_table: [
                 {
                   threshold_v: 2.45,
-                  setting: 'low'
+                  setting: 'low',
+                  setting_code: 1
                 },
                 {
                   threshold_v: 2.55,
-                  setting: 'high'
+                  setting: 'high',
+                  setting_code: 2
                 }
-              ]
+              ],
+              register_writes: {
+                threshold_selection: [
+                  {
+                    register: 'CMPREF',
+                    field: 'setting_low',
+                    value_key: 'setting_code',
+                    source_lsb: 0,
+                    width: 2,
+                    target_lsb: 4
+                  }
+                ]
+              }
             }
           }
         },
@@ -820,6 +879,9 @@ test('generated draft comparator route can execute first-pass threshold feasibil
     assert.equal(result.threshold_selection.threshold_v, 2.45);
     assert.equal(result.threshold_selection.setting, 'low');
     assert.equal(result.threshold_selection.error_v, -0.05);
+    assert.equal(result.threshold_selection.register_writes.registers[0].register, 'CMPREF');
+    assert.equal(result.threshold_selection.register_writes.registers[0].write_value, 16);
+    assert.equal(result.threshold_selection.register_writes.registers[0].mask, 48);
   } finally {
     process.chdir(currentCwd);
   }
