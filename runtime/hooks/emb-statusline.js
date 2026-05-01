@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const runtime = require('../lib/runtime.cjs');
 const sessionReportStoreHelpers = require('../lib/session-report-store.cjs');
+const workflowStateHelpers = require('../lib/workflow-state.cjs');
 
 const sessionReportStore = sessionReportStoreHelpers.createSessionReportStoreHelpers({
   fs,
@@ -95,63 +96,12 @@ function getProjectPackageState(projectRoot) {
   };
 }
 
-function parseSimpleYaml(filePath) {
-  try {
-    const content = String(fs.readFileSync(filePath, 'utf8') || '');
-    const lines = content.split('\n');
-    const result = {};
-    let listKey = '';
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const colonIdx = trimmed.indexOf(':');
-      if (colonIdx === -1) continue;
-      const key = trimmed.substring(0, colonIdx).trim();
-      let value = trimmed.substring(colonIdx + 1).trim();
-      if (value === '' || value === '|') {
-        listKey = key;
-        result[key] = [];
-        continue;
-      }
-      if (trimmed.startsWith('- ') && listKey) {
-        result[listKey].push(trimmed.substring(2).trim());
-        continue;
-      }
-      listKey = '';
-      if (value.startsWith('"') && value.endsWith('"')) {
-        value = value.slice(1, -1);
-      }
-      result[key] = value;
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
-function resolveWorkflowState(hwConfig, activeTask) {
-  if (!hwConfig || !hwConfig.chip) {
-    return 'unknown';
-  }
-  if (!hwConfig.datasheets || !Array.isArray(hwConfig.datasheets) || hwConfig.datasheets.length === 0) {
-    return 'hw_declared';
-  }
-  if (!activeTask) {
-    return 'bootstrap_ready';
-  }
-  if (activeTask.status === 'completed' || activeTask.status === 'rejected') {
-    return 'resolved';
-  }
-  if (activeTask.status === 'review') {
-    return 'board_verified';
-  }
-  return 'implementing';
-}
-
 function getWorkflowState(projectRoot, task) {
-  const hwPath = path.join(projectRoot, '.emb-agent', 'hw.yaml');
-  const hwConfig = fs.existsSync(hwPath) ? parseSimpleYaml(hwPath) : null;
-  return resolveWorkflowState(hwConfig, task);
+  return workflowStateHelpers.resolveProjectWorkflowState(projectRoot, task, {
+    fs,
+    path,
+    runtime
+  });
 }
 
 function countTasks(projectRoot) {
@@ -295,7 +245,8 @@ function buildStatusLine(input) {
   };
   const stateColor = stateColors[workflowState] || 90;
   const stateLabel = stateLabels[workflowState] || workflowState;
-  lines.push(`${colorize(stateColor, `[${stateLabel}]`)}`);
+  const nextStep = workflowStateHelpers.getWorkflowNext(workflowState);
+  lines.push(`${colorize(stateColor, `[${stateLabel}]`)} ${colorize(90, `next: ${nextStep.command}`)}`);
 
   if (task) {
     lines.push(`${colorize(36, `[${task.priority || 'P2'}]`)} ${task.title} ${colorize(33, `(${task.status || 'unknown'})`)}`);
