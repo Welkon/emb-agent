@@ -280,7 +280,12 @@ test('generated draft timer route can execute first-pass timer search', async ()
               default_timer: 'Timer16',
               default_clock_source: 'sysclk',
               prescalers: [1, 4, 16, 64],
-              interrupt_bits: [8, 9, 10]
+              interrupt_bits: [8, 9, 10],
+              period_max: 255,
+              registers: {
+                period: 'PR2',
+                counter: 'TMR2'
+              }
             }
           }
         },
@@ -352,12 +357,15 @@ test('generated draft timer route can execute first-pass timer search', async ()
     assert.equal(result.status, 'ok');
     assert.equal(result.implementation, 'external-chip-support-draft');
     assert.equal(result.timer.name, 'Timer16');
+    assert.equal(result.timer.search_mode, 'register-period');
     assert.equal(result.best_candidate.actual_us, 64);
     assert.equal(result.best_candidate.error_us, 0);
+    assert.equal(result.best_candidate.period_register, 'PR2');
+    assert.equal(result.best_candidate.period_value, 255);
     assert.ok(Array.isArray(result.candidates));
     assert.ok(result.candidates.length > 0);
     assert.ok(
-      result.candidates.some(item => item.prescaler === 4 && item.interrupt_bit === 8 && item.actual_us === 64)
+      result.candidates.some(item => item.prescaler === 4 && item.period_value === 255 && item.actual_us === 64)
     );
   } finally {
     process.chdir(currentCwd);
@@ -418,7 +426,9 @@ test('generated draft pwm route can execute first-pass pwm search', async () => 
               default_output_pin: 'PA3',
               default_clock_source: 'sysclk',
               prescalers: [1, 4, 16],
-              counter_bits: [8, 10]
+              counter_bits: [8, 10],
+              period_registers: ['ARR'],
+              duty_registers: ['CCR1']
             }
           }
         },
@@ -493,14 +503,19 @@ test('generated draft pwm route can execute first-pass pwm search', async () => 
     assert.equal(result.implementation, 'external-chip-support-draft');
     assert.equal(result.pwm.name, 'PWM');
     assert.equal(result.pwm.output_pin, 'PA3');
+    assert.equal(result.pwm.search_mode, 'register-period-duty');
     assert.equal(result.best_candidate.actual_hz, 3906.25);
     assert.equal(result.best_candidate.actual_duty, 50);
     assert.equal(result.best_candidate.freq_error_pct, 0);
     assert.equal(result.best_candidate.duty_error_pct, 0);
+    assert.deepEqual(result.best_candidate.period_registers, ['ARR']);
+    assert.deepEqual(result.best_candidate.duty_registers, ['CCR1']);
+    assert.equal(result.best_candidate.period_value, 1023);
+    assert.equal(result.best_candidate.duty_value, 512);
     assert.ok(Array.isArray(result.candidates));
     assert.ok(result.candidates.length > 0);
     assert.ok(
-      result.candidates.some(item => item.prescaler === 16 && item.counter_bits === 8 && item.actual_hz === 3906.25)
+      result.candidates.some(item => item.prescaler === 4 && item.period_value === 1023 && item.actual_hz === 3906.25)
     );
   } finally {
     process.chdir(currentCwd);
@@ -715,7 +730,17 @@ test('generated draft comparator route can execute first-pass threshold feasibil
                   min_ratio: 0.2,
                   max_ratio: 0.8
                 }
-              }
+              },
+              threshold_table: [
+                {
+                  threshold_v: 2.45,
+                  setting: 'low'
+                },
+                {
+                  threshold_v: 2.55,
+                  setting: 'high'
+                }
+              ]
             }
           }
         },
@@ -792,6 +817,9 @@ test('generated draft comparator route can execute first-pass threshold feasibil
     assert.equal(result.feasibility.recommended_reference_side, 'negative');
     assert.equal(result.negative_source.min_voltage, 1);
     assert.equal(result.negative_source.max_voltage, 4);
+    assert.equal(result.threshold_selection.threshold_v, 2.45);
+    assert.equal(result.threshold_selection.setting, 'low');
+    assert.equal(result.threshold_selection.error_v, -0.05);
   } finally {
     process.chdir(currentCwd);
   }

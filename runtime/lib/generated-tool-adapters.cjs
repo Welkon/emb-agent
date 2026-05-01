@@ -52,6 +52,27 @@ function firstObjectKey(value) {
   return Object.keys(value)[0] || '';
 }
 
+function parseIntegerOption(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : NaN;
+}
+
+function resolveRegisterLimit(defaults, primaryKey, bitKeys, fallbackBits) {
+  const direct = parseIntegerOption(defaults[primaryKey]);
+  if (Number.isFinite(direct) && direct > 0) {
+    return direct;
+  }
+
+  for (const key of bitKeys) {
+    const bits = parseIntegerList(defaults[key]);
+    if (bits.length > 0) {
+      return (2 ** Math.max(...bits)) - 1;
+    }
+  }
+
+  return fallbackBits > 0 ? (2 ** fallbackBits) - 1 : 0;
+}
+
 function resolveTimerBinding(binding, options) {
   const params = (binding && binding.params) || {};
   const variants = params.timer_variants && typeof params.timer_variants === 'object' ? params.timer_variants : {};
@@ -182,6 +203,73 @@ function buildTimerCandidates(clockHz, targetUs, timerName, defaults, options) {
   });
 }
 
+function buildTimerRegisterCandidates(clockHz, targetUs, timerName, defaults, options) {
+  const prescalers = parseIntegerList(options.prescaler).length > 0
+    ? parseIntegerList(options.prescaler)
+    : parseIntegerList(defaults.prescalers);
+  const postscalers = parseIntegerList(options.postscaler).length > 0
+    ? parseIntegerList(options.postscaler)
+    : (parseIntegerList(defaults.postscalers).length > 0 ? parseIntegerList(defaults.postscalers) : [1]);
+  const maxPeriodValue = resolveRegisterLimit(defaults, 'period_max', ['period_bits', 'counter_bits'], 8);
+  const minPeriodValue = Number.isFinite(parseIntegerOption(defaults.period_min))
+    ? parseIntegerOption(defaults.period_min)
+    : 0;
+  const requestedPeriod = Number.isFinite(parseIntegerOption(options['period-value']))
+    ? parseIntegerOption(options['period-value'])
+    : (
+      Number.isFinite(parseIntegerOption(options.reload))
+        ? parseIntegerOption(options.reload)
+        : parseIntegerOption(options.pr2)
+    );
+  const periodOffset = Number.isFinite(ensureNumber(defaults.period_count_offset))
+    ? ensureNumber(defaults.period_count_offset)
+    : 1;
+  const periodRegister =
+    (defaults.registers && (defaults.registers.period || defaults.registers.reload || defaults.registers.auto_reload)) ||
+    defaults.period_register ||
+    '';
+  const candidates = [];
+  const periodValues = Number.isFinite(requestedPeriod)
+    ? [requestedPeriod]
+    : Array.from({ length: Math.max(0, maxPeriodValue - minPeriodValue + 1) }, (_, index) => minPeriodValue + index);
+
+  prescalers.forEach(prescaler => {
+    postscalers.forEach(postscaler => {
+      periodValues.forEach(periodValue => {
+        const ticks = periodValue + periodOffset;
+        if (ticks <= 0) {
+          return;
+        }
+        const actualUs = (prescaler * postscaler * ticks * 1e6) / clockHz;
+        const actualHz = 1e6 / actualUs;
+        const errorUs = actualUs - targetUs;
+        const errorPct = targetUs === 0 ? 0 : (errorUs / targetUs) * 100;
+
+        candidates.push({
+          timer: timerName,
+          prescaler,
+          postscaler,
+          period_register: periodRegister || undefined,
+          period_value: periodValue,
+          reload_value: periodValue,
+          ticks,
+          actual_us: Number(actualUs.toFixed(6)),
+          actual_hz: Number(actualHz.toFixed(6)),
+          error_us: Number(errorUs.toFixed(6)),
+          error_pct: Number(errorPct.toFixed(6))
+        });
+      });
+    });
+  });
+
+  return candidates.sort((left, right) => {
+    return Math.abs(left.error_us) - Math.abs(right.error_us) ||
+      left.prescaler - right.prescaler ||
+      left.postscaler - right.postscaler ||
+      left.period_value - right.period_value;
+  });
+}
+
 function buildPwmCandidates(clockHz, targetHz, targetDuty, pwmName, defaults, options) {
   const prescalers = parseIntegerList(options.prescaler).length > 0
     ? parseIntegerList(options.prescaler)
@@ -226,6 +314,93 @@ function buildPwmCandidates(clockHz, targetHz, targetDuty, pwmName, defaults, op
       Math.abs(left.duty_error_pct) - Math.abs(right.duty_error_pct) ||
       left.prescaler - right.prescaler ||
       (left.period_bits || left.counter_bits || 0) - (right.period_bits || right.counter_bits || 0);
+  });
+}
+
+function buildPwmRegisterCandidates(clockHz, targetHz, targetDuty, pwmName, defaults, options) {
+  const prescalers = parseIntegerList(options.prescaler).length > 0
+    ? parseIntegerList(options.prescaler)
+    : parseIntegerList(defaults.prescalers);
+  const maxPeriodValue = resolveRegisterLimit(defaults, 'period_max', ['period_bits', 'counter_bits'], 10);
+  const minPeriodValue = Number.isFinite(parseIntegerOption(defaults.period_min))
+    ? parseIntegerOption(defaults.period_min)
+    : 0;
+  const requestedPeriod = Number.isFinite(parseIntegerOption(options['period-value']))
+    ? parseIntegerOption(options['period-value'])
+    : (
+      Number.isFinite(parseIntegerOption(options.period))
+        ? parseIntegerOption(options.period)
+        : parseIntegerOption(options.pwmt)
+    );
+  const periodOffset = Number.isFinite(ensureNumber(defaults.period_count_offset))
+    ? ensureNumber(defaults.period_count_offset)
+    : 1;
+  const dutyOffset = Number.isFinite(ensureNumber(defaults.duty_count_offset))
+    ? ensureNumber(defaults.duty_count_offset)
+    : 0;
+  const periodRegisters = Array.isArray(defaults.period_registers)
+    ? defaults.period_registers
+    : (
+      defaults.registers && typeof defaults.registers === 'object'
+        ? [defaults.registers.period, defaults.registers.period_low_pwm01, defaults.registers.period_high].filter(Boolean)
+        : []
+    );
+  const dutyRegisters = Array.isArray(defaults.duty_registers)
+    ? defaults.duty_registers
+    : (
+      defaults.registers && typeof defaults.registers === 'object'
+        ? [
+            defaults.registers.duty,
+            defaults.registers.duty_low_pwm0,
+            defaults.registers.duty_low_pwm1,
+            defaults.registers.duty_low_pwm4,
+            defaults.registers.duty_high_pwm01
+          ].filter(Boolean)
+        : []
+    );
+  const candidates = [];
+  const periodValues = Number.isFinite(requestedPeriod)
+    ? [requestedPeriod]
+    : Array.from({ length: Math.max(0, maxPeriodValue - minPeriodValue + 1) }, (_, index) => minPeriodValue + index);
+
+  prescalers.forEach(prescaler => {
+    periodValues.forEach(periodValue => {
+      const periodCounts = periodValue + periodOffset;
+      if (periodCounts <= 0) {
+        return;
+      }
+      const actualHz = clockHz / (prescaler * periodCounts);
+      const freqErrorHz = actualHz - targetHz;
+      const freqErrorPct = targetHz === 0 ? 0 : (freqErrorHz / targetHz) * 100;
+      const dutyCounts = Math.min(periodCounts, Math.max(0, Math.round((periodCounts * targetDuty) / 100)));
+      const dutyValue = Math.max(0, Math.min(maxPeriodValue, dutyCounts - dutyOffset));
+      const actualDuty = ((dutyValue + dutyOffset) / periodCounts) * 100;
+      const dutyErrorPct = actualDuty - targetDuty;
+
+      candidates.push({
+        pwm: pwmName,
+        prescaler,
+        period_registers: periodRegisters,
+        duty_registers: dutyRegisters,
+        period_value: periodValue,
+        duty_value: dutyValue,
+        period_counts: periodCounts,
+        duty_steps: dutyValue + dutyOffset,
+        actual_hz: Number(actualHz.toFixed(6)),
+        actual_duty: Number(actualDuty.toFixed(6)),
+        freq_error_hz: Number(freqErrorHz.toFixed(6)),
+        freq_error_pct: Number(freqErrorPct.toFixed(6)),
+        duty_error_pct: Number(dutyErrorPct.toFixed(6))
+      });
+    });
+  });
+
+  return candidates.sort((left, right) => {
+    return Math.abs(left.freq_error_pct) - Math.abs(right.freq_error_pct) ||
+      Math.abs(left.duty_error_pct) - Math.abs(right.duty_error_pct) ||
+      left.prescaler - right.prescaler ||
+      left.period_value - right.period_value ||
+      left.duty_value - right.duty_value;
   });
 }
 
@@ -435,7 +610,14 @@ function runGeneratedTimerAdapter(context, resolved, options) {
     };
   }
 
-  const candidates = buildTimerCandidates(clockHz, targetUs, timerConfig.timer, defaults, options || {});
+  const hasRegisterSearch =
+    Boolean(defaults.period_register) ||
+    Boolean(defaults.period_max) ||
+    Boolean(defaults.postscalers) ||
+    Boolean(defaults.registers && (defaults.registers.period || defaults.registers.reload || defaults.registers.auto_reload));
+  const candidates = hasRegisterSearch
+    ? buildTimerRegisterCandidates(clockHz, targetUs, timerConfig.timer, defaults, options || {})
+    : buildTimerCandidates(clockHz, targetUs, timerConfig.timer, defaults, options || {});
   if (candidates.length === 0) {
     return {
       tool: context.toolName,
@@ -452,7 +634,7 @@ function runGeneratedTimerAdapter(context, resolved, options) {
       },
       notes: [
         'The current binding lacks searchable prescalers / interrupt_bits / counter_bits.',
-        'Add these combinations to binding params before running again.'
+        'Add searchable prescalers plus counter_bits, period_bits, period_max, or register period params before running again.'
       ]
     };
   }
@@ -484,13 +666,16 @@ function runGeneratedTimerAdapter(context, resolved, options) {
       clock_source: clockSource,
       clock_hz: clockHz,
       target_us: Number(targetUs.toFixed(6)),
-      target_hz: Number((1e6 / targetUs).toFixed(6))
+      target_hz: Number((1e6 / targetUs).toFixed(6)),
+      search_mode: hasRegisterSearch ? 'register-period' : 'counter-width'
     },
     best_candidate: best,
     candidates: candidates.slice(0, 8),
     notes: [
-      'This is the first generic search implementation for timer-calc, based on prescaler/bit combinations in binding params.',
-      'The draft route marker is still present. For production use, add register names, reload style, and boundary notes.'
+      hasRegisterSearch
+        ? 'This timer-calc run searched register period/reload values from binding params.'
+        : 'This timer-calc run used the fallback counter-width search from binding params.',
+      'The draft route marker is still present. For production use, review reload style, update events, and hardware boundary notes.'
     ]
   };
 }
@@ -618,7 +803,17 @@ function runGeneratedPwmAdapter(context, resolved, options) {
     };
   }
 
-  const candidates = buildPwmCandidates(clockHz, targetHz, targetDuty, pwmConfig.pwm || 'PWM', defaults, options || {});
+  const hasRegisterSearch =
+    Boolean(defaults.period_registers) ||
+    Boolean(defaults.period_max) ||
+    Boolean(defaults.registers && (
+      defaults.registers.period ||
+      defaults.registers.period_low_pwm01 ||
+      defaults.registers.period_high
+    ));
+  const candidates = hasRegisterSearch
+    ? buildPwmRegisterCandidates(clockHz, targetHz, targetDuty, pwmConfig.pwm || 'PWM', defaults, options || {})
+    : buildPwmCandidates(clockHz, targetHz, targetDuty, pwmConfig.pwm || 'PWM', defaults, options || {});
   if (candidates.length === 0) {
     return {
       tool: context.toolName,
@@ -635,7 +830,7 @@ function runGeneratedPwmAdapter(context, resolved, options) {
       },
       notes: [
         'The current binding lacks searchable prescalers / counter_bits / period_bits.',
-        'Add these combinations to binding params before running again.'
+        'Add searchable prescalers plus counter_bits, period_bits, period_max, or period register params before running again.'
       ]
     };
   }
@@ -668,13 +863,16 @@ function runGeneratedPwmAdapter(context, resolved, options) {
       clock_source: clockSource,
       clock_hz: clockHz,
       target_hz: Number(targetHz.toFixed(6)),
-      target_duty: Number(targetDuty.toFixed(6))
+      target_duty: Number(targetDuty.toFixed(6)),
+      search_mode: hasRegisterSearch ? 'register-period-duty' : 'counter-width'
     },
     best_candidate: best,
     candidates: candidates.slice(0, 8),
     notes: [
-      'This is the first generic search implementation for pwm-calc, based on prescaler/period combinations in binding params.',
-      'The draft route marker is still present. For production use, add period encoding, register boundaries, and output polarity notes.'
+      hasRegisterSearch
+        ? 'This pwm-calc run searched period and duty register values from binding params.'
+        : 'This pwm-calc run used the fallback counter-width search from binding params.',
+      'The draft route marker is still present. For production use, review period encoding, register boundaries, and output polarity notes.'
     ]
   };
 }
@@ -1026,6 +1224,26 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
     notes.push('Both sides can cover the target threshold. Choose placement based on output polarity and system behavior.');
   }
 
+  const thresholdTable = Array.isArray(defaults.threshold_table) ? defaults.threshold_table : [];
+  const thresholdSelection = thresholdTable
+    .map(row => {
+      const threshold = parsePositiveNumber(row && (row.threshold_v || row.threshold || row.voltage));
+      if (!Number.isFinite(threshold)) {
+        return null;
+      }
+      return {
+        ...row,
+        threshold_v: Number(threshold.toFixed(9)),
+        error_v: Number((threshold - targetThreshold).toFixed(9)),
+        error_pct: targetThreshold === 0 ? 0 : Number((((threshold - targetThreshold) / targetThreshold) * 100).toFixed(6))
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      return Math.abs(left.error_v) - Math.abs(right.error_v) ||
+        left.threshold_v - right.threshold_v;
+    })[0] || null;
+
   return {
     tool: context.toolName,
     status: 'ok',
@@ -1067,8 +1285,12 @@ function runGeneratedComparatorAdapter(context, resolved, options) {
       negative_reference_ok: negativeFeasible,
       recommended_reference_side: recommendedReferenceSide
     },
+    threshold_selection: thresholdSelection,
     notes: [
       'This is the first generic feasibility-check implementation for comparator-threshold, based on input-source ranges and the target threshold.',
+      thresholdSelection
+        ? 'A nearest threshold-table row was selected from binding params.'
+        : 'No threshold table was available in binding params.',
       'The draft route marker is still present. For production use, add hysteresis, offset, input common-mode range, and output polarity boundaries.'
     ].concat(notes)
   };
