@@ -174,16 +174,24 @@ function buildRegisterWritePlan(sourceValues, defaults, keys) {
     byRegister.set(field.register, current);
   });
 
-  return {
-    fields,
-    registers: [...byRegister.values()].map(item => ({
+  const registers = [...byRegister.values()].map(item => {
+    const maskHex = formatHex(item.mask);
+    const writeValueHex = formatHex(item.write_value);
+    return {
       register: item.register,
       mask: item.mask,
-      mask_hex: formatHex(item.mask),
+      mask_hex: maskHex,
       write_value: item.write_value,
-      write_value_hex: formatHex(item.write_value),
-      fields: item.fields
-    }))
+      write_value_hex: writeValueHex,
+      fields: item.fields,
+      c_statement: `${item.register} = (${item.register} & ~${maskHex}) | ${writeValueHex};`
+    };
+  });
+
+  return {
+    fields,
+    registers,
+    c_statements: registers.map(item => item.c_statement)
   };
 }
 
