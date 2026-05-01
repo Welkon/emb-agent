@@ -15,6 +15,7 @@ const runtime = require('../lib/runtime.cjs');
 const workflowRegistry = require('../lib/workflow-registry.cjs');
 const sessionReportStoreHelpers = require('../lib/session-report-store.cjs');
 const specLoader = require('../lib/spec-loader.cjs');
+const workflowStateHelpers = require('../lib/workflow-state.cjs');
 
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const HOOK_VERSION = '{{EMB_VERSION}}';
@@ -179,51 +180,15 @@ function buildSessionReportLines(projectRoot, currentBranch) {
   return lines;
 }
 
-const WORKFLOW_STATES = [
-  'unknown',
-  'hw_declared',
-  'datasheet_ingested',
-  'bootstrap_ready',
-  'implementing',
-  'board_verified',
-  'resolved'
-];
-
-const WORKFLOW_NEXT = {
-  unknown: { command: 'declare hardware', reason: 'Hardware not yet declared. Run declare hardware to set MCU, package, and constraints.' },
-  hw_declared: { command: 'ingest doc', reason: 'Hardware declared. Ingest datasheet or schematic to populate chip truth.' },
-  datasheet_ingested: { command: 'bootstrap run --confirm', reason: 'Datasheet ingested. Run bootstrap to initialize project.' },
-  bootstrap_ready: { command: 'next', reason: 'Project bootstrapped. Follow next command for the shortest path.' },
-  implementing: { command: 'capability run do', reason: 'Task in progress. Execute the current capability.' },
-  board_verified: { command: 'verify', reason: 'Board verified. Run verify to close quality gates.' },
-  resolved: { command: 'next', reason: 'Task resolved. Run next for the next task.' }
-};
-
-function resolveWorkflowState(hwConfig, activeTask) {
-  if (!hwConfig || !hwConfig.chip) {
-    return 'unknown';
-  }
-  if (!hwConfig.datasheets || !Array.isArray(hwConfig.datasheets) || hwConfig.datasheets.length === 0) {
-    return 'hw_declared';
-  }
-  if (!activeTask) {
-    return 'bootstrap_ready';
-  }
-  if (activeTask.status === 'completed' || activeTask.status === 'rejected') {
-    return 'resolved';
-  }
-  if (activeTask.status === 'review') {
-    return 'board_verified';
-  }
-  return 'implementing';
-}
-
-function buildWorkflowStateLines(projectRoot) {
-  const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
-  const hwConfig = (fs.existsSync(hwPath)) ? runtime.parseSimpleYaml(hwPath) : null;
-
-  const state = resolveWorkflowState(hwConfig, null);
-  const nextStep = WORKFLOW_NEXT[state] || WORKFLOW_NEXT.unknown;
+function buildWorkflowStateLines(projectRoot, start, resume) {
+  const activeTask = resume && resume.task ? resume.task : null;
+  const state = workflowStateHelpers.resolveProjectWorkflowState(projectRoot, activeTask, {
+    fs,
+    path,
+    runtime,
+    bootstrap: start && start.bootstrap ? start.bootstrap : null
+  });
+  const nextStep = workflowStateHelpers.getWorkflowNext(state);
 
   return [
     `<workflow-state status="${state}">`,
@@ -387,7 +352,7 @@ function runHook(rawInput) {
     const updateLines = buildUpdateLines();
     const coreProtocolLines = coreProtocolHelpers.buildCoreProtocolLines();
     const workflowSpecLines = buildInjectedWorkflowSpecLines(projectRoot, resume);
-    const workflowStateLines = buildWorkflowStateLines(projectRoot);
+    const workflowStateLines = buildWorkflowStateLines(projectRoot, start, resume);
     const constraintSpecLines = buildSpecInjectionLines(projectRoot);
     const sessionReportLines = buildSessionReportLines(
       projectRoot,

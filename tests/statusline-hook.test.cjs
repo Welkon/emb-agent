@@ -119,3 +119,70 @@ test('statusline hook warns when the latest session checkpoint is from another b
   assert.match(output, /feat\/current/);
   assert.match(output, /snapshot!/);
 });
+
+test('statusline hook labels datasheet_ingested workflow state before bootstrap', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-statusline-datasheet-state-'));
+  const embDir = path.join(tempProject, '.emb-agent');
+
+  fs.mkdirSync(embDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(embDir, 'project.json'),
+    JSON.stringify({ default_package: 'fw', active_package: 'fw' }, null, 2) + '\n',
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(embDir, 'hw.yaml'),
+    [
+      'chip: sc8f072',
+      'package: sop8',
+      'datasheets: docs/SC8F072.pdf',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+
+  const output = statuslineHook.buildStatusLine({
+    cwd: tempProject,
+    model: { display_name: 'GPT-5' },
+    context_window: { used_percentage: 12 },
+    cost: { total_duration_ms: 30000 }
+  });
+
+  assert.match(output, /datasheet read/);
+  assert.match(output, /next: bootstrap run --confirm/);
+  assert.match(output, /pkg:fw/);
+  assert.doesNotMatch(output, /tools ready/);
+});
+
+test('statusline hook shows next recommendation after bootstrap is ready', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-statusline-next-ready-'));
+  const embDir = path.join(tempProject, '.emb-agent');
+
+  fs.mkdirSync(path.join(embDir, 'chip-support'), { recursive: true });
+  fs.writeFileSync(
+    path.join(embDir, 'project.json'),
+    JSON.stringify({ default_package: 'fw', active_package: 'fw' }, null, 2) + '\n',
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(embDir, 'hw.yaml'),
+    [
+      'chip: sc8f072',
+      'package: sop8',
+      'datasheets: docs/SC8F072.pdf',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+
+  const output = statuslineHook.buildStatusLine({
+    cwd: tempProject,
+    model: { display_name: 'GPT-5' },
+    context_window: { used_percentage: 12 },
+    cost: { total_duration_ms: 30000 }
+  });
+
+  assert.match(output, /tools ready/);
+  assert.match(output, /next: next/);
+  assert.match(output, /pkg:fw/);
+});

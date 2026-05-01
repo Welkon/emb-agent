@@ -245,6 +245,59 @@ test('session start hook surfaces the latest session checkpoint for the current 
   }
 });
 
+test('session start hook surfaces datasheet_ingested workflow state before bootstrap', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-datasheet-state-'));
+  const currentCwd = process.cwd();
+  const previousSkip = process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
+  const previousCachePath = process.env.EMB_AGENT_UPDATE_CACHE_PATH;
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+  const cachePath = path.join(tempProject, '.cache', 'update-check.json');
+
+  try {
+    process.env.EMB_AGENT_SKIP_UPDATE_CHECK = '1';
+    process.env.EMB_AGENT_UPDATE_CACHE_PATH = cachePath;
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
+    process.chdir(tempProject);
+    cli.main(['init']);
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      [
+        'chip: sc8f072',
+        'package: sop8',
+        'datasheets:',
+        '  - docs/SC8F072.pdf',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
+    const payload = parseHookPayload(reminder);
+
+    assert.match(payload.hookSpecificOutput.additionalContext, /<workflow-state status="datasheet_ingested">/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Current state: datasheet_ingested/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Next step: bootstrap run --confirm/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Datasheet ingested\. Run bootstrap to initialize project\./);
+  } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
+    if (previousSkip === undefined) {
+      delete process.env.EMB_AGENT_SKIP_UPDATE_CHECK;
+    } else {
+      process.env.EMB_AGENT_SKIP_UPDATE_CHECK = previousSkip;
+    }
+    if (previousCachePath === undefined) {
+      delete process.env.EMB_AGENT_UPDATE_CACHE_PATH;
+    } else {
+      process.env.EMB_AGENT_UPDATE_CACHE_PATH = previousCachePath;
+    }
+    process.chdir(currentCwd);
+  }
+});
+
 test('session start hook skips all output when workspace trust is not established', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-session-untrusted-'));
   const currentCwd = process.cwd();
