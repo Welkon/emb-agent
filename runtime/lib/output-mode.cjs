@@ -699,6 +699,11 @@ function buildBriefNextContext(value) {
       command: next.command || '',
       reason: next.reason || '',
       cli: next.cli || '',
+      product_layer: isObject(next.product_layer) ? compactObject({
+        id: next.product_layer.id || '',
+        label: next.product_layer.label || '',
+        summary: next.product_layer.summary || ''
+      }) : undefined,
       gated_by_health: Boolean(next.gated_by_health)
     }),
     capability_route: summarizeCapabilityRoute(value.capability_route || next.capability_route),
