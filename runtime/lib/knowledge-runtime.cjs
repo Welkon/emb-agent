@@ -998,6 +998,212 @@ function createKnowledgeRuntimeHelpers(deps) {
     });
   }
 
+  function currentHardwareChip() {
+    const hwPath = path.join(getProjectExtDir(), 'hw.yaml');
+    if (!fs.existsSync(hwPath)) {
+      return '';
+    }
+    const parsed = runtime.parseSimpleYaml(hwPath) || {};
+    return String(parsed.chip || parsed.model || parsed.device || '').trim();
+  }
+
+  function findRegisterWrites(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    if (
+      value.register_writes &&
+      typeof value.register_writes === 'object' &&
+      !Array.isArray(value.register_writes) &&
+      Array.isArray(value.register_writes.registers)
+    ) {
+      return value.register_writes;
+    }
+    if (Array.isArray(value.registers) && value.firmware_snippet_request) {
+      return value;
+    }
+    for (const key of ['best_candidate', 'threshold_selection', 'selection', 'result']) {
+      const found = findRegisterWrites(value[key]);
+      if (found) return found;
+    }
+    for (const child of Object.values(value)) {
+      const found = findRegisterWrites(child);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function normalizeRegisterNames(registerWrites) {
+    return (registerWrites && Array.isArray(registerWrites.registers) ? registerWrites.registers : [])
+      .map(item => String(item && item.register ? item.register : '').trim())
+      .filter(Boolean);
+  }
+
+  function registerNodeIdFor(chip, registerName) {
+    return buildGraphNodeId('register', slugify(`${chip || 'project'}-${registerName}`));
+  }
+
+  function linkToolRunToMatchingFormulas(nodes, edges, toolRunNode, registerNodeIds, source) {
+    const registerSet = new Set(registerNodeIds);
+    [...edges.values()]
+      .filter(edge => edge.type === 'uses_register' && registerSet.has(edge.to))
+      .forEach(edge => {
+        const formulaNode = nodes.get(edge.from);
+        if (!formulaNode || formulaNode.type !== 'formula') {
+          return;
+        }
+        pushGraphEdge(edges, buildGraphEdge(toolRunNode, edge.from, 'uses_formula', {
+          source,
+          status: 'draft',
+          basis: 'INFERRED',
+          confidence: 0.75,
+          summary: 'Tool run writes a register used by this formula.'
+        }));
+      });
+  }
+
+  function addToolRunGraph(nodes, edges) {
+    const runsDir = path.join(getProjectExtDir(), 'runs');
+    const projectChip = currentHardwareChip();
+    listFilesRecursive(runsDir, filePath => /\.json$/i.test(filePath)).forEach(filePath => {
+      const parsed = readJsonIfExists(filePath);
+      if (!parsed || typeof parsed !== 'object') {
+        return;
+      }
+      const relativePath = path.relative(getProjectExtDir(), filePath).replace(/\\/g, '/');
+      const displayPath = runtime.getProjectAssetRelativePath(relativePath);
+      const registerWrites = findRegisterWrites(parsed);
+      const registerNames = normalizeRegisterNames(registerWrites);
+      const toolName = String(parsed.tool || parsed.name || path.basename(filePath, '.json')).trim();
+      const chip = String(
+        parsed.chip ||
+        projectChip ||
+        parsed.device ||
+        (parsed.inputs && parsed.inputs.options && (parsed.inputs.options.chip || parsed.inputs.options.device)) ||
+        ''
+      ).trim();
+      const fileNode = addFileNode(nodes, displayPath, 'Saved tool run output.');
+      const toolRunNode = pushGraphNode(nodes, {
+        id: buildGraphNodeId('tool-run', relativePath),
+        type: 'tool_run',
+        label: toolName,
+        path: displayPath,
+        summary: registerNames.length > 0
+          ? `Tool run ${toolName} writes ${registerNames.join(', ')}.`
+          : `Tool run ${toolName}.`,
+        status: parsed.status || 'draft',
+        sources: [displayPath]
+      });
+      pushGraphEdge(edges, buildGraphEdge(fileNode, toolRunNode, 'declares', {
+        source: displayPath,
+        status: parsed.status || 'draft'
+      }));
+      if (chip) {
+        const chipNode = pushGraphNode(nodes, {
+          id: buildGraphNodeId('chip', slugify(chip)),
+          type: 'chip',
+          label: chip,
+          summary: 'Chip targeted by saved tool run output.',
+          status: projectChip && slugify(projectChip) === slugify(chip) ? 'confirmed' : 'draft',
+          sources: [displayPath]
+        });
+        pushGraphEdge(edges, buildGraphEdge(toolRunNode, chipNode, 'targets_chip', {
+          source: displayPath,
+          status: parsed.status || 'draft'
+        }));
+      }
+      const registerNodeIds = registerNames.map(registerName => {
+        const registerNode = pushGraphNode(nodes, {
+          id: registerNodeIdFor(chip, registerName),
+          type: 'register',
+          label: registerName,
+          summary: 'Register written by saved tool run output.',
+          status: parsed.status || 'draft',
+          sources: [displayPath]
+        });
+        pushGraphEdge(edges, buildGraphEdge(toolRunNode, registerNode, 'writes_register', {
+          source: displayPath,
+          status: parsed.status || 'draft'
+        }));
+        return registerNode;
+      });
+      linkToolRunToMatchingFormulas(nodes, edges, toolRunNode, registerNodeIds, displayPath);
+    });
+  }
+
+  function extractSnippetRegisters(content) {
+    return [...String(content || '').matchAll(/^- `([^`]+)`:\s+mask /gm)]
+      .map(match => match[1].trim())
+      .filter(Boolean);
+  }
+
+  function normalizeProjectAssetPath(value) {
+    const text = String(value || '').trim().replace(/\\/g, '/');
+    return text.replace(/^\.emb-agent\//, '');
+  }
+
+  function addFirmwareSnippetGraph(nodes, edges) {
+    const snippetsDir = path.join(getProjectExtDir(), 'firmware-snippets');
+    const projectChip = currentHardwareChip();
+    listFilesRecursive(snippetsDir, filePath => /\.md$/i.test(filePath)).forEach(filePath => {
+      const content = readTextIfExists(filePath);
+      const frontmatter = extractFrontmatter(content);
+      const relativePath = path.relative(getProjectExtDir(), filePath).replace(/\\/g, '/');
+      const displayPath = runtime.getProjectAssetRelativePath(relativePath);
+      const registerNames = extractSnippetRegisters(content);
+      const sourceToolOutput = normalizeProjectAssetPath(frontmatter.source_tool_output || '');
+      const fileNode = addFileNode(nodes, displayPath, 'Firmware snippet review artifact.');
+      const snippetNode = pushGraphNode(nodes, {
+        id: buildGraphNodeId('firmware-snippet', relativePath),
+        type: 'firmware_snippet',
+        label: frontmatter.title || extractTitle(relativePath, content),
+        path: displayPath,
+        summary: registerNames.length > 0
+          ? `Firmware snippet artifact touching ${registerNames.join(', ')}.`
+          : extractSummary(content),
+        status: frontmatter.status || 'draft',
+        sources: [displayPath]
+      });
+      pushGraphEdge(edges, buildGraphEdge(fileNode, snippetNode, 'declares', {
+        source: displayPath,
+        status: frontmatter.status || 'draft'
+      }));
+      if (sourceToolOutput) {
+        const toolRunNode = buildGraphNodeId('tool-run', sourceToolOutput);
+        if (!nodes.has(toolRunNode)) {
+          pushGraphNode(nodes, {
+            id: toolRunNode,
+            type: 'tool_run',
+            label: path.basename(sourceToolOutput, '.json'),
+            path: runtime.getProjectAssetRelativePath(sourceToolOutput),
+            summary: 'Saved tool run output referenced by firmware snippet artifact.',
+            status: 'draft',
+            sources: [displayPath]
+          });
+        }
+        pushGraphEdge(edges, buildGraphEdge(toolRunNode, snippetNode, 'materialized_by', {
+          source: displayPath,
+          status: frontmatter.status || 'draft',
+          summary: 'Saved tool run output was materialized as a firmware snippet review artifact.'
+        }));
+      }
+      registerNames.forEach(registerName => {
+        const registerNode = pushGraphNode(nodes, {
+          id: registerNodeIdFor(projectChip, registerName),
+          type: 'register',
+          label: registerName,
+          summary: 'Register referenced by firmware snippet artifact.',
+          status: frontmatter.status || 'draft',
+          sources: [displayPath]
+        });
+        pushGraphEdge(edges, buildGraphEdge(snippetNode, registerNode, 'writes_register', {
+          source: displayPath,
+          status: frontmatter.status || 'draft'
+        }));
+      });
+    });
+  }
+
   function addTaskGraph(nodes, edges) {
     const tasksDir = path.join(getProjectExtDir(), 'tasks');
     listFilesRecursive(tasksDir, filePath => path.basename(filePath) === 'task.json').forEach(filePath => {
@@ -1118,6 +1324,8 @@ function createKnowledgeRuntimeHelpers(deps) {
     addTruthFileGraph(nodes, edges, 'req.yaml', 'Requirement truth.');
     addWikiGraph(nodes, edges);
     addFormulaGraph(nodes, edges);
+    addToolRunGraph(nodes, edges);
+    addFirmwareSnippetGraph(nodes, edges);
     addTaskGraph(nodes, edges);
     addSessionReportGraph(nodes, edges);
     addSchematicGraph(nodes, edges);
@@ -1129,6 +1337,8 @@ function createKnowledgeRuntimeHelpers(deps) {
       path.join(getProjectExtDir(), 'hw.yaml'),
       path.join(getProjectExtDir(), 'req.yaml'),
       ...listFilesRecursive(path.join(getProjectExtDir(), 'formulas'), filePath => /\.json$/i.test(filePath)),
+      ...listFilesRecursive(path.join(getProjectExtDir(), 'runs'), filePath => /\.json$/i.test(filePath)),
+      ...listFilesRecursive(path.join(getProjectExtDir(), 'firmware-snippets'), filePath => /\.md$/i.test(filePath)),
       ...listMarkdownPages().map(page => getWikiPath(page.path))
     ];
     const graph = {
