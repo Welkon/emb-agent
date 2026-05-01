@@ -1,5 +1,8 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+
 function createAdapterToolChipCommandHelpers(deps) {
   const {
     toolCatalog,
@@ -19,6 +22,91 @@ function createAdapterToolChipCommandHelpers(deps) {
     runAdapterExport,
     runAdapterPublish
   } = deps;
+
+  function slugify(value) {
+    return String(value || 'tool')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'tool';
+  }
+
+  function timestampSlug() {
+    return new Date().toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/\.\d{3}Z$/, 'Z')
+      .replace('T', '-');
+  }
+
+  function parseToolRunSaveArgs(args) {
+    const tokens = Array.isArray(args) ? args.slice() : [];
+    let saveOutput = false;
+    let outputPath = '';
+    const cleaned = [];
+    for (let i = 0; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      if (token === '--save-output' || token === '--save') {
+        saveOutput = true;
+        continue;
+      }
+      if (token === '--output-file') {
+        saveOutput = true;
+        outputPath = tokens[i + 1] || '';
+        i += 1;
+        continue;
+      }
+      cleaned.push(token);
+    }
+    return {
+      save_output: saveOutput,
+      output_path: outputPath,
+      tool_args: cleaned
+    };
+  }
+
+  function findFirmwareSnippetRequest(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    if (
+      value.register_writes &&
+      typeof value.register_writes === 'object' &&
+      !Array.isArray(value.register_writes) &&
+      value.register_writes.firmware_snippet_request
+    ) {
+      return value.register_writes.firmware_snippet_request;
+    }
+    if (value.firmware_snippet_request) {
+      return value.firmware_snippet_request;
+    }
+    for (const child of Object.values(value)) {
+      const found = findFirmwareSnippetRequest(child);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function saveToolRunOutput(toolName, result, parsed) {
+    const projectRoot = path.resolve(process.cwd());
+    const relativePath = parsed.output_path
+      ? parsed.output_path.replace(/\\/g, '/')
+      : `.emb-agent/runs/tool-${slugify(toolName)}-${timestampSlug()}.json`;
+    const absolutePath = path.resolve(projectRoot, relativePath);
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    const next = {
+      ...(result && typeof result === 'object' && !Array.isArray(result) ? result : { result }),
+      saved_output: relativePath
+    };
+    const snippetRequest = findFirmwareSnippetRequest(next);
+    if (snippetRequest && snippetRequest.protocol === 'emb-agent.firmware-snippet-request/1') {
+      const draftCommand = `snippet draft --from-tool-output ${relativePath} --confirm`;
+      next.next_steps = Array.isArray(next.next_steps)
+        ? [...new Set([...next.next_steps, draftCommand])]
+        : [draftCommand];
+    }
+    fs.writeFileSync(absolutePath, JSON.stringify(next, null, 2) + '\n', 'utf8');
+    return next;
+  }
 
   function handleAdapterToolChipCommands(cmd, subcmd, rest) {
     const isChipSupportCommand = cmd === 'support';
@@ -97,7 +185,9 @@ function createAdapterToolChipCommandHelpers(deps) {
 
     if (cmd === 'tool' && subcmd === 'run') {
       if (!rest[0]) throw new Error('Missing tool name');
-      return toolRuntime.runTool(ROOT, rest[0], rest.slice(1));
+      const parsed = parseToolRunSaveArgs(rest.slice(1));
+      const result = toolRuntime.runTool(ROOT, rest[0], parsed.tool_args);
+      return parsed.save_output ? saveToolRunOutput(rest[0], result, parsed) : result;
     }
 
     if (cmd === 'tool' && subcmd === 'family' && rest[0] === 'list') {

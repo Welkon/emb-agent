@@ -20,6 +20,14 @@ Create reviewable firmware snippet artifacts from `register_writes.firmware_snip
 emb-agent snippet draft --from-tool-output <file> --title <name> --confirm
 ```
 
+The usual upstream command is:
+
+```bash
+emb-agent tool run <name> [options] --save-output
+```
+
+Use the returned `saved_output` path as `--from-tool-output`.
+
 Aliases:
 
 ```bash
