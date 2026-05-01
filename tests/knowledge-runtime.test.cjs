@@ -246,6 +246,76 @@ test('knowledge graph query path and lint expose graph navigation', async () => 
   }
 });
 
+test('knowledge graph build indexes structured formula registries', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-knowledge-formula-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['knowledge', 'init']);
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      ['chip: SC8P052B', 'package: SOP8', ''].join('\n'),
+      'utf8'
+    );
+    const formulasDir = path.join(tempProject, '.emb-agent', 'formulas');
+    fs.mkdirSync(formulasDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(formulasDir, 'sc8p052b.json'),
+      JSON.stringify(
+        {
+          version: 'emb-agent.formulas/1',
+          chip: 'SC8P052B',
+          source: '.emb-agent/cache/docs/full/parse.md',
+          formulas: [
+            {
+              id: 'sc8p052b.pwm.period',
+              label: 'SC8P052B PWM period',
+              peripheral: 'PWM',
+              expression: '(PWMT + 1) * T_HSI * CLKDIV',
+              variables: {
+                PWMT: '10-bit PWM period register value',
+                T_HSI: '1 / F_HSI',
+                CLKDIV: 'PWM clock divider'
+              },
+              registers: ['PWMTL', 'PWMTH', 'PWMCON0'],
+              evidence: {
+                source: '.emb-agent/cache/docs/full/parse.md',
+                section: '9.4 10 位 PWM 周期'
+              },
+              status: 'draft'
+            }
+          ]
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    await captureCliJson(['knowledge', 'graph', 'build']);
+    const graph = JSON.parse(fs.readFileSync(path.join(tempProject, '.emb-agent', 'graph', 'graph.json'), 'utf8'));
+    const query = await captureCliJson(['knowledge', 'graph', 'query', 'PWMTL']);
+
+    assert.ok(graph.nodes.some(node => node.id === 'formula:sc8p052b.pwm.period'));
+    assert.ok(graph.nodes.some(node => node.id === 'register:sc8p052b-pwmtl'));
+    assert.ok(graph.nodes.some(node => node.id === 'parameter:sc8p052b-pwm-period-clkdiv'));
+    assert.ok(graph.edges.some(edge =>
+      edge.from === 'formula:sc8p052b.pwm.period' &&
+      edge.to === 'register:sc8p052b-pwmtl' &&
+      edge.type === 'uses_register'
+    ));
+    assert.ok(graph.edges.some(edge =>
+      edge.from === 'formula:sc8p052b.pwm.period' &&
+      edge.type === 'evidenced_by'
+    ));
+    assert.ok(query.nodes.some(node => node.id === 'register:sc8p052b-pwmtl'));
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('knowledge command is visible in advanced command inventory', async () => {
   const listed = await captureCliJson(['commands', 'list', '--all']);
   const shown = await captureCliJson(['commands', 'show', 'knowledge']);
