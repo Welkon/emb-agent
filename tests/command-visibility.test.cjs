@@ -329,6 +329,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /knowledge graph build/);
   assert.match(advanced, /knowledge graph refresh/);
   assert.match(advanced, /knowledge graph query <term>/);
+  assert.match(advanced, /knowledge graph explain <term>/);
   assert.match(advanced, /external <start\|status\|next\|health\|dispatch-next>/);
   assert.match(advanced, /Global option: --brief .*runtime_events/);
   assert.match(advanced, /spec list/);
