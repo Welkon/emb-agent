@@ -1517,6 +1517,159 @@ function createKnowledgeRuntimeHelpers(deps) {
     };
   }
 
+  function scoreGraphExplainNode(node, query) {
+    const normalized = String(query || '').trim().toLowerCase();
+    const id = String(node.id || '').toLowerCase();
+    const label = String(node.label || '').toLowerCase();
+    const pathText = String(node.path || '').toLowerCase();
+    const sourceText = (node.sources || []).join(' ').toLowerCase();
+    const summary = String(node.summary || '').toLowerCase();
+    if (id === normalized || label === normalized || pathText === normalized) return 100;
+    if (id.endsWith(`:${normalized}`) || id.endsWith(`-${normalized}`)) return 90;
+    if (label.includes(normalized)) return 80;
+    if (pathText.includes(normalized) || sourceText.includes(normalized)) return 70;
+    if (id.includes(normalized)) return 60;
+    if (summary.includes(normalized)) return 40;
+    return 0;
+  }
+
+  function describeGraphEvidence(edge, direction, otherNode) {
+    if (edge.summary) {
+      return edge.summary;
+    }
+    const otherLabel = otherNode ? otherNode.label || otherNode.id || '' : '';
+    const relation = String(edge.type || '').replace(/_/g, ' ');
+    if (direction === 'inbound') {
+      return otherLabel ? `${otherLabel} ${relation} this node.` : `Inbound ${relation} relationship.`;
+    }
+    return otherLabel ? `This node ${relation} ${otherLabel}.` : `Outbound ${relation} relationship.`;
+  }
+
+  function explainKnowledgeGraph(term) {
+    const query = String(term || '').trim();
+    if (!query) {
+      throw new Error('Missing graph explain text');
+    }
+    const graph = loadKnowledgeGraph({ buildIfMissing: true });
+    const nodes = graph.nodes || [];
+    const edges = graph.edges || [];
+    const nodeById = new Map(nodes.map(node => [node.id, node]));
+    const scored = nodes
+      .map(node => ({ node, score: scoreGraphExplainNode(node, query) }))
+      .filter(item => item.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (a.node.type === 'file' && b.node.type !== 'file') return 1;
+        if (b.node.type === 'file' && a.node.type !== 'file') return -1;
+        return String(a.node.id || '').localeCompare(String(b.node.id || ''));
+      });
+
+    if (scored.length === 0) {
+      return {
+        query,
+        found: false,
+        graph_file: getGraphRelativePath('graph.json'),
+        reason: 'node-not-found',
+        candidates: [],
+        next_steps: [
+          `knowledge graph query ${query}`,
+          'knowledge graph report'
+        ]
+      };
+    }
+
+    const matched = scored[0].node;
+    const inbound = edges.filter(edge => edge.to === matched.id);
+    const outbound = edges.filter(edge => edge.from === matched.id);
+    const relatedNodeIds = runtime.unique([
+      ...inbound.map(edge => edge.from),
+      ...outbound.map(edge => edge.to)
+    ]);
+    const relatedNodes = relatedNodeIds
+      .map(id => nodeById.get(id))
+      .filter(Boolean)
+      .map(node => ({
+        id: node.id,
+        type: node.type,
+        label: node.label || '',
+        path: node.path || '',
+        summary: node.summary || ''
+      }))
+      .slice(0, 25);
+    const evidence = [
+      ...inbound.map(edge => {
+        const otherNode = nodeById.get(edge.from);
+        return {
+          direction: 'inbound',
+          from: edge.from,
+          to: edge.to,
+          relation: edge.type,
+          source: edge.source || '',
+          basis: edge.basis || '',
+          status: edge.status || '',
+          confidence: typeof edge.confidence === 'number' ? edge.confidence : null,
+          why: describeGraphEvidence(edge, 'inbound', otherNode)
+        };
+      }),
+      ...outbound.map(edge => {
+        const otherNode = nodeById.get(edge.to);
+        return {
+          direction: 'outbound',
+          from: edge.from,
+          to: edge.to,
+          relation: edge.type,
+          source: edge.source || '',
+          basis: edge.basis || '',
+          status: edge.status || '',
+          confidence: typeof edge.confidence === 'number' ? edge.confidence : null,
+          why: describeGraphEvidence(edge, 'outbound', otherNode)
+        };
+      })
+    ].slice(0, 50);
+    const sources = runtime.unique([
+      ...(matched.sources || []),
+      matched.path || '',
+      ...evidence.map(item => item.source),
+      ...relatedNodes.flatMap(node => [node.path, ...(node.sources || [])])
+    ].filter(Boolean));
+    const nextSteps = runtime.unique([
+      `knowledge graph query ${matched.label || query}`,
+      relatedNodes.length > 0 ? `knowledge graph path ${matched.id} ${relatedNodes[0].id}` : '',
+      'knowledge graph lint'
+    ].filter(Boolean));
+
+    return {
+      query,
+      found: true,
+      graph_file: getGraphRelativePath('graph.json'),
+      matched: {
+        id: matched.id,
+        type: matched.type,
+        label: matched.label || '',
+        path: matched.path || '',
+        summary: matched.summary || '',
+        status: matched.status || '',
+        sources: matched.sources || []
+      },
+      summary: {
+        inbound_edges: inbound.length,
+        outbound_edges: outbound.length,
+        related_nodes: relatedNodeIds.length,
+        sources
+      },
+      evidence,
+      related_nodes: relatedNodes,
+      candidates: scored.slice(1, 6).map(item => ({
+        id: item.node.id,
+        type: item.node.type,
+        label: item.node.label || '',
+        path: item.node.path || '',
+        score: item.score
+      })),
+      next_steps: nextSteps
+    };
+  }
+
   function shortestGraphPath(from, to) {
     const source = String(from || '').trim();
     const target = String(to || '').trim();
@@ -1712,6 +1865,9 @@ function createKnowledgeRuntimeHelpers(deps) {
     if (action === 'query') {
       return queryKnowledgeGraph(args.join(' '));
     }
+    if (action === 'explain') {
+      return explainKnowledgeGraph(args.join(' '));
+    }
     if (action === 'path') {
       return shortestGraphPath(args[0], args[1]);
     }
@@ -1768,6 +1924,7 @@ function createKnowledgeRuntimeHelpers(deps) {
     readKnowledgeLog,
     buildKnowledgeGraph,
     lintKnowledgeGraph,
+    explainKnowledgeGraph,
     queryKnowledgeGraph,
     saveKnowledgePage
   };

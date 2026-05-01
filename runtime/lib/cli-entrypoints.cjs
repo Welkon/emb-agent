@@ -809,6 +809,7 @@ function createCliEntryHelpers(deps) {
           'knowledge graph refresh',
           'knowledge graph report',
           'knowledge graph query <term>',
+          'knowledge graph explain <term>',
           'knowledge graph path <from> <to>',
           'knowledge graph lint',
           'knowledge save-query [--confirm] <title> [--summary <text>] [--body <text>] [--kind <query|decision|risk|chip|peripheral|board>]',

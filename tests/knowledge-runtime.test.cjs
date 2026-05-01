@@ -421,6 +421,9 @@ test('knowledge graph build indexes saved tool runs and firmware snippets', asyn
     await captureCliJson(['knowledge', 'graph', 'build']);
     const graph = JSON.parse(fs.readFileSync(path.join(tempProject, '.emb-agent', 'graph', 'graph.json'), 'utf8'));
     const query = await captureCliJson(['knowledge', 'graph', 'query', 'PWMTL']);
+    const registerExplain = await captureCliJson(['knowledge', 'graph', 'explain', 'PWMTL']);
+    const snippetExplain = await captureCliJson(['knowledge', 'graph', 'explain', 'firmware-snippets/pwm-init.md']);
+    const missingExplain = await captureCliJson(['knowledge', 'graph', 'explain', 'no-such-register']);
 
     assert.ok(graph.nodes.some(node => node.id === 'tool-run:runs/timer-calc.json'));
     assert.ok(graph.nodes.some(node => node.id === 'firmware-snippet:firmware-snippets/pwm-init.md'));
@@ -448,6 +451,29 @@ test('knowledge graph build indexes saved tool runs and firmware snippets', asyn
     assert.ok(query.nodes.some(node => node.id === 'tool-run:runs/timer-calc.json'));
     assert.ok(query.nodes.some(node => node.id === 'firmware-snippet:firmware-snippets/pwm-init.md'));
     assert.ok(query.edges.some(edge => edge.from === 'formula:sc8p052b.pwm.period'));
+    assert.equal(registerExplain.found, true);
+    assert.equal(registerExplain.matched.id, 'register:sc8p052b-pwmtl');
+    assert.ok(registerExplain.summary.inbound_edges >= 2);
+    assert.ok(registerExplain.summary.sources.includes('.emb-agent/runs/timer-calc.json'));
+    assert.ok(registerExplain.summary.sources.includes('.emb-agent/firmware-snippets/pwm-init.md'));
+    assert.ok(registerExplain.evidence.some(edge =>
+      edge.from === 'tool-run:runs/timer-calc.json' &&
+      edge.relation === 'writes_register'
+    ));
+    assert.ok(registerExplain.evidence.some(edge =>
+      edge.from === 'firmware-snippet:firmware-snippets/pwm-init.md' &&
+      edge.relation === 'writes_register'
+    ));
+    assert.ok(registerExplain.next_steps.some(step => /knowledge graph path register:sc8p052b-pwmtl/.test(step)));
+    assert.equal(snippetExplain.found, true);
+    assert.equal(snippetExplain.matched.id, 'firmware-snippet:firmware-snippets/pwm-init.md');
+    assert.ok(snippetExplain.evidence.some(edge =>
+      edge.from === 'tool-run:runs/timer-calc.json' &&
+      edge.relation === 'materialized_by'
+    ));
+    assert.equal(missingExplain.found, false);
+    assert.equal(missingExplain.reason, 'node-not-found');
+    assert.ok(missingExplain.next_steps.includes('knowledge graph query no-such-register'));
   } finally {
     process.chdir(currentCwd);
   }
