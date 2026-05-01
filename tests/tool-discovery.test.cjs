@@ -292,6 +292,110 @@ test('draft chip support route is discoverable but not treated as ready', () => 
   }
 });
 
+test('chip profile can route tools through a compatible device binding', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-tool-compatible-device-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  const projectEmbDir = path.join(tempProject, '.emb-agent');
+
+  process.stdout.write = () => true;
+
+  try {
+    process.chdir(tempProject);
+    cli.main(['init', '--mcu', 'board-chip']);
+
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'chips', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'families'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'extensions', 'tools', 'devices'), { recursive: true });
+    fs.mkdirSync(path.join(projectEmbDir, 'chip-support', 'routes'), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'registry.json'),
+      JSON.stringify({ devices: ['board-chip'] }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'chips', 'profiles', 'board-chip.json'),
+      JSON.stringify({
+        name: 'board-chip',
+        vendor: 'VendorName',
+        family: 'vendor-family',
+        sample: false,
+        description: 'Board chip profile with compatible tool device binding.',
+        package: 'sop8',
+        runtime_model: 'main_loop_plus_isr',
+        compatible_tool_devices: ['variant-device'],
+        related_tools: ['timer-calc'],
+        capabilities: ['timer16'],
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'families', 'vendor-family.json'),
+      JSON.stringify({
+        name: 'vendor-family',
+        vendor: 'VendorName',
+        series: 'SeriesName',
+        sample: false,
+        description: 'External tool family profile.',
+        supported_tools: ['timer-calc'],
+        bindings: {},
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'extensions', 'tools', 'devices', 'variant-device.json'),
+      JSON.stringify({
+        name: 'variant-device',
+        family: 'vendor-family',
+        sample: false,
+        description: 'Compatible external tool device profile.',
+        supported_tools: ['timer-calc'],
+        bindings: {
+          'timer-calc': {
+            algorithm: 'variant-timer16',
+            draft: true,
+            params: {
+              default_timer: 'tm16'
+            }
+          }
+        },
+        notes: []
+      }, null, 2) + '\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectEmbDir, 'chip-support', 'routes', 'timer-calc.cjs'),
+      [
+        "'use strict';",
+        '',
+        'module.exports = {',
+        '  draft: true,',
+        '  runTool() {',
+        "    return { status: 'ok' };",
+        '  }',
+        '};',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    const status = cli.buildStatus();
+
+    assert.equal(status.hardware.chip_profile.name, 'board-chip');
+    assert.equal(status.tool_recommendations[0].tool, 'timer-calc');
+    assert.equal(status.tool_recommendations[0].binding_source, 'device');
+    assert.equal(status.tool_recommendations[0].binding_algorithm, 'variant-timer16');
+    assert.match(status.tool_recommendations[0].cli_draft, /--device variant-device/);
+    assert.match(status.tool_recommendations[0].cli_draft, /--chip board-chip/);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('known chip start path prefers guided bootstrap once a chip support source is configured', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-start-bootstrap-'));
   const currentCwd = process.cwd();

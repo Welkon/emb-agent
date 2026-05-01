@@ -63,6 +63,8 @@ That lets different vendors map their own names onto the same tool contract:
 - Nordic timers can bind `PRESCALER`, `CC[n]`, and bit width limits
 - PADAUK / SCMCU / PUYA 8-bit parts can bind `PR2`, `PWMT`, `PWMDx`, or vendor-specific threshold tables
 
+When board truth and parsed manual evidence differ by variant, keep the board chip profile explicit and add `compatible_tool_devices` only as a draft bridge. For example, a `sc8p052sop8` board profile can route tools through a `sc8p052b` device binding while generated CLIs still show both `--device sc8p052b` and `--chip sc8p052sop8`.
+
 When a family needs behavior that does not fit a generic route, add a family-specific route under chip support. Do not move that exception into emb-agent core until several families prove the abstraction is genuinely common.
 
 ## Register write bindings

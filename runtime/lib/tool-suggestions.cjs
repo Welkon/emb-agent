@@ -97,7 +97,12 @@ function createToolSuggestionHelpers(deps) {
       };
     }
 
-    const device = safeLoad(toolCatalog.loadDevice, chipProfile.name);
+    const deviceNames = [chipProfile.name]
+      .concat(Array.isArray(chipProfile.compatible_tool_devices) ? chipProfile.compatible_tool_devices : [])
+      .concat(Array.isArray(chipProfile.compatible_devices) ? chipProfile.compatible_devices : [])
+      .map(item => String(item || '').trim())
+      .filter(Boolean);
+    const device = deviceNames.map(name => safeLoad(toolCatalog.loadDevice, name)).find(Boolean) || null;
     const familyName =
       (device && device.family) ||
       chipProfile.family ||

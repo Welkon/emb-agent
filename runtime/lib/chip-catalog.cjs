@@ -240,6 +240,11 @@ function validateChip(name, value) {
     pins: validatePins(name, value.pins),
     docs: Array.isArray(value.docs) ? value.docs.map((item, index) => validateDocEntry(name, item, index)) : [],
     related_tools: ensureOptionalStringArray(value.related_tools, `chip ${name} related_tools`),
+    compatible_tool_devices: ensureOptionalStringArray(
+      value.compatible_tool_devices,
+      `chip ${name} compatible_tool_devices`
+    ),
+    compatible_devices: ensureOptionalStringArray(value.compatible_devices, `chip ${name} compatible_devices`),
     source_modules: ensureOptionalStringArray(value.source_modules, `chip ${name} source_modules`),
     notes: ensureOptionalStringArray(value.notes, `chip ${name} notes`)
   };
