@@ -174,6 +174,9 @@ function createExternalAgentHelpers() {
     const stage = source.workflow_stage && typeof source.workflow_stage === 'object' && !Array.isArray(source.workflow_stage)
       ? source.workflow_stage
       : {};
+    const graph = source.knowledge_graph && typeof source.knowledge_graph === 'object' && !Array.isArray(source.knowledge_graph)
+      ? source.knowledge_graph
+      : {};
 
     return buildEnvelope('next', runtimeHost, {
       status: stage.name || 'next',
@@ -202,6 +205,11 @@ function createExternalAgentHelpers() {
       next: compactObject({
         cli: next.cli || '',
         gated_by_health: next.gated_by_health ? true : undefined
+      }),
+      knowledge_graph: compactObject({
+        state: graph.state || (graph.initialized === false ? 'missing' : ''),
+        stale: graph.stale === true ? true : undefined,
+        next: Array.isArray(graph.next_steps) && graph.next_steps.length > 0 ? graph.next_steps[0] : ''
       })
     });
   }
@@ -299,6 +307,9 @@ function createExternalAgentHelpers() {
     const agentExecution = source.agent_execution && typeof source.agent_execution === 'object' && !Array.isArray(source.agent_execution)
       ? source.agent_execution
       : {};
+    const graph = source.knowledge_graph && typeof source.knowledge_graph === 'object' && !Array.isArray(source.knowledge_graph)
+      ? source.knowledge_graph
+      : {};
     const recommendedKind =
       toolExecution.available && toolExecution.recommended
         ? 'tool'
@@ -323,6 +334,11 @@ function createExternalAgentHelpers() {
         kind: recommendedKind,
         cli: recommendedCli
       }),
+      knowledge_graph: compactObject({
+        state: graph.state || (graph.initialized === false ? 'missing' : ''),
+        stale: graph.stale === true ? true : undefined,
+        next: Array.isArray(graph.next_steps) && graph.next_steps.length > 0 ? graph.next_steps[0] : ''
+      })
     });
   }
 

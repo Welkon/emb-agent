@@ -542,6 +542,48 @@ test('knowledge graph refresh rebuilds only missing or stale graphs', async () =
   }
 });
 
+test('next context exposes knowledge graph freshness without rerouting workflow', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-knowledge-next-graph-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const missing = cli.buildNextContext();
+    assert.equal(missing.knowledge_graph.initialized, false);
+    assert.equal(missing.knowledge_graph.state, 'missing');
+    assert.deepEqual(missing.knowledge_graph.next_steps, ['knowledge graph refresh']);
+    assert.notEqual(missing.next.command, 'knowledge graph refresh');
+
+    await captureCliJson(['knowledge', 'graph', 'build']);
+    const fresh = cli.buildNextContext();
+    assert.equal(fresh.knowledge_graph.initialized, true);
+    assert.equal(fresh.knowledge_graph.state, 'fresh');
+    assert.equal(fresh.knowledge_graph.stale, false);
+    assert.deepEqual(fresh.knowledge_graph.next_steps, []);
+    assert.notEqual(fresh.next.command, 'knowledge graph refresh');
+
+    const runsDir = path.join(tempProject, '.emb-agent', 'runs');
+    fs.mkdirSync(runsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runsDir, 'timer-calc.json'),
+      JSON.stringify({ tool: 'timer-calc', status: 'ok' }, null, 2) + '\n',
+      'utf8'
+    );
+
+    const stale = cli.buildNextContext();
+    assert.equal(stale.knowledge_graph.initialized, true);
+    assert.equal(stale.knowledge_graph.state, 'stale');
+    assert.equal(stale.knowledge_graph.stale, true);
+    assert.ok(stale.knowledge_graph.changed_files.includes('.emb-agent/runs/timer-calc.json'));
+    assert.ok(stale.knowledge_graph.next_steps.includes('knowledge graph refresh'));
+    assert.equal(stale.next.command, fresh.next.command);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('knowledge command is visible in advanced command inventory', async () => {
   const listed = await captureCliJson(['commands', 'list', '--all']);
   const shown = await captureCliJson(['commands', 'show', 'knowledge']);

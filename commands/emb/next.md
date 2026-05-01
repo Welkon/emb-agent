@@ -15,6 +15,7 @@ allowed-tools:
 - Use `next run` when you want the runtime to enter the recommended stage directly.
 - If bootstrap still looks stuck before execution, use `health` first.
 - Use `next --brief` when a local tool only needs the compact recommendation, action card, next actions, and summarized `runtime_events`.
+- Read `knowledge_graph` in JSON output to see whether `.emb-agent/graph/graph.json` is missing, fresh, or stale; stale graphs should be refreshed with `knowledge graph refresh` but do not replace the primary workflow recommendation.
 - If an active task already exists, `next` should keep the task `prd.md` in the loop and explicitly tell you whether the right route is `scan-first` or `plan-first`.
 - Use `external next` when the caller wants the stable external-driver protocol with `status`, `summary`, `next.cli`, and summarized `runtime_events`.
 - Treat PCB layout evidence as optional. Recommend board ingest only when the current task needs layout, routing, connector, bring-up, or manufacturing evidence; missing PCB files should skip layout checks and keep `can_continue=true`.
