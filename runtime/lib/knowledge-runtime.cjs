@@ -487,6 +487,256 @@ function createKnowledgeRuntimeHelpers(deps) {
     }, permissionDecision);
   }
 
+  function draftFormulaRegistryFromToolOutput(action, rest) {
+    if (action !== 'draft') {
+      throw new Error(`Unknown knowledge formula command: ${action}`);
+    }
+    const args = Array.isArray(rest) ? rest.slice() : [];
+    const sourceArg = parseFlagValue(args, '--from-tool-output') || parseFlagValue(args, '--from');
+    if (!sourceArg) {
+      throw new Error('Missing --from-tool-output <file>');
+    }
+    const explicitConfirmation = args.includes('--confirm');
+    const force = args.includes('--force');
+    const cleanSource = String(sourceArg).trim().replace(/\\/g, '/');
+    const sourcePath = path.isAbsolute(cleanSource)
+      ? cleanSource
+      : (
+        cleanSource.startsWith('.emb-agent/')
+          ? path.resolve(process.cwd(), cleanSource)
+          : path.resolve(getProjectExtDir(), cleanSource.replace(/^\.emb-agent\//, ''))
+      );
+    const sourceRelative = path.relative(process.cwd(), sourcePath).replace(/\\/g, '/');
+    const sourceDisplay = sourceRelative && !sourceRelative.startsWith('..')
+      ? sourceRelative
+      : runtime.getProjectAssetRelativePath(path.relative(getProjectExtDir(), sourcePath).replace(/\\/g, '/'));
+    const toolOutput = readJsonIfExists(sourcePath);
+    if (!toolOutput || typeof toolOutput !== 'object' || Array.isArray(toolOutput)) {
+      throw new Error(`Tool output JSON not found or invalid: ${sourceArg}`);
+    }
+
+    let selected = null;
+    const pending = [toolOutput.best_candidate, toolOutput.threshold_selection, toolOutput.selection, toolOutput.result, toolOutput];
+    while (!selected && pending.length > 0) {
+      const current = pending.shift();
+      if (!current || typeof current !== 'object' || Array.isArray(current)) {
+        continue;
+      }
+      if (
+        current.register_writes &&
+        typeof current.register_writes === 'object' &&
+        !Array.isArray(current.register_writes) &&
+        Array.isArray(current.register_writes.registers)
+      ) {
+        selected = current;
+        break;
+      }
+      Object.values(current).forEach(child => {
+        if (child && typeof child === 'object') {
+          pending.push(child);
+        }
+      });
+    }
+    const registerWrites = selected ? selected.register_writes : findRegisterWrites(toolOutput);
+    const registers = normalizeRegisterNames(registerWrites);
+    if (registers.length === 0) {
+      throw new Error('No register writes found in tool output');
+    }
+
+    const inputOptions = toolOutput.inputs && toolOutput.inputs.options && typeof toolOutput.inputs.options === 'object'
+      ? toolOutput.inputs.options
+      : {};
+    const chip = String(
+      parseFlagValue(args, '--chip') ||
+      toolOutput.chip ||
+      currentHardwareChip() ||
+      toolOutput.device ||
+      inputOptions.chip ||
+      inputOptions.device ||
+      'project'
+    ).trim();
+    const chipSlug = slugify(chip);
+    const toolName = String(toolOutput.tool || toolOutput.name || path.basename(sourcePath, '.json')).trim();
+    const selectedObject = selected || toolOutput;
+    const peripheral = String(
+      selectedObject.timer ||
+      selectedObject.pwm ||
+      selectedObject.adc ||
+      selectedObject.comparator ||
+      toolName.replace(/-?calc$/i, '')
+    ).trim();
+    const formulas = [];
+    const clockHz = inputOptions['clock-hz'] || inputOptions.clock_hz || toolOutput.clock_hz || selectedObject.clock_hz || '';
+    const periodValue = Number(selectedObject.period_value ?? selectedObject.reload_value);
+    const periodOffset = Number.isFinite(Number(selectedObject.ticks)) && Number.isFinite(periodValue)
+      ? Number(selectedObject.ticks) - periodValue
+      : 1;
+    const periodTerm = Number.isFinite(periodOffset) && periodOffset !== 1
+      ? `(period_value + ${periodOffset})`
+      : '(period_value + 1)';
+    const commonEvidence = {
+      source: sourceDisplay,
+      section: `${toolName} selected candidate`
+    };
+    if (selectedObject.actual_us !== undefined && Number.isFinite(periodValue)) {
+      const includesPostscaler = selectedObject.postscaler !== undefined;
+      formulas.push({
+        id: `${chipSlug}.${slugify(peripheral || 'timer')}.period`,
+        label: `${chip} ${peripheral || 'timer'} period`,
+        peripheral: peripheral || 'timer',
+        expression: includesPostscaler
+          ? `(prescaler * postscaler * ${periodTerm} * 1000000) / clock_hz`
+          : `(prescaler * ${periodTerm} * 1000000) / clock_hz`,
+        variables: {
+          clock_hz: clockHz ? `Input clock frequency in Hz; selected value ${clockHz}.` : 'Input clock frequency in Hz.',
+          prescaler: `Selected prescaler value${selectedObject.prescaler === undefined ? '.' : ` ${selectedObject.prescaler}.`}`,
+          ...(includesPostscaler ? { postscaler: `Selected postscaler value ${selectedObject.postscaler}.` } : {}),
+          period_value: `Selected period/reload register value ${selectedObject.period_value ?? selectedObject.reload_value}.`
+        },
+        registers,
+        evidence: commonEvidence,
+        status: 'draft'
+      });
+    } else if (selectedObject.actual_hz !== undefined && Number.isFinite(periodValue)) {
+      formulas.push({
+        id: `${chipSlug}.${slugify(peripheral || 'pwm')}.frequency`,
+        label: `${chip} ${peripheral || 'pwm'} frequency`,
+        peripheral: peripheral || 'pwm',
+        expression: `clock_hz / (prescaler * ${periodTerm})`,
+        variables: {
+          clock_hz: clockHz ? `Input clock frequency in Hz; selected value ${clockHz}.` : 'Input clock frequency in Hz.',
+          prescaler: `Selected prescaler value${selectedObject.prescaler === undefined ? '.' : ` ${selectedObject.prescaler}.`}`,
+          period_value: `Selected period register value ${selectedObject.period_value}.`
+        },
+        registers,
+        evidence: commonEvidence,
+        status: 'draft'
+      });
+      if (selectedObject.duty_value !== undefined || selectedObject.duty_steps !== undefined) {
+        const dutyOffset = Number.isFinite(Number(selectedObject.duty_steps)) && Number.isFinite(Number(selectedObject.duty_value))
+          ? Number(selectedObject.duty_steps) - Number(selectedObject.duty_value)
+          : 0;
+        const dutyTerm = dutyOffset === 0 ? 'duty_value' : `(duty_value + ${dutyOffset})`;
+        formulas.push({
+          id: `${chipSlug}.${slugify(peripheral || 'pwm')}.duty`,
+          label: `${chip} ${peripheral || 'pwm'} duty`,
+          peripheral: peripheral || 'pwm',
+          expression: `(${dutyTerm} / ${periodTerm}) * 100`,
+          variables: {
+            duty_value: `Selected duty register value ${selectedObject.duty_value}.`,
+            period_value: `Selected period register value ${selectedObject.period_value}.`
+          },
+          registers,
+          evidence: commonEvidence,
+          status: 'draft'
+        });
+      }
+    }
+    if (formulas.length === 0) {
+      formulas.push({
+        id: `${chipSlug}.${slugify(peripheral || toolName)}.register-write`,
+        label: `${chip} ${peripheral || toolName} register write`,
+        peripheral: peripheral || toolName,
+        expression: 'Derived by saved tool output; inspect evidence before reuse.',
+        variables: Object.fromEntries(
+          Object.entries(selectedObject)
+            .filter(([, value]) => typeof value === 'number' || typeof value === 'string')
+            .slice(0, 12)
+            .map(([key, value]) => [key, `Selected tool output value ${value}.`])
+        ),
+        registers,
+        evidence: commonEvidence,
+        status: 'draft'
+      });
+    }
+
+    const registry = {
+      version: 'emb-agent.formulas/1',
+      chip,
+      status: 'draft',
+      source: sourceDisplay,
+      formulas
+    };
+    const formulasDir = path.join(getProjectExtDir(), 'formulas');
+    const targetPath = path.join(formulasDir, `${chipSlug}.json`);
+    const targetDisplay = runtime.getProjectAssetRelativePath('formulas', `${chipSlug}.json`);
+    const nextSteps = [
+      'knowledge graph refresh',
+      `knowledge graph explain formula:${formulas[0].id}`,
+      `knowledge graph query ${registers[0]}`
+    ];
+    if (!explicitConfirmation) {
+      return {
+        status: 'confirmation-required',
+        write_mode: 'preview',
+        action: 'knowledge-formula-draft',
+        source: sourceDisplay,
+        target: targetDisplay,
+        formula_count: formulas.length,
+        registry,
+        next_steps: [`Re-run with --confirm to write ${targetDisplay}`]
+      };
+    }
+    const permissionDecision = evaluateKnowledgeWritePermission('knowledge-formula-draft', true);
+    if (permissionDecision.decision !== 'allow') {
+      return permissionGateHelpers.applyPermissionDecision({
+        status: 'confirmation-required',
+        write_mode: 'preview',
+        action: 'knowledge-formula-draft',
+        source: sourceDisplay,
+        target: targetDisplay,
+        formula_count: formulas.length,
+        registry,
+        next_steps: [`Re-run with --confirm to write ${targetDisplay}`]
+      }, permissionDecision);
+    }
+    runtime.ensureDir(formulasDir);
+    const existing = readJsonIfExists(targetPath);
+    if (existing && !Array.isArray(existing.formulas) && !force) {
+      throw new Error(`Formula registry is invalid: ${targetDisplay}. Re-run with --force to overwrite.`);
+    }
+    const byId = new Map();
+    (existing && Array.isArray(existing.formulas) ? existing.formulas : []).forEach(item => {
+      if (item && item.id) {
+        byId.set(String(item.id), item);
+      }
+    });
+    formulas.forEach(item => byId.set(item.id, item));
+    const writtenRegistry = {
+      version: 'emb-agent.formulas/1',
+      chip: (existing && existing.chip) || chip,
+      status: (existing && existing.status) || 'draft',
+      source: (existing && existing.source) || sourceDisplay,
+      formulas: [...byId.values()]
+    };
+    fs.writeFileSync(targetPath, JSON.stringify(writtenRegistry, null, 2) + '\n', 'utf8');
+    ensureKnowledgeDirs();
+    appendLog('formula', `Draft formula registry for ${chip}`, [
+      `Wrote ${targetDisplay}`,
+      `Source ${sourceDisplay}`,
+      'Run knowledge graph refresh before relying on graph navigation.'
+    ]);
+    updateSession(current => {
+      current.last_command = 'knowledge formula draft';
+      current.last_files = runtime.unique([
+        targetDisplay,
+        sourceDisplay,
+        getWikiRelativePath('log.md'),
+        ...(current.last_files || [])
+      ]).slice(0, 8);
+    });
+    return permissionGateHelpers.applyPermissionDecision({
+      status: 'written',
+      write_mode: 'confirmed-write',
+      action: 'knowledge-formula-draft',
+      source: sourceDisplay,
+      target: targetDisplay,
+      formula_count: formulas.length,
+      formulas,
+      next_steps: nextSteps
+    }, permissionDecision);
+  }
+
   function readKnowledgeIndex(options = {}) {
     const wikiDir = getWikiDir();
     if (!fs.existsSync(wikiDir)) {
@@ -1906,6 +2156,9 @@ function createKnowledgeRuntimeHelpers(deps) {
     }
     if (subcmd === 'graph') {
       return handleKnowledgeGraphCommands(rest[0], rest.slice(1));
+    }
+    if (subcmd === 'formula') {
+      return draftFormulaRegistryFromToolOutput(rest[0], rest.slice(1));
     }
     if (subcmd === 'save-query') {
       return saveKnowledgePage(

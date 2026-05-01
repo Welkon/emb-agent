@@ -812,6 +812,7 @@ function createCliEntryHelpers(deps) {
           'knowledge graph explain <term>',
           'knowledge graph path <from> <to>',
           'knowledge graph lint',
+          'knowledge formula draft --from-tool-output <file> [--confirm]',
           'knowledge save-query [--confirm] <title> [--summary <text>] [--body <text>] [--kind <query|decision|risk|chip|peripheral|board>]',
           'knowledge ingest [--confirm] <source-title> [--summary <text>] [--body <text>]',
           'snippet draft [--confirm] --from-tool-output <file> [--title <name>] [--output <path>] [--force]',

@@ -330,6 +330,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /knowledge graph refresh/);
   assert.match(advanced, /knowledge graph query <term>/);
   assert.match(advanced, /knowledge graph explain <term>/);
+  assert.match(advanced, /knowledge formula draft --from-tool-output <file>/);
   assert.match(advanced, /external <start\|status\|next\|health\|dispatch-next>/);
   assert.match(advanced, /Global option: --brief .*runtime_events/);
   assert.match(advanced, /spec list/);
@@ -362,7 +363,8 @@ test('help supports explicit json output mode', async () => {
       section => section.title === 'Inspection and discovery' &&
         section.entries.includes('commands list --all') &&
         section.entries.includes('knowledge graph build') &&
-        section.entries.includes('knowledge graph refresh')
+        section.entries.includes('knowledge graph refresh') &&
+        section.entries.includes('knowledge formula draft --from-tool-output <file> [--confirm]')
     )
   );
 });

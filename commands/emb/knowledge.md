@@ -36,6 +36,7 @@ allowed-tools:
 - `knowledge graph explain <term>`
 - `knowledge graph path <from> <to>`
 - `knowledge graph lint`
+- `knowledge formula draft --from-tool-output <file> [--confirm] [--chip <name>] [--force]`
 - `knowledge save-query [--confirm] <title> [--summary <text>] [--body <text>] [--kind <query|decision|risk|chip|peripheral|board>] [--link <path>] [--force]`
 - `knowledge ingest [--confirm] <source-title> [--summary <text>] [--body <text>] [--link <path>] [--force]`
 
@@ -45,11 +46,12 @@ allowed-tools:
 2. After ingesting a datasheet, schematic, board file, or useful analysis, run `knowledge ingest <source-title>` to draft a durable source synthesis page.
 3. When a question produces a reusable engineering answer, run `knowledge save-query <title>` to preview the page, then re-run with `--confirm` after checking the content.
 4. Run `knowledge graph refresh` after wiki/truth/task/tool/snippet changes to rebuild `.emb-agent/graph/graph.json`, `.emb-agent/graph/GRAPH_REPORT.md`, and `.emb-agent/graph/cache/manifest.json` only when missing or stale.
-5. For formulas that must be reused by agents, add a JSON registry under `.emb-agent/formulas/` with `chip`, `formulas[].expression`, `variables`, `registers`, and `evidence` fields before rebuilding the graph.
-6. Run `knowledge graph report` or `knowledge graph lint` to detect stale graph manifests after tracked files change.
-7. Use report Suggested Explanations to inspect hot graph nodes, especially tool-run, register, formula, and snippet nodes created by recent work.
-8. Run `knowledge graph query <term>`, `knowledge graph explain <term>`, or `knowledge graph path <from> <to>` before broad searches when you need relationship-oriented context.
-9. Run `knowledge lint` and `knowledge graph lint` periodically to find missing control files, orphan pages, unindexed pages, chip truth with no matching chip wiki page, stale graph manifests, and ambiguous graph relationships.
+5. After saving a tool run with register writes, run `knowledge formula draft --from-tool-output <file>` to preview a structured formula registry, then re-run with `--confirm` after checking the source evidence.
+6. For formulas that must be reused by agents, keep a JSON registry under `.emb-agent/formulas/` with `chip`, `formulas[].expression`, `variables`, `registers`, and `evidence` fields before rebuilding the graph.
+7. Run `knowledge graph report` or `knowledge graph lint` to detect stale graph manifests after tracked files change.
+8. Use report Suggested Explanations to inspect hot graph nodes, especially tool-run, register, formula, and snippet nodes created by recent work.
+9. Run `knowledge graph query <term>`, `knowledge graph explain <term>`, or `knowledge graph path <from> <to>` before broad searches when you need relationship-oriented context.
+10. Run `knowledge lint` and `knowledge graph lint` periodically to find missing control files, orphan pages, unindexed pages, chip truth with no matching chip wiki page, stale graph manifests, and ambiguous graph relationships.
 
 ## Rules
 

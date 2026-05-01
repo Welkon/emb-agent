@@ -319,6 +319,116 @@ test('knowledge graph build indexes structured formula registries', async () => 
   }
 });
 
+test('knowledge formula draft previews and writes registry from tool output', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-knowledge-formula-draft-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['knowledge', 'init']);
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      ['chip: SC8P052B', 'package: SOP8', ''].join('\n'),
+      'utf8'
+    );
+
+    const runsDir = path.join(tempProject, '.emb-agent', 'runs');
+    fs.mkdirSync(runsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runsDir, 'timer-calc.json'),
+      JSON.stringify(
+        {
+          tool: 'timer-calc',
+          status: 'ok',
+          saved_output: '.emb-agent/runs/timer-calc.json',
+          inputs: {
+            options: {
+              device: 'SC8P052B',
+              'clock-hz': '16000000',
+              'target-us': '64'
+            }
+          },
+          best_candidate: {
+            timer: 'TM2',
+            prescaler: 4,
+            postscaler: 1,
+            period_register: 'PR2',
+            period_value: 255,
+            reload_value: 255,
+            ticks: 256,
+            actual_us: 64,
+            actual_hz: 15625,
+            register_writes: {
+              registers: [
+                {
+                  register: 'PR2',
+                  mask_hex: '0xFF',
+                  write_value_hex: '0xFF',
+                  fields: ['PR2<7:0>']
+                }
+              ]
+            }
+          }
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+
+    const formulaPath = path.join(tempProject, '.emb-agent', 'formulas', 'sc8p052b.json');
+    const preview = await captureCliJson([
+      'knowledge',
+      'formula',
+      'draft',
+      '--from-tool-output',
+      '.emb-agent/runs/timer-calc.json'
+    ]);
+
+    assert.equal(preview.status, 'confirmation-required');
+    assert.equal(preview.write_mode, 'preview');
+    assert.equal(preview.target, '.emb-agent/formulas/sc8p052b.json');
+    assert.equal(preview.registry.formulas[0].id, 'sc8p052b.tm2.period');
+    assert.equal(preview.registry.formulas[0].expression, '(prescaler * postscaler * (period_value + 1) * 1000000) / clock_hz');
+    assert.deepEqual(preview.registry.formulas[0].registers, ['PR2']);
+    assert.equal(fs.existsSync(formulaPath), false);
+
+    const written = await captureCliJson([
+      'knowledge',
+      'formula',
+      'draft',
+      '--from-tool-output',
+      '.emb-agent/runs/timer-calc.json',
+      '--confirm'
+    ]);
+
+    assert.equal(written.status, 'written');
+    assert.equal(written.target, '.emb-agent/formulas/sc8p052b.json');
+    assert.ok(written.next_steps.includes('knowledge graph refresh'));
+    assert.ok(written.next_steps.includes('knowledge graph explain formula:sc8p052b.tm2.period'));
+    assert.ok(written.next_steps.includes('knowledge graph query PR2'));
+    assert.equal(fs.existsSync(formulaPath), true);
+
+    const registry = JSON.parse(fs.readFileSync(formulaPath, 'utf8'));
+    assert.equal(registry.version, 'emb-agent.formulas/1');
+    assert.equal(registry.chip, 'SC8P052B');
+    assert.equal(registry.formulas[0].id, 'sc8p052b.tm2.period');
+    assert.equal(registry.formulas[0].evidence.source, '.emb-agent/runs/timer-calc.json');
+
+    await captureCliJson(['knowledge', 'graph', 'build']);
+    const graph = JSON.parse(fs.readFileSync(path.join(tempProject, '.emb-agent', 'graph', 'graph.json'), 'utf8'));
+    assert.ok(graph.nodes.some(node => node.id === 'formula:sc8p052b.tm2.period'));
+    assert.ok(graph.edges.some(edge =>
+      edge.from === 'formula:sc8p052b.tm2.period' &&
+      edge.to === 'register:sc8p052b-pr2' &&
+      edge.type === 'uses_register'
+    ));
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('knowledge graph build indexes saved tool runs and firmware snippets', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-knowledge-tool-run-'));
   const currentCwd = process.cwd();
