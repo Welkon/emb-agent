@@ -108,6 +108,7 @@ test('external init and next expose fixed driver payload for external agents', a
     assert.equal(next.capability_route.route_strategy, 'capability-first');
     assert.equal(next.knowledge_graph.state, 'missing');
     assert.equal(next.knowledge_graph.next, 'knowledge graph refresh');
+    assert.deepEqual(next.knowledge_graph.next_steps, ['knowledge graph refresh']);
     assert.ok(next.runtime_events);
     assert.ok(next.runtime_events.total >= 1);
     assert.equal('workflow_stage' in next, false);
@@ -151,6 +152,7 @@ test('external dispatch-next exposes minimal execution decision protocol', async
     assert.equal(dispatch.capability_route.route_strategy, 'capability-first');
     assert.equal(dispatch.knowledge_graph.state, 'missing');
     assert.equal(dispatch.knowledge_graph.next, 'knowledge graph refresh');
+    assert.deepEqual(dispatch.knowledge_graph.next_steps, ['knowledge graph refresh']);
     assert.ok(dispatch.runtime_events);
     assert.equal(typeof dispatch.runtime_events.status, 'string');
     assert.equal(typeof dispatch.runtime_events.total, 'number');

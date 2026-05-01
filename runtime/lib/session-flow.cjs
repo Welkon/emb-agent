@@ -2043,7 +2043,8 @@ function createSessionFlowHelpers(deps) {
         knowledge_graph: {
           state: knowledgeGraph.state,
           stale: knowledgeGraph.stale,
-          next_step: knowledgeGraph.next_steps[0] || ''
+          next_step: knowledgeGraph.next_steps[0] || '',
+          next_steps: (knowledgeGraph.next_steps || []).slice(0, 3)
         }
       },
       knowledge_graph: knowledgeGraph,

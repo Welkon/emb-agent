@@ -209,7 +209,8 @@ function createExternalAgentHelpers() {
       knowledge_graph: compactObject({
         state: graph.state || (graph.initialized === false ? 'missing' : ''),
         stale: graph.stale === true ? true : undefined,
-        next: Array.isArray(graph.next_steps) && graph.next_steps.length > 0 ? graph.next_steps[0] : ''
+        next: Array.isArray(graph.next_steps) && graph.next_steps.length > 0 ? graph.next_steps[0] : '',
+        next_steps: Array.isArray(graph.next_steps) ? graph.next_steps.slice(0, 3) : []
       })
     });
   }
@@ -337,7 +338,8 @@ function createExternalAgentHelpers() {
       knowledge_graph: compactObject({
         state: graph.state || (graph.initialized === false ? 'missing' : ''),
         stale: graph.stale === true ? true : undefined,
-        next: Array.isArray(graph.next_steps) && graph.next_steps.length > 0 ? graph.next_steps[0] : ''
+        next: Array.isArray(graph.next_steps) && graph.next_steps.length > 0 ? graph.next_steps[0] : '',
+        next_steps: Array.isArray(graph.next_steps) ? graph.next_steps.slice(0, 3) : []
       })
     });
   }

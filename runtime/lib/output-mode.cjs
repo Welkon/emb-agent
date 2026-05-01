@@ -716,7 +716,8 @@ function buildBriefNextContext(value) {
           next_step:
             Array.isArray(value.knowledge_graph.next_steps) && value.knowledge_graph.next_steps.length > 0
               ? value.knowledge_graph.next_steps[0]
-              : ''
+              : '',
+          next_steps: truncateList(value.knowledge_graph.next_steps, 3)
         })
       : null,
     board_evidence: summarizeBoardEvidence(value.board_evidence),
@@ -1075,7 +1076,8 @@ function buildBriefDispatchOrchestrateOutput(value) {
           next_step:
             Array.isArray(value.knowledge_graph.next_steps) && value.knowledge_graph.next_steps.length > 0
               ? value.knowledge_graph.next_steps[0]
-              : ''
+              : '',
+          next_steps: truncateList(value.knowledge_graph.next_steps, 3)
         })
       : null,
     runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),
