@@ -1458,6 +1458,14 @@ function createKnowledgeRuntimeHelpers(deps) {
     ['chip', 'risk', 'task', 'timer', 'pin'].forEach(term => {
       lines.push(`- knowledge graph query ${term}`);
     });
+    lines.push('', '## Suggested Explanations', '');
+    if (hotNodes.length === 0) {
+      lines.push('- No graph nodes are connected enough to explain yet.');
+    } else {
+      hotNodes.slice(0, 5).forEach(item => {
+        lines.push(`- knowledge graph explain ${item.node.id}`);
+      });
+    }
     lines.push('');
     return `${lines.join('\n').trim()}\n`;
   }

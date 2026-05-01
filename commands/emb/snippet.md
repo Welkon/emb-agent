@@ -45,7 +45,7 @@ emb-agent snippet draft --from <file> --title <name> --confirm
 
 The generated artifact is a review surface. It records direct C statements, HAL-style macro statements when present, source edit policy, behavior couplings, required symbols, constraints, and residual risks. It must not be treated as verified firmware until local compile/static-check or human review evidence exists.
 
-After `--confirm`, the result includes `knowledge graph refresh` and a register-focused `knowledge graph query <register>` in `next_steps`.
+After `--confirm`, the result includes `knowledge graph refresh`, a register-focused `knowledge graph explain <register>`, and `knowledge graph query <register>` in `next_steps`.
 
 ## Options
 
