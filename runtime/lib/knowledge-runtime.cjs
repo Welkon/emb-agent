@@ -1314,6 +1314,61 @@ function createKnowledgeRuntimeHelpers(deps) {
     return manifest;
   }
 
+  function getGraphTrackedFiles() {
+    return [
+      path.join(getProjectExtDir(), 'project.json'),
+      path.join(getProjectExtDir(), 'hw.yaml'),
+      path.join(getProjectExtDir(), 'req.yaml'),
+      ...listFilesRecursive(path.join(getProjectExtDir(), 'formulas'), filePath => /\.json$/i.test(filePath)),
+      ...listFilesRecursive(path.join(getProjectExtDir(), 'runs'), filePath => /\.json$/i.test(filePath)),
+      ...listFilesRecursive(path.join(getProjectExtDir(), 'firmware-snippets'), filePath => /\.md$/i.test(filePath)),
+      ...listMarkdownPages().map(page => getWikiPath(page.path))
+    ];
+  }
+
+  function compareGraphManifest(previous, current) {
+    const before = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {};
+    const after = current && typeof current === 'object' && !Array.isArray(current) ? current : {};
+    const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+    const added = [];
+    const modified = [];
+    const removed = [];
+    keys.forEach(key => {
+      if (!Object.prototype.hasOwnProperty.call(before, key)) {
+        added.push(key);
+        return;
+      }
+      if (!Object.prototype.hasOwnProperty.call(after, key)) {
+        removed.push(key);
+        return;
+      }
+      if (before[key] !== after[key]) {
+        modified.push(key);
+      }
+    });
+    return {
+      stale: added.length > 0 || modified.length > 0 || removed.length > 0,
+      changed_files: [...added, ...modified, ...removed],
+      added_files: added,
+      modified_files: modified,
+      removed_files: removed
+    };
+  }
+
+  function readGraphFreshness(graph) {
+    const currentManifest = buildGraphManifest(getGraphTrackedFiles());
+    const storedManifestPath = getGraphPath('cache', 'manifest.json');
+    const storedManifest = readJsonIfExists(storedManifestPath) || (
+      graph && graph.manifest && typeof graph.manifest === 'object' && !Array.isArray(graph.manifest)
+        ? graph.manifest
+        : {}
+    );
+    return {
+      ...compareGraphManifest(storedManifest, currentManifest),
+      manifest_file: getGraphRelativePath('cache', 'manifest.json')
+    };
+  }
+
   function buildKnowledgeGraph() {
     ensureKnowledgeDirs();
     ensureGraphDirs();
@@ -1332,15 +1387,7 @@ function createKnowledgeRuntimeHelpers(deps) {
 
     const nodeList = [...nodes.values()].sort((a, b) => a.id.localeCompare(b.id));
     const edgeList = [...edges.values()].sort((a, b) => `${a.from}:${a.type}:${a.to}`.localeCompare(`${b.from}:${b.type}:${b.to}`));
-    const trackedFiles = [
-      path.join(getProjectExtDir(), 'project.json'),
-      path.join(getProjectExtDir(), 'hw.yaml'),
-      path.join(getProjectExtDir(), 'req.yaml'),
-      ...listFilesRecursive(path.join(getProjectExtDir(), 'formulas'), filePath => /\.json$/i.test(filePath)),
-      ...listFilesRecursive(path.join(getProjectExtDir(), 'runs'), filePath => /\.json$/i.test(filePath)),
-      ...listFilesRecursive(path.join(getProjectExtDir(), 'firmware-snippets'), filePath => /\.md$/i.test(filePath)),
-      ...listMarkdownPages().map(page => getWikiPath(page.path))
-    ];
+    const trackedFiles = getGraphTrackedFiles();
     const graph = {
       version: 'emb-agent.graph/1',
       generated_at: new Date().toISOString(),
@@ -1468,11 +1515,19 @@ function createKnowledgeRuntimeHelpers(deps) {
         next_steps: ['knowledge graph build']
       };
     }
+    const freshness = readGraphFreshness(graph);
     return {
       initialized: true,
       graph_file: getGraphRelativePath('graph.json'),
       report_file: getGraphRelativePath('GRAPH_REPORT.md'),
+      manifest_file: freshness.manifest_file,
       stats: graph.stats,
+      stale: freshness.stale,
+      changed_files: freshness.changed_files,
+      added_files: freshness.added_files,
+      modified_files: freshness.modified_files,
+      removed_files: freshness.removed_files,
+      next_steps: freshness.stale ? ['knowledge graph build'] : [],
       content: readTextIfExists(reportPath)
     };
   }
@@ -1583,6 +1638,16 @@ function createKnowledgeRuntimeHelpers(deps) {
       };
     }
     const issues = [];
+    const freshness = readGraphFreshness(graph);
+    if (freshness.stale) {
+      issues.push({
+        severity: 'warn',
+        code: 'graph-stale',
+        summary: 'Knowledge graph tracked files changed after the last build.',
+        changed_files: freshness.changed_files.slice(0, 25),
+        recommendation: 'Run knowledge graph build.'
+      });
+    }
     const degrees = graphDegrees(graph);
     (graph.nodes || [])
       .filter(node => node.type === 'wiki_page' && (degrees.get(node.id) || 0) === 0)
@@ -1621,7 +1686,10 @@ function createKnowledgeRuntimeHelpers(deps) {
       status: issues.some(item => item.severity === 'warn') ? 'warn' : 'ok',
       graph_file: getGraphRelativePath('graph.json'),
       report_file: getGraphRelativePath('GRAPH_REPORT.md'),
+      manifest_file: freshness.manifest_file,
       stats: graph.stats,
+      stale: freshness.stale,
+      changed_files: freshness.changed_files,
       issues,
       next_steps: issues.length > 0
         ? runtime.unique(issues.map(item => item.recommendation).filter(Boolean)).slice(0, 5)

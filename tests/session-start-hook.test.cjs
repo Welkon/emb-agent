@@ -331,12 +331,21 @@ test('session start hook surfaces knowledge graph report summary when available'
       '--confirm'
     ]);
     cli.main(['knowledge', 'graph', 'build']);
+    const runsDir = path.join(tempProject, '.emb-agent', 'runs');
+    fs.mkdirSync(runsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runsDir, 'timer-calc.json'),
+      JSON.stringify({ tool: 'timer-calc', status: 'ok' }, null, 2) + '\n',
+      'utf8'
+    );
 
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
     const payload = parseHookPayload(reminder);
 
     assert.match(payload.hookSpecificOutput.additionalContext, /Knowledge graph: \.emb-agent\/graph\/graph\.json/);
     assert.match(payload.hookSpecificOutput.additionalContext, /Graph summary: nodes=/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Knowledge graph stale: 1 tracked file\(s\) changed; run knowledge graph build/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /- stale: \.emb-agent\/runs\/timer-calc\.json/);
     assert.match(payload.hookSpecificOutput.additionalContext, /Graph report highlights:/);
     assert.match(payload.hookSpecificOutput.additionalContext, /- Nodes:/);
   } finally {

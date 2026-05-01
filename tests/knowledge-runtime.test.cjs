@@ -453,6 +453,49 @@ test('knowledge graph build indexes saved tool runs and firmware snippets', asyn
   }
 });
 
+test('knowledge graph report and lint detect stale tracked artifacts', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-knowledge-graph-stale-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    await cli.main(['knowledge', 'init']);
+    fs.writeFileSync(
+      path.join(tempProject, '.emb-agent', 'hw.yaml'),
+      ['chip: SC8P052B', 'package: SOP8', ''].join('\n'),
+      'utf8'
+    );
+
+    await captureCliJson(['knowledge', 'graph', 'build']);
+    const freshReport = await captureCliJson(['knowledge', 'graph', 'report']);
+    assert.equal(freshReport.stale, false);
+    assert.deepEqual(freshReport.next_steps, []);
+
+    const runsDir = path.join(tempProject, '.emb-agent', 'runs');
+    fs.mkdirSync(runsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runsDir, 'timer-calc.json'),
+      JSON.stringify({ tool: 'timer-calc', status: 'ok' }, null, 2) + '\n',
+      'utf8'
+    );
+
+    const staleReport = await captureCliJson(['knowledge', 'graph', 'report']);
+    const lint = await captureCliJson(['knowledge', 'graph', 'lint']);
+
+    assert.equal(staleReport.stale, true);
+    assert.ok(staleReport.changed_files.includes('.emb-agent/runs/timer-calc.json'));
+    assert.ok(staleReport.added_files.includes('.emb-agent/runs/timer-calc.json'));
+    assert.ok(staleReport.next_steps.includes('knowledge graph build'));
+    assert.equal(lint.stale, true);
+    assert.ok(lint.changed_files.includes('.emb-agent/runs/timer-calc.json'));
+    assert.ok(lint.issues.some(issue => issue.code === 'graph-stale'));
+    assert.ok(lint.next_steps.includes('Run knowledge graph build.'));
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('knowledge command is visible in advanced command inventory', async () => {
   const listed = await captureCliJson(['commands', 'list', '--all']);
   const shown = await captureCliJson(['commands', 'show', 'knowledge']);
