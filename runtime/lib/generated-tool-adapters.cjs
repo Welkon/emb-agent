@@ -184,14 +184,16 @@ function buildRegisterWritePlan(sourceValues, defaults, keys) {
       write_value: item.write_value,
       write_value_hex: writeValueHex,
       fields: item.fields,
-      c_statement: `${item.register} = (${item.register} & ~${maskHex}) | ${writeValueHex};`
+      c_statement: `${item.register} = (${item.register} & ~${maskHex}) | ${writeValueHex};`,
+      hal_statement: `MODIFY_REG(${item.register}, ${maskHex}, ${writeValueHex});`
     };
   });
 
   return {
     fields,
     registers,
-    c_statements: registers.map(item => item.c_statement)
+    c_statements: registers.map(item => item.c_statement),
+    hal_statements: registers.map(item => item.hal_statement)
   };
 }
 
