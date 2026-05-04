@@ -1,6 +1,6 @@
 {
   "name": "emb-agent",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A lightweight embedded workflow system for Codex and other AI runtimes, optimized for MCU, RTOS, and IoT repositories.",
   "bin": {
     "emb-agent": "bin/install.js"

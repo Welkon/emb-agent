@@ -1244,36 +1244,6 @@ function createHealthUpdateCommandHelpers(deps) {
       );
     }
 
-    if (projectConfig && projectConfig.integrations && projectConfig.integrations.szlcsc) {
-      const szlcsc = projectConfig.integrations.szlcsc;
-      const apiKeyConfigured =
-        Boolean(szlcsc.api_key) ||
-        Boolean(process.env[szlcsc.api_key_env || 'SZLCSC_API_KEY']) ||
-        Boolean(process.env.LCSC_API_KEY);
-      const apiSecretConfigured =
-        Boolean(szlcsc.api_secret) ||
-        Boolean(process.env[szlcsc.api_secret_env || 'SZLCSC_API_SECRET']) ||
-        Boolean(process.env.LCSC_API_SECRET);
-      const credentialsReady = apiKeyConfigured && apiSecretConfigured;
-      checks.push(
-        createCheck(
-          'szlcsc_integration',
-          szlcsc.enabled && !credentialsReady ? 'warn' : 'pass',
-          szlcsc.enabled && !credentialsReady
-            ? 'SZLCSC lookup is enabled, but API credentials are incomplete'
-            : `SZLCSC component lookup is available (${szlcsc.enabled ? 'enabled' : 'disabled'})`,
-          [
-            `enabled=${szlcsc.enabled === true ? 'true' : 'false'}`,
-            `api_key_env=${szlcsc.api_key_env || 'SZLCSC_API_KEY'}`,
-            `api_secret_env=${szlcsc.api_secret_env || 'SZLCSC_API_SECRET'}`
-          ],
-          szlcsc.enabled && !credentialsReady
-            ? 'Provide both API key and secret before using component lookup --provider szlcsc.'
-            : ''
-        )
-      );
-    }
-
     const pendingDocApply =
       ingestDocCli && typeof ingestDocCli.findPendingDocApply === 'function'
         ? ingestDocCli.findPendingDocApply(projectRoot)

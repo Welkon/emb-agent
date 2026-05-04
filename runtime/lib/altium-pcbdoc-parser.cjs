@@ -246,6 +246,44 @@ function buildCfb(fileBuffer) {
     return readChain(fileBuffer, header, fatEntries, entry.startingSector, entry.size);
   }
 
+  function streamFileRanges(entry) {
+    if (!entry || entry.type !== 2) {
+      throw new Error('CFB entry is not a stream');
+    }
+    if (entry.size < header.miniStreamCutoff) {
+      throw new Error('CFB mini streams cannot be patched in place yet');
+    }
+    const ranges = [];
+    const seen = new Set();
+    let currentSector = entry.startingSector;
+    let remaining = entry.size;
+    let streamOffset = 0;
+    while (currentSector !== CFB_SPECIAL.endOfChain && currentSector !== CFB_SPECIAL.free && remaining > 0) {
+      if (seen.has(currentSector)) {
+        throw new Error(`CFB sector chain loop detected at sector ${currentSector}`);
+      }
+      if (currentSector >= fatEntries.length) {
+        throw new Error(`CFB sector ${currentSector} is outside FAT range`);
+      }
+      const file_offset = (currentSector + 1) * header.sectorSize;
+      const length = Math.min(header.sectorSize, remaining);
+      ranges.push({
+        sector: currentSector,
+        stream_offset: streamOffset,
+        file_offset,
+        length
+      });
+      seen.add(currentSector);
+      streamOffset += length;
+      remaining -= length;
+      currentSector = fatEntries[currentSector];
+    }
+    if (remaining > 0) {
+      throw new Error('CFB stream chain ended before declared stream size');
+    }
+    return ranges;
+  }
+
   function listPaths() {
     const result = [];
     function visit(parentId, prefix) {
@@ -293,7 +331,8 @@ function buildCfb(fileBuffer) {
     rootEntry,
     listPaths,
     findEntryByPath,
-    readStream
+    readStream,
+    streamFileRanges
   };
 }
 
@@ -351,6 +390,53 @@ function splitLengthPrefixedRecords(streamBuffer, fallbackType) {
       stream_index: index
     };
   }).filter(record => Object.keys(record.fields || {}).length > 0);
+}
+
+function splitEmbeddedKeyValueRecords(streamBuffer, marker, fallbackType) {
+  if (!Buffer.isBuffer(streamBuffer) || streamBuffer.length === 0) return [];
+  const text = streamBuffer.toString('latin1');
+  const starts = [];
+  let searchIndex = 0;
+  while ((searchIndex = text.indexOf(marker, searchIndex)) !== -1) {
+    starts.push(searchIndex);
+    searchIndex += marker.length;
+  }
+  return starts.map((start, index) => {
+    const end = index + 1 < starts.length ? starts[index + 1] : text.length;
+    const fields = parseKeyValueRecord(text.slice(start, end));
+    return {
+      record_type: fields.RECORD || fallbackType || 'Unknown',
+      fields,
+      offset: start,
+      length: end - start,
+      stream_index: index
+    };
+  }).filter(record => Object.keys(record.fields || {}).length > 0);
+}
+
+function embeddedRecordStarts(streamBuffer, marker) {
+  if (!Buffer.isBuffer(streamBuffer) || streamBuffer.length === 0) return [];
+  const text = streamBuffer.toString('latin1');
+  const starts = [];
+  let searchIndex = 0;
+  while ((searchIndex = text.indexOf(marker, searchIndex)) !== -1) {
+    starts.push(searchIndex);
+    searchIndex += marker.length;
+  }
+  return starts;
+}
+
+function printableHeaderEnd(streamBuffer, start, end) {
+  let printableEnd = start;
+  for (let offset = start; offset < end; offset += 1) {
+    const byte = streamBuffer[offset];
+    if ((byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13) {
+      printableEnd = offset + 1;
+      continue;
+    }
+    if (offset > start + 20) break;
+  }
+  return printableEnd;
 }
 
 function splitRecords(text) {
@@ -469,6 +555,20 @@ function pointFromFields(fields, xKey, yKey) {
   return {
     x_mm: Number(x.toFixed(6)),
     y_mm: Number(y.toFixed(6))
+  };
+}
+
+function boundsAroundCenter(center, widthMm, heightMm) {
+  if (!center || !Number.isFinite(Number(widthMm)) || !Number.isFinite(Number(heightMm))) return null;
+  const halfWidth = Number(widthMm) / 2;
+  const halfHeight = Number(heightMm) / 2;
+  return {
+    min_x_mm: Number((Number(center.x_mm) - halfWidth).toFixed(6)),
+    min_y_mm: Number((Number(center.y_mm) - halfHeight).toFixed(6)),
+    max_x_mm: Number((Number(center.x_mm) + halfWidth).toFixed(6)),
+    max_y_mm: Number((Number(center.y_mm) + halfHeight).toFixed(6)),
+    width_mm: Number(Number(widthMm).toFixed(6)),
+    height_mm: Number(Number(heightMm).toFixed(6))
   };
 }
 
@@ -594,6 +694,24 @@ function isReferenceDesignator(value) {
   return /^(?:R|RS|C|L|D|Q|U|IC|Y|X|J|JP|P|CN|CON|SW|S|T|TP|FB|F)\d+[A-Z]?$/i.test(ensureString(value));
 }
 
+function truthyLockedValue(value) {
+  const text = ensureString(value).toLowerCase();
+  if (!text) return false;
+  return ['1', 'true', 'yes', 'y', 'locked', 'fixed'].includes(text);
+}
+
+function lockedFromFields(fields) {
+  return [
+    'LOCKED',
+    'LOCK',
+    'ISLOCKED',
+    'COMPLOCKED',
+    'FIXED',
+    'LOCKPRIMS',
+    'PRIMITIVESLOCKED'
+  ].some(key => truthyLockedValue(fields[key]));
+}
+
 function extractComponents(records, classRecords) {
   const classNames = extractComponentClassNames(classRecords, records.length);
   return records
@@ -617,6 +735,7 @@ function extractComponents(records, classRecords) {
         layer: normalizeLayer(fields.LAYER || ''),
         rotation: fields.ROTATION || '',
         center: point,
+        locked: lockedFromFields(fields),
         unique_id: fields.UNIQUEID || '',
         channel_offset: fields.CHANNELOFFSET || '',
         source_record: record.stream_index !== undefined ? record.stream_index : index
@@ -910,12 +1029,39 @@ function nearestComponentForPoint(point, components) {
   return nearest;
 }
 
+function nearestComponentForBody(point, components) {
+  if (!point || !Array.isArray(components)) return null;
+  const nearest = components
+    .filter(component => component.center)
+    .map(component => ({
+      component,
+      distance_mm: distancePoints(point, component.center)
+    }))
+    .filter(item => item.distance_mm !== null)
+    .sort((a, b) => a.distance_mm - b.distance_mm)[0];
+  if (!nearest || nearest.distance_mm > 5) return null;
+  return nearest;
+}
+
 function padNameFromRecord(streamBuffer, offset) {
   const value = streamBuffer[offset + 6];
   if (value >= 32 && value <= 126) {
     return String.fromCharCode(value);
   }
   return '';
+}
+
+function padSizeFromRecord(streamBuffer, offset) {
+  if (offset + 59 > streamBuffer.length) return null;
+  const width = altiumCoordToMm(streamBuffer.readInt32LE(offset + 51));
+  const height = altiumCoordToMm(streamBuffer.readInt32LE(offset + 55));
+  if (width === null || height === null || width <= 0 || height <= 0 || width > 100 || height > 100) {
+    return null;
+  }
+  return {
+    x_size_mm: width,
+    y_size_mm: height
+  };
 }
 
 function extractPadsFromBinary(streamBuffer, recordCount, nets, components, primitiveIds) {
@@ -932,6 +1078,7 @@ function extractPadsFromBinary(streamBuffer, recordCount, nets, components, prim
       streamBuffer.readInt32LE(offset + 43),
       streamBuffer.readInt32LE(offset + 47)
     );
+    const size = padSizeFromRecord(streamBuffer, offset);
     const netIndex = streamBuffer[offset + 33];
     const nearest = nearestComponentForPoint(center, components);
     pads.push({
@@ -942,6 +1089,9 @@ function extractPadsFromBinary(streamBuffer, recordCount, nets, components, prim
       raw_net_index: netIndex,
       net: netNameByIndex(nets, netIndex),
       center,
+      x_size_mm: size ? size.x_size_mm : null,
+      y_size_mm: size ? size.y_size_mm : null,
+      bounds: size ? boundsAroundCenter(center, size.x_size_mm, size.y_size_mm) : null,
       component: nearest ? nearest.component.designator : '',
       component_source_record: nearest ? nearest.component.source_record : null,
       component_distance_mm: nearest ? Number(nearest.distance_mm.toFixed(3)) : null,
@@ -950,6 +1100,94 @@ function extractPadsFromBinary(streamBuffer, recordCount, nets, components, prim
     });
   }
   return pads;
+}
+
+function extractComponentBodies(records, components, streamName) {
+  return records.map((record, index) => {
+    const fields = record.fields || {};
+    const center = pointFromFields(fields, 'MODEL.2D.X', 'MODEL.2D.Y') ||
+      pointFromFields(fields, 'TEXTURECENTERX', 'TEXTURECENTERY');
+    const nearest = nearestComponentForBody(center, components);
+    return {
+      kind: 'component-body',
+      stream: streamName,
+      layer: normalizeLayer(fields.V7_LAYER || fields.LAYER || ''),
+      body_kind: fields.KIND || '',
+      union_index: fields.UNIONINDEX || '',
+      model_id: fields.MODELID || '',
+      model_name: fields['MODEL.NAME'] || fields.IDENTIFIER || '',
+      model_type: fields['MODEL.MODELTYPE'] || '',
+      center,
+      component: nearest ? nearest.component.designator : '',
+      component_source_record: nearest ? nearest.component.source_record : null,
+      component_distance_mm: nearest ? Number(nearest.distance_mm.toFixed(3)) : null,
+      height_mm: parseLengthUnit(fields.OVERALLHEIGHT || fields.CAVITYHEIGHT || '') || null,
+      source_record: record.stream_index !== undefined ? record.stream_index : index,
+      source_offset: record.offset || 0,
+      parser_note: nearest ? 'component body associated by nearest component center' : 'component body center not associated with a component'
+    };
+  }).filter(body => body.center || body.model_name);
+}
+
+function extractBinaryRegions(streamBuffer, streamName) {
+  const starts = embeddedRecordStarts(streamBuffer, 'V7_LAYER=');
+  return starts.map((start, index) => {
+    const end = index + 1 < starts.length ? starts[index + 1] : streamBuffer.length;
+    const headerEnd = printableHeaderEnd(streamBuffer, start, end);
+    const fields = parseKeyValueRecord(streamBuffer.subarray(start, headerEnd).toString('latin1'));
+    let tailStart = headerEnd;
+    while (tailStart < end && streamBuffer[tailStart] === 0) tailStart += 1;
+    const pointCount = tailStart + 4 <= end ? streamBuffer.readUInt32LE(tailStart) : 0;
+    const points = [];
+    if (pointCount > 0 && pointCount < 5000 && tailStart + 8 + pointCount * 16 <= end) {
+      for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+        const offset = tailStart + 8 + pointIndex * 16;
+        const x = streamBuffer.readFloatLE(offset);
+        const y = streamBuffer.readFloatLE(offset + 8);
+        if (Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) < 100000 && Math.abs(y) < 100000) {
+          points.push({ x_raw: Number(x.toFixed(6)), y_raw: Number(y.toFixed(6)) });
+        }
+      }
+    }
+    const rawBounds = points.length > 0
+      ? {
+          min_x_raw: Number(Math.min(...points.map(point => point.x_raw)).toFixed(6)),
+          min_y_raw: Number(Math.min(...points.map(point => point.y_raw)).toFixed(6)),
+          max_x_raw: Number(Math.max(...points.map(point => point.x_raw)).toFixed(6)),
+          max_y_raw: Number(Math.max(...points.map(point => point.y_raw)).toFixed(6))
+        }
+      : null;
+    if (rawBounds) {
+      rawBounds.width_raw = Number((rawBounds.max_x_raw - rawBounds.min_x_raw).toFixed(6));
+      rawBounds.height_raw = Number((rawBounds.max_y_raw - rawBounds.min_y_raw).toFixed(6));
+    }
+    const estimatedSize = rawBounds
+      ? {
+          width_mm: Number((rawBounds.width_raw * 25.4).toFixed(6)),
+          height_mm: Number((rawBounds.height_raw * 25.4).toFixed(6)),
+          basis: 'raw-float-delta-x-25.4',
+          confidence: 'experimental'
+        }
+      : null;
+    return {
+      kind: 'binary-region',
+      stream: streamName,
+      layer: normalizeLayer(fields.V7_LAYER || fields.LAYER || ''),
+      subpoly_index: fields.SUBPOLYINDEX || '',
+      union_index: fields.UNIONINDEX || '',
+      shape_kind: fields.KIND || '',
+      arc_resolution: fields.ARCRESOLUTION || '',
+      is_shape_based: fields.ISSHAPEBASED || '',
+      source_record: index,
+      source_offset: start,
+      binary_bytes: Math.max(0, end - tailStart),
+      point_count: points.length,
+      raw_bounds: rawBounds,
+      estimated_size: estimatedSize,
+      sample_points: points.slice(0, 8),
+      coordinate_note: 'Region float points are parsed as local/raw geometry; do not treat x_raw/y_raw as board coordinates without a stream-specific transform.'
+    };
+  }).filter(region => region.point_count > 0);
 }
 
 function extractFallbackTextTracks(records, nets) {
@@ -1012,6 +1250,9 @@ function parseAltiumPcbDocBuffer(fileBuffer) {
   const regionRecords = readTextStreamRecords(cfb, 'Regions6', 'Region');
   const classRecords = readTextStreamRecords(cfb, 'Classes6', 'Class');
   const primitiveRecords = readTextStreamRecords(cfb, 'UniqueIDPrimitiveInformation', 'PrimitiveUniqueId');
+  const componentBodyRecords = splitEmbeddedKeyValueRecords(readStorageData(cfb, 'ComponentBodies6'), 'V7_LAYER=', 'ComponentBody');
+  const shapeBasedComponentBodyRecords = splitEmbeddedKeyValueRecords(readStorageData(cfb, 'ShapeBasedComponentBodies6'), 'V7_LAYER=', 'ShapeBasedComponentBody');
+  const binaryRegions = extractBinaryRegions(readStorageData(cfb, 'Regions6'), 'Regions6');
   const outlines = extractOutline(records);
   const allOutlinePoints = outlines.flatMap(outline => outline.points || []);
   const texts = extractTextsFromBinary(
@@ -1042,10 +1283,15 @@ function parseAltiumPcbDocBuffer(fileBuffer) {
     components,
     extractPrimitiveUniqueIds(primitiveRecords, 'Pad')
   );
+  const componentBodies = [
+    ...extractComponentBodies(componentBodyRecords, components, 'ComponentBodies6'),
+    ...extractComponentBodies(shapeBasedComponentBodyRecords, components, 'ShapeBasedComponentBodies6')
+  ];
+  const allBinaryRegions = binaryRegions;
   const polygons = extractPolygons([...polygonRecords, ...regionRecords], nets);
   const layerStack = extractLayerStack(records);
   const recordCounts = {};
-  [...records, ...componentRecords, ...netRecords, ...polygonRecords, ...regionRecords, ...classRecords, ...primitiveRecords].forEach(record => {
+    [...records, ...componentRecords, ...netRecords, ...polygonRecords, ...regionRecords, ...classRecords, ...primitiveRecords, ...componentBodyRecords, ...shapeBasedComponentBodyRecords].forEach(record => {
     const key = record.record_type || 'Unknown';
     recordCounts[key] = (recordCounts[key] || 0) + 1;
   });
@@ -1074,7 +1320,10 @@ function parseAltiumPcbDocBuffer(fileBuffer) {
         'Regions6',
         'Texts6',
         'Classes6',
-        'UniqueIDPrimitiveInformation'
+        'UniqueIDPrimitiveInformation',
+        'ComponentBodies6',
+        'ShapeBasedComponentBodies6',
+        'ShapeBasedRegions6'
       ])
     },
     metadata: {
@@ -1090,13 +1339,15 @@ function parseAltiumPcbDocBuffer(fileBuffer) {
     layer_stack: layerStack,
     components,
     pads,
+    component_bodies: componentBodies,
+    binary_regions: allBinaryRegions,
     texts,
     tracks,
     vias,
     arcs,
     polygons,
     nets,
-    objects: [...records, ...componentRecords, ...netRecords, ...polygonRecords, ...regionRecords, ...classRecords, ...primitiveRecords].map((record, index) => ({
+    objects: [...records, ...componentRecords, ...netRecords, ...polygonRecords, ...regionRecords, ...classRecords, ...primitiveRecords, ...componentBodyRecords, ...shapeBasedComponentBodyRecords].map((record, index) => ({
       index,
       record_type: record.record_type,
       offset: record.offset,
@@ -1110,6 +1361,8 @@ function parseAltiumPcbDocBuffer(fileBuffer) {
       outlines: outlines.length,
       components: components.length,
       pads: pads.length,
+      component_bodies: componentBodies.length,
+      binary_regions: allBinaryRegions.length,
       texts: texts.length,
       tracks: tracks.length,
       vias: vias.length,
@@ -1125,5 +1378,6 @@ module.exports = {
   buildCfb,
   parseAltiumPcbDocBuffer,
   parseLengthUnit,
+  splitLengthPrefixedRecords,
   splitRecords
 };

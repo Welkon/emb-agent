@@ -762,20 +762,6 @@ function buildProjectConfig(projectRoot, args, options = {}) {
           timeout_ms: 300000,
           auto_api_page_threshold: 12,
           auto_api_file_size_kb: 4096
-        },
-        szlcsc: {
-          enabled: false,
-          base_url: 'https://ips.lcsc.com',
-          api_key: '',
-          api_key_env: 'SZLCSC_API_KEY',
-          api_secret: '',
-          api_secret_env: 'SZLCSC_API_SECRET',
-          match_type: 'fuzzy',
-          page_size: 5,
-          max_matches_per_component: 5,
-          only_available: false,
-          currency: '',
-          timeout_ms: 15000
         }
       }
     },

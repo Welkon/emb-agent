@@ -228,7 +228,7 @@ function ingestBoard(argv, options) {
     board_id: boardId,
     parser: {
       mode: parsed.parser_mode,
-      summary: 'Altium PcbDoc was read directly from its OLE/CFB container and normalized across Board, Component, Net, Pad, Track, Via, Arc, Polygon, and Region streams.'
+      summary: 'Altium PcbDoc was read directly from its OLE/CFB container and normalized across Board, Component, Body, Net, Pad, Track, Via, Arc, Polygon, and Region streams.'
     },
     evidence_policy: {
       role: 'optional-layout-evidence',
@@ -240,6 +240,8 @@ function ingestBoard(argv, options) {
       records: parsed.coverage.records,
       components: parsed.coverage.components,
       pads: parsed.coverage.pads,
+      component_bodies: parsed.coverage.component_bodies,
+      binary_regions: parsed.coverage.binary_regions,
       texts: parsed.coverage.texts,
       tracks: parsed.coverage.tracks,
       vias: parsed.coverage.vias,
