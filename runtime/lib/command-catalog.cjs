@@ -36,13 +36,13 @@ const ADVANCED_COMMAND_SECTIONS = [
       'ingest schematic --file <path> [--file <path> ...] [--format auto|altium-json|altium-raw|netlist|bom-csv|text] [--title <text>] [--force]',
       'ingest board --file <path.PcbDoc> [--format auto|altium-pcbdoc] [--title <text>] [--force]',
       'schematic <summary|components|component|nets|net|bom|advice|preview|raw> [--parsed <parsed.json>] [--ref <designator>] [--name <net>] [--record <n>]',
-      'board <summary|components|pads|tracks|vias|texts|nets|advice|raw> [--parsed <analysis.board-layout.json>] [--ref <designator>] [--name <net>] [--record <n>]',
+      'board <summary|components|pads|tracks|vias|texts|nets|advice|raw> [--parsed <analysis.board-layout.json>] [--file <board.PcbDoc>] [--ref <designator>] [--name <net>] [--record <n>]',
       'doc list',
-      'doc lookup [--chip <name>] [--vendor <name>] [--package <name>] [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--limit <n>]',
+      'doc lookup [--chip <name>] [--keyword <text>] [--vendor <name>] [--package <name>] [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--provider local|lceda] [--limit <n>]',
       'doc fetch --url <http(s)-url> [--output <path>] [--confirm]',
       'doc show <doc-id> [--preset <name>] [--apply-ready]',
       'doc diff [--confirm] <doc-id> --to hardware|requirements [--only field1,field2] [--force] [--save-as <name>]',
-      'component lookup [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--provider local|szlcsc] [--limit <n>]'
+      'component lookup [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--limit <n>]'
     ]
   },
   {

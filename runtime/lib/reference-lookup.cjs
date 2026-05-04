@@ -1,6 +1,5 @@
 'use strict';
 
-const componentSzlcscProvider = require('./component-providers/szlcsc.cjs');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
@@ -14,6 +13,7 @@ const IGNORE_DIRS = new Set([
   'coverage'
 ]);
 const DOC_EXTS = new Set(['.pdf', '.md', '.txt', '.doc', '.docx', '.csv', '.xls', '.xlsx']);
+const LCEDA_SEARCH_API = 'https://pro.lceda.cn/api/szlcsc/eda/product/list';
 const GENERIC_COMPONENT_VALUES = new Set([
   'r',
   'c',
@@ -86,6 +86,7 @@ function parseCommonLookupArgs(argv, defaults) {
 function parseDocLookupArgs(argv) {
   const state = parseCommonLookupArgs(argv || [], {
     chip: '',
+    keyword: '',
     vendor: '',
     package: '',
     provider: 'local',
@@ -96,8 +97,42 @@ function parseDocLookupArgs(argv) {
   if (!state.handled) {
     for (let index = state.index; index < (argv || []).length; index += 1) {
       const token = argv[index];
+      if (token === '--project') {
+        result.project = argv[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--file' || token === '--from-schematic') {
+        result.file = argv[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--parsed') {
+        result.parsed = argv[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--ref') {
+        result.ref = argv[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--limit') {
+        const rawLimit = argv[index + 1] || '';
+        index += 1;
+        if (!/^\d+$/.test(rawLimit) || Number(rawLimit) <= 0) {
+          throw new Error('limit must be a positive integer');
+        }
+        result.limit = Number(rawLimit);
+        continue;
+      }
       if (token === '--chip') {
         result.chip = argv[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--keyword') {
+        result.keyword = argv[index + 1] || '';
         index += 1;
         continue;
       }
@@ -220,6 +255,35 @@ function parseSchematicQueryArgs(argv) {
   if (!state.handled) {
     while (index < tokens.length) {
       const token = tokens[index];
+      if (token === '--help' || token === '-h') {
+        result.help = true;
+        index += 1;
+        continue;
+      }
+      if (token === '--project') {
+        result.project = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (token === '--file' || token === '--from-schematic') {
+        result.file = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (token === '--parsed') {
+        result.parsed = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (token === '--limit') {
+        const rawLimit = tokens[index + 1] || '';
+        if (!/^\d+$/.test(rawLimit) || Number(rawLimit) <= 0) {
+          throw new Error('limit must be a positive integer');
+        }
+        result.limit = Number(rawLimit);
+        index += 2;
+        continue;
+      }
       if (token === '--name' || token === '--net') {
         result.name = tokens[index + 1] || '';
         index += 2;
@@ -257,6 +321,35 @@ function parseBoardQueryArgs(argv) {
   if (!state.handled) {
     while (index < tokens.length) {
       const token = tokens[index];
+      if (token === '--help' || token === '-h') {
+        result.help = true;
+        index += 1;
+        continue;
+      }
+      if (token === '--project') {
+        result.project = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (token === '--file' || token === '--from-schematic') {
+        result.file = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (token === '--parsed') {
+        result.parsed = tokens[index + 1] || '';
+        index += 2;
+        continue;
+      }
+      if (token === '--limit') {
+        const rawLimit = tokens[index + 1] || '';
+        if (!/^\d+$/.test(rawLimit) || Number(rawLimit) <= 0) {
+          throw new Error('limit must be a positive integer');
+        }
+        result.limit = Number(rawLimit);
+        index += 2;
+        continue;
+      }
       if (token === '--name' || token === '--net') {
         result.name = tokens[index + 1] || '';
         index += 2;
@@ -284,9 +377,6 @@ function parseBoardQueryArgs(argv) {
 
 function normalizeComponentProvider(value) {
   const normalized = String(value || 'local').trim().toLowerCase() || 'local';
-  if (normalized === 'lcsc') {
-    return 'szlcsc';
-  }
   return normalized;
 }
 
@@ -567,6 +657,14 @@ function buildSearchQueries(identity) {
   ].filter(Boolean);
 }
 
+function normalizeDocLookupProvider(value) {
+  const normalized = String(value || 'local').trim().toLowerCase() || 'local';
+  if (normalized === 'lceda' || normalized === 'easyeda') {
+    return 'lceda';
+  }
+  return normalized;
+}
+
 function runtimeSafeUnique(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
@@ -579,12 +677,200 @@ function buildLookupSemantics(kind) {
   };
 }
 
-function lookupDocs(projectRootInput, argv, deps) {
+function getFetchImpl(options) {
+  if (options && typeof options.fetch === 'function') {
+    return options.fetch;
+  }
+  if (typeof fetch === 'function') {
+    return fetch;
+  }
+  throw new Error('Global fetch is unavailable; provide a fetch implementation');
+}
+
+async function requestJsonWithFetch(url, options) {
+  const fetchImpl = getFetchImpl(options);
+  const response = await fetchImpl(url, {
+    headers: {
+      accept: 'application/json',
+      'user-agent': 'emb-agent-lceda-datasheet-lookup'
+    }
+  });
+  if (!response || response.ok === false) {
+    const status = response && response.status ? response.status : 'unknown';
+    throw new Error(`LCEDA datasheet lookup failed (${status})`);
+  }
+  return response.json();
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (text) {
+      return text;
+    }
+  }
+  return '';
+}
+
+function nestedValue(value, pathParts) {
+  let current = value;
+  for (const part of pathParts || []) {
+    if (!current || typeof current !== 'object') {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return current;
+}
+
+function nestedText(value, pathParts) {
+  const current = nestedValue(value, pathParts);
+  if (current === undefined || current === null) {
+    return '';
+  }
+  if (typeof current === 'string' || typeof current === 'number' || typeof current === 'boolean') {
+    return String(current).trim();
+  }
+  return '';
+}
+
+function findAttributeCaseInsensitive(record, names) {
+  const attributes = record && record.attributes && typeof record.attributes === 'object'
+    ? record.attributes
+    : {};
+  const wanted = new Set((names || []).map(item => String(item || '').trim().toLowerCase()));
+  for (const [key, value] of Object.entries(attributes)) {
+    if (!wanted.has(String(key || '').trim().toLowerCase())) {
+      continue;
+    }
+    const text = String(value || '').trim();
+    if (text) {
+      return text;
+    }
+  }
+  return '';
+}
+
+function extractLcedaDatasheetUrl(record) {
+  return firstNonEmptyString(
+    findAttributeCaseInsensitive(record, [
+      'Datasheet',
+      'DataSheet',
+      'Data Sheet',
+      'Manual',
+      'Product Manual',
+      'Specification'
+    ]),
+    nestedText(record, ['datasheet']),
+    nestedText(record, ['datasheet_url']),
+    nestedText(record, ['data_manual_url'])
+  );
+}
+
+function extractLcedaComponentMetadata(record) {
+  return {
+    lcsc_id: firstNonEmptyString(
+      nestedText(record, ['product_code']),
+      findAttributeCaseInsensitive(record, ['Supplier Part', 'LCSC Part', 'LCSC ID'])
+    ),
+    value: firstNonEmptyString(
+      nestedText(record, ['display_title']),
+      nestedText(record, ['title']),
+      findAttributeCaseInsensitive(record, ['Manufacturer Part', 'LCSC Part Name'])
+    ),
+    manufacturer: firstNonEmptyString(
+      findAttributeCaseInsensitive(record, ['Manufacturer']),
+      nestedText(record, ['manufacturer'])
+    ),
+    package: firstNonEmptyString(
+      nestedText(record, ['footprint', 'display_title']),
+      findAttributeCaseInsensitive(record, ['Supplier Footprint', 'Footprint'])
+    )
+  };
+}
+
+function buildLcedaDocLookupKeywords(args, identity, schematicEntries) {
+  const keywords = [];
+  if (args.keyword) {
+    keywords.push(args.keyword);
+  }
+  if (identity.chip) {
+    keywords.push(identity.chip);
+  }
+
+  schematicEntries.forEach(entry => {
+    const components = Array.isArray(entry.parsed && entry.parsed.components) ? entry.parsed.components : [];
+    components.forEach(component => {
+      const designator = String(component.designator || '').trim();
+      if (args.ref && designator.toLowerCase() !== String(args.ref).trim().toLowerCase()) {
+        return;
+      }
+      buildComponentQueryTerms(component).forEach(term => keywords.push(term));
+    });
+  });
+
+  return Array.from(new Set(keywords.map(runtimeSafeUnique).filter(Boolean))).slice(0, 5);
+}
+
+async function lookupLcedaDatasheetCandidates(args, identity, schematicEntries, deps) {
+  const keywords = buildLcedaDocLookupKeywords(args, identity, schematicEntries);
+  const candidates = [];
+  const seen = new Set();
+
+  for (const keyword of keywords) {
+    const url = new URL(LCEDA_SEARCH_API);
+    url.searchParams.set('wd', keyword);
+    const payload = await requestJsonWithFetch(url.toString(), deps);
+    const records = Array.isArray(payload && payload.result) ? payload.result : [];
+    records.slice(0, args.limit || 10).forEach(record => {
+      const datasheet = extractLcedaDatasheetUrl(record);
+      if (!datasheet || !isAbsoluteUrl(datasheet)) {
+        return;
+      }
+      const metadata = extractLcedaComponentMetadata(record);
+      const key = `lceda:${datasheet}:${metadata.lcsc_id}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      candidates.push({
+        id: key,
+        title: runtimeSafeUnique([
+          metadata.value,
+          metadata.lcsc_id ? `(${metadata.lcsc_id})` : ''
+        ].filter(Boolean).join(' ')) || datasheet,
+        provider: 'lceda',
+        source_kind: 'lceda-datasheet-url',
+        location: datasheet,
+        fetch_required: true,
+        confidence: metadata.lcsc_id && keyword.toLowerCase() === metadata.lcsc_id.toLowerCase() ? 'high' : 'medium',
+        score: metadata.lcsc_id && keyword.toLowerCase() === metadata.lcsc_id.toLowerCase() ? 88 : 70,
+        reasons: [
+          `LCEDA search keyword: ${keyword}`,
+          metadata.lcsc_id ? `LCSC ID: ${metadata.lcsc_id}` : '',
+          metadata.manufacturer ? `manufacturer: ${metadata.manufacturer}` : ''
+        ].filter(Boolean),
+        component: {
+          designator: '',
+          value: metadata.value,
+          package: metadata.package,
+          datasheet,
+          lcsc_id: metadata.lcsc_id,
+          manufacturer: metadata.manufacturer
+        }
+      });
+    });
+  }
+
+  return candidates;
+}
+
+async function lookupDocs(projectRootInput, argv, deps) {
   const args = Array.isArray(argv) ? parseDocLookupArgs(argv) : (argv || {});
   if (args.help) {
     return {
       command: 'doc lookup',
-      usage: 'doc lookup [--chip <name>] [--vendor <name>] [--package <name>] [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--limit <n>]'
+      usage: 'doc lookup [--chip <name>] [--keyword <text>] [--vendor <name>] [--package <name>] [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--provider local|lceda] [--limit <n>]'
     };
   }
 
@@ -600,6 +886,10 @@ function lookupDocs(projectRootInput, argv, deps) {
   const schematicEntries = loadParsedSchematicEntries(projectRoot, args, deps);
   const candidates = [];
   const seen = new Set();
+  const provider = normalizeDocLookupProvider(args.provider);
+  if (provider !== 'local' && provider !== 'lceda') {
+    throw new Error(`Unknown doc lookup provider: ${args.provider}`);
+  }
 
   docFiles.forEach(relativePath => {
     const scored = scoreDocCandidate(relativePath, identity);
@@ -666,6 +956,10 @@ function lookupDocs(projectRootInput, argv, deps) {
     });
   });
 
+  if (provider === 'lceda') {
+    candidates.push(...await lookupLcedaDatasheetCandidates(args, identity, schematicEntries, deps));
+  }
+
   const sorted = candidates
     .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
     .slice(0, args.limit || 10);
@@ -673,11 +967,12 @@ function lookupDocs(projectRootInput, argv, deps) {
   return {
     ...buildLookupSemantics('document'),
     command: 'doc lookup',
-    provider: args.provider || 'local',
+    provider,
     scope: {
       project_root: projectRoot,
       vendor: identity.vendor,
       chip: identity.chip,
+      keyword: args.keyword || '',
       package: identity.package,
       ref: args.ref || '',
       from_schematic: args.file || '',
@@ -699,7 +994,9 @@ function lookupDocs(projectRootInput, argv, deps) {
       ? ['Use `doc fetch --url <url> --confirm` to download a remote datasheet into docs/.', 'Then run `ingest doc --file <path> --to hardware`.']
       : sorted.length > 0
         ? ['Pick the most relevant local or schematic-linked document, then run `ingest doc --file <path> --to hardware` if it is local.', 'If the best candidate is a remote URL, fetch it into docs/ first.']
-        : ['No matching local document was found. Provide a schematic with datasheet fields, add docs under docs/, or use the generated search_queries externally.']
+        : provider === 'lceda'
+          ? ['No LCEDA datasheet candidate was found. Try a more exact --keyword or LCSC ID such as C2040.']
+          : ['No matching local document was found. Provide a schematic with datasheet fields, add docs under docs/, or use the generated search_queries externally.']
   };
 }
 
@@ -764,8 +1061,7 @@ function buildLocalComponentMatches(entries, args) {
         parsed_source: entry.parsed_path,
         confidence,
         query_terms: queryTerms,
-        szlcsc_queries: queryTerms.map(item => runtimeSafeUnique([item, component.package || component.footprint || ''].filter(Boolean).join(' '))).slice(0, 3),
-        lcsc_queries: queryTerms.map(item => runtimeSafeUnique([item, component.package || component.footprint || ''].filter(Boolean).join(' '))).slice(0, 3)
+        supplier_queries: queryTerms.map(item => runtimeSafeUnique([item, component.package || component.footprint || ''].filter(Boolean).join(' '))).slice(0, 3)
       });
     });
   });
@@ -778,11 +1074,15 @@ async function lookupComponents(projectRootInput, argv, deps) {
   if (args.help) {
     return {
       command: 'component lookup',
-      usage: 'component lookup [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--provider local|szlcsc] [--limit <n>]'
+      usage: 'component lookup [--file <schematic>] [--parsed <parsed.json>] [--ref <designator>] [--limit <n>]'
     };
   }
 
   const provider = normalizeComponentProvider(args.provider);
+  if (provider !== 'local') {
+    throw new Error('Component supplier search providers are not integrated yet; use local component lookup outputs.');
+  }
+
   const projectRoot = resolveProjectRoot(args.project || projectRootInput);
   const entries = loadParsedSchematicEntries(projectRoot, args, deps);
   const limited = buildLocalComponentMatches(entries, args).slice(0, args.limit || 10);
@@ -798,45 +1098,11 @@ async function lookupComponents(projectRootInput, argv, deps) {
     },
     components: limited,
     next_steps: limited.length > 0
-      ? ['Use szlcsc_queries as supplier search inputs, but keep supplier matches as candidates until package/datasheet are verified.', 'Prefer components whose datasheet field or explicit part number is present in the schematic.']
+      ? ['Use supplier_queries as manual search inputs, but keep supplier matches as candidates until package/datasheet are verified.', 'Prefer components whose datasheet field or explicit part number is present in the schematic.']
       : ['No components matched the current filter. Provide a schematic or parsed.json first, or remove the --ref filter.']
   };
 
-  if (limited.length === 0 || provider === 'local') {
-    return result;
-  }
-
-  if (provider !== 'szlcsc') {
-    throw new Error(`Unknown component lookup provider: ${provider}`);
-  }
-
-  const runtimeConfig = deps.runtimeConfig || deps.RUNTIME_CONFIG;
-  const projectConfig = deps.runtime.loadProjectConfig(projectRoot, runtimeConfig);
-  const integration = projectConfig && projectConfig.integrations
-    ? (projectConfig.integrations.szlcsc || projectConfig.integrations.lcsc || {})
-    : {};
-  const providerResult = await componentSzlcscProvider.lookupComponents(limited, {
-    projectRoot,
-    integration,
-    env: deps.env,
-    fetch: deps.fetch
-  });
-
-  return {
-    ...result,
-    provider,
-    integration: providerResult.integration,
-    components: providerResult.components,
-    next_steps: providerResult.components.some(item => Array.isArray(item.supplier_matches) && item.supplier_matches.length > 0)
-      ? [
-          'Treat supplier matches as candidates only; verify package, datasheet, and manufacturer before writing truth files.',
-          'If the best match exposes a datasheet URL, fetch it into docs/ before ingesting hardware facts.'
-        ]
-      : [
-          'LCSC returned no supplier candidates for the current query set. Try a more exact designator filter, or adjust query_terms in the schematic source.',
-          'If the part is an MCU or module, prefer verifying its vendor datasheet before treating supplier metadata as truth.'
-        ]
-  };
+  return result;
 }
 
 function querySchematic(projectRootInput, subject, argv, deps) {
@@ -999,9 +1265,10 @@ function querySchematic(projectRootInput, subject, argv, deps) {
 }
 
 function queryBoard(projectRootInput, subject, argv, deps) {
-  const args = Array.isArray(argv) ? parseBoardQueryArgs(argv) : (argv || {});
-  const runtime = deps.runtime;
   const normalizedSubject = String(subject || 'summary').trim() || 'summary';
+  const args = Array.isArray(argv)
+    ? parseBoardQueryArgs(argv)
+    : (argv || {});
   if (args.help) {
     return {
       command: `board ${normalizedSubject}`,

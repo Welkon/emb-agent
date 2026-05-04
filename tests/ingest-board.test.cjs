@@ -48,6 +48,8 @@ test('altium pcbdoc parser reads Board6 data directly from PcbDoc', () => {
   assert.ok(parsed.coverage.outlines >= 1);
   assert.ok(parsed.coverage.components > 0);
   assert.ok(parsed.coverage.pads > 0);
+  assert.ok(parsed.coverage.component_bodies > 0);
+  assert.ok(parsed.coverage.binary_regions > 0);
   assert.ok(parsed.coverage.texts > 0);
   assert.ok(parsed.coverage.tracks > 0);
   assert.ok(parsed.coverage.nets > 0);
@@ -59,6 +61,9 @@ test('altium pcbdoc parser reads Board6 data directly from PcbDoc', () => {
   assert.ok(parsed.components.some(component => component.designator === 'CON2'));
   assert.ok(parsed.texts.some(text => text.text === 'SC8F083AD716SP'));
   assert.ok(parsed.pads.some(pad => pad.component === 'U1' && pad.net === 'GND'));
+  assert.ok(parsed.pads.some(pad => pad.x_size_mm > 0 && pad.y_size_mm > 0 && pad.bounds));
+  assert.ok(parsed.component_bodies.some(body => body.component && body.model_name));
+  assert.ok(parsed.binary_regions.some(region => region.stream === 'Regions6' && region.point_count > 0 && region.raw_bounds));
   assert.ok(parsed.vias.every(via => via.diameter_mm === null || via.diameter_mm < 5));
 });
 
@@ -100,6 +105,8 @@ test('ingest board normalizes Altium PcbDoc into layout and advice artifacts', a
     assert.ok(ingested.summary.outlines >= 1);
     assert.ok(ingested.summary.components > 0);
     assert.ok(ingested.summary.pads > 0);
+    assert.ok(ingested.summary.component_bodies > 0);
+    assert.ok(ingested.summary.binary_regions > 0);
     assert.ok(ingested.summary.texts > 0);
     assert.ok(ingested.summary.tracks > 0);
     assert.ok(ingested.summary.nets > 0);
@@ -109,6 +116,8 @@ test('ingest board normalizes Altium PcbDoc into layout and advice artifacts', a
     const advice = JSON.parse(fs.readFileSync(path.join(tempProject, ingested.artifacts.board_advice), 'utf8'));
     assert.equal(layout.cfb.board_data_stream, 'Root Entry/Board6/Data');
     assert.ok(layout.components.some(component => component.designator === 'CON2'));
+    assert.ok(layout.pads.some(pad => pad.x_size_mm > 0 && pad.y_size_mm > 0 && pad.bounds));
+    assert.ok(layout.component_bodies.some(body => body.component && body.model_name));
     assert.ok(layout.texts.some(text => text.text === 'HT7533'));
     assert.equal(advice.status, 'analysis-only');
     assert.equal(advice.policy.blocking, false);
@@ -129,6 +138,7 @@ test('ingest board normalizes Altium PcbDoc into layout and advice artifacts', a
     const boardTexts = await captureCliJson(['--json', 'board', 'texts', '--parsed', ingested.artifacts.layout, '--name', 'HT7533']);
     assert.equal(boardTexts.command, 'board texts');
     assert.ok(boardTexts.texts.some(text => text.text === 'HT7533'));
+
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

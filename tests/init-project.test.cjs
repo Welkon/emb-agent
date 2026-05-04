@@ -183,15 +183,7 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(projectConfig.integrations.mineru.model_version, '');
     assert.equal(projectConfig.integrations.mineru.auto_api_page_threshold, 12);
     assert.equal(projectConfig.integrations.mineru.auto_api_file_size_kb, 4096);
-    assert.equal(projectConfig.integrations.szlcsc.enabled, false);
-    assert.equal(projectConfig.integrations.szlcsc.base_url, 'https://ips.lcsc.com');
-    assert.equal(projectConfig.integrations.szlcsc.api_key, '');
-    assert.equal(projectConfig.integrations.szlcsc.api_key_env, 'SZLCSC_API_KEY');
-    assert.equal(projectConfig.integrations.szlcsc.api_secret, '');
-    assert.equal(projectConfig.integrations.szlcsc.api_secret_env, 'SZLCSC_API_SECRET');
-    assert.equal(projectConfig.integrations.szlcsc.match_type, 'fuzzy');
-    assert.equal(projectConfig.integrations.szlcsc.page_size, 5);
-    assert.equal(projectConfig.integrations.szlcsc.max_matches_per_component, 5);
+    assert.equal(Object.prototype.hasOwnProperty.call(projectConfig.integrations, 'szlcsc'), false);
     assert.ok(projectRegistry.specs.some(item => item.name === 'connected-appliance'));
     assert.ok(projectRegistry.specs.some(item => item.name === 'iot-device-focus'));
     assert.ok(projectRegistry.specs.some(item => item.name === 'tasked-runtime-focus'));
@@ -204,9 +196,6 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'sensor-node-focus.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'motor-drive-focus.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs', 'baremetal-loop-focus.md')), false);
-    assert.equal(projectConfig.integrations.szlcsc.only_available, false);
-    assert.equal(projectConfig.integrations.szlcsc.currency, '');
-    assert.equal(projectConfig.integrations.szlcsc.timeout_ms, 15000);
     assert.equal(projectConfig.integrations.intent_router.enabled, true);
     assert.equal(projectConfig.integrations.intent_router.mode, 'agent');
     assert.equal(projectConfig.integrations.intent_router.provider, 'embedded-agent');

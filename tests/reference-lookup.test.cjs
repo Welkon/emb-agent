@@ -88,7 +88,74 @@ test('doc lookup finds local docs and schematic datasheet references', async () 
   }
 });
 
-test('component lookup builds szlcsc-style query inputs from schematic data', async () => {
+test('doc lookup extracts datasheet links from lceda search results', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-doc-lookup-lceda-'));
+  const requests = [];
+
+  initProject.main(['--project', tempProject]);
+
+  const result = await referenceLookupHelpers.lookupDocs(tempProject, [
+    '--keyword',
+    'C2040',
+    '--provider',
+    'lceda',
+    '--limit',
+    '3'
+  ], {
+    runtime: require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs')),
+    ingestSchematicCli: require(path.join(repoRoot, 'runtime', 'scripts', 'ingest-schematic.cjs')),
+    fetch: async url => {
+      requests.push(String(url));
+      return {
+        ok: true,
+        async json() {
+          return {
+            success: true,
+            code: 0,
+            result: [
+              {
+                product_code: 'C2040',
+                display_title: 'RP2040_C2040',
+                footprint: {
+                  display_title: 'LQFN-56_L7.0-W7.0-P0.4-EP'
+                },
+                attributes: {
+                  'LCSC Part Name': 'RP2040',
+                  'Supplier Part': 'C2040',
+                  Manufacturer: 'Raspberry Pi',
+                  'Manufacturer Part': 'RP2040',
+                  Datasheet: 'https://item.szlcsc.com/datasheet/RP2040/2392.html'
+                }
+              },
+              {
+                product_code: 'C-no-datasheet',
+                display_title: 'NO_DOC',
+                attributes: {
+                  'Supplier Part': 'C-no-datasheet'
+                }
+              }
+            ]
+          };
+        }
+      };
+    }
+  });
+
+  assert.equal(result.command, 'doc lookup');
+  assert.equal(result.provider, 'lceda');
+  assert.equal(result.result_mode, 'candidate-only');
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].provider, 'lceda');
+  assert.equal(result.candidates[0].source_kind, 'lceda-datasheet-url');
+  assert.equal(result.candidates[0].fetch_required, true);
+  assert.equal(result.candidates[0].location, 'https://item.szlcsc.com/datasheet/RP2040/2392.html');
+  assert.equal(result.candidates[0].component.lcsc_id, 'C2040');
+  assert.equal(result.candidates[0].component.manufacturer, 'Raspberry Pi');
+  assert.ok(requests.some(url => url.includes('/api/szlcsc/eda/product/list') && url.includes('wd=C2040')));
+  assert.ok(result.next_steps.some(step => step.includes('doc fetch --url')));
+});
+
+test('component lookup builds supplier query inputs from schematic data', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-component-lookup-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -129,7 +196,7 @@ test('component lookup builds szlcsc-style query inputs from schematic data', as
     assert.equal(result.components.length, 1);
     assert.equal(result.components[0].designator, 'U2');
     assert.ok(result.components[0].query_terms.includes('VS1838B'));
-    assert.ok(result.components[0].szlcsc_queries.some(item => item.includes('VS1838B')));
+    assert.ok(result.components[0].supplier_queries.some(item => item.includes('VS1838B')));
     assert.equal(result.components[0].confidence, 'high');
   } finally {
     process.chdir(currentCwd);
@@ -296,13 +363,10 @@ test('schematic query commands expose parsed components nets bom and raw objects
   }
 });
 
-test('component lookup enriches schematic components through szlcsc provider', async () => {
-  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-component-lookup-szlcsc-'));
+test('component lookup rejects supplier search providers', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-component-lookup-provider-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
-  const runtimeConfig = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs')).loadRuntimeConfig(
-    path.join(repoRoot, 'runtime')
-  );
 
   process.stdout.write = () => true;
 
@@ -328,73 +392,23 @@ test('component lookup enriches schematic components through szlcsc provider', a
       'utf8'
     );
 
-    const projectConfigPath = path.join(tempProject, '.emb-agent', 'project.json');
-    const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
-    projectConfig.integrations.szlcsc.enabled = true;
-    fs.writeFileSync(projectConfigPath, JSON.stringify(projectConfig, null, 2) + '\n', 'utf8');
-
     process.chdir(tempProject);
     await cli.main(['init']);
 
-    const seenRequests = [];
-    const result = await referenceLookupHelpers.lookupComponents(tempProject, [
-      '--file',
-      'docs/ir-board.json',
-      '--ref',
-      'U2',
-      '--provider',
-      'szlcsc'
-    ], {
-      runtime: require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs')),
-      runtimeConfig,
-      ingestSchematicCli: require(path.join(repoRoot, 'runtime', 'scripts', 'ingest-schematic.cjs')),
-      env: {
-        SZLCSC_API_KEY: 'demo-key',
-        SZLCSC_API_SECRET: 'demo-secret'
-      },
-      fetch: async url => {
-        seenRequests.push(String(url));
-        return {
-          ok: true,
-          async json() {
-            return {
-              code: 0,
-              success: true,
-              result: {
-                items: [
-                  {
-                    productCode: 'C12345',
-                    productModel: 'VS1838B',
-                    brandName: 'VISHAY',
-                    packageName: 'SIP-3',
-                    productDescEn: 'IR receiver module',
-                    datasheetUrl: 'https://datasheet.invalid/VS1838B.pdf',
-                    productUrl: 'https://www.lcsc.com/product-detail/C12345.html'
-                  }
-                ]
-              }
-            };
-          }
-        };
-      }
-    });
-
-    assert.equal(result.command, 'component lookup');
-    assert.equal(result.result_mode, 'candidate-only');
-    assert.equal(result.candidate_status, 'unverified');
-    assert.equal(result.candidate_kind, 'component');
-    assert.equal(result.provider, 'szlcsc');
-    assert.equal(result.integration.enabled, true);
-    assert.equal(result.components.length, 1);
-    assert.equal(result.components[0].designator, 'U2');
-    assert.ok(result.components[0].provider_queries.some(item => item.match_type === 'exact'));
-    assert.equal(result.components[0].supplier_matches.length, 1);
-    assert.equal(result.components[0].supplier_matches[0].lcsc_part_number, 'C12345');
-    assert.equal(result.components[0].supplier_matches[0].mpn, 'VS1838B');
-    assert.equal(result.components[0].supplier_matches[0].package, 'SIP-3');
-    assert.equal(result.components[0].supplier_matches[0].datasheet, 'https://datasheet.invalid/VS1838B.pdf');
-    assert.ok(seenRequests.some(url => url.includes('/rest/wmsc2agent/search/product')));
-    assert.ok(seenRequests.some(url => url.includes('signature=')));
+    await assert.rejects(
+      referenceLookupHelpers.lookupComponents(tempProject, [
+        '--file',
+        'docs/ir-board.json',
+        '--ref',
+        'U2',
+        '--provider',
+        'szlcsc'
+      ], {
+        runtime: require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs')),
+        ingestSchematicCli: require(path.join(repoRoot, 'runtime', 'scripts', 'ingest-schematic.cjs'))
+      }),
+      /supplier search providers are not integrated/
+    );
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

@@ -67,13 +67,15 @@ function createCommandGroupHelpers(deps) {
 
     if (cmd === 'doc' && subcmd === 'lookup') {
       const result = referenceLookupCli.lookupDocs(resolveProjectRoot(), rest);
-      rememberDocFiles(
-        (result.candidates || [])
-          .filter(item => item && item.fetch_required === false)
-          .map(item => item.location),
-        'doc lookup'
-      );
-      return result;
+      return Promise.resolve(result).then(resolved => {
+        rememberDocFiles(
+          (resolved.candidates || [])
+            .filter(item => item && item.fetch_required === false)
+            .map(item => item.location),
+          'doc lookup'
+        );
+        return resolved;
+      });
     }
 
     if (cmd === 'doc' && subcmd === 'fetch') {

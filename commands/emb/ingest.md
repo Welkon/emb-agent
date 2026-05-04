@@ -26,6 +26,8 @@ allowed-tools:
   `ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
 - If the PDF is still missing but the chip or schematic already hints at it, use:
   `doc lookup --chip <name> --vendor <name>`
+- To extract datasheet links from LCEDA/EasyEDA search results, use:
+  `doc lookup --keyword <part-or-lcsc-id> --provider lceda`
 - For schematics or schematic exports, prefer:
   `ingest schematic --file <path>`
 - For multi-page schematics exported as separate sheets, pass each sheet in order:
@@ -42,11 +44,10 @@ allowed-tools:
 - Board advice findings are review prompts only. Users may dismiss or ignore them after confirming schematic intent, datasheet layout guidance, current limits, mechanical constraints, and fabrication rules.
 - PCB layout evidence is optional. If no board file is available, continue and mark placement, routing, copper, connector-access, DFM, and EMI-layout checks as skipped rather than blocked.
 - For targeted PCB inspection after ingest, use `board summary --parsed <analysis.board-layout.json>`, `board pads --ref <designator> --parsed <analysis.board-layout.json>`, `board tracks --name <net> --parsed <analysis.board-layout.json>`, `board advice --parsed <analysis.board-layout.json>`, or `board raw --record <n> --parsed <analysis.board-layout.json>`.
+- For PCB layout automation, install/use a support skill such as `$altium-pcb` against the returned `analysis.board-layout.json`. emb-agent core keeps board ingestion and board queries read-only.
 - For normalized part-search inputs from a schematic, use:
   `component lookup --file <path>`
-- For explicit supplier candidates from SZLCSC / LCSC, use:
-  `component lookup --file <path> --provider szlcsc`
-- `doc lookup` and `component lookup` return `result_mode: candidate-only`; they surface evidence or supplier candidates and never write truth by themselves.
+- `doc lookup` and `component lookup` return `result_mode: candidate-only`; they surface evidence or manual search inputs and never write truth by themselves.
 
 ## Prefer The Lightest Truth Path
 
