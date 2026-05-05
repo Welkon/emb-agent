@@ -238,6 +238,8 @@ function buildStatusLine(input) {
   }
   if (taskCount > 0) {
     infoParts.push(`${taskCount} task(s)`);
+  } else if (workflowState !== 'unknown' && workflowState !== 'hw_declared') {
+    infoParts.push(colorize(33, 'no task'));
   }
 
   const lines = [];
