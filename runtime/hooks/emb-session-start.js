@@ -480,6 +480,16 @@ function runHook(rawInput) {
           docCacheLines.push('Pin mappings, registers, and peripheral specs are in parse.md. Read it before external tools.');
         }
       }
+      const schematicsDir = path.join(runtime.getProjectExtDir(projectRoot), 'cache', 'schematics');
+      if (fs.existsSync(schematicsDir)) {
+        fs.readdirSync(schematicsDir, { withFileTypes: true }).forEach(entry => {
+          if (!entry.isDirectory()) return;
+          const netlistPath = path.join(schematicsDir, entry.name, 'analysis.visual-netlist.json');
+          if (fs.existsSync(netlistPath)) {
+            docCacheLines.push(`  .emb-agent/cache/schematics/${entry.name}/analysis.visual-netlist.json — pin-to-net mapping (read for exact U2 pin connections)`);
+          }
+        });
+      }
     } catch { /* doc cache read is optional */ }
 
     const message = buildSessionContext(projectRoot, start, resume, {
