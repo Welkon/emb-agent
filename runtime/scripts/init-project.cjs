@@ -868,7 +868,7 @@ function buildProjectAgentsGuide(language) {
   ].join('\n');
 }
 
-function ensureProjectAgentsGuide(projectRoot, force, language) {
+function ensureProjectAgentsGuide(projectRoot, force, language, runtimeTarget) {
   const filePath = path.join(projectRoot, PROJECT_AGENTS_PATH);
   const existedBefore = fs.existsSync(filePath);
 
@@ -881,7 +881,14 @@ function ensureProjectAgentsGuide(projectRoot, force, language) {
     };
   }
 
-  fs.writeFileSync(filePath, buildProjectAgentsGuide(language), 'utf8');
+  const content = buildProjectAgentsGuide(language);
+  fs.writeFileSync(filePath, content, 'utf8');
+
+  const claudePath = path.join(projectRoot, 'CLAUDE.md');
+  const isClaude = String(runtimeTarget || '').toLowerCase() === 'claude';
+  if (isClaude) {
+    fs.writeFileSync(claudePath, content, 'utf8');
+  }
 
   return {
     path: PROJECT_AGENTS_PATH,
@@ -1219,7 +1226,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   const templateIndex = buildTemplateIndex(workflowCatalog);
   const truthPlan = buildTruthPlan();
   const bootstrapDocsPlan = buildBootstrapDocsPlan(projectRoot, effectiveProjectConfig, workflowCatalog);
-  const projectAgentsGuide = ensureProjectAgentsGuide(projectRoot, force, initOptions.language);
+  const projectAgentsGuide = ensureProjectAgentsGuide(projectRoot, force, initOptions.language, initOptions.runtime);
   const worktreeConfig = ensureWorktreeConfig(projectRoot, force);
   let workflowRegistryImport = null;
 
