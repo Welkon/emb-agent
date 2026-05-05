@@ -125,6 +125,24 @@ function countTasks(projectRoot) {
     .length;
 }
 
+function countWikiPages(projectRoot) {
+  const wikiDir = path.join(projectRoot, '.emb-agent', 'wiki');
+  if (!fs.existsSync(wikiDir) || !fs.statSync(wikiDir).isDirectory()) {
+    return 0;
+  }
+  let count = 0;
+  function walk(dir) {
+    fs.readdirSync(dir, { withFileTypes: true }).forEach(entry => {
+      if (entry.isDirectory()) { walk(path.join(dir, entry.name)); return; }
+      if (entry.name.endsWith('.md') && entry.name !== 'index.md' && entry.name !== 'log.md') {
+        count += 1;
+      }
+    });
+  }
+  walk(wikiDir);
+  return count;
+}
+
 function getSessionCheckpoint(projectRoot, branch) {
   try {
     return sessionReportStore.buildSessionReportContinuity(
@@ -183,6 +201,7 @@ function buildStatusLine(input) {
   const developer = getDeveloper(projectRoot);
   const branch = getGitBranch(projectRoot);
   const taskCount = countTasks(projectRoot);
+  const wikiPageCount = countWikiPages(projectRoot);
   const packageState = getProjectPackageState(projectRoot);
   const sessionCheckpoint = getSessionCheckpoint(projectRoot, branch);
   const graphState = getKnowledgeGraphState(projectRoot);
@@ -225,6 +244,11 @@ function buildStatusLine(input) {
     infoParts.push(colorize(33, 'graph stale'));
   } else {
     infoParts.push(colorize(90, 'graph missing'));
+  }
+  if (wikiPageCount === 0) {
+    infoParts.push(colorize(90, 'wiki empty'));
+  } else {
+    infoParts.push(colorize(36, `wiki ${wikiPageCount}`));
   }
   const packageName = task && task.package
     ? task.package
