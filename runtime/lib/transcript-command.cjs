@@ -460,7 +460,7 @@ function createTranscriptCommandHelpers(deps) {
 
   function isHeadingLikeLine(line) {
     const body = normalizeLine(line);
-    return body.length <= 24 && /逻辑$/u.test(body);
+    return body.length <= 24 && /(?:logic|approach|summary|conclusion|overview|analysis|方案|逻辑|总结)$/iu.test(body);
   }
 
   function buildAnalysisEntries(messages) {
@@ -514,41 +514,41 @@ function createTranscriptCommandHelpers(deps) {
     const pinStates = [];
     const powerSleepChecklist = [];
 
-    const hardwarePattern = /(R[ABCD]\d|P[ABCD]\d|PWM|USB|Type-?C|VBUS|高电平|低电平|高阻|开漏|比较器|低功耗|uA|μA|mA|\d(?:\.\d+)?V)/iu;
-    const questionPattern = /([?？]$|有没有|会不会|多少|确认|查询|是不是|应该.*吗|行吗)/iu;
-    const riskPattern = /(问题|偏高|偶发|失败|风险|漏电|倒灌|反灌|无法|不能)/iu;
-    const powerPattern = /(低功耗|sleep|休眠|Timer|PWM|比较器|ADC|上拉|下拉|uA|μA|待机功耗)/iu;
-    const factStatePattern = /(改成|接|输出|检测|实测|已经|设置|达到|亮|灭|高阻|下拉|上拉|导致|判定|插入|拔|关断|为)/iu;
+    const PIN_PATTERN = /\bR[ABCD]\d\b|\bP[ABCD]\d\b/giu;
+    const HARDWARE_PATTERN = /(R[ABCD]\d|P[ABCD]\d|PWM|USB|Type-?C|VBUS|uA|μA|mA|\d(?:\.\d+)?V)/iu;
+    const QUESTION_PATTERN = /[?？]$/iu;
+    const POWER_PATTERN = /(sleep|Timer|PWM|ADC|uA|μA)/iu;
+
+    // Chinese-language transcript patterns — replace for other languages
+    const ZH_FACT = /(高电平|低电平|高阻|开漏|比较器|低功耗|改成|接|输出|检测|实测|已经|设置|达到|亮|灭|下拉|上拉|导致|判定|插入|拔|关断|为)/iu;
+    const ZH_QUESTION = /(有没有|会不会|多少|确认|查询|是不是|应该.*吗|行吗)/iu;
+    const ZH_RISK = /(问题|偏高|偶发|失败|风险|漏电|倒灌|反灌|无法|不能)/iu;
+    const ZH_POWER = /(低功耗|休眠|比较器|上拉|下拉|待机功耗)/iu;
 
     entries.forEach(({ line, role }) => {
       const fromAssistant = role === 'assistant';
       const fromUserLike = !fromAssistant;
-      const isQuestion = questionPattern.test(line);
+      const isQuestion = QUESTION_PATTERN.test(line) || ZH_QUESTION.test(line);
       const isCodePaste = isCodePasteLine(line);
-
-      if (line.includes('#define') && /(不要|这个不要)/iu.test(line)) {
-        const macroMatch = line.match(/#define\s+(\w+)/);
-        if (macroMatch) preferences.push(`不要 ${macroMatch[1]} 宏`);
-      }
 
       if (isCodePaste) {
         return;
       }
 
-      if (fromUserLike && !isQuestion && !isHeadingLikeLine(line) && includesAny(line, [hardwarePattern]) && includesAny(line, [factStatePattern])) {
+      if (fromUserLike && !isQuestion && !isHeadingLikeLine(line) && includesAny(line, [HARDWARE_PATTERN, ZH_FACT])) {
         hardwareFacts.push(line);
       }
       if (fromUserLike && isQuestion) {
         questions.push(line);
       }
-      if (fromUserLike && riskPattern.test(line)) {
+      if (fromUserLike && ZH_RISK.test(line)) {
         risks.push(line);
       }
-      if (powerPattern.test(line)) {
+      if (POWER_PATTERN.test(line) || ZH_POWER.test(line)) {
         powerSleepChecklist.push(line);
       }
 
-      const pinMatches = line.match(/\bR[ABCD]\d\b|\bP[ABCD]\d\b/giu) || [];
+      const pinMatches = line.match(PIN_PATTERN) || [];
       pinMatches.forEach(pin => {
         pinStates.push(`${pin.toUpperCase()}: ${line}`);
       });
