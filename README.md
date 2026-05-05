@@ -32,12 +32,14 @@ emb-agent works with **Claude Code**, **Codex**, and **Cursor**. The same `.emb-
 |---|---|
 | **Hardware truth files** | Write your MCU model, package, pins, and peripherals once in `.emb-agent/hw.yaml`. The AI reads them every session. |
 | **Requirements file** | Keep project goals, interfaces, and constraints in `.emb-agent/req.yaml` so the AI knows what you're building. |
-| **Simple command flow** | Most projects just need `declare hardware`, `next`, and the execution loop. |
-| **Document ingestion** | Feed in datasheets and schematics — the AI extracts chip facts and writes them into your truth files. |
-| **Chip-specific logic** | Timer calculations, register formulas, and vendor-specific rules live in pluggable modules, not in the core workflow. |
-| **Built-in verification** | Every task closes with a review step, not just "code compiles and looks right." |
-| **Knowledge graph** | Auto-generated map connecting chips, registers, formulas, wiki pages, and tasks — so the AI can trace relationships. |
-| **Auto-startup** | SessionStart hook injects project state automatically. You don't need to run a setup command. |
+| **Simple command flow** | Most projects run `scan → plan → do → verify`. Shortcuts like `emb-agent scan` / `debug` / `do` skip the `capability run` prefix. |
+| **Built-in task tracking** | Tasks are created with `task add`, tracked in `.emb-agent/tasks/`, and linked to worktrees and PRs. |
+| **Document ingestion** | Feed in datasheets and schematics — AI extracts chip facts using MinerU (auto-fallback from agent to v4 API). |
+| **Chip-specific logic** | PWM, timer, ADC, comparator calculators live in generated adapters with machine-searchable register params. |
+| **Built-in verification** | Every task closes with `review → verify`, not just "code compiles and looks right." |
+| **Knowledge graph + Wiki** | Auto-generated graph connects chips, registers, formulas, and tasks. Wiki pages auto-populate stubs on graph build. |
+| **Auto-startup** | SessionStart hook injects project state automatically. Statusline shows hardware state, task count, wiki pages, graph freshness. |
+| **Reply language** | `--lang zh` flag sets the AI's reply language in AGENTS.md. |
 
 ### Supported AI tools
 
@@ -60,7 +62,7 @@ npx emb-agent
 This opens an interactive installer. It asks which AI tool you use, then sets everything up. For a one-command install with Claude Code:
 
 ```bash
-npx emb-agent --claude --local --developer "Your Name"
+npx emb-agent --claude --local --developer "Your Name" --lang zh
 ```
 
 ### 2. Open a new session
@@ -86,6 +88,16 @@ Describe your goals and constraints in .emb-agent/req.yaml, then run "next"
 ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware
 # or for schematics
 ingest schematic --file schematic.pdf
+```
+
+**Capability shortcuts (after bootstrap):**
+```bash
+emb-agent scan      # analyze / triage
+emb-agent plan      # plan the approach
+emb-agent do        # implement (needs active task)
+emb-agent debug     # debug / investigate
+emb-agent review    # code review
+emb-agent verify    # close and verify
 ```
 
 [Full onboarding guide →](./docs/quick-start.md)

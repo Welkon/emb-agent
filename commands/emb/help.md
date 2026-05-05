@@ -22,10 +22,11 @@ Output the emb-agent help summary below and nothing else.
 
 ## Task Intake
 
-- If the target files and acceptance check are already explicit, use `task add <summary>` and move into `capability run plan` or `next`.
-- If requirements, hardware truth, or the changed surface are still unclear, use `task add <summary>` first and let `capability run scan` converge the task before `capability run plan` or `capability run do`.
-- After `task add`, use the generated task `prd.md` as the lightweight convergence point: make goal, constraints, acceptance, and open questions explicit before choosing `capability run scan` or `capability run plan`.
-- If the change crosses timing, concurrency, release, or interface boundaries, expect the safer path to be `task add -> capability run scan -> capability run plan -> capability run review -> capability run verify`.
+- If the target files and acceptance check are already explicit, use `task add <summary>` and move into `plan` or `next`.
+- If requirements, hardware truth, or the changed surface are still unclear, use `task add <summary>` first and let `scan` converge the task before `plan` or `do`.
+- After `task add`, use the generated task `prd.md` as the lightweight convergence point: make goal, constraints, acceptance, and open questions explicit before choosing `scan` or `plan`.
+- If the change crosses timing, concurrency, release, or interface boundaries, expect the safer path to be `task add -> scan -> plan -> review -> verify`.
+- Capability shortcuts: `scan`, `plan`, `do`, `debug`, `review`, `verify` — equivalent to `capability run <name>`.
 
 ## Public Commands
 
@@ -40,15 +41,15 @@ The public command surface is intentionally small and grouped by default path.
 
 ### Execute Current Work
 
-- `$emb-capability run scan`
-- `$emb-capability run plan`
-- `$emb-capability run do`
-- `$emb-capability run debug`
+- `$emb-scan`  (`emb-agent scan`)
+- `$emb-plan`  (`emb-agent plan`)
+- `$emb-do`    (`emb-agent do`)
+- `$emb-debug` (`emb-agent debug`)
 
 ### Close And Handoff
 
-- `$emb-capability run review`
-- `$emb-capability run verify`
+- `$emb-review`  (`emb-agent review`)
+- `$emb-verify`  (`emb-agent verify`)
 - `$emb-pause`
 - `$emb-resume`
 
