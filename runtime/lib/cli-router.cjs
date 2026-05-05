@@ -1876,6 +1876,10 @@ function createCliRouter(deps) {
     const actionCommandResult = handleActionCommands(cmd, subcmd, rest);
     if (actionCommandResult !== undefined) {
       if (cmd === 'capability' && subcmd === 'run') {
+        const capName = rest[0] || '';
+        updateSession(current => {
+          current.last_command = `capability run ${capName}`.trim();
+        });
         emitCommandResult({ cmd, subcmd }, runWithTerminalUi({
           cmd,
           subcmd,
