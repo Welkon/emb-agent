@@ -187,6 +187,7 @@ function createInstallHelpers(deps) {
       local: false,
       runtime: '',
       developer: '',
+      language: '',
       profile: 'core',
       color: 'auto',
       interactive: false,
@@ -258,6 +259,11 @@ function createInstallHelpers(deps) {
       }
       if (token === '--developer') {
         result.developer = (argv[index + 1] || '').trim();
+        index += 1;
+        continue;
+      }
+      if (token === '--lang' || token === '--language') {
+        result.language = (argv[index + 1] || '').trim().toLowerCase();
         index += 1;
         continue;
       }
@@ -2721,6 +2727,9 @@ function createInstallHelpers(deps) {
     }
     if (args.developer) {
       initArgs.push('--user', args.developer);
+    }
+    if (args.language) {
+      initArgs.push('--lang', args.language);
     }
     if (args.registry) {
       initArgs.push('--registry', args.registry);

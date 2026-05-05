@@ -222,6 +222,7 @@ function parseArgs(argv) {
     registry: '',
     registryBranch: '',
     registrySubdir: '',
+    language: '',
     force: false,
     help: false
   };
@@ -287,6 +288,11 @@ function parseArgs(argv) {
     if (token === '--user' || token === '-u') {
       result.user = argv[index + 1] || '';
       result.userSet = true;
+      index += 1;
+      continue;
+    }
+    if (token === '--lang' || token === '--language') {
+      result.language = (argv[index + 1] || '').trim().toLowerCase();
       index += 1;
       continue;
     }
@@ -823,13 +829,18 @@ function buildTruthPlan() {
   ];
 }
 
-function buildProjectAgentsGuide() {
+function buildProjectAgentsGuide(language) {
+  const lang = String(language || '').trim().toLowerCase();
+  const langLine = lang && lang !== 'en'
+    ? [`Reply language: ${lang === 'zh' ? 'Chinese (Simplified)' : lang}. Always reply in this language.`, '']
+    : [];
   return [
     '<!-- EMB-AGENT:START -->',
     '# emb-agent Instructions',
     '',
     'These instructions are for AI assistants working in this project.',
     '',
+    ...langLine,
     'Use the `start` command when starting a new session to:',
     '- Initialize the project if needed',
     '- Understand current project truth',
@@ -857,7 +868,7 @@ function buildProjectAgentsGuide() {
   ].join('\n');
 }
 
-function ensureProjectAgentsGuide(projectRoot, force) {
+function ensureProjectAgentsGuide(projectRoot, force, language) {
   const filePath = path.join(projectRoot, PROJECT_AGENTS_PATH);
   const existedBefore = fs.existsSync(filePath);
 
@@ -870,7 +881,7 @@ function ensureProjectAgentsGuide(projectRoot, force) {
     };
   }
 
-  fs.writeFileSync(filePath, buildProjectAgentsGuide(), 'utf8');
+  fs.writeFileSync(filePath, buildProjectAgentsGuide(language), 'utf8');
 
   return {
     path: PROJECT_AGENTS_PATH,
@@ -1208,7 +1219,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   const templateIndex = buildTemplateIndex(workflowCatalog);
   const truthPlan = buildTruthPlan();
   const bootstrapDocsPlan = buildBootstrapDocsPlan(projectRoot, effectiveProjectConfig, workflowCatalog);
-  const projectAgentsGuide = ensureProjectAgentsGuide(projectRoot, force);
+  const projectAgentsGuide = ensureProjectAgentsGuide(projectRoot, force, initOptions.language);
   const worktreeConfig = ensureWorktreeConfig(projectRoot, force);
   let workflowRegistryImport = null;
 
