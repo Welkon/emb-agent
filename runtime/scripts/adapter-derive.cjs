@@ -647,6 +647,54 @@ function normalizeStringList(values) {
   );
 }
 
+function buildAutoBindingParams(toolName, rawBinding) {
+  const notes = normalizeStringList(rawBinding && rawBinding.notes);
+  const formulas = (rawBinding && rawBinding.formulas && typeof rawBinding.formulas === 'object')
+    ? rawBinding.formulas : {};
+  const params = {};
+
+  if (toolName === 'pwm-calc') {
+    const prescalerVals = [];
+    const psMatch = notes.join(' ').match(/CLKDIV\s*[∈{]\s*([\d,\s]+)\s*[}]?/i);
+    if (psMatch) {
+      psMatch[1].split(/[\s,]+/).forEach(v => { const n = Number(v); if (n > 0) prescalerVals.push(n); });
+    }
+    const t2Match = notes.join(' ').match(/T2CKPS\s*[∈{]\s*([\d,\s]+)\s*[}]?/i);
+    if (t2Match) {
+      t2Match[1].split(/[\s,]+/).forEach(v => { const n = Number(v); if (n > 0 && !prescalerVals.includes(n)) prescalerVals.push(n); });
+    }
+
+    if (prescalerVals.length > 0) {
+      params.prescaler_options = prescalerVals.sort((a, b) => a - b);
+    }
+
+    const resMatch = notes.join(' ').match(/PWM.*resolution.*?(\d+)\s*-?\s*bit/i);
+    if (resMatch) {
+      const bits = Number(resMatch[1]);
+      if (bits > 0) {
+        params.period_bits = [bits];
+        params.counter_bits = [bits];
+        params.period_max = (2 ** bits) - 1;
+      }
+    }
+
+    const pwmtMatch = notes.join(' ').match(/PWMT\s*[∈[]\s*\[\s*0\s*,\s*(\d+)\s*\]/i);
+    if (pwmtMatch && !params.period_max) {
+      const max = Number(pwmtMatch[1]);
+      if (max > 0) params.period_max = max;
+    }
+  }
+
+  if (toolName === 'timer-calc') {
+    const bitMatch = notes.join(' ').match(/(\d+)\s*-bit/i);
+    if (bitMatch) {
+      params.counter_bits = [Number(bitMatch[1])];
+    }
+  }
+
+  return params;
+}
+
 function normalizeProvidedBindings(bindings, fallbackDevice) {
   const input = bindings && typeof bindings === 'object' && !Array.isArray(bindings) ? bindings : {};
   const output = {};
@@ -670,13 +718,15 @@ function normalizeProvidedBindings(bindings, fallbackDevice) {
       return;
     }
 
+    const baseParams =
+      rawBinding.params && typeof rawBinding.params === 'object' && !Array.isArray(rawBinding.params)
+        ? rawBinding.params
+        : {};
+    const autoParams = buildAutoBindingParams(normalizedTool, rawBinding);
     output[normalizedTool] = {
       algorithm: algorithm || `${fallbackDevice}-${slugSuffix(normalizedTool)}`,
       draft: true,
-      params:
-        rawBinding.params && typeof rawBinding.params === 'object' && !Array.isArray(rawBinding.params)
-          ? rawBinding.params
-          : {},
+      params: Object.keys(autoParams).length > 0 ? { ...autoParams, ...baseParams } : baseParams,
       evidence: normalizeStringList(rawBinding.evidence),
       notes: buildBindingNotes(
         normalizeStringList(rawBinding.notes),
