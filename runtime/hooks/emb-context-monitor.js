@@ -185,6 +185,55 @@ function shouldEmit(projectRoot, level) {
   return true;
 }
 
+const GRAPH_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
+
+function getGraphDebouncePath(projectRoot) {
+  const key = crypto.createHash('sha1').update(projectRoot).digest('hex');
+  return path.join(os.tmpdir(), `emb-agent-graph-${key}.json`);
+}
+
+function maybeRefreshStaleGraph(projectRoot) {
+  try {
+    const graphPath = path.join(projectRoot, '.emb-agent', 'graph', 'graph.json');
+    if (!fs.existsSync(graphPath)) {
+      return '';
+    }
+
+    const debouncePath = getGraphDebouncePath(projectRoot);
+    let lastRefresh = 0;
+    if (fs.existsSync(debouncePath)) {
+      try {
+        lastRefresh = Number(JSON.parse(fs.readFileSync(debouncePath, 'utf8')).last_refresh || 0);
+      } catch {
+        lastRefresh = 0;
+      }
+    }
+
+    if (Date.now() - lastRefresh < GRAPH_REFRESH_COOLDOWN_MS) {
+      return '';
+    }
+
+    const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
+    const knowledgeGraphState = require('../lib/knowledge-graph-state.cjs');
+    const freshness = knowledgeGraphState.readKnowledgeGraphFreshness(projectRoot, graph, {
+      fs,
+      path,
+      getProjectExtDir: (root) => path.join(root, '.emb-agent')
+    });
+
+    if (!freshness.stale) {
+      return '';
+    }
+
+    const cli = require(path.join(__dirname, '..', 'bin', 'emb-agent.cjs'));
+    cli.handleKnowledgeCommands('knowledge', 'graph', ['build']);
+    fs.writeFileSync(debouncePath, JSON.stringify({ last_refresh: Date.now() }), 'utf8');
+    return 'Knowledge graph auto-refreshed (tracked files changed mid-session)';
+  } catch {
+    return '';
+  }
+}
+
 function runHook(rawInput) {
   return hookDispatch.runHookWithProjectContext(rawInput, ({ data, projectRoot }) => {
     const cli = require(path.join(__dirname, '..', 'bin', 'emb-agent.cjs'));
@@ -194,7 +243,8 @@ function runHook(rawInput) {
     const bridgeMetrics = liveMetrics ? writeBridge(projectRoot, liveMetrics) : readBridge(projectRoot);
     const metricsMessage = buildMetricsMessage(bridgeMetrics, contextHygiene);
     const sessionMessage = buildSessionMessage(contextHygiene);
-    const message = metricsMessage || sessionMessage;
+    const graphMessage = maybeRefreshStaleGraph(projectRoot);
+    const message = metricsMessage || sessionMessage || graphMessage;
 
     if (!message) {
       return '';
@@ -207,7 +257,7 @@ function runHook(rawInput) {
       level = 'warning';
     }
 
-    if (!shouldEmit(projectRoot, level)) {
+    if (!shouldEmit(projectRoot, level) && !graphMessage) {
       return '';
     }
 

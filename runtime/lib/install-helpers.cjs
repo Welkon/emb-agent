@@ -2798,21 +2798,35 @@ function createInstallHelpers(deps) {
           };
     }
 
+    function visibleWidth(text) {
+      return String(text).replace(/\x1b\[[0-9;]*m/g, '').length;
+    }
+
+    function drawBoxLine(left, fill, right, targetWidth) {
+      const leftVis = visibleWidth(left);
+      const rightVis = visibleWidth(right);
+      const fillCount = Math.max(0, targetWidth - leftVis - rightVis);
+      return `${left}${fill.repeat(fillCount)}${right}`;
+    }
+
     function announce(target, args, targetDir, installProfile) {
       if (!ui || !ui.enabled) {
         return;
       }
 
+      const content = `${chalk.bold(chalk.cyan('  │'))}  ${chalk.bold('emb-agent')} ${chalk.dim(`v${packageVersion}`)}  ${chalk.dim('— hardware-first AI workflow')}  ${chalk.bold(chalk.cyan('│'))}`;
+      const contentWidth = visibleWidth(content);
+
+      const topLeft = chalk.bold(chalk.cyan('  ╭'));
+      const topRight = chalk.bold(chalk.cyan('╮'));
+      const bottomLeft = chalk.bold(chalk.cyan('  ╰'));
+      const bottomRight = chalk.bold(chalk.cyan('╯'));
+      const fill = '─';
+
       writeTerminalLine('');
-      writeTerminalLine(
-        `${chalk.bold(chalk.cyan('  ╭──────────────────────────────────────────╮'))}`
-      );
-      writeTerminalLine(
-        `${chalk.bold(chalk.cyan('  │'))}  ${chalk.bold('emb-agent')} ${chalk.dim(`v${packageVersion}`)}  ${chalk.dim('— hardware-first AI workflow')}  ${chalk.bold(chalk.cyan('│'))}`
-      );
-      writeTerminalLine(
-        `${chalk.bold(chalk.cyan('  ╰──────────────────────────────────────────╯'))}`
-      );
+      writeTerminalLine(drawBoxLine(topLeft, fill, topRight, contentWidth));
+      writeTerminalLine(content);
+      writeTerminalLine(drawBoxLine(bottomLeft, fill, bottomRight, contentWidth));
       writeTerminalLine('');
       writeTerminalLine(`${chalk.cyan('  Runtime:')}  ${chalk.white(target.label)}`);
       writeTerminalLine(`${chalk.cyan('  Location:')} ${chalk.white(args.local ? 'project (local)' : 'global config')}`);
@@ -2829,7 +2843,7 @@ function createInstallHelpers(deps) {
       writeTerminalLine('');
     }
 
-    function complete(target, runtimeDir, projectBootstrap, installProfile) {
+    function complete(target, targetDir, runtimeDir, projectBootstrap, installProfile) {
       if (!ui || !ui.enabled) {
         return;
       }
@@ -3078,11 +3092,30 @@ function createInstallHelpers(deps) {
     if (Array.isArray(args.skillSources) && args.skillSources.length > 0) {
       const skillsActivity = reporter.activity('Installing skill bundles');
       try {
-        installedSkillBundles = await installInitialSkills(runtimeDir, args);
+        const results = await installInitialSkills(runtimeDir, args);
+        installedSkillBundles = results.filter(r => r.status === 'ok');
+        const alreadyInstalled = results.filter(r => r.status === 'already_installed');
+        const updatesAvailable = results.filter(r => r.status === 'update_available');
+        const newCount = installedSkillBundles.length;
+        const skipCount = alreadyInstalled.length;
+        const updateCount = updatesAvailable.length;
+        const parts = [];
+        if (newCount > 0) {
+          parts.push(`${newCount} skill bundle${newCount > 1 ? 's' : ''} installed`);
+        }
+        if (skipCount > 0) {
+          parts.push(`${skipCount} up to date`);
+        }
+        if (updateCount > 0) {
+          const labels = updatesAvailable.map(r => {
+            const from = r.installed_version || '?';
+            const to = r.plugin.version;
+            return `${r.plugin.name} (v${from} → v${to})`;
+          });
+          parts.push(`update available: ${labels.join(', ')} (use --force to update)`);
+        }
         skillsActivity.succeed(
-          installedSkillBundles.length > 0
-            ? `${installedSkillBundles.length} skill bundle${installedSkillBundles.length > 1 ? 's' : ''} installed`
-            : 'No skill bundles selected'
+          parts.length > 0 ? parts.join(', ') : 'No skill bundles selected'
         );
       } catch (error) {
         skillsActivity.fail('Installing initial skill bundles', error);
@@ -3149,7 +3182,7 @@ function createInstallHelpers(deps) {
       `  ${projectBootstrap ? 'Then continue with the recommended next command from the injected startup context.' : 'Then continue with the recommended next command.'}`
     ];
 
-    reporter.complete(target, runtimeDir, projectBootstrap, installProfile);
+    reporter.complete(target, targetDir, runtimeDir, projectBootstrap, installProfile);
     if (!reporter.enabled) {
       process.stdout.write(lines.join('\n') + '\n');
     }

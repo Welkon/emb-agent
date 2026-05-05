@@ -1208,6 +1208,10 @@ function createCliRouter(deps) {
         return [s, 'list', ...r];
       }
 
+      if (c === 'ingest' && s === 'document') {
+        return ['ingest', 'doc', ...r];
+      }
+
       return rawArgs;
     }
 
@@ -1418,6 +1422,22 @@ function createCliRouter(deps) {
     }
 
     if (cmd === 'ingest') {
+      if (!subcmd || subcmd === '--help' || subcmd === '-h') {
+        emitUsage({
+          ...(subcmd
+            ? {}
+            : {
+                status: 'error',
+                error: {
+                  code: 'missing-domain',
+                  message: 'ingest requires a domain (doc, apply, schematic, board, or a truth domain)',
+                  command: 'ingest'
+                }
+              })
+        });
+        process.exitCode = subcmd ? 0 : 1;
+        return;
+      }
       emitCommandResult({ cmd, subcmd }, await runWithTerminalUi({
         cmd,
         subcmd,

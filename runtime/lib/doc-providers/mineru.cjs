@@ -232,20 +232,22 @@ async function uploadFile(fetchImpl, uploadUrl, filePath) {
 }
 
 function normalizeAgentDonePayload(payload) {
-  return payload && payload.full_md_url ? payload : null;
+  const data = (payload && payload.data) || payload || {};
+  return data.markdown_url ? data : null;
 }
 
 async function pollAgentTask(fetchImpl, baseUrl, taskId, timeoutMs, pollIntervalMs) {
   const startedAt = Date.now();
 
   while (true) {
-    const payload = await requestJson(fetchImpl, `${baseUrl}/parse/${taskId}`, {
+    const raw = await requestJson(fetchImpl, `${baseUrl}/parse/${taskId}`, {
       method: 'GET'
     });
 
+    const payload = (raw && raw.data) || raw || {};
     const state = String(payload.state || '').toLowerCase();
     if (state === 'done') {
-      return payload;
+      return raw;
     }
     if (state === 'error' || state === 'failed') {
       throw new Error(payload.err_msg || payload.message || `MinerU task failed: ${taskId}`);
@@ -464,7 +466,7 @@ async function parseDocumentAgent(request, integration, options) {
         : Boolean(request.enable_formula)
   };
 
-  const created = await requestJson(fetchImpl, `${baseUrl}/parse/file`, {
+  const raw = await requestJson(fetchImpl, `${baseUrl}/parse/file`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json'
@@ -472,8 +474,13 @@ async function parseDocumentAgent(request, integration, options) {
     body: JSON.stringify(createPayload)
   });
 
+  const created = (raw && raw.data) || raw || {};
   if (!created.task_id || !created.file_url) {
-    throw new Error('MinerU did not return task_id/file_url');
+    if (isAgentLimitResponse(raw)) {
+      throw new Error(raw.msg || `MinerU agent limit exceeded (code ${raw.code})`);
+    }
+    const preview = JSON.stringify(raw).slice(0, 500);
+    throw new Error(`MinerU did not return task_id/file_url. Response: ${preview}`);
   }
 
   await uploadFile(fetchImpl, created.file_url, request.file_path);
@@ -488,11 +495,11 @@ async function parseDocumentAgent(request, integration, options) {
     )
   );
 
-  if (!completed || !completed.full_md_url) {
-    throw new Error('MinerU result missing full_md_url');
+  if (!completed || !completed.markdown_url) {
+    throw new Error('MinerU result missing markdown_url');
   }
 
-  const markdown = await requestText(fetchImpl, completed.full_md_url, { method: 'GET' });
+  const markdown = await requestText(fetchImpl, completed.markdown_url, { method: 'GET' });
 
   return {
     provider: 'mineru',
@@ -567,17 +574,36 @@ async function parseDocumentApi(request, integration, options) {
   };
 }
 
+function isAgentLimitError(err) {
+  const msg = String(err && err.message ? err.message : err || '');
+  return /exceeds.*(API|lightweight|agent).*limit|page.*count.*exceeds|file.*size.*exceeds/i.test(msg);
+}
+
+function isAgentLimitResponse(raw) {
+  const code = Number(raw && raw.code);
+  return code === -30001 || code === -30003;
+}
+
 async function parseDocument(request, integration, options) {
   const fetchImpl = (options && options.fetchImpl) || global.fetch;
   if (typeof fetchImpl !== 'function') {
     throw new Error('Global fetch is required for MinerU provider');
   }
 
-  if (resolveMineruMode(request, integration, options) === 'api') {
+  const mode = resolveMineruMode(request, integration, options);
+  if (mode === 'api') {
     return parseDocumentApi(request, integration, options);
   }
 
-  return parseDocumentAgent(request, integration, options);
+  try {
+    return await parseDocumentAgent(request, integration, options);
+  } catch (err) {
+    const effectiveMode = String((integration && integration.mode) || 'auto').trim().toLowerCase();
+    if (effectiveMode === 'auto' && hasApiCredential(integration, options) && isAgentLimitError(err)) {
+      return parseDocumentApi(request, integration, options);
+    }
+    throw err;
+  }
 }
 
 module.exports = {
