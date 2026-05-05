@@ -465,39 +465,35 @@ function runHook(rawInput) {
       }
     } catch { /* wiki read is optional */ }
 
-    const docCacheLines = [];
+    const cacheArtifactLines = [];
     try {
       const docsIndexPath = path.join(runtime.getProjectExtDir(projectRoot), 'cache', 'docs', 'index.json');
       if (fs.existsSync(docsIndexPath)) {
         const docsIndex = JSON.parse(fs.readFileSync(docsIndexPath, 'utf8'));
         const docs = Array.isArray(docsIndex.documents) ? docsIndex.documents : [];
         if (docs.length > 0) {
-          docCacheLines.push('Cached documents (parsed by MinerU):');
+          cacheArtifactLines.push('.emb-agent/cache/docs/');
           docs.slice(0, 5).forEach(doc => {
-            const cacheDir = path.join('.emb-agent', 'cache', 'docs', doc.doc_id || '');
-            docCacheLines.push(`  ${cacheDir}/parse.md — ${doc.title || doc.source || doc.doc_id}`);
+            cacheArtifactLines.push(`  ${doc.doc_id}/ — ${doc.title || doc.source || 'parse.md'}`);
           });
-          docCacheLines.push('Pin mappings, registers, and peripheral specs are in parse.md. Read it before external tools.');
         }
       }
       const schematicsDir = path.join(runtime.getProjectExtDir(projectRoot), 'cache', 'schematics');
       if (fs.existsSync(schematicsDir)) {
+        cacheArtifactLines.push('.emb-agent/cache/schematics/');
         fs.readdirSync(schematicsDir, { withFileTypes: true }).forEach(entry => {
           if (!entry.isDirectory()) return;
-          const netlistPath = path.join(schematicsDir, entry.name, 'analysis.visual-netlist.json');
-          if (fs.existsSync(netlistPath)) {
-            docCacheLines.push(`  .emb-agent/cache/schematics/${entry.name}/analysis.visual-netlist.json — pin-to-net mapping (read for exact U2 pin connections)`);
-          }
+          cacheArtifactLines.push(`  ${entry.name}/`);
         });
       }
-    } catch { /* doc cache read is optional */ }
+    } catch { /* cache read is optional */ }
 
     const message = buildSessionContext(projectRoot, start, resume, {
       initializedDuringHook: !hadProjectConfig && fs.existsSync(projectConfigPath),
       updateLines,
       specLines: [...coreProtocolLines, ...workflowSpecLines, ...workflowStateLines, ...constraintSpecLines],
       sessionReportLines,
-      graphLines: [...graphLines, ...wikiLines, ...docCacheLines]
+      graphLines: [...graphLines, ...wikiLines, ...cacheArtifactLines]
     });
 
     if (!message) {
