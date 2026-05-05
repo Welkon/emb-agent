@@ -48,6 +48,13 @@ function createActionContractHelpers(deps) {
 
     if (action === 'scan') {
       const nextAction = blankSelection ? 'plan' : 'do';
+      if (nextAction === 'do' && !activeTask) {
+        return {
+          label: 'Create a task before implementation',
+          cli: buildCli(['task', 'add', '<summary>']),
+          followup: `Then: ${buildCli(['task', 'activate', '<name>'])} then ${buildPreferredCapabilityCli('do')}`
+        };
+      }
       return {
         label: blankSelection ? 'Continue with plan' : 'Continue with do',
         cli: buildPreferredCapabilityCli(nextAction),
