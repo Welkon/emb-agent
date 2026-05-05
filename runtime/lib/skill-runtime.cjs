@@ -2792,7 +2792,24 @@ function createSkillRuntimeHelpers(deps) {
       const installDir = path.join(scopeRoot, slugify(normalizedManifest.name));
       if (fs.existsSync(installDir)) {
         if (!parsed.force) {
-          throw new Error(`Skill plugin already installed: ${normalizedManifest.name}`);
+          const statePath = path.join(installDir, PLUGIN_STATE_FILE);
+          const existingState = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : null;
+          const installedVersion = existingState ? existingState.plugin_version : null;
+          const availableVersion = normalizedManifest.version;
+          const updateAvailable = installedVersion && availableVersion && installedVersion !== availableVersion;
+          return {
+            command: 'skills install',
+            status: updateAvailable ? 'update_available' : 'already_installed',
+            plugin: {
+              name: normalizedManifest.name,
+              version: availableVersion || normalizedManifest.version,
+              description: normalizedManifest.description,
+              scope: parsed.scope,
+              install_path: installDir
+            },
+            installed_version: installedVersion,
+            selected_skills: existingState && Array.isArray(existingState.enabled_skills) ? existingState.enabled_skills : []
+          };
         }
         const existingBundle = readInstalledPluginBundle(installDir, {
           scope: parsed.scope,

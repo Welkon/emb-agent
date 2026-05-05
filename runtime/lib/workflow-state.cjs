@@ -25,7 +25,19 @@ function getWorkflowNext(state) {
 }
 
 function hasChipIdentity(hwConfig) {
-  return Boolean(hwConfig && hwConfig.chip);
+  if (!hwConfig || typeof hwConfig !== 'object') {
+    return false;
+  }
+  if (typeof hwConfig.chip === 'string' && hwConfig.chip.trim()) {
+    return true;
+  }
+  if (hwConfig.chip && typeof hwConfig.chip === 'object' && (hwConfig.chip.model || hwConfig.chip.name)) {
+    return true;
+  }
+  if (hwConfig.mcu && (hwConfig.mcu.model || hwConfig.mcu.name)) {
+    return true;
+  }
+  return false;
 }
 
 function hasDatasheet(hwConfig) {
@@ -149,11 +161,54 @@ function readHardwareConfig(projectRoot, deps) {
     return null;
   }
 
-  if (runtime && typeof runtime.parseSimpleYaml === 'function') {
-    return runtime.parseSimpleYaml(hwPath);
+  const content = fs.readFileSync(hwPath, 'utf8');
+  const lines = Array.isArray(content) ? content : String(content || '').split(/\r?\n/);
+
+  function readIndentedKey(prefix) {
+    const line = lines.find(item => item.startsWith(prefix));
+    if (!line) return '';
+    const value = line.slice(prefix.length).trim();
+    const cleaned = value.replace(/^["']|["']$/g, '');
+    return cleaned.trim();
   }
 
-  return null;
+  const model = readIndentedKey('  model:');
+  const vendor = readIndentedKey('  vendor:');
+  const packageName = readIndentedKey('  package:');
+
+  const config = {};
+  if (model) {
+    config.chip = model;
+  }
+  if (model || packageName) {
+    config.mcu = {
+      model: model || '',
+      vendor: vendor || '',
+      package: packageName || ''
+    };
+  }
+
+  const datasheetLines = [];
+  let inDatasheetBlock = false;
+  for (const raw of lines) {
+    if (raw.startsWith('  datasheet:')) {
+      inDatasheetBlock = true;
+      continue;
+    }
+    if (inDatasheetBlock && raw.startsWith('    - ')) {
+      const val = raw.slice(6).trim().replace(/^["']|["']$/g, '');
+      if (val) datasheetLines.push(val);
+    } else if (inDatasheetBlock && raw.trim() === '') {
+      continue;
+    } else if (inDatasheetBlock && !raw.startsWith('    ')) {
+      inDatasheetBlock = false;
+    }
+  }
+  if (datasheetLines.length > 0) {
+    config.datasheets = datasheetLines;
+  }
+
+  return config;
 }
 
 function resolveProjectWorkflowState(projectRoot, activeTask, deps) {
