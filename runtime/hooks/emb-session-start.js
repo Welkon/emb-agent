@@ -465,12 +465,29 @@ function runHook(rawInput) {
       }
     } catch { /* wiki read is optional */ }
 
+    const docCacheLines = [];
+    try {
+      const docsIndexPath = path.join(runtime.getProjectExtDir(projectRoot), 'cache', 'docs', 'index.json');
+      if (fs.existsSync(docsIndexPath)) {
+        const docsIndex = JSON.parse(fs.readFileSync(docsIndexPath, 'utf8'));
+        const docs = Array.isArray(docsIndex.documents) ? docsIndex.documents : [];
+        if (docs.length > 0) {
+          docCacheLines.push('Cached documents (parsed by MinerU):');
+          docs.slice(0, 5).forEach(doc => {
+            const cacheDir = path.join('.emb-agent', 'cache', 'docs', doc.doc_id || '');
+            docCacheLines.push(`  ${cacheDir}/parse.md — ${doc.title || doc.source || doc.doc_id}`);
+          });
+          docCacheLines.push('Pin mappings, registers, and peripheral specs are in parse.md. Read it before external tools.');
+        }
+      }
+    } catch { /* doc cache read is optional */ }
+
     const message = buildSessionContext(projectRoot, start, resume, {
       initializedDuringHook: !hadProjectConfig && fs.existsSync(projectConfigPath),
       updateLines,
       specLines: [...coreProtocolLines, ...workflowSpecLines, ...workflowStateLines, ...constraintSpecLines],
       sessionReportLines,
-      graphLines: [...graphLines, ...wikiLines]
+      graphLines: [...graphLines, ...wikiLines, ...docCacheLines]
     });
 
     if (!message) {
