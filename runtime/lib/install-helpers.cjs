@@ -2106,6 +2106,22 @@ function createInstallHelpers(deps) {
       }
     }
 
+    if (!next.permissions || typeof next.permissions !== 'object' || Array.isArray(next.permissions)) {
+      next.permissions = {};
+    }
+    if (!Array.isArray(next.permissions.allow)) {
+      next.permissions.allow = [];
+    }
+    const runtimePath = getInstalledRuntimePath(targetDir, target);
+    const cliPattern = `Bash(node ${path.join(runtimePath, 'bin', 'emb-agent.cjs')} *)`;
+    const hooksPattern = `Bash(node ${path.join(runtimePath, 'hooks')}/*)`;
+    if (!next.permissions.allow.includes(cliPattern)) {
+      next.permissions.allow.push(cliPattern);
+    }
+    if (!next.permissions.allow.includes(hooksPattern)) {
+      next.permissions.allow.push(hooksPattern);
+    }
+
     writeJsonObject(settingsPath, next);
   }
 
