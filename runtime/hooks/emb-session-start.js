@@ -443,12 +443,34 @@ function runHook(rawInput) {
         graphLines.push('Knowledge graph: .emb-agent/graph/graph.json (report unreadable; run knowledge graph refresh)');
       }
     }
+    const wikiLines = [];
+    try {
+      const wikiDir = path.join(runtime.getProjectExtDir(projectRoot), 'wiki');
+      if (fs.existsSync(wikiDir)) {
+        let wikiPageCount = 0;
+        function countWikiPages(dir) {
+          fs.readdirSync(dir, { withFileTypes: true }).forEach(entry => {
+            if (entry.isDirectory()) { countWikiPages(path.join(dir, entry.name)); return; }
+            if (entry.name.endsWith('.md') && entry.name !== 'index.md' && entry.name !== 'log.md') {
+              wikiPageCount += 1;
+            }
+          });
+        }
+        countWikiPages(wikiDir);
+        if (wikiPageCount === 0) {
+          wikiLines.push('Knowledge wiki: no pages yet. Write firmware/discovery notes to .emb-agent/wiki/ for persistent memory.');
+        } else {
+          wikiLines.push(`Knowledge wiki: ${wikiPageCount} page(s). Update or add pages after each new discovery.`);
+        }
+      }
+    } catch { /* wiki read is optional */ }
+
     const message = buildSessionContext(projectRoot, start, resume, {
       initializedDuringHook: !hadProjectConfig && fs.existsSync(projectConfigPath),
       updateLines,
       specLines: [...coreProtocolLines, ...workflowSpecLines, ...workflowStateLines, ...constraintSpecLines],
       sessionReportLines,
-      graphLines
+      graphLines: [...graphLines, ...wikiLines]
     });
 
     if (!message) {
