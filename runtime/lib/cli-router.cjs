@@ -1212,6 +1212,11 @@ function createCliRouter(deps) {
         return ['ingest', 'doc', ...r];
       }
 
+      const capabilityShortcuts = ['scan', 'plan', 'do', 'debug', 'review', 'verify'];
+      if (capabilityShortcuts.includes(c) && !s) {
+        return ['capability', 'run', c, ...r];
+      }
+
       return rawArgs;
     }
 
