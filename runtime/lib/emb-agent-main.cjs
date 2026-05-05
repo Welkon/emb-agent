@@ -1085,6 +1085,7 @@ module.exports = {
   shouldSuggestArchReview,
   shouldSuggestPlan,
   shouldSuggestReview,
+  handleKnowledgeCommands,
   scheduler
 };
 

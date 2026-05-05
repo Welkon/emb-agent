@@ -2803,22 +2803,30 @@ function createInstallHelpers(deps) {
         return;
       }
 
-      writeTerminalLine(chalk.bold('emb-agent installer'));
-      writeTerminalLine(`${chalk.cyan('  Runtime:')} ${target.label}`);
+      writeTerminalLine('');
       writeTerminalLine(
-        `${chalk.cyan('  Location:')} ${args.local ? 'local project' : 'global config'}`
+        `${chalk.bold(chalk.cyan('  ╭──────────────────────────────────────────╮'))}`
       );
-      writeTerminalLine(`${chalk.cyan('  Target:')} ${targetDir}`);
-      writeTerminalLine(`${chalk.cyan('  Profile:')} ${installProfile.name}`);
+      writeTerminalLine(
+        `${chalk.bold(chalk.cyan('  │'))}  ${chalk.bold('emb-agent')} ${chalk.dim(`v${packageVersion}`)}  ${chalk.dim('— hardware-first AI workflow')}  ${chalk.bold(chalk.cyan('│'))}`
+      );
+      writeTerminalLine(
+        `${chalk.bold(chalk.cyan('  ╰──────────────────────────────────────────╯'))}`
+      );
+      writeTerminalLine('');
+      writeTerminalLine(`${chalk.cyan('  Runtime:')}  ${chalk.white(target.label)}`);
+      writeTerminalLine(`${chalk.cyan('  Location:')} ${chalk.white(args.local ? 'project (local)' : 'global config')}`);
+      writeTerminalLine(`${chalk.cyan('  Target:')}   ${chalk.dim(targetDir)}`);
+      writeTerminalLine(`${chalk.cyan('  Profile:')}  ${chalk.white(installProfile.name)}`);
       if (args.developer) {
-        writeTerminalLine(`${chalk.cyan('  Developer:')} ${args.developer}`);
+        writeTerminalLine(`${chalk.cyan('  Developer:')} ${chalk.white(args.developer)}`);
       }
       if (args.subagentBridgeCmd) {
         writeTerminalLine(
-          `${chalk.cyan('  Bridge:')} ${args.subagentBridgeCmd} (${args.subagentBridgeTimeoutMs} ms)`
+          `${chalk.cyan('  Bridge:')}   ${chalk.dim(args.subagentBridgeCmd)} (${args.subagentBridgeTimeoutMs} ms)`
         );
       }
-      writeTerminalLine(chalk.dim(''));
+      writeTerminalLine('');
     }
 
     function complete(target, runtimeDir, projectBootstrap, installProfile) {
@@ -2826,18 +2834,26 @@ function createInstallHelpers(deps) {
         return;
       }
 
-      writeTerminalLine(chalk.green('Installation complete'));
-      writeTerminalLine(`${chalk.cyan('  Runtime Dir:')} ${runtimeDir}`);
-      writeTerminalLine(`${chalk.cyan('  Profile:')} ${installProfile.name}`);
-      if (projectBootstrap && projectBootstrap.bootstrap_task && projectBootstrap.bootstrap_task.path) {
-        writeTerminalLine(
-          `${chalk.cyan('  Bootstrap Task:')} ${path.join(projectBootstrap.project_root, projectBootstrap.bootstrap_task.path)}`
-        );
+      writeTerminalLine('');
+      writeTerminalLine(chalk.bold(chalk.green('  ✔ Installation complete')));
+      writeTerminalLine('');
+      writeTerminalLine(chalk.dim('  ── Installed ──'));
+      writeTerminalLine(`${chalk.green('  ●')} ${chalk.white('Runtime')}        ${chalk.dim(runtimeDir)}`);
+      writeTerminalLine(`${chalk.green('  ●')} ${chalk.white('Host config')}     ${chalk.dim(path.join(targetDir, target.configFileName || 'config.toml'))}`);
+      if (target.hookMode === 'codex-json') {
+        writeTerminalLine(`${chalk.green('  ●')} ${chalk.white('Hooks')}          ${chalk.dim(path.join(targetDir, target.hooksConfigFileName || 'hooks.json'))}`);
       }
-      writeTerminalLine(
-        `${chalk.cyan('  Next:')} Restart ${target.restartLabel || target.label}, then open a new session`
-      );
-      writeTerminalLine(chalk.dim(''));
+      if (projectBootstrap && projectBootstrap.bootstrap_task && projectBootstrap.bootstrap_task.path) {
+        writeTerminalLine(`${chalk.green('  ●')} ${chalk.white('Project')}        ${chalk.dim(projectBootstrap.project_root)}`);
+      }
+      writeTerminalLine('');
+      writeTerminalLine(chalk.dim('  ── Next steps ──'));
+      writeTerminalLine(`  ${chalk.cyan('1.')} Restart ${chalk.white(target.restartLabel || target.label)} to pick up new commands and hooks`);
+      writeTerminalLine(`  ${chalk.cyan('2.')} Open a project session — startup context injects automatically`);
+      if (projectBootstrap) {
+        writeTerminalLine(`  ${chalk.cyan('3.')} Follow the recommended next command from the injected context`);
+      }
+      writeTerminalLine('');
     }
 
     function removed(target, targetDir) {
@@ -2983,12 +2999,12 @@ function createInstallHelpers(deps) {
     reporter.announce(target, args, targetDir, installProfile);
 
     if (args.uninstall) {
-      const uninstallActivity = reporter.activity('Removing emb-agent managed files');
+      const uninstallActivity = reporter.activity('Removing managed files');
       try {
         uninstall(targetDir, target, args);
-        uninstallActivity.succeed('Removed emb-agent managed files');
+        uninstallActivity.succeed('Managed files removed');
       } catch (error) {
-        uninstallActivity.fail('Removing emb-agent managed files', error);
+        uninstallActivity.fail('Removing managed files', error);
         throw error;
       }
       reporter.removed(target, targetDir);
@@ -2996,17 +3012,17 @@ function createInstallHelpers(deps) {
       return;
     }
 
-    const runtimeActivity = reporter.activity('Installing emb-agent runtime files');
+    const runtimeActivity = reporter.activity('Preparing runtime files');
     let runtimeDir;
     try {
       runtimeDir = installRuntime(targetDir, target, args);
-      runtimeActivity.succeed('Installed emb-agent runtime files');
+      runtimeActivity.succeed('Runtime files ready');
     } catch (error) {
       runtimeActivity.fail('Installing emb-agent runtime files', error);
       throw error;
     }
     const installedRuntimeHost = runtimeHost.resolveRuntimeHost(runtimeDir);
-    const integrationActivity = reporter.activity('Installing host agents, hooks, and commands');
+    const integrationActivity = reporter.activity('Setting up host integration (agents, hooks, commands)');
     let agentCount;
     let codexSkillCount;
     let sharedSkillCount;
@@ -3025,20 +3041,20 @@ function createInstallHelpers(deps) {
         agentCount + codexSkillCount + sharedSkillCount + claudeCommandCount + cursorCommandCount;
       integrationActivity.succeed(
         installedSurfaceCount > 0
-          ? `Installed ${installedSurfaceCount} host integration artifacts`
-          : 'Installed host integration metadata'
+          ? `Host integration ready (${installedSurfaceCount} artifacts)`
+          : 'Host integration metadata installed'
       );
     } catch (error) {
       integrationActivity.fail('Installing host agents, hooks, and commands', error);
       throw error;
     }
 
-    const envActivity = reporter.activity('Preparing local environment template');
+    const envActivity = reporter.activity('Writing .env.example');
     const envExamplePath = path.join(args.local ? process.cwd() : targetDir, '.env.example');
     let envExampleCreated;
     try {
       envExampleCreated = installEnvExample(envExamplePath);
-      envActivity.succeed(`${envExampleCreated ? 'Created' : 'Kept'} env example`);
+      envActivity.succeed(envExampleCreated ? '.env.example created' : '.env.example kept');
     } catch (error) {
       envActivity.fail('Preparing local environment template', error);
       throw error;
@@ -3046,11 +3062,11 @@ function createInstallHelpers(deps) {
 
     let projectBootstrap = null;
     if (args.local) {
-      const bootstrapActivity = reporter.activity('Bootstrapping local emb-agent project');
+      const bootstrapActivity = reporter.activity('Bootstrapping project scaffold (.emb-agent/)');
       try {
         projectBootstrap = bootstrapProjectIfNeeded(args);
         bootstrapActivity.succeed(
-          projectBootstrap ? 'Bootstrapped local emb-agent project' : 'Skipped local project bootstrap'
+          projectBootstrap ? 'Project scaffold ready' : 'Project scaffold skipped (already exists)'
         );
       } catch (error) {
         bootstrapActivity.fail('Bootstrapping local emb-agent project', error);
@@ -3060,13 +3076,13 @@ function createInstallHelpers(deps) {
 
     let installedSkillBundles = [];
     if (Array.isArray(args.skillSources) && args.skillSources.length > 0) {
-      const skillsActivity = reporter.activity('Installing initial skill bundles');
+      const skillsActivity = reporter.activity('Installing skill bundles');
       try {
         installedSkillBundles = await installInitialSkills(runtimeDir, args);
         skillsActivity.succeed(
           installedSkillBundles.length > 0
-            ? `Installed ${installedSkillBundles.length} initial skill bundle${installedSkillBundles.length > 1 ? 's' : ''}`
-            : 'Skipped initial skill bundle install'
+            ? `${installedSkillBundles.length} skill bundle${installedSkillBundles.length > 1 ? 's' : ''} installed`
+            : 'No skill bundles selected'
         );
       } catch (error) {
         skillsActivity.fail('Installing initial skill bundles', error);
