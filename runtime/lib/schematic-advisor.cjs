@@ -49,7 +49,7 @@ function guessComponentRole(component) {
   if (/^C\d+/i.test(designator) || /\b(?:capacitor|cap|\d+(?:\.\d+)?\s*(?:pf|nf|uf))\b/i.test(text)) return 'capacitor';
   if (/^(?:D|LED)\d*/i.test(designator) || /\bled\b/i.test(text)) return 'led';
   if (/^(?:SW|S|KEY)\d*/i.test(designator) || /\b(?:switch|button|key|tact)\b/i.test(text)) return 'switch';
-  if (/^Q\d*/i.test(designator) || /\b(?:npn|pnp|mosfet|transistor|ss8050|ss8550|s8050|s8550|2n\d+)\b/i.test(text)) return 'transistor';
+  if (/^Q\d*/i.test(designator) || /\b(?:npn|pnp|mosfet|transistor|2n\d+)\b/i.test(text)) return 'transistor';
   if (/^(?:J|P|CN|USB)\d*/i.test(designator) || /\b(?:connector|usb|header|test\s*point|testpoint)\b/i.test(text)) return 'connector';
   if (/^(?:U|IC)\d*/i.test(designator)) return 'ic';
   return '';
@@ -183,7 +183,7 @@ function isLikelyMcuOrIc(component) {
   const role = guessComponentRole(component);
   const pinCount = makeArray(component.pins).length;
   const text = componentText(component);
-  return role === 'ic' || pinCount >= 6 || /\b(?:mcu|microcontroller|stm32|attiny|atmega|pms\d+|sc8|pic\d+|gd32|esp32)\b/i.test(text);
+  return role === 'ic' || pinCount >= 6 || /\b(?:mcu|microcontroller|soc)\b/i.test(text);
 }
 
 function memberLooksLikeIcReference(member) {

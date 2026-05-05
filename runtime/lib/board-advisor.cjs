@@ -72,7 +72,7 @@ function componentRole(component) {
     component.footprint
   ].map(ensureString).join(' ');
   const ref = ensureString(component.designator);
-  if (/^(?:U|IC|MCU)\d*/i.test(ref) || /\b(?:mcu|microcontroller|stm32|sc8|pic|attiny|atmega|esp32)\b/i.test(text)) return 'ic';
+  if (/^(?:U|IC|MCU)\d*/i.test(ref)) return 'ic';
   if (/^C\d+/i.test(ref) || /\b(?:capacitor|cap|\d+(?:\.\d+)?\s*(?:pf|nf|uf))\b/i.test(text)) return 'capacitor';
   if (/^(?:J|P|CN|USB)\d*/i.test(ref) || /\b(?:connector|header|usb)\b/i.test(text)) return 'connector';
   if (/^(?:Y|X)\d*/i.test(ref) || /\b(?:crystal|oscillator|resonator)\b/i.test(text)) return 'clock';

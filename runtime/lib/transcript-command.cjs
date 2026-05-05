@@ -430,6 +430,12 @@ function createTranscriptCommandHelpers(deps) {
     return next.slice(0, limit);
   }
 
+  const ZH_NOISE_PREFIXES = [
+    '主要改动', '验证', '编译', '搜索', '下一步', '接下来',
+    '我会', '现在我会', '已按', '已做', '拆分文件已经写入',
+    '依据：', '这版改在'
+  ];
+
   function isAssistantAnalysisNoise(line) {
     const body = normalizeLine(line);
     if (!body) return true;
@@ -438,22 +444,12 @@ function createTranscriptCommandHelpers(deps) {
       body.includes('```') ||
       body.startsWith('- [') ||
       body.startsWith('#') ||
-      body.startsWith('|') ||
-      body.startsWith('主要改动') ||
-      body.startsWith('验证') ||
-      body.startsWith('编译') ||
-      body.startsWith('搜索') ||
-      body.startsWith('下一步') ||
-      body.startsWith('接下来') ||
-      body.startsWith('我会') ||
-      body.startsWith('现在我会') ||
-      body.startsWith('已按') ||
-      body.startsWith('已做') ||
-      body.startsWith('拆分文件已经写入') ||
-      body.startsWith('依据：') ||
-      body.startsWith('这版改在')
+      body.startsWith('|')
     ) {
       return true;
+    }
+    for (const prefix of ZH_NOISE_PREFIXES) {
+      if (body.startsWith(prefix)) return true;
     }
     return false;
   }
@@ -518,12 +514,10 @@ function createTranscriptCommandHelpers(deps) {
     const pinStates = [];
     const powerSleepChecklist = [];
 
-    const hardwarePattern = /(R[ABCD]\d|P[ABCD]\d|PWM|SS8550|USB|Type-?C|VBUS|红灯|按键|高电平|低电平|高阻|开漏|比较器|满电|低功耗|uA|μA|mA|\d(?:\.\d+)?V)/iu;
-    const preferencePattern = /(不要|必须|应该|不应该|优先|禁止|先.+再|使用notebook|用 notebook|不要helper|不要 helper)/iu;
+    const hardwarePattern = /(R[ABCD]\d|P[ABCD]\d|PWM|USB|Type-?C|VBUS|高电平|低电平|高阻|开漏|比较器|低功耗|uA|μA|mA|\d(?:\.\d+)?V)/iu;
     const questionPattern = /([?？]$|有没有|会不会|多少|确认|查询|是不是|应该.*吗|行吗)/iu;
-    const riskPattern = /(问题|偏高|偶发|还是|没灭|没亮|做不了|失败|风险|漏电|倒灌|反灌|不亮|不灭|需要按一下|无法|不能)/iu;
-    const trialPattern = /(实测|现在|已经|这一步|尝试|改成方案|retry|可以了|能亮|能灭|没亮|不亮|不灭)/iu;
-    const powerPattern = /(低功耗|sleep|休眠|WDT|Timer|PWM|比较器|ADC|上拉|下拉|uA|μA|待机功耗)/iu;
+    const riskPattern = /(问题|偏高|偶发|失败|风险|漏电|倒灌|反灌|无法|不能)/iu;
+    const powerPattern = /(低功耗|sleep|休眠|Timer|PWM|比较器|ADC|上拉|下拉|uA|μA|待机功耗)/iu;
     const factStatePattern = /(改成|接|输出|检测|实测|已经|设置|达到|亮|灭|高阻|下拉|上拉|导致|判定|插入|拔|关断|为)/iu;
 
     entries.forEach(({ line, role }) => {
@@ -532,8 +526,9 @@ function createTranscriptCommandHelpers(deps) {
       const isQuestion = questionPattern.test(line);
       const isCodePaste = isCodePasteLine(line);
 
-      if (line.includes('#define RED_LED_ON') && /(不要|这个不要)/iu.test(line)) {
-        preferences.push('不要 RED_LED_ON/RED_LED_OFF 宏');
+      if (line.includes('#define') && /(不要|这个不要)/iu.test(line)) {
+        const macroMatch = line.match(/#define\s+(\w+)/);
+        if (macroMatch) preferences.push(`不要 ${macroMatch[1]} 宏`);
       }
 
       if (isCodePaste) {
@@ -543,17 +538,11 @@ function createTranscriptCommandHelpers(deps) {
       if (fromUserLike && !isQuestion && !isHeadingLikeLine(line) && includesAny(line, [hardwarePattern]) && includesAny(line, [factStatePattern])) {
         hardwareFacts.push(line);
       }
-      if (fromUserLike && preferencePattern.test(line)) {
-        preferences.push(line);
-      }
       if (fromUserLike && isQuestion) {
         questions.push(line);
       }
       if (fromUserLike && riskPattern.test(line)) {
         risks.push(line);
-      }
-      if (fromUserLike && trialPattern.test(line)) {
-        trials.push(line);
       }
       if (powerPattern.test(line)) {
         powerSleepChecklist.push(line);

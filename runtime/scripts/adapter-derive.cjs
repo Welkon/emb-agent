@@ -655,15 +655,17 @@ function buildAutoBindingParams(toolName, rawBinding) {
 
   if (toolName === 'pwm-calc') {
     const prescalerVals = [];
-    const psMatch = notes.join(' ').match(/CLKDIV\s*[∈{]\s*([\d,\s]+)\s*[}]?/i);
-    if (psMatch) {
-      psMatch[1].split(/[\s,]+/).forEach(v => { const n = Number(v); if (n > 0) prescalerVals.push(n); });
+    const psPatterns = [
+      /prescaler\s*[∈{]\s*([\d,\s]+)\s*[}]?/i,
+      /divider\s*[∈{]\s*([\d,\s]+)\s*[}]?/i,
+      /CLKDIV\s*[∈{]\s*([\d,\s]+)\s*[}]?/i
+    ];
+    for (const pat of psPatterns) {
+      const m = notes.join(' ').match(pat);
+      if (m) {
+        m[1].split(/[\s,]+/).forEach(v => { const n = Number(v); if (n > 0) prescalerVals.push(n); });
+      }
     }
-    const t2Match = notes.join(' ').match(/T2CKPS\s*[∈{]\s*([\d,\s]+)\s*[}]?/i);
-    if (t2Match) {
-      t2Match[1].split(/[\s,]+/).forEach(v => { const n = Number(v); if (n > 0 && !prescalerVals.includes(n)) prescalerVals.push(n); });
-    }
-
     if (prescalerVals.length > 0) {
       params.prescaler_options = prescalerVals.sort((a, b) => a - b);
     }
@@ -678,9 +680,9 @@ function buildAutoBindingParams(toolName, rawBinding) {
       }
     }
 
-    const pwmtMatch = notes.join(' ').match(/PWMT\s*[∈[]\s*\[\s*0\s*,\s*(\d+)\s*\]/i);
-    if (pwmtMatch && !params.period_max) {
-      const max = Number(pwmtMatch[1]);
+    const periodMatch = notes.join(' ').match(/(?:period|PWMT)\s*[∈[]\s*\[\s*0\s*,\s*(\d+)\s*\]/i);
+    if (periodMatch && !params.period_max) {
+      const max = Number(periodMatch[1]);
       if (max > 0) params.period_max = max;
     }
   }
@@ -791,10 +793,9 @@ function inferTools(peripherals, extraTextParts) {
   ]).join('\n');
 
   const patterns = [
-    ['timer-calc', /\bTIMER(?:\d+)?\b|\bT16\b|\bTM2\b|\bTM3\b/i],
+    ['timer-calc', /\bTIMER(?:\d+)?\b/i],
     ['pwm-calc', /\bPWM\b/i],
-    ['lpwmg-calc', /\bLPWMG\b|\bLPG\dPWM\b/i],
-    ['lvdc-threshold', /\bLVDC\b|\bLVD\b|low-voltage detection/i],
+    ['lvdc-threshold', /\bLVD\b|low-voltage detection/i],
     ['charger-config', /\bCHG\b|\bCHARG(?:E|ER|ING)\b|charging/i],
     ['adc-scale', /\bADC\b/i],
     ['comparator-threshold', /\bCOMPARATOR\b|\bCMP\b/i]
@@ -1120,7 +1121,7 @@ function buildBindingNotes(baseNotes, evidence) {
 }
 
 function buildTimerBinding(toolName, config) {
-  const timers = matchPeripherals(config.peripherals, /\bTIMER(?:\d+)?\b|\bT16\b|\bTM2\b|\bTM3\b/i)
+  const timers = matchPeripherals(config.peripherals, /\bTIMER(?:\d+)?\b/i)
     .map(item => String(item.name || '').trim())
     .filter(Boolean);
   const timerName = timers[0] || '';
@@ -1185,46 +1186,31 @@ function buildPwmBinding(toolName, config) {
 }
 
 function buildLpwmgBinding(toolName, config) {
-  const lpwmg = findPeripheral(config.peripherals, /\bLPWMG\b|\bLPG\dPWM\b/i);
-  const lpwmgName = lpwmg ? String(lpwmg.name) : 'LPWMG';
-  const lpwmgSignals = matchSignals(config.signals, /\bLPWMG\b|\bLPG\dPWM\b|PWM|pwm-output/i);
-  const channelPins = {
-    lpwmg0: buildBindingMap(
-      lpwmgSignals.filter(item => /\bLPWMG0\b|\bLPG0PWM\b/i.test(signalHaystack(item))),
-      'lpwmg-output'
-    ),
-    lpwmg1: buildBindingMap(
-      lpwmgSignals.filter(item => /\bLPWMG1\b|\bLPG1PWM\b/i.test(signalHaystack(item))),
-      'lpwmg-output'
-    ),
-    lpwmg2: buildBindingMap(
-      lpwmgSignals.filter(item => /\bLPWMG2\b|\bLPG2PWM\b/i.test(signalHaystack(item))),
-      'lpwmg-output'
-    )
-  };
-  const defaultChannel = Object.entries(channelPins).find(([, pins]) => Object.keys(pins).length > 0);
-  const defaultPin = defaultChannel ? Object.keys(defaultChannel[1])[0] : '';
+  const lpwmg = findPeripheral(config.peripherals, /\bPWM/i);
+  const lpwmgName = lpwmg ? String(lpwmg.name) : '';
+  const lpwmgSignals = matchSignals(config.signals, /\bPWM|pwm-output/i);
+  const channels = buildBindingMap(lpwmgSignals, 'pwm-output');
+  const defaultPin = Object.keys(channels)[0] || '';
 
   return {
     algorithm: `${config.device}-${slugSuffix(toolName)}`,
     draft: true,
     params: {
-      default_channel: defaultChannel ? defaultChannel[0] : undefined,
       default_output_pin: defaultPin || undefined,
-      channels: channelPins
+      output_pins: channels
     },
     evidence: runtime.unique([
       lpwmgName ? `peripheral:${lpwmgName}` : '',
-      ...Object.values(channelPins).flatMap(pins => Object.keys(pins).map(pin => `signal:${pin}`)),
+      ...Object.keys(channels).map(pin => `signal:${pin}`),
       ...(config.docs || []).map(item => `doc:${item.id}`)
     ]),
     notes: buildBindingNotes(
       [],
       [
-        lpwmgName ? `LPWMG capability ${lpwmgName} was identified.` : 'Only LPWMG keywords were identified; the exact channel still needs manual confirmation.',
+        lpwmgName ? `PWM peripheral ${lpwmgName} identified.` : 'No PWM peripheral explicitly matched.',
         defaultPin
-          ? `Default LPWMG output candidate ${defaultPin} was identified from project truth.`
-          : 'The default LPWMG output pin is unconfirmed.'
+          ? `Default output candidate ${defaultPin} from project truth.`
+          : 'Default output pin is unconfirmed.'
       ]
     )
   };
@@ -1262,15 +1248,13 @@ function buildAdcBinding(toolName, config) {
 }
 
 function buildLvdcBinding(toolName, config) {
-  const lvdc = findPeripheral(config.peripherals, /\bLVDC\b|\bLVD\b/i);
-  const lvdcName = lvdc ? String(lvdc.name) : 'LVDC';
+  const lvdc = findPeripheral(config.peripherals, /\bLVD\b/i);
+  const lvdcName = lvdc ? String(lvdc.name) : '';
 
   return {
     algorithm: `${config.device}-${slugSuffix(toolName)}`,
     draft: true,
-    params: {
-      register_name: 'LVDC'
-    },
+    params: {},
     evidence: runtime.unique([
       lvdcName ? `peripheral:${lvdcName}` : '',
       ...(config.docs || []).map(item => `doc:${item.id}`)
@@ -1278,7 +1262,7 @@ function buildLvdcBinding(toolName, config) {
     notes: buildBindingNotes(
       [],
       [
-        lvdcName ? `Low-voltage detection capability ${lvdcName} was identified.` : 'Only LVDC/LVD keywords were identified; exact register fields still need manual confirmation.'
+        lvdcName ? `Low-voltage detection peripheral ${lvdcName} identified.` : 'No LVD peripheral explicitly matched. Register fields need manual confirmation.'
       ]
     )
   };
@@ -1291,10 +1275,7 @@ function buildChargerBinding(toolName, config) {
   return {
     algorithm: `${config.device}-${slugSuffix(toolName)}`,
     draft: true,
-    params: {
-      control_macro: 'CHG_CTRL',
-      status_register: 'CHG_TEMP'
-    },
+    params: {},
     evidence: runtime.unique([
       chargerName ? `peripheral:${chargerName}` : '',
       ...(config.docs || []).map(item => `doc:${item.id}`)
