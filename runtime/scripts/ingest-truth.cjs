@@ -563,8 +563,8 @@ function isPlaceholderSignal(entry) {
   }
 
   const placeholders = [
-    ['INPUT_1', 'PA0', 'input'],
-    ['OUTPUT_1', 'PA1', 'output']
+    ['INPUT_1', 'PXX', 'input'],
+    ['OUTPUT_1', 'PXY', 'output']
   ];
 
   return placeholders.some(([name, pin, direction]) =>

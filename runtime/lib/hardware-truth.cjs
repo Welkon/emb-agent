@@ -173,10 +173,10 @@ function validateHwConfig(runtime, projectRoot) {
   const warnings = [];
 
   if (!hwConfig.chip || !String(hwConfig.chip).trim()) {
-    errors.push('Missing required field: chip (MCU model identifier, e.g. esp32-c3)');
+    errors.push('Missing required field: chip (MCU model identifier)');
   }
   if (!hwConfig.family || !String(hwConfig.family).trim()) {
-    errors.push('Missing required field: family (chip family, e.g. espressif, padauk)');
+    errors.push('Missing required field: family (chip family / vendor)');
   }
 
   if (hwConfig.clock_hz !== undefined && hwConfig.clock_hz !== '') {

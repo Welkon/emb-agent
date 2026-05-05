@@ -537,22 +537,12 @@ function buildPwmRegisterCandidates(clockHz, targetHz, targetDuty, pwmName, defa
     ? defaults.period_registers
     : (
       defaults.registers && typeof defaults.registers === 'object'
-        ? [defaults.registers.period, defaults.registers.period_low_pwm01, defaults.registers.period_high].filter(Boolean)
+        ? Object.values(defaults.registers).filter(v => v && typeof v === 'object')
         : []
     );
   const dutyRegisters = Array.isArray(defaults.duty_registers)
     ? defaults.duty_registers
-    : (
-      defaults.registers && typeof defaults.registers === 'object'
-        ? [
-            defaults.registers.duty,
-            defaults.registers.duty_low_pwm0,
-            defaults.registers.duty_low_pwm1,
-            defaults.registers.duty_low_pwm4,
-            defaults.registers.duty_high_pwm01
-          ].filter(Boolean)
-        : []
-    );
+    : periodRegisters;
   const candidates = [];
   const periodValues = Number.isFinite(requestedPeriod)
     ? [requestedPeriod]

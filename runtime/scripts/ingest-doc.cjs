@@ -410,8 +410,7 @@ function inferPackage(markdown) {
 function inferPeripherals(markdown) {
   const text = String(markdown || '');
   const patterns = [
-    ['Timer16', /\bTIMER16\b|\bT16\b/i],
-    ['Timer2', /\bTIMER2\b|\bTM2\b/i],
+    ['Timer', /\bTIMER(?:\d+)?\b/i],
     ['PWM', /\bPWM\b/i],
     ['UART', /\bUART\b/i],
     ['I2C', /\bI2C\b|\bIIC\b/i],
