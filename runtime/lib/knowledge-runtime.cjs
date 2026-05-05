@@ -1526,6 +1526,71 @@ function createKnowledgeRuntimeHelpers(deps) {
     });
   }
 
+  function ensureWikiStubs() {
+    try {
+      const hwPath = path.join(getProjectExtDir(), 'hw.yaml');
+      if (!fs.existsSync(hwPath)) return;
+      const hwText = fs.readFileSync(hwPath, 'utf8');
+
+      function readIndentedKey(text, prefix) {
+        const line = text.split(/\r?\n/).find(l => l.startsWith(prefix));
+        if (!line) return '';
+        return line.slice(prefix.length).trim().replace(/^["']|["']$/g, '');
+      }
+
+      const model = readIndentedKey(hwText, '  model:');
+      const vendor = readIndentedKey(hwText, '  vendor:');
+      const pkg = readIndentedKey(hwText, '  package:');
+      const chipSlug = model ? model.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-') : '';
+
+      if (chipSlug && !fs.existsSync(getWikiPath('chips', `${chipSlug}.md`))) {
+        const chipPage = [
+          `# ${model} (${vendor || ''})`,
+          '',
+          `Package: ${pkg || 'unknown'}`,
+          '',
+          '## Registers',
+          '',
+          '> Document register map discovered from datasheet here.',
+          '',
+          '## Peripherals',
+          '',
+          '> List confirmed peripherals and their configurations.',
+          '',
+          '## Constraints',
+          '',
+          '> Record timing, voltage, and pin-mapping constraints.',
+          ''
+        ].join('\n');
+        runtime.ensureDir(path.dirname(getWikiPath('chips', `${chipSlug}.md`)));
+        fs.writeFileSync(getWikiPath('chips', `${chipSlug}.md`), chipPage, 'utf8');
+      }
+
+      if (!fs.existsSync(getWikiPath('sources', 'firmware-analysis.md'))) {
+        const sourcesPage = [
+          '# Firmware Analysis',
+          '',
+          '> Document firmware structure, key routines, and configuration constants.',
+          '',
+          '## Architecture',
+          '',
+          '> main() flow, interrupt handlers, module relationships.',
+          '',
+          '## Key Constants',
+          '',
+          '> All #define values that control behavior.',
+          '',
+          '## State Variables',
+          '',
+          '> Global flags and their write sites.',
+          ''
+        ].join('\n');
+        runtime.ensureDir(path.dirname(getWikiPath('sources', 'firmware-analysis.md')));
+        fs.writeFileSync(getWikiPath('sources', 'firmware-analysis.md'), sourcesPage, 'utf8');
+      }
+    } catch { /* stubs are best-effort */ }
+  }
+
   function buildKnowledgeGraph() {
     ensureKnowledgeDirs();
     ensureGraphDirs();
@@ -1563,6 +1628,7 @@ function createKnowledgeRuntimeHelpers(deps) {
     fs.writeFileSync(graphPath, JSON.stringify(graph, null, 2) + '\n', 'utf8');
     fs.writeFileSync(reportPath, buildGraphReportMarkdown(graph), 'utf8');
     fs.writeFileSync(getGraphPath('cache', 'manifest.json'), JSON.stringify(graph.manifest, null, 2) + '\n', 'utf8');
+    ensureWikiStubs();
     appendLog('graph', 'Build knowledge graph', [
       `Wrote ${getGraphRelativePath('graph.json')}`,
       `Wrote ${getGraphRelativePath('GRAPH_REPORT.md')}`,
