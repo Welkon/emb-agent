@@ -342,12 +342,8 @@ test('session start hook surfaces knowledge graph report summary when available'
     const reminder = sessionStartHook.runHook({ cwd: tempProject, event: 'SessionStart' });
     const payload = parseHookPayload(reminder);
 
-    assert.match(payload.hookSpecificOutput.additionalContext, /Knowledge graph: \.emb-agent\/graph\/graph\.json/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /Knowledge graph: auto-refreshed \(tracked files changed\)/);
     assert.match(payload.hookSpecificOutput.additionalContext, /Graph summary: nodes=/);
-    assert.match(payload.hookSpecificOutput.additionalContext, /Knowledge graph stale: 1 tracked file\(s\) changed; run knowledge graph refresh/);
-    assert.match(payload.hookSpecificOutput.additionalContext, /- stale: \.emb-agent\/runs\/timer-calc\.json/);
-    assert.match(payload.hookSpecificOutput.additionalContext, /Graph report highlights:/);
-    assert.match(payload.hookSpecificOutput.additionalContext, /- Nodes:/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;

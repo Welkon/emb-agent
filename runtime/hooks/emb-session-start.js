@@ -365,35 +365,79 @@ function runHook(rawInput) {
     const graphLines = [];
     const graphPath = path.join(runtime.getProjectExtDir(projectRoot), 'graph', 'graph.json');
     const graphReportPath = path.join(runtime.getProjectExtDir(projectRoot), 'graph', 'GRAPH_REPORT.md');
+    let graphBuiltThisHook = false;
+
+    // Auto-build graph if missing.
+    if (!fs.existsSync(graphPath) || !fs.existsSync(graphReportPath)) {
+      try {
+        cli.handleKnowledgeCommands('knowledge', 'graph', ['build']);
+        graphBuiltThisHook = true;
+        graphLines.push('Knowledge graph: auto-built during SessionStart');
+      } catch (err) {
+        graphLines.push(`Knowledge graph: build failed (${err.message || 'unknown'}); run knowledge graph refresh`);
+      }
+    }
+
     if (fs.existsSync(graphPath) && fs.existsSync(graphReportPath)) {
       try {
         const graph = JSON.parse(String(fs.readFileSync(graphPath, 'utf8') || '{}'));
-        const reportLines = String(fs.readFileSync(graphReportPath, 'utf8') || '')
-          .split('\n')
-          .map(line => line.trim())
-          .filter(line => line && !line.startsWith('#'))
-          .filter(line => /^-\s+(Nodes|Edges|Ambiguous edges|knowledge graph query|[^:]+:\s+\d+)/.test(line))
-          .slice(0, 12);
-        graphLines.push('Knowledge graph: .emb-agent/graph/graph.json');
-        if (graph.stats && typeof graph.stats === 'object') {
-          graphLines.push(
-            `Graph summary: nodes=${graph.stats.nodes || 0}, edges=${graph.stats.edges || 0}, ambiguous=${graph.stats.ambiguous_edges || 0}`
-          );
-        }
         const freshness = knowledgeGraphState.readKnowledgeGraphFreshness(projectRoot, graph, {
           fs,
           path,
           runtime
         });
-        if (freshness.stale) {
-          graphLines.push(`Knowledge graph stale: ${freshness.changed_files.length} tracked file(s) changed; run knowledge graph refresh`);
-          freshness.changed_files.slice(0, 5).forEach(file => {
-            graphLines.push(`- stale: ${file}`);
-          });
+
+        // Auto-refresh stale graph (only if not already built this hook invocation).
+        if (freshness.stale && !graphBuiltThisHook) {
+          try {
+            cli.handleKnowledgeCommands('knowledge', 'graph', ['build']);
+            graphBuiltThisHook = true;
+            graphLines.push('Knowledge graph: auto-refreshed (tracked files changed)');
+          } catch (refreshErr) {
+            graphLines.push(`Knowledge graph stale: ${freshness.changed_files.length} tracked file(s) changed; auto-refresh failed (${refreshErr.message || 'unknown'}), run knowledge graph refresh`);
+            freshness.changed_files.slice(0, 5).forEach(file => {
+              graphLines.push(`- stale: ${file}`);
+            });
+          }
         }
-        if (reportLines.length > 0) {
-          graphLines.push('Graph report highlights:');
-          graphLines.push(...reportLines);
+
+        if (!graphBuiltThisHook) {
+          const reportLines = String(fs.readFileSync(graphReportPath, 'utf8') || '')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line && !line.startsWith('#'))
+            .filter(line => /^-\s+(Nodes|Edges|Ambiguous edges|knowledge graph query|[^:]+:\s+\d+)/.test(line))
+            .slice(0, 12);
+          graphLines.push('Knowledge graph: .emb-agent/graph/graph.json');
+          if (graph.stats && typeof graph.stats === 'object') {
+            graphLines.push(
+              `Graph summary: nodes=${graph.stats.nodes || 0}, edges=${graph.stats.edges || 0}, ambiguous=${graph.stats.ambiguous_edges || 0}`
+            );
+          }
+          if (freshness.stale) {
+            graphLines.push(`Knowledge graph stale: ${freshness.changed_files.length} tracked file(s) changed; run knowledge graph refresh`);
+            freshness.changed_files.slice(0, 5).forEach(file => {
+              graphLines.push(`- stale: ${file}`);
+            });
+          }
+          if (reportLines.length > 0) {
+            graphLines.push('Graph report highlights:');
+            graphLines.push(...reportLines);
+          }
+        }
+
+        // After successful auto-build, re-read graph to report stats.
+        if (graphBuiltThisHook) {
+          try {
+            const rebuiltGraph = JSON.parse(String(fs.readFileSync(graphPath, 'utf8') || '{}'));
+            if (rebuiltGraph.stats && typeof rebuiltGraph.stats === 'object') {
+              graphLines.push(
+                `Graph summary: nodes=${rebuiltGraph.stats.nodes || 0}, edges=${rebuiltGraph.stats.edges || 0}, ambiguous=${rebuiltGraph.stats.ambiguous_edges || 0}`
+              );
+            }
+          } catch {
+            // Stats unavailable after build; non-fatal.
+          }
         }
       } catch {
         graphLines.push('Knowledge graph: .emb-agent/graph/graph.json (report unreadable; run knowledge graph refresh)');
