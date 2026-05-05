@@ -18,7 +18,12 @@ const CAPABILITY_DEFINITIONS = [
       default_output: 'docs/workflows/scan.md',
       summary: 'Project-local workflow guidance for scan.',
       focus_areas: ['truth-source-localization', 'change-surface-discovery'],
-      review_axes: [],
+      review_axes: [
+        'Define all #define constants and their values before drawing architecture diagrams',
+        'Trace every state variable/flag to ALL write sites; if written only at init, state this explicitly',
+        'Verify branch reachability: confirm the controlling condition can evaluate to true given the constants',
+        'Separate chip hardware capability from actual firmware usage (chip may support X, firmware may use only Y)'
+      ],
       preferred_notes: ['docs/workflows/scan.md'],
       default_agents: []
     }
