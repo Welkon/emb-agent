@@ -193,6 +193,20 @@ function getCachedEntry(projectRoot, docId) {
   return index.documents.find(item => item.doc_id === docId) || null;
 }
 
+function getLatestDocId(projectRoot) {
+  const index = loadDocsIndex(projectRoot);
+  const docs = Array.isArray(index.documents) ? index.documents : [];
+  if (docs.length === 0) {
+    return '';
+  }
+  const latest = docs.reduce((a, b) => {
+    const aTime = String(a.cached_at || a.ingested_at || '').trim();
+    const bTime = String(b.cached_at || b.ingested_at || '').trim();
+    return aTime >= bTime ? a : b;
+  });
+  return String(latest.doc_id || '').trim();
+}
+
 function setLastDiffSelection(projectRoot, diffSelection) {
   const index = loadDocsIndex(projectRoot);
   const lastDiff = normalizeLastDiffSelection(diffSelection);
@@ -295,6 +309,7 @@ module.exports = {
   buildDocumentIdentity,
   ensureDocsCache,
   getCachedEntry,
+  getLatestDocId,
   getDiffPreset,
   getLastDiffSelection,
   getDocumentDir,

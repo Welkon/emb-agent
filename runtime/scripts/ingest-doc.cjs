@@ -139,9 +139,10 @@ function parseApplyArgs(argv, options) {
     filtered.push(token);
   }
 
+  const isDocId = filtered[1] && !filtered[1].startsWith('--');
   const result = {
     entity: filtered[0] || '',
-    docId: filtered[1] || '',
+    docId: isDocId ? filtered[1] : '',
     to: '',
     only: [],
     project: '',
@@ -153,7 +154,8 @@ function parseApplyArgs(argv, options) {
     help: false
   };
 
-  for (let index = 2; index < filtered.length; index += 1) {
+  const flagStart = isDocId ? 2 : 1;
+  for (let index = flagStart; index < filtered.length; index += 1) {
     const token = filtered[index];
 
     if (token === '--help' || token === '-h') {
@@ -202,9 +204,6 @@ function parseApplyArgs(argv, options) {
 
   if (result.entity !== 'doc') {
     throw new Error('apply target must be doc');
-  }
-  if (!result.docId) {
-    throw new Error('Missing doc id');
   }
   if (result.fromLastDiff && (result.preset || result.to || result.only.length > 0 || result.force)) {
     throw new Error('--from-last-diff cannot be combined with --preset, --to, --only, or --force');
@@ -1692,9 +1691,12 @@ async function applyDoc(argv, options) {
   }
   const projectConfig = runtime.loadProjectConfig(projectRoot, runtimeConfig);
 
+  if (!args.docId) {
+    args.docId = docCache.getLatestDocId(projectRoot) || '';
+  }
   const entry = docCache.getCachedEntry(projectRoot, args.docId);
   if (!entry) {
-    throw new Error(`Document cache entry not found: ${args.docId}`);
+    throw new Error(`Document cache entry not found: ${args.docId || '(no doc cached)'}`);
   }
   const resolvedApply = resolveApplySelection(projectRoot, args);
   const truthFile =
