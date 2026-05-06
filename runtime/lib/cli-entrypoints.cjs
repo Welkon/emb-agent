@@ -340,7 +340,8 @@ function createCliEntryHelpers(deps) {
       path,
       runtime,
       ingestDocCli,
-      detectProjectInputs: attachProjectCli.detectProjectInputs
+      detectProjectInputs: attachProjectCli.detectProjectInputs,
+      detected: initContext.detected || null
     });
     const detected = pendingInputIntake.detected;
     const nextSteps = [];
@@ -458,14 +459,22 @@ function createCliEntryHelpers(deps) {
           : 'Configure a chip support source, then run next after the chip is identified.');
     } else {
       agentActions.push({
-        kind: 'bootstrap-chip-support',
+        kind: 'continue-with-next',
         status: 'ready',
+        blocked_by: [],
+        summary: 'Existing project facts are initialized. Continue with next; prepare chip/tool support only when a concrete tool path needs it.',
+        cli_fallback: 'next'
+      });
+
+      agentActions.push({
+        kind: 'bootstrap-chip-support',
+        status: 'optional',
         blocked_by: [],
         summary: adapterSourceReady
           ? declaredIntentPresent
-            ? 'Chip support install is ready. Prefer bootstrap run so emb-agent can continue the known-chip path directly.'
-            : 'Chip support install is ready. Prefer bootstrap run so emb-agent can continue the known-chip path directly.'
-          : 'Project-local draft chip support can be derived now. Configure a source later only when you want reusable install.',
+            ? 'Chip support install is available, but it should stay deferred until a tool run needs chip-specific formulas or bindings.'
+            : 'Chip support install is available, but it should stay deferred until a tool run needs chip-specific formulas or bindings.'
+          : 'Project-local draft chip support can be derived later when a concrete tool path needs it. Configure a source only when you want reusable install.',
         cli_fallback: adapterSourceReady ? bootstrapFastPathCommand : projectDeriveCommand
       });
 
@@ -483,8 +492,8 @@ function createCliEntryHelpers(deps) {
 
       nextSteps.push(
         adapterSourceReady
-          ? 'Prefer `bootstrap run --confirm` for the shortest guided path. It will execute the current bootstrap step directly, then hand you back to next.'
-          : 'Prefer `adapter derive --from-project` first so the current project gets draft chip support without requiring any shared source.'
+          ? 'Continue with `next`; chip support install is deferred until a concrete tool run needs chip-specific formulas or bindings.'
+          : 'Continue with `next`; derive project-local chip support later only when a concrete tool path needs it.'
       );
       nextSteps.push(
         declaredIntentPresent
@@ -629,6 +638,7 @@ function createCliEntryHelpers(deps) {
           'context compress [note]',
           'context focus get',
           'context focus set <text>',
+          'context focus clear',
           'config show',
           'config profile list',
           'config prefs show'
@@ -721,13 +731,13 @@ function createCliEntryHelpers(deps) {
           ? sourceReady
             ? [
                 'declare hardware / ingest doc / ingest schematic as needed',
-                'bootstrap run --confirm (or support bootstrap for direct control)',
-                'next [run]'
+                'next [run]',
+                'tool run <name> when a concrete calculation needs chip support'
               ]
             : [
                 'declare hardware / ingest doc / ingest schematic as needed',
-                'adapter derive --from-project (or adapter analysis init -> adapter derive --from-analysis)',
-                'next [run]'
+                'next [run]',
+                'adapter derive --from-project only when a concrete tool needs chip support'
               ]
           : ['declare hardware / ingest doc / ingest schematic as needed', 'next'],
         outcome: 'Project truth is explicit enough for task work.'
@@ -774,8 +784,8 @@ function createCliEntryHelpers(deps) {
       workflow[0].note = `Confirm the real MCU/package in ${runtime.getProjectAssetRelativePath('hw.yaml')} before execution.`;
     } else if (knownChipPath) {
       workflow[0].note = sourceReady
-        ? 'When reusable chip support is already configured, guided bootstrap can install it before deeper task work.'
-        : 'When the chip is already known, prefer project-local derive first. Configure or bootstrap a shared source later only if you want reusable install.';
+        ? 'Known-chip projects can continue with next first; reusable chip support is installed only when a tool path needs it.'
+        : 'Known-chip projects can continue with next first; derive project-local chip support later only when a tool path needs it.';
     }
 
     return workflow;
@@ -967,7 +977,7 @@ function createCliEntryHelpers(deps) {
         .unique([...(attached.detected.code || []), ...(attached.detected.projects || []), ...(current.last_files || [])])
         .slice(0, RUNTIME_CONFIG.max_last_files);
     });
-    const guidance = buildInitGuidance(resolveProjectRoot());
+    const guidance = buildInitGuidance(resolveProjectRoot(), { detected: attached.detected || null });
     const bootstrap = buildBootstrapSummary(guidance);
 
     return {

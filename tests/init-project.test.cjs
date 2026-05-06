@@ -216,6 +216,10 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'README.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workflow.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'worktree.yaml')), true);
+    assert.match(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'utf8'),
+      /worktree_dir: \.emb-agent\/worktrees/
+    );
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', 'archive')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'workspace')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'specs')), true);
@@ -668,7 +672,42 @@ test('init prioritizes discovered schematics before manual hardware confirmation
   }
 });
 
-test('init prioritizes bootstrap run for confirmed chip when default support source is available', () => {
+test('init discovery stays scoped to project docs and source roots', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-scoped-detect-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  try {
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(tempProject, 'third_party', 'vendor'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, 'docs', 'PMS150G.pdf'), 'PMS150G SOP8 datasheet\n', 'utf8');
+    fs.writeFileSync(path.join(tempProject, 'src', 'main.c'), '/* project code */\n', 'utf8');
+    fs.writeFileSync(path.join(tempProject, 'third_party', 'vendor', 'noise.pdf'), 'ignore me\n', 'utf8');
+    fs.writeFileSync(path.join(tempProject, 'third_party', 'vendor', 'driver.c'), '/* ignore */\n', 'utf8');
+
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+    const result = JSON.parse(stdout);
+
+    assert.ok(result.detected.docs.includes('docs/PMS150G.pdf'));
+    assert.ok(result.detected.code.includes('src/main.c'));
+    assert.ok(!result.detected.docs.includes('third_party/vendor/noise.pdf'));
+    assert.ok(!result.detected.code.includes('third_party/vendor/driver.c'));
+    assert.equal(result.bootstrap.command, 'ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware');
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('init defers chip support for confirmed chip until tool use', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-pins-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -726,9 +765,9 @@ test('init prioritizes bootstrap run for confirmed chip when default support sou
 
     assert.equal(result.initialized, true);
     assert.equal(result.bootstrap.status, 'ready-for-next');
-    assert.equal(result.bootstrap.stage, 'bootstrap-chip-support');
-    assert.equal(result.bootstrap.command, 'bootstrap run --confirm');
-    assert.match(result.bootstrap.summary, /chip support install is ready/i);
+    assert.equal(result.bootstrap.stage, 'continue-with-next');
+    assert.equal(result.bootstrap.command, 'next');
+    assert.match(result.bootstrap.summary, /chip\/tool support.*concrete tool/i);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
@@ -791,6 +830,10 @@ test('init accepts runtime and developer identity flags and persists updates', (
     assert.match(
       fs.readFileSync(path.join(tempProject, '.gitignore'), 'utf8'),
       /\.emb-agent\/\.developer/
+    );
+    assert.match(
+      fs.readFileSync(path.join(tempProject, '.gitignore'), 'utf8'),
+      /\.emb-agent\/worktrees\//
     );
   } finally {
     process.chdir(currentCwd);

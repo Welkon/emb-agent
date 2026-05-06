@@ -396,7 +396,7 @@ test('chip profile can route tools through a compatible device binding', () => {
   }
 });
 
-test('known chip start path prefers guided bootstrap once a chip support source is configured', async () => {
+test('known chip start path defers configured chip support until tool use', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-start-bootstrap-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -411,17 +411,18 @@ test('known chip start path prefers guided bootstrap once a chip support source 
 
     const start = cli.buildStartContext();
 
-    assert.equal(start.immediate.command, 'bootstrap run --confirm');
-    assert.match(start.immediate.cli, /bootstrap run --confirm$/);
+    assert.equal(start.immediate.command, 'task add <summary>');
+    assert.ok(!/bootstrap run --confirm$/.test(start.immediate.cli));
     assert.ok(Array.isArray(start.workflow.steps[0].commands));
-    assert.ok(start.workflow.steps[0].commands.some(item => item.includes('bootstrap run --confirm')));
+    assert.ok(start.workflow.steps[0].commands.some(item => item.includes('tool run <name>')));
+    assert.ok(start.workflow.steps[0].commands.every(item => !item.includes('bootstrap run --confirm')));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;
   }
 });
 
-test('known chip start path prefers bootstrap run when default support source is configured', async () => {
+test('known chip start path defers default chip support until tool use', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-start-derive-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -435,10 +436,11 @@ test('known chip start path prefers bootstrap run when default support source is
 
     const start = cli.buildStartContext();
 
-    assert.equal(start.immediate.command, 'bootstrap run --confirm');
-    assert.match(start.immediate.cli, /bootstrap run --confirm$/);
+    assert.equal(start.immediate.command, 'task add <summary>');
+    assert.ok(!/bootstrap run --confirm$/.test(start.immediate.cli));
     assert.ok(Array.isArray(start.workflow.steps[0].commands));
-    assert.ok(start.workflow.steps[0].commands.some(item => item.includes('bootstrap run --confirm')));
+    assert.ok(start.workflow.steps[0].commands.some(item => item.includes('tool run <name>')));
+    assert.ok(start.workflow.steps[0].commands.every(item => !item.includes('bootstrap run --confirm')));
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

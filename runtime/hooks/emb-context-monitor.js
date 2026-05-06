@@ -132,7 +132,7 @@ function buildMetricsMessage(metrics, contextHygiene) {
 }
 
 function buildSessionMessage(contextHygiene) {
-  if (!contextHygiene || contextHygiene.level === 'stable') {
+  if (!contextHygiene || contextHygiene.level === 'stable' || contextHygiene.level === 'consider-clearing') {
     return '';
   }
 

@@ -269,10 +269,18 @@ function createTaskCommandHelpers(deps) {
 
   function getDefaultTaskWorktreeConfig() {
     return {
-      worktree_dir: '../emb-agent-worktrees',
+      worktree_dir: '.emb-agent/worktrees',
       copy: ['.emb-agent/.developer'],
       post_create: []
     };
+  }
+
+  function normalizeTaskWorktreeDir(value, defaults) {
+    const raw = String(value || '').trim();
+    if (!raw || raw === '../emb-agent-worktrees') {
+      return defaults.worktree_dir;
+    }
+    return raw;
   }
 
   function readTaskWorktreeConfig() {
@@ -285,7 +293,7 @@ function createTaskCommandHelpers(deps) {
 
     const parsed = runtime.parseSimpleYaml(configPath) || {};
     return {
-      worktree_dir: String(parsed.worktree_dir || defaults.worktree_dir).trim() || defaults.worktree_dir,
+      worktree_dir: normalizeTaskWorktreeDir(parsed.worktree_dir, defaults),
       copy: Array.isArray(parsed.copy)
         ? parsed.copy.map(item => String(item || '').trim()).filter(Boolean)
         : defaults.copy.slice(),
@@ -3122,6 +3130,9 @@ function createTaskCommandHelpers(deps) {
           updated_at: ''
         };
       }
+      if (String(current.focus || '').trim() === String(task.title || '').trim()) {
+        current.focus = '';
+      }
     });
     if (shouldClearActiveTask) {
       syncCurrentTaskPointer('');
@@ -3324,9 +3335,59 @@ function createTaskCommandHelpers(deps) {
     }
   }
 
+  function buildTaskHelpPayload() {
+    return {
+      command: 'task',
+      usage: [
+        'task list',
+        'task add [--confirm] <summary>',
+        'task activate [--confirm] <name>',
+        'task show <name>',
+        'task resolve [--confirm] <name> [note]',
+        'task worktree <list|status|show|create|cleanup> [name]',
+        'task aar help',
+        'task aar scan <name>',
+        'task context <list|show|add> ...'
+      ],
+      subcommands: [
+        'list',
+        'add',
+        'show',
+        'activate',
+        'resolve',
+        'set-branch',
+        'set-base-branch',
+        'create-pr',
+        'link-pr',
+        'subtask add',
+        'subtask remove',
+        'worktree list',
+        'worktree status',
+        'worktree show',
+        'worktree create',
+        'worktree cleanup',
+        'aar help',
+        'aar scan',
+        'aar record',
+        'context list',
+        'context show',
+        'context add',
+        'scope infer'
+      ],
+      notes: [
+        'Use task aar help for closeout questions.',
+        'Use context focus get|set|clear for session focus; task resolve clears the active task pointer.'
+      ]
+    };
+  }
+
   function handleTaskCommands(cmd, subcmd, rest) {
     if (cmd !== 'task') {
       return undefined;
+    }
+
+    if (subcmd === 'help' || subcmd === '--help' || subcmd === '-h') {
+      return buildTaskHelpPayload();
     }
 
     if (!subcmd || subcmd === 'list') {

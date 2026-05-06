@@ -904,7 +904,7 @@ function buildDefaultWorktreeConfig() {
     '# Relative paths are resolved from the project root',
     '',
     '# Worktree storage directory',
-    'worktree_dir: ../emb-agent-worktrees',
+    'worktree_dir: .emb-agent/worktrees',
     '',
     '# Files or directories to copy into each created worktree',
     'copy:',
@@ -1208,6 +1208,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   }
 
   ensureGitignoreRule(projectRoot, runtime.getProjectAssetRelativePath('.developer'));
+  ensureGitignoreRule(projectRoot, `${runtime.getProjectAssetRelativePath('worktrees')}/`);
 
   const currentTaskExisted = fs.existsSync(currentTaskPath);
   if (!currentTaskExisted || force) {

@@ -263,6 +263,7 @@ function buildAdapterRequiredResult(rootDir, toolName, tokens) {
   const spec = toolCatalog.loadToolSpec(rootDir, toolName);
   const options = parseLongOptions(tokens || []);
   const searchPaths = resolveAdapterCandidates(rootDir, toolName);
+  const deriveCommand = `adapter derive --from-project --tool ${spec.name}`;
 
   return {
     tool: spec.name,
@@ -273,9 +274,19 @@ function buildAdapterRequiredResult(rootDir, toolName, tokens) {
       options
     },
     chip_support_search_paths: searchPaths,
+    lazy_generation: {
+      trigger: 'tool-use',
+      status: 'available',
+      command: deriveCommand,
+      confirm_command: `${deriveCommand} --confirm`,
+      summary: 'Chip support is not generated during init. Generate a project-local draft only if this tool is needed now.'
+    },
+    next_steps: [
+      `Run ${deriveCommand} only if this tool is needed now, then retry tool run ${spec.name}.`
+    ],
     notes: [
       'emb-agent core only provides abstract tool specs and does not include any vendor family/device/chip bindings.',
-      'To run this tool for real, install chip support under runtime or the project directory.',
+      'To run this tool for real, generate or install chip support under runtime or the project directory when the tool is actually needed.',
       'Vendor/chip-specific formulas, register boundaries, and evidence sources should live in separate extensions rather than emb core.'
     ]
   };
