@@ -10,7 +10,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const initProject = require(path.join(repoRoot, 'runtime', 'scripts', 'init-project.cjs'));
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 
-test('plan save appends micro-plan to debug notes by default', () => {
+test('plan save appends task plan to debug notes by default', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-plan-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;

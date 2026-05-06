@@ -106,7 +106,7 @@ test('applyOutputMode builds brief next context payload', () => {
         'Which truth, hardware facts, or code entry points bound the change?'
       ],
       recommended_path: 'plan-first',
-      recommended_reason: 'The task already has enough context to lock a micro-plan before execution.',
+      recommended_reason: 'The task already has enough context to lock the task plan before execution.',
       next_cli: 'node runtime/bin/emb-agent.cjs capability run plan',
       then_cli: 'node runtime/bin/emb-agent.cjs capability run do'
     },

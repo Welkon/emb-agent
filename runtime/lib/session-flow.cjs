@@ -268,7 +268,7 @@ function createSessionFlowHelpers(deps) {
     const recommendedPath = scanFirst ? 'scan-first' : 'plan-first';
     const recommendedReason = scanFirst
       ? 'Requirements, hardware truth, or decision inputs are still not explicit enough.'
-      : 'The task already has enough context to lock a micro-plan before execution.';
+      : 'The task already has enough context to lock the task plan before execution.';
 
     return {
       status: 'active-task',
@@ -290,7 +290,7 @@ function createSessionFlowHelpers(deps) {
           id: 'plan-first',
           when: 'Goal, boundaries, and acceptance are already explicit.',
           commands: [planCli, doCli],
-          outcome: 'Execution starts from a short micro-plan instead of chat drift.'
+          outcome: 'Execution starts from a locked task plan instead of chat drift.'
         },
         {
           id: 'review-before-do',
@@ -902,8 +902,8 @@ function createSessionFlowHelpers(deps) {
       return {
         command: 'plan',
         reason: toolName
-          ? `Active task ${taskLabel} already has enough context in ${prdPath}; run plan first to lock the micro-plan before execution, then use ${toolName} as the first concrete tool path.`
-          : `Active task ${taskLabel} already has enough context in ${prdPath}; run plan first to lock the micro-plan before execution.`,
+          ? `Active task ${taskLabel} already has enough context in ${prdPath}; run plan first to lock the task plan before execution, then use ${toolName} as the first concrete tool path.`
+          : `Active task ${taskLabel} already has enough context in ${prdPath}; run plan first to lock the task plan before execution.`,
         task_convergence: taskConvergence
       };
     }
@@ -928,7 +928,7 @@ function createSessionFlowHelpers(deps) {
         command: taskConvergence.recommended_path === 'scan-first' ? 'scan' : 'plan',
         reason: taskConvergence.recommended_path === 'scan-first'
           ? `Active task ${taskLabel} still needs a convergence pass. Re-open ${prdPath} and run scan first before planning or mutation.`
-          : `Active task ${taskLabel} already has enough context in ${prdPath}; run plan first to lock the micro-plan before execution.`,
+          : `Active task ${taskLabel} already has enough context in ${prdPath}; run plan first to lock the task plan before execution.`,
         task_convergence: taskConvergence
       };
     }
@@ -953,6 +953,26 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
+    if (!activeTask && initGuidance && !initGuidance.project_definition_required) {
+      const identity = initGuidance.selected_identity && typeof initGuidance.selected_identity === 'object'
+        ? initGuidance.selected_identity
+        : {};
+      const hardwareLabel = String(identity.model || '').trim()
+        ? `Hardware identity is locked (${runtime.unique([identity.vendor, identity.model, identity.package]).filter(Boolean).join(' ')})`
+        : 'Project bootstrap is ready';
+      return {
+        command: 'task add <summary>',
+        cli: buildCli(['task', 'add', '<summary>']),
+        reason: `${hardwareLabel}, but no active task exists. Tell me the concrete task in one sentence, or run task add <summary>; then activate it before scan, plan, or mutation.`,
+        task_prompt: 'Give the task you want done in one sentence. I will create and activate the task before continuing.',
+        task_intake: {
+          status: 'ready',
+          recommended_entry: 'task add <summary>',
+          then_cli: buildCli(['task', 'activate', '<name>'])
+        }
+      };
+    }
+
     if (openQuestions.length > 0 && !suggestScanTool) {
       return {
         command: 'debug',
@@ -965,8 +985,8 @@ function createSessionFlowHelpers(deps) {
         command: 'plan',
         reason:
           preferences.plan_mode === 'always'
-            ? 'Plan mode is forced. Make a micro-plan before execution.'
-            : 'A complex-task signal is active. Make a micro-plan before execution.'
+            ? 'Plan mode is forced. Lock the task plan before execution.'
+            : 'A complex-task signal is active. Lock the task plan before execution.'
       };
     }
 
@@ -1673,6 +1693,15 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
+    if (command === 'task add <summary>' || command === 'task add') {
+      return {
+        name: 'task-intake',
+        why: 'Project truth is ready but no task is active yet',
+        exit_criteria: 'A concrete task is created and activated before scan, plan, or mutation',
+        primary_command: 'task add'
+      };
+    }
+
     if (['review', 'verify'].includes(command)) {
       return {
         name: 'closure',
@@ -1838,17 +1867,27 @@ function createSessionFlowHelpers(deps) {
       ? quickstart.steps[0]
       : null;
     const followupCli = String(quickstart.followup || '').replace(/^Then:\s*/i, '').trim();
+    const taskIntakeCommand = command.command === 'task add <summary>' || command.command === 'task add';
+    const taskActivateCli = command.task_intake && command.task_intake.then_cli
+      ? command.task_intake.then_cli
+      : buildCli(['task', 'activate', '<name>']);
     const actionName = command.gated_by_health
       ? 'Close health blockers'
+      : taskIntakeCommand
+        ? 'Create a task'
       : `Continue with ${command.command || 'next'}`;
     const firstLabel = command.gated_by_health
       ? (firstQuickstartStep && firstQuickstartStep.label ? firstQuickstartStep.label : 'Run health closure first')
+      : taskIntakeCommand
+        ? 'Give the task'
       : `Run ${command.command || 'next'}`;
     const selectedHints = command.gated_by_health
       ? { first: '', second: '' }
       : selectCardActionHints(nextActions, command);
     const firstInstruction = command.gated_by_health
       ? (quickstart.user_summary || nextActions[0] || '')
+      : taskIntakeCommand
+        ? (command.task_prompt || 'Give the task you want done in one sentence, then activate it before continuing.')
       : (selectedHints.first || nextActions[0] || '');
     const firstCli = firstQuickstartStep && firstQuickstartStep.cli
       ? firstQuickstartStep.cli
@@ -1856,13 +1895,20 @@ function createSessionFlowHelpers(deps) {
     const followup = command.gated_by_health
       ? (quickstart.followup || nextActions[1] || '')
       : (
+          taskIntakeCommand
+            ? `Then: ${taskActivateCli}`
+          :
           activeTask && activeTask.name && command.command === 'verify'
             ? `Then: ${buildCli(['task', 'aar', 'scan', activeTask.name])}`
             : (selectedHints.second || nextActions[1] || '')
         );
 
     return {
-      status: command.gated_by_health ? 'blocked-by-health' : 'ready-to-run',
+      status: command.gated_by_health
+        ? 'blocked-by-health'
+        : taskIntakeCommand
+          ? 'blocked-by-task-intake'
+          : 'ready-to-run',
       stage: stage.name || command.command || '',
       action: actionName,
       summary: command.reason || stage.why || '',
@@ -1870,7 +1916,7 @@ function createSessionFlowHelpers(deps) {
       first_step_label: firstLabel,
       first_instruction: firstInstruction,
       first_cli: firstCli,
-      then_cli: followupCli || '',
+      then_cli: taskIntakeCommand ? taskActivateCli : followupCli || '',
       followup
     };
   }
