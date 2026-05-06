@@ -10,6 +10,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
 const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
+const workflowRegistry = require(path.join(repoRoot, 'runtime', 'lib', 'workflow-registry.cjs'));
 
 function assertProjectLocalInjected(specs) {
   assert.deepEqual(
@@ -432,6 +433,100 @@ test('task commands create activate manage context and resolve lightweight tasks
 
     const listedAfterResolve = await captureCliJson(['task', 'worktree', 'list']);
     assert.equal(listedAfterResolve.worktrees.some(item => item.task_name === taskName), false);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('capability do requires selected code-writing specs without making them global', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-code-writing-spec-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    const projectExtDir = runtime.getProjectExtDir(tempProject);
+    workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true });
+    const registryPath = path.join(projectExtDir, 'registry', 'workflow.json');
+    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    registry.specs.push({
+      name: 'embedded-space',
+      title: 'Embedded Space',
+      path: 'specs/embedded-space.md',
+      summary: 'Code-writing rules for small MCU firmware.',
+      auto_inject: false,
+      selectable: true,
+      priority: 58,
+      apply_when: {
+        specs: ['embedded-space']
+      },
+      focus_areas: [],
+      extra_review_axes: [],
+      preferred_notes: [],
+      default_agents: []
+    }, {
+      name: 'product-flow',
+      title: 'Product Flow',
+      path: 'specs/product-flow.md',
+      summary: 'Workflow rules that are not code-writing style rules.',
+      auto_inject: false,
+      selectable: true,
+      priority: 55,
+      apply_when: {
+        specs: ['product-flow']
+      },
+      focus_areas: [],
+      extra_review_axes: [],
+      preferred_notes: [],
+      default_agents: []
+    });
+    fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
+    writeText(
+      path.join(projectExtDir, 'specs', 'embedded-space.md'),
+      '# Embedded Space\n\n- Keep code direct and ROM-first.\n'
+    );
+    writeText(
+      path.join(projectExtDir, 'specs', 'product-flow.md'),
+      '# Product Flow\n\n- Keep workflow state explicit.\n'
+    );
+    const projectConfigPath = runtime.resolveProjectDataPath(tempProject, 'project.json');
+    const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
+    writeJson(projectConfigPath, {
+      ...projectConfig,
+      active_specs: ['embedded-space', 'product-flow']
+    });
+
+    const plan = cli.buildActionOutput('plan');
+    const actionDo = cli.buildActionOutput('do');
+
+    assert.ok(!plan.injected_specs.some(item => item.name === 'embedded-space'));
+    assert.ok(actionDo.injected_specs.some(item =>
+      item.name === 'embedded-space' &&
+      item.required === true &&
+      item.enforcement_scope === 'code-writing'
+    ));
+    assert.ok(!actionDo.injected_specs.some(item => item.name === 'product-flow'));
+    assert.equal(actionDo.code_writing_specs.status, 'required');
+    assert.ok(actionDo.code_writing_specs.items.some(item => item.name === 'embedded-space'));
+    assert.ok(!actionDo.code_writing_specs.items.some(item => item.name === 'product-flow'));
+    assert.ok(actionDo.next_actions.some(item => item.includes('required_code_writing_specs=')));
+
+    const created = await captureCliJson(['task', 'add', 'Implement source rules']);
+    const taskName = created.task.name;
+    const taskDir = path.join(tempProject, '.emb-agent', 'tasks', taskName);
+    const codeWritingSpecsPath = `.emb-agent/tasks/${taskName}/code-writing-specs.md`;
+    const autoSpecsText = fs.readFileSync(path.join(taskDir, 'auto-specs.md'), 'utf8');
+    const codeWritingSpecsText = fs.readFileSync(path.join(taskDir, 'code-writing-specs.md'), 'utf8');
+
+    assert.ok(created.task.code_writing_specs.some(item => item.name === 'embedded-space'));
+    assert.ok(!created.task.code_writing_specs.some(item => item.name === 'product-flow'));
+    assert.equal(created.task.artifacts.code_writing_specs, codeWritingSpecsPath);
+    assert.ok(created.task.context.implement.some(item => item.path === codeWritingSpecsPath));
+    assert.ok(!created.task.context.check.some(item => item.path === codeWritingSpecsPath));
+    assert.ok(!created.task.context.debug.some(item => item.path === codeWritingSpecsPath));
+    assert.doesNotMatch(autoSpecsText, /Required Code-Writing Specs/);
+    assert.match(codeWritingSpecsText, /Required Code-Writing Specs/);
+    assert.match(codeWritingSpecsText, /Keep code direct and ROM-first/);
   } finally {
     process.chdir(currentCwd);
   }

@@ -307,6 +307,37 @@ test('applyOutputMode builds brief next context payload', () => {
   assert.equal(output.external_agent, undefined);
 });
 
+test('applyOutputMode keeps required code-writing specs in brief do output', () => {
+  const output = outputMode.applyOutputMode({
+    chosen_agent: 'emb-coder',
+    prerequisites: ['Read the active task PRD'],
+    safety_checks: ['Keep source edits narrow'],
+    execution_brief: {
+      focus_order: ['source'],
+      suggested_steps: ['Patch firmware'],
+      supporting_agents: []
+    },
+    code_writing_specs: {
+      status: 'required',
+      applies_to: 'code-writing',
+      summary: 'Read and obey these active code-writing specs before editing firmware/source code.',
+      items: [
+        {
+          name: 'embedded-space',
+          path: '.emb-agent/specs/embedded-space.md',
+          summary: 'ROM-first embedded firmware rules.'
+        }
+      ]
+    },
+    next_actions: ['required_code_writing_specs=.emb-agent/specs/embedded-space.md']
+  }, true);
+
+  assert.equal(output.output_mode, 'brief');
+  assert.equal(output.code_writing_specs.status, 'required');
+  assert.equal(output.code_writing_specs.applies_to, 'code-writing');
+  assert.deepEqual(output.code_writing_specs.items.map(item => item.name), ['embedded-space']);
+});
+
 test('applyOutputMode builds brief start context payload with external driver hints', () => {
   const output = outputMode.applyOutputMode({
     entry: 'start',

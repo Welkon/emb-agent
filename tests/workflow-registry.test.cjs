@@ -60,6 +60,112 @@ test('workflow registry merges built-in and project specs and resolves auto inje
   });
 });
 
+test('workflow registry treats selected active specs as code-writing requirements only when requested', () => {
+  return withSupportSourceEnv(() => {
+    const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-selected-spec-'));
+    const projectExtDir = runtime.initProjectLayout(tempProject);
+    workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true });
+    const registryPath = path.join(projectExtDir, 'registry', 'workflow.json');
+    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+
+    registry.specs.push({
+      name: 'embedded-space',
+      title: 'Embedded Space',
+      path: 'specs/embedded-space.md',
+      summary: 'Code-writing rules for small MCU firmware.',
+      auto_inject: false,
+      selectable: true,
+      priority: 58,
+      apply_when: {
+        specs: ['embedded-space']
+      },
+      focus_areas: [],
+      extra_review_axes: [],
+      preferred_notes: [],
+      default_agents: []
+    }, {
+      name: 'product-flow',
+      title: 'Product Flow',
+      path: 'specs/product-flow.md',
+      summary: 'Workflow rules that are not code-writing style rules.',
+      auto_inject: false,
+      selectable: true,
+      priority: 55,
+      apply_when: {
+        specs: ['product-flow']
+      },
+      focus_areas: [],
+      extra_review_axes: [],
+      preferred_notes: [],
+      default_agents: []
+    }, {
+      name: 'local-style',
+      title: 'Local Style',
+      path: 'specs/local-style.md',
+      summary: 'Project-local code-writing rules.',
+      auto_inject: false,
+      selectable: true,
+      priority: 56,
+      apply_when: {
+        specs: ['local-style']
+      },
+      focus_areas: [],
+      extra_review_axes: [],
+      preferred_notes: [],
+      default_agents: [],
+      enforcement_scopes: ['code-writing']
+    });
+    fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
+    fs.writeFileSync(
+      path.join(projectExtDir, 'specs', 'embedded-space.md'),
+      '# Embedded Space\n\n- Keep code direct and ROM-first.\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectExtDir, 'specs', 'product-flow.md'),
+      '# Product Flow\n\n- Keep workflow state explicit.\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectExtDir, 'specs', 'local-style.md'),
+      '# Local Style\n\n- Use local naming rules.\n',
+      'utf8'
+    );
+
+    const merged = workflowRegistry.loadWorkflowRegistry(path.join(repoRoot, 'runtime'), {
+      projectExtDir
+    });
+    const normalInjected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
+      specs: ['embedded-space', 'product-flow', 'local-style'],
+      task: { type: 'implement', status: 'planning' }
+    }, { limit: 8 });
+    const codeWritingInjected = workflowRegistry.resolveAutoInjectedSpecs(merged, {
+      specs: ['embedded-space', 'product-flow', 'local-style'],
+      task: { type: 'implement', status: 'planning' }
+    }, {
+      limit: 8,
+      include_selected_specs: true,
+      selected_specs_only: true,
+      selected_reason: 'required-for-code-writing',
+      selected_enforcement_scope: 'code-writing'
+    });
+
+    assert.ok(!normalInjected.some(item => item.name === 'embedded-space'));
+    assert.ok(codeWritingInjected.some(item =>
+      item.name === 'embedded-space' &&
+      item.required === true &&
+      item.enforcement_scope === 'code-writing' &&
+      item.reasons.includes('required-for-code-writing')
+    ));
+    assert.ok(codeWritingInjected.some(item =>
+      item.name === 'local-style' &&
+      item.required === true &&
+      item.enforcement_scope === 'code-writing'
+    ));
+    assert.ok(!codeWritingInjected.some(item => item.name === 'product-flow'));
+  });
+});
+
 test('workflow registry injects iot device focus for connected projects without requiring rtos', () => {
   return withSupportSourceEnv(() => {
     const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-iot-'));

@@ -112,6 +112,23 @@ function summarizeScheduler(value) {
   });
 }
 
+function summarizeCodeWritingSpecs(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    status: value.status || '',
+    applies_to: value.applies_to || '',
+    summary: value.summary || '',
+    items: truncateList(value.items, 4).map(item => compactObject({
+      name: item && item.name ? item.name : '',
+      path: item && item.path ? item.path : '',
+      summary: item && item.summary ? item.summary : ''
+    }))
+  });
+}
+
 function summarizeToolRecommendation(value) {
   if (!isObject(value)) {
     return null;
@@ -973,6 +990,7 @@ function buildBriefDoOutput(value) {
       suggested_steps: truncateList(executionBrief.suggested_steps, 4),
       supporting_agents: truncateList(executionBrief.supporting_agents, 3)
     }),
+    code_writing_specs: summarizeCodeWritingSpecs(value.code_writing_specs),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),

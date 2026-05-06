@@ -266,6 +266,9 @@ function createActionContractHelpers(deps) {
       actionCard && actionCard.first_instruction ? `instruction=${actionCard.first_instruction}` : '',
       actionCard && actionCard.first_cli ? `command=${actionCard.first_cli}` : '',
       actionCard && actionCard.followup ? `followup=${actionCard.followup}` : '',
+      output && output.code_writing_specs && output.code_writing_specs.status === 'required'
+        ? `required_code_writing_specs=${(output.code_writing_specs.items || []).map(item => item.path).filter(Boolean).join(',')}`
+        : '',
       buildClosureCheckpointHint(action),
       output && output.next_step ? `decision_point=${output.next_step}` : ''
     ]);
@@ -333,7 +336,8 @@ function createActionContractHelpers(deps) {
     };
   }
 
-  function buildInjectedSpecs(resolved, task, handoff, limit = 5) {
+  function buildInjectedSpecs(resolved, task, handoff, limit = 5, options = {}) {
+    const settings = options && typeof options === 'object' ? options : {};
     const snapshot = workflowRegistry.buildInjectedSpecSnapshot(
       ROOT,
       runtime.getProjectExtDir(resolved.session.project_root),
@@ -343,7 +347,13 @@ function createActionContractHelpers(deps) {
         task: task || null,
         handoff: handoff || null
       },
-      { limit }
+      {
+        limit,
+        include_selected_specs: settings.include_selected_specs === true,
+        selected_specs_only: settings.selected_specs_only === true,
+        selected_reason: settings.selected_reason,
+        selected_enforcement_scope: settings.selected_enforcement_scope
+      }
     );
 
     return (snapshot.items || []).map(item => ({
@@ -353,15 +363,48 @@ function createActionContractHelpers(deps) {
       display_path: item.display_path,
       scope: item.scope,
       priority: item.priority,
-      reasons: item.reasons || []
+      reasons: item.reasons || [],
+      selected_active: item.selected_active === true,
+      required: item.required === true,
+      enforcement_scope: item.enforcement_scope || ''
     }));
+  }
+
+  function buildCodeWritingSpecContract(injectedSpecs) {
+    const requiredSpecs = (Array.isArray(injectedSpecs) ? injectedSpecs : [])
+      .filter(item => item && item.required === true && item.enforcement_scope === 'code-writing');
+
+    if (requiredSpecs.length === 0) {
+      return null;
+    }
+
+    return {
+      status: 'required',
+      applies_to: 'code-writing',
+      summary: 'Read and obey these active code-writing specs before editing, generating, or refactoring firmware/source code.',
+      items: requiredSpecs.map(item => ({
+        name: item.name,
+        title: item.title || item.name,
+        path: item.display_path,
+        summary: item.summary || '',
+        reasons: item.reasons || []
+      }))
+    };
   }
 
   function buildActionOutput(action) {
     const resolved = resolveSession();
     const handoff = loadHandoff();
     const activeTask = typeof getActiveTask === 'function' ? getActiveTask() : null;
-    const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff);
+    const injectedSpecs = buildInjectedSpecs(resolved, activeTask, handoff, 5, {
+      include_selected_specs: action === 'do',
+      selected_specs_only: false,
+      selected_reason: 'required-for-code-writing',
+      selected_enforcement_scope: action === 'do' ? 'code-writing' : ''
+    });
+    const codeWritingSpecs = action === 'do'
+      ? buildCodeWritingSpecContract(injectedSpecs)
+      : null;
     const workflowStage = typeof buildWorkflowStage === 'function'
       ? buildWorkflowStage({ command: action }, resolved)
       : null;
@@ -413,6 +456,7 @@ function createActionContractHelpers(deps) {
     const enriched = enrichWithToolSuggestions({
       ...output,
       injected_specs: injectedSpecs,
+      code_writing_specs: codeWritingSpecs,
       agent_execution: output.scheduler && output.scheduler.agent_execution
         ? output.scheduler.agent_execution
         : scheduler.buildAgentExecution(action, resolved),

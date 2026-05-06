@@ -496,7 +496,12 @@ function createWorkflowImportHelpers(deps) {
         focus_areas: toStringArray(metadata.focus_areas),
         extra_review_axes: toStringArray(metadata.extra_review_axes),
         preferred_notes: toStringArray(metadata.preferred_notes),
-        default_agents: toStringArray(metadata.default_agents)
+        default_agents: toStringArray(metadata.default_agents),
+        enforcement_scopes: toStringArray(
+          metadata.enforcement_scopes !== undefined
+            ? metadata.enforcement_scopes
+            : metadata.enforcement_scope
+        )
       };
 
       sourcePathByEntryPath.set(relativePath, filePath);

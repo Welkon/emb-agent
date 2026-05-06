@@ -8,6 +8,11 @@ const PROJECT_REGISTRY_DIR = 'registry';
 const PROJECT_SPECS_DIR = 'specs';
 const PROJECT_TEMPLATES_DIR = 'templates';
 const WORKFLOW_REGISTRY_FILE = 'workflow.json';
+const CODE_WRITING_SPEC_NAMES = new Set([
+  'embedded-space',
+  'padauk-space',
+  'padauk-firmware'
+]);
 
 function ensureObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -49,6 +54,16 @@ function ensureStringArray(value, label) {
   return value
     .map((item, index) => ensureString(item, `${label}[${index}]`))
     .filter(Boolean);
+}
+
+function ensureOptionalStringArray(value, label) {
+  if (value === undefined || value === null || value === '') {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return ensureStringArray(value, label);
+  }
+  return [ensureString(value, label)];
 }
 
 function ensureRelativeFile(value, label) {
@@ -121,6 +136,11 @@ function normalizeTemplateEntry(entry, label) {
 
 function normalizeSpecEntry(entry, label) {
   const source = ensureObject(entry, label);
+  const enforcementScopes = ensureOptionalStringArray(
+    source.enforcement_scopes !== undefined ? source.enforcement_scopes : source.enforcement_scope,
+    `${label}.enforcement_scopes`
+  );
+
   return {
     name: ensureString(source.name, `${label}.name`),
     title: ensureOptionalString(source.title),
@@ -133,7 +153,8 @@ function normalizeSpecEntry(entry, label) {
     focus_areas: ensureStringArray(source.focus_areas || [], `${label}.focus_areas`),
     extra_review_axes: ensureStringArray(source.extra_review_axes || [], `${label}.extra_review_axes`),
     preferred_notes: ensureStringArray(source.preferred_notes || [], `${label}.preferred_notes`),
-    default_agents: ensureStringArray(source.default_agents || [], `${label}.default_agents`)
+    default_agents: ensureStringArray(source.default_agents || [], `${label}.default_agents`),
+    enforcement_scopes: enforcementScopes
   };
 }
 
@@ -532,10 +553,64 @@ function evaluateSpecReason(spec, context) {
   return reasons;
 }
 
+function buildSpecSnapshotEntry(item, reasons, flags = {}) {
+  return {
+    name: item.name,
+    title: item.title || prettyName(item.name),
+    summary: item.summary || '',
+    display_path: item.display_path,
+    absolute_path: item.absolute_path,
+    scope: item.scope,
+    priority: item.priority,
+    reasons,
+    selected_active: flags.selected_active === true,
+    required: flags.required === true,
+    enforcement_scope: flags.enforcement_scope || ''
+  };
+}
+
+function mergeSpecSnapshotEntry(target, source) {
+  if (!target) {
+    return source;
+  }
+
+  return {
+    ...target,
+    reasons: Array.from(new Set([...(target.reasons || []), ...(source.reasons || [])])),
+    selected_active: target.selected_active === true || source.selected_active === true,
+    required: target.required === true || source.required === true,
+    enforcement_scope: target.enforcement_scope || source.enforcement_scope || ''
+  };
+}
+
+function specMatchesEnforcementScope(spec, scope) {
+  const normalizedScope = String(scope || '').trim();
+  if (!normalizedScope) {
+    return true;
+  }
+
+  const declaredScopes = Array.isArray(spec && spec.enforcement_scopes)
+    ? spec.enforcement_scopes.map(item => String(item || '').trim()).filter(Boolean)
+    : [];
+  if (declaredScopes.includes(normalizedScope)) {
+    return true;
+  }
+
+  return normalizedScope === 'code-writing' && CODE_WRITING_SPEC_NAMES.has(String((spec && spec.name) || '').trim());
+}
+
 function resolveAutoInjectedSpecs(registry, context = {}, options = {}) {
   const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : 6;
-  const entries = ((registry && registry.specs) || [])
-    .filter(item => item && item.auto_inject)
+  const includeSelectedSpecs = options.include_selected_specs === true;
+  const selectedSpecsOnly = options.selected_specs_only === true;
+  const selectedReason = String(options.selected_reason || 'selected-active-spec').trim() || 'selected-active-spec';
+  const selectedEnforcementScope = String(options.selected_enforcement_scope || '').trim();
+  const activeSpecNames = new Set(((context && context.specs) || []).map(item => String(item || '').trim()).filter(Boolean));
+  const byName = new Map();
+  const autoEntries = selectedSpecsOnly
+    ? []
+    : ((registry && registry.specs) || [])
+      .filter(item => item && item.auto_inject)
     .map(item => ({
       ...item,
       reasons: evaluateSpecReason(item, context)
@@ -545,19 +620,37 @@ function resolveAutoInjectedSpecs(registry, context = {}, options = {}) {
       right.priority - left.priority ||
       left.name.localeCompare(right.name)
     )
-    .slice(0, limit)
-    .map(item => ({
-      name: item.name,
-      title: item.title || prettyName(item.name),
-      summary: item.summary || '',
-      display_path: item.display_path,
-      absolute_path: item.absolute_path,
-      scope: item.scope,
-      priority: item.priority,
-      reasons: item.reasons
-    }));
+    .slice(0, limit);
 
-  return entries;
+  autoEntries.forEach(item => {
+    const entry = buildSpecSnapshotEntry(item, item.reasons || []);
+    byName.set(entry.name, mergeSpecSnapshotEntry(byName.get(entry.name), entry));
+  });
+
+  if (includeSelectedSpecs && activeSpecNames.size > 0) {
+    ((registry && registry.specs) || [])
+      .filter(item =>
+        item &&
+        item.selectable &&
+        activeSpecNames.has(item.name) &&
+        specMatchesEnforcementScope(item, selectedEnforcementScope)
+      )
+      .forEach(item => {
+        const entry = buildSpecSnapshotEntry(item, [selectedReason], {
+          selected_active: true,
+          required: true,
+          enforcement_scope: selectedEnforcementScope
+        });
+        byName.set(entry.name, mergeSpecSnapshotEntry(byName.get(entry.name), entry));
+      });
+  }
+
+  return Array.from(byName.values())
+    .sort((left, right) =>
+      Number(right.required === true) - Number(left.required === true) ||
+      right.priority - left.priority ||
+      left.name.localeCompare(right.name)
+    );
 }
 
 function buildInjectedSpecSnapshot(runtimeRoot, projectExtDir, context = {}, options = {}) {

@@ -79,4 +79,6 @@ If the answer is "no" to any of those, prefer a project-local extension.
 
 `smart-pillbox` is better treated as a project-local selectable spec, because adherence state, reminder semantics, and caregiver flows are product-specific.
 
+Code-writing specs are narrower than workflow specs. Mark reusable source-editing rules with `enforcement_scope: code-writing` so they are required during implementation, but do not become bootstrap, scan, planning, or project-management instructions.
+
 See [Smart Pillbox Project Extension](../examples/project-extensions/smart-pillbox/README.md) for a concrete example.
