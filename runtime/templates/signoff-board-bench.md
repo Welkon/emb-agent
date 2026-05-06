@@ -45,5 +45,5 @@
 - [ ] **PASS** — All checks pass. Task can resolve.
 - [ ] **FAIL** — Issues found (see above). Task cannot resolve.
 
-**Signed:** ___  
+**Signed:** ___
 **Date:** ___
