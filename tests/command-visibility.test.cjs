@@ -349,10 +349,31 @@ test('task help returns task-specific guidance', async () => {
   const help = await captureCliJson(['task', '--help']);
 
   assert.equal(help.command, 'task');
+  assert.ok(help.usage.includes('task status'));
   assert.ok(help.usage.includes('task resolve [--confirm] <name> [note]'));
+  assert.ok(help.subcommands.includes('status'));
   assert.ok(help.subcommands.includes('worktree cleanup'));
   assert.ok(help.subcommands.includes('aar scan'));
   assert.match(help.notes.join('\n'), /context focus get\|set\|clear/);
+});
+
+test('pause help returns guidance without creating a handoff', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-pause-help-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const help = await captureCliJson(['pause', '--help']);
+
+    assert.equal(help.command, 'pause');
+    assert.ok(help.usage.includes('pause [note]'));
+    assert.ok(help.subcommands.includes('clear'));
+    assert.equal(cli.loadHandoff(), null);
+  } finally {
+    process.chdir(currentCwd);
+  }
 });
 
 test('help supports explicit json output mode', async () => {
