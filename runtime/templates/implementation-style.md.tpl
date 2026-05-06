@@ -42,5 +42,4 @@ const uint16_t debounce_ms = 24;
 
 ## 5. Project-Specific Exceptions
 
-- 
-
+-

@@ -8,4 +8,3 @@
   State the commands, hardware checks, or evidence artifacts that count as closure here.
 - Writing rules:
   Note naming conventions, layering rules, or project-specific guardrails that are easy to violate.
-

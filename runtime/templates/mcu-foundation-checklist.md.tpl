@@ -21,7 +21,7 @@
 
 Key facts (write conclusions, not guesses):
 
-- 
+-
 
 ## 2. Clock
 
@@ -32,7 +32,7 @@ Key facts (write conclusions, not guesses):
 
 Key facts:
 
-- 
+-
 
 ## 3. Memory
 
@@ -43,7 +43,7 @@ Key facts:
 
 Key facts:
 
-- 
+-
 
 ## 4. Pins
 
@@ -54,7 +54,7 @@ Key facts:
 
 Key facts:
 
-- 
+-
 
 ## 5. Interrupts
 
@@ -65,7 +65,7 @@ Key facts:
 
 Key facts:
 
-- 
+-
 
 ## 6. Next Steps (Execution Order)
 
