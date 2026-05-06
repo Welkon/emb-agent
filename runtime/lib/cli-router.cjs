@@ -1790,6 +1790,26 @@ function createCliRouter(deps) {
       return;
     }
 
+    if (cmd === 'pause' && (subcmd === 'help' || subcmd === '--help' || subcmd === '-h')) {
+      emitJson({
+        command: 'pause',
+        usage: [
+          'pause [note]',
+          'pause show',
+          'pause clear'
+        ],
+        subcommands: [
+          'show',
+          'clear'
+        ],
+        notes: [
+          'Use pause [note] before clearing context.',
+          'Use pause clear to remove the stored handoff and context summary.'
+        ]
+      });
+      return;
+    }
+
     if (cmd === 'pause') {
       const noteText = [subcmd, ...rest].filter(Boolean).join(' ').trim();
       const pausedContext = buildPauseContextSummary

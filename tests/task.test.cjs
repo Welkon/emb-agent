@@ -9,6 +9,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const cli = require(path.join(repoRoot, 'runtime', 'bin', 'emb-agent.cjs'));
+const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 
 function assertProjectLocalInjected(specs) {
   assert.deepEqual(
@@ -327,6 +328,12 @@ test('task commands create activate manage context and resolve lightweight tasks
     );
     assert.ok(cli.loadSession().last_files.some(item => item.includes('cache/docs/')));
 
+    const taskStatus = await captureCliJson(['task', 'status']);
+    assert.equal(taskStatus.current_task, taskName);
+    assert.equal(taskStatus.active_task.name, taskName);
+    assert.equal(taskStatus.active_task.status, 'in_progress');
+    assert.equal(taskStatus.task_convergence.recommended_path, 'plan-first');
+
     const updatedContext = await captureCliJson([
       'task',
       'context',
@@ -375,6 +382,11 @@ test('task commands create activate manage context and resolve lightweight tasks
     const plan = cli.buildActionOutput('plan');
     assertProjectLocalInjected(plan.injected_specs);
 
+    const paused = await captureCliJson(['pause', `Continue ${taskName}`]);
+    assert.equal(paused.paused, true);
+    assert.equal(cli.loadHandoff().focus, activated.task.title);
+    assert.equal(cli.buildResumeContext().handoff.next_action, `Continue ${taskName}`);
+
     const blockedResolve = await captureCliJson(['task', 'resolve', taskName, 'adapter merged']);
     assert.equal(blockedResolve.status, 'aar-required');
 
@@ -407,6 +419,10 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(fs.existsSync(activated.workspace.path), false);
     assert.equal(cli.loadSession().active_task.name, '');
     assert.equal(cli.loadSession().focus, '');
+    assert.equal(resolved.continuity_cleanup.handoff_cleared, true);
+    assert.equal(resolved.continuity_cleanup.context_summary_cleared, true);
+    assert.equal(cli.loadHandoff(), null);
+    assert.equal(cli.buildResumeContext().summary.resume_source, 'session');
     assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
 
     const focusSet = await captureCliJson(['context', 'focus', 'set', 'temporary follow-up']);
@@ -442,6 +458,71 @@ test('task worktree default and legacy config stay inside project', async () => 
     assert.equal(fs.existsSync(activated.task.worktree_path), true);
 
     await captureCliJson(['task', 'worktree', 'cleanup', '--confirm', created.task.name]);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task resolve keeps unrelated handoff when only context summary matches', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-continuity-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const created = await captureCliJson(['task', 'add', '--confirm', 'Resolve stale continuation']);
+    await captureCliJson(['task', 'activate', '--confirm', created.task.name]);
+
+    const runtimeRoot = path.join(repoRoot, 'runtime');
+    const runtimeConfig = runtime.loadRuntimeConfig(runtimeRoot);
+    const statePaths = runtime.getProjectStatePaths(runtimeRoot, tempProject, runtimeConfig);
+
+    runtime.writeJson(statePaths.handoffPath, {
+      version: '1.0',
+      timestamp: '2026-05-06T00:00:00.000Z',
+      status: 'paused',
+      focus: 'Unrelated board review',
+      next_action: 'Continue board review',
+      context_notes: 'No reference to the resolved task',
+      specs: [],
+      last_files: []
+    });
+    runtime.writeJson(statePaths.contextSummaryPath, {
+      version: '1.0',
+      generated_at: '2026-05-06T00:00:00.000Z',
+      source: 'pause',
+      focus: created.task.title,
+      specs: [],
+      active_task: {
+        name: created.task.name,
+        title: created.task.title,
+        status: 'in_progress',
+        path: created.task.path,
+        package: ''
+      }
+    });
+
+    await captureCliJson([
+      'task',
+      'aar',
+      'scan',
+      created.task.name,
+      '--aar-new-pattern',
+      'no',
+      '--aar-new-trap',
+      'no',
+      '--aar-missing-rule',
+      'no',
+      '--aar-outdated-rule',
+      'no'
+    ]);
+    const resolved = await captureCliJson(['task', 'resolve', created.task.name, 'done']);
+
+    assert.equal(resolved.continuity_cleanup.context_summary_cleared, true);
+    assert.equal(resolved.continuity_cleanup.handoff_cleared, false);
+    assert.equal(fs.existsSync(statePaths.contextSummaryPath), false);
+    assert.equal(cli.loadHandoff().focus, 'Unrelated board review');
   } finally {
     process.chdir(currentCwd);
   }

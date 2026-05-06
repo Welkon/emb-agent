@@ -24,6 +24,10 @@ function createTaskCommandHelpers(deps) {
     loadSession,
     resolveSession,
     updateSession,
+    loadHandoff,
+    loadContextSummary,
+    clearHandoff,
+    clearContextSummary,
     requireRestText,
     docCache,
     adapterSources,
@@ -338,6 +342,69 @@ function createTaskCommandHelpers(deps) {
   function syncCurrentTaskPointer(name) {
     const normalized = String(name || '').trim();
     fs.writeFileSync(getCurrentTaskPointerPath(), normalized ? `${normalized}\n` : '', 'utf8');
+  }
+
+  function textMatchesTask(value, task) {
+    const text = String(value || '').trim();
+    if (!text || !task) {
+      return false;
+    }
+    return [task.name, task.title, task.path]
+      .map(item => String(item || '').trim())
+      .filter(Boolean)
+      .some(item => text === item || text.includes(item));
+  }
+
+  function continuityActiveTaskMatches(summary, task) {
+    const activeTask =
+      summary && summary.active_task && typeof summary.active_task === 'object'
+        ? summary.active_task
+        : {};
+    return ['name', 'title', 'path'].some(key => {
+      const left = String(activeTask[key] || '').trim();
+      const right = String(task && task[key] || '').trim();
+      return left && right && left === right;
+    });
+  }
+
+  function clearResolvedTaskContinuity(task) {
+    const result = {
+      handoff_cleared: false,
+      context_summary_cleared: false
+    };
+    let shouldClearContextSummary = false;
+    let shouldClearHandoff = false;
+
+    if (typeof loadContextSummary === 'function') {
+      const summary = loadContextSummary();
+      if (continuityActiveTaskMatches(summary, task)) {
+        shouldClearContextSummary = true;
+      }
+    }
+
+    if (typeof loadHandoff === 'function') {
+      const handoff = loadHandoff();
+      if (
+        handoff &&
+        (
+          textMatchesTask(handoff.focus, task) ||
+          textMatchesTask(handoff.next_action, task) ||
+          textMatchesTask(handoff.context_notes, task)
+        )
+      ) {
+        shouldClearHandoff = true;
+      }
+    }
+
+    if (shouldClearHandoff && typeof clearHandoff === 'function') {
+      clearHandoff();
+      result.handoff_cleared = true;
+    }
+    if (shouldClearContextSummary && typeof clearContextSummary === 'function') {
+      clearContextSummary();
+      result.context_summary_cleared = true;
+    }
+    return result;
   }
 
   function getWorkspaceCurrentTaskPointerPath(workspacePath) {
@@ -2682,6 +2749,49 @@ function createTaskCommandHelpers(deps) {
     return { task };
   }
 
+  function buildTaskStatusPayload() {
+    const session = loadSession();
+    const pointerPath = getCurrentTaskPointerPath();
+    const currentTask = fs.existsSync(pointerPath)
+      ? fs.readFileSync(pointerPath, 'utf8').trim()
+      : '';
+    const activeTask = getActiveTask();
+
+    updateSession(current => {
+      current.last_command = 'task status';
+    });
+
+    return {
+      command: 'task status',
+      current_task: currentTask,
+      active_task: activeTask
+        ? {
+            name: activeTask.name,
+            title: activeTask.title,
+            status: activeTask.status,
+            path: activeTask.path,
+            package: activeTask.package || '',
+            worktree_path: activeTask.worktree_path || null
+          }
+        : null,
+      session_active_task: session.active_task || {
+        name: '',
+        title: '',
+        status: '',
+        path: '',
+        package: '',
+        updated_at: ''
+      },
+      focus: session.focus || '',
+      task_convergence: activeTask
+        ? buildTaskConvergence(activeTask, {
+            activated: activeTask.status === 'in_progress',
+            prd_path: activeTask.artifacts && activeTask.artifacts.prd
+          })
+        : null
+    };
+  }
+
   function setTaskBranch(rest) {
     const input = parseNamedTaskWriteArgs(rest, 'task set-branch');
     const branch = String(input.rest[0] || '').trim();
@@ -3137,11 +3247,13 @@ function createTaskCommandHelpers(deps) {
     if (shouldClearActiveTask) {
       syncCurrentTaskPointer('');
     }
+    const continuityCleanup = clearResolvedTaskContinuity(task);
 
     return permissionGateHelpers.applyPermissionDecision({
       resolved: true,
       task: readTask(input.name),
-      workspace_cleanup: workspaceCleanup
+      workspace_cleanup: workspaceCleanup,
+      continuity_cleanup: continuityCleanup
     }, blocked.permission);
   }
 
@@ -3340,6 +3452,7 @@ function createTaskCommandHelpers(deps) {
       command: 'task',
       usage: [
         'task list',
+        'task status',
         'task add [--confirm] <summary>',
         'task activate [--confirm] <name>',
         'task show <name>',
@@ -3351,6 +3464,7 @@ function createTaskCommandHelpers(deps) {
       ],
       subcommands: [
         'list',
+        'status',
         'add',
         'show',
         'activate',
@@ -3392,6 +3506,10 @@ function createTaskCommandHelpers(deps) {
 
     if (!subcmd || subcmd === 'list') {
       return listTasks();
+    }
+
+    if (subcmd === 'status') {
+      return buildTaskStatusPayload();
     }
 
     if (subcmd === 'add') {

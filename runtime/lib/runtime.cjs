@@ -24,7 +24,20 @@ function readJson(filePath) {
 
 function writeJson(filePath, value) {
   ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + '\n', 'utf8');
+  const tempPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`
+  );
+
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(value, null, 2) + '\n', 'utf8');
+    fs.renameSync(tempPath, filePath);
+  } catch (error) {
+    if (fs.existsSync(tempPath)) {
+      fs.unlinkSync(tempPath);
+    }
+    throw error;
+  }
 }
 
 function moveFile(sourcePath, targetPath) {

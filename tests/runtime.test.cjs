@@ -220,6 +220,20 @@ test('normalizePreferences rejects invalid values', () => {
   );
 });
 
+test('writeJson replaces files atomically without leaving temp files', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-runtime-write-json-'));
+  const filePath = path.join(tempDir, 'state.json');
+
+  runtime.writeJson(filePath, { value: 1 });
+  runtime.writeJson(filePath, { value: 2, nested: { ok: true } });
+
+  assert.deepEqual(runtime.readJson(filePath), { value: 2, nested: { ok: true } });
+  assert.deepEqual(
+    fs.readdirSync(tempDir).filter(name => name.endsWith('.tmp')),
+    []
+  );
+});
+
 test('project state paths resolve outside runtime root and migrate legacy files', () => {
   const config = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-runtime-root-'));
