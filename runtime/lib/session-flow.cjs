@@ -449,11 +449,7 @@ function createSessionFlowHelpers(deps) {
       ? healthReport.checks.some(item => blockingChecks.has(item.key) && (item.status === 'warn' || item.status === 'fail'))
       : false;
     const actionableHealthCommands = Array.isArray(healthReport.next_commands)
-      ? healthReport.next_commands.some(item => [
-          ...(blankSelectionMode
-            ? ['init', 'doc-apply']
-            : ['init', 'support-source-add', 'support-sync', 'support-bootstrap', 'support-analysis-init', 'support-derive-from-analysis', 'doc-apply'])
-        ].includes(item.key))
+      ? healthReport.next_commands.some(item => ['init', 'doc-apply'].includes(item.key))
       : false;
 
     return hasBlockingCheck || actionableHealthCommands;
@@ -1005,16 +1001,16 @@ function createSessionFlowHelpers(deps) {
     const reasons = [];
     let score = 0;
 
-    if (lastFiles.length >= 5) {
+    if (lastFiles.length >= 16) {
       score += 2;
       reasons.push(`Recent files have reached ${lastFiles.length}, which means the context span is starting to widen`);
-    } else if (lastFiles.length >= 3) {
+    } else if (lastFiles.length >= 10) {
       score += 1;
       reasons.push(`There are already ${lastFiles.length} recent files; close down the scope before digging deeper`);
     }
 
     if (openQuestions.length >= 2) {
-      score += 2;
+      score += 3;
       reasons.push(`There are still ${openQuestions.length} open questions`);
     } else if (openQuestions.length === 1) {
       score += 1;
@@ -1022,7 +1018,7 @@ function createSessionFlowHelpers(deps) {
     }
 
     if (knownRisks.length >= 2) {
-      score += 2;
+      score += 3;
       reasons.push(`There are still ${knownRisks.length} known risks to track`);
     } else if (knownRisks.length === 1) {
       score += 1;
@@ -1640,7 +1636,7 @@ function createSessionFlowHelpers(deps) {
     if (command === 'health') {
       return {
         name: 'health-gate',
-        why: 'Base hardware truth or chip support health is not closed yet; complete health closure first',
+        why: 'Base project truth is not closed yet; complete health closure first',
         exit_criteria: 'Health next commands are closed and the next command is no longer health',
         primary_command: 'health'
       };
@@ -1894,7 +1890,7 @@ function createSessionFlowHelpers(deps) {
     const healthGateReason =
       healthQuickstart && healthQuickstart.stage === 'ingest-detected-input'
         ? 'Detected hardware inputs still need source intake. Follow the health guidance to normalize the schematic or document before entering scan.'
-        : 'The base integration is not closed yet. Follow the health guidance to complete hardware truth or chip support install before entering scan.';
+        : 'The base integration is not closed yet. Follow the health guidance to complete project truth before entering scan.';
     const nextCommand = gatedByHealth
       ? {
           command: 'health',

@@ -373,6 +373,12 @@ function createStateCommandHelpers(deps) {
       });
     }
 
+    if (cmd === 'focus' && subcmd === 'clear') {
+      return updateSession(current => {
+        current.focus = '';
+      });
+    }
+
     if (cmd === 'last-files' && subcmd === 'list') {
       return { last_files: loadSession().last_files };
     }

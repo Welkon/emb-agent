@@ -316,6 +316,7 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(activated.worktree.current_task, taskName);
     assert.equal(cli.loadSession().active_task.name, taskName);
     assert.equal(cli.loadSession().active_task.status, 'in_progress');
+    assert.equal(cli.loadSession().focus, activated.task.title);
     assert.equal(activated.task_convergence.status, 'active-task');
     assert.equal(activated.task_convergence.recommended_path, 'plan-first');
     assert.match(activated.task_convergence.next_cli, /emb-agent\.cjs capability run plan$/);
@@ -405,10 +406,42 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(resolved.task.aar.record_required, false);
     assert.equal(fs.existsSync(activated.workspace.path), false);
     assert.equal(cli.loadSession().active_task.name, '');
+    assert.equal(cli.loadSession().focus, '');
     assert.equal(fs.readFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'utf8'), '');
+
+    const focusSet = await captureCliJson(['context', 'focus', 'set', 'temporary follow-up']);
+    assert.equal(focusSet.focus, 'temporary follow-up');
+    const focusCleared = await captureCliJson(['context', 'focus', 'clear']);
+    assert.equal(focusCleared.focus, '');
 
     const listedAfterResolve = await captureCliJson(['task', 'worktree', 'list']);
     assert.equal(listedAfterResolve.worktrees.some(item => item.task_name === taskName), false);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task worktree default and legacy config stay inside project', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-worktree-default-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: ../emb-agent-worktrees\n');
+
+    const created = await captureCliJson(['task', 'add', '--confirm', 'Keep task workspace project local']);
+    const activated = await captureCliJson(['task', 'activate', '--confirm', created.task.name]);
+    const expectedRoot = path.join(tempProject, '.emb-agent', 'worktrees');
+
+    assert.equal(activated.activated, true);
+    assert.equal(
+      path.relative(expectedRoot, activated.task.worktree_path).startsWith('..'),
+      false
+    );
+    assert.equal(fs.existsSync(activated.task.worktree_path), true);
+
+    await captureCliJson(['task', 'worktree', 'cleanup', '--confirm', created.task.name]);
   } finally {
     process.chdir(currentCwd);
   }

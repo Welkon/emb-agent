@@ -60,5 +60,6 @@ allowed-tools:
 
 - Most projects should continue with:
   `next`
+- Known-chip projects should still continue with `next` first. Generate or install chip/tool support only when a concrete `tool run <name>` path needs chip-specific formulas or bindings.
 - If automatic startup or bootstrap does not seem to advance, check:
   `health`

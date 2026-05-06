@@ -28,6 +28,43 @@ const DOC_EXTS = new Set(['.pdf', '.md', '.txt', '.doc', '.docx', '.csv', '.xls'
 const SCHEMATIC_EXTS = new Set(['.schdoc', '.sch', '.dsn']);
 const CODE_EXTS = new Set(['.c', '.h', '.cpp', '.hpp', '.s', '.asm', '.ino']);
 const PROJECT_EXTS = new Set(['.ioc', '.uvprojx', '.uvoptx', '.ewp', '.eww', '.project', '.cproject', '.prj', '.pre']);
+const DOC_SCAN_DIRS = new Set([
+  'doc',
+  'docs',
+  'documentation',
+  'datasheet',
+  'datasheets',
+  'manual',
+  'manuals',
+  'hardware',
+  'hw',
+  'schematic',
+  'schematics'
+]);
+const CODE_SCAN_DIRS = new Set([
+  'app',
+  'apps',
+  'application',
+  'code',
+  'components',
+  'core',
+  'firmware',
+  'fw',
+  'inc',
+  'include',
+  'lib',
+  'libs',
+  'source',
+  'src',
+  'user'
+]);
+const PACKAGE_CONTAINER_DIRS = new Set(['apps', 'packages', 'projects']);
+const PACKAGE_SCAN_DIRS = new Set([
+  ...DOC_SCAN_DIRS,
+  ...CODE_SCAN_DIRS
+]);
+const MAX_DISCOVERY_FILES = 1200;
+const DEFAULT_DISCOVERY_DEPTH = 5;
 
 function usage() {
   process.stdout.write(
@@ -213,25 +250,147 @@ function parseArgs(argv) {
   return result;
 }
 
-function walkFiles(rootDir, currentDir, results) {
-  const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+function isCandidateInputPath(relativePath) {
+  const lower = String(relativePath || '').toLowerCase();
+  const ext = path.extname(lower);
+
+  return (
+    DOC_EXTS.has(ext) ||
+    SCHEMATIC_EXTS.has(ext) ||
+    CODE_EXTS.has(ext) ||
+    PROJECT_EXTS.has(ext) ||
+    lower.includes('datasheet') ||
+    lower.includes('manual') ||
+    lower.includes('reference') ||
+    lower.includes('pin') ||
+    lower.includes('schematic') ||
+    lower.includes('circuit')
+  );
+}
+
+function pushDiscoveryRoot(roots, projectRoot, relativeDir, maxDepth) {
+  const normalized = String(relativeDir || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const absolutePath = normalized ? path.join(projectRoot, normalized) : projectRoot;
+  if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isDirectory()) {
+    return;
+  }
+
+  const existing = roots.find(item => item.relativeDir === normalized);
+  if (existing) {
+    existing.maxDepth = Math.max(existing.maxDepth, maxDepth);
+    return;
+  }
+
+  roots.push({
+    relativeDir: normalized,
+    absolutePath,
+    maxDepth
+  });
+}
+
+function collectDiscoveryRoots(projectRoot) {
+  const roots = [];
+  pushDiscoveryRoot(roots, projectRoot, '', 0);
+
+  const entries = fs.existsSync(projectRoot)
+    ? fs.readdirSync(projectRoot, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))
+    : [];
 
   for (const entry of entries) {
+    if (!entry.isDirectory() || IGNORE_DIRS.has(entry.name)) {
+      continue;
+    }
+
+    const lower = entry.name.toLowerCase();
+    if (DOC_SCAN_DIRS.has(lower) || CODE_SCAN_DIRS.has(lower)) {
+      pushDiscoveryRoot(roots, projectRoot, entry.name, DEFAULT_DISCOVERY_DEPTH);
+    }
+
+    if (!PACKAGE_CONTAINER_DIRS.has(lower)) {
+      continue;
+    }
+
+    const containerPath = path.join(projectRoot, entry.name);
+    const packageEntries = fs.readdirSync(containerPath, { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const packageEntry of packageEntries) {
+      if (!packageEntry.isDirectory() || IGNORE_DIRS.has(packageEntry.name)) {
+        continue;
+      }
+
+      const packageRoot = path.posix.join(entry.name, packageEntry.name);
+      pushDiscoveryRoot(roots, projectRoot, packageRoot, 1);
+      const packageRootPath = path.join(projectRoot, packageRoot);
+      const packageChildren = fs.readdirSync(packageRootPath, { withFileTypes: true })
+        .sort((left, right) => left.name.localeCompare(right.name));
+      for (const child of packageChildren) {
+        if (!child.isDirectory() || IGNORE_DIRS.has(child.name)) {
+          continue;
+        }
+        if (PACKAGE_SCAN_DIRS.has(child.name.toLowerCase())) {
+          pushDiscoveryRoot(
+            roots,
+            projectRoot,
+            path.posix.join(packageRoot, child.name),
+            DEFAULT_DISCOVERY_DEPTH
+          );
+        }
+      }
+    }
+  }
+
+  return roots;
+}
+
+function walkFiles(rootDir, currentDir, results, options = {}) {
+  const maxDepth = Number.isFinite(options.maxDepth) ? options.maxDepth : DEFAULT_DISCOVERY_DEPTH;
+  const depth = Number.isFinite(options.depth) ? options.depth : 0;
+  const state = options.state || { files: 0, seen: new Set() };
+  const entries = fs.readdirSync(currentDir, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  for (const entry of entries) {
+    if (state.files >= MAX_DISCOVERY_FILES) {
+      break;
+    }
+
     if (entry.isDirectory()) {
       if (IGNORE_DIRS.has(entry.name)) {
         continue;
       }
-      walkFiles(rootDir, path.join(currentDir, entry.name), results);
+      if (depth < maxDepth) {
+        walkFiles(rootDir, path.join(currentDir, entry.name), results, {
+          maxDepth,
+          depth: depth + 1,
+          state
+        });
+      }
       continue;
     }
 
-    results.push(path.relative(rootDir, path.join(currentDir, entry.name)).replace(/\\/g, '/'));
+    const relPath = path.relative(rootDir, path.join(currentDir, entry.name)).replace(/\\/g, '/');
+    if (!isCandidateInputPath(relPath) || state.seen.has(relPath)) {
+      continue;
+    }
+
+    state.seen.add(relPath);
+    state.files += 1;
+    results.push(relPath);
   }
 }
 
 function detectProjectInputs(projectRoot) {
   const files = [];
-  walkFiles(projectRoot, projectRoot, files);
+  const state = { files: 0, seen: new Set() };
+  collectDiscoveryRoots(projectRoot).forEach(root => {
+    if (state.files >= MAX_DISCOVERY_FILES) {
+      return;
+    }
+    walkFiles(projectRoot, root.absolutePath, files, {
+      maxDepth: root.maxDepth,
+      state
+    });
+  });
 
   const docs = [];
   const schematics = [];

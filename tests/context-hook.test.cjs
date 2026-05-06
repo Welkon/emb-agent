@@ -56,6 +56,37 @@ test('context monitor hook emits only when session context is heavy', () => {
   }
 });
 
+test('context monitor does not interrupt just because recent files reached eight', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-recent-files-'));
+  const currentCwd = process.cwd();
+  const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
+
+  try {
+    process.env.EMB_AGENT_WORKSPACE_TRUST = '1';
+    process.chdir(tempProject);
+    cli.main(['init']);
+
+    for (let index = 1; index <= 8; index += 1) {
+      const fileName = `src/recent-${index}.c`;
+      fs.mkdirSync(path.dirname(fileName), { recursive: true });
+      fs.writeFileSync(fileName, `// recent ${index}\n`, 'utf8');
+      cli.main(['last-files', 'add', fileName]);
+    }
+
+    const result = contextMonitor.runHook({ cwd: tempProject, event: 'PostToolUse' });
+    assert.equal(result.trusted, true);
+    assert.equal(result.status, 'ok');
+    assert.equal(result.output, '');
+  } finally {
+    if (previousTrust === undefined) {
+      delete process.env.EMB_AGENT_WORKSPACE_TRUST;
+    } else {
+      process.env.EMB_AGENT_WORKSPACE_TRUST = previousTrust;
+    }
+    process.chdir(currentCwd);
+  }
+});
+
 test('context monitor prioritizes live context metrics and warns to pause', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-metrics-'));
   const currentCwd = process.cwd();

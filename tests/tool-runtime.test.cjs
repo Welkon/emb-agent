@@ -48,6 +48,8 @@ test('tool runtime stays abstract-only without installed chip support', () => {
   assert.equal(result.tool, 'timer-calc');
   assert.equal(result.inputs.options.family, 'vendor-family');
   assert.ok(result.chip_support_search_paths.some(item => item.endsWith('timer-calc.cjs')));
+  assert.equal(result.lazy_generation.trigger, 'tool-use');
+  assert.match(result.lazy_generation.command, /adapter derive --from-project --tool timer-calc/);
 });
 
 test('cli tool run emits chip-support-required json when no support exists', async () => {
@@ -67,6 +69,7 @@ test('cli tool run emits chip-support-required json when no support exists', asy
   assert.equal(result.status, 'chip-support-required');
   assert.equal(result.implementation, 'abstract-only');
   assert.equal(result.tool, 'timer-calc');
+  assert.match(result.next_steps[0], /adapter derive --from-project --tool timer-calc/);
 });
 
 test('tool runtime blocks high-risk execution until explicit confirmation is provided', () => {
