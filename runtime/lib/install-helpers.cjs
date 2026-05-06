@@ -1993,9 +1993,10 @@ function createInstallHelpers(deps) {
       current = stripManagedConfigBlock(current);
     }
 
+    const rendered = String(block || '').trim();
     const next = current
-      ? `${current}\n\n${block}\n`
-      : `${block}\n`;
+      ? `${current}\n\n${rendered}\n`
+      : `${rendered}\n`;
 
     fs.writeFileSync(configPath, next);
   }
