@@ -1264,6 +1264,61 @@ function createCliRouter(deps) {
       return options;
     }
 
+    function bootstrapStageAcceptsConfirm(stage) {
+      if (!stage || !Array.isArray(stage.argv) || stage.argv.length === 0) {
+        return false;
+      }
+
+      const [stageCmd, stageSubcmd, stageAction] = stage.argv;
+
+      if (stageCmd === 'ingest') {
+        return ['apply', 'hardware', 'requirements'].includes(stageSubcmd);
+      }
+
+      if (stageCmd === 'support') {
+        return ['source', 'bootstrap', 'sync'].includes(stageSubcmd);
+      }
+
+      if (stageCmd === 'adapter') {
+        return ['derive', 'generate', 'export', 'publish'].includes(stageSubcmd);
+      }
+
+      if (stageCmd === 'task') {
+        return [
+          'add',
+          'activate',
+          'resolve',
+          'set-branch',
+          'set-base-branch',
+          'subtask',
+          'create-pr',
+          'link-pr',
+          'context',
+          'worktree',
+          'aar'
+        ].includes(stageSubcmd);
+      }
+
+      if (stageCmd === 'knowledge') {
+        return ['save-query', 'ingest'].includes(stageSubcmd) ||
+          (stageSubcmd === 'formula' && stageAction === 'draft');
+      }
+
+      if (stageCmd === 'snippet') {
+        return stageSubcmd === 'draft';
+      }
+
+      if (stageCmd === 'verify') {
+        return ['save', 'confirm', 'reject'].includes(stageSubcmd);
+      }
+
+      if (stageCmd === 'scan' || stageCmd === 'plan' || stageCmd === 'review' || stageCmd === 'note') {
+        return ['save', 'add'].includes(stageSubcmd);
+      }
+
+      return false;
+    }
+
     function applyBootstrapRunOptions(stage, options) {
       const nextStage = stage && typeof stage === 'object' && !Array.isArray(stage)
         ? {
@@ -1277,7 +1332,7 @@ function createCliRouter(deps) {
         return nextStage;
       }
 
-      if (settings.confirm && !nextStage.argv.includes('--confirm')) {
+      if (settings.confirm && bootstrapStageAcceptsConfirm(nextStage) && !nextStage.argv.includes('--confirm')) {
         nextStage.argv.push('--confirm');
       }
 
