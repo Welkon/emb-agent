@@ -24,6 +24,7 @@ allowed-tools:
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
 - For PDFs and manuals, prefer:
   `ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
+- MinerU API ZIP results are cached with `images/...` assets under `.emb-agent/cache/docs/<doc-id>/`; if `parse.md` references an image, inspect that cached asset or rerun `ingest doc --force` before trying PDF rendering or web image workarounds.
 - If the PDF is still missing but the chip or schematic already hints at it, use:
   `doc lookup --chip <name> --vendor <name>`
 - To extract datasheet links from LCEDA/EasyEDA search results, use:

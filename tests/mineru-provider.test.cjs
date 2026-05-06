@@ -100,7 +100,8 @@ test('mineru provider parses markdown via api mode batch flow', async () => {
   fs.writeFileSync(filePath, 'fake pdf', 'utf8');
 
   const zipBuffer = buildStoredZip([
-    { name: 'result/full.md', data: '# API Parse\n\n- Timer16 exists\n' }
+    { name: 'result/full.md', data: '# API Parse\n\n![Pin map](images/pin-map.jpg)\n\n- Timer16 exists\n' },
+    { name: 'result/images/pin-map.jpg', data: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) }
   ]);
 
   const calls = [];
@@ -198,6 +199,10 @@ test('mineru provider parses markdown via api mode batch flow', async () => {
   assert.equal(parsed.mode, 'api');
   assert.equal(parsed.task_id, 'batch-1');
   assert.match(parsed.markdown, /API Parse/);
+  assert.equal(parsed.assets.length, 1);
+  assert.equal(parsed.assets[0].path, 'images/pin-map.jpg');
+  assert.deepEqual(parsed.assets[0].data, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  assert.equal(parsed.metadata.result_zip_url, 'https://download.invalid/result.zip');
   assert.equal(calls.length, 5);
 });
 

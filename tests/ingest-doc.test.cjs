@@ -36,10 +36,17 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
             provider: 'mineru',
             mode: 'agent',
             task_id: 'task-demo',
-            markdown: '# PMS150G SOP8\n\n- Timer16 exists\n- PWM output supported\n- PA5 reserved for programming\n',
+            markdown: '# PMS150G SOP8\n\n![pin map](images/pms150g-pin-map.jpg)\n\n- Timer16 exists\n- PWM output supported\n- PA5 reserved for programming\n',
+            assets: [
+              {
+                path: 'images/pms150g-pin-map.jpg',
+                data: Buffer.from([0xff, 0xd8, 0xff, 0xd9])
+              }
+            ],
             metadata: {
               completed: {
-                full_md_url: 'https://mineru.invalid/result.md'
+                full_md_url: 'https://mineru.invalid/result.md',
+                full_zip_url: 'https://mineru.invalid/result.zip'
               }
             }
           };
@@ -80,6 +87,8 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     assert.match(first.apply_ready.command, /ingest apply doc .* --to hardware/);
     assert.equal(fs.existsSync(path.join(cacheDir, 'parse.md')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'parse.json')), true);
+    assert.equal(fs.existsSync(path.join(cacheDir, 'assets.json')), true);
+    assert.equal(fs.existsSync(path.join(cacheDir, 'images', 'pms150g-pin-map.jpg')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'summary.json')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'source.json')), true);
     assert.equal(fs.existsSync(path.join(cacheDir, 'facts.hardware.yaml')), true);
@@ -105,6 +114,10 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
       /PA5 reserved for programming/
     );
     assert.equal(status.last_files[0], first.artifacts.markdown);
+    assert.equal(first.artifacts.assets_manifest, path.join(first.cache_dir, 'assets.json'));
+    assert.equal(first.image_assets.status, 'available');
+    assert.deepEqual(first.image_assets.references, ['images/pms150g-pin-map.jpg']);
+    assert.deepEqual(first.image_assets.missing, []);
     const docsListBeforeApply = ingestDocCli.listDocs(tempProject);
     assert.equal(docsListBeforeApply.documents[0].intended_to, 'hardware');
     assert.equal(docsListBeforeApply.documents[0].apply_pending, true);
@@ -114,6 +127,9 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
     assert.equal(docViewBeforeApply.summary_info.agent_analysis.artifact_path, '.emb-agent/analysis/pms150g.json');
     assert.equal(docViewBeforeApply.summary_info.recommended_flow.id, 'doc-to-chip-support-analysis');
     assert.equal(docViewBeforeApply.summary_info.handoff_protocol.protocol, 'emb-agent.chip-support-analysis/1');
+    assert.equal(docViewBeforeApply.artifact_state.assets_manifest, true);
+    assert.equal(docViewBeforeApply.image_assets.status, 'available');
+    assert.deepEqual(docViewBeforeApply.image_assets.available, ['images/pms150g-pin-map.jpg']);
 
     const nextContext = cli.buildNextContext();
     assert.equal(nextContext.hardware_doc_analysis.recommended_agent, 'emb-hw-scout');

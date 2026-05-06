@@ -233,7 +233,8 @@ async function uploadFile(fetchImpl, uploadUrl, filePath) {
 
 function normalizeAgentDonePayload(payload) {
   const data = (payload && payload.data) || payload || {};
-  return data.markdown_url ? data : null;
+  const markdownUrl = String(data.markdown_url || data.full_md_url || data.markdownUrl || data.fullMdUrl || '').trim();
+  return markdownUrl ? { ...data, markdown_url: markdownUrl } : null;
 }
 
 async function pollAgentTask(fetchImpl, baseUrl, taskId, timeoutMs, pollIntervalMs) {
@@ -437,7 +438,27 @@ function readZipEntry(buffer, entry) {
   throw new Error(`MinerU zip compression not supported: ${entry.compression_method}`);
 }
 
-function extractMarkdownFromZip(buffer) {
+function normalizeZipAssetPath(fileName) {
+  const normalized = String(fileName || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  const imageIndex = normalized.toLowerCase().indexOf('images/');
+  if (imageIndex < 0) {
+    return '';
+  }
+
+  const relative = normalized.slice(imageIndex);
+  const parts = relative.split('/').filter(Boolean);
+  if (
+    parts.length < 2 ||
+    parts[0] !== 'images' ||
+    parts.some(part => part === '.' || part === '..')
+  ) {
+    return '';
+  }
+
+  return parts.join('/');
+}
+
+function extractMineruZipArtifacts(buffer) {
   const entries = extractZipEntries(buffer);
   const markdownEntry =
     entries.find(item => /(^|\/)full\.md$/i.test(item.file_name)) ||
@@ -447,7 +468,65 @@ function extractMarkdownFromZip(buffer) {
     throw new Error('MinerU zip result missing markdown file');
   }
 
-  return readZipEntry(buffer, markdownEntry).toString('utf8');
+  const assets = [];
+  for (const entry of entries) {
+    const assetPath = normalizeZipAssetPath(entry.file_name);
+    if (!assetPath) {
+      continue;
+    }
+    assets.push({
+      path: assetPath,
+      data: readZipEntry(buffer, entry)
+    });
+  }
+
+  return {
+    markdown: readZipEntry(buffer, markdownEntry).toString('utf8'),
+    assets
+  };
+}
+
+function extractMarkdownFromZip(buffer) {
+  return extractMineruZipArtifacts(buffer).markdown;
+}
+
+function extractFullZipUrl(value) {
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+
+  const direct = String(value.full_zip_url || value.fullZipUrl || value.fullZipURL || '').trim();
+  if (direct) {
+    return direct;
+  }
+
+  const data = value.data && typeof value.data === 'object' ? value.data : null;
+  if (data) {
+    const fromData = extractFullZipUrl(data);
+    if (fromData) {
+      return fromData;
+    }
+  }
+
+  const result = value.result && typeof value.result === 'object' ? value.result : null;
+  if (result) {
+    const fromResult = extractFullZipUrl(result);
+    if (fromResult) {
+      return fromResult;
+    }
+  }
+
+  const extractResult = value.extract_result || value.extractResult;
+  if (Array.isArray(extractResult)) {
+    for (const item of extractResult) {
+      const fromItem = extractFullZipUrl(item);
+      if (fromItem) {
+        return fromItem;
+      }
+    }
+  }
+
+  return '';
 }
 
 async function parseDocumentAgent(request, integration, options) {
@@ -499,16 +578,31 @@ async function parseDocumentAgent(request, integration, options) {
     throw new Error('MinerU result missing markdown_url');
   }
 
-  const markdown = await requestText(fetchImpl, completed.markdown_url, { method: 'GET' });
+  const zipUrl = extractFullZipUrl(completed);
+  let zipArtifacts = null;
+  let zipError = '';
+  if (zipUrl) {
+    try {
+      zipArtifacts = extractMineruZipArtifacts(await requestBuffer(fetchImpl, zipUrl, { method: 'GET' }));
+    } catch (err) {
+      zipError = String(err && err.message ? err.message : err || '');
+    }
+  }
+  const markdown = zipArtifacts
+    ? zipArtifacts.markdown
+    : await requestText(fetchImpl, completed.markdown_url, { method: 'GET' });
 
   return {
     provider: 'mineru',
     mode: 'agent',
     task_id: created.task_id,
     markdown,
+    assets: zipArtifacts ? zipArtifacts.assets : [],
     metadata: {
       created,
-      completed
+      completed,
+      result_zip_url: zipUrl,
+      result_zip_error: zipError
     }
   };
 }
@@ -560,16 +654,18 @@ async function parseDocumentApi(request, integration, options) {
     throw new Error('MinerU API result missing full_zip_url');
   }
 
-  const markdown = extractMarkdownFromZip(await requestBuffer(fetchImpl, zipUrl, { method: 'GET' }));
+  const zipArtifacts = extractMineruZipArtifacts(await requestBuffer(fetchImpl, zipUrl, { method: 'GET' }));
 
   return {
     provider: 'mineru',
     mode: 'api',
     task_id: completed.batch_id,
-    markdown,
+    markdown: zipArtifacts.markdown,
+    assets: zipArtifacts.assets,
     metadata: {
       created: created.raw,
-      completed: completed.raw
+      completed: completed.raw,
+      result_zip_url: zipUrl
     }
   };
 }
@@ -607,6 +703,7 @@ async function parseDocument(request, integration, options) {
 }
 
 module.exports = {
+  extractMineruZipArtifacts,
   extractMarkdownFromZip,
   parseDocument
 };
