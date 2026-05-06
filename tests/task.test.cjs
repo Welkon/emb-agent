@@ -863,6 +863,91 @@ test('task activate creates a real git worktree when the project is a git reposi
   }
 });
 
+test('task resolve auto-merges dirty git worktree before cleanup', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-merge-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    writeText(path.join(tempProject, 'src', 'main.c'), '// main\n');
+    await cli.main(['init']);
+    initGitRepo(tempProject);
+
+    const created = await captureCliJson(['task', 'add', 'Merge task workspace changes']);
+    const taskName = created.task.name;
+    const activated = await captureCliJson(['task', 'activate', taskName]);
+
+    writeText(path.join(activated.workspace.path, 'src', 'main.c'), '// task change\n');
+    writeText(path.join(activated.workspace.path, 'src', 'added.c'), '// added by task\n');
+
+    const resolved = await captureCliJson([
+      'task',
+      'resolve',
+      taskName,
+      '--aar-new-pattern',
+      'no',
+      '--aar-new-trap',
+      'no',
+      '--aar-missing-rule',
+      'no',
+      '--aar-outdated-rule',
+      'no',
+      'done'
+    ]);
+
+    assert.equal(resolved.resolved, true);
+    assert.equal(resolved.workspace_merge.status, 'merged');
+    assert.equal(resolved.workspace_cleanup.cleaned, true);
+    assert.equal(fs.existsSync(activated.workspace.path), false);
+    assert.equal(fs.readFileSync(path.join(tempProject, 'src', 'main.c'), 'utf8'), '// task change\n');
+    assert.equal(fs.readFileSync(path.join(tempProject, 'src', 'added.c'), 'utf8'), '// added by task\n');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task resolve keeps worktree when automatic merge fails', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-merge-fail-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    writeText(path.join(tempProject, 'src', 'main.c'), 'line one\nline two\n');
+    await cli.main(['init']);
+    initGitRepo(tempProject);
+
+    const created = await captureCliJson(['task', 'add', 'Detect merge conflict before cleanup']);
+    const taskName = created.task.name;
+    const activated = await captureCliJson(['task', 'activate', taskName]);
+
+    writeText(path.join(activated.workspace.path, 'src', 'main.c'), 'line one\nfrom task\n');
+    writeText(path.join(tempProject, 'src', 'main.c'), 'line one\nfrom main\n');
+
+    const blocked = await captureCliJson([
+      'task',
+      'resolve',
+      taskName,
+      '--aar-new-pattern',
+      'no',
+      '--aar-new-trap',
+      'no',
+      '--aar-missing-rule',
+      'no',
+      '--aar-outdated-rule',
+      'no',
+      'done'
+    ]);
+
+    assert.equal(blocked.resolved, false);
+    assert.equal(blocked.status, 'workspace-merge-required');
+    assert.equal(blocked.workspace_merge.status, 'failed');
+    assert.equal(fs.existsSync(activated.workspace.path), true);
+    assert.equal(fs.readFileSync(path.join(tempProject, 'src', 'main.c'), 'utf8'), 'line one\nfrom main\n');
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('task worktree create and cleanup expose trellis-style workspace lifecycle for git projects', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-worktree-'));
   const currentCwd = process.cwd();

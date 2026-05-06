@@ -89,3 +89,26 @@ test('start exposes Trellis-style task intake guidance during bootstrap', async 
     process.chdir(currentCwd);
   }
 });
+
+test('next asks for task intake once hardware identity is locked', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-next-task-intake-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await captureCliJson(['init']);
+    await captureCliJson(['declare', 'hardware', '--confirm', '--mcu', 'SC8P8122AD', '--package', 'SOP8']);
+
+    const next = await captureCliJson(['next']);
+
+    assert.equal(next.next.command, 'task add <summary>');
+    assert.match(next.next.reason, /Hardware identity is locked/i);
+    assert.match(next.next.reason, /Tell me the concrete task/i);
+    assert.equal(next.action_card.status, 'blocked-by-task-intake');
+    assert.match(next.action_card.first_instruction, /Give the task/i);
+    assert.match(next.action_card.first_cli, /task add <summary>/);
+    assert.match(next.action_card.then_cli, /task activate <name>/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});

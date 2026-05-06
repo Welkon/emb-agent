@@ -1477,7 +1477,7 @@ function createTaskCommandHelpers(deps) {
     const recommendedPath = scanFirst ? 'scan-first' : 'plan-first';
     const recommendedReason = scanFirst
       ? 'Requirements, hardware truth, or decision inputs are still not explicit enough.'
-      : 'The task already has enough context to lock a micro-plan before execution.';
+      : 'The task already has enough context to lock the task plan before execution.';
     const summary = activated
       ? 'Use the task PRD as the working contract. Re-read goal, constraints, acceptance, and open questions before choosing scan or plan.'
       : 'Open the task PRD first and make goal, constraints, acceptance, and open questions explicit before execution.';
@@ -1514,7 +1514,7 @@ function createTaskCommandHelpers(deps) {
             planCli,
             doCli
           ]),
-          outcome: 'Execution starts from a short micro-plan instead of chat drift.'
+          outcome: 'Execution starts from a locked task plan instead of chat drift.'
         },
         {
           id: 'review-before-do',
@@ -1964,6 +1964,69 @@ function createTaskCommandHelpers(deps) {
     }
   }
 
+  function runGitBuffer(args, cwd, label, input) {
+    try {
+      return childProcess.execFileSync('git', args, {
+        cwd,
+        input,
+        encoding: null,
+        stdio: input ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe']
+      });
+    } catch (error) {
+      const detail = error && error.stderr
+        ? Buffer.from(error.stderr).toString('utf8').trim()
+        : error.message;
+      throw new Error(`${label} failed: ${detail}`);
+    }
+  }
+
+  function gitBufferCommandSucceeds(args, cwd, input) {
+    try {
+      runGitBuffer(args, cwd, 'git check', input);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function hasPatchContent(patch) {
+    return Buffer.isBuffer(patch) && patch.length > 0;
+  }
+
+  function applyTaskPatchToProjectRoot(patch, label) {
+    if (!hasPatchContent(patch)) {
+      return {
+        label,
+        status: 'empty',
+        bytes: 0
+      };
+    }
+
+    const projectRoot = resolveProjectRoot();
+    const checkArgs = ['apply', '--check', '--binary', '--whitespace=nowarn'];
+    const applyArgs = ['apply', '--binary', '--whitespace=nowarn'];
+    const reverseCheckArgs = ['apply', '--reverse', '--check', '--binary', '--whitespace=nowarn'];
+
+    if (gitBufferCommandSucceeds(checkArgs, projectRoot, patch)) {
+      runGitBuffer(applyArgs, projectRoot, `git apply ${label}`, patch);
+      return {
+        label,
+        status: 'applied',
+        bytes: patch.length
+      };
+    }
+
+    if (gitBufferCommandSucceeds(reverseCheckArgs, projectRoot, patch)) {
+      return {
+        label,
+        status: 'already-applied',
+        bytes: patch.length
+      };
+    }
+
+    throw new Error(`Task worktree patch "${label}" does not apply cleanly to the main workspace. Resolve the overlap manually or clean the main workspace, then run task resolve again.`);
+  }
+
   function getCurrentGitBranch(projectRoot) {
     if (!hasGitRoot(projectRoot)) {
       return '';
@@ -2223,6 +2286,172 @@ function createTaskCommandHelpers(deps) {
     } catch {
       return 0;
     }
+  }
+
+  function isSafeRelativeWorkspacePath(relativePath) {
+    const value = String(relativePath || '').trim();
+    if (!value || path.isAbsolute(value)) {
+      return false;
+    }
+    const normalized = path.normalize(value);
+    return normalized !== '..' && !normalized.startsWith(`..${path.sep}`);
+  }
+
+  function filesHaveSameBytes(leftPath, rightPath) {
+    if (!fs.existsSync(leftPath) || !fs.existsSync(rightPath)) {
+      return false;
+    }
+    const left = fs.readFileSync(leftPath);
+    const right = fs.readFileSync(rightPath);
+    return left.length === right.length && left.equals(right);
+  }
+
+  function shouldSkipTaskWorkspaceControlFile(relativeFile, task) {
+    const normalized = String(relativeFile || '').replace(/\\/g, '/');
+    const taskName = String(task && task.name ? task.name : '').trim();
+    if (normalized === '.emb-agent/.current-task') {
+      return true;
+    }
+    if (normalized === '.emb-agent/registry/worktrees.json') {
+      return true;
+    }
+    if (taskName && normalized.startsWith(`.emb-agent/tasks/${taskName}/`)) {
+      return true;
+    }
+    return false;
+  }
+
+  function buildTaskWorkspaceMergePathspecs(task) {
+    const taskName = String(task && task.name ? task.name : '').trim();
+    return runtime.unique([
+      '--',
+      '.',
+      ':(exclude).emb-agent/.current-task',
+      ':(exclude).emb-agent/registry/worktrees.json',
+      taskName ? `:(exclude).emb-agent/tasks/${taskName}` : ''
+    ]).filter(Boolean);
+  }
+
+  function copyUntrackedTaskFilesToProject(workspacePath, task) {
+    const projectRoot = resolveProjectRoot();
+    const output = runGitBuffer(
+      ['ls-files', '--others', '--exclude-standard', '-z'],
+      workspacePath,
+      'git list untracked task files'
+    );
+    const files = Buffer.from(output).toString('utf8')
+      .split('\0')
+      .filter(Boolean)
+      .filter(isSafeRelativeWorkspacePath);
+    const copied = [];
+    const alreadyPresent = [];
+    const skipped = [];
+
+    files.forEach(relativeFile => {
+      if (shouldSkipTaskWorkspaceControlFile(relativeFile, task)) {
+        skipped.push(relativeFile);
+        return;
+      }
+      const sourcePath = path.join(workspacePath, relativeFile);
+      const targetPath = path.join(projectRoot, relativeFile);
+      const sourceStat = fs.lstatSync(sourcePath);
+
+      if (fs.existsSync(targetPath)) {
+        const targetStat = fs.lstatSync(targetPath);
+        if (sourceStat.isSymbolicLink() && targetStat.isSymbolicLink()) {
+          if (fs.readlinkSync(sourcePath) === fs.readlinkSync(targetPath)) {
+            alreadyPresent.push(relativeFile);
+            return;
+          }
+        } else if (sourceStat.isFile() && targetStat.isFile() && filesHaveSameBytes(sourcePath, targetPath)) {
+          alreadyPresent.push(relativeFile);
+          return;
+        }
+        throw new Error(`Untracked task file ${relativeFile} already exists in the main workspace with different content.`);
+      }
+
+      runtime.ensureDir(path.dirname(targetPath));
+      if (sourceStat.isSymbolicLink()) {
+        fs.symlinkSync(fs.readlinkSync(sourcePath), targetPath);
+      } else if (sourceStat.isFile()) {
+        fs.copyFileSync(sourcePath, targetPath);
+      } else {
+        return;
+      }
+      copied.push(relativeFile);
+    });
+
+    return {
+      total: files.length,
+      copied,
+      already_present: alreadyPresent,
+      skipped
+    };
+  }
+
+  function mergeTaskWorkspaceToProject(task) {
+    const projectRoot = resolveProjectRoot();
+    const workspacePath = resolveTaskWorkspacePath(task);
+    if (!workspacePath || !fs.existsSync(workspacePath)) {
+      return {
+        attempted: false,
+        merged: false,
+        status: 'no-worktree',
+        path: workspacePath
+      };
+    }
+
+    if (!hasGitRoot(projectRoot)) {
+      return {
+        attempted: false,
+        merged: false,
+        status: 'copy-worktree',
+        path: workspacePath,
+        summary: 'Copy-mode task worktrees are cleaned without git merge support.'
+      };
+    }
+
+    const branch = String(task.branch || '').trim();
+    const baseBranch = String(task.base_branch || '').trim() || resolveDefaultBaseBranch();
+    const mergePathspecs = buildTaskWorkspaceMergePathspecs(task);
+    const committedPatch = runGitBuffer(
+      ['diff', '--binary', `${baseBranch}...HEAD`, ...mergePathspecs],
+      workspacePath,
+      `git diff committed task changes for ${task.name}`
+    );
+    const workspacePatch = runGitBuffer(
+      ['diff', '--binary', 'HEAD', ...mergePathspecs],
+      workspacePath,
+      `git diff dirty task changes for ${task.name}`
+    );
+    const patches = [
+      applyTaskPatchToProjectRoot(committedPatch, 'committed'),
+      applyTaskPatchToProjectRoot(workspacePatch, 'workspace')
+    ];
+    const untracked = copyUntrackedTaskFilesToProject(workspacePath, task);
+    const appliedPatchCount = patches.filter(item => item.status === 'applied').length;
+    const alreadyAppliedPatchCount = patches.filter(item => item.status === 'already-applied').length;
+    const copiedCount = untracked.copied.length;
+    const alreadyPresentCount = untracked.already_present.length;
+    const changed = appliedPatchCount > 0 || copiedCount > 0;
+    const alreadyMerged = alreadyAppliedPatchCount > 0 || alreadyPresentCount > 0;
+
+    return {
+      attempted: true,
+      merged: true,
+      status: changed ? 'merged' : alreadyMerged ? 'already-merged' : 'no-changes',
+      path: workspacePath,
+      mode: 'git-worktree',
+      branch,
+      base_branch: baseBranch,
+      patches,
+      untracked,
+      summary: changed
+        ? 'Task worktree changes were merged into the main workspace before cleanup.'
+        : alreadyMerged
+          ? 'Task worktree changes were already present in the main workspace.'
+          : 'No task worktree changes needed merging.'
+    };
   }
 
   function classifyTaskWorktreeState(input) {
@@ -3212,6 +3441,33 @@ function createTaskCommandHelpers(deps) {
     if (!aarUpdate.ok) {
       return aarUpdate.result;
     }
+    let workspaceMerge;
+    try {
+      workspaceMerge = mergeTaskWorkspaceToProject(task);
+    } catch (error) {
+      return permissionGateHelpers.applyPermissionDecision({
+        resolved: false,
+        status: 'workspace-merge-required',
+        task: {
+          name: task.name,
+          title: task.title,
+          status: task.status,
+          worktree_path: task.worktree_path
+        },
+        workspace_merge: {
+          attempted: true,
+          merged: false,
+          status: 'failed',
+          path: resolveTaskWorkspacePath(task),
+          error: error.message,
+          summary: 'Task resolve stopped before cleanup because the task worktree could not be merged into the main workspace.'
+        },
+        next_steps: [
+          'Review the task worktree diff and main workspace overlap.',
+          'Apply or commit the task changes, then run task resolve again.'
+        ]
+      }, blocked.permission);
+    }
     const workspaceCleanup = cleanupTaskWorkspace(task);
     const session = loadSession();
     const shouldClearActiveTask = Boolean(session.active_task && session.active_task.name === input.name);
@@ -3252,6 +3508,7 @@ function createTaskCommandHelpers(deps) {
     return permissionGateHelpers.applyPermissionDecision({
       resolved: true,
       task: readTask(input.name),
+      workspace_merge: workspaceMerge,
       workspace_cleanup: workspaceCleanup,
       continuity_cleanup: continuityCleanup
     }, blocked.permission);
@@ -3490,6 +3747,7 @@ function createTaskCommandHelpers(deps) {
       ],
       notes: [
         'Use task aar help for closeout questions.',
+        'task resolve auto-merges managed git worktree changes into the main workspace before cleanup.',
         'Use context focus get|set|clear for session focus; task resolve clears the active task pointer.'
       ]
     };

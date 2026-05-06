@@ -230,7 +230,7 @@ function buildSafetyChecks(action, resolved) {
   }
 
   if (action === 'plan') {
-    checks.push('Only produce a task-level micro-plan; do not expand into phase planning');
+    checks.push('Only produce a task-level plan; do not expand into phase planning');
     checks.push('Clarify truth sources, constraints, and verification before sequencing steps');
     if (context.isBaremetal) {
       checks.push('When pins, registers, timing, or ISR are involved, lock hardware truth first');
@@ -1084,7 +1084,7 @@ function buildAgentExecution(action, resolved, primaryAgentInput, supportingAgen
     mode = context.isRtos || context.isConnected ? 'parallel-recommended' : 'primary-recommended';
     reason = context.isRtos || context.isConnected
       ? 'RTOS / IoT planning usually benefits from separating structural boundaries from release constraints, which fits lightweight parallelism.'
-      : 'A baremetal micro-plan works better when the primary agent locks hardware truth and constraints first, then the main thread integrates.';
+      : 'A baremetal task plan works better when the primary agent locks hardware truth and constraints first, then the main thread integrates.';
     suggestedWhen = [
       'The task already exceeds a small single-file change',
       context.isConnected ? 'Recovery, upgrade, or rollback paths must all be covered' : 'Both hardware constraints and implementation paths must be covered'
