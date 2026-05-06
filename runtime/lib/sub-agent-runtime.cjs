@@ -11,7 +11,8 @@ function createSubAgentRuntimeHelpers(deps) {
     resolveSession,
     loadMarkdown,
     AGENTS_DIR,
-    getProjectStatePaths
+    getProjectStatePaths,
+    ensureProjectStateStorage
   } = deps;
 
   function isObject(value) {
@@ -24,6 +25,10 @@ function createSubAgentRuntimeHelpers(deps) {
 
   const MANUAL_WORKER_SYNTHESIS_STATUS = 'manual-workers-required';
   const MANUAL_WORKER_BRIDGE_SUMMARY = 'Host sub-agent bridge is not configured; worker prompts were generated for manual execution.';
+
+  function isStateStorageError(error) {
+    return Boolean(error && ['EROFS', 'EACCES', 'EPERM', 'ENOENT'].includes(error.code));
+  }
 
   function toStringArray(value) {
     return Array.isArray(value) ? value.map(item => String(item)) : [];
@@ -42,9 +47,27 @@ function createSubAgentRuntimeHelpers(deps) {
       throw new Error('Project state paths are required for delegation jobs');
     }
 
-    runtime.ensureDir(paths.stateDir);
-    const jobsDir = path.join(paths.stateDir, 'delegation-jobs', paths.projectKey);
-    runtime.ensureDir(jobsDir);
+    if (typeof ensureProjectStateStorage === 'function') {
+      ensureProjectStateStorage(paths);
+    } else if (runtime && typeof runtime.ensureProjectStateStorage === 'function') {
+      runtime.ensureProjectStateStorage(paths);
+    }
+
+    let jobsDir = path.join(paths.stateDir, 'delegation-jobs', paths.projectKey);
+    try {
+      runtime.ensureDir(paths.stateDir);
+      runtime.ensureDir(jobsDir);
+    } catch (error) {
+      if (!isStateStorageError(error) || !paths.fallbackStateDir || paths.fallbackStateDir === paths.stateDir) {
+        throw error;
+      }
+
+      paths.stateDir = paths.fallbackStateDir;
+      paths.storageMode = 'fallback';
+      jobsDir = path.join(paths.stateDir, 'delegation-jobs', paths.projectKey);
+      runtime.ensureDir(paths.stateDir);
+      runtime.ensureDir(jobsDir);
+    }
 
     return {
       paths,
