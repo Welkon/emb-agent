@@ -1540,7 +1540,7 @@ function createTaskCommandHelpers(deps) {
       '# Auto Injected Specs',
       '',
       `- Task: ${taskLike && taskLike.name ? taskLike.name : taskName}`,
-      `- Profile: ${(session && session.project_profile) || ''}`,
+      `- Profile: ${String((session && session.project_profile) || '').trim() || '-'}`,
       `- Specs: ${((session && session.active_specs) || []).join(', ') || '-'}`,
       ''
     ];
