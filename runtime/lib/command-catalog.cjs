@@ -146,6 +146,7 @@ const ADVANCED_COMMAND_SECTIONS = [
       'context compress [note]',
       'context focus get',
       'context focus set <text>',
+      'context focus clear',
       'context files list',
       'context files add <path>',
       'context files remove <path>',

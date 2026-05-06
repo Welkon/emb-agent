@@ -164,6 +164,22 @@ test('installer lays down config/lib and runtime commands work', async () => {
       /If `start --brief` returns an `immediate\.command` other than `next`, follow that command first/
     );
     assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md'), 'utf8'),
+      /Conversation UX/
+    );
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md'), 'utf8'),
+      /operator_handoff/
+    );
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md'), 'utf8'),
+      /Do not let the final visible item be a tool call/
+    );
+    assert.match(
+      fs.readFileSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md'), 'utf8'),
+      /If the user says only "continue" after a final `operator_handoff`/
+    );
+    assert.match(
       fs.readFileSync(path.join(tempHome, 'skills', 'emb-capability', 'SKILL.md'), 'utf8'),
       /capability run <name>/
     );

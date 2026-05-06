@@ -290,6 +290,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(compact, /bootstrap \[run \[--confirm\]\]/);
   assert.match(compact, /task worktree <list\|status\|show\|create\|cleanup> \[name\]/);
   assert.match(compact, /external <start\|status\|next\|health\|dispatch-next>/);
+  assert.match(compact, /context focus clear/);
   assert.match(compact, /Global option: --brief .*runtime_events/);
   assert.match(compact, /help advanced/);
   assert.doesNotMatch(compact, /adapter source add/);
@@ -324,6 +325,7 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /schematic <summary\|components\|component\|nets\|net\|bom\|advice\|preview\|raw>/);
   assert.match(advanced, /board <summary\|components\|pads\|tracks\|vias\|texts\|nets\|advice\|raw>/);
   assert.match(advanced, /context compress \[note\]/);
+  assert.match(advanced, /context focus clear/);
   assert.match(advanced, /skills list/);
   assert.match(advanced, /memory stack/);
   assert.match(advanced, /knowledge graph build/);
@@ -341,6 +343,16 @@ test('default help stays concise and advanced help exposes the full surface', as
   assert.match(advanced, /commands list/);
   assert.match(advanced, /commands list --all/);
   assert.equal(advanced, allFlag);
+});
+
+test('task help returns task-specific guidance', async () => {
+  const help = await captureCliJson(['task', '--help']);
+
+  assert.equal(help.command, 'task');
+  assert.ok(help.usage.includes('task resolve [--confirm] <name> [note]'));
+  assert.ok(help.subcommands.includes('worktree cleanup'));
+  assert.ok(help.subcommands.includes('aar scan'));
+  assert.match(help.notes.join('\n'), /context focus get\|set\|clear/);
 });
 
 test('help supports explicit json output mode', async () => {

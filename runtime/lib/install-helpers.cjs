@@ -563,6 +563,23 @@ function createInstallHelpers(deps) {
     );
   }
 
+  function buildInteractiveLanguagePrompt() {
+    const { chalk } = createPromptStyler();
+    return renderInteractiveSection(
+      chalk,
+      '▶',
+      'Reply Language',
+      [
+        'Choose the language AI assistants should use when replying in this project.'
+      ],
+      [
+        `  ${chalk.cyan('1.')} ${chalk.white('English')} ${chalk.gray('(default)')}`,
+        `  ${chalk.cyan('2.')} ${chalk.white('Chinese (Simplified)')} ${chalk.gray('(中文)')}`
+      ],
+      'Choice [1] > '
+    );
+  }
+
   function buildInteractiveSkillSourcePrompt() {
     const { chalk } = createPromptStyler();
     return renderInteractiveSection(
@@ -1436,6 +1453,7 @@ function createInstallHelpers(deps) {
         local: location === 'local',
         runtime,
         developer,
+        language: String(prompted && prompted.language ? prompted.language : '').trim().toLowerCase(),
         profile,
         interactive: true,
         configDir: '',
@@ -1710,6 +1728,11 @@ function createInstallHelpers(deps) {
       writePromptConfirmation('Skills:', 'Skip initial bundle install');
     }
 
+    const languageAnswer = await promptLine(buildInteractiveLanguagePrompt());
+    const languageChoice = String(languageAnswer || '1').trim();
+    const language = languageChoice === '2' ? 'zh' : '';
+    writePromptConfirmation('Reply language:', language === 'zh' ? 'Chinese (Simplified)' : 'English');
+
     let developer = await promptLine(buildInteractiveDeveloperPrompt());
     while (!developer) {
       writePromptWarning('Developer name is required');
@@ -1722,6 +1745,7 @@ function createInstallHelpers(deps) {
       local: isLocal,
       runtime: target.name,
       developer,
+      language,
       profile: 'core',
       interactive: true,
       configDir: '',
@@ -2441,6 +2465,7 @@ function createInstallHelpers(deps) {
     );
     const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
     const guardrails = buildCodexSkillGuardrails(commandName, runtimeCli);
+    const conversationGuardrails = buildCodexConversationGuardrails(commandName);
 
     return [
       '---',
@@ -2464,6 +2489,14 @@ function createInstallHelpers(deps) {
             ...guardrails
           ]
         : []),
+      ...(conversationGuardrails.length > 0
+        ? [
+            '',
+            '## Conversation UX',
+            '',
+            ...conversationGuardrails
+          ]
+        : []),
       '',
       '## Original Guidance',
       '',
@@ -2480,6 +2513,7 @@ function createInstallHelpers(deps) {
     );
     const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
     const guardrails = buildCodexSkillGuardrails(commandName, runtimeCli);
+    const conversationGuardrails = buildCodexConversationGuardrails(commandName);
 
     return [
       '---',
@@ -2501,6 +2535,14 @@ function createInstallHelpers(deps) {
             '## Guardrails',
             '',
             ...guardrails
+          ]
+        : []),
+      ...(conversationGuardrails.length > 0
+        ? [
+            '',
+            '## Conversation UX',
+            '',
+            ...conversationGuardrails
           ]
         : []),
       '',
@@ -2569,6 +2611,29 @@ function createInstallHelpers(deps) {
     }
 
     return [];
+  }
+
+  function buildCodexConversationGuardrails(commandName) {
+    if (!commandVisibility.isPublicCommandName(commandName)) {
+      return [];
+    }
+
+    const shared = [
+      '- Before running a visible command chain, send one short Chinese status line that says what you are checking and why.',
+      '- After any command that changes routing, closes a blocker, writes truth, or fails, send one short Chinese result line before the next command.',
+      '- If the user says only "continue" after a final `operator_handoff`, run only the exact next CLI unless they explicitly ask to continue through task creation, implementation, verification, and closure.',
+      '- When a `--brief` payload includes `operator_handoff`, use it as the final-answer contract: exact next CLI first, one-sentence reason, blockers closed, then stop.',
+      '- Do not let the final visible item be a tool call, raw JSON, or bare command output.'
+    ];
+
+    if (commandName === 'next') {
+      return [
+        ...shared,
+        '- If health or source-intake commands are needed before `next`, frame them as blocker closure, not as unrelated command hopping.'
+      ];
+    }
+
+    return shared;
   }
 
   function installSharedCodexSkills(targetDir, target, runtimeDir, args) {
