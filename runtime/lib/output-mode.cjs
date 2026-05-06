@@ -328,6 +328,91 @@ function summarizeTaskConvergence(value) {
   });
 }
 
+function firstText(values) {
+  return toArray(values)
+    .map(value => String(value || '').trim())
+    .find(Boolean) || '';
+}
+
+function formatRuntimeEventsForHandoff(value) {
+  const summary = runtimeEventHelpers.summarizeRuntimeEvents(value);
+  if (!summary || !summary.total) {
+    return '';
+  }
+
+  const detail =
+    Array.isArray(summary.types) && summary.types.length > 0
+      ? summary.types.slice(0, 2).join(', ')
+      : Array.isArray(summary.categories) && summary.categories.length > 0
+        ? summary.categories.slice(0, 2).join(', ')
+        : '';
+
+  return detail
+    ? `${summary.status} / ${summary.total} (${detail})`
+    : `${summary.status} / ${summary.total}`;
+}
+
+function buildOperatorHandoff(value, fallbackCommand, options) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const settings = isObject(options) ? options : {};
+  const preferImmediate = settings.prefer_immediate === true;
+  const next = isObject(value.next) ? value.next : {};
+  const immediate = isObject(value.immediate) ? value.immediate : {};
+  const actionCard = summarizeActionCard(value.action_card);
+  const convergence = summarizeTaskConvergence(value.task_convergence);
+  const command = preferImmediate
+    ? firstText([immediate.command, next.command, fallbackCommand])
+    : firstText([next.command, immediate.command, fallbackCommand]);
+  const nextCli = preferImmediate
+    ? firstText([
+        immediate.cli,
+        actionCard && actionCard.first_cli,
+        next.cli,
+        convergence && convergence.next_cli
+      ])
+    : firstText([
+        actionCard && actionCard.first_cli,
+        immediate.cli,
+        next.cli,
+        convergence && convergence.next_cli
+      ]);
+  const thenCli = firstText([
+    actionCard && actionCard.then_cli,
+    convergence && convergence.then_cli
+  ]);
+  const why = firstText([
+    actionCard && actionCard.summary,
+    next.reason,
+    immediate.reason,
+    convergence && convergence.summary
+  ]);
+  const first = firstText([
+    actionCard && actionCard.first_instruction,
+    convergence && Array.isArray(convergence.prompts) ? convergence.prompts[0] : '',
+    immediate.reason
+  ]);
+  const status = firstText([
+    actionCard && actionCard.status,
+    next.gated_by_health === true ? 'blocked-by-health' : '',
+    command ? 'ready-to-run' : ''
+  ]);
+
+  return compactObject({
+    status,
+    command,
+    next_cli: nextCli,
+    then_cli: thenCli,
+    why,
+    first,
+    runtime_events: formatRuntimeEventsForHandoff(value.runtime_events),
+    final_reply_rule:
+      'Start with the exact next CLI, explain why in one sentence, summarize blockers closed, and never end on raw tool output.'
+  });
+}
+
 function normalizeComparableText(value) {
   return String(value || '')
     .trim()
@@ -709,6 +794,7 @@ function buildBriefNextContext(value) {
     capability_route: summarizeCapabilityRoute(value.capability_route || next.capability_route),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
     action_card: summarizeActionCard(value.action_card),
+    operator_handoff: buildOperatorHandoff(value, next.command || 'next'),
     quality_gates: summarizeQualityGates(value.quality_gates),
     permission_gates: summarizePermissionGates(value.permission_gates),
     runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),
@@ -766,6 +852,9 @@ function buildBriefStartContext(value) {
       command: immediate.command || '',
       reason: immediate.reason || '',
       cli: immediate.cli || ''
+    }),
+    operator_handoff: buildOperatorHandoff(value, immediate.command || 'start', {
+      prefer_immediate: true
     }),
     task_intake: compactObject({
       status: taskIntake.status || '',

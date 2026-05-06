@@ -271,6 +271,12 @@ test('applyOutputMode builds brief next context payload', () => {
   assert.equal(output.capability_route.route_strategy, 'capability-first');
   assert.equal(output.capability_route.compatibility_command, undefined);
   assert.equal(output.workflow_stage.name, 'planning');
+  assert.equal(output.operator_handoff.status, 'ready-to-run');
+  assert.equal(output.operator_handoff.command, 'plan');
+  assert.equal(output.operator_handoff.next_cli, 'node runtime/bin/emb-agent.cjs capability run plan');
+  assert.equal(output.operator_handoff.then_cli, 'node runtime/bin/emb-agent.cjs capability run do');
+  assert.match(output.operator_handoff.why, /complex tasks should converge first/);
+  assert.match(output.operator_handoff.final_reply_rule, /exact next CLI/);
   assert.equal(output.task_convergence.recommended_path, 'plan-first');
   assert.equal(output.task_convergence.prd_path, '.emb-agent/tasks/timer-drift/prd.md');
   assert.equal(output.quality_gates.gate_status, 'pending');
@@ -363,6 +369,9 @@ test('applyOutputMode builds brief start context payload with external driver hi
   assert.equal(output.summary.active_package, 'fw');
   assert.equal(output.summary.active_task.package, 'fw');
   assert.equal(output.immediate.command, 'task add <summary>');
+  assert.equal(output.operator_handoff.command, 'task add <summary>');
+  assert.equal(output.operator_handoff.next_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs task add <summary>');
+  assert.match(output.operator_handoff.final_reply_rule, /raw tool output/);
   assert.equal(output.task_intake.status, 'ready');
   assert.equal(output.task_intake.recommended_entry, 'task add <summary>');
   assert.deepEqual(output.task_intake.modes, ['known-change', 'unclear-scope', 'system-change']);
