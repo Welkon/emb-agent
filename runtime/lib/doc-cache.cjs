@@ -137,6 +137,11 @@ function writeDocumentArtifacts(projectRoot, docId, artifactMap) {
     }
 
     const filePath = path.join(docDir, name);
+    runtime.ensureDir(path.dirname(filePath));
+    if (Buffer.isBuffer(value)) {
+      fs.writeFileSync(filePath, value);
+      continue;
+    }
     if (typeof value === 'string') {
       fs.writeFileSync(filePath, value, 'utf8');
       continue;

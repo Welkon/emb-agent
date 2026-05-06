@@ -544,6 +544,109 @@ function buildDraftFacts(identity, args, markdown) {
   };
 }
 
+function normalizeDocAssetPath(rawPath) {
+  const normalized = String(rawPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  const parts = normalized.split('/').filter(Boolean);
+  if (
+    parts.length < 2 ||
+    parts[0] !== 'images' ||
+    parts.some(part => part === '.' || part === '..')
+  ) {
+    return '';
+  }
+  return parts.join('/');
+}
+
+function normalizeProviderAssets(assets) {
+  const result = [];
+  const seen = new Set();
+
+  for (const asset of Array.isArray(assets) ? assets : []) {
+    const relativePath = normalizeDocAssetPath(asset && asset.path);
+    if (!relativePath || seen.has(relativePath)) {
+      continue;
+    }
+    const rawData = asset && asset.data;
+    const data = Buffer.isBuffer(rawData) ? rawData : Buffer.from(String(rawData || ''), 'utf8');
+    result.push({
+      path: relativePath,
+      data
+    });
+    seen.add(relativePath);
+  }
+
+  return result;
+}
+
+function extractMarkdownImageReferences(markdown) {
+  const result = [];
+  const seen = new Set();
+  const pattern = /!\[[^\]]*\]\(([^)]+)\)/g;
+  let match;
+
+  while ((match = pattern.exec(String(markdown || ''))) !== null) {
+    const rawTarget = String(match[1] || '').trim().replace(/^["'<]+|[>"']+$/g, '');
+    const cleanTarget = rawTarget.split(/[?#]/)[0];
+    const relativePath = normalizeDocAssetPath(cleanTarget);
+    if (!relativePath || seen.has(relativePath)) {
+      continue;
+    }
+    result.push(relativePath);
+    seen.add(relativePath);
+  }
+
+  return result;
+}
+
+function buildDocImageAssetState(projectRoot, cacheDir, markdown, assets) {
+  const references = extractMarkdownImageReferences(markdown);
+  const restored = normalizeProviderAssets(assets).map(asset => asset.path);
+  const available = runtime.unique([
+    ...restored,
+    ...references.filter(ref => fs.existsSync(path.join(cacheDir, ref)))
+  ]);
+  const missing = references.filter(ref => !available.includes(ref));
+  const status =
+    missing.length > 0
+      ? (available.length > 0 ? 'partial' : 'missing')
+      : references.length > 0 || available.length > 0
+        ? 'available'
+        : 'not-referenced';
+
+  return {
+    status,
+    references,
+    available,
+    missing,
+    restored_count: restored.length,
+    manifest: path.relative(projectRoot, path.join(cacheDir, 'assets.json')),
+    recovery:
+      missing.length > 0
+        ? 'If this is a MinerU cache, recover images from parse.json metadata.result_zip_url/full_zip_url before trying PDF rendering or web image workarounds.'
+        : ''
+  };
+}
+
+function buildAssetArtifactMap(assets) {
+  const mapped = {};
+  for (const asset of normalizeProviderAssets(assets)) {
+    mapped[asset.path] = asset.data;
+  }
+  return mapped;
+}
+
+function readDocImageAssetState(projectRoot, cacheDir, entry) {
+  const manifestPath = path.join(cacheDir, 'assets.json');
+  if (fs.existsSync(manifestPath)) {
+    return runtime.readJson(manifestPath);
+  }
+
+  const artifacts = (entry && entry.artifacts) || {};
+  const markdownPath = artifacts.markdown ? path.join(projectRoot, artifacts.markdown) : path.join(cacheDir, 'parse.md');
+  const markdown = fs.existsSync(markdownPath) ? fs.readFileSync(markdownPath, 'utf8') : '';
+  return buildDocImageAssetState(projectRoot, cacheDir, markdown, []);
+}
+
 function emitUiEvent(options, event, payload) {
   const ui = options && options.ui;
   if (!ui || typeof ui.emit !== 'function') {
@@ -596,6 +699,7 @@ async function ingestDoc(argv, options) {
     fs.existsSync(markdownPath) &&
     fs.existsSync(metadataPath)
   ) {
+    const imageAssetState = readDocImageAssetState(projectRoot, cacheDir, cached);
     emitUiEvent(options, 'doc-cache-hit', {
       doc_id: identity.doc_id,
       provider: args.provider
@@ -613,9 +717,11 @@ async function ingestDoc(argv, options) {
       project_root: projectRoot,
       apply_ready: buildAutoApplyReadyHint(projectRoot, cached),
       artifacts: cached.artifacts || {},
+      image_assets: imageAssetState,
       last_files: runtime.unique([
         cached.artifacts && cached.artifacts.markdown,
         cached.artifacts && cached.artifacts.metadata,
+        cached.artifacts && cached.artifacts.assets_manifest,
         path.relative(projectRoot, docCache.getDocsIndexPath(projectRoot))
       ])
     });
@@ -649,12 +755,21 @@ async function ingestDoc(argv, options) {
   }, parsed.markdown);
   const serializedDraftArtifacts = serializeDraftArtifacts(draftArtifacts);
   const draftJsonArtifacts = buildDraftJsonArtifacts(draftArtifacts);
+  const providerAssets = normalizeProviderAssets(parsed.assets);
+  const imageAssetState = buildDocImageAssetState(projectRoot, cacheDir, parsed.markdown, providerAssets);
+  const assetArtifactMap = buildAssetArtifactMap(providerAssets);
+  const hasImageAssetManifest =
+    imageAssetState.status !== 'not-referenced' ||
+    providerAssets.length > 0;
 
   const artifacts = {
     summary: path.relative(projectRoot, path.join(cacheDir, 'summary.json')),
     markdown: path.relative(projectRoot, markdownPath),
     metadata: path.relative(projectRoot, metadataPath),
     source: path.relative(projectRoot, path.join(cacheDir, 'source.json')),
+    assets_manifest: hasImageAssetManifest
+      ? path.relative(projectRoot, path.join(cacheDir, 'assets.json'))
+      : '',
     hardware_facts: draftArtifacts['facts.hardware.yaml']
       ? path.relative(projectRoot, path.join(cacheDir, 'facts.hardware.yaml'))
       : '',
@@ -709,6 +824,8 @@ async function ingestDoc(argv, options) {
       task_id: parsed.task_id,
       metadata: parsed.metadata
     },
+    ...(hasImageAssetManifest ? { 'assets.json': imageAssetState } : {}),
+    ...assetArtifactMap,
     'summary.json': {
       status: 'ok',
       domain: 'doc',
@@ -757,10 +874,12 @@ async function ingestDoc(argv, options) {
     project_root: projectRoot,
     apply_ready: buildAutoApplyReadyHint(projectRoot, docCache.getCachedEntry(projectRoot, identity.doc_id)),
     artifacts,
+    image_assets: imageAssetState,
     last_files: runtime.unique([
       artifacts.markdown,
       artifacts.summary,
       artifacts.metadata,
+      artifacts.assets_manifest,
       artifacts.hardware_facts,
       artifacts.requirements_facts,
       path.relative(projectRoot, docCache.getDocsIndexPath(projectRoot))
@@ -1510,6 +1629,7 @@ function showDoc(projectRoot, docId, options) {
     source_info: fs.existsSync(sourceInfoPath) ? runtime.readJson(sourceInfoPath) : null,
     parse_info: fs.existsSync(parseInfoPath) ? runtime.readJson(parseInfoPath) : null,
     artifact_state: artifactState,
+    image_assets: readDocImageAssetState(projectRoot, cacheDir, entry),
     last_diff: buildDocLastDiffSummary(projectRoot, docId),
     diff_presets: buildDocPresetSummaries(projectRoot, docId),
     selected_preset: presetPreview.selected_preset,

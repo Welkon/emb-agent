@@ -94,7 +94,8 @@ function createCommandGroupHelpers(deps) {
       rememberDocFiles([
         docView.entry.artifacts && docView.entry.artifacts.markdown,
         docView.entry.artifacts && docView.entry.artifacts.metadata,
-        docView.entry.artifacts && docView.entry.artifacts.source
+        docView.entry.artifacts && docView.entry.artifacts.source,
+        docView.entry.artifacts && docView.entry.artifacts.assets_manifest
       ], 'doc show');
       return docView;
     }
