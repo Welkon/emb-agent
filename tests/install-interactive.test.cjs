@@ -188,7 +188,7 @@ test('interactive prompt hook can request initial skill install', async () => {
 
 test('interactive prompts render structured sections and retry blank developer names', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', 'skip', 'skip', '', 'welkon'];
+  const answers = ['1', '2', 'skip', 'skip', '1', '', 'welkon'];
   let stdout = '';
 
   const fakeProcess = {
@@ -262,7 +262,7 @@ test('interactive prompts render structured sections and retry blank developer n
   assert.equal(args.runtime, 'codex');
   assert.equal(args.local, true);
   assert.equal(args.developer, 'welkon');
-  assert.equal(askedQuestions.length, 6);
+  assert.equal(askedQuestions.length, 7);
   assert.match(askedQuestions[0], /Select Runtime/);
   assert.match(askedQuestions[0], /Embedded workflow bootstrap/);
   assert.match(askedQuestions[0], /Choice \[1\] >/);
@@ -272,8 +272,9 @@ test('interactive prompts render structured sections and retry blank developer n
   assert.match(askedQuestions[2], /Choice \[skip\/all\/source\] >/);
   assert.match(askedQuestions[3], /Skill Selection/);
   assert.match(askedQuestions[3], /Choice \[skip\/all\/source\] >/);
-  assert.match(askedQuestions[4], /Developer Identity/);
-  assert.match(askedQuestions[4], /Developer name >/);
+  assert.match(askedQuestions[4], /Reply Language/);
+  assert.match(askedQuestions[5], /Developer Identity/);
+  assert.match(askedQuestions[5], /Developer name >/);
   assert.match(stdout, /Runtime:/);
   assert.match(stdout, /Location:/);
   assert.match(stdout, /Spec source:/);
@@ -294,7 +295,7 @@ test('interactive prompts render structured sections and retry blank developer n
 
 test('interactive prompts can collect initial skill source and selected skills', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', '1', '1 2', 'welkon'];
+  const answers = ['1', '2', '1', '1 2', '1', 'welkon'];
   let stdout = '';
   const longDescription = [
     'Build firmware with the repo-local Python XC8 build script.',
@@ -363,7 +364,7 @@ test('interactive prompts can collect initial skill source and selected skills',
   assert.deepEqual(args.specs, ['connected-appliance']);
   assert.deepEqual(args.skillSources, [DEFAULT_SKILL_SOURCE_LOCATION]);
   assert.deepEqual(args.skillNames, ['scope-connect', 'scope-capture']);
-  assert.equal(askedQuestions.length, 5);
+  assert.equal(askedQuestions.length, 6);
   assert.match(askedQuestions[2], /Spec Selection/);
   assert.match(askedQuestions[2], /Type `all` to activate every selectable spec/);
   assert.match(askedQuestions[2], /connected-appliance/);
@@ -377,7 +378,8 @@ test('interactive prompts can collect initial skill source and selected skills',
   assert.match(askedQuestions[3], /scope-capture/);
   assert.doesNotMatch(askedQuestions[3], /while still allowing explicit overrides for chip, source files, and image prefix\./);
   assert.match(askedQuestions[3], /Build firmware with the repo-local Python XC8 build script\./);
-  assert.match(askedQuestions[4], /Developer Identity/);
+  assert.match(askedQuestions[4], /Reply Language/);
+  assert.match(askedQuestions[5], /Developer Identity/);
   assert.match(stdout, /Spec source:/);
   assert.match(stdout, /Available specs:/);
   assert.match(stdout, /Spec selection:/);
@@ -388,7 +390,7 @@ test('interactive prompts can collect initial skill source and selected skills',
 
 test('interactive prompts support arrow-key multi-select for skills', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', '1', 'welkon'];
+  const answers = ['1', '2', '1', '1', 'welkon'];
   let stdout = '';
   const fakeStdin = new EventEmitter();
   fakeStdin.isTTY = true;
@@ -470,7 +472,7 @@ test('interactive prompts support arrow-key multi-select for skills', async () =
   assert.deepEqual(args.specs, ['connected-appliance']);
   assert.deepEqual(args.skillSources, [DEFAULT_SKILL_SOURCE_LOCATION]);
   assert.deepEqual(args.skillNames, ['scope-capture']);
-  assert.equal(askedQuestions.length, 4);
+  assert.equal(askedQuestions.length, 5);
   assert.match(stdout, /●/);
   assert.match(stdout, /○/);
   assert.match(stdout, /skip/);
@@ -482,7 +484,7 @@ test('interactive prompts support arrow-key multi-select for skills', async () =
 
 test('interactive prompts support arrow-key multi-select for specs', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', 'welkon'];
+  const answers = ['1', '2', '1', 'welkon'];
   let stdout = '';
   const fakeStdin = new EventEmitter();
   fakeStdin.isTTY = true;
@@ -576,7 +578,7 @@ test('interactive prompts support arrow-key multi-select for specs', async () =>
   assert.deepEqual(args.specs, ['padauk-space']);
   assert.deepEqual(args.skillSources, []);
   assert.deepEqual(args.skillNames, []);
-  assert.equal(askedQuestions.length, 3);
+  assert.equal(askedQuestions.length, 4);
   assert.match(stdout, /Spec Selection/);
   assert.match(stdout, /toggle every selectable spec/);
   assert.match(stdout, /embedded-space/);
@@ -670,7 +672,7 @@ test('interactive spec keyboard selection can be cancelled with Ctrl\\+D', async
 
 test('interactive prompts support selecting the direct skip option with arrow keys', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', '1', 'welkon'];
+  const answers = ['1', '2', '1', '1', 'welkon'];
   let stdout = '';
   const fakeStdin = new EventEmitter();
   fakeStdin.isTTY = true;
@@ -751,7 +753,7 @@ test('interactive prompts support selecting the direct skip option with arrow ke
   assert.deepEqual(args.specs, ['connected-appliance']);
   assert.deepEqual(args.skillSources, []);
   assert.deepEqual(args.skillNames, []);
-  assert.equal(askedQuestions.length, 4);
+  assert.equal(askedQuestions.length, 5);
   assert.match(stdout, /skip/);
   assert.match(stdout, /Skip initial skill installation/);
   assert.match(stdout, /Highlight `skip` and press Enter/);
@@ -761,7 +763,7 @@ test('interactive prompts support selecting the direct skip option with arrow ke
 
 test('interactive prompts skip initial skills when selection is left blank', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', 'skip', '', 'welkon'];
+  const answers = ['1', '2', 'skip', '', '1', 'welkon'];
   let stdout = '';
 
   const fakeProcess = {
@@ -821,7 +823,7 @@ test('interactive prompts skip initial skills when selection is left blank', asy
   assert.deepEqual(args.specs, []);
   assert.deepEqual(args.skillSources, []);
   assert.deepEqual(args.skillNames, []);
-  assert.equal(askedQuestions.length, 5);
+  assert.equal(askedQuestions.length, 6);
   assert.match(askedQuestions[2], /Spec Selection/);
   assert.match(askedQuestions[3], /Choice \[skip\/all\/source\] >/);
   assert.match(stdout, /Skip initial bundle install/);
@@ -829,7 +831,7 @@ test('interactive prompts skip initial skills when selection is left blank', asy
 
 test('interactive prompts can switch away from the default initial skill bundle', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', '1', 'source', './custom-bundle', '1', 'welkon'];
+  const answers = ['1', '2', '1', 'source', './custom-bundle', '1', '1', 'welkon'];
   let stdout = '';
   const previewCalls = [];
 
@@ -908,7 +910,7 @@ test('interactive prompts can switch away from the default initial skill bundle'
   ]);
   assert.deepEqual(args.skillSources, ['./custom-bundle']);
   assert.deepEqual(args.skillNames, ['scope-capture']);
-  assert.equal(askedQuestions.length, 7);
+  assert.equal(askedQuestions.length, 8);
   assert.match(askedQuestions[2], /Spec Selection/);
   assert.match(askedQuestions[3], /Skill Selection/);
   assert.match(askedQuestions[4], /Skill Source/);
@@ -919,7 +921,7 @@ test('interactive prompts can switch away from the default initial skill bundle'
 
 test('interactive prompts let user skip initial skills after preview failure', async () => {
   const askedQuestions = [];
-  const answers = ['1', '2', 'skip', 'skip', 'welkon'];
+  const answers = ['1', '2', 'skip', 'skip', '1', 'welkon'];
   let stdout = '';
 
   const fakeProcess = {
@@ -968,7 +970,7 @@ test('interactive prompts let user skip initial skills after preview failure', a
   assert.deepEqual(args.specs, []);
   assert.deepEqual(args.skillSources, []);
   assert.deepEqual(args.skillNames, []);
-  assert.equal(askedQuestions.length, 5);
+  assert.equal(askedQuestions.length, 6);
   assert.match(stdout, /cannot be inspected from this environment right now/);
   assert.match(stdout, /Skip initial bundle install/);
   assert.equal(args.developer, 'welkon');
@@ -1280,13 +1282,17 @@ test('main reports install progress through injected terminal ui', async () => {
       receivedColorMode = String(options.colorMode || '');
       return {
         enabled: true,
-        chalk: {
-          bold: text => String(text),
-          cyan: text => String(text),
-          dim: text => String(text),
-          green: text => String(text),
-          yellow: text => String(text)
-        },
+	        chalk: {
+	          bold: text => String(text),
+	          blue: text => String(text),
+	          cyan: text => String(text),
+	          dim: text => String(text),
+	          gray: text => String(text),
+	          green: text => String(text),
+	          red: text => String(text),
+	          yellow: text => String(text),
+	          white: text => String(text)
+	        },
         createActivity(text) {
           activities.push({ type: 'start', text });
           return {
@@ -1308,31 +1314,31 @@ test('main reports install progress through injected terminal ui', async () => {
 
   await helper.main(['--codex', '--global', '--config-dir', tempHome, '--developer', 'welkon', '--color=always']);
 
-  assert.match(stderr, /emb-agent installer/);
+  assert.match(stderr, /emb-agent v0\.0\.0-test/);
   assert.match(stderr, /Runtime:/);
   assert.match(stderr, /Target:/);
   assert.match(stderr, /Installation complete/);
-  assert.match(stderr, /Next:/);
-  assert.match(stderr, /then open a new session/);
+  assert.match(stderr, /Next steps/);
+  assert.match(stderr, /Open a project session/);
   assert.equal(receivedColorMode, 'always');
   assert.deepEqual(
     activities.filter(item => item.type === 'start').map(item => item.text),
     [
-      'Installing emb-agent runtime files',
-      'Installing host agents, hooks, and commands',
-      'Preparing local environment template'
+      'Preparing runtime files',
+      'Setting up host integration (agents, hooks, commands)',
+      'Writing .env.example'
     ]
   );
   assert.ok(
-    activities.some(item => item.type === 'succeed' && item.text === 'Installed emb-agent runtime files')
+    activities.some(item => item.type === 'succeed' && item.text === 'Runtime files ready')
   );
   assert.ok(
     activities.some(
-      item => item.type === 'succeed' && /Installed \d+ host integration artifacts/.test(item.text)
+      item => item.type === 'succeed' && /Host integration ready \(\d+ artifacts\)/.test(item.text)
     )
   );
   assert.ok(
-    activities.some(item => item.type === 'succeed' && /env example/.test(item.text))
+    activities.some(item => item.type === 'succeed' && /\.env\.example (created|kept)/.test(item.text))
   );
   assert.equal(activities.some(item => item.type === 'fail'), false);
 });
@@ -1400,9 +1406,9 @@ test('interactive main keeps final summary in terminal ui instead of stdout dump
 
     assert.equal(stdout, '');
     assert.match(stderr, /Installation complete/);
-    assert.match(stderr, /Runtime Dir:/);
-    assert.match(stderr, /Next:/);
-    assert.match(stderr, /then open a new session/);
+    assert.match(stderr, /Target:/);
+    assert.match(stderr, /Next steps/);
+    assert.match(stderr, /Open a project session/);
   } finally {
     process.chdir(currentCwd);
   }
@@ -1464,7 +1470,7 @@ test('flag-driven tty install keeps final summary in terminal ui instead of stdo
 
   assert.equal(stdout, '');
   assert.match(stderr, /Installation complete/);
-  assert.match(stderr, /Runtime Dir:/);
-  assert.match(stderr, /Next:/);
-  assert.match(stderr, /then open a new session/);
+  assert.match(stderr, /Target:/);
+  assert.match(stderr, /Next steps/);
+  assert.match(stderr, /Open a project session/);
 });

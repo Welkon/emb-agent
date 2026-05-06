@@ -38,6 +38,7 @@ function createMockChildProcess() {
             'title: Connected Appliance',
             'summary: Mocked remote flat spec.',
             'selectable: true',
+            'enforcement_scope: code-writing',
             '---',
             '# Connected Appliance',
             ''
@@ -56,6 +57,7 @@ function createMockChildProcess() {
           'title: Connected Appliance',
           'summary: Mocked remote flat spec.',
           'selectable: true',
+          'enforcement_scope: code-writing',
           '---',
           '# Connected Appliance',
           ''
@@ -94,7 +96,10 @@ test('workflow import resolves remote git source with explicit subdir without do
       assert.equal(childProcess.calls[0].gigetSource, 'gh:Welkon/emb-support');
       assert.equal(childProcess.calls[0].gigetEntryPath, require.resolve('giget'));
       assert.equal(sourceLayout.kind, 'flat-markdown-specs');
-      assert.ok(sourceLayout.registry.specs.some(item => item.name === 'connected-appliance'));
+      assert.ok(sourceLayout.registry.specs.some(item =>
+        item.name === 'connected-appliance' &&
+        item.enforcement_scopes.includes('code-writing')
+      ));
     } finally {
       sourceLayout.cleanup();
     }

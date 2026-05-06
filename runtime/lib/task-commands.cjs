@@ -35,6 +35,7 @@ function createTaskCommandHelpers(deps) {
   } = deps;
 
   const CONTEXT_CHANNELS = ['implement', 'check', 'debug'];
+  const CODE_WRITING_CONTEXT_CHANNELS = new Set(['implement']);
   const TASK_STATUSES = ['planning', 'in_progress', 'review', 'completed', 'rejected'];
   const TASK_DEV_TYPES = ['backend', 'frontend', 'fullstack', 'test', 'docs', 'embedded'];
   const TASK_PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
@@ -1408,18 +1409,29 @@ function createTaskCommandHelpers(deps) {
     return normalizedCandidate === normalizedPackage || normalizedCandidate.startsWith(`${normalizedPackage}/`);
   }
 
-  function buildInjectedSpecContext(taskLike, session) {
+  function buildInjectedSpecContext(taskLike, session, options = {}) {
+    const settings = options && typeof options === 'object' ? options : {};
     const summary = session || loadSession();
     return workflowRegistry.buildInjectedSpecSnapshot(rootDir, getProjectExtDir(), {
       profile: (summary && summary.project_profile) || '',
       specs: (summary && summary.active_specs) || [],
       task: taskLike || null,
       handoff: null
-    }, { limit: 8 });
+    }, {
+      limit: 8,
+      include_selected_specs: settings.include_selected_specs === true,
+      selected_specs_only: settings.selected_specs_only === true,
+      selected_reason: settings.selected_reason,
+      selected_enforcement_scope: settings.selected_enforcement_scope
+    });
   }
 
   function getTaskAutoSpecsPath(name) {
     return path.join(getTaskDir(name), 'auto-specs.md');
+  }
+
+  function getTaskCodeWritingSpecsPath(name) {
+    return path.join(getTaskDir(name), 'code-writing-specs.md');
   }
 
   function getTaskPrdPath(name) {
@@ -1573,6 +1585,12 @@ function createTaskCommandHelpers(deps) {
 
   function buildTaskAutoSpecsArtifact(taskName, taskLike, session) {
     const injected = buildInjectedSpecContext(taskLike, session);
+    const codeWritingSpecs = buildInjectedSpecContext(taskLike, session, {
+      include_selected_specs: true,
+      selected_specs_only: true,
+      selected_reason: 'required-for-code-writing',
+      selected_enforcement_scope: 'code-writing'
+    });
     const lines = [
       '# Auto Injected Specs',
       '',
@@ -1605,8 +1623,47 @@ function createTaskCommandHelpers(deps) {
     }
 
     fs.writeFileSync(getTaskAutoSpecsPath(taskName), `${lines.join('\n').trim()}\n`, 'utf8');
+    const codeWritingItems = codeWritingSpecs.items || [];
+    const codeWritingSpecsPath = getTaskCodeWritingSpecsPath(taskName);
+    const codeWritingLines = [
+      '# Required Code-Writing Specs',
+      '',
+      `- Task: ${taskLike && taskLike.name ? taskLike.name : taskName}`,
+      '- Applies to: editing, generating, or refactoring firmware/source code',
+      '- Does not apply to: bootstrap, scan, planning, or project-management flow',
+      ''
+    ];
+
+    if (codeWritingItems.length === 0) {
+      codeWritingLines.push('- No active code-writing specs selected.', '');
+    } else {
+      codeWritingItems.forEach(item => {
+        codeWritingLines.push(`## ${item.title || item.name}`);
+        codeWritingLines.push(`- Name: ${item.name}`);
+        codeWritingLines.push(`- Path: ${item.display_path}`);
+        codeWritingLines.push(`- Scope: ${item.scope}`);
+        codeWritingLines.push(`- Priority: ${item.priority}`);
+        codeWritingLines.push(`- Enforcement: ${item.enforcement_scope || 'code-writing'}`);
+        codeWritingLines.push(`- Reasons: ${(item.reasons || []).join(', ') || '-'}`);
+        if (item.summary) {
+          codeWritingLines.push(`- Summary: ${item.summary}`);
+        }
+        codeWritingLines.push('');
+        codeWritingLines.push('```md');
+        codeWritingLines.push(runtime.readText(item.absolute_path).trim());
+        codeWritingLines.push('```');
+        codeWritingLines.push('');
+      });
+    }
+
+    if (codeWritingItems.length > 0 || fs.existsSync(codeWritingSpecsPath)) {
+      fs.writeFileSync(codeWritingSpecsPath, `${codeWritingLines.join('\n').trim()}\n`, 'utf8');
+    }
     return {
       path: path.relative(resolveProjectRoot(), getTaskAutoSpecsPath(taskName)).replace(/\\/g, '/'),
+      code_writing_path: codeWritingItems.length > 0
+        ? path.relative(resolveProjectRoot(), codeWritingSpecsPath).replace(/\\/g, '/')
+        : '',
       specs: injected.items.map(item => ({
         name: item.name,
         title: item.title || item.name,
@@ -1614,7 +1671,20 @@ function createTaskCommandHelpers(deps) {
         display_path: item.display_path,
         scope: item.scope,
         priority: item.priority,
-        reasons: item.reasons || []
+        reasons: item.reasons || [],
+        required: item.required === true,
+        enforcement_scope: item.enforcement_scope || ''
+      })),
+      code_writing_specs: (codeWritingSpecs.items || []).map(item => ({
+        name: item.name,
+        title: item.title || item.name,
+        summary: item.summary,
+        display_path: item.display_path,
+        scope: item.scope,
+        priority: item.priority,
+        reasons: item.reasons || [],
+        required: item.required === true,
+        enforcement_scope: item.enforcement_scope || ''
       }))
     };
   }
@@ -1628,6 +1698,15 @@ function createTaskCommandHelpers(deps) {
           path: generated.path,
           reason: 'Auto-injected task specs'
         },
+        ...(CODE_WRITING_CONTEXT_CHANNELS.has(channel) && generated.code_writing_path
+          ? [
+              {
+                kind: 'file',
+                path: generated.code_writing_path,
+                reason: 'Required code-writing specs for source edits'
+              }
+            ]
+          : []),
         ...readJsonl(getTaskContextPath(taskName, channel))
       ]);
       writeJsonl(getTaskContextPath(taskName, channel), next);
@@ -1894,6 +1973,7 @@ function createTaskCommandHelpers(deps) {
       },
       aar: buildDefaultAarState(),
       injected_specs: [],
+      code_writing_specs: [],
       context: Object.fromEntries(
         CONTEXT_CHANNELS.map(channel => [
           channel,
@@ -2979,6 +3059,7 @@ function createTaskCommandHelpers(deps) {
         tools: []
       },
       injected_specs: Array.isArray(manifest.injected_specs) ? manifest.injected_specs : [],
+      code_writing_specs: Array.isArray(manifest.code_writing_specs) ? manifest.code_writing_specs : [],
       aar: normalizeTaskAar(manifest.aar),
       artifacts: {
         prd: fs.existsSync(getTaskPrdPath(name))
@@ -2986,6 +3067,9 @@ function createTaskCommandHelpers(deps) {
           : '',
         auto_specs: fs.existsSync(getTaskAutoSpecsPath(name))
           ? path.relative(resolveProjectRoot(), getTaskAutoSpecsPath(name)).replace(/\\/g, '/')
+          : '',
+        code_writing_specs: fs.existsSync(getTaskCodeWritingSpecsPath(name))
+          ? path.relative(resolveProjectRoot(), getTaskCodeWritingSpecsPath(name)).replace(/\\/g, '/')
           : '',
         aar: fs.existsSync(getTaskAarArtifactPath(name))
           ? path.relative(resolveProjectRoot(), getTaskAarArtifactPath(name)).replace(/\\/g, '/')
@@ -3063,6 +3147,15 @@ function createTaskCommandHelpers(deps) {
             path: injected.path,
             reason: 'Auto-injected task specs'
           },
+          ...(CODE_WRITING_CONTEXT_CHANNELS.has(channel) && injected.code_writing_path
+            ? [
+                {
+                  kind: 'file',
+                  path: injected.code_writing_path,
+                  reason: 'Required code-writing specs for source edits'
+                }
+              ]
+            : []),
           {
             kind: 'file',
             path: prdPath,
@@ -3075,7 +3168,8 @@ function createTaskCommandHelpers(deps) {
     });
     writeTask(name, updateTaskTimestamps({
       ...runtime.readJson(getTaskManifestPath(name)),
-      injected_specs: injected.specs
+      injected_specs: injected.specs,
+      code_writing_specs: injected.code_writing_specs
     }));
 
     if (parsed.parent) {
@@ -3497,7 +3591,8 @@ function createTaskCommandHelpers(deps) {
       worktree_path: input.create_worktree
         ? workspace.path
         : manifest.worktree_path || null,
-      injected_specs: injected.specs
+      injected_specs: injected.specs,
+      code_writing_specs: injected.code_writing_specs
     }));
     const activatedTask = readTask(input.name);
     const registryEntry = input.create_worktree
