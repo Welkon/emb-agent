@@ -10,26 +10,29 @@ const childProcess = require('child_process');
 const repoRoot = path.resolve(__dirname, '..');
 const subAgentRuntimeHelpers = require(path.join(repoRoot, 'runtime', 'lib', 'sub-agent-runtime.cjs'));
 
-function buildHelpers() {
+function buildHelpers(overrides = {}) {
+  const runtimeImpl = overrides.runtime || {
+    ensureDir() {}
+  };
+  const runtimeHostImpl = overrides.runtimeHost || (() => ({
+    name: 'codex',
+    label: 'Codex',
+    subagentBridge: {
+      available: false,
+      source: 'none',
+      mode: '',
+      command: '',
+      command_argv: []
+    }
+  }));
+
   return subAgentRuntimeHelpers.createSubAgentRuntimeHelpers({
     fs,
     path,
     process,
     childProcess,
-    runtimeHost: () => ({
-      name: 'codex',
-      label: 'Codex',
-      subagentBridge: {
-        available: false,
-        source: 'none',
-        mode: '',
-        command: '',
-        command_argv: []
-      }
-    }),
-    runtime: {
-      ensureDir() {}
-    },
+    runtimeHost: runtimeHostImpl,
+    runtime: runtimeImpl,
     resolveSession: () => ({
       session: {
         project_root: '/tmp/example',
@@ -43,10 +46,11 @@ function buildHelpers() {
       content: '# emb-hw-scout\n\n- Read only.\n'
     }),
     AGENTS_DIR: path.join(os.tmpdir(), 'emb-agent-test-agents'),
-    getProjectStatePaths: () => ({
+    getProjectStatePaths: overrides.getProjectStatePaths || (() => ({
       stateDir: os.tmpdir(),
       projectKey: 'sub-agent-runtime-test'
-    })
+    })),
+    ensureProjectStateStorage: overrides.ensureProjectStateStorage
   });
 }
 
@@ -110,4 +114,60 @@ test('sub-agent runtime injects worker contract into prompt and launch envelope'
   assert.deepEqual(envelope.worker.worker_contract.outputs, request.worker_contract.outputs);
   assert.deepEqual(envelope.worker.worker_contract.forbidden_zones, request.worker_contract.forbidden_zones);
   assert.deepEqual(envelope.worker.worker_contract.acceptance_criteria, request.worker_contract.acceptance_criteria);
+});
+
+test('sub-agent runtime falls back for delegation job state when primary storage is read-only', () => {
+  const primaryStateDir = path.join(os.tmpdir(), 'emb-agent-subagent-primary-state');
+  const fallbackStateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-subagent-fallback-'));
+  const created = [];
+  const helpers = buildHelpers({
+    runtimeHost: () => ({
+      name: 'codex',
+      label: 'Codex',
+      subagentBridge: {
+        available: true,
+        source: 'test',
+        mode: 'mock',
+        command: 'mock',
+        command_argv: ['mock']
+      }
+    }),
+    runtime: {
+      ensureDir(dirPath) {
+        if (String(dirPath).startsWith(primaryStateDir)) {
+          const error = new Error('read-only primary state');
+          error.code = 'EROFS';
+          throw error;
+        }
+        created.push(dirPath);
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+    },
+    getProjectStatePaths: () => ({
+      stateDir: primaryStateDir,
+      fallbackStateDir,
+      projectKey: 'sub-agent-runtime-test'
+    })
+  });
+
+  const result = helpers.runSubAgentBridge({
+    workflow: {
+      strategy: 'primary-first'
+    },
+    dispatch_contract: {
+      primary: {
+        agent: 'emb-hw-scout',
+        delegation_phase: 'research',
+        purpose: 'Check hardware evidence',
+        tool_scope: {
+          allows_write: false
+        }
+      }
+    }
+  }, {}, { wait: false });
+
+  assert.equal(result.bridge.status, 'launched');
+  assert.equal(result.jobs.length, 1);
+  assert.match(result.jobs[0].job_file, new RegExp(path.basename(fallbackStateDir)));
+  assert.ok(created.some(item => item.includes(path.join('delegation-jobs', 'sub-agent-runtime-test'))));
 });

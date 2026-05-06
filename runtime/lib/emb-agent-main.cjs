@@ -436,7 +436,8 @@ const {
   resolveSession,
   loadMarkdown,
   AGENTS_DIR,
-  getProjectStatePaths
+  getProjectStatePaths,
+  ensureProjectStateStorage: runtime.ensureProjectStateStorage
 });
 
 const {
