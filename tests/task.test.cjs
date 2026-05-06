@@ -299,22 +299,21 @@ test('task commands create activate manage context and resolve lightweight tasks
 
     const activated = await captureCliJson(['task', 'activate', taskName]);
     assert.equal(activated.activated, true);
-    assert.equal(activated.workspace.mode, 'copy');
-    assert.equal(fs.existsSync(activated.workspace.path), true);
-    assert.equal(activated.task.worktree_path, activated.workspace.path);
+    assert.equal(activated.workspace.mode, 'direct');
+    assert.equal(activated.workspace.created, false);
+    assert.equal(activated.workspace.path, tempProject);
+    assert.equal(activated.task.worktree_path, null);
     assert.equal(
-      fs.existsSync(path.join(activated.workspace.path, '.emb-agent', 'tasks', taskName, 'task.json')),
+      fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', taskName, 'task.json')),
       true
-    );
-    assert.equal(
-      fs.readFileSync(path.join(activated.workspace.path, '.emb-agent', '.current-task'), 'utf8').trim(),
-      taskName
     );
     assertProjectLocalInjected(activated.task.injected_specs);
     assert.equal(activated.task.artifacts.prd, `.emb-agent/tasks/${taskName}/prd.md`);
-    assert.equal(fs.existsSync(path.join(activated.workspace.path, 'docs', 'SC8F072.pdf')), true);
-    assert.equal(activated.worktree.exists, true);
-    assert.equal(activated.worktree.current_task, taskName);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'SC8F072.pdf')), true);
+    assert.equal(activated.worktree.exists, false);
+    assert.equal(activated.worktree.workspace_state, 'detached');
+    assert.equal(activated.worktree.current_task, '');
+    assert.equal(activated.worktree_mode, 'direct');
     assert.equal(cli.loadSession().active_task.name, taskName);
     assert.equal(cli.loadSession().active_task.status, 'in_progress');
     assert.equal(cli.loadSession().focus, activated.task.title);
@@ -351,16 +350,16 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.ok(listedContext.entries.some(item => item.path === 'src/timer.c'));
 
     const listedWorktrees = await captureCliJson(['task', 'worktree', 'list']);
-    assert.ok(listedWorktrees.worktrees.some(item => item.task_name === taskName && item.exists === true));
+    assert.equal(listedWorktrees.worktrees.some(item => item.task_name === taskName), false);
 
     const worktreeStatus = await captureCliJson(['task', 'worktree', 'status', taskName]);
     assert.equal(worktreeStatus.worktree.task_name, taskName);
-    assert.equal(worktreeStatus.worktree.exists, true);
-    assert.equal(worktreeStatus.worktree.current_task, taskName);
+    assert.equal(worktreeStatus.worktree.exists, false);
+    assert.equal(worktreeStatus.worktree.workspace_state, 'detached');
 
     const resume = await captureCliJson(['resume']);
     assert.equal(resume.task.name, taskName);
-    assert.equal(resume.task.worktree_path, activated.workspace.path);
+    assert.equal(resume.task.worktree_path, null);
     assert.equal(resume.task.artifacts.prd, `.emb-agent/tasks/${taskName}/prd.md`);
     assert.ok(resume.task.context.implement.some(item => item.path === 'src/timer.c'));
     assertProjectLocalInjected(resume.injected_specs);
@@ -410,13 +409,14 @@ test('task commands create activate manage context and resolve lightweight tasks
 
     const resolved = await captureCliJson(['task', 'resolve', taskName, 'adapter merged']);
     assert.equal(resolved.resolved, true);
-    assert.equal(resolved.workspace_cleanup.cleaned, true);
+    assert.equal(resolved.workspace_merge.status, 'direct-workspace');
+    assert.equal(resolved.workspace_cleanup.cleaned, false);
+    assert.equal(resolved.workspace_cleanup.status, 'not-attached');
     assert.equal(resolved.task.status, 'completed');
     assert.equal(resolved.task.worktree_path, null);
     assert.equal(resolved.task.notes, 'adapter merged');
     assert.equal(resolved.task.aar.scan_completed, true);
     assert.equal(resolved.task.aar.record_required, false);
-    assert.equal(fs.existsSync(activated.workspace.path), false);
     assert.equal(cli.loadSession().active_task.name, '');
     assert.equal(cli.loadSession().focus, '');
     assert.equal(resolved.continuity_cleanup.handoff_cleared, true);
@@ -447,7 +447,7 @@ test('task worktree default and legacy config stay inside project', async () => 
     writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: ../emb-agent-worktrees\n');
 
     const created = await captureCliJson(['task', 'add', '--confirm', 'Keep task workspace project local']);
-    const activated = await captureCliJson(['task', 'activate', '--confirm', created.task.name]);
+    const activated = await captureCliJson(['task', 'activate', '--confirm', '--worktree', created.task.name]);
     const expectedRoot = path.join(tempProject, '.emb-agent', 'worktrees');
 
     assert.equal(activated.activated, true);
@@ -808,6 +808,7 @@ test('task add and activate keep tty output human-readable for package tasks', a
     assert.match(activateTty.stderr, /Activated: yes/);
     assert.match(activateTty.stderr, /Task: tty-package-task/);
     assert.match(activateTty.stderr, /Package: fw/);
+    assert.match(activateTty.stderr, /Mode: direct/);
     assert.match(activateTty.stderr, /Path:/);
 
     const nextTty = await captureCliTtyOutput(['next']);
@@ -822,7 +823,7 @@ test('task add and activate keep tty output human-readable for package tasks', a
   }
 });
 
-test('task activate creates a real git worktree when the project is a git repository', async () => {
+test('task activate defaults to direct workspace in a git repository', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-git-'));
   const currentCwd = process.cwd();
 
@@ -837,10 +838,54 @@ test('task activate creates a real git worktree when the project is a git reposi
     const taskName = created.task.name;
 
     const activated = await captureCliJson(['task', 'activate', taskName]);
+    assert.equal(activated.workspace.mode, 'direct');
+    assert.equal(activated.workspace.path, tempProject);
+    assert.equal(activated.task.worktree_path, null);
+    assert.equal(activated.worktree.exists, false);
+    assert.equal(activated.worktree_mode, 'direct');
+
+    const resolved = await captureCliJson([
+      'task',
+      'resolve',
+      taskName,
+      '--aar-new-pattern',
+      'no',
+      '--aar-new-trap',
+      'no',
+      '--aar-missing-rule',
+      'no',
+      '--aar-outdated-rule',
+      'no',
+      'done'
+    ]);
+    assert.equal(resolved.workspace_merge.status, 'direct-workspace');
+    assert.equal(resolved.workspace_cleanup.cleaned, false);
+    assert.equal(fs.existsSync(tempProject), true);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task activate --worktree creates a real git worktree when requested', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-git-worktree-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    writeText(path.join(tempProject, 'src', 'main.c'), '// main\n');
+    await cli.main(['init']);
+    writeText(path.join(tempProject, '.emb-agent', 'worktree.yaml'), 'worktree_dir: .task-worktrees\n');
+    initGitRepo(tempProject);
+
+    const created = await captureCliJson(['task', 'add', 'Investigate isolated irq race']);
+    const taskName = created.task.name;
+
+    const activated = await captureCliJson(['task', 'activate', '--worktree', taskName]);
     assert.equal(activated.workspace.mode, 'git-worktree');
     assert.equal(fs.existsSync(activated.workspace.path), true);
     assert.equal(fs.existsSync(path.join(activated.workspace.path, '.git')), true);
     assert.equal(activated.task.worktree_path, activated.workspace.path);
+    assert.equal(activated.worktree_mode, 'created');
 
     const resolved = await captureCliJson([
       'task',
@@ -875,7 +920,7 @@ test('task resolve auto-merges dirty git worktree before cleanup', async () => {
 
     const created = await captureCliJson(['task', 'add', 'Merge task workspace changes']);
     const taskName = created.task.name;
-    const activated = await captureCliJson(['task', 'activate', taskName]);
+    const activated = await captureCliJson(['task', 'activate', '--worktree', taskName]);
 
     writeText(path.join(activated.workspace.path, 'src', 'main.c'), '// task change\n');
     writeText(path.join(activated.workspace.path, 'src', 'added.c'), '// added by task\n');
@@ -918,7 +963,7 @@ test('task resolve keeps worktree when automatic merge fails', async () => {
 
     const created = await captureCliJson(['task', 'add', 'Detect merge conflict before cleanup']);
     const taskName = created.task.name;
-    const activated = await captureCliJson(['task', 'activate', taskName]);
+    const activated = await captureCliJson(['task', 'activate', '--worktree', taskName]);
 
     writeText(path.join(activated.workspace.path, 'src', 'main.c'), 'line one\nfrom task\n');
     writeText(path.join(tempProject, 'src', 'main.c'), 'line one\nfrom main\n');

@@ -33,7 +33,7 @@
 | **硬件信息文件** | MCU 型号、封装、引脚、外设写一次到 `.emb-agent/hw.yaml`，每次会话 AI 自动读取。 |
 | **需求文件** | 在 `.emb-agent/req.yaml` 中记录项目目标、接口和约束，AI 时刻知道你要做什么。 |
 | **简洁的命令流** | 大多数项目跑 `scan → plan → do → verify`。快捷命令如 `emb-agent scan` / `debug` / `do` 省去 `capability run` 前缀。 |
-| **内建任务追踪** | `task add` 创建任务，跟踪在 `.emb-agent/tasks/` 中，可关联 worktree 和 PR。 |
+| **内建任务追踪** | `task add` 创建任务，跟踪在 `.emb-agent/tasks/` 中；默认直接在主工程工作，需要隔离时再关联 worktree 和 PR。 |
 | **文档提取** | 喂入数据手册和原理图，AI 通过 MinerU 提取芯片信息（agent 限额自动 fallback 到 v4 API）。 |
 | **芯片专属逻辑** | PWM、定时器、ADC、比较器计算工具以可搜索参数形式生成在 adapter 中。 |
 | **内建验证** | 每个任务以 `review → verify` 关闭，不只是"编译通过就行"。 |

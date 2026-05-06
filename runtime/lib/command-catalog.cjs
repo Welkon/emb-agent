@@ -117,7 +117,7 @@ const ADVANCED_COMMAND_SECTIONS = [
       'task list',
       'task show <name>',
       'task add [--confirm] <summary> [--type implement|debug|review|investigate] [--dev-type backend|frontend|fullstack|test|docs|embedded] [--scope <name>] [--package <name>] [--priority P0|P1|P2|P3] [--assignee <name>]',
-      'task activate [--confirm] <name>',
+      'task activate [--confirm] [--worktree] <name>',
       'task resolve [--confirm] <name> [note]',
       'task set-branch [--confirm] <name> <branch>',
       'task set-base-branch [--confirm] <name> <branch>',

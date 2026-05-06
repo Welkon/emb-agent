@@ -33,7 +33,7 @@ emb-agent works with **Claude Code**, **Codex**, and **Cursor**. The same `.emb-
 | **Hardware truth files** | Write your MCU model, package, pins, and peripherals once in `.emb-agent/hw.yaml`. The AI reads them every session. |
 | **Requirements file** | Keep project goals, interfaces, and constraints in `.emb-agent/req.yaml` so the AI knows what you're building. |
 | **Simple command flow** | Most projects run `scan → plan → do → verify`. Shortcuts like `emb-agent scan` / `debug` / `do` skip the `capability run` prefix. |
-| **Built-in task tracking** | Tasks are created with `task add`, tracked in `.emb-agent/tasks/`, and linked to worktrees and PRs. |
+| **Built-in task tracking** | Tasks are created with `task add` and tracked in `.emb-agent/tasks/`; work stays in the main workspace by default and links to worktrees/PRs only when isolation is needed. |
 | **Document ingestion** | Feed in datasheets and schematics — AI extracts chip facts using MinerU (auto-fallback from agent to v4 API). |
 | **Chip-specific logic** | PWM, timer, ADC, comparator calculators live in generated adapters with machine-searchable register params. |
 | **Built-in verification** | Every task closes with `review → verify`, not just "code compiles and looks right." |
