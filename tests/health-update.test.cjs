@@ -842,8 +842,8 @@ test('health routes from applied hardware doc to adapter derive when synced adap
       { providerImpls }
     );
     await cli.runIngestCommand('apply', ['doc', ingested.doc_id, '--to', 'hardware']);
-    cli.main(['support', 'source', 'add', 'default-support', '--type', 'path', '--location', tempSource]);
-    cli.main(['support', 'sync', 'default-support']);
+    await cli.main(['support', 'source', 'add', 'default-support', '--type', 'path', '--location', tempSource]);
+    await cli.main(['support', 'sync', 'default-support']);
 
     stdout = '';
     cli.main(['health']);
@@ -877,6 +877,17 @@ test('health routes from applied hardware doc to adapter derive when synced adap
     assert.ok(report.quickstart.steps[0].cli.includes('adapter analysis init --chip PMS150G --package SOP8'));
     assert.ok(report.quickstart.steps[1].cli.includes('adapter derive --from-analysis .emb-agent/analysis/pms150g.json'));
     assert.ok(report.quickstart.steps[2].cli.endsWith(' next'));
+
+    stdout = '';
+    await cli.main(['bootstrap', 'run', '--confirm']);
+    const bootstrapRun = JSON.parse(stdout);
+    assert.equal(bootstrapRun.executed, true);
+    assert.equal(bootstrapRun.stage.id, 'support-derive');
+    assert.deepEqual(
+      bootstrapRun.stage.argv,
+      ['adapter', 'analysis', 'init', '--chip', 'PMS150G', '--package', 'SOP8']
+    );
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'analysis', 'pms150g.json')), true);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
