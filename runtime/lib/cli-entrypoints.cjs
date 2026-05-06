@@ -613,7 +613,7 @@ function createCliEntryHelpers(deps) {
         entries: [
           'task list',
           'task add [--confirm] <summary> [--type implement|debug|review|investigate] [--priority P0|P1|P2|P3]',
-          'task activate [--confirm] <name>',
+          'task activate [--confirm] [--worktree] <name>',
           'task show <name>',
           'task worktree <list|status|show|create|cleanup> [name]',
           'capability run <name>',

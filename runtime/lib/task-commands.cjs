@@ -800,6 +800,43 @@ function createTaskCommandHelpers(deps) {
     };
   }
 
+  function parseTaskActivateArgs(rest) {
+    const control = stripPermissionControlTokens(rest);
+    const tokens = control.tokens;
+    const nameParts = [];
+    const result = {
+      name: '',
+      create_worktree: false,
+      worktree_path: '',
+      explicit_confirmation: control.explicit_confirmation
+    };
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (token === '--worktree') {
+        result.create_worktree = true;
+        continue;
+      }
+      if (token === '--no-worktree') {
+        result.create_worktree = false;
+        continue;
+      }
+      if (token === '--worktree-path') {
+        result.worktree_path = String(tokens[index + 1] || '').trim();
+        result.create_worktree = true;
+        index += 1;
+        continue;
+      }
+      nameParts.push(token);
+    }
+
+    result.name = String(nameParts[0] || '').trim();
+    if (!result.name) {
+      throw new Error('Missing task name for task activate');
+    }
+    return result;
+  }
+
   function buildDefaultAarState() {
     return {
       required: true,
@@ -2057,6 +2094,36 @@ function createTaskCommandHelpers(deps) {
     return getDefaultTaskWorkspacePath(task.name);
   }
 
+  function findTaskWorktreeRegistryEntry(taskOrName) {
+    const taskName = typeof taskOrName === 'string'
+      ? String(taskOrName || '').trim()
+      : String(taskOrName && taskOrName.name ? taskOrName.name : '').trim();
+    if (!taskName) {
+      return null;
+    }
+    const registry = readTaskWorktreeRegistry();
+    return registry.worktrees.find(item => item.task_name === taskName) || null;
+  }
+
+  function withRegistryWorktreePath(task, registryEntry) {
+    const manifestPath = String(task && task.worktree_path ? task.worktree_path : '').trim();
+    const registryPath = String(registryEntry && registryEntry.worktree_path ? registryEntry.worktree_path : '').trim();
+    if (manifestPath || !registryPath) {
+      return task;
+    }
+    return {
+      ...task,
+      worktree_path: registryPath
+    };
+  }
+
+  function hasAttachedTaskWorktree(task, registryEntry) {
+    return Boolean(
+      String(task && task.worktree_path ? task.worktree_path : '').trim() ||
+      String(registryEntry && registryEntry.worktree_path ? registryEntry.worktree_path : '').trim()
+    );
+  }
+
   function isManagedTaskWorkspace(targetPath) {
     const root = getManagedTaskWorkspaceRoot();
     const relative = path.relative(root, targetPath);
@@ -2223,6 +2290,65 @@ function createTaskCommandHelpers(deps) {
       task_dir,
       post_create,
       ...workspaceScope
+    };
+  }
+
+  function buildDirectTaskWorkspace(task) {
+    const packageScope = resolveTaskPackageScope(task, null, {
+      requireKnown: Boolean(task && task.package),
+      requireExisting: Boolean(task && task.package),
+      useSessionFallback: false,
+      useProjectFallback: false
+    });
+    return {
+      mode: 'direct',
+      created: false,
+      path: resolveProjectRoot(),
+      copied: [],
+      task_dir: '',
+      post_create: [],
+      package: packageScope ? packageScope.name : '',
+      package_path: packageScope ? packageScope.path : '',
+      package_scope: packageScope ? 'package' : 'project',
+      summary: 'Task is active in the main workspace; no task worktree was created.'
+    };
+  }
+
+  function buildWorkspaceViewFromWorktree(worktree) {
+    const source = worktree && typeof worktree === 'object' && !Array.isArray(worktree) ? worktree : {};
+    if (!source.path) {
+      return null;
+    }
+    return {
+      mode: source.mode || '',
+      created: false,
+      path: source.path,
+      copied: [],
+      task_dir: '',
+      post_create: [],
+      package: source.package || '',
+      package_path: source.package_path || '',
+      package_scope: source.package_scope || 'project',
+      summary: source.summary || ''
+    };
+  }
+
+  function buildDirectWorkspaceMergeResult() {
+    return {
+      attempted: false,
+      merged: false,
+      status: 'direct-workspace',
+      path: '',
+      summary: 'No task worktree is attached; task changes are already in the main workspace.'
+    };
+  }
+
+  function buildDirectWorkspaceCleanupResult() {
+    return {
+      cleaned: false,
+      status: 'not-attached',
+      path: '',
+      summary: 'No task worktree is attached, so no worktree cleanup was needed.'
     };
   }
 
@@ -3316,7 +3442,7 @@ function createTaskCommandHelpers(deps) {
   }
 
   function activateTask(rest) {
-    const input = parseNamedTaskWriteArgs(rest, 'task activate');
+    const input = parseTaskActivateArgs(rest);
     const task = readTask(input.name);
     const blocked = applyTaskWritePermission({
       activated: false,
@@ -3331,10 +3457,18 @@ function createTaskCommandHelpers(deps) {
       return blocked.result;
     }
 
-    const workspace = ensureTaskWorkspace(task);
     const manifest = runtime.readJson(getTaskManifestPath(input.name));
     const session = loadSession();
     const baseBranch = String(manifest.base_branch || '').trim() || resolveDefaultBaseBranch();
+    const taskForWorkspace = input.worktree_path
+      ? {
+          ...task,
+          worktree_path: input.worktree_path
+        }
+      : task;
+    let workspace = input.create_worktree
+      ? ensureTaskWorkspace(taskForWorkspace)
+      : buildDirectTaskWorkspace(task);
     const prdPath = ensureTaskPrd({
       ...manifest,
       name: task.name,
@@ -3360,14 +3494,22 @@ function createTaskCommandHelpers(deps) {
       status: 'in_progress',
       current_phase: 1,
       base_branch: baseBranch,
-      worktree_path: workspace.path,
+      worktree_path: input.create_worktree
+        ? workspace.path
+        : manifest.worktree_path || null,
       injected_specs: injected.specs
     }));
     const activatedTask = readTask(input.name);
-    const registryEntry = upsertTaskWorktreeRegistry(activatedTask, {
-      ...workspace,
-      path: workspace.path
-    });
+    const registryEntry = input.create_worktree
+      ? upsertTaskWorktreeRegistry(activatedTask, {
+          ...workspace,
+          path: workspace.path
+        })
+      : findTaskWorktreeRegistryEntry(activatedTask);
+    const worktree = buildTaskWorktreeState(activatedTask, registryEntry);
+    if (!input.create_worktree && hasAttachedTaskWorktree(activatedTask, registryEntry)) {
+      workspace = buildWorkspaceViewFromWorktree(worktree) || workspace;
+    }
     CONTEXT_CHANNELS.forEach(channel => {
       const next = uniqueContextEntries([
         {
@@ -3405,7 +3547,17 @@ function createTaskCommandHelpers(deps) {
       activated: true,
       task: activatedTask,
       workspace,
-      worktree: buildTaskWorktreeState(activatedTask, registryEntry),
+      worktree,
+      worktree_mode: input.create_worktree
+        ? 'created'
+        : hasAttachedTaskWorktree(activatedTask, registryEntry)
+          ? 'attached'
+          : 'direct',
+      worktree_hint: input.create_worktree
+        ? 'Task worktree is attached for isolated execution.'
+        : hasAttachedTaskWorktree(activatedTask, registryEntry)
+          ? 'An existing task worktree is attached. Use task worktree show for details.'
+          : `No worktree was created. Continue editing the main workspace, or run ${buildCli(['task', 'worktree', 'create', activatedTask.name])} only if isolation is needed.`,
       task_convergence: buildTaskConvergence(activatedTask, {
         activated: true,
         prd_path: prdPath
@@ -3441,34 +3593,40 @@ function createTaskCommandHelpers(deps) {
     if (!aarUpdate.ok) {
       return aarUpdate.result;
     }
-    let workspaceMerge;
-    try {
-      workspaceMerge = mergeTaskWorkspaceToProject(task);
-    } catch (error) {
-      return permissionGateHelpers.applyPermissionDecision({
-        resolved: false,
-        status: 'workspace-merge-required',
-        task: {
-          name: task.name,
-          title: task.title,
-          status: task.status,
-          worktree_path: task.worktree_path
-        },
-        workspace_merge: {
-          attempted: true,
-          merged: false,
-          status: 'failed',
-          path: resolveTaskWorkspacePath(task),
-          error: error.message,
-          summary: 'Task resolve stopped before cleanup because the task worktree could not be merged into the main workspace.'
-        },
-        next_steps: [
-          'Review the task worktree diff and main workspace overlap.',
-          'Apply or commit the task changes, then run task resolve again.'
-        ]
-      }, blocked.permission);
+    const registryEntry = findTaskWorktreeRegistryEntry(task);
+    const taskWithWorktree = withRegistryWorktreePath(task, registryEntry);
+    const hasWorktree = hasAttachedTaskWorktree(taskWithWorktree, registryEntry);
+    let workspaceMerge = buildDirectWorkspaceMergeResult();
+    let workspaceCleanup = buildDirectWorkspaceCleanupResult();
+    if (hasWorktree) {
+      try {
+        workspaceMerge = mergeTaskWorkspaceToProject(taskWithWorktree);
+      } catch (error) {
+        return permissionGateHelpers.applyPermissionDecision({
+          resolved: false,
+          status: 'workspace-merge-required',
+          task: {
+            name: task.name,
+            title: task.title,
+            status: task.status,
+            worktree_path: taskWithWorktree.worktree_path
+          },
+          workspace_merge: {
+            attempted: true,
+            merged: false,
+            status: 'failed',
+            path: resolveTaskWorkspacePath(taskWithWorktree),
+            error: error.message,
+            summary: 'Task resolve stopped before cleanup because the task worktree could not be merged into the main workspace.'
+          },
+          next_steps: [
+            'Review the task worktree diff and main workspace overlap.',
+            'Apply or commit the task changes, then run task resolve again.'
+          ]
+        }, blocked.permission);
+      }
+      workspaceCleanup = cleanupTaskWorkspace(taskWithWorktree);
     }
-    const workspaceCleanup = cleanupTaskWorkspace(task);
     const session = loadSession();
     const shouldClearActiveTask = Boolean(session.active_task && session.active_task.name === input.name);
     writeTask(input.name, updateTaskTimestamps({
@@ -3711,7 +3869,7 @@ function createTaskCommandHelpers(deps) {
         'task list',
         'task status',
         'task add [--confirm] <summary>',
-        'task activate [--confirm] <name>',
+        'task activate [--confirm] [--worktree] <name>',
         'task show <name>',
         'task resolve [--confirm] <name> [note]',
         'task worktree <list|status|show|create|cleanup> [name]',
@@ -3747,6 +3905,7 @@ function createTaskCommandHelpers(deps) {
       ],
       notes: [
         'Use task aar help for closeout questions.',
+        'task activate defaults to the main workspace; use --worktree or task worktree create only when isolation is needed.',
         'task resolve auto-merges managed git worktree changes into the main workspace before cleanup.',
         'Use context focus get|set|clear for session focus; task resolve clears the active task pointer.'
       ]
