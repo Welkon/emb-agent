@@ -19,6 +19,18 @@ function truncateList(values, limit) {
   return toArray(values).slice(0, limit);
 }
 
+function summarizeHumanReply(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    zh: value.zh || '',
+    en: value.en || '',
+    next: value.next || ''
+  });
+}
+
 function summarizeContextHygiene(value) {
   if (!isObject(value)) {
     return null;
@@ -199,6 +211,115 @@ function summarizeWalkthroughExecution(value) {
   });
 }
 
+function summarizeLazyGeneration(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    enabled: value.enabled === undefined ? undefined : Boolean(value.enabled),
+    generated_tools: truncateList(value.generated_tools, 4),
+    generated_tools_count: Array.isArray(value.generated_tools) ? value.generated_tools.length : undefined,
+    generated_capabilities: truncateList(value.generated_capabilities, 4),
+    generated_capabilities_count: Array.isArray(value.generated_capabilities)
+      ? value.generated_capabilities.length
+      : undefined,
+    chip_support: value.chip_support || '',
+    tool_generation: value.tool_generation || '',
+    capability_materialization: value.capability_materialization || '',
+    summary: value.summary || ''
+  });
+}
+
+function summarizeDiscovery(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    mode: value.mode || '',
+    content_read: value.content_read === undefined ? undefined : Boolean(value.content_read),
+    roots: truncateList(value.roots, 8),
+    scanned_files_count: Number.isFinite(value.scanned_files_count) ? value.scanned_files_count : undefined,
+    candidate_files_count: Number.isFinite(value.candidate_files_count) ? value.candidate_files_count : undefined,
+    truncated: value.truncated === undefined ? undefined : Boolean(value.truncated),
+    skipped_external_roots: truncateList(value.skipped_external_roots, 6),
+    summary: value.summary || ''
+  });
+}
+
+function summarizeWorkspacePolicy(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    mode: value.mode || '',
+    worktree_mode: value.worktree_mode || '',
+    edits_apply_directly:
+      value.edits_apply_directly === undefined ? undefined : Boolean(value.edits_apply_directly),
+    merge_required: value.merge_required === undefined ? undefined : Boolean(value.merge_required),
+    worktree_required: value.worktree_required === undefined ? undefined : Boolean(value.worktree_required),
+    resolve_will_apply_patch:
+      value.resolve_will_apply_patch === undefined ? undefined : Boolean(value.resolve_will_apply_patch),
+    manual_copy_required:
+      value.manual_copy_required === undefined ? undefined : Boolean(value.manual_copy_required),
+    summary: value.summary || ''
+  });
+}
+
+function summarizeTaskSemanticMerge(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const selected = isObject(value.selected) ? value.selected : {};
+
+  return compactObject({
+    enabled: value.enabled === undefined ? undefined : Boolean(value.enabled),
+    matched: value.matched === undefined ? undefined : Boolean(value.matched),
+    action: value.action || '',
+    incoming_summary: value.incoming_summary || '',
+    selected: compactObject({
+      name: selected.name || '',
+      title: selected.title || '',
+      status: selected.status || '',
+      similarity_score: Number.isFinite(selected.similarity_score)
+        ? selected.similarity_score
+        : undefined
+    }),
+    duplicate_candidates_count: Array.isArray(value.duplicate_candidates)
+      ? value.duplicate_candidates.length
+      : undefined,
+    duplicate_candidates: truncateList(value.duplicate_candidates, 3).map(item => compactObject({
+      name: item && item.name ? item.name : '',
+      title: item && item.title ? item.title : '',
+      status: item && item.status ? item.status : '',
+      similarity_score: item && Number.isFinite(item.similarity_score) ? item.similarity_score : undefined,
+      merge: item && item.merge === true
+    })),
+    summary: value.summary || ''
+  });
+}
+
+function summarizeSpecsDoctor(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    status: value.status || '',
+    active_specs: truncateList(value.active_specs, 8),
+    selected_code_writing_specs: truncateList(value.selected_code_writing_specs, 8).map(item => compactObject({
+      name: item && item.name ? item.name : '',
+      path: item && item.path ? item.path : '',
+      enforcement_scope: item && item.enforcement_scope ? item.enforcement_scope : ''
+    })),
+    enforcement_summary: value.enforcement_summary || '',
+    summary: value.summary || ''
+  });
+}
+
 function summarizeRecommendedFlow(value) {
   if (!isObject(value)) {
     return null;
@@ -321,6 +442,8 @@ function summarizeTaskRef(value) {
     name: value.name || '',
     title: value.title || '',
     status: value.status || '',
+    priority: value.priority || '',
+    scope: value.scope || '',
     package: value.package || '',
     path: value.path || '',
     prd: artifacts.prd || ''
@@ -369,6 +492,14 @@ function formatRuntimeEventsForHandoff(value) {
     : `${summary.status} / ${summary.total}`;
 }
 
+function buildFinalReplyRule(status) {
+  if (status === 'blocked-by-task-intake') {
+    return 'Ask the user for the concrete task in one sentence first; do not lead with a placeholder CLI, raw tool output, or JSON.';
+  }
+
+  return 'Start with the exact next CLI, explain why in one sentence, summarize blockers closed, and never end on raw tool output.';
+}
+
 function buildOperatorHandoff(value, fallbackCommand, options) {
   if (!isObject(value)) {
     return null;
@@ -378,11 +509,17 @@ function buildOperatorHandoff(value, fallbackCommand, options) {
   const preferImmediate = settings.prefer_immediate === true;
   const next = isObject(value.next) ? value.next : {};
   const immediate = isObject(value.immediate) ? value.immediate : {};
+  const taskIntake = isObject(value.task_intake) ? value.task_intake : {};
   const actionCard = summarizeActionCard(value.action_card);
   const convergence = summarizeTaskConvergence(value.task_convergence);
   const command = preferImmediate
     ? firstText([immediate.command, next.command, fallbackCommand])
     : firstText([next.command, immediate.command, fallbackCommand]);
+  const taskIntakeCommand =
+    command === 'task add <summary>' ||
+    command === 'task add' ||
+    next.command === 'task add <summary>' ||
+    immediate.command === 'task add <summary>';
   const nextCli = preferImmediate
     ? firstText([
         immediate.cli,
@@ -413,6 +550,7 @@ function buildOperatorHandoff(value, fallbackCommand, options) {
   ]);
   const status = firstText([
     actionCard && actionCard.status,
+    taskIntakeCommand && taskIntake.status === 'ready' ? 'blocked-by-task-intake' : '',
     next.gated_by_health === true ? 'blocked-by-health' : '',
     command ? 'ready-to-run' : ''
   ]);
@@ -425,8 +563,7 @@ function buildOperatorHandoff(value, fallbackCommand, options) {
     why,
     first,
     runtime_events: formatRuntimeEventsForHandoff(value.runtime_events),
-    final_reply_rule:
-      'Start with the exact next CLI, explain why in one sentence, summarize blockers closed, and never end on raw tool output.'
+    final_reply_rule: buildFinalReplyRule(status)
   });
 }
 
@@ -916,6 +1053,9 @@ function buildBriefInitOutput(value) {
     project_profile: value.project_profile || session.project_profile || '',
     active_specs: toArray(value.active_specs || session.active_specs),
     developer: isObject(value.developer) ? value.developer : (isObject(session.developer) ? session.developer : null),
+    human_reply: summarizeHumanReply(value.human_reply),
+    lazy_generation: summarizeLazyGeneration(value.lazy_generation),
+    discovery: summarizeDiscovery(value.discovery || (value.detected && value.detected.discovery)),
     bootstrap: compactObject({
       status: bootstrap.status || '',
       stage: bootstrap.stage || '',
@@ -1111,6 +1251,8 @@ function buildBriefHealthOutput(value) {
     recommendations,
     primary_cli: primaryCli,
     next_commands: truncateList(value.next_commands, 4),
+    specs_doctor: summarizeSpecsDoctor(value.specs_doctor),
+    human_reply: summarizeHumanReply(value.human_reply),
     subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
     action_card: actionCard,
     recommended_flow: summarizeRecommendedFlow(value.recommended_flow),
@@ -1228,6 +1370,7 @@ function buildBriefStatusOutput(value) {
           package: value.active_task.package || ''
         })
       : null,
+    workspace_policy: summarizeWorkspacePolicy(value.workspace_policy),
     focus: value.focus || '',
     open_questions: truncateList(value.open_questions, 4),
     known_risks: truncateList(value.known_risks, 4),
@@ -1250,16 +1393,21 @@ function buildBriefTaskLifecycleOutput(value) {
   return compactObject({
     output_mode: 'brief',
     created: value.created === undefined ? undefined : Boolean(value.created),
+    merged: value.merged === undefined ? undefined : Boolean(value.merged),
     activated: value.activated === undefined ? undefined : Boolean(value.activated),
     task: summarizeTaskRef(value.task),
+    human_reply: summarizeHumanReply(value.human_reply),
+    task_semantic_merge: summarizeTaskSemanticMerge(value.task_semantic_merge),
     workspace: compactObject({
       mode: workspace.mode || '',
       path: workspace.path || ''
     }),
+    workspace_policy: summarizeWorkspacePolicy(value.workspace_policy || workspace.workspace_policy),
     worktree: compactObject({
       summary: worktree.summary || '',
       workspace_state: worktree.workspace_state || '',
-      attention: worktree.attention || ''
+      attention: worktree.attention || '',
+      workspace_policy: summarizeWorkspacePolicy(worktree.workspace_policy)
     }),
     task_convergence: summarizeTaskConvergence(value.task_convergence),
     runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events)

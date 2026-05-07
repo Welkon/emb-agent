@@ -65,6 +65,16 @@ const PACKAGE_SCAN_DIRS = new Set([
 ]);
 const MAX_DISCOVERY_FILES = 1200;
 const DEFAULT_DISCOVERY_DEPTH = 5;
+const EXTERNAL_DISCOVERY_ROOTS = new Set([
+  'third_party',
+  'third-party',
+  'vendor',
+  'vendors',
+  'external',
+  'deps',
+  'dependencies',
+  'node_modules'
+]);
 
 function usage() {
   process.stdout.write(
@@ -369,6 +379,7 @@ function walkFiles(rootDir, currentDir, results, options = {}) {
     }
 
     const relPath = path.relative(rootDir, path.join(currentDir, entry.name)).replace(/\\/g, '/');
+    state.visitedFiles = (state.visitedFiles || 0) + 1;
     if (!isCandidateInputPath(relPath) || state.seen.has(relPath)) {
       continue;
     }
@@ -379,10 +390,57 @@ function walkFiles(rootDir, currentDir, results, options = {}) {
   }
 }
 
+function collectSkippedExternalRoots(projectRoot, roots) {
+  const scanned = new Set(
+    (Array.isArray(roots) ? roots : [])
+      .map(root => String(root && root.relativeDir ? root.relativeDir : '').split('/')[0])
+      .filter(Boolean)
+  );
+  const entries = fs.existsSync(projectRoot)
+    ? fs.readdirSync(projectRoot, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))
+    : [];
+
+  return entries
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .filter(name => !scanned.has(name) && EXTERNAL_DISCOVERY_ROOTS.has(name.toLowerCase()));
+}
+
+function buildDiscoverySummary(projectRoot, roots, state, categorized) {
+  const resultCounts = {
+    docs: categorized.docs.length,
+    schematics: categorized.schematics.length,
+    code: categorized.code.length,
+    projects: categorized.projects.length
+  };
+  const returnedCounts = {
+    docs: Math.min(resultCounts.docs, 8),
+    schematics: Math.min(resultCounts.schematics, 6),
+    code: Math.min(resultCounts.code, 8),
+    projects: Math.min(resultCounts.projects, 6)
+  };
+
+  return {
+    mode: 'filename-only',
+    content_read: false,
+    roots: roots.map(root => root.relativeDir || '.'),
+    scanned_files_count: Number(state.visitedFiles || 0),
+    candidate_files_count: Number(state.files || 0),
+    max_candidate_files: MAX_DISCOVERY_FILES,
+    result_counts: resultCounts,
+    returned_counts: returnedCounts,
+    truncated: state.files >= MAX_DISCOVERY_FILES ||
+      Object.keys(resultCounts).some(key => resultCounts[key] > returnedCounts[key]),
+    skipped_external_roots: collectSkippedExternalRoots(projectRoot, roots),
+    summary: 'Init discovery only inspects filenames under project docs/source roots; it does not parse documents or generate tools.'
+  };
+}
+
 function detectProjectInputs(projectRoot) {
   const files = [];
-  const state = { files: 0, seen: new Set() };
-  collectDiscoveryRoots(projectRoot).forEach(root => {
+  const state = { files: 0, visitedFiles: 0, seen: new Set() };
+  const roots = collectDiscoveryRoots(projectRoot);
+  roots.forEach(root => {
     if (state.files >= MAX_DISCOVERY_FILES) {
       return;
     }
@@ -431,7 +489,13 @@ function detectProjectInputs(projectRoot) {
     docs: docs.slice(0, 8),
     schematics: schematics.slice(0, 6),
     code: code.slice(0, 8),
-    projects: projects.slice(0, 6)
+    projects: projects.slice(0, 6),
+    discovery: buildDiscoverySummary(projectRoot, roots, state, {
+      docs,
+      schematics,
+      code,
+      projects
+    })
   };
 }
 
@@ -592,6 +656,8 @@ function attachProject(argv) {
       path.relative(projectRoot, reqPath)
     ],
     detected,
+    discovery: detected.discovery || null,
+    lazy_generation: initProject.buildLazyGenerationSummary(),
     next_steps: [
       runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['status']),
       runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
@@ -612,6 +678,8 @@ function main(argv) {
 
 module.exports = {
   attachProject,
+  buildInitHumanReply: initProject.buildInitHumanReply,
+  buildLazyGenerationSummary: initProject.buildLazyGenerationSummary,
   detectProjectInputs,
   main,
   parseArgs,

@@ -962,6 +962,14 @@ function createCliEntryHelpers(deps) {
         project_profile: session.project_profile,
         active_specs: session.active_specs,
         developer: session.developer,
+        human_reply:
+          attachProjectCli && typeof attachProjectCli.buildInitHumanReply === 'function'
+            ? attachProjectCli.buildInitHumanReply()
+            : null,
+        lazy_generation:
+          attachProjectCli && typeof attachProjectCli.buildLazyGenerationSummary === 'function'
+            ? attachProjectCli.buildLazyGenerationSummary()
+            : null,
         bootstrap_task: guidance.bootstrap_task || null,
         bootstrap
       };

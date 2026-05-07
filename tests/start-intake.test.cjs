@@ -104,10 +104,16 @@ test('next asks for task intake once hardware identity is locked', async () => {
     assert.equal(next.next.command, 'task add <summary>');
     assert.match(next.next.reason, /Hardware identity is locked/i);
     assert.match(next.next.reason, /Tell me the concrete task/i);
+    assert.ok(next.next_actions.some(item => item.startsWith('user_prompt=Give the task')));
     assert.equal(next.action_card.status, 'blocked-by-task-intake');
     assert.match(next.action_card.first_instruction, /Give the task/i);
     assert.match(next.action_card.first_cli, /task add <summary>/);
     assert.match(next.action_card.then_cli, /task activate <name>/);
+
+    const briefNext = await captureCliJson(['next', '--brief']);
+    assert.equal(briefNext.operator_handoff.status, 'blocked-by-task-intake');
+    assert.match(briefNext.operator_handoff.final_reply_rule, /concrete task in one sentence/);
+    assert.match(briefNext.operator_handoff.final_reply_rule, /do not lead with a placeholder CLI/);
   } finally {
     process.chdir(currentCwd);
   }

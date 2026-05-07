@@ -101,6 +101,21 @@ function writeBridge(projectRoot, metrics) {
   return payload;
 }
 
+function buildFreshContextInstruction(contextHygiene) {
+  const pauseCli = contextHygiene && contextHygiene.pause_cli
+    ? contextHygiene.pause_cli
+    : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['pause']);
+  const resumeCli = contextHygiene && contextHygiene.resume_cli
+    ? contextHygiene.resume_cli
+    : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume']);
+
+  if (contextHygiene && contextHygiene.handoff_ready) {
+    return `Use the host clear/new-context control, then run ${resumeCli}`;
+  }
+
+  return `Run ${pauseCli}, then use the host clear/new-context control and run ${resumeCli}`;
+}
+
 function buildMetricsMessage(metrics, contextHygiene) {
   if (!metrics || !Number.isFinite(metrics.remaining)) {
     return '';
@@ -115,9 +130,7 @@ function buildMetricsMessage(metrics, contextHygiene) {
   const pauseCli = contextHygiene && contextHygiene.pause_cli
     ? contextHygiene.pause_cli
     : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['pause']);
-  const resumeChain = contextHygiene && contextHygiene.clear_hint
-    ? contextHygiene.clear_hint
-    : 'pause -> clear -> resume';
+  const freshContextInstruction = buildFreshContextInstruction(contextHygiene);
   const reasons = contextHygiene && Array.isArray(contextHygiene.reasons) && contextHygiene.reasons.length > 0
     ? ` Signals: ${contextHygiene.reasons.join('; ')}.`
     : '';
@@ -125,10 +138,10 @@ function buildMetricsMessage(metrics, contextHygiene) {
   const sessionReportCli = runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['session-report']);
 
   if (isCritical) {
-    return `${prefix} Context window remaining=${Math.round(metrics.remaining)}%. Stop expanding scope. Run ${pauseCli} then ${sessionReportCli} to save checkpoint before clearing. Follow ${resumeChain}.${reasons}`;
+    return `${prefix} Context window remaining=${Math.round(metrics.remaining)}%. Stop expanding scope. Run ${pauseCli} then ${sessionReportCli} to save checkpoint. Next step: ${freshContextInstruction}.${reasons}`;
   }
 
-  return `${prefix} Context window remaining=${Math.round(metrics.remaining)}%. Prepare to close scope before deeper exploration. Consider ${sessionReportCli} to save checkpoint. Follow ${resumeChain}.${reasons}`;
+  return `${prefix} Context window remaining=${Math.round(metrics.remaining)}%. Prepare to close scope before deeper exploration. Consider ${sessionReportCli} to save checkpoint. If the task continues in a fresh context: ${freshContextInstruction}.${reasons}`;
 }
 
 function buildSessionMessage(contextHygiene) {
@@ -143,7 +156,7 @@ function buildSessionMessage(contextHygiene) {
     ? ` Reasons: ${contextHygiene.reasons.join('; ')}.`
     : '';
 
-  return `${prefix} ${contextHygiene.recommendation}${reasons} Next chain: ${contextHygiene.clear_hint}.`;
+  return `${prefix} ${contextHygiene.recommendation}${reasons} Next step: ${buildFreshContextInstruction(contextHygiene)}.`;
 }
 
 function severityRank(level) {
@@ -157,9 +170,20 @@ function severityRank(level) {
   return ranks[level] || 0;
 }
 
-function shouldEmit(projectRoot, level) {
+function buildEmitSignature(level, metricsMessage, sessionMessage, contextHygiene) {
+  const kind = metricsMessage ? 'metrics' : (sessionMessage ? 'session' : 'other');
+  const reasons = contextHygiene && Array.isArray(contextHygiene.reasons)
+    ? contextHygiene.reasons.join('|')
+    : '';
+  const handoff = contextHygiene && contextHygiene.handoff_ready ? 'handoff' : 'no-handoff';
+  return crypto.createHash('sha1')
+    .update([kind, level, reasons, handoff].join('\n'))
+    .digest('hex');
+}
+
+function shouldEmit(projectRoot, level, signature = '') {
   const warnPath = getWarnPath(projectRoot);
-  let warnData = { callsSinceWarn: 0, lastLevel: 'stable' };
+  let warnData = { callsSinceWarn: 0, lastLevel: 'stable', lastSignature: '' };
   let firstWarn = true;
 
   if (fs.existsSync(warnPath)) {
@@ -167,12 +191,26 @@ function shouldEmit(projectRoot, level) {
       warnData = JSON.parse(fs.readFileSync(warnPath, 'utf8'));
       firstWarn = false;
     } catch {
-      warnData = { callsSinceWarn: 0, lastLevel: 'stable' };
+      warnData = { callsSinceWarn: 0, lastLevel: 'stable', lastSignature: '' };
     }
   }
 
   warnData.callsSinceWarn = (warnData.callsSinceWarn || 0) + 1;
   const severityEscalated = severityRank(level) > severityRank(warnData.lastLevel);
+
+  if (signature) {
+    const sameSignature = warnData.lastSignature === signature;
+    if (!firstWarn && sameSignature && !severityEscalated) {
+      fs.writeFileSync(warnPath, JSON.stringify(warnData), 'utf8');
+      return false;
+    }
+
+    warnData.callsSinceWarn = 0;
+    warnData.lastLevel = level;
+    warnData.lastSignature = signature;
+    fs.writeFileSync(warnPath, JSON.stringify(warnData), 'utf8');
+    return true;
+  }
 
   if (!firstWarn && warnData.callsSinceWarn < DEBOUNCE_CALLS && !severityEscalated) {
     fs.writeFileSync(warnPath, JSON.stringify(warnData), 'utf8');
@@ -257,7 +295,8 @@ function runHook(rawInput) {
       level = 'warning';
     }
 
-    if (!shouldEmit(projectRoot, level) && !graphMessage) {
+    const emitSignature = buildEmitSignature(level, metricsMessage, sessionMessage, contextHygiene);
+    if (!shouldEmit(projectRoot, level, emitSignature) && !graphMessage) {
       return '';
     }
 
@@ -275,6 +314,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildEmitSignature,
+  buildFreshContextInstruction,
   buildMetricsMessage,
   buildSessionMessage,
   getBridgePath,

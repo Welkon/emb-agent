@@ -463,6 +463,7 @@ const {
   normalizeSession,
   loadProfile,
   loadSpec,
+  loadSession,
   findChipProfileByModel,
   resolveSession,
   buildToolExecutionFromRecommendation,

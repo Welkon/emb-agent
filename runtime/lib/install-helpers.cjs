@@ -2623,7 +2623,8 @@ function createInstallHelpers(deps) {
       '- Before running a visible command chain, send one short Chinese status line that says what you are checking and why.',
       '- After any command that changes routing, closes a blocker, writes truth, or fails, send one short Chinese result line before the next command.',
       '- If the user says only "continue" after a final `operator_handoff`, run only the exact next CLI unless they explicitly ask to continue through task creation, implementation, verification, and closure.',
-      '- When a `--brief` payload includes `operator_handoff`, use it as the final-answer contract: exact next CLI first, one-sentence reason, blockers closed, then stop.',
+      '- If `operator_handoff.status` is `blocked-by-task-intake`, ask the user for the concrete task in one sentence instead of leading with the placeholder CLI.',
+      '- When a `--brief` payload includes `operator_handoff`, use it as the final-answer contract: exact next CLI first for ready commands, one-sentence task prompt for task intake, blockers closed, then stop.',
       '- Do not let the final visible item be a tool call, raw JSON, or bare command output.'
     ];
 

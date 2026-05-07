@@ -315,6 +315,10 @@ test('task commands create activate manage context and resolve lightweight tasks
     assert.equal(activated.worktree.workspace_state, 'detached');
     assert.equal(activated.worktree.current_task, '');
     assert.equal(activated.worktree_mode, 'direct');
+    assert.equal(activated.workspace_policy.mode, 'main');
+    assert.equal(activated.workspace_policy.edits_apply_directly, true);
+    assert.equal(activated.workspace_policy.merge_required, false);
+    assert.equal(activated.workspace.workspace_policy.mode, 'main');
     assert.equal(cli.loadSession().active_task.name, taskName);
     assert.equal(cli.loadSession().active_task.status, 'in_progress');
     assert.equal(cli.loadSession().focus, activated.task.title);
@@ -510,6 +514,8 @@ test('capability do requires selected code-writing specs without making them glo
     assert.ok(actionDo.code_writing_specs.items.some(item => item.name === 'embedded-space'));
     assert.ok(!actionDo.code_writing_specs.items.some(item => item.name === 'product-flow'));
     assert.ok(actionDo.next_actions.some(item => item.includes('required_code_writing_specs=')));
+    assert.match(actionDo.action_card.first_instruction, /Read and obey code-writing specs before editing/);
+    assert.match(actionDo.action_card.first_instruction, /\.emb-agent\/specs\/embedded-space\.md/);
 
     const created = await captureCliJson(['task', 'add', 'Implement source rules']);
     const taskName = created.task.name;
@@ -527,6 +533,51 @@ test('capability do requires selected code-writing specs without making them glo
     assert.doesNotMatch(autoSpecsText, /Required Code-Writing Specs/);
     assert.match(codeWritingSpecsText, /Required Code-Writing Specs/);
     assert.match(codeWritingSpecsText, /Keep code direct and ROM-first/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task add automatically merges similar open tasks', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-merge-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const created = await captureCliJson(['task', 'add', 'Implement TM2 PWM adapter', '--priority', 'P2']);
+    const merged = await captureCliJson([
+      '--brief',
+      'task',
+      'add',
+      'implement pwm adapter for TM2',
+      '--priority',
+      'P0',
+      '--note',
+      'same user request phrased again'
+    ]);
+    const tasks = await captureCliJson(['task', 'list']);
+    const manifest = JSON.parse(
+      fs.readFileSync(
+        path.join(tempProject, '.emb-agent', 'tasks', created.task.name, 'task.json'),
+        'utf8'
+      )
+    );
+
+    assert.equal(created.created, true);
+    assert.equal(merged.created, false);
+    assert.equal(merged.merged, true);
+    assert.equal(merged.task.name, created.task.name);
+    assert.equal(merged.task.priority, 'P0');
+    assert.equal(merged.task_semantic_merge.action, 'merged-existing-task');
+    assert.equal(merged.task_semantic_merge.matched, true);
+    assert.equal(merged.task_semantic_merge.selected.name, created.task.name);
+    assert.match(merged.human_reply.zh, /已把这次 task add 自动合并/);
+    assert.equal(tasks.tasks.filter(task => task.name !== '00-bootstrap-project').length, 1);
+    assert.equal(manifest.priority, 'P0');
+    assert.equal(manifest.merged_requests.length, 1);
+    assert.match(manifest.notes, /Merged task add/);
   } finally {
     process.chdir(currentCwd);
   }
@@ -938,6 +989,9 @@ test('task activate defaults to direct workspace in a git repository', async () 
     assert.equal(activated.task.worktree_path, null);
     assert.equal(activated.worktree.exists, false);
     assert.equal(activated.worktree_mode, 'direct');
+    assert.equal(activated.workspace_policy.mode, 'main');
+    assert.equal(activated.workspace_policy.edits_apply_directly, true);
+    assert.equal(activated.workspace_policy.merge_required, false);
 
     const resolved = await captureCliJson([
       'task',
@@ -954,6 +1008,8 @@ test('task activate defaults to direct workspace in a git repository', async () 
       'done'
     ]);
     assert.equal(resolved.workspace_merge.status, 'direct-workspace');
+    assert.equal(resolved.workspace_policy.mode, 'main');
+    assert.equal(resolved.workspace_merge.workspace_policy.mode, 'main');
     assert.equal(resolved.workspace_cleanup.cleaned, false);
     assert.equal(fs.existsSync(tempProject), true);
   } finally {
@@ -981,6 +1037,10 @@ test('task activate --worktree creates a real git worktree when requested', asyn
     assert.equal(fs.existsSync(path.join(activated.workspace.path, '.git')), true);
     assert.equal(activated.task.worktree_path, activated.workspace.path);
     assert.equal(activated.worktree_mode, 'created');
+    assert.equal(activated.workspace_policy.mode, 'isolated');
+    assert.equal(activated.workspace_policy.merge_required, true);
+    assert.equal(activated.workspace_policy.resolve_will_apply_patch, true);
+    assert.equal(activated.workspace.workspace_policy.mode, 'isolated');
 
     const resolved = await captureCliJson([
       'task',
@@ -996,6 +1056,8 @@ test('task activate --worktree creates a real git worktree when requested', asyn
       'no',
       'done'
     ]);
+    assert.equal(resolved.workspace_policy.mode, 'isolated');
+    assert.equal(resolved.workspace_policy.merge_required, true);
     assert.equal(resolved.workspace_cleanup.cleaned, true);
     assert.equal(fs.existsSync(activated.workspace.path), false);
   } finally {
@@ -1037,6 +1099,9 @@ test('task resolve auto-merges dirty git worktree before cleanup', async () => {
 
     assert.equal(resolved.resolved, true);
     assert.equal(resolved.workspace_merge.status, 'merged');
+    assert.equal(resolved.workspace_policy.mode, 'isolated');
+    assert.equal(resolved.workspace_merge.workspace_policy.mode, 'isolated');
+    assert.equal(resolved.workspace_merge.workspace_policy.resolve_will_apply_patch, true);
     assert.equal(resolved.workspace_cleanup.cleaned, true);
     assert.equal(fs.existsSync(activated.workspace.path), false);
     assert.equal(fs.readFileSync(path.join(tempProject, 'src', 'main.c'), 'utf8'), '// task change\n');
@@ -1129,6 +1194,8 @@ test('task worktree create and cleanup expose isolated workspace lifecycle for g
     assert.equal(shown.worktree.exists, true);
     assert.equal(shown.worktree.current_task, taskName);
     assert.equal(shown.worktree.workspace_state, 'dirty');
+    assert.equal(shown.workspace_policy.mode, 'isolated');
+    assert.equal(shown.worktree.workspace_policy.mode, 'isolated');
     assert.equal(shown.runtime_events[0].type, 'task-worktree-status');
 
     const listed = await captureCliJson(['task', 'worktree', 'list']);

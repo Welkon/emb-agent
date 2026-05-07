@@ -110,6 +110,21 @@ function createTaskCommandHelpers(deps) {
     { phase: 3, action: 'finish' },
     { phase: 4, action: 'create-pr' }
   ];
+  const TASK_SEMANTIC_MERGE_THRESHOLD = 0.72;
+  const TASK_SEMANTIC_MERGE_SOFT_THRESHOLD = 0.65;
+  const TASK_SEMANTIC_STOPWORDS = new Set([
+    'add',
+    'change',
+    'code',
+    'do',
+    'fix',
+    'firmware',
+    'implement',
+    'make',
+    'task',
+    'update',
+    'work'
+  ]);
   const TASK_CONVERGENCE_PROMPTS = [
     'What is the smallest durable outcome for this task?',
     'Which truth, hardware facts, or code entry points bound the change?',
@@ -1724,6 +1739,283 @@ function createTaskCommandHelpers(deps) {
     );
   }
 
+  function normalizeSemanticText(text) {
+    return String(text || '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[\u2010-\u2015]/g, '-')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim();
+  }
+
+  function pushCjkSemanticTokens(tokens, value) {
+    const chars = [...String(value || '')].filter(Boolean);
+    if (chars.length === 0) {
+      return;
+    }
+    if (chars.length <= 4) {
+      tokens.add(chars.join(''));
+    }
+    for (let index = 0; index < chars.length - 1; index += 1) {
+      tokens.add(chars.slice(index, index + 2).join(''));
+    }
+    for (let index = 0; index < chars.length - 2; index += 1) {
+      tokens.add(chars.slice(index, index + 3).join(''));
+    }
+  }
+
+  function tokenizeTaskSemanticText(text) {
+    const tokens = new Set();
+    const normalized = normalizeSemanticText(text);
+    const matches = normalized.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]+|[a-z0-9]{2,}/giu);
+
+    for (const match of matches) {
+      const value = String(match[0] || '').trim();
+      if (!value || TASK_SEMANTIC_STOPWORDS.has(value)) {
+        continue;
+      }
+      if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(value)) {
+        pushCjkSemanticTokens(tokens, value);
+        continue;
+      }
+      tokens.add(value);
+    }
+
+    return [...tokens];
+  }
+
+  function scoreTokenSets(leftTokens, rightTokens) {
+    const left = new Set(leftTokens || []);
+    const right = new Set(rightTokens || []);
+    if (left.size === 0 || right.size === 0) {
+      return {
+        score: 0,
+        intersection: 0,
+        union: left.size + right.size
+      };
+    }
+
+    let intersection = 0;
+    left.forEach(token => {
+      if (right.has(token)) {
+        intersection += 1;
+      }
+    });
+    const union = new Set([...left, ...right]).size;
+    const jaccard = union > 0 ? intersection / union : 0;
+    const smaller = Math.min(left.size, right.size);
+    const containment = smaller > 0 ? intersection / smaller : 0;
+    const score = smaller >= 3 && containment >= 0.8
+      ? Math.max(jaccard, containment * 0.92)
+      : jaccard;
+
+    return {
+      score,
+      intersection,
+      union
+    };
+  }
+
+  function roundSimilarityScore(value) {
+    return Math.round(Number(value || 0) * 1000) / 1000;
+  }
+
+  function priorityRank(value) {
+    const index = TASK_PRIORITIES.indexOf(normalizeTaskPriority(value || 'P2'));
+    return index >= 0 ? index : TASK_PRIORITIES.indexOf('P2');
+  }
+
+  function pickHigherPriority(left, right) {
+    const normalizedLeft = normalizeTaskPriority(left || 'P2');
+    const normalizedRight = normalizeTaskPriority(right || 'P2');
+    return priorityRank(normalizedRight) < priorityRank(normalizedLeft)
+      ? normalizedRight
+      : normalizedLeft;
+  }
+
+  function buildTaskSimilarityInput(taskLike) {
+    const task = taskLike || {};
+    return [
+      task.summary,
+      task.title,
+      task.description,
+      task.goal,
+      task.scope,
+      task.package,
+      task.dev_type,
+      task.devType
+    ].filter(Boolean).join(' ');
+  }
+
+  function scoreTaskSemanticCandidate(parsed, task) {
+    const incomingTitle = normalizeSemanticText(parsed.summary);
+    const existingTitle = normalizeSemanticText(task.title || task.goal || '');
+    const incomingSlug = normalizeTaskSlug(parsed.summary);
+    const existingSlug = normalizeTaskSlug(task.title || task.name || '');
+    const sameScope = Boolean(parsed.scope && task.scope && parsed.scope === task.scope);
+    const samePackage = Boolean(parsed.package && task.package && parsed.package === task.package);
+    const sameDevType = Boolean(parsed.devType && task.dev_type && parsed.devType === task.dev_type);
+    const reasons = [];
+
+    if (incomingTitle && existingTitle && incomingTitle === existingTitle) {
+      reasons.push('exact-title');
+      return {
+        score: 1,
+        reasons,
+        merge: true
+      };
+    }
+    if (incomingSlug && existingSlug && incomingSlug === existingSlug) {
+      reasons.push('same-slug');
+      return {
+        score: 1,
+        reasons,
+        merge: true
+      };
+    }
+
+    const tokenScore = scoreTokenSets(
+      tokenizeTaskSemanticText(buildTaskSimilarityInput(parsed)),
+      tokenizeTaskSemanticText(buildTaskSimilarityInput(task))
+    );
+    let score = tokenScore.score;
+    if (tokenScore.intersection > 0) {
+      reasons.push(`shared-token-count:${tokenScore.intersection}`);
+    }
+    if (sameScope) {
+      score += 0.08;
+      reasons.push(`same-scope:${parsed.scope}`);
+    }
+    if (samePackage) {
+      score += 0.08;
+      reasons.push(`same-package:${parsed.package}`);
+    }
+    if (sameDevType) {
+      score += 0.03;
+      reasons.push(`same-dev-type:${parsed.devType}`);
+    }
+    score = Math.min(1, score);
+
+    return {
+      score,
+      reasons,
+      merge:
+        score >= TASK_SEMANTIC_MERGE_THRESHOLD ||
+        (score >= TASK_SEMANTIC_MERGE_SOFT_THRESHOLD && (sameScope || samePackage))
+    };
+  }
+
+  function summarizeTaskSemanticCandidate(task, scored) {
+    const score = scored || {};
+    return {
+      name: task.name,
+      title: task.title,
+      status: task.status,
+      scope: task.scope || '',
+      package: task.package || '',
+      similarity_score: roundSimilarityScore(score.score),
+      merge: score.merge === true,
+      reasons: runtime.unique(score.reasons || [])
+    };
+  }
+
+  function findTaskSemanticMerge(parsed) {
+    const openStatuses = new Set(['planning', 'in_progress', 'review']);
+    const parent = String(parsed.parent || '').trim();
+    const candidates = listTasks().tasks
+      .filter(task => openStatuses.has(task.status))
+      .filter(task => !parent || task.parent === parent)
+      .map(task => {
+        const scored = scoreTaskSemanticCandidate(parsed, task);
+        return summarizeTaskSemanticCandidate(task, scored);
+      })
+      .filter(item => item.similarity_score > 0)
+      .sort((left, right) =>
+        Number(right.merge === true) - Number(left.merge === true) ||
+        right.similarity_score - left.similarity_score ||
+        String(left.name || '').localeCompare(String(right.name || ''))
+      );
+    const selected = candidates.find(item => item.merge === true) || null;
+
+    return {
+      enabled: true,
+      matched: Boolean(selected),
+      action: selected ? 'merge-existing-task' : 'create-new-task',
+      incoming_summary: parsed.summary,
+      similarity_threshold: TASK_SEMANTIC_MERGE_THRESHOLD,
+      soft_similarity_threshold: TASK_SEMANTIC_MERGE_SOFT_THRESHOLD,
+      selected,
+      duplicate_candidates: candidates.slice(0, 3),
+      summary: selected
+        ? `Found similar open task ${selected.name}; merge this task add request instead of creating a duplicate.`
+        : 'No similar open task crossed the automatic merge threshold.'
+    };
+  }
+
+  function buildHumanReply(zh, en, next) {
+    return {
+      zh: String(zh || '').trim(),
+      en: String(en || '').trim(),
+      next: String(next || '').trim()
+    };
+  }
+
+  function appendMergedTaskNote(currentNotes, parsed, semanticMerge) {
+    const selected = semanticMerge && semanticMerge.selected ? semanticMerge.selected : {};
+    const lines = [];
+    const existing = String(currentNotes || '').trim();
+    if (existing) {
+      lines.push(existing);
+    }
+    lines.push(
+      [
+        `[${new Date().toISOString()}]`,
+        `Merged task add: ${parsed.summary}`,
+        `(similarity ${roundSimilarityScore(selected.similarity_score)})`
+      ].join(' ')
+    );
+    if (parsed.notes) {
+      lines.push(`Merged note: ${parsed.notes}`);
+    }
+    return lines.join('\n');
+  }
+
+  function mergeTaskAddIntoExistingTask(taskName, parsed, semanticMerge) {
+    return updateTaskManifest(taskName, manifest => {
+      const mergedRequests = Array.isArray(manifest.merged_requests)
+        ? manifest.merged_requests.slice()
+        : [];
+      const selected = semanticMerge && semanticMerge.selected ? semanticMerge.selected : {};
+      const description = String(manifest.description || '').trim();
+      const incomingDescription = String(parsed.description || '').trim();
+
+      mergedRequests.push({
+        summary: parsed.summary,
+        description: incomingDescription,
+        scope: parsed.scope || '',
+        package: parsed.package || '',
+        priority: parsed.priority || '',
+        assignee: parsed.assignee || '',
+        creator: parsed.creator || '',
+        merged_at: new Date().toISOString(),
+        similarity_score: roundSimilarityScore(selected.similarity_score),
+        reasons: runtime.unique(selected.reasons || [])
+      });
+
+      return {
+        ...manifest,
+        description: description || incomingDescription || parsed.summary,
+        scope: manifest.scope || parsed.scope || '',
+        package: manifest.package || parsed.package || '',
+        priority: pickHigherPriority(manifest.priority, parsed.priority),
+        creator: manifest.creator || parsed.creator || '',
+        assignee: manifest.assignee || parsed.assignee || parsed.creator || '',
+        notes: appendMergedTaskNote(manifest.notes, parsed, semanticMerge),
+        merged_requests: mergedRequests.slice(-20)
+      };
+    });
+  }
+
   function scoreDocEntry(entry, summary, resolved) {
     const summaryTokens = tokenizeText(summary);
     const model = String(
@@ -1957,6 +2249,7 @@ function createTaskCommandHelpers(deps) {
       references,
       open_questions: runtime.unique(session.open_questions || []),
       known_risks: runtime.unique(session.known_risks || []),
+      merged_requests: [],
       bindings: bindings || {
         hardware: {
           identity: {
@@ -2306,6 +2599,10 @@ function createTaskCommandHelpers(deps) {
         copied,
         task_dir,
         post_create,
+        workspace_policy: buildWorkspacePolicy({
+          mode: hasGitRoot(projectRoot) ? 'git-worktree' : 'copy',
+          path: targetPath
+        }),
         ...workspaceScope
       };
     }
@@ -2352,6 +2649,7 @@ function createTaskCommandHelpers(deps) {
         copied,
         task_dir,
         post_create,
+        workspace_policy: buildWorkspacePolicy({ mode: 'git-worktree', path: targetPath }),
         ...workspaceScope
       };
     }
@@ -2369,6 +2667,7 @@ function createTaskCommandHelpers(deps) {
       copied,
       task_dir,
       post_create,
+      workspace_policy: buildWorkspacePolicy({ mode: 'copy', path: targetPath }),
       ...workspaceScope
     };
   }
@@ -2390,6 +2689,7 @@ function createTaskCommandHelpers(deps) {
       package: packageScope ? packageScope.name : '',
       package_path: packageScope ? packageScope.path : '',
       package_scope: packageScope ? 'package' : 'project',
+      workspace_policy: buildWorkspacePolicy({ mode: 'direct' }),
       summary: 'Task is active in the main workspace; no task worktree was created.'
     };
   }
@@ -2409,7 +2709,41 @@ function createTaskCommandHelpers(deps) {
       package: source.package || '',
       package_path: source.package_path || '',
       package_scope: source.package_scope || 'project',
+      workspace_policy: buildWorkspacePolicy(source),
       summary: source.summary || ''
+    };
+  }
+
+  function buildWorkspacePolicy(source) {
+    const workspace = source && typeof source === 'object' && !Array.isArray(source) ? source : {};
+    const mode = String(workspace.mode || '').trim();
+    const hasIsolatedWorkspace = Boolean(workspace.path && mode && mode !== 'direct');
+
+    if (!hasIsolatedWorkspace) {
+      return {
+        mode: 'main',
+        worktree_mode: 'direct',
+        edits_apply_directly: true,
+        merge_required: false,
+        worktree_required: false,
+        resolve_will_apply_patch: false,
+        manual_copy_required: false,
+        summary: 'Normal firmware edits apply directly in the main project workspace; create a task worktree only when isolation is needed.'
+      };
+    }
+
+    const gitWorktree = mode === 'git-worktree';
+    return {
+      mode: 'isolated',
+      worktree_mode: mode,
+      edits_apply_directly: false,
+      merge_required: true,
+      worktree_required: true,
+      resolve_will_apply_patch: gitWorktree,
+      manual_copy_required: !gitWorktree,
+      summary: gitWorktree
+        ? 'Task edits are isolated in a git worktree; task resolve applies them back to the main workspace before cleanup.'
+        : 'Task edits are isolated in a copied workspace; review and copy changes back before cleanup because git merge support is unavailable.'
     };
   }
 
@@ -2419,6 +2753,7 @@ function createTaskCommandHelpers(deps) {
       merged: false,
       status: 'direct-workspace',
       path: '',
+      workspace_policy: buildWorkspacePolicy({ mode: 'direct' }),
       summary: 'No task worktree is attached; task changes are already in the main workspace.'
     };
   }
@@ -2613,6 +2948,7 @@ function createTaskCommandHelpers(deps) {
         merged: false,
         status: 'copy-worktree',
         path: workspacePath,
+        workspace_policy: buildWorkspacePolicy({ mode: 'copy', path: workspacePath }),
         summary: 'Copy-mode task worktrees are cleaned without git merge support.'
       };
     }
@@ -2652,6 +2988,7 @@ function createTaskCommandHelpers(deps) {
       base_branch: baseBranch,
       patches,
       untracked,
+      workspace_policy: buildWorkspacePolicy({ mode: 'git-worktree', path: workspacePath }),
       summary: changed
         ? 'Task worktree changes were merged into the main workspace before cleanup.'
         : alreadyMerged
@@ -2810,6 +3147,7 @@ function createTaskCommandHelpers(deps) {
       workspace_state: classification.state,
       attention: classification.attention,
       summary: classification.summary,
+      workspace_policy: buildWorkspacePolicy({ mode, path: workspacePath }),
       registry: registryEntry || null
     };
   }
@@ -2859,6 +3197,7 @@ function createTaskCommandHelpers(deps) {
     );
     return runtimeEventHelpers.appendRuntimeEvent({
       worktree,
+      workspace_policy: worktree.workspace_policy,
       task
     }, {
       type: 'task-worktree-status',
@@ -2902,6 +3241,7 @@ function createTaskCommandHelpers(deps) {
       created: true,
       task: nextTask,
       workspace,
+      workspace_policy: buildWorkspacePolicy(workspace),
       worktree: buildTaskWorktreeState(nextTask, registryEntry)
     }, {
       type: 'task-worktree-transition',
@@ -2947,6 +3287,7 @@ function createTaskCommandHelpers(deps) {
     return permissionGateHelpers.applyPermissionDecision(runtimeEventHelpers.appendRuntimeEvent({
       cleaned: true,
       task: readTask(input.name),
+      workspace_policy: buildWorkspacePolicy({ mode: 'direct' }),
       workspace_cleanup: workspaceCleanup
     }, {
       type: 'task-worktree-transition',
@@ -3044,6 +3385,7 @@ function createTaskCommandHelpers(deps) {
       references: Array.isArray(manifest.references) ? manifest.references : relatedFiles,
       open_questions: Array.isArray(manifest.open_questions) ? manifest.open_questions : [],
       known_risks: Array.isArray(manifest.known_risks) ? manifest.known_risks : [],
+      merged_requests: Array.isArray(manifest.merged_requests) ? manifest.merged_requests : [],
       bindings: manifest.bindings || {
         hardware: {
           identity: {
@@ -3097,8 +3439,10 @@ function createTaskCommandHelpers(deps) {
   function createTask(rest) {
     const parsed = parseTaskAddArgs(rest);
     const previewBindings = buildTaskBindings(parsed.summary);
+    const semanticMerge = findTaskSemanticMerge(parsed);
     const blocked = applyTaskWritePermission({
       created: false,
+      merged: false,
       task: {
         title: parsed.summary,
         status: 'planning',
@@ -3109,7 +3453,8 @@ function createTaskCommandHelpers(deps) {
         assignee: parsed.assignee || parsed.creator || '',
         type: parsed.type,
         bindings: previewBindings
-      }
+      },
+      task_semantic_merge: semanticMerge
     }, 'task-add', parsed.explicit_confirmation);
 
     if (blocked.permission.decision !== 'allow') {
@@ -3119,6 +3464,36 @@ function createTaskCommandHelpers(deps) {
     const session = loadSession();
     if (parsed.parent) {
       readTaskManifest(parsed.parent);
+    }
+    if (semanticMerge.selected && semanticMerge.selected.name) {
+      const mergedTask = mergeTaskAddIntoExistingTask(semanticMerge.selected.name, parsed, semanticMerge);
+      updateSession(current => {
+        current.last_command = 'task add';
+      });
+
+      return permissionGateHelpers.applyPermissionDecision({
+        created: false,
+        merged: true,
+        task: mergedTask,
+        task_semantic_merge: {
+          ...semanticMerge,
+          action: 'merged-existing-task',
+          summary: `Merged task add request into existing task ${mergedTask.name}; no duplicate task was created.`
+        },
+        task_convergence: buildTaskConvergence(mergedTask, {
+          activated: mergedTask.status === 'in_progress',
+          prd_path: mergedTask.artifacts && mergedTask.artifacts.prd
+            ? mergedTask.artifacts.prd
+            : `.emb-agent/tasks/${mergedTask.name}/prd.md`
+        }),
+        human_reply: buildHumanReply(
+          `发现相似的未完成任务 ${mergedTask.name}，已把这次 task add 自动合并进去，没有创建重复任务。下一步继续查看或激活这个任务。`,
+          `Found similar open task ${mergedTask.name}; merged this task add request instead of creating a duplicate.`,
+          mergedTask.status === 'in_progress'
+            ? buildCli(['task', 'show', mergedTask.name])
+            : buildCli(['task', 'activate', mergedTask.name])
+        )
+      }, blocked.permission);
     }
     const name = buildUniqueTaskSlug(parsed.summary);
     const bindings = previewBindings;
@@ -3182,11 +3557,18 @@ function createTaskCommandHelpers(deps) {
 
     return permissionGateHelpers.applyPermissionDecision({
       created: true,
+      merged: false,
       task: readTask(name),
+      task_semantic_merge: semanticMerge,
       task_convergence: buildTaskConvergence(readTask(name), {
         activated: false,
         prd_path: prdPath
-      })
+      }),
+      human_reply: buildHumanReply(
+        `已创建任务 ${name}。先看 ${prdPath} 锁定目标、约束和验收，再激活任务继续。`,
+        `Created task ${name}. Read ${prdPath} first, then activate the task.`,
+        buildCli(['task', 'activate', name])
+      )
     }, blocked.permission);
   }
 
@@ -3195,7 +3577,14 @@ function createTaskCommandHelpers(deps) {
     updateSession(current => {
       current.last_command = 'task show';
     });
-    return { task };
+    return {
+      task,
+      workspace_policy: buildWorkspacePolicy(
+        task.worktree_path
+          ? { mode: hasGitRoot(resolveProjectRoot()) ? 'git-worktree' : 'copy', path: task.worktree_path }
+          : { mode: 'direct' }
+      )
+    };
   }
 
   function buildTaskStatusPayload() {
@@ -3223,6 +3612,13 @@ function createTaskCommandHelpers(deps) {
             worktree_path: activeTask.worktree_path || null
           }
         : null,
+      workspace_policy: activeTask
+        ? buildWorkspacePolicy(
+            activeTask.worktree_path
+              ? { mode: hasGitRoot(resolveProjectRoot()) ? 'git-worktree' : 'copy', path: activeTask.worktree_path }
+              : { mode: 'direct' }
+          )
+        : buildWorkspacePolicy({ mode: 'direct' }),
       session_active_task: session.active_task || {
         name: '',
         title: '',
@@ -3642,6 +4038,7 @@ function createTaskCommandHelpers(deps) {
       activated: true,
       task: activatedTask,
       workspace,
+      workspace_policy: buildWorkspacePolicy(workspace),
       worktree,
       worktree_mode: input.create_worktree
         ? 'created'
@@ -3656,7 +4053,16 @@ function createTaskCommandHelpers(deps) {
       task_convergence: buildTaskConvergence(activatedTask, {
         activated: true,
         prd_path: prdPath
-      })
+      }),
+      human_reply: buildHumanReply(
+        input.create_worktree
+          ? `已激活任务 ${activatedTask.name}，并创建隔离 worktree。修改先在 worktree 中完成，resolve 时再合回主项目。`
+          : `已激活任务 ${activatedTask.name}。当前是主工作区模式，固件改动会直接落在项目目录里。`,
+        input.create_worktree
+          ? `Activated task ${activatedTask.name} with an isolated worktree.`
+          : `Activated task ${activatedTask.name} in the main workspace.`,
+        buildPreferredCapabilityCli('plan')
+      )
     }, blocked.permission);
   }
 
@@ -3711,9 +4117,17 @@ function createTaskCommandHelpers(deps) {
             merged: false,
             status: 'failed',
             path: resolveTaskWorkspacePath(taskWithWorktree),
+            workspace_policy: buildWorkspacePolicy({
+              mode: hasGitRoot(resolveProjectRoot()) ? 'git-worktree' : 'copy',
+              path: resolveTaskWorkspacePath(taskWithWorktree)
+            }),
             error: error.message,
             summary: 'Task resolve stopped before cleanup because the task worktree could not be merged into the main workspace.'
           },
+          workspace_policy: buildWorkspacePolicy({
+            mode: hasGitRoot(resolveProjectRoot()) ? 'git-worktree' : 'copy',
+            path: resolveTaskWorkspacePath(taskWithWorktree)
+          }),
           next_steps: [
             'Review the task worktree diff and main workspace overlap.',
             'Apply or commit the task changes, then run task resolve again.'
@@ -3761,6 +4175,12 @@ function createTaskCommandHelpers(deps) {
     return permissionGateHelpers.applyPermissionDecision({
       resolved: true,
       task: readTask(input.name),
+      workspace_policy: hasWorktree
+        ? buildWorkspacePolicy({
+            mode: hasGitRoot(resolveProjectRoot()) ? 'git-worktree' : 'copy',
+            path: resolveTaskWorkspacePath(taskWithWorktree)
+          })
+        : buildWorkspacePolicy({ mode: 'direct' }),
       workspace_merge: workspaceMerge,
       workspace_cleanup: workspaceCleanup,
       continuity_cleanup: continuityCleanup

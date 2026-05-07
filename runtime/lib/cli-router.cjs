@@ -260,6 +260,18 @@ function createCliRouter(deps) {
       }
     }
 
+    function pushHumanReplyLines(lines, humanReply) {
+      const reply = humanReply && typeof humanReply === 'object' && !Array.isArray(humanReply)
+        ? humanReply
+        : {};
+      if (reply.zh) {
+        lines.push(terminalUi.renderKeyValue('说明', reply.zh, 'muted'));
+      }
+      if (reply.next) {
+        lines.push(terminalUi.renderKeyValue('Next', reply.next, 'success'));
+      }
+    }
+
     function pushWorkflowStageLines(lines, workflowStage) {
       const stage = workflowStage && typeof workflowStage === 'object' && !Array.isArray(workflowStage)
         ? workflowStage
@@ -381,8 +393,10 @@ function createCliRouter(deps) {
         payload.action_card ||
         (payload.action_context && payload.action_context.action_card) ||
         (payload.bootstrap_after && payload.bootstrap_after.action_card) ||
-        (payload.result && payload.result.action_context && payload.result.action_context.action_card) ||
-        null;
+          (payload.result && payload.result.action_context && payload.result.action_context.action_card) ||
+          null;
+
+      pushHumanReplyLines(lines, payload.human_reply);
 
       if (cmd === 'init' && payload.project_root) {
         lines.push(terminalUi.renderKeyValue('Project', payload.project_root, 'info'));
@@ -852,6 +866,12 @@ function createCliRouter(deps) {
         pushTaskConvergenceLines(lines, payload.task_convergence);
         if (payload.created === true) {
           lines.push(terminalUi.renderKeyValue('Created', 'yes', 'success'));
+        }
+        if (payload.merged === true) {
+          lines.push(terminalUi.renderKeyValue('Merged', 'yes', 'success'));
+        }
+        if (payload.task_semantic_merge && payload.task_semantic_merge.summary) {
+          lines.push(terminalUi.renderKeyValue('Merge', payload.task_semantic_merge.summary, 'muted'));
         }
         if (payload.task && payload.task.name) {
           lines.push(terminalUi.renderKeyValue('Task', payload.task.name, 'info'));

@@ -197,6 +197,25 @@ function createActionContractHelpers(deps) {
       : '';
   }
 
+  function buildCodeWritingSpecsInstruction(output) {
+    const codeWritingSpecs =
+      output && output.code_writing_specs && output.code_writing_specs.status === 'required'
+        ? output.code_writing_specs
+        : null;
+    if (!codeWritingSpecs || !Array.isArray(codeWritingSpecs.items) || codeWritingSpecs.items.length === 0) {
+      return '';
+    }
+
+    const paths = codeWritingSpecs.items
+      .map(item => item && item.path ? String(item.path).trim() : '')
+      .filter(Boolean);
+    if (paths.length === 0) {
+      return '';
+    }
+
+    return `Read and obey code-writing specs before editing: ${paths.join(', ')}`;
+  }
+
   function buildActionInstruction(action, output) {
     if (action === 'scan') {
       return (output.next_reads && output.next_reads[0]) || (output.open_questions && output.open_questions[0]) || '';
@@ -205,9 +224,11 @@ function createActionContractHelpers(deps) {
       return (output.steps && output.steps[0]) || (output.verification && output.verification[0]) || '';
     }
     if (action === 'do') {
-      return (output.execution_brief && output.execution_brief.suggested_steps && output.execution_brief.suggested_steps[0]) ||
+      const specInstruction = buildCodeWritingSpecsInstruction(output);
+      const workInstruction = (output.execution_brief && output.execution_brief.suggested_steps && output.execution_brief.suggested_steps[0]) ||
         (output.prerequisites && output.prerequisites[0]) ||
         '';
+      return runtime.unique([specInstruction, workInstruction]).join(' Then: ');
     }
     if (action === 'debug') {
       return (output.checks && output.checks[0]) || output.next_step || '';

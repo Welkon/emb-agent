@@ -161,6 +161,75 @@ test('health reports warn for incomplete hardware identity and fail for missing 
   }
 });
 
+test('health specs reports active code-writing spec enforcement', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-specs-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  try {
+    process.chdir(tempProject);
+    process.stdout.write = chunk => {
+      stdout += String(chunk);
+      return true;
+    };
+
+    cli.main(['init']);
+    const projectExtDir = runtime.getProjectExtDir(tempProject);
+    const registryPath = path.join(projectExtDir, 'registry', 'workflow.json');
+    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    registry.specs.push({
+      name: 'embedded-space',
+      title: 'Embedded Space',
+      path: 'specs/embedded-space.md',
+      summary: 'Code-writing rules for small MCU firmware.',
+      auto_inject: false,
+      selectable: true,
+      priority: 58,
+      apply_when: {
+        specs: ['embedded-space']
+      },
+      focus_areas: [],
+      extra_review_axes: [],
+      preferred_notes: [],
+      default_agents: []
+    });
+    writeJson(registryPath, registry);
+    writeText(
+      path.join(projectExtDir, 'specs', 'embedded-space.md'),
+      '# Embedded Space\n\n- Keep code direct and ROM-first.\n'
+    );
+    const projectConfigPath = runtime.resolveProjectDataPath(tempProject, 'project.json');
+    const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
+    writeJson(projectConfigPath, {
+      ...projectConfig,
+      active_specs: ['embedded-space']
+    });
+
+    stdout = '';
+    cli.main(['health', 'specs']);
+    const report = JSON.parse(stdout);
+
+    assert.equal(report.command, 'health specs');
+    assert.equal(report.status, 'pass');
+    assert.ok(report.checks.some(item => item.key === 'code_writing_specs_enforced' && item.status === 'pass'));
+    assert.deepEqual(report.specs_doctor.active_specs, ['embedded-space']);
+    assert.equal(report.specs_doctor.selected_code_writing_specs[0].name, 'embedded-space');
+    assert.equal(report.specs_doctor.selected_code_writing_specs[0].path, '.emb-agent/specs/embedded-space.md');
+    assert.match(report.human_reply.zh, /AI 写代码前必须读取并遵守/);
+
+    stdout = '';
+    cli.main(['--brief', 'specs', 'doctor']);
+    const brief = JSON.parse(stdout);
+    assert.equal(brief.output_mode, 'brief');
+    assert.equal(brief.specs_doctor.selected_code_writing_specs[0].name, 'embedded-space');
+    assert.match(brief.human_reply.zh, /embedded-space/);
+  } finally {
+    process.stdout.write = originalWrite;
+    process.chdir(currentCwd);
+  }
+});
+
 test('health prioritizes discovered schematic intake before manual hardware identity', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-health-schematic-intake-'));
   const currentCwd = process.cwd();

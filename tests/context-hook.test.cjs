@@ -45,7 +45,13 @@ test('context monitor hook emits only when session context is heavy', () => {
     const payload = JSON.parse(heavy.output);
     assert.equal(payload.hookSpecificOutput.hookEventName, 'PostToolUse');
     assert.match(payload.hookSpecificOutput.additionalContext, /EMB CONTEXT WARNING|EMB CONTEXT NOTICE/);
-    assert.match(payload.hookSpecificOutput.additionalContext, /pause -> clear -> resume/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /host clear\/new-context control/);
+    assert.doesNotMatch(payload.hookSpecificOutput.additionalContext, /pause -> clear -> resume|Next chain/);
+
+    const repeated = contextMonitor.runHook({ cwd: tempProject, event: 'PostToolUse' });
+    assert.equal(repeated.trusted, true);
+    assert.equal(repeated.status, 'ok');
+    assert.equal(repeated.output, '');
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
@@ -110,7 +116,8 @@ test('context monitor prioritizes live context metrics and warns to pause', () =
     const payload = JSON.parse(result.output);
     assert.match(payload.hookSpecificOutput.additionalContext, /EMB CONTEXT CRITICAL/);
     assert.match(payload.hookSpecificOutput.additionalContext, /pause/);
-    assert.match(payload.hookSpecificOutput.additionalContext, /clear -> resume|pause -> clear -> resume/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /host clear\/new-context control/);
+    assert.doesNotMatch(payload.hookSpecificOutput.additionalContext, /clear -> resume|pause -> clear -> resume/);
   } finally {
     if (previousTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;
@@ -131,6 +138,19 @@ test('context monitor shouldEmit debounces same severity and allows escalation',
   }
 
   assert.equal(contextMonitor.shouldEmit(tempProject, 'critical'), true);
+});
+
+test('context monitor shouldEmit suppresses duplicate context signatures', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-signature-'));
+
+  assert.equal(contextMonitor.shouldEmit(tempProject, 'warning', 'same-warning'), true);
+
+  for (let index = 0; index < 8; index += 1) {
+    assert.equal(contextMonitor.shouldEmit(tempProject, 'warning', 'same-warning'), false);
+  }
+
+  assert.equal(contextMonitor.shouldEmit(tempProject, 'warning', 'new-warning'), true);
+  assert.equal(contextMonitor.shouldEmit(tempProject, 'critical', 'same-warning'), true);
 });
 
 test('context monitor skips all output when workspace trust is not established', () => {

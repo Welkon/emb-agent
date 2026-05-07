@@ -1273,9 +1273,31 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     defaults: effectiveProjectConfig,
     bootstrap_task: bootstrapTask,
     workflow_registry_import: workflowRegistryImport,
+    human_reply: buildInitHumanReply(),
+    lazy_generation: buildLazyGenerationSummary(),
     created,
     updated,
     reused
+  };
+}
+
+function buildLazyGenerationSummary() {
+  return {
+    enabled: true,
+    generated_tools: [],
+    generated_capabilities: [],
+    chip_support: 'deferred-until-tool-use',
+    tool_generation: 'deferred-until-tool-run',
+    capability_materialization: 'deferred-until-capability-run',
+    summary: 'Init creates the minimum project skeleton; chip/tool support and capability assets are generated only when a concrete run needs them.'
+  };
+}
+
+function buildInitHumanReply() {
+  return {
+    zh: '初始化只创建最小项目骨架，并只扫描现有代码和 docs 线索；芯片支持、工具和能力资产会等到真正运行时再生成。',
+    en: 'Init creates the minimum project skeleton and defers chip support, tools, and capability assets until a concrete run needs them.',
+    next: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
   };
 }
 
@@ -1324,6 +1346,8 @@ module.exports = {
   buildBootstrapDocsPlan,
   buildTruthPlan,
   buildProjectConfig,
+  buildLazyGenerationSummary,
+  buildInitHumanReply,
   buildWorkflowSpecPrompt,
   buildTemplateContext,
   applyTemplate,

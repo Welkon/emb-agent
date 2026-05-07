@@ -30,6 +30,7 @@ function createHealthUpdateCommandHelpers(deps) {
     normalizeSession,
     loadProfile,
     loadSpec,
+    loadSession,
     findChipProfileByModel,
     resolveSession,
     buildToolExecutionFromRecommendation,
@@ -261,6 +262,209 @@ function createHealthUpdateCommandHelpers(deps) {
     return {
       status: counts.fail > 0 ? 'fail' : counts.warn > 0 ? 'warn' : 'pass',
       counts
+    };
+  }
+
+  function normalizeActiveSpecsForDoctor(projectConfig, session) {
+    if (projectConfig && Array.isArray(projectConfig.active_specs) && projectConfig.active_specs.length > 0) {
+      return runtime.unique(projectConfig.active_specs);
+    }
+    if (session && Array.isArray(session.active_specs) && session.active_specs.length > 0) {
+      return runtime.unique(session.active_specs);
+    }
+    return runtime.unique(RUNTIME_CONFIG.default_specs || []);
+  }
+
+  function buildSpecsDoctorReport() {
+    const projectRoot = resolveProjectRoot();
+    const projectExtDir = getProjectExtDir();
+    const projectConfig = getProjectConfig ? getProjectConfig() : {};
+    const rawSession = typeof loadSession === 'function' ? loadSession() : {};
+    let resolved = null;
+    try {
+      resolved = resolveSession();
+    } catch {
+      resolved = null;
+    }
+    const session = resolved && resolved.session ? resolved.session : rawSession;
+    const activeSpecs = normalizeActiveSpecsForDoctor(projectConfig, session);
+    const workflowPaths = workflowRegistry.getProjectWorkflowPaths(projectExtDir);
+    const registry = workflowRegistry.loadWorkflowRegistry(rootDir, { projectExtDir });
+    const checks = [];
+    const recommendations = [];
+    const registryByName = new Map((registry.specs || []).map(item => [item.name, item]));
+    const unresolvedSpecs = [];
+    const resolvedSpecs = [];
+
+    activeSpecs.forEach(name => {
+      const entry = registryByName.get(name);
+      if (!entry) {
+        unresolvedSpecs.push(`${name}: Spec not found`);
+        return;
+      }
+      if (entry.selectable !== true) {
+        unresolvedSpecs.push(`${name}: Spec is not selectable`);
+        return;
+      }
+      resolvedSpecs.push(entry);
+    });
+
+    const snapshot = workflowRegistry.buildInjectedSpecSnapshot(
+      rootDir,
+      projectExtDir,
+      {
+        profile: resolved && resolved.profile && resolved.profile.name
+          ? resolved.profile.name
+          : String((session && session.project_profile) || (projectConfig && projectConfig.project_profile) || '').trim(),
+        specs: activeSpecs,
+        active_package: session && session.active_package ? session.active_package : '',
+        default_package: session && session.default_package ? session.default_package : '',
+        task: session && session.active_task ? session.active_task : null
+      },
+      {
+        include_selected_specs: true,
+        selected_specs_only: true,
+        selected_reason: 'required-for-code-writing',
+        selected_enforcement_scope: 'code-writing'
+      }
+    );
+    const selectedCodeWritingSpecs = (snapshot.items || [])
+      .filter(item => item && item.required === true && item.enforcement_scope === 'code-writing')
+      .map(item => ({
+        name: item.name,
+        title: item.title || item.name,
+        path: item.display_path,
+        enforcement_scope: item.enforcement_scope,
+        reasons: item.reasons || []
+      }));
+    const selectedCodeWritingNames = selectedCodeWritingSpecs.map(item => item.name);
+    const specsDoctorSummary = selectedCodeWritingSpecs.length > 0
+      ? `Active code-writing specs are enforced during source edits: ${selectedCodeWritingNames.join(', ')}.`
+      : 'No active spec currently resolves as a code-writing requirement.';
+
+    checks.push(
+      createCheck(
+        'workflow_layout',
+        fs.existsSync(workflowPaths.registryPath) ? 'pass' : 'warn',
+        fs.existsSync(workflowPaths.registryPath)
+          ? 'Project workflow registry exists'
+          : 'Project workflow registry is missing',
+        [
+          formatStateEvidencePath(projectRoot, workflowPaths.registryPath),
+          fs.existsSync(workflowPaths.specsDir) ? formatStateEvidencePath(projectRoot, workflowPaths.specsDir) : ''
+        ],
+        fs.existsSync(workflowPaths.registryPath) ? '' : 'Run workflow init to normalize .emb-agent/registry and .emb-agent/specs.'
+      )
+    );
+    checks.push(
+      createCheck(
+        'active_specs_configured',
+        activeSpecs.length > 0 ? 'pass' : 'warn',
+        activeSpecs.length > 0 ? 'Active specs are configured' : 'No active specs are configured',
+        [`active_specs=${activeSpecs.join(',') || '(none)'}`],
+        activeSpecs.length > 0 ? '' : 'Run settings set specs <name>[,<name>] or reinstall with --spec <name>.'
+      )
+    );
+    checks.push(
+      createCheck(
+        'active_specs_resolvable',
+        unresolvedSpecs.length > 0 ? 'fail' : 'pass',
+        unresolvedSpecs.length > 0 ? 'Some active specs are not usable' : 'All active specs are resolvable and selectable',
+        unresolvedSpecs.length > 0
+          ? unresolvedSpecs
+          : resolvedSpecs.map(item => `${item.name} -> ${item.display_path}`),
+        unresolvedSpecs.length > 0 ? 'Fix active_specs or register the missing selectable specs.' : ''
+      )
+    );
+    checks.push(
+      createCheck(
+        'code_writing_specs_enforced',
+        selectedCodeWritingSpecs.length > 0 ? 'pass' : 'info',
+        selectedCodeWritingSpecs.length > 0
+          ? 'Selected active code-writing specs are required before source edits'
+          : 'No selected active specs are marked as code-writing requirements',
+        selectedCodeWritingSpecs.length > 0
+          ? selectedCodeWritingSpecs.map(item => `${item.name} -> ${item.path}`)
+          : ['code-writing specs are enforced only when an active selectable spec matches the code-writing scope'],
+        selectedCodeWritingSpecs.length > 0
+          ? ''
+          : 'If embedded-space should be mandatory for firmware edits, activate that selectable spec first.'
+      )
+    );
+    checks.push(
+      createCheck(
+        'do_action_contract',
+        selectedCodeWritingSpecs.length > 0 ? 'pass' : 'info',
+        selectedCodeWritingSpecs.length > 0
+          ? 'capability run do will tell the AI to read and obey the code-writing spec files before editing'
+          : 'capability run do has no selected code-writing spec to enforce right now',
+        selectedCodeWritingSpecs.length > 0
+          ? [
+              `required_code_writing_specs=${selectedCodeWritingSpecs.map(item => item.path).join(',')}`,
+              runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['capability', 'run', 'do', '--brief'])
+            ]
+          : [runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['health', 'specs'])],
+        selectedCodeWritingSpecs.length > 0 ? '' : ''
+      )
+    );
+
+    if (activeSpecs.length === 0) {
+      recommendations.push('Activate the project specs that should steer AI behavior, for example settings set specs embedded-space.');
+    }
+    if (unresolvedSpecs.length > 0) {
+      recommendations.push('Fix .emb-agent/project.json active_specs or the workflow registry before relying on spec enforcement.');
+    }
+    if (selectedCodeWritingSpecs.length === 0) {
+      recommendations.push('To force embedded-space during firmware edits, register it as selectable and activate it, then rerun health specs.');
+    }
+    if (selectedCodeWritingSpecs.length > 0) {
+      recommendations.push('Before source edits, run capability run do or task activate so required_code_writing_specs is visible in the action context.');
+    }
+
+    const summary = summarizeChecks(checks);
+
+    return {
+      command: 'health specs',
+      project_root: projectRoot,
+      runtime_host: runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname).name,
+      status: summary.status,
+      summary: summary.counts,
+      checks,
+      specs_doctor: {
+        status: summary.status,
+        active_specs: activeSpecs,
+        resolved_specs: resolvedSpecs.map(item => ({
+          name: item.name,
+          title: item.title || item.name,
+          path: item.display_path,
+          selectable: item.selectable === true,
+          enforcement_scopes: item.enforcement_scopes || []
+        })),
+        selected_code_writing_specs: selectedCodeWritingSpecs,
+        registry_paths: snapshot.registry_paths || registry.registry_paths || {},
+        enforcement_summary: specsDoctorSummary,
+        summary: specsDoctorSummary
+      },
+      human_reply: {
+        zh: selectedCodeWritingSpecs.length > 0
+          ? `已确认：${selectedCodeWritingNames.join('、')} 会作为 code-writing 规格进入实现阶段，AI 写代码前必须读取并遵守这些文件。`
+          : '当前没有启用会强制进入实现阶段的 code-writing 规格；如果 embedded-space 要约束代码编写，需要先把它注册为 selectable spec 并激活。',
+        en: selectedCodeWritingSpecs.length > 0
+          ? `Confirmed: ${selectedCodeWritingNames.join(', ')} is required for code-writing contexts.`
+          : 'No active code-writing spec is enforced right now.',
+        next: selectedCodeWritingSpecs.length > 0
+          ? runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['capability', 'run', 'do', '--brief'])
+          : runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['settings', 'set', 'specs', 'embedded-space'])
+      },
+      recommendations: runtime.unique(recommendations),
+      next_commands: [
+        {
+          key: 'rerun-specs-doctor',
+          kind: 'command',
+          summary: 'Re-check active spec enforcement',
+          cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['health', 'specs'])
+        }
+      ]
     };
   }
 
@@ -1804,6 +2008,15 @@ function createHealthUpdateCommandHelpers(deps) {
 
   function handleHealthUpdateCommands(cmd, subcmd, rest) {
     if (cmd === 'health') {
+      if (subcmd === 'specs') {
+        if (rest && rest.length > 0) {
+          throw new Error('health specs does not accept positional arguments');
+        }
+        updateSession(current => {
+          current.last_command = 'health specs';
+        });
+        return buildSpecsDoctorReport();
+      }
       if (subcmd && subcmd !== 'show') {
         throw new Error(`Unknown health subcommand: ${subcmd}`);
       }
@@ -1815,6 +2028,16 @@ function createHealthUpdateCommandHelpers(deps) {
         current.last_command = 'health';
       });
       return buildHealthReport();
+    }
+
+    if (cmd === 'specs' && subcmd === 'doctor') {
+      if (rest && rest.length > 0) {
+        throw new Error('specs doctor does not accept positional arguments');
+      }
+      updateSession(current => {
+        current.last_command = 'specs doctor';
+      });
+      return buildSpecsDoctorReport();
     }
 
     if (cmd === 'bootstrap') {

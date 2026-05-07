@@ -40,6 +40,7 @@ test('context hygiene stays stable for light sessions and suggests clear after h
     const heavyNext = cli.buildNextContext();
     assert.equal(heavyNext.context_hygiene.level, 'suggest-clearing');
     assert.match(heavyNext.context_hygiene.recommendation, /Run pause now/);
+    assert.match(heavyNext.context_hygiene.clear_hint, /host clear\/new-context control/);
     assert.equal(heavyNext.context_hygiene.compress_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress');
     assert.ok(heavyNext.next_actions.some(item => item.startsWith('snapshot_command=')));
     assert.ok(heavyNext.next_actions.some(item => item.startsWith('context=')));
@@ -49,7 +50,7 @@ test('context hygiene stays stable for light sessions and suggests clear after h
     const resumed = cli.buildResumeContext();
     assert.equal(resumed.context_hygiene.level, 'suggest-clearing');
     assert.equal(resumed.context_hygiene.handoff_ready, true);
-    assert.equal(resumed.context_hygiene.clear_hint, 'clear -> resume');
+    assert.equal(resumed.context_hygiene.clear_hint, 'Use host clear/new-context control, then run resume.');
     assert.match(resumed.context_hygiene.recommendation, /stored handoff/);
     assert.equal(resumed.memory_summary.source, 'pause');
     assert.equal(resumed.memory_summary.next_action, 'capture heavy session before clear');

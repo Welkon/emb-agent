@@ -1065,12 +1065,12 @@ function createSessionFlowHelpers(deps) {
     let recommendation = 'Context load is light. Keep working in the current session.';
     if (level === 'consider-clearing') {
       recommendation = handoff
-        ? 'Context load is rising. If scope expands or the task changes, clear context and resume from the stored handoff.'
-        : 'Context load is rising. If scope expands or the task changes, run pause, clear context, then resume.';
+        ? 'Context load is rising. If scope expands or the task changes, use the host clear/new-context control, then resume from the stored handoff.'
+        : 'Context load is rising. If scope expands or the task changes, capture a pause handoff first, use the host clear/new-context control, then run resume.';
     } else if (level === 'suggest-clearing') {
       recommendation = handoff
-        ? 'Context load is heavy. Clear context now, then resume from the stored handoff.'
-        : 'Context load is heavy. Run pause now, clear context, then resume.';
+        ? 'Context load is heavy. Use the host clear/new-context control now, then resume from the stored handoff.'
+        : 'Context load is heavy. Run pause now, use the host clear/new-context control, then run resume.';
     }
 
     return {
@@ -1080,7 +1080,9 @@ function createSessionFlowHelpers(deps) {
       pause_cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['pause']),
       compress_cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['context', 'compress']),
       resume_cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['resume']),
-      clear_hint: handoff ? 'clear -> resume' : 'pause -> clear -> resume',
+      clear_hint: handoff
+        ? 'Use host clear/new-context control, then run resume.'
+        : 'Run pause first, use host clear/new-context control, then run resume.',
       handoff_ready: Boolean(handoff)
     };
   }
@@ -1566,6 +1568,7 @@ function createSessionFlowHelpers(deps) {
         taskConvergence && taskConvergence.next_cli ? `task_next=${taskConvergence.next_cli}` : '',
         taskConvergence && taskConvergence.then_cli ? `task_then=${taskConvergence.then_cli}` : '',
         taskConvergence && taskConvergence.review_hint ? `task_review=${taskConvergence.review_hint}` : '',
+        next && next.task_prompt ? `user_prompt=${next.task_prompt}` : '',
         ...walkthroughRuntimeActions,
         ...peripheralWalkthroughActions,
         summaryLatestForensics && summaryLatestForensics.report_file

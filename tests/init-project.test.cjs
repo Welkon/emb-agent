@@ -700,6 +700,15 @@ test('init discovery stays scoped to project docs and source roots', () => {
     assert.ok(result.detected.code.includes('src/main.c'));
     assert.ok(!result.detected.docs.includes('third_party/vendor/noise.pdf'));
     assert.ok(!result.detected.code.includes('third_party/vendor/driver.c'));
+    assert.equal(result.lazy_generation.enabled, true);
+    assert.deepEqual(result.lazy_generation.generated_tools, []);
+    assert.equal(result.lazy_generation.chip_support, 'deferred-until-tool-use');
+    assert.equal(result.discovery.mode, 'filename-only');
+    assert.equal(result.discovery.content_read, false);
+    assert.ok(result.discovery.roots.includes('docs'));
+    assert.ok(result.discovery.roots.includes('src'));
+    assert.ok(result.discovery.scanned_files_count >= 2);
+    assert.ok(result.discovery.skipped_external_roots.includes('third_party'));
     assert.equal(result.bootstrap.command, 'ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware');
   } finally {
     process.chdir(currentCwd);

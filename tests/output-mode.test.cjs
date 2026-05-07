@@ -177,7 +177,7 @@ test('applyOutputMode builds brief next context payload', () => {
     context_hygiene: {
       level: 'consider-clearing',
       recommendation: 'pause first',
-      clear_hint: 'pause -> clear -> resume',
+      clear_hint: 'Run pause first, use host clear/new-context control, then run resume.',
       compress_cli: 'node ~/.codex/emb-agent/bin/emb-agent.cjs context compress',
       handoff_ready: false
     },
@@ -402,7 +402,8 @@ test('applyOutputMode builds brief start context payload with external driver hi
   assert.equal(output.immediate.command, 'task add <summary>');
   assert.equal(output.operator_handoff.command, 'task add <summary>');
   assert.equal(output.operator_handoff.next_cli, 'node ~/.codex/emb-agent/bin/emb-agent.cjs task add <summary>');
-  assert.match(output.operator_handoff.final_reply_rule, /raw tool output/);
+  assert.match(output.operator_handoff.final_reply_rule, /concrete task in one sentence/);
+  assert.match(output.operator_handoff.final_reply_rule, /do not lead with a placeholder CLI/);
   assert.equal(output.task_intake.status, 'ready');
   assert.equal(output.task_intake.recommended_entry, 'task add <summary>');
   assert.deepEqual(output.task_intake.modes, ['known-change', 'unclear-scope', 'system-change']);
@@ -421,6 +422,25 @@ test('applyOutputMode builds brief init output with external driver hints', () =
     project_profile: '',
     active_specs: [],
     developer: { name: 'welkon', runtime: 'external' },
+    lazy_generation: {
+      enabled: true,
+      generated_tools: [],
+      generated_capabilities: [],
+      chip_support: 'deferred-until-tool-use',
+      tool_generation: 'deferred-until-tool-run',
+      capability_materialization: 'deferred-until-capability-run',
+      summary: 'Init creates the minimum project skeleton.'
+    },
+    discovery: {
+      mode: 'filename-only',
+      content_read: false,
+      roots: ['.', 'docs', 'src'],
+      scanned_files_count: 12,
+      candidate_files_count: 2,
+      truncated: false,
+      skipped_external_roots: ['third_party'],
+      summary: 'Init discovery only inspects filenames.'
+    },
     bootstrap: {
       status: 'needs-project-definition',
       stage: 'define-project-constraints',
@@ -439,6 +459,13 @@ test('applyOutputMode builds brief init output with external driver hints', () =
 
   assert.equal(output.output_mode, 'brief');
   assert.equal(output.initialized, true);
+  assert.equal(output.lazy_generation.enabled, true);
+  assert.equal(output.lazy_generation.generated_tools_count, 0);
+  assert.equal(output.lazy_generation.generated_capabilities_count, 0);
+  assert.equal(output.lazy_generation.chip_support, 'deferred-until-tool-use');
+  assert.equal(output.discovery.mode, 'filename-only');
+  assert.equal(output.discovery.content_read, false);
+  assert.ok(output.discovery.roots.includes('docs'));
   assert.equal(output.bootstrap.command, 'next');
   assert.equal(output.runtime_events.status, 'pending');
   assert.equal(output.external_agent, undefined);

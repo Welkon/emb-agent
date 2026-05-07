@@ -114,6 +114,9 @@ test('task lifecycle --brief exposes convergence summary', async () => {
     assert.equal(activated.output_mode, 'brief');
     assert.equal(activated.activated, true);
     assert.equal(activated.task.status, 'in_progress');
+    assert.equal(activated.workspace_policy.mode, 'main');
+    assert.equal(activated.workspace_policy.edits_apply_directly, true);
+    assert.equal(activated.workspace_policy.merge_required, false);
     assert.equal(activated.task_convergence.recommended_path, 'scan-first');
     assert.match(activated.task_convergence.next_cli, /emb-agent\.cjs capability run scan$/);
     assert.match(activated.task_convergence.then_cli, /emb-agent\.cjs capability run plan$/);

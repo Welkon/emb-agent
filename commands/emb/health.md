@@ -22,3 +22,4 @@ allowed-tools:
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
 - Use it first when automatic startup seems inactive or bootstrap is blocked before hardware or chip support stages.
 - When `health` recommends chip-support work from a hardware document, prefer the analysis-artifact flow: `adapter analysis init` first, then `adapter derive --from-analysis`.
+- Use `health specs` (or `specs doctor`) when you need to verify whether active specs, especially code-writing specs such as `embedded-space`, will be enforced before implementation edits.
