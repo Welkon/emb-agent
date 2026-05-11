@@ -9,6 +9,7 @@ const workflowRegistry = require('./workflow-registry.cjs');
 const capabilityCatalog = require('./capability-catalog.cjs');
 const pinChecker = require('./pin-checker.cjs');
 const supportLayout = require('./support-layout.cjs');
+const systemPrd = require('./system-prd.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
@@ -277,6 +278,14 @@ function createTaskCommandHelpers(deps) {
 
   function getTaskDir(name) {
     return path.join(getTasksDir(), name);
+  }
+
+  function getTaskPrdRelativePath(name) {
+    return path.join('docs', 'prd', 'tasks', `${String(name || 'task').trim() || 'task'}.md`).replace(/\\/g, '/');
+  }
+
+  function getLegacyTaskPrdRelativePath(name) {
+    return path.join(runtime.getProjectAssetRelativePath('tasks'), String(name || ''), 'prd.md').replace(/\\/g, '/');
   }
 
   function getTaskWorktreeConfigPath() {
@@ -1322,6 +1331,10 @@ function createTaskCommandHelpers(deps) {
     });
     const baseEntries = [
       {
+        path: systemPrd.getSystemPrdRelativePath(runtime),
+        reason: 'System PRD'
+      },
+      {
         path: runtime.getProjectAssetRelativePath('hw.yaml'),
         reason: 'Hardware truth'
       },
@@ -1479,7 +1492,28 @@ function createTaskCommandHelpers(deps) {
   }
 
   function getTaskPrdPath(name) {
+    return path.join(resolveProjectRoot(), getTaskPrdRelativePath(name));
+  }
+
+  function getLegacyTaskPrdPath(name) {
     return path.join(getTaskDir(name), 'prd.md');
+  }
+
+  function resolveTaskPrdArtifact(name, manifest) {
+    const artifacts = manifest && manifest.artifacts && typeof manifest.artifacts === 'object'
+      ? manifest.artifacts
+      : {};
+    const explicit = String(artifacts.prd || '').trim();
+    if (explicit && fs.existsSync(path.join(resolveProjectRoot(), explicit))) {
+      return explicit.replace(/\\/g, '/');
+    }
+    if (fs.existsSync(getTaskPrdPath(name))) {
+      return getTaskPrdRelativePath(name);
+    }
+    if (fs.existsSync(getLegacyTaskPrdPath(name))) {
+      return getLegacyTaskPrdRelativePath(name);
+    }
+    return explicit ? explicit.replace(/\\/g, '/') : '';
   }
 
   function shouldRenderChineseTaskPrd() {
@@ -1504,14 +1538,26 @@ function createTaskCommandHelpers(deps) {
     const openQuestions = Array.isArray(taskLike.open_questions) ? taskLike.open_questions.filter(Boolean) : [];
     const knownRisks = Array.isArray(taskLike.known_risks) ? taskLike.known_risks.filter(Boolean) : [];
     const constraints = [];
+    const systemPrdPath = systemPrd.getSystemPrdRelativePath(runtime);
+    const reqTruthPath = runtime.getProjectAssetRelativePath('req.yaml');
+    const hwTruthPath = runtime.getProjectAssetRelativePath('hw.yaml');
 
     if (hardware.model || hardware.package) {
       constraints.push(`${hardware.model || 'unknown MCU'} ${hardware.package || ''}`.trim());
     }
 
+    constraints.push(`Follow ${systemPrdPath}; add firmware structure only when documented resource, timing, interface, or verification constraints justify it.`);
+
     if (shouldRenderChineseTaskPrd()) {
       return [
         `# ${taskLike.title || taskLike.name || '任务 PRD'}`,
+        '',
+        '## 系统上下文',
+        '',
+        `- 系统 PRD: ${systemPrdPath}`,
+        `- 结构化需求: ${reqTruthPath}`,
+        `- 硬件 truth: ${hwTruthPath}`,
+        '- 本任务继承系统 PRD 的目标、非目标、固件组织形态和验收边界；如需加层、框架或跨边界改动，先写清理由。',
         '',
         '## 目标',
         '',
@@ -1551,6 +1597,13 @@ function createTaskCommandHelpers(deps) {
 
     return [
       `# ${taskLike.title || taskLike.name || 'Task PRD'}`,
+      '',
+      '## System Context',
+      '',
+      `- System PRD: ${systemPrdPath}`,
+      `- Requirement truth: ${reqTruthPath}`,
+      `- Hardware truth: ${hwTruthPath}`,
+      '- This task inherits the system goal, non-goals, firmware shape, and acceptance boundary; justify any new layer, framework, or cross-boundary change before implementation.',
       '',
       '## Goal',
       '',
@@ -1604,7 +1657,7 @@ function createTaskCommandHelpers(deps) {
     const prdPath = String(
       settings.prd_path ||
       (task.artifacts && task.artifacts.prd) ||
-      (task.name ? `.emb-agent/tasks/${task.name}/prd.md` : '')
+      (task.name ? getTaskPrdRelativePath(task.name) : '')
     ).trim();
     const hardware = resolved && resolved.hardware ? resolved.hardware : {};
     const identity = hardware && hardware.identity ? hardware.identity : {};
@@ -1626,8 +1679,8 @@ function createTaskCommandHelpers(deps) {
       ? 'Requirements, hardware truth, or decision inputs are still not explicit enough.'
       : 'The task already has enough context to lock the task plan before execution.';
     const summary = activated
-      ? 'Use the task PRD as the working contract. Re-read goal, constraints, acceptance, and open questions before choosing scan or plan.'
-      : 'Open the task PRD first and make goal, constraints, acceptance, and open questions explicit before execution.';
+      ? 'Use the system PRD and task PRD as the working contract. Re-read goal, constraints, acceptance, and open questions before choosing scan or plan.'
+      : 'Open the task PRD first with the system PRD as its parent contract; make goal, constraints, acceptance, and open questions explicit before execution.';
 
     return {
       status: activated ? 'active-task' : 'planning-task',
@@ -3524,9 +3577,7 @@ function createTaskCommandHelpers(deps) {
       code_writing_specs: Array.isArray(manifest.code_writing_specs) ? manifest.code_writing_specs : [],
       aar: normalizeTaskAar(manifest.aar),
       artifacts: {
-        prd: fs.existsSync(getTaskPrdPath(name))
-          ? path.relative(resolveProjectRoot(), getTaskPrdPath(name)).replace(/\\/g, '/')
-          : '',
+        prd: resolveTaskPrdArtifact(name, manifest),
         auto_specs: fs.existsSync(getTaskAutoSpecsPath(name))
           ? path.relative(resolveProjectRoot(), getTaskAutoSpecsPath(name)).replace(/\\/g, '/')
           : '',
@@ -3607,7 +3658,7 @@ function createTaskCommandHelpers(deps) {
           activated: mergedTask.status === 'in_progress',
           prd_path: mergedTask.artifacts && mergedTask.artifacts.prd
             ? mergedTask.artifacts.prd
-            : `.emb-agent/tasks/${mergedTask.name}/prd.md`
+            : getTaskPrdRelativePath(mergedTask.name)
         }),
         human_reply: buildHumanReply(
           `发现相似的未完成任务 ${mergedTask.name}，已把这次 task add 自动合并进去，没有创建重复任务。下一步继续查看或激活这个任务。`,
@@ -3664,8 +3715,13 @@ function createTaskCommandHelpers(deps) {
         ])
       );
     });
+    const createdManifest = runtime.readJson(getTaskManifestPath(name));
     writeTask(name, updateTaskTimestamps({
-      ...runtime.readJson(getTaskManifestPath(name)),
+      ...createdManifest,
+      artifacts: {
+        ...(createdManifest.artifacts || {}),
+        prd: prdPath
+      },
       injected_specs: injected.specs,
       code_writing_specs: injected.code_writing_specs
     }));
@@ -3929,7 +3985,7 @@ function createTaskCommandHelpers(deps) {
     }
 
     const now = new Date().toISOString();
-    const suggestedCli = `gh pr create --base ${base} --head ${branch} --title "${title}" --body-file ${task.artifacts.prd || `.emb-agent/tasks/${task.name}/prd.md`}`;
+    const suggestedCli = `gh pr create --base ${base} --head ${branch} --title "${title}" --body-file ${task.artifacts.prd || getTaskPrdRelativePath(task.name)}`;
     const updatedTask = updateTaskManifest(task.name, current => {
       const currentPr = normalizeTaskPr(current.pr, {
         ...task,

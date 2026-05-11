@@ -492,7 +492,8 @@ test('start and next expose package-aware monorepo entry context', async () => {
     assert.match(startTty.stderr, /Project: .*emb-agent-start-package-/);
     assert.match(startTty.stderr, /Package: app/);
     assert.match(startTty.stderr, /Bootstrap: define-project-constraints/);
-    assert.match(startTty.stderr, /First: Open \.emb-agent\/req\.yaml/);
+    assert.match(startTty.stderr, /System PRD: docs\/prd\/system\.md/);
+    assert.match(startTty.stderr, /First: Open docs\/prd\/system\.md first/);
 
     const output = await captureCliTtyOutput(['next']);
     assert.equal(output.stdout.trim(), '');
@@ -537,9 +538,12 @@ test('text mode next surfaces runtime event summary in tty output', async () => 
     assert.match(output.stderr, /Next: .*emb-agent\.cjs capability run scan/);
     assert.match(
       output.stderr,
-      /First: Follow the recommended flow: capability run scan -> capability run do -> capability run verify\./
+      /First: Open docs\/prd\/system\.md first/
     );
-    assert.doesNotMatch(output.stderr, /Hint:/);
+    assert.match(
+      output.stderr,
+      /Hint: Follow the recommended flow: capability run scan -> capability run do -> capability run verify\./
+    );
     assert.doesNotMatch(output.stderr, /Next Hint:/);
     assert.doesNotMatch(output.stderr, /flow=capability run scan -> capability run do -> capability run verify/);
     assert.doesNotMatch(output.stderr, /command=scan; reason=/);

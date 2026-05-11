@@ -24,7 +24,7 @@
 
 一旦硬件信息写进文件，AI 在每次会话开始时自动读取。不用再在聊天里反复解释你的板子配置。
 
-支持 **Claude Code**、**Codex** 和 **Cursor** — 同一套 `.emb-agent/` 目录驱动所有三个平台。
+支持 **Claude Code**、**Codex**、**Cursor** 和 **Pi** — 同一套 `.emb-agent/` 目录驱动所有受支持平台。
 
 ### 核心功能
 
@@ -38,7 +38,7 @@
 | **芯片专属逻辑** | PWM、定时器、ADC、比较器计算工具以可搜索参数形式生成在 adapter 中。 |
 | **内建验证** | 每个任务以 `review → verify` 关闭，不只是"编译通过就行"。 |
 | **知识图谱 + Wiki** | 自动生成知识图谱连接芯片、寄存器、公式、任务。Wiki 在 graph build 时自动生成 stub 页面。 |
-| **自动启动 + 状态栏** | SessionStart 自动注入上下文。状态栏实时显示硬件状态、任务数、wiki 页面、图谱新鲜度。 |
+| **自动启动 + 状态栏** | Host hooks 或 Pi extension 自动注入上下文。状态栏实时显示硬件状态、任务数、wiki 页面、图谱新鲜度。 |
 | **回复语言** | `--lang zh` 安装参数，自动写入 AGENTS.md 控制 AI 回复语言。 |
 
 ### 支持的 AI 工具
@@ -48,6 +48,7 @@
 | **Claude Code** | `~/.claude/` 或 `.claude/` | ✅ | ✅ |
 | **Codex** | `~/.codex/` 或 `.codex/` | ✅ | ✅ |
 | **Cursor** | `~/.cursor/` 或 `.cursor/` | ✅ | ✅ |
+| **Pi** | `~/.pi/agent/` 或 `.pi/` | ✅ | ✅ |
 
 ---
 
@@ -118,9 +119,10 @@ your-project/
 │   ├── tasks/                   ← 任务定义和上下文
 │   ├── specs/                   ← 项目专属工作流规则
 │   └── formulas/                ← 芯片公式注册表
-└── .claude/  (或 .codex/, .cursor/)
-    ├── settings.json             ← hooks（自动注入）
+└── .claude/  (或 .codex/, .cursor/, .pi/)
+    ├── settings.json             ← 支持 hooks 的宿主使用
     ├── commands/emb/             ← 斜杠命令，如 /emb:next
+    ├── extensions/emb-agent.ts    ← Pi 启动/命令集成
     └── agents/                   ← 专用智能体（emb-fw-doer 等）
 ```
 
@@ -147,7 +149,7 @@ emb-agent 分三层：
 
 1. **工作流层** — 你日常使用的命令：`start`、`declare hardware`、`next`、`task`、`ingest`。引导 AI 按硬件优先的方式开发。
 2. **芯片支持层** — 芯片专属的公式、寄存器映射和工具逻辑。独立维护，保持核心精简。
-3. **宿主层** — 技能、hooks 和命令，让 emb-agent 适配 Claude Code、Codex 或 Cursor。
+3. **宿主层** — 技能、hooks、extensions 和命令，让 emb-agent 适配 Claude Code、Codex、Cursor 或 Pi。
 
 芯片支持在报告中出现时，按就绪程度分类：
 - `reusable` — 已可跨项目复用

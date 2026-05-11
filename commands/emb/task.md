@@ -17,6 +17,7 @@ allowed-tools:
 - Persist task manifests under `.emb-agent/tasks/<name>/task.json` with status, owner, priority, branch context, and related files.
 - Track parent/child relationships and branch / base-branch metadata so a task can close into a PR-ready handoff instead of ending as isolated local state.
 - Create a task-local `prd.md` so execution starts from an explicit goal, constraints, and closure checklist instead of chat-only state.
+- Treat `docs/prd/system.md` as the parent contract for every task PRD; task-local structure or architecture changes should justify why the system shape is changing.
 - Treat task completion as a protocol: work verified, AAR scanned, and recorded when any new lesson is found.
 - Expose task worktrees as a first-class surface through `task worktree list/show/create/cleanup/status`.
 

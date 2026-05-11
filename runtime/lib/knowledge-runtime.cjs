@@ -3,6 +3,7 @@
 const knowledgeGraphState = require('./knowledge-graph-state.cjs');
 const knowledgeFollowups = require('./knowledge-followups.cjs');
 const registerWriteArtifact = require('./register-write-artifact.cjs');
+const systemPrd = require('./system-prd.cjs');
 
 function createKnowledgeRuntimeHelpers(deps) {
   const {
@@ -1059,6 +1060,16 @@ function createKnowledgeRuntimeHelpers(deps) {
     }
   }
 
+  function addSystemPrdGraph(nodes) {
+    const relativePath = systemPrd.getSystemPrdRelativePath(runtime);
+    const projectRoot = path.dirname(getProjectExtDir());
+    const filePath = path.join(projectRoot, relativePath);
+    if (!fs.existsSync(filePath)) {
+      return;
+    }
+    addFileNode(nodes, relativePath, 'System PRD contract.');
+  }
+
   function addWikiGraph(nodes, edges) {
     const pages = listMarkdownPages();
     const pageByKey = new Map(pages.map(page => [page.path.replace(/\.md$/, ''), page]));
@@ -1598,6 +1609,7 @@ function createKnowledgeRuntimeHelpers(deps) {
     const nodes = new Map();
     const edges = new Map();
     addTruthFileGraph(nodes, edges, 'project.json', 'Project configuration truth.');
+    addSystemPrdGraph(nodes);
     addTruthFileGraph(nodes, edges, 'hw.yaml', 'Hardware truth.');
     addTruthFileGraph(nodes, edges, 'req.yaml', 'Requirement truth.');
     addWikiGraph(nodes, edges);

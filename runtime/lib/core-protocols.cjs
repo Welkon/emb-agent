@@ -5,7 +5,7 @@ const CORE_PROTOCOLS = Object.freeze([
     id: 'truth-first',
     title: 'Truth first',
     summary:
-      'Update .emb-agent/hw.yaml and .emb-agent/req.yaml before relying on inferred hardware or requirement facts. Keep unknowns explicit.'
+      'Update docs/prd/system.md, .emb-agent/hw.yaml, and .emb-agent/req.yaml before relying on inferred system, hardware, or requirement facts. Keep unknowns explicit.'
   }),
   Object.freeze({
     id: 'task-discipline',

@@ -31,6 +31,12 @@ const DEFAULT_HOSTS = {
     label: 'Cursor',
     defaultHomeDirName: '.cursor',
     configFileName: 'settings.json'
+  },
+  pi: {
+    name: 'pi',
+    label: 'Pi',
+    defaultHomeDirName: '.pi/agent',
+    configFileName: 'settings.json'
   }
 };
 
@@ -165,6 +171,12 @@ function inferHostName(runtimeRoot, metadata) {
   }
   if (homeDirName === '.codex') {
     return 'codex';
+  }
+  if (homeDirName === '.pi') {
+    return 'pi';
+  }
+  if (homeDirName === 'agent' && path.basename(path.dirname(path.resolve(runtimeRoot, '..'))) === '.pi') {
+    return 'pi';
   }
 
   return 'codex';

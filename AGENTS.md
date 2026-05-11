@@ -13,9 +13,12 @@ Use `.emb-agent/` to learn:
 - Task workflow (`tasks/`)
 - Project-local specs (`specs/`)
 
-If you're using Codex, project-scoped helpers may also live in:
-- `.codex/skills/` for emb-agent command mirrors
-- `.codex/agents/` for optional custom agents
+Host-specific helpers may also live in:
+- `.codex/skills/` for Codex emb-agent command mirrors
+- `.claude/commands/emb/` for Claude Code slash command mirrors
+- `.cursor/commands/` for Cursor command wrappers
+- `.pi/extensions/` and `.pi/skills/` for Pi command wrappers and skills
+- `.codex/agents/`, `.claude/agents/`, or `.cursor/agents/` for optional custom agents
 
 Keep this managed block so future emb-agent updates can refresh the instructions.
 

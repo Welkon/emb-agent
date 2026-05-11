@@ -119,6 +119,35 @@ test('hook dispatch trusts codex hooks.json when hooks are installed', () => {
   assert.equal(result.output, 'hook-ran');
 });
 
+test('hook dispatch trusts Pi extension when installed', () => {
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-pi-home-'));
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-pi-project-'));
+  const hookDispatch = hookDispatchHelpers.createHookDispatchHelpers({
+    fs,
+    path,
+    process,
+    runtimeHost: {
+      name: 'pi',
+      runtimeHome: tempHome,
+      configFileName: 'settings.json'
+    }
+  });
+
+  fs.mkdirSync(path.join(tempHome, 'extensions'), { recursive: true });
+  fs.writeFileSync(path.join(tempHome, 'extensions', 'emb-agent.ts'), '// installed\n', 'utf8');
+
+  const result = hookDispatch.runHookWithProjectContext(
+    {
+      cwd: tempProject,
+      event: 'SessionStart'
+    },
+    () => 'hook-ran'
+  );
+
+  assert.equal(result.trusted, true);
+  assert.equal(result.output, 'hook-ran');
+});
+
 test('hook dispatch returns structured output and runtime events for trusted workspaces', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-hook-detailed-'));
   const previousCwd = process.cwd();

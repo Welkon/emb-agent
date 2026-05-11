@@ -254,7 +254,7 @@ function buildSessionContext(projectRoot, start, resume, options) {
       .filter(Boolean);
     const prdPath = resume.task.artifacts && resume.task.artifacts.prd
       ? resume.task.artifacts.prd
-      : `.emb-agent/tasks/${resume.task.name}/prd.md`;
+      : `docs/prd/tasks/${resume.task.name}.md`;
 
     lines.push(`Active task: ${resume.task.name} (${resume.task.title})`);
     lines.push(`Task status: ${resume.task.status} / Type: ${resume.task.type}`);

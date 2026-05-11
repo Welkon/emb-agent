@@ -102,7 +102,7 @@ test('interactive no-args install can resolve local codex choice through prompt 
 
   const helper = createHelper(fakeProcess, {
     promptInstallerChoices: async targets => {
-      assert.deepEqual(targets.map(item => item.name), ['codex', 'claude', 'cursor']);
+      assert.deepEqual(targets.map(item => item.name), ['codex', 'claude', 'cursor', 'pi']);
       return {
         runtime: 'codex',
         location: 'local',
@@ -1085,6 +1085,26 @@ test('parseArgs keeps Claude installs global by default', () => {
   const args = helper.parseArgs(['--claude', '--developer', 'welkon']);
 
   assert.equal(args.runtime, 'claude');
+  assert.equal(args.local, true);
+  assert.equal(args.global, false);
+});
+
+test('parseArgs accepts Pi installs and defaults to local project scope', () => {
+  const fakeProcess = {
+    cwd: () => repoRoot,
+    env: {},
+    stdin: { isTTY: false },
+    stdout: {
+      write() {
+        return true;
+      }
+    }
+  };
+
+  const helper = createHelper(fakeProcess);
+  const args = helper.parseArgs(['--pi', '--developer', 'welkon']);
+
+  assert.equal(args.runtime, 'pi');
   assert.equal(args.local, true);
   assert.equal(args.global, false);
 });

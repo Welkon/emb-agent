@@ -266,6 +266,8 @@ test('blank project selection mode prioritizes req truth and constraint question
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-selection-'));
   const embDir = path.join(tempProject, '.emb-agent');
   fs.mkdirSync(embDir, { recursive: true });
+  fs.mkdirSync(path.join(tempProject, 'docs', 'prd'), { recursive: true });
+  fs.writeFileSync(path.join(tempProject, 'docs', 'prd', 'system.md'), '# System PRD\n\n## Product Goal\n\n- choose first MCU\n', 'utf8');
   fs.writeFileSync(path.join(embDir, 'req.yaml'), 'goals:\n  - choose first MCU\n', 'utf8');
   fs.writeFileSync(path.join(embDir, 'hw.yaml'), 'mcu:\n  vendor: ""\n  model: ""\n  package: ""\n', 'utf8');
 
@@ -277,13 +279,18 @@ test('blank project selection mode prioritizes req truth and constraint question
   const plan = scheduler.buildPlanOutput(resolved);
   const action = scheduler.buildDoOutput(resolved);
 
-  assert.equal(scan.relevant_files[0], '.emb-agent/req.yaml');
+  assert.equal(scan.relevant_files[0], 'docs/prd/system.md');
+  assert.ok(scan.relevant_files.includes('.emb-agent/req.yaml'));
   assert.ok(scan.key_facts.includes('selection_mode=blank-project'));
   assert.ok(scan.open_questions.some(item => item.includes('What must this product actually do')));
-  assert.ok(scan.next_reads.some(item => item.includes('selection_input=.emb-agent/req.yaml')));
-  assert.equal(plan.goal, 'Converge product constraints first, then narrow to the first viable chip candidate');
+  assert.ok(scan.open_questions.some(item => item.includes('firmware organization shape')));
+  assert.ok(scan.next_reads.some(item => item.includes('selection_input=docs/prd/system.md')));
+  assert.ok(scan.next_reads.some(item => item.includes('structured_selection_input=.emb-agent/req.yaml')));
+  assert.equal(plan.goal, 'Converge the system PRD and project constraints first, then narrow to the first viable chip candidate');
+  assert.ok(plan.steps.some(item => item.includes('docs/prd/system.md')));
   assert.ok(plan.steps.some(item => item.includes('.emb-agent/req.yaml')));
   assert.ok(plan.verification.some(item => item.includes('documented constraints')));
+  assert.ok(action.prerequisites.some(item => item.includes('docs/prd/system.md')));
   assert.ok(action.prerequisites.some(item => item.includes('.emb-agent/req.yaml')));
   assert.ok(action.execution_brief.suggested_steps.some(item => item.includes('smallest durable selection update')));
 });
@@ -371,6 +378,8 @@ test('project truth files are preferred when present', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-truth-'));
   const embDir = path.join(tempProject, '.emb-agent');
   fs.mkdirSync(embDir, { recursive: true });
+  fs.mkdirSync(path.join(tempProject, 'docs', 'prd'), { recursive: true });
+  fs.writeFileSync(path.join(tempProject, 'docs', 'prd', 'system.md'), '# System PRD\n', 'utf8');
   fs.writeFileSync(path.join(embDir, 'hw.yaml'), 'mcu:\n  model: test\n', 'utf8');
   fs.writeFileSync(path.join(embDir, 'req.yaml'), 'goals:\n  - test\n', 'utf8');
 
@@ -390,7 +399,8 @@ test('project truth files are preferred when present', () => {
   const scan = scheduler.buildScanOutput(resolved);
   const plan = scheduler.buildPlanOutput(resolved);
 
-  assert.equal(scan.relevant_files[0], '.emb-agent/hw.yaml');
+  assert.equal(scan.relevant_files[0], 'docs/prd/system.md');
+  assert.ok(scan.relevant_files.includes('.emb-agent/hw.yaml'));
   assert.ok(scan.relevant_files.includes('.emb-agent/req.yaml'));
   assert.ok(scan.next_reads.some(item => item.includes('.emb-agent/hw.yaml')));
   assert.ok(plan.truth_sources.some(item => item.includes('.emb-agent/req.yaml')));

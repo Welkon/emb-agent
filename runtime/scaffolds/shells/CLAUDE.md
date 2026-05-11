@@ -18,7 +18,7 @@
 
 - Keep guidance hardware-first and name the real blocker.
 - Give the exact next command or file before adding extra structure.
-- Treat skills, hooks, and wrappers as integration surfaces; they must not override emb-agent runtime gates.
+- Treat skills, hooks, extensions, and wrappers as integration surfaces; they must not override emb-agent runtime gates.
 - Avoid generic AI or project-management wording when a concrete board action, artifact, or truth file is known.
 
 ## Claude Notes

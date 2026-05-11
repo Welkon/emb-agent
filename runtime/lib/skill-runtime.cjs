@@ -720,10 +720,11 @@ function createSkillRuntimeHelpers(deps) {
     const projectRoot = resolveProjectRoot();
     const codexRoot = path.join(projectRoot, '.codex');
     const cursorRoot = path.join(projectRoot, '.cursor');
+    const piRoot = path.join(projectRoot, '.pi');
     const sharedRoot = path.join(projectRoot, '.agents');
     const roots = [];
 
-    if (isDirectory(codexRoot) || isDirectory(cursorRoot) || isDirectory(sharedRoot)) {
+    if (isDirectory(codexRoot) || isDirectory(cursorRoot) || isDirectory(piRoot) || isDirectory(sharedRoot)) {
       roots.push({
         kind: 'shared',
         dir: path.join(sharedRoot, 'skills')
@@ -738,7 +739,7 @@ function createSkillRuntimeHelpers(deps) {
     if (!host || !host.runtimeHome || host.sourceLayout) {
       return [];
     }
-    if (host.name !== 'codex' && host.name !== 'cursor') {
+    if (host.name !== 'codex' && host.name !== 'cursor' && host.name !== 'pi') {
       return [];
     }
     return [

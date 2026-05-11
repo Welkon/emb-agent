@@ -8,8 +8,8 @@ board:
   target: "{{TARGET_NAME}}"
 
 design_notes:
-  - "Hardware may include expansion headroom (e.g. extra channels, battery management). Current firmware scope is defined in req.yaml."
-  - "hw.yaml captures full hardware capability; req.yaml captures current firmware implementation. Differences are not necessarily conflicts."
+  - "Hardware may include expansion headroom (e.g. extra channels, battery management). Current system scope is defined in docs/prd/system.md and structured firmware scope is mirrored in req.yaml."
+  - "hw.yaml captures full hardware capability; docs/prd/system.md and req.yaml capture current implementation intent. Differences are not necessarily conflicts."
 
 sources:
   datasheet:

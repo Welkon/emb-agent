@@ -44,7 +44,7 @@ test('session start hook auto-injects startup context and initializes the repo o
     assert.match(emptyPayload.hookSpecificOutput.additionalContext, /Recommended next command: next/);
     assert.match(
       emptyPayload.hookSpecificOutput.additionalContext,
-      /Task intake after bootstrap: After bootstrap is ready, create a task and PRD first\./
+      /Task intake after bootstrap: After bootstrap and the system PRD are ready, create a task and PRD first\./
     );
     assert.doesNotMatch(emptyPayload.hookSpecificOutput.additionalContext, /Primary entrypoint: start/);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);

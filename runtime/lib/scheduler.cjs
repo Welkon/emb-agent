@@ -6,6 +6,7 @@ const projectInputState = require('./project-input-state.cjs');
 const runtime = require('./runtime.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const qualityGateHelpers = require('./quality-gates.cjs');
+const systemPrd = require('./system-prd.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
@@ -50,10 +51,12 @@ function getProjectTruthFiles(resolved) {
 
   const candidates = isBlankProjectSelectionMode(resolved)
     ? [
+        systemPrd.getSystemPrdRelativePath(runtime),
         runtime.getProjectAssetRelativePath('req.yaml'),
         runtime.getProjectAssetRelativePath('hw.yaml')
       ]
     : [
+        systemPrd.getSystemPrdRelativePath(runtime),
         runtime.getProjectAssetRelativePath('hw.yaml'),
         runtime.getProjectAssetRelativePath('req.yaml')
       ];
@@ -1216,7 +1219,8 @@ function buildSuggestedSteps(action, resolved) {
 
   if (action === 'scan') {
     if (context.isBlankSelectionMode) {
-      steps.push(`Read ${runtime.getProjectAssetRelativePath('req.yaml')} first and extract goals, constraints, interfaces, and acceptance clues`);
+      steps.push(`Read ${systemPrd.getSystemPrdRelativePath(runtime)} first and extract the system goal, non-goals, firmware shape, resource constraints, interfaces, and acceptance boundary`);
+      steps.push(`Then read ${runtime.getProjectAssetRelativePath('req.yaml')} and mirror the structured goals, constraints, interfaces, and acceptance clues`);
       steps.push('Turn vague product intent into concrete chip-selection constraints such as power, package, IO, peripherals, timing, and cost');
       steps.push('List the missing facts that still block narrowing to a real chip candidate');
     } else {
@@ -1237,9 +1241,9 @@ function buildSuggestedSteps(action, resolved) {
       if (context.lastFiles.length === 0) {
         steps.push('Run scan or plan first so the concept-stage decision surface is explicit');
       }
-      steps.push(`Confirm the shortlist, ranking criteria, and evidence you are about to record in ${runtime.getProjectAssetRelativePath('req.yaml')}`);
+      steps.push(`Confirm the system contract in ${systemPrd.getSystemPrdRelativePath(runtime)} and the structured criteria in ${runtime.getProjectAssetRelativePath('req.yaml')}`);
       steps.push('Execute the smallest durable selection update instead of jumping into firmware implementation');
-      steps.push(`Write candidate tradeoffs, must-have constraints, and still-unknown facts into ${runtime.getProjectAssetRelativePath('req.yaml')} or supporting docs`);
+      steps.push(`Write candidate tradeoffs, must-have constraints, and still-unknown facts into ${systemPrd.getSystemPrdRelativePath(runtime)}, ${runtime.getProjectAssetRelativePath('req.yaml')}, or supporting docs`);
       steps.push('Report what evidence is still needed before locking a real MCU/package choice');
     } else {
       if (context.lastFiles.length === 0) {
@@ -1253,7 +1257,7 @@ function buildSuggestedSteps(action, resolved) {
 
   if (action === 'plan') {
     if (context.isBlankSelectionMode) {
-      steps.push('Clarify the product goal, non-goals, and acceptance boundary first');
+      steps.push(`Clarify the product goal, non-goals, firmware shape, and acceptance boundary in ${systemPrd.getSystemPrdRelativePath(runtime)} first`);
       steps.push('Turn req truth into explicit chip-selection constraints and ranking criteria');
       steps.push('Narrow to the smallest viable candidate set instead of jumping into implementation');
       steps.push('Define what evidence will justify the first chip candidate choice');
@@ -1342,6 +1346,7 @@ function buildDefaultOpenQuestions(resolved) {
   if (context.isBlankSelectionMode) {
     return runtime.unique([
       'What must this product actually do, and what can stay out of scope for the first board?',
+      'Which firmware organization shape is justified by the resource, timing, interface, and verification constraints?',
       'Which constraints are already known: supply voltage, cost target, package size, IO count, peripherals, timing, low power, certification?',
       'Is there any reference module, legacy board, or preferred vendor family that should bias chip selection?'
     ]);
@@ -1376,7 +1381,10 @@ function buildNextReads(resolved) {
     ...schematicReads,
     ...schematicAnalysisReads,
     context.isBlankSelectionMode
-      ? `selection_input=${runtime.getProjectAssetRelativePath('req.yaml')}`
+      ? `selection_input=${systemPrd.getSystemPrdRelativePath(runtime)}`
+      : '',
+    context.isBlankSelectionMode
+      ? `structured_selection_input=${runtime.getProjectAssetRelativePath('req.yaml')}`
       : '',
     context.isBlankSelectionMode
       ? 'selection_scope=collect only decision-shaping facts first: power, package, IO, peripherals, timing, cost, environment'
@@ -1501,7 +1509,7 @@ function buildPlanGoal(resolved) {
   }
 
   if (context.isBlankSelectionMode) {
-    return 'Converge product constraints first, then narrow to the first viable chip candidate';
+    return 'Converge the system PRD and project constraints first, then narrow to the first viable chip candidate';
   }
 
   if (context.isBaremetal) {
@@ -1541,8 +1549,9 @@ function buildPlanConstraints(resolved) {
   return runtime.unique([
     ...(resolved.profile.resource_priority || []).map(item => `resource: ${item}`),
     ...(resolved.effective.guardrails || []).map(item => `guardrail: ${item}`),
+    `Constraint: firmware organization follows ${systemPrd.getSystemPrdRelativePath(runtime)}; add structure only when documented resource, timing, interface, or verification constraints justify it`,
     context.isBlankSelectionMode ? 'Constraint: do not invent MCU, package, or pin facts before there is a real candidate' : '',
-    !context.isBlankSelectionMode && context.isBaremetal ? 'Constraint: keep ISR thin, main loop flat, and avoid extra abstraction' : '',
+    !context.isBlankSelectionMode && context.isBaremetal ? 'Constraint: keep ISR thin, main loop direct, and avoid layers without verification value' : '',
     context.isConnected ? 'Constraint: do not break offline defaults, reconnect, or recovery paths' : '',
     !context.isBlankSelectionMode && context.isSensor ? 'Constraint: do not break sampling windows, settling time, or measurement-update flow' : ''
   ]);
@@ -1575,7 +1584,8 @@ function buildPlanSteps(resolved) {
   }
 
   if (context.isBlankSelectionMode) {
-    steps.push(`Review ${runtime.getProjectAssetRelativePath('req.yaml')} and turn ambiguous goals into explicit engineering constraints`);
+    steps.push(`Review ${systemPrd.getSystemPrdRelativePath(runtime)} and turn ambiguous system goals, non-goals, and firmware shape into explicit engineering constraints`);
+    steps.push(`Mirror the structured constraints, interfaces, and acceptance checks into ${runtime.getProjectAssetRelativePath('req.yaml')}`);
     steps.push('Separate must-have peripherals and interfaces from optional nice-to-haves');
     steps.push('Narrow to a shortlist of viable chips or module families before choosing implementation details');
     steps.push('Record why the current shortlist is acceptable and what facts are still missing');
@@ -1686,7 +1696,7 @@ function buildDoOutput(resolved) {
     prerequisites: runtime.unique([
       context.lastFiles.length === 0 ? 'Add a minimal scan first to confirm the real change point' : '',
       context.isBlankSelectionMode
-        ? `Confirm the shortlist or candidate evidence you are about to record in ${runtime.getProjectAssetRelativePath('req.yaml')} before starting the selection update`
+        ? `Confirm the system contract and candidate evidence you are about to record in ${systemPrd.getSystemPrdRelativePath(runtime)} / ${runtime.getProjectAssetRelativePath('req.yaml')} before starting the selection update`
         : 'Confirm hardware truth sources or implementation truth sources',
       context.focus ? `Execute around the current focus: ${context.focus}` : '',
       context.isConnected ? 'Confirm offline defaults, upgrade recovery, and consistency constraints' : ''

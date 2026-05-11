@@ -13,7 +13,7 @@ Output the emb-agent help summary below and nothing else.
 
 ## Fast Path
 
-- Run these as Codex, Claude Code, or Cursor session commands.
+- Run these as Codex, Claude Code, Cursor, or Pi session commands.
 - Open a new session first. emb-agent should inject startup context automatically.
 - Use `start` when you need to re-render entry guidance manually.
 - If the chip is already known, prefer `declare hardware`, then let `next` or `health` route you into project-local chip support or execution.

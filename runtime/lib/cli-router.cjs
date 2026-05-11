@@ -180,6 +180,11 @@ function createCliRouter(deps) {
         return flow ? `Follow the recommended flow: ${flow}.` : '';
       }
 
+      if (/^system_prd=/i.test(value)) {
+        const prdPath = value.replace(/^system_prd=/i, '').trim() || 'docs/prd/system.md';
+        return `Open ${prdPath} first, define the system contract, then mirror structured facts into .emb-agent/req.yaml.`;
+      }
+
       if (/^followup=/i.test(value)) {
         return value.replace(/^followup=/i, '').trim().replace(/^Then:\s*/i, '').trim();
       }
@@ -432,7 +437,7 @@ function createCliRouter(deps) {
         let firstInstruction = '';
 
         if (bootstrapStage === 'define-project-constraints') {
-          firstInstruction = 'Open .emb-agent/req.yaml and record the project type, inputs/outputs, interfaces, and constraints.';
+          firstInstruction = 'Open docs/prd/system.md first, define the system contract, then mirror structured facts into .emb-agent/req.yaml.';
         } else if (bootstrapStage === 'confirm-hardware-identity') {
           firstInstruction = 'Open .emb-agent/hw.yaml and record the real MCU and package before execution.';
         } else if (summary.active_task && summary.active_task.name) {
@@ -443,6 +448,13 @@ function createCliRouter(deps) {
 
         if (summary.project_root) {
           lines.push(terminalUi.renderKeyValue('Project', summary.project_root, 'info'));
+        }
+        if (summary.system_prd_path || (payload.bootstrap && payload.bootstrap.system_prd_path)) {
+          lines.push(terminalUi.renderKeyValue(
+            'System PRD',
+            summary.system_prd_path || payload.bootstrap.system_prd_path,
+            'info'
+          ));
         }
         if (summary.active_task && summary.active_task.name) {
           lines.push(terminalUi.renderKeyValue('Task', summary.active_task.name, 'success'));

@@ -12,6 +12,7 @@ const terminalUiHelpers = require(path.join(ROOT, 'lib', 'terminal-ui.cjs'));
 const defaultWorkflowSourceHelpers = require(path.join(ROOT, 'lib', 'default-workflow-source.cjs'));
 const workflowImportHelpers = require(path.join(ROOT, 'lib', 'workflow-import.cjs'));
 const workflowRegistry = require(path.join(ROOT, 'lib', 'workflow-registry.cjs'));
+const systemPrd = require(path.join(ROOT, 'lib', 'system-prd.cjs'));
 
 const RUNTIME_CONFIG = runtime.loadRuntimeConfig(ROOT);
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHost(ROOT);
@@ -204,7 +205,7 @@ function usage() {
       'init-project usage:',
       '  node scripts/init-project.cjs',
       '  node scripts/init-project.cjs --project <repo-root>',
-      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--spec <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>]',
+      '  node scripts/init-project.cjs --project <repo-root> --profile <name> [--spec <name> ...] [--runtime <external|codex|claude|cursor|pi>|--external|--codex|--claude|--cursor|--pi] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>]',
       '  node scripts/init-project.cjs --force'
     ].join('\n') + '\n'
   );
@@ -232,7 +233,7 @@ function parseArgs(argv) {
     if (!normalized) {
       throw new Error(`Missing value after ${token}`);
     }
-    if (!['external', 'codex', 'claude', 'cursor'].includes(normalized)) {
+    if (!['external', 'codex', 'claude', 'cursor', 'pi'].includes(normalized)) {
       throw new Error(`Unsupported runtime: ${value}`);
     }
     if (result.runtimeSet && result.runtime !== normalized) {
@@ -283,6 +284,10 @@ function parseArgs(argv) {
     }
     if (token === '--cursor') {
       setRuntime('cursor', '--cursor');
+      continue;
+    }
+    if (token === '--pi') {
+      setRuntime('pi', '--pi');
       continue;
     }
     if (token === '--user' || token === '-u') {
@@ -829,6 +834,41 @@ function buildTruthPlan() {
   ];
 }
 
+function ensureSystemPrd(projectRoot, projectConfig, force, options = {}) {
+  const settings = options && typeof options === 'object' ? options : { language: options };
+  const filePath = systemPrd.getSystemPrdAbsolutePath(runtime, projectRoot);
+  const existedBefore = fs.existsSync(filePath);
+
+  if (existedBefore && !force) {
+    return {
+      path: systemPrd.getSystemPrdRelativePath(runtime),
+      created: false,
+      updated: false,
+      reused: true
+    };
+  }
+
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(
+    filePath,
+    systemPrd.buildSystemPrdContent({
+      projectName: path.basename(projectRoot),
+      projectProfile: projectConfig && projectConfig.project_profile,
+      activeSpecs: projectConfig && projectConfig.active_specs,
+      goal: settings.goal,
+      language: settings.language
+    }),
+    'utf8'
+  );
+
+  return {
+    path: systemPrd.getSystemPrdRelativePath(runtime),
+    created: !existedBefore,
+    updated: existedBefore && force,
+    reused: false
+  };
+}
+
 function buildProjectAgentsGuide(language) {
   const lang = String(language || '').trim().toLowerCase();
   const langLine = lang && lang !== 'en'
@@ -846,19 +886,23 @@ function buildProjectAgentsGuide(language) {
     '- Understand current project truth',
     '- Get the shortest next step',
     '',
-    'Use `.emb-agent/` to learn:',
-    '- Project truth (`project.json`, `hw.yaml`, `req.yaml`)',
-    '- Task workflow (`tasks/`)',
+    'Use project truth files to learn:',
+    '- System PRD (`docs/prd/system.md`)',
+    '- Structured truth (`.emb-agent/project.json`, `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`)',
+    '- Task workflow (`.emb-agent/tasks/`)',
     '- Project-local specs (`specs/`)',
     '',
-    "If you're using Codex, project-scoped helpers may also live in:",
-    '- `.codex/skills/` for emb-agent command mirrors',
-    '- `.codex/agents/` for optional custom agents',
+    'Host-specific helpers may also live in:',
+    '- `.codex/skills/` for Codex emb-agent command mirrors',
+    '- `.claude/commands/emb/` for Claude Code slash command mirrors',
+    '- `.cursor/commands/` for Cursor command wrappers',
+    '- `.pi/extensions/` and `.pi/skills/` for Pi command wrappers and skills',
+    '- `.codex/agents/`, `.claude/agents/`, or `.cursor/agents/` for optional custom agents',
     '',
     'When writing or routing work in this project:',
     '- Keep guidance hardware-first and name the real blocker.',
     '- Give the exact next command or file before adding extra structure.',
-    '- Treat skills, hooks, and wrappers as integration surfaces; they must not override emb-agent runtime gates.',
+    '- Treat skills, hooks, extensions, and wrappers as integration surfaces; they must not override emb-agent runtime gates.',
     '- Avoid generic AI or project-management wording when a concrete board action, artifact, or truth file is known.',
     '',
     "Keep this managed block so future emb-agent updates can refresh the instructions.",
@@ -995,16 +1039,18 @@ function buildTaskId(timestamp, slug) {
 
 function buildBootstrapTaskNotes(projectConfig, docsPlan) {
   const noteTargets = docsPlan.map(item => item.output);
+  const systemPrdPath = systemPrd.getSystemPrdRelativePath(runtime);
 
   return [
     'Bootstrap checklist created by init-project.',
     'Init now creates the minimum emb-agent project skeleton first; note templates are deferred until you decide they are needed.',
     '',
     'Suggested order:',
-    '1. Confirm goals and constraints in .emb-agent/req.yaml.',
-    '2. If the chip/package are already known, record them in .emb-agent/hw.yaml. Otherwise leave hw.yaml unknown until a candidate is chosen.',
-    '3. Fill only the note templates that matter for this project.',
-    `4. Continue with ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])}.`,
+    `1. Define the system contract in ${systemPrdPath}: goal, non-goals, firmware shape, resource constraints, and acceptance boundary.`,
+    '2. Mirror structured goals, constraints, and acceptance facts into .emb-agent/req.yaml.',
+    '3. If the chip/package are already known, record them in .emb-agent/hw.yaml. Otherwise leave hw.yaml unknown until a candidate is chosen.',
+    '4. Fill only the note templates that matter for this project.',
+    `5. Continue with ${runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])}.`,
     '',
     `Project profile: ${projectConfig.project_profile || '-'}`,
     `Active specs: ${projectConfig.active_specs.join(', ') || '-'}`,
@@ -1015,9 +1061,14 @@ function buildBootstrapTaskNotes(projectConfig, docsPlan) {
 }
 
 function buildBootstrapTaskSubtasks(docsPlan) {
+  const systemPrdPath = systemPrd.getSystemPrdRelativePath(runtime);
   return [
     {
-      name: 'Confirm goals and constraints in .emb-agent/req.yaml',
+      name: `Define system contract in ${systemPrdPath}`,
+      status: 'pending'
+    },
+    {
+      name: 'Mirror structured goals and constraints into .emb-agent/req.yaml',
       status: 'pending'
     },
     {
@@ -1041,7 +1092,9 @@ function ensureBootstrapTask(projectRoot, projectConfig, docsPlan, force) {
   const taskDir = path.join(runtime.getProjectExtDir(projectRoot), 'tasks', BOOTSTRAP_TASK_NAME);
   const taskPath = path.join(taskDir, 'task.json');
   const existedBefore = fs.existsSync(taskPath);
+  const systemPrdPath = systemPrd.getSystemPrdRelativePath(runtime);
   const relatedFiles = runtime.unique([
+    systemPrdPath,
     runtime.getProjectAssetRelativePath('hw.yaml'),
     runtime.getProjectAssetRelativePath('req.yaml'),
     ...docsPlan.map(item => item.output)
@@ -1114,6 +1167,11 @@ function ensureBootstrapTask(projectRoot, projectConfig, docsPlan, force) {
     implement: [
       {
         kind: 'file',
+        path: systemPrdPath,
+        reason: 'Define system-level goal, firmware shape, constraints, and acceptance'
+      },
+      {
+        kind: 'file',
         path: runtime.getProjectAssetRelativePath('hw.yaml'),
         reason: 'Confirm hardware truth first'
       },
@@ -1129,6 +1187,11 @@ function ensureBootstrapTask(projectRoot, projectConfig, docsPlan, force) {
       }))
     ],
     check: [
+      {
+        kind: 'file',
+        path: systemPrdPath,
+        reason: 'Verify system PRD stayed aligned with task scope'
+      },
       {
         kind: 'file',
         path: runtime.getProjectAssetRelativePath('hw.yaml'),
@@ -1266,6 +1329,10 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
   const templateIndex = buildTemplateIndex(workflowCatalog);
   const truthPlan = buildTruthPlan();
   const bootstrapDocsPlan = buildBootstrapDocsPlan(projectRoot, effectiveProjectConfig, workflowCatalog);
+  const systemPrdResult = ensureSystemPrd(projectRoot, effectiveProjectConfig, force, {
+    language: initOptions.language,
+    goal: initOptions.goal
+  });
   const projectAgentsGuide = ensureProjectAgentsGuide(projectRoot, force, initOptions.language, initOptions.runtime);
   const worktreeConfig = ensureWorktreeConfig(projectRoot, force);
   let workflowRegistryImport = null;
@@ -1277,6 +1344,14 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     } else {
       reused.push(path.relative(projectRoot, outputPath));
     }
+  }
+
+  if (systemPrdResult.created) {
+    created.push(systemPrdResult.path);
+  } else if (systemPrdResult.updated) {
+    updated.push(systemPrdResult.path);
+  } else {
+    reused.push(systemPrdResult.path);
   }
 
   if (projectAgentsGuide.created) {
@@ -1334,8 +1409,8 @@ function buildLazyGenerationSummary() {
 
 function buildInitHumanReply() {
   return {
-    zh: '初始化只创建最小项目骨架，并只扫描现有代码和 docs 线索；芯片支持、工具和能力资产会等到真正运行时再生成。',
-    en: 'Init creates the minimum project skeleton and defers chip support, tools, and capability assets until a concrete run needs them.',
+    zh: '初始化只创建最小项目骨架和系统级 PRD，并只扫描现有代码和 docs 线索；芯片支持、工具和能力资产会等到真正运行时再生成。',
+    en: 'Init creates the minimum project skeleton and system PRD, and defers chip support, tools, and capability assets until a concrete run needs them.',
     next: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
   };
 }
@@ -1370,7 +1445,7 @@ function main(argv) {
       {
         ...result,
         next_steps: [
-          `Ask the agent to record goals and constraints in ${runtime.getProjectAssetRelativePath('req.yaml')} first. If chip/package are already known, add them to ${runtime.getProjectAssetRelativePath('hw.yaml')}; otherwise leave them unknown for now.`,
+          `Ask the agent to define the system contract in ${systemPrd.getSystemPrdRelativePath(runtime)} first, then mirror structured goals and constraints into ${runtime.getProjectAssetRelativePath('req.yaml')}. If chip/package are already known, add them to ${runtime.getProjectAssetRelativePath('hw.yaml')}; otherwise leave them unknown for now.`,
           runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next'])
         ]
       },
@@ -1387,6 +1462,7 @@ module.exports = {
   buildProjectConfig,
   buildLazyGenerationSummary,
   buildInitHumanReply,
+  ensureSystemPrd,
   buildWorkflowSpecPrompt,
   buildTemplateContext,
   applyTemplate,

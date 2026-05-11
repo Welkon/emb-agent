@@ -1,7 +1,7 @@
 # emb-agent runtime
 
 This directory contains the installed emb-agent runtime that lives under the host configuration directory.
-Officially supported host-integrated runtimes are `Codex` and `Claude Code`.
+Officially supported host-integrated runtimes are `Codex`, `Claude Code`, `Cursor`, and `Pi`.
 
 ## Host Conventions
 
@@ -11,6 +11,12 @@ Officially supported host-integrated runtimes are `Codex` and `Claude Code`.
 - `Claude Code`
   `runtime-home = ~/.claude`
   `host-config = settings.json`
+- `Cursor`
+  `runtime-home = ~/.cursor`
+  `host-config = settings.json`
+- `Pi`
+  `runtime-home = ~/.pi/agent` globally or `./.pi` locally
+  `host-integration = extensions/emb-agent.ts + skills/`
 
 Unified runtime entry:
 

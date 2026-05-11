@@ -215,7 +215,8 @@ test('installer lays down config/lib and runtime commands work', async () => {
     installedCli.main(['start']);
 
     assert.equal(fs.existsSync(sessionPath), true);
-    assert.equal(fs.existsSync(path.join(tempProject, 'docs')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'prd', 'system.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'MCU-FOUNDATION-CHECKLIST.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'AGENTS.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'CLAUDE.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, 'CODEX.md')), false);
@@ -285,10 +286,10 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(startBeforeContext.runtime_events[0].type, 'workflow-start');
     assert.equal(startBeforeContext.external_agent, undefined);
     assert.match(startBeforeContext.immediate.cli, / next$/);
-    assert.match(startBeforeContext.bootstrap.summary, /project type, intended inputs\/outputs, interfaces, and constraints/);
+    assert.match(startBeforeContext.bootstrap.summary, /docs\/prd\/system\.md.*system goal.*firmware shape.*resource constraints/);
     assert.equal(startBeforeContext.task_intake.status, 'blocked-by-bootstrap');
     assert.equal(startBeforeContext.task_intake.recommended_entry, 'task add <summary>');
-    assert.match(startBeforeContext.task_intake.summary, /After bootstrap is ready, create a task and PRD first/i);
+    assert.match(startBeforeContext.task_intake.summary, /After bootstrap and the system PRD are ready, create a task and PRD first/i);
     assertProjectLocalInjected(nextBeforeContext.injected_specs);
     assert.equal(nextBeforeContext.workflow_stage.name, 'selection');
     assert.equal(nextBeforeContext.workflow_stage.primary_command, 'scan');
@@ -1096,6 +1097,126 @@ test('installer defaults Cursor to project-scoped .cursor layout', async () => {
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /open a Cursor session\. emb-agent will inject the startup context automatically\./);
     assert.match(stdout, /recommended next command from the injected startup context/);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer lays down Pi extension and skills', async () => {
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-pi-home-'));
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    await installer.main(['--pi', '--global', '--config-dir', tempHome, '--developer', 'felix']);
+
+    const runtimeRoot = path.join(tempHome, 'emb-agent');
+    const extensionPath = path.join(tempHome, 'extensions', 'emb-agent.ts');
+    const skillPath = path.join(tempHome, 'skills', 'emb-start', 'SKILL.md');
+    const runtimeHost = require(path.join(runtimeRoot, 'lib', 'runtime-host.cjs'));
+    const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
+    const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
+    const configData = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'config.json'), 'utf8'));
+
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'bin', 'emb-agent.cjs')), true);
+    assert.equal(fs.existsSync(extensionPath), true);
+    assert.equal(fs.existsSync(skillPath), true);
+    assert.equal(fs.existsSync(path.join(tempHome, 'settings.json')), false);
+    assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.md')), false);
+    assert.match(fs.readFileSync(extensionPath, 'utf8'), /registerCommand\("emb"/);
+    assert.match(fs.readFileSync(extensionPath, 'utf8'), /`emb:\$\{commandName\}`/);
+    assert.match(fs.readFileSync(extensionPath, 'utf8'), /emb-session-start\.js/);
+    assert.match(fs.readFileSync(skillPath, 'utf8'), /This Pi skill routes matching requests to the emb-agent command `start`/);
+    assert.match(fs.readFileSync(skillPath, 'utf8'), /\/emb start/);
+    assert.equal(hostMetadata.name, 'pi');
+    assert.equal(hostMetadata.config_file_name, 'settings.json');
+    assert.equal(hostMetadata.subagent_bridge, undefined);
+    assert.equal(resolvedHost.name, 'pi');
+    assert.equal(resolvedHost.stateRoot, path.join(tempHome, 'state', 'emb-agent'));
+    assert.match(resolvedHost.cliCommand, /emb-agent\/bin\/emb-agent\.cjs$/);
+    assert.deepEqual(configData.developer, { name: 'felix', runtime: 'pi' });
+    assert.match(stdout, /Installed Pi extension:/);
+    assert.match(stdout, /Installed 8 Pi skills under:/);
+    assert.match(stdout, /Runtime metadata:/);
+    assert.doesNotMatch(stdout, /Updated Pi config:/);
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer defaults Pi to project-scoped .pi layout', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-pi-local-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    process.chdir(tempProject);
+    await installer.main(['--pi', '--developer', 'felix']);
+
+    const piRoot = path.join(tempProject, '.pi');
+    const runtimeRoot = path.join(piRoot, 'emb-agent');
+    const configData = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'config.json'), 'utf8'));
+
+    assert.equal(fs.existsSync(path.join(runtimeRoot, 'bin', 'emb-agent.cjs')), true);
+    assert.equal(fs.existsSync(path.join(piRoot, 'extensions', 'emb-agent.ts')), true);
+    assert.equal(fs.existsSync(path.join(piRoot, 'skills', 'emb-next', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(piRoot, 'settings.json')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
+    assert.equal(configData.project_state_dir, 'state/projects');
+    assert.equal(configData.legacy_project_state_dir, 'state/projects');
+    assert.match(stdout, /Installed Pi extension:/);
+    assert.match(stdout, /\.pi\/extensions\/emb-agent\.ts/);
+    assert.match(stdout, /Bootstrapped emb-agent project in:/);
+    assert.match(stdout, /open a Pi session\. emb-agent will inject the startup context automatically\./);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('installer uninstall removes local Pi managed surfaces and preserves user settings', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-pi-uninstall-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+  let stdout = '';
+
+  process.stdout.write = chunk => {
+    stdout += String(chunk);
+    return true;
+  };
+
+  try {
+    process.chdir(tempProject);
+    fs.mkdirSync(path.join(tempProject, '.pi'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, '.pi', 'settings.json'), JSON.stringify({ theme: 'dark' }, null, 2) + '\n', 'utf8');
+
+    await installer.main(['--pi', '--developer', 'felix']);
+    assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'emb-agent')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'extensions', 'emb-agent.ts')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'skills', 'emb-start', 'SKILL.md')), true);
+
+    await installer.main(['--pi', '--uninstall']);
+
+    assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'emb-agent')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'extensions')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'skills')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'settings.json')), true);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(tempProject, '.pi', 'settings.json'), 'utf8')), { theme: 'dark' });
+    assert.match(stdout, /Uninstalled emb-agent managed files for Pi from:/);
   } finally {
     process.chdir(currentCwd);
     process.stdout.write = originalWrite;

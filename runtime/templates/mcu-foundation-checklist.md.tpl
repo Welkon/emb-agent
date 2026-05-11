@@ -10,7 +10,7 @@
 - Datasheet (electrical characteristics):
 - Package / pin table:
 - Reference design or official examples:
-- Have current conclusions been written into `.emb-agent/hw.yaml` / `.emb-agent/req.yaml`?
+- Have current conclusions been written into `docs/prd/system.md` / `.emb-agent/hw.yaml` / `.emb-agent/req.yaml`?
 
 ## 1. CPU
 
@@ -69,7 +69,7 @@ Key facts:
 
 ## 6. Next Steps (Execution Order)
 
-1. Write the key facts above into `.emb-agent/hw.yaml` / `.emb-agent/req.yaml`
+1. Write the key facts above into `docs/prd/system.md`, `.emb-agent/hw.yaml`, or `.emb-agent/req.yaml` as appropriate
 2. Run `tool run ...` first for items that can be calculated
 3. For missing references, use `ingest doc -> doc diff/apply` first
 4. Then move on to implementation, debugging, and verification

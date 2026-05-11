@@ -67,6 +67,7 @@ function listKnowledgeGraphTrackedFiles(projectRoot, deps) {
   });
   return [
     path.join(projectExtDir, 'project.json'),
+    path.join(projectRoot, 'docs', 'prd', 'system.md'),
     path.join(projectExtDir, 'hw.yaml'),
     path.join(projectExtDir, 'req.yaml'),
     ...listFilesRecursive(fs, path, path.join(projectExtDir, 'formulas'), filePath => /\.json$/i.test(filePath)),

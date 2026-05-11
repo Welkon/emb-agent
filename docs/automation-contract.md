@@ -99,7 +99,7 @@ Typical `next --brief` contract:
   },
   "task_convergence": {
     "recommended_path": "scan-first",
-    "prd_path": ".emb-agent/tasks/<task>/prd.md"
+    "prd_path": "docs/prd/tasks/<task>.md"
   },
   "action_card": {
     "stage": "selection",

@@ -202,6 +202,21 @@ function resolveHostConfigTrust(options) {
         summary: 'Cursor startup hooks are active. emb-agent can continue automatic bootstrap.'
       };
     }
+
+    if (runtimeHost.name === 'pi') {
+      const extensionPath = path.join(runtimeHost.runtimeHome, 'extensions', 'emb-agent.ts');
+      if (!fs.existsSync(extensionPath)) {
+        return null;
+      }
+
+      return {
+        trusted: true,
+        explicit: true,
+        source: 'host-config',
+        signal: 'extension-enabled',
+        summary: 'Pi emb-agent extension is installed. emb-agent can continue automatic bootstrap.'
+      };
+    }
   } catch {
     return null;
   }

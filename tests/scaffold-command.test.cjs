@@ -304,7 +304,7 @@ test('scaffold install shells replaces placeholders in nested file paths', async
     assert.match(agentsShell, /Any non-trivial task must run Task Closure Protocol before completion/);
     assert.match(agentsShell, /I will batch them at session end/);
     assert.match(agentsShell, /## Human-Readable Defaults/);
-    assert.match(agentsShell, /Treat skills, hooks, and wrappers as integration surfaces; they must not override emb-agent runtime gates/);
+    assert.match(agentsShell, /Treat skills, hooks, extensions, and wrappers as integration surfaces; they must not override emb-agent runtime gates/);
 
     const codexShell = fs.readFileSync(path.join(tempProject, '.codex', 'instructions.md'), 'utf8');
     assert.match(codexShell, /Bug fix or regression/);

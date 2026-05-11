@@ -205,6 +205,7 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(fs.existsSync(path.join(tempProject, 'CODEX.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'prd', 'system.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'external-agent.md')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'docs')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), false);
@@ -235,10 +236,11 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.match(fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'), /Use the `start` command when starting a new session/);
     assert.match(
       fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8'),
-      /Treat skills, hooks, and wrappers as integration surfaces; they must not override emb-agent runtime gates/
+      /Treat skills, hooks, extensions, and wrappers as integration surfaces; they must not override emb-agent runtime gates/
     );
     assert.equal(bootstrapTask.title, 'Bootstrap project notes');
     assert.equal(bootstrapTask.dev_type, 'docs');
+    assert.ok(bootstrapTask.relatedFiles.includes('docs/prd/system.md'));
     assert.ok(bootstrapTask.relatedFiles.includes('.emb-agent/hw.yaml'));
     assert.ok(bootstrapTask.relatedFiles.includes('.emb-agent/req.yaml'));
     assert.ok(!bootstrapTask.relatedFiles.includes('.emb-agent/external-agent.md'));
@@ -592,6 +594,7 @@ test('init preserves existing docs files without force', () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'prd', 'system.md')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'cache', 'chip-support-sources')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'chip-support')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', '.current-task')), true);
@@ -642,8 +645,9 @@ test('init returns onboarding guidance for chip support setup', () => {
     assert.equal(result.bootstrap.command, 'next');
     assert.match(
       result.bootstrap.summary,
-      /\.emb-agent\/req\.yaml.*project type.*inputs\/outputs.*interfaces.*constraints/i
+      /docs\/prd\/system\.md.*system goal.*firmware shape.*resource constraints.*interfaces.*acceptance boundary/i
     );
+    assert.match(result.bootstrap.summary, /\.emb-agent\/req\.yaml/i);
     assert.match(result.bootstrap.summary, /\.emb-agent\/hw\.yaml.*unknown/i);
     assert.equal(result.bootstrap.bootstrap_task.name, '00-bootstrap-project');
     assert.equal(result.bootstrap_task.name, '00-bootstrap-project');
@@ -883,6 +887,21 @@ test('init accepts runtime and developer identity flags and persists updates', (
     assert.equal(developerMarker.name, 'cursor-dev');
     assert.equal(developerMarker.runtime, 'cursor');
     assert.deepEqual(status.developer, { name: 'cursor-dev', runtime: 'cursor' });
+
+    cli.main(['init', '--pi', '-u', 'pi-dev']);
+
+    projectConfig = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', 'project.json'), 'utf8')
+    );
+    developerMarker = JSON.parse(
+      fs.readFileSync(path.join(tempProject, '.emb-agent', '.developer'), 'utf8')
+    );
+    status = cli.buildStatus();
+
+    assert.deepEqual(projectConfig.developer, { name: 'pi-dev', runtime: 'pi' });
+    assert.equal(developerMarker.name, 'pi-dev');
+    assert.equal(developerMarker.runtime, 'pi');
+    assert.deepEqual(status.developer, { name: 'pi-dev', runtime: 'pi' });
     assert.match(
       fs.readFileSync(path.join(tempProject, '.gitignore'), 'utf8'),
       /\.emb-agent\/\.developer/

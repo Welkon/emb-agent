@@ -81,8 +81,8 @@ function usage() {
     [
       'attach-project usage:',
       '  node scripts/attach-project.cjs',
-      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--spec <name> ...] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>]',
-      '  node scripts/attach-project.cjs --mcu <name> [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <external|codex|claude|cursor>|--external|--codex|--claude|--cursor] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>] [--force]'
+      '  node scripts/attach-project.cjs --project <repo-root> [--profile <name>] [--spec <name> ...] [--runtime <external|codex|claude|cursor|pi>|--external|--codex|--claude|--cursor|--pi] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>]',
+      '  node scripts/attach-project.cjs --mcu <name> [--package <name>] [--board <name>] [--target <name>] [--goal <text>] [--runtime <external|codex|claude|cursor|pi>|--external|--codex|--claude|--cursor|--pi] [-u <name>] [-r <source>] [--registry-branch <name>] [--registry-subdir <path>] [--force]'
     ].join('\n') + '\n'
   );
 }
@@ -113,7 +113,7 @@ function parseArgs(argv) {
     if (!normalized) {
       throw new Error(`Missing value after ${token}`);
     }
-    if (!['external', 'codex', 'claude', 'cursor'].includes(normalized)) {
+    if (!['external', 'codex', 'claude', 'cursor', 'pi'].includes(normalized)) {
       throw new Error(`Unsupported runtime: ${value}`);
     }
     if (result.runtimeSet && result.runtime !== normalized) {
@@ -164,6 +164,10 @@ function parseArgs(argv) {
     }
     if (token === '--cursor') {
       setRuntime('cursor', '--cursor');
+      continue;
+    }
+    if (token === '--pi') {
+      setRuntime('pi', '--pi');
       continue;
     }
     if (token === '--user' || token === '-u') {

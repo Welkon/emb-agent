@@ -14,7 +14,7 @@ The most useful mental model is:
 
 - emb-agent is an embedded workflow layer
 - chip support is an executable domain runtime
-- skills / commands / hooks are host integration surfaces
+- skills / commands / hooks / extensions are host integration surfaces
 
 What emb-agent is **not**:
 
@@ -47,9 +47,9 @@ The support layers exist to make that embedded workflow more reliable over long 
 It includes:
 
 - reusable runtime skills surfaced by `skills list/show/run`
-- scaffold trees for skills, hooks, shells, and protocol blocks
+- scaffold trees for skills, hooks, extensions, shells, and protocol blocks
 - thin shell entry files such as `AGENTS.md`, `CODEX.md`, `CLAUDE.md`, and `GEMINI.md`
-- SessionStart reinjection hooks
+- SessionStart reinjection hooks or equivalent host lifecycle extensions
 - workflow/spec/template layers used to author project-local extensions or higher-level agent behavior
 
 These are valuable, but they are not a separate product and they are not the default mental model for every firmware user.
@@ -79,6 +79,7 @@ emb-agent can be installed into different AI coding hosts and surfaced through:
 - skills
 - slash commands
 - hooks
+- extensions
 - shell entry files such as `AGENTS.md`
 
 These are important, but they are adapters. They answer "how does emb-agent show up inside this host?" rather than "what is emb-agent?".
@@ -125,6 +126,6 @@ The intended interpretation is:
 - embedded workflow solves project truth and session flow
 - chip support provides executable chip-specific behavior
 - support layers keep long-running agent setups structurally consistent
-- host integration surfaces expose emb-agent inside Codex, Claude Code, Cursor, and similar tools
+- host integration surfaces expose emb-agent inside Codex, Claude Code, Cursor, Pi, and similar tools
 
 That is still one embedded product, but only if the layers stay explicit in docs, help, and command posture.

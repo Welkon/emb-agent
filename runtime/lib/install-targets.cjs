@@ -4,8 +4,10 @@ function createInstallTargets(deps) {
   const { os, path, process } = deps;
   const managedRuntimePathPatterns = [
     /~\/\.(?:codex|claude|cursor)\/emb-agent\//g,
+    /~\/\.pi\/agent\/emb-agent\//g,
     /\$HOME\/\.(?:codex|claude|cursor)\/emb-agent\//g,
-    /\.\/\.(?:codex|claude|cursor)\/emb-agent\//g
+    /\$HOME\/\.pi\/agent\/emb-agent\//g,
+    /\.\/\.(?:codex|claude|cursor|pi)\/emb-agent\//g
   ];
 
   const targetDefs = {
@@ -59,6 +61,23 @@ function createInstallTargets(deps) {
       restartLabel: 'Cursor',
       agentMode: 'markdown',
       hookMode: 'cursor-settings',
+      managedRuntimePathPatterns: managedRuntimePathPatterns.slice()
+    },
+    pi: {
+      order: 4,
+      name: 'pi',
+      label: 'Pi',
+      supported: true,
+      localDirName: '.pi',
+      defaultGlobalDirParts: ['.pi', 'agent'],
+      globalEnvVar: 'PI_CODING_AGENT_DIR',
+      runtimeDirName: 'emb-agent',
+      configFileName: 'settings.json',
+      agentLabel: 'Pi skills',
+      restartLabel: 'Pi',
+      agentMode: 'none',
+      hookMode: 'pi-extension',
+      managesHostConfig: false,
       managedRuntimePathPatterns: managedRuntimePathPatterns.slice()
     },
     windsurf: {

@@ -630,7 +630,7 @@ function createActionContractHelpers(deps) {
               inputs: [
                 'Context Bundle entries explicitly listed in this prompt',
                 'Agent instructions loaded from agents show emb-arch-reviewer',
-                '.emb-agent/hw.yaml, .emb-agent/req.yaml, and any files explicitly named in the context bundle'
+                'docs/prd/system.md, .emb-agent/hw.yaml, .emb-agent/req.yaml, and any files explicitly named in the context bundle'
               ],
               outputs: [
                 'stdout: compact worker_result JSON only',
@@ -697,7 +697,7 @@ function createActionContractHelpers(deps) {
               inputs: [
                 'Context Bundle entries explicitly listed in this prompt',
                 `Agent instructions loaded from agents show ${agent}`,
-                '.emb-agent/hw.yaml, .emb-agent/req.yaml, and any files explicitly named in the context bundle'
+                'docs/prd/system.md, .emb-agent/hw.yaml, .emb-agent/req.yaml, and any files explicitly named in the context bundle'
               ],
               outputs: [
                 'stdout: compact worker_result JSON only',

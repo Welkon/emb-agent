@@ -11,7 +11,7 @@ function createTranscriptCommandHelpers(deps) {
     getRuntimeHost
   } = deps;
 
-  const SUPPORTED_PROVIDERS = new Set(['generic', 'codex', 'claude', 'cursor']);
+  const SUPPORTED_PROVIDERS = new Set(['generic', 'codex', 'claude', 'cursor', 'pi']);
 
   function normalizeProvider(value) {
     const provider = String(value || 'generic').trim().toLowerCase();
@@ -262,13 +262,16 @@ function createTranscriptCommandHelpers(deps) {
         ? 'CLAUDE_HOME'
         : provider === 'cursor'
           ? 'CURSOR_HOME'
-          : '';
+          : provider === 'pi'
+            ? 'PI_CODING_AGENT_DIR'
+            : '';
     if (envName && process.env[envName]) {
       return path.resolve(process.env[envName]);
     }
     if (provider === 'codex') return path.join(os.homedir(), '.codex');
     if (provider === 'claude') return path.join(os.homedir(), '.claude');
     if (provider === 'cursor') return path.join(os.homedir(), '.cursor');
+    if (provider === 'pi') return path.join(os.homedir(), '.pi', 'agent');
     return process.cwd();
   }
 

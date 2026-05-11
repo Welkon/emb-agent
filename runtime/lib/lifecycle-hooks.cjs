@@ -67,7 +67,7 @@ function createLifecycleHookHelpers(deps) {
         type: 'builtin',
         name: 'scope-capture',
         command: `task scope infer ${taskName || '<task>'}`,
-        note: 'Auto-infer task scope from hw.yaml and req.yaml'
+        note: 'Auto-infer task scope from docs/prd/system.md, hw.yaml, and req.yaml'
       };
     }
 

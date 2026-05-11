@@ -99,7 +99,7 @@ test('applyOutputMode builds brief next context payload', () => {
     },
     task_convergence: {
       status: 'active-task',
-      prd_path: '.emb-agent/tasks/timer-drift/prd.md',
+      prd_path: 'docs/prd/tasks/timer-drift.md',
       summary: 'Use the task PRD as the working contract.',
       prompts: [
         'What is the smallest durable outcome for this task?',
@@ -278,7 +278,7 @@ test('applyOutputMode builds brief next context payload', () => {
   assert.match(output.operator_handoff.why, /complex tasks should converge first/);
   assert.match(output.operator_handoff.final_reply_rule, /exact next CLI/);
   assert.equal(output.task_convergence.recommended_path, 'plan-first');
-  assert.equal(output.task_convergence.prd_path, '.emb-agent/tasks/timer-drift/prd.md');
+  assert.equal(output.task_convergence.prd_path, 'docs/prd/tasks/timer-drift.md');
   assert.equal(output.quality_gates.gate_status, 'pending');
   assert.equal(output.quality_gates.status_summary, 'Waiting for engineer confirmation: board-bench');
   assert.deepEqual(output.quality_gates.required_signoffs, ['board-bench']);
@@ -445,14 +445,15 @@ test('applyOutputMode builds brief init output with external driver hints', () =
       status: 'needs-project-definition',
       stage: 'define-project-constraints',
       command: 'next',
-      summary: 'Project definition is still required. Fill .emb-agent/req.yaml with the project type, intended inputs/outputs, interfaces, and constraints.'
+      system_prd_path: 'docs/prd/system.md',
+      summary: 'Project definition is still required. Fill docs/prd/system.md first, then mirror structured facts into .emb-agent/req.yaml.'
     },
     runtime_events: [
       {
         type: 'workflow-start',
         category: 'workflow',
         status: 'pending',
-        summary: 'Project definition is still required. Fill .emb-agent/req.yaml first.'
+        summary: 'Project definition is still required. Fill docs/prd/system.md first.'
       }
     ]
   }, true);
@@ -949,12 +950,12 @@ test('applyOutputMode skips recommendation owned by the active action stage when
         key: 'hardware_identity',
         status: 'warn',
         summary: 'hw.yaml does not contain the chip identity yet',
-        recommendation: 'Record goals and constraints in .emb-agent/req.yaml first and leave .emb-agent/hw.yaml unknown until a real candidate exists.'
+        recommendation: 'Define docs/prd/system.md first, mirror structured goals and constraints into .emb-agent/req.yaml, and leave .emb-agent/hw.yaml unknown until a real candidate exists.'
       }
     ],
     recommendations: [
       'Restart the host once so emb-agent automatic startup can activate, then rerun health.',
-      'Record goals and constraints in .emb-agent/req.yaml first and leave .emb-agent/hw.yaml unknown until a real candidate exists.'
+      'Define docs/prd/system.md first, mirror structured goals and constraints into .emb-agent/req.yaml, and leave .emb-agent/hw.yaml unknown until a real candidate exists.'
     ],
     next_commands: [],
     action_card: {
@@ -973,7 +974,7 @@ test('applyOutputMode skips recommendation owned by the active action stage when
   }, true);
 
   assert.deepEqual(output.recommendations, [
-    'Record goals and constraints in .emb-agent/req.yaml first and leave .emb-agent/hw.yaml unknown until a real candidate exists.'
+    'Define docs/prd/system.md first, mirror structured goals and constraints into .emb-agent/req.yaml, and leave .emb-agent/hw.yaml unknown until a real candidate exists.'
   ]);
 });
 

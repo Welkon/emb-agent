@@ -24,6 +24,7 @@ allowed-tools:
 ## What It Creates
 
 - `.emb-agent/project.json`
+- `docs/prd/system.md`
 - `.emb-agent/hw.yaml`
 - `.emb-agent/req.yaml`
 - starter docs, caches, and bootstrap checklists
@@ -45,7 +46,7 @@ allowed-tools:
 - If MCU and package are already known, run:
   `declare hardware --mcu <name> --package <name>`
 - If the project is still at concept stage, do not guess a chip.
-  Keep `hw.yaml` unknown, record goals and constraints in `req.yaml`, then run `next`.
+  Keep `hw.yaml` unknown, define the system contract in `docs/prd/system.md`, mirror structured goals and constraints into `req.yaml`, then run `next`.
 - If the truth still lives in project documents, continue with:
   `ingest doc --file <path> --kind datasheet --to hardware`
   or

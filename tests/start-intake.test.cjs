@@ -68,9 +68,11 @@ test('start exposes isolated task intake guidance during bootstrap', async () =>
 
     const start = await captureCliJson(['start']);
     assert.equal(start.immediate.command, 'next');
+    assert.equal(start.summary.system_prd_path, 'docs/prd/system.md');
+    assert.equal(start.bootstrap.system_prd_path, 'docs/prd/system.md');
     assert.equal(start.task_intake.status, 'blocked-by-bootstrap');
     assert.equal(start.task_intake.recommended_entry, 'task add <summary>');
-    assert.match(start.task_intake.summary, /After bootstrap is ready, create a task and PRD first/i);
+    assert.match(start.task_intake.summary, /After bootstrap and the system PRD are ready, create a task and PRD first/i);
     assert.deepEqual(
       start.task_intake.paths.map(item => item.id),
       ['known-change', 'unclear-scope', 'system-change']
@@ -83,8 +85,9 @@ test('start exposes isolated task intake guidance during bootstrap', async () =>
     const tty = await captureCliTtyOutput(['start']);
     assert.equal(tty.stdout.trim(), '');
     assert.match(tty.stderr, /Next: .*emb-agent\.cjs next/);
-    assert.match(tty.stderr, /First: Open \.emb-agent\/req\.yaml/);
-    assert.match(tty.stderr, /Task Intake: After bootstrap is ready, create a task and PRD first\./);
+    assert.match(tty.stderr, /System PRD: docs\/prd\/system\.md/);
+    assert.match(tty.stderr, /First: Open docs\/prd\/system\.md/);
+    assert.match(tty.stderr, /Task Intake: After bootstrap and the system PRD are ready, create a task and PRD first\./);
   } finally {
     process.chdir(currentCwd);
   }

@@ -17,6 +17,7 @@ allowed-tools:
 - Use `next --brief` when a local tool only needs the compact recommendation, action card, next actions, and summarized `runtime_events`.
 - Read `knowledge_graph` in JSON output to see whether `.emb-agent/graph/graph.json` is missing, fresh, or stale; stale graphs should be refreshed with `knowledge graph refresh` but do not replace the primary workflow recommendation.
 - If an active task already exists, `next` should keep the task `prd.md` in the loop and explicitly tell you whether the right route is `scan-first` or `plan-first`.
+- For a new or concept-stage project, `next` should keep `docs/prd/system.md` in the loop before narrowing `.emb-agent/req.yaml` or choosing hardware.
 - Use `external next` when the caller wants the stable external-driver protocol with `status`, `summary`, `next.cli`, and summarized `runtime_events`.
 - Treat PCB layout evidence as optional. Recommend board ingest only when the current task needs layout, routing, connector, bring-up, or manufacturing evidence; missing PCB files should skip layout checks and keep `can_continue=true`.
 - In terminal mode, read the `Events:` line as the shortest explanation of why the runtime recommended the next step.

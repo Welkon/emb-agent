@@ -63,9 +63,11 @@ function createInstallHelpers(deps) {
         '  emb-agent --claude --local',
         '  emb-agent --codex --local',
         '  emb-agent --cursor --local',
+        '  emb-agent --pi --local',
         '  emb-agent --runtime claude --local',
         '  emb-agent --runtime codex --local',
         '  emb-agent --runtime cursor --local',
+        '  emb-agent --runtime pi --local',
         '  emb-agent --global --developer <name>',
         '  emb-agent --global --config-dir <path>',
         '  emb-agent --local --uninstall',
@@ -76,7 +78,8 @@ function createInstallHelpers(deps) {
         '  --claude                Install for Claude Code explicitly',
         '  --codex                 Install for Codex explicitly (default)',
         '  --cursor                Install for Cursor explicitly',
-        '  --runtime <name>        Select runtime target (codex, claude, cursor; others reserved)',
+        '  --pi                    Install for Pi explicitly',
+        '  --runtime <name>        Select runtime target (codex, claude, cursor, pi; others reserved)',
         '  --developer <name>      Required developer name to seed new projects',
         '  --global                Install to runtime config home',
         '  --local                 Install to current project runtime dir and bootstrap .emb-agent/',
@@ -143,7 +146,7 @@ function createInstallHelpers(deps) {
 
   function getDefaultInstallLocation(runtimeName) {
     const runtime = String(runtimeName || '').trim().toLowerCase();
-    return runtime === 'claude' || runtime === 'codex' || runtime === 'cursor'
+    return runtime === 'claude' || runtime === 'codex' || runtime === 'cursor' || runtime === 'pi'
       ? 'local'
       : 'global';
   }
@@ -240,6 +243,10 @@ function createInstallHelpers(deps) {
       }
       if (token === '--cursor') {
         setRuntime('cursor');
+        continue;
+      }
+      if (token === '--pi') {
+        setRuntime('pi');
         continue;
       }
       if (token === '--runtime') {
@@ -472,7 +479,7 @@ function createInstallHelpers(deps) {
   function buildPromptHeader(chalk) {
     return [
       chalk.cyan(chalk.bold('emb-agent installer')),
-      chalk.gray('  Embedded workflow bootstrap for Codex, Claude Code, and Cursor'),
+      chalk.gray('  Embedded workflow bootstrap for Codex, Claude Code, Cursor, and Pi'),
       ''
     ];
   }
@@ -2458,6 +2465,32 @@ function createInstallHelpers(deps) {
     return installed;
   }
 
+  function installPiExtension(targetDir, target, runtimeDir) {
+    if (!target || target.name !== 'pi') {
+      return 0;
+    }
+
+    const extensionRoot = path.join(targetDir, 'extensions');
+    ensureDir(extensionRoot);
+    const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+    const hookPath = hookFileName => path.join(runtimeDir, 'hooks', hookFileName).replace(/\\/g, '/');
+    const rendered = renderRuntimeTemplate(
+      'pi-extension.ts.tpl',
+      {
+        RUNTIME_CLI_JSON: JSON.stringify(runtimeCli),
+        SESSION_START_HOOK_JSON: JSON.stringify(hookPath('emb-session-start.js')),
+        CONTEXT_MONITOR_HOOK_JSON: JSON.stringify(hookPath('emb-context-monitor.js')),
+        STATUSLINE_HOOK_JSON: JSON.stringify(hookPath('emb-statusline.js')),
+        PUBLIC_COMMANDS_JSON: JSON.stringify(listManagedPublicCommandNames())
+      },
+      targetDir,
+      target
+    );
+
+    fs.writeFileSync(path.join(extensionRoot, 'emb-agent.ts'), rendered, 'utf8');
+    return 1;
+  }
+
   function generateCodexSkillContent(commandName, content, runtimeDir) {
     const { frontmatter, body } = extractFrontmatterAndBody(content);
     const skillName = extractFrontmatterField(frontmatter, 'name') || `emb-${commandName}`;
@@ -2582,6 +2615,91 @@ function createInstallHelpers(deps) {
       fs.writeFileSync(
         path.join(skillDir, 'SKILL.md'),
         generateCodexSkillContent(commandName, rendered, runtimeDir),
+        'utf8'
+      );
+      installed += 1;
+    }
+
+    return installed;
+  }
+
+  function generatePiSkillContent(commandName, content, runtimeDir) {
+    const { frontmatter, body } = extractFrontmatterAndBody(content);
+    const skillName = extractFrontmatterField(frontmatter, 'name') || `emb-${commandName}`;
+    const description = toSingleLine(
+      extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
+    );
+    const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+    const guardrails = buildCodexSkillGuardrails(commandName, runtimeCli);
+    const conversationGuardrails = buildCodexConversationGuardrails(commandName);
+
+    return [
+      '---',
+      `name: ${skillName}`,
+      `description: ${JSON.stringify(description)}`,
+      '---',
+      '',
+      `# ${skillName}`,
+      '',
+      `This Pi skill routes matching requests to the emb-agent command \`${commandName}\`.`,
+      '',
+      '## Invocation',
+      '',
+      `- When this skill matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
+      `- In Pi, the installed extension also exposes \`/emb ${commandName}\` and \`/emb:${commandName}\` command wrappers.`,
+      '- Use the runtime output as the source of truth for the next step instead of improvising a parallel workflow.',
+      ...(guardrails.length > 0
+        ? [
+            '',
+            '## Guardrails',
+            '',
+            ...guardrails
+          ]
+        : []),
+      ...(conversationGuardrails.length > 0
+        ? [
+            '',
+            '## Conversation UX',
+            '',
+            ...conversationGuardrails
+          ]
+        : []),
+      '',
+      '## Original Guidance',
+      '',
+      body.trim(),
+      ''
+    ].join('\n');
+  }
+
+  function installPiSkills(targetDir, target, runtimeDir) {
+    if (!target || target.name !== 'pi') {
+      return 0;
+    }
+
+    const skillsRoot = path.join(targetDir, 'skills');
+    ensureDir(skillsRoot);
+
+    for (const skillName of listManagedCodexSkillNames()) {
+      removeDirIfExists(path.join(skillsRoot, skillName));
+    }
+
+    let installed = 0;
+
+    for (const file of fs.readdirSync(commandsSrc).filter(name => name.endsWith('.md')).sort()) {
+      const commandName = file.replace(/\.md$/, '');
+      if (!commandVisibility.isPublicCommandName(commandName)) {
+        continue;
+      }
+
+      const raw = fs.readFileSync(path.join(commandsSrc, file), 'utf8');
+      const rendered = replaceInstallPaths(raw, targetDir, target);
+      const skillName = `emb-${commandName}`;
+      const skillDir = path.join(skillsRoot, skillName);
+      ensureDir(skillDir);
+      fs.writeFileSync(
+        path.join(skillDir, 'SKILL.md'),
+        generatePiSkillContent(commandName, rendered, runtimeDir),
         'utf8'
       );
       installed += 1;
@@ -2945,7 +3063,15 @@ function createInstallHelpers(deps) {
       writeTerminalLine('');
       writeTerminalLine(chalk.dim('  ── Installed ──'));
       writeTerminalLine(`${chalk.green('  ●')} ${chalk.white('Runtime')}        ${chalk.dim(runtimeDir)}`);
-      writeTerminalLine(`${chalk.green('  ●')} ${chalk.white('Host config')}     ${chalk.dim(path.join(targetDir, target.configFileName || 'config.toml'))}`);
+      if (target.managesHostConfig === false) {
+        if (target.name === 'pi') {
+          writeTerminalLine(`${chalk.green('  ●')} ${chalk.white('Pi extension')}   ${chalk.dim(path.join(targetDir, 'extensions', 'emb-agent.ts'))}`);
+        } else {
+          writeTerminalLine(`${chalk.green('  ●')} ${chalk.white('Host metadata')}  ${chalk.dim(path.join(runtimeDir, 'HOST.json'))}`);
+        }
+      } else {
+        writeTerminalLine(`${chalk.green('  ●')} ${chalk.white('Host config')}     ${chalk.dim(path.join(targetDir, target.configFileName || 'config.toml'))}`);
+      }
       if (target.hookMode === 'codex-json') {
         writeTerminalLine(`${chalk.green('  ●')} ${chalk.white('Hooks')}          ${chalk.dim(path.join(targetDir, target.hooksConfigFileName || 'hooks.json'))}`);
       }
@@ -2954,7 +3080,7 @@ function createInstallHelpers(deps) {
       }
       writeTerminalLine('');
       writeTerminalLine(chalk.dim('  ── Next steps ──'));
-      writeTerminalLine(`  ${chalk.cyan('1.')} Restart ${chalk.white(target.restartLabel || target.label)} to pick up new commands and hooks`);
+      writeTerminalLine(`  ${chalk.cyan('1.')} Restart ${chalk.white(target.restartLabel || target.label)} to pick up new commands, hooks, or extensions`);
       writeTerminalLine(`  ${chalk.cyan('2.')} Open a project session — startup context injects automatically`);
       if (projectBootstrap) {
         writeTerminalLine(`  ${chalk.cyan('3.')} Follow the recommended next command from the injected context`);
@@ -3029,24 +3155,39 @@ function createInstallHelpers(deps) {
       }
       removeDirIfEmpty(commandsRoot);
     }
+    if (target.name === 'pi') {
+      const extensionPath = path.join(targetDir, 'extensions', 'emb-agent.ts');
+      if (fs.existsSync(extensionPath)) {
+        fs.unlinkSync(extensionPath);
+      }
+      removeDirIfEmpty(path.dirname(extensionPath));
+
+      const skillsRoot = path.join(targetDir, 'skills');
+      for (const skillName of listManagedCodexSkillNames()) {
+        removeDirIfExists(path.join(skillsRoot, skillName));
+      }
+      removeDirIfEmpty(skillsRoot);
+    }
 
     removeDirIfExists(path.join(targetDir, target.runtimeDirName));
 
-    const configPath = path.join(targetDir, target.configFileName || 'config.toml');
-    if (fs.existsSync(configPath)) {
-      if (target.hookMode === 'claude-settings' || target.hookMode === 'cursor-settings') {
-        const cleanedSettings = stripJsonHostManagedHooks(readJsonObject(configPath));
-        if (cleanedSettings && Object.keys(cleanedSettings).length > 0) {
-          writeJsonObject(configPath, cleanedSettings);
+    if (target.managesHostConfig !== false) {
+      const configPath = path.join(targetDir, target.configFileName || 'config.toml');
+      if (fs.existsSync(configPath)) {
+        if (target.hookMode === 'claude-settings' || target.hookMode === 'cursor-settings') {
+          const cleanedSettings = stripJsonHostManagedHooks(readJsonObject(configPath));
+          if (cleanedSettings && Object.keys(cleanedSettings).length > 0) {
+            writeJsonObject(configPath, cleanedSettings);
+          } else {
+            fs.unlinkSync(configPath);
+          }
         } else {
-          fs.unlinkSync(configPath);
-        }
-      } else {
-        const cleaned = stripManagedConfigBlock(fs.readFileSync(configPath, 'utf8'));
-        if (cleaned) {
-          fs.writeFileSync(configPath, `${cleaned}\n`);
-        } else {
-          fs.unlinkSync(configPath);
+          const cleaned = stripManagedConfigBlock(fs.readFileSync(configPath, 'utf8'));
+          if (cleaned) {
+            fs.writeFileSync(configPath, `${cleaned}\n`);
+          } else {
+            fs.unlinkSync(configPath);
+          }
         }
       }
     }
@@ -3134,6 +3275,8 @@ function createInstallHelpers(deps) {
     let sharedSkillCount;
     let claudeCommandCount;
     let cursorCommandCount;
+    let piSkillCount;
+    let piExtensionCount;
     try {
       agentCount = installAgents(targetDir, target, args);
       if (target.hookMode === 'codex-json') {
@@ -3143,8 +3286,10 @@ function createInstallHelpers(deps) {
       sharedSkillCount = installSharedCodexSkills(targetDir, target, runtimeDir, args);
       claudeCommandCount = installClaudeCommands(targetDir, target, runtimeDir);
       cursorCommandCount = installCursorCommands(targetDir, target, runtimeDir);
+      piExtensionCount = installPiExtension(targetDir, target, runtimeDir);
+      piSkillCount = installPiSkills(targetDir, target, runtimeDir);
       const installedSurfaceCount =
-        agentCount + codexSkillCount + sharedSkillCount + claudeCommandCount + cursorCommandCount;
+        agentCount + codexSkillCount + sharedSkillCount + claudeCommandCount + cursorCommandCount + piExtensionCount + piSkillCount;
       integrationActivity.succeed(
         installedSurfaceCount > 0
           ? `Host integration ready (${installedSurfaceCount} artifacts)`
@@ -3234,8 +3379,14 @@ function createInstallHelpers(deps) {
       ...(cursorCommandCount > 0
         ? [`Installed ${cursorCommandCount} Cursor commands under: ${path.join(targetDir, 'commands')}`]
         : []),
+      ...(piExtensionCount > 0
+        ? [`Installed Pi extension: ${path.join(targetDir, 'extensions', 'emb-agent.ts')}`]
+        : []),
+      ...(piSkillCount > 0
+        ? [`Installed ${piSkillCount} Pi skills under: ${path.join(targetDir, 'skills')}`]
+        : []),
       ...(target.managesHostConfig === false
-        ? [`External runtime metadata: ${path.join(runtimeDir, 'HOST.json')}`]
+        ? [`Runtime metadata: ${path.join(runtimeDir, 'HOST.json')}`]
         : [
             `Updated ${target.label} config: ${path.join(targetDir, target.configFileName || 'config.toml')}`,
             ...(target.hookMode === 'codex-json'
@@ -3258,7 +3409,7 @@ function createInstallHelpers(deps) {
       ...(projectBootstrap
         ? [
             `Bootstrapped emb-agent project in: ${projectBootstrap.project_root}`,
-            'Project entry files: AGENTS.md, .emb-agent/project.json, .emb-agent/hw.yaml, .emb-agent/req.yaml',
+            'Project entry files: AGENTS.md, .emb-agent/project.json, docs/prd/system.md, .emb-agent/hw.yaml, .emb-agent/req.yaml',
             `Bootstrap task: ${path.join(projectBootstrap.project_root, projectBootstrap.bootstrap_task.path)}`
           ]
         : []),
@@ -3269,7 +3420,7 @@ function createInstallHelpers(deps) {
         : []),
       'Startup automation is installed automatically. If it does not seem active yet, restart the host once and open a new session. Use EMB_AGENT_WORKSPACE_TRUST=0|1 only for debugging.',
       'Next steps:',
-      `  Restart ${target.restartLabel || target.label} to pick up new commands and agents.`,
+      `  Restart ${target.restartLabel || target.label} to pick up new commands, agents, or extensions.`,
       `  In a project repo, open a ${target.label} session. emb-agent will inject the startup context automatically.`,
       `  ${projectBootstrap ? 'Then continue with the recommended next command from the injected startup context.' : 'Then continue with the recommended next command.'}`
     ];

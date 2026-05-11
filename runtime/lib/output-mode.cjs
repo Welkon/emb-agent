@@ -990,6 +990,7 @@ function buildBriefStartContext(value) {
     summary: compactObject({
       project_root: summary.project_root || '',
       initialized: summary.initialized === undefined ? undefined : Boolean(summary.initialized),
+      system_prd_path: summary.system_prd_path || '',
       handoff_present: summary.handoff_present === undefined ? undefined : Boolean(summary.handoff_present),
       default_package: summary.default_package || '',
       active_package: summary.active_package || '',
@@ -1025,6 +1026,7 @@ function buildBriefStartContext(value) {
       status: value.bootstrap && value.bootstrap.status || '',
       stage: value.bootstrap && value.bootstrap.stage || '',
       command: value.bootstrap && value.bootstrap.command || '',
+      system_prd_path: value.bootstrap && value.bootstrap.system_prd_path || '',
       summary: value.bootstrap && value.bootstrap.summary || ''
     }),
     board_evidence: summarizeBoardEvidence(value.board_evidence),
@@ -1060,6 +1062,7 @@ function buildBriefInitOutput(value) {
       status: bootstrap.status || '',
       stage: bootstrap.stage || '',
       command: bootstrap.command || '',
+      system_prd_path: bootstrap.system_prd_path || '',
       summary: bootstrap.summary || ''
     }),
     runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events)

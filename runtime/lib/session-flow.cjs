@@ -16,6 +16,7 @@ const productLayers = require('./product-layers.cjs');
 const capabilityRouter = require('./capability-router.cjs');
 const boardEvidence = require('./board-evidence.cjs');
 const knowledgeGraphState = require('./knowledge-graph-state.cjs');
+const systemPrd = require('./system-prd.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
@@ -78,6 +79,10 @@ const TASK_CONVERGENCE_PROMPTS = [
   'Which truth, hardware facts, or code entry points bound the change?',
   'What evidence will prove the task is actually closed?'
 ];
+
+function buildTaskPrdPath(taskName) {
+  return `docs/prd/tasks/${String(taskName || '<task>').trim() || '<task>'}.md`;
+}
 
 function createSessionFlowHelpers(deps) {
   const {
@@ -259,7 +264,7 @@ function createSessionFlowHelpers(deps) {
     const reviewBeforeDo = knownRisks.length > 0;
     const prdPath = String(
       (task.artifacts && task.artifacts.prd) ||
-      (task.name ? `.emb-agent/tasks/${task.name}/prd.md` : '')
+      (task.name ? buildTaskPrdPath(task.name) : '')
     ).trim();
     const scanCli = buildPreferredCapabilityCli('scan');
     const planCli = buildPreferredCapabilityCli('plan');
@@ -273,7 +278,7 @@ function createSessionFlowHelpers(deps) {
     return {
       status: 'active-task',
       prd_path: prdPath,
-      summary: 'Use the task PRD as the working contract. Re-read goal, constraints, acceptance, and open questions before choosing scan or plan.',
+      summary: 'Use the system PRD and task PRD as the working contract. Re-read goal, constraints, acceptance, and open questions before choosing scan or plan.',
       prompts: TASK_CONVERGENCE_PROMPTS.slice(),
       recommended_path: recommendedPath,
       recommended_reason: recommendedReason,
@@ -846,20 +851,20 @@ function createSessionFlowHelpers(deps) {
       if (lastCommandStartsWith(session, 'plan')) {
         return {
           command: 'do',
-          reason: `Constraints are already structured; execute the smallest durable selection update in ${runtime.getProjectAssetRelativePath('req.yaml')} or supporting docs`
+          reason: `System constraints are already structured; execute the smallest durable selection update in ${systemPrd.getSystemPrdRelativePath(runtime)}, ${runtime.getProjectAssetRelativePath('req.yaml')}, or supporting docs`
         };
       }
 
       if (shouldSuggestPlan(resolved) || lastCommandStartsWith(session, 'scan')) {
         return {
           command: 'plan',
-          reason: `Concept-stage scan is complete enough; turn ${runtime.getProjectAssetRelativePath('req.yaml')} into a ranked shortlist and explicit chip-selection criteria before executing updates`
+          reason: `Concept-stage scan is complete enough; turn ${systemPrd.getSystemPrdRelativePath(runtime)} and ${runtime.getProjectAssetRelativePath('req.yaml')} into a ranked shortlist and explicit chip-selection criteria before executing updates`
         };
       }
 
       return {
         command: 'scan',
-        reason: `Project definition is still open. Run scan first to converge goals, constraints, interfaces, and candidate devices from ${runtime.getProjectAssetRelativePath('req.yaml')}.`
+        reason: `Project definition is still open. Run scan first to converge the system goal, firmware shape, constraints, interfaces, and candidate devices from ${systemPrd.getSystemPrdRelativePath(runtime)} and ${runtime.getProjectAssetRelativePath('req.yaml')}.`
       };
     }
 
@@ -895,7 +900,7 @@ function createSessionFlowHelpers(deps) {
     }
 
     if (taskConvergence && taskConvergence.recommended_path === 'plan-first' && !peripheralWalkthrough) {
-      const prdPath = taskConvergence.prd_path || `.emb-agent/tasks/${activeTask.name}/prd.md`;
+      const prdPath = taskConvergence.prd_path || buildTaskPrdPath(activeTask.name);
       const taskLabel = activeTask && activeTask.title ? activeTask.title : activeTask.name;
       const firstTool = primaryToolRecommendation || suggestedTools[0] || null;
       const toolName = firstTool && (firstTool.tool || firstTool.name) ? firstTool.tool || firstTool.name : '';
@@ -922,7 +927,7 @@ function createSessionFlowHelpers(deps) {
     }
 
     if (taskConvergence) {
-      const prdPath = taskConvergence.prd_path || `.emb-agent/tasks/${activeTask.name}/prd.md`;
+      const prdPath = taskConvergence.prd_path || buildTaskPrdPath(activeTask.name);
       const taskLabel = activeTask && activeTask.title ? activeTask.title : activeTask.name;
       return {
         command: taskConvergence.recommended_path === 'scan-first' ? 'scan' : 'plan',
@@ -1559,6 +1564,7 @@ function createSessionFlowHelpers(deps) {
           : '',
         handoff && handoff.next_action ? `handoff_resume=${handoff.next_action}` : '',
         ...(handoff ? handoff.human_actions_pending.map(action => `manual_action=${action}`) : []),
+        `system_prd=${systemPrd.getSystemPrdRelativePath(runtime)}`,
         summaryTask ? `task_resume=${summaryTask.name}; title=${summaryTask.title}` : '',
         taskConvergence && taskConvergence.prd_path ? `task_prd=${taskConvergence.prd_path}` : '',
         taskConvergence && taskConvergence.summary ? `task_convergence=${taskConvergence.summary}` : '',
@@ -1678,7 +1684,7 @@ function createSessionFlowHelpers(deps) {
       return {
         name: blankSelectionMode ? 'selection' : 'triage',
         why: blankSelectionMode
-          ? `Requirements and interfaces are not converged enough yet; read ${runtime.getProjectAssetRelativePath('req.yaml')} and narrow the first viable chip candidates`
+          ? `System contract, requirements, and interfaces are not converged enough yet; read ${systemPrd.getSystemPrdRelativePath(runtime)} and ${runtime.getProjectAssetRelativePath('req.yaml')} before narrowing the first viable chip candidates`
           : 'Entry point, truth source, or failure scene is not narrow enough yet',
         exit_criteria: blankSelectionMode
           ? 'Project constraints are explicit enough to shortlist a real chip candidate or first hardware target'
@@ -1813,16 +1819,17 @@ function createSessionFlowHelpers(deps) {
       const normalized = value.toLowerCase();
       const commandName = String(command && command.command ? command.command : '').trim().toLowerCase();
       const reason = String(command && command.reason ? command.reason : '').toLowerCase();
-      const walkthroughMode = commandName === 'scan' && reason.includes('broad peripheral exercise');
+      const walkthroughMode =
+        commandName === 'scan' &&
+        (reason.includes('broad peripheral exercise') || reason.includes('broad peripheral walkthrough'));
 
-      if (walkthroughMode) {
-        if (normalized.startsWith('walkthrough_step=')) return 0;
-        if (normalized.startsWith('walkthrough_progress=')) return 1;
-        if (normalized.startsWith('walkthrough_last=')) return 2;
-        if (normalized.startsWith('ready_tool_checklist=')) return 0;
-        if (normalized.startsWith('walkthrough_plan=')) return 3;
-        if (normalized.includes('do not stop at the first matching tool')) return 4;
-      }
+      if (normalized.startsWith('walkthrough_scope=')) return 0;
+      if (normalized.startsWith('walkthrough_step=')) return 0;
+      if (normalized.startsWith('walkthrough_progress=')) return 1;
+      if (normalized.startsWith('walkthrough_last=')) return 2;
+      if (normalized.startsWith('ready_tool_checklist=')) return walkthroughMode ? 1 : 4;
+      if (normalized.startsWith('walkthrough_plan=')) return walkthroughMode ? 3 : 5;
+      if (normalized.includes('do not stop at the first matching tool')) return 0;
 
       if (normalized.startsWith('task_convergence=')) return 0;
       if (normalized.startsWith('task_route=')) return 1;
@@ -1830,6 +1837,7 @@ function createSessionFlowHelpers(deps) {
       if (normalized.startsWith('task_next=')) return 3;
       if (normalized.startsWith('task_then=')) return 4;
       if (normalized.startsWith('task_review=')) return 5;
+      if (normalized.startsWith('system_prd=')) return 6;
       if (isHousekeepingHint(value)) return 50;
       if (normalized.startsWith('manual_action=')) return 40;
       if (normalized.startsWith('flow=')) return 60;

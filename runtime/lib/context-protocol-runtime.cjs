@@ -1,5 +1,7 @@
 'use strict';
 
+const systemPrd = require('./system-prd.cjs');
+
 function createContextProtocolRuntime(deps) {
   function buildContextOverview() {
     const resolved = deps.resolveSession();
@@ -106,6 +108,7 @@ function createContextProtocolRuntime(deps) {
       summary: {
         project_root: projectRoot,
         initialized,
+        system_prd_path: systemPrd.getSystemPrdRelativePath(deps.runtime),
         active_task: activeTask
           ? {
               name: activeTask.name,
@@ -113,7 +116,9 @@ function createContextProtocolRuntime(deps) {
               status: activeTask.status,
               package: activeTask.package || '',
               worktree_path: activeTask.worktree_path,
-              prd_path: `.emb-agent/tasks/${activeTask.name}/prd.md`
+              prd_path: activeTask.artifacts && activeTask.artifacts.prd
+                ? activeTask.artifacts.prd
+                : `docs/prd/tasks/${activeTask.name}.md`
             }
           : null,
         handoff_present: Boolean(handoff),

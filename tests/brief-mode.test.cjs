@@ -106,7 +106,7 @@ test('task lifecycle --brief exposes convergence summary', async () => {
     assert.equal(created.created, true);
     assert.equal(created.task.status, 'planning');
     assert.equal(created.task_convergence.recommended_path, 'scan-first');
-    assert.match(created.task_convergence.prd_path, /\.emb-agent\/tasks\/converge-comparator-timing\/prd\.md$/);
+    assert.match(created.task_convergence.prd_path, /docs\/prd\/tasks\/converge-comparator-timing\.md$/);
     assert.match(created.task_convergence.next_cli, /task activate converge-comparator-timing$/);
     assert.match(created.task_convergence.then_cli, /emb-agent\.cjs capability run scan$/);
 
@@ -126,7 +126,7 @@ test('task lifecycle --brief exposes convergence summary', async () => {
     assert.equal(next.next.command, 'scan');
     assert.equal(next.task.name, 'converge-comparator-timing');
     assert.equal(next.task_convergence.recommended_path, 'scan-first');
-    assert.match(next.task_convergence.prd_path, /\.emb-agent\/tasks\/converge-comparator-timing\/prd\.md$/);
+    assert.match(next.task_convergence.prd_path, /docs\/prd\/tasks\/converge-comparator-timing\.md$/);
     assert.ok(next.next_actions.some(item => item.startsWith('task_route=scan-first')));
   } finally {
     process.chdir(currentCwd);

@@ -9,6 +9,7 @@ This page only covers platform-specific setup differences. The canonical onboard
 | Codex | `npx emb-agent` | `./.codex/` | project skills under `./.codex/skills/` | none |
 | Claude Code | `npx emb-agent` | `./.claude/` | slash commands under `./.claude/commands/emb/` | none |
 | Cursor | `npx emb-agent` | `./.cursor/` | command wrappers under `./.cursor/commands/` | none |
+| Pi | `npx emb-agent --pi` | `./.pi/` | extension commands under `./.pi/extensions/` and skills under `./.pi/skills/` | none |
 
 ## Common behavior
 
@@ -22,3 +23,7 @@ This page only covers platform-specific setup differences. The canonical onboard
 emb-agent installs Codex startup automation into `./.codex/hooks.json` automatically.
 
 The installer also maintains `./.codex/config.toml` for project-scoped agent wiring. In normal use, restart Codex once after install and open a new session. emb-agent injects startup context automatically there, and `start` is only needed when you want to re-render entry guidance manually.
+
+## Pi note
+
+emb-agent installs a Pi extension at `./.pi/extensions/emb-agent.ts` (or `~/.pi/agent/extensions/emb-agent.ts` for global installs). The extension registers `/emb ...`, `/emb:<command>`, and `/emb-<command>` wrappers, injects startup context through Pi lifecycle events, and exposes matching Agent Skills under `./.pi/skills/`.

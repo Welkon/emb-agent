@@ -24,6 +24,8 @@ This is not the normal emb-agent continuity path. Prefer `session record`, `task
   Import a Claude transcript export or captured file.
 - `transcript import --provider cursor --file <transcript>`
   Import a Cursor transcript export or captured file.
+- `transcript import --provider pi --file <transcript>`
+  Import a Pi session export or captured file.
 - `transcript import --provider generic --file <jsonl|json|md|txt>`
   Import a host-independent transcript file.
 - `transcript analyze --from <transcript-or-analysis-json>`

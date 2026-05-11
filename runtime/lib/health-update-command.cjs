@@ -7,6 +7,7 @@ const projectInputIntake = require('./project-input-intake.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const updateCheckHelpers = require('./update-check.cjs');
 const workflowRegistry = require('./workflow-registry.cjs');
+const systemPrd = require('./system-prd.cjs');
 
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -793,7 +794,7 @@ function createHealthUpdateCommandHelpers(deps) {
         {
           summary: hardwareReady
             ? `Hardware identity is recorded as ${hardwareIdentity.model}/${hardwareIdentity.package}`
-            : `If a chip is already known, write chip/package into ${runtime.getProjectAssetRelativePath('hw.yaml')} first, for example SC8F072 + SOP8. If the project is still at concept stage, keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown and record goals and constraints in ${runtime.getProjectAssetRelativePath('req.yaml')} first.`,
+            : `If a chip is already known, write chip/package into ${runtime.getProjectAssetRelativePath('hw.yaml')} first. If the project is still at concept stage, keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown, define the system contract in ${systemPrd.getSystemPrdRelativePath(runtime)}, and mirror structured goals and constraints into ${runtime.getProjectAssetRelativePath('req.yaml')} first.`,
           evidence: [runtime.getProjectAssetRelativePath('hw.yaml')]
         }
       )
@@ -1371,7 +1372,7 @@ function createHealthUpdateCommandHelpers(deps) {
           'warn',
           '.emb-agent/hw.yaml does not contain the chip identity yet',
           [hardwareIdentity.file],
-          `If the chip is already known, add chip/package to ${runtime.getProjectAssetRelativePath('hw.yaml')} so emb-agent can match chip profiles later. If the project is still at concept stage, record goals and constraints in ${runtime.getProjectAssetRelativePath('req.yaml')} first and leave ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a real candidate exists.`
+          `If the chip is already known, add chip/package to ${runtime.getProjectAssetRelativePath('hw.yaml')} so emb-agent can match chip profiles later. If the project is still at concept stage, define the system contract in ${systemPrd.getSystemPrdRelativePath(runtime)}, mirror structured goals and constraints into ${runtime.getProjectAssetRelativePath('req.yaml')}, and leave ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a real candidate exists.`
         )
       );
     } else {
@@ -1463,7 +1464,7 @@ function createHealthUpdateCommandHelpers(deps) {
             `to=${pendingDocApply.to}`,
             `target=${pendingDocApply.target}`
           ],
-          'Apply parsed documents to hw.yaml/req.yaml first, then let next continue from the recorded truth.'
+          'Apply parsed documents to docs/prd/system.md, hw.yaml, or req.yaml as appropriate, then let next continue from the recorded truth.'
         )
       );
       pushNextCommand(

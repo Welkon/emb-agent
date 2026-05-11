@@ -24,7 +24,7 @@ When you work on embedded firmware with an AI assistant, you spend a lot of time
 
 Once the hardware truth is written down, the AI reads it automatically at the start of every session. No more re-explaining your board setup in chat.
 
-emb-agent works with **Claude Code**, **Codex**, and **Cursor**. The same `.emb-agent/` folder drives all three.
+emb-agent works with **Claude Code**, **Codex**, **Cursor**, and **Pi**. The same `.emb-agent/` folder drives all supported hosts.
 
 ### What you get
 
@@ -38,7 +38,7 @@ emb-agent works with **Claude Code**, **Codex**, and **Cursor**. The same `.emb-
 | **Chip-specific logic** | PWM, timer, ADC, comparator calculators live in generated adapters with machine-searchable register params. |
 | **Built-in verification** | Every task closes with `review → verify`, not just "code compiles and looks right." |
 | **Knowledge graph + Wiki** | Auto-generated graph connects chips, registers, formulas, and tasks. Wiki pages auto-populate stubs on graph build. |
-| **Auto-startup** | SessionStart hook injects project state automatically. Statusline shows hardware state, task count, wiki pages, graph freshness. |
+| **Auto-startup** | Host hooks or the Pi extension inject project state automatically. Statusline shows hardware state, task count, wiki pages, graph freshness. |
 | **Reply language** | `--lang zh` flag sets the AI's reply language in AGENTS.md. |
 
 ### Supported AI tools
@@ -48,6 +48,7 @@ emb-agent works with **Claude Code**, **Codex**, and **Cursor**. The same `.emb-
 | **Claude Code** | `~/.claude/` or `.claude/` | ✅ | ✅ |
 | **Codex** | `~/.codex/` or `.codex/` | ✅ | ✅ |
 | **Cursor** | `~/.cursor/` or `.cursor/` | ✅ | ✅ |
+| **Pi** | `~/.pi/agent/` or `.pi/` | ✅ | ✅ |
 
 ---
 
@@ -118,9 +119,10 @@ your-project/
 │   ├── tasks/                   ← task definitions and context
 │   ├── specs/                   ← project-specific workflow rules
 │   └── formulas/                ← chip formula registries
-└── .claude/  (or .codex/, .cursor/)
-    ├── settings.json             ← hooks (auto-injected)
+└── .claude/  (or .codex/, .cursor/, .pi/)
+    ├── settings.json             ← hooks where the host supports them
     ├── commands/emb/             ← slash commands like /emb:next
+    ├── extensions/emb-agent.ts    ← Pi startup/command integration
     └── agents/                   ← specialized agents (emb-fw-doer, etc.)
 ```
 
@@ -147,7 +149,7 @@ emb-agent has three layers:
 
 1. **Workflow layer** — the commands you run: `start`, `declare hardware`, `next`, `task`, `ingest`. These guide the AI through hardware-first development.
 2. **Chip-support layer** — chip-specific formulas, register maps, and tool logic. Kept separate so the core stays lean.
-3. **Host layer** — skills, hooks, and commands that adapt emb-agent to Claude Code, Codex, or Cursor.
+3. **Host layer** — skills, hooks, extensions, and commands that adapt emb-agent to Claude Code, Codex, Cursor, or Pi.
 
 When chip support shows up in a report, it's labeled by readiness:
 - `reusable` — ready for any project using that chip

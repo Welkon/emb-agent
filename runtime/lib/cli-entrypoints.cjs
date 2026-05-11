@@ -6,6 +6,7 @@ const projectInputState = require('./project-input-state.cjs');
 const runtimeHostHelpers = require('./runtime-host.cjs');
 const capabilityCatalog = require('./capability-catalog.cjs');
 const commandCatalog = require('./command-catalog.cjs');
+const systemPrd = require('./system-prd.cjs');
 
 function createCliEntryHelpers(deps) {
   const {
@@ -360,6 +361,7 @@ function createCliEntryHelpers(deps) {
       : null;
     const bootstrapTask = loadBootstrapTaskSummary(projectRoot);
     const pinSummary = buildPinSummary(selectedChipProfile, selectedHardware && selectedHardware.package, !hardwareReady);
+    const systemPrdPath = systemPrd.getSystemPrdRelativePath(runtime);
     const declareHardwareCommand = candidateHardware.length > 0
       ? buildDeclareHardwareCommand({
           mcu: candidateHardware[0].model,
@@ -384,12 +386,14 @@ function createCliEntryHelpers(deps) {
         agentActions.push({
           kind: 'define-project-constraints',
           status: 'required',
-          target_file: runtime.getProjectAssetRelativePath('req.yaml'),
-          summary: `Ask the agent to define the project in ${runtime.getProjectAssetRelativePath('req.yaml')} first: record the project type, intended inputs/outputs, interfaces, and constraints. Leave ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a chip candidate or hardware reference is real.`,
+          target_file: systemPrdPath,
+          structured_target_file: runtime.getProjectAssetRelativePath('req.yaml'),
+          summary: `Ask the agent to define the project in ${systemPrdPath} first: record the system goal, non-goals, firmware shape, resource constraints, interfaces, and acceptance boundary. Then mirror structured facts into ${runtime.getProjectAssetRelativePath('req.yaml')}. Leave ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a chip candidate or hardware reference is real.`,
           cli_fallback: 'next'
         });
 
-        nextSteps.push(`Let the agent fill ${runtime.getProjectAssetRelativePath('req.yaml')} with the project type, intended inputs/outputs, interfaces, and constraints before selecting a chip.`);
+        nextSteps.push(`Let the agent fill ${systemPrdPath} with the system goal, non-goals, firmware shape, resource constraints, interfaces, and acceptance boundary before selecting a chip.`);
+        nextSteps.push(`Mirror structured goals, constraints, and acceptance facts into ${runtime.getProjectAssetRelativePath('req.yaml')} after the system PRD is clear.`);
         nextSteps.push(`Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until you have a real chip candidate or hardware reference.`);
         nextSteps.push('If you already have materials, add datasheets/manuals under docs/ and schematics/BOM/board photos under hardware/ or docs/.');
       } else {
@@ -545,6 +549,7 @@ function createCliEntryHelpers(deps) {
       existing_project_detected: meaningfulInputCount > 0,
       hardware_confirmation_required: !hardwareReady && !blankProject,
       project_definition_required: blankProject,
+      system_prd_path: systemPrdPath,
       hardware_candidates: candidateHardware,
       selected_identity: selectedHardware
         ? {
@@ -779,7 +784,7 @@ function createCliEntryHelpers(deps) {
     ];
 
     if (initGuidance && initGuidance.project_definition_required) {
-      workflow[0].note = `Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until req/constraints are explicit.`;
+      workflow[0].note = `Define ${systemPrd.getSystemPrdRelativePath(runtime)} first, mirror structured facts into ${runtime.getProjectAssetRelativePath('req.yaml')}, and keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until hardware evidence is real.`;
     } else if (initGuidance && initGuidance.hardware_confirmation_required) {
       workflow[0].note = `Confirm the real MCU/package in ${runtime.getProjectAssetRelativePath('hw.yaml')} before execution.`;
     } else if (knownChipPath) {
@@ -805,8 +810,8 @@ function createCliEntryHelpers(deps) {
       status: bootstrapPending ? 'blocked-by-bootstrap' : 'ready',
       recommended_entry: 'task add <summary>',
       summary: bootstrapPending
-        ? `After bootstrap is ready, create a task and PRD first. Use ${buildPreferredCapabilityCommand('scan')} when requirements, hardware truth, or the change surface are still unclear; use ${buildPreferredCapabilityCommand('plan')} when the path is already explicit.`
-        : `Create a task and PRD first. Use ${buildPreferredCapabilityCommand('scan')} when requirements, hardware truth, or the change surface are still unclear; use ${buildPreferredCapabilityCommand('plan')} when the path is already explicit.`,
+        ? `After bootstrap and the system PRD are ready, create a task and PRD first. Use ${buildPreferredCapabilityCommand('scan')} when requirements, hardware truth, or the change surface are still unclear; use ${buildPreferredCapabilityCommand('plan')} when the path is already explicit.`
+        : `Create a task and PRD first. Use ${buildPreferredCapabilityCommand('scan')} when requirements, hardware truth, system shape, or the change surface are still unclear; use ${buildPreferredCapabilityCommand('plan')} when the path is already explicit.`,
       paths: [
         {
           id: 'known-change',
@@ -863,8 +868,9 @@ function createCliEntryHelpers(deps) {
       return {
         status: 'needs-project-definition',
         stage: 'define-project-constraints',
-        summary: `Project definition is still required. Fill ${runtime.getProjectAssetRelativePath('req.yaml')} with the project type, intended inputs/outputs, interfaces, and constraints. Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a real chip or board reference exists.`,
+        summary: `Project definition is still required. Fill ${systemPrd.getSystemPrdRelativePath(runtime)} with the system goal, non-goals, firmware shape, resource constraints, interfaces, and acceptance boundary; then mirror structured facts into ${runtime.getProjectAssetRelativePath('req.yaml')}. Keep ${runtime.getProjectAssetRelativePath('hw.yaml')} unknown until a real chip or board reference exists.`,
         command: primaryAction && primaryAction.cli_fallback ? primaryAction.cli_fallback : 'next',
+        system_prd_path: guidance.system_prd_path || systemPrd.getSystemPrdRelativePath(runtime),
         bootstrap_task: guidance.bootstrap_task || null
       };
     }
@@ -875,6 +881,7 @@ function createCliEntryHelpers(deps) {
         stage: 'source-intake',
         summary: pendingSourceIntake.summary,
         command: pendingSourceIntake.command,
+        system_prd_path: guidance.system_prd_path || systemPrd.getSystemPrdRelativePath(runtime),
         bootstrap_task: guidance.bootstrap_task || null
       };
     }
@@ -887,6 +894,7 @@ function createCliEntryHelpers(deps) {
         command: primaryAction && primaryAction.cli_fallback
           ? primaryAction.cli_fallback
           : 'declare hardware --mcu <name> --package <name>',
+        system_prd_path: guidance.system_prd_path || systemPrd.getSystemPrdRelativePath(runtime),
         bootstrap_task: guidance.bootstrap_task || null
       };
     }
@@ -897,6 +905,7 @@ function createCliEntryHelpers(deps) {
         stage: primaryAction.kind,
         summary: String(primaryAction.summary || '').trim() || 'Bootstrap is ready. Run next.',
         command: primaryAction.cli_fallback || 'next',
+        system_prd_path: guidance.system_prd_path || systemPrd.getSystemPrdRelativePath(runtime),
         bootstrap_task: guidance.bootstrap_task || null
       };
     }
@@ -906,6 +915,7 @@ function createCliEntryHelpers(deps) {
       stage: 'continue-with-next',
       summary: 'Bootstrap is ready. Run next.',
       command: 'next',
+      system_prd_path: guidance.system_prd_path || systemPrd.getSystemPrdRelativePath(runtime),
       bootstrap_task: guidance.bootstrap_task || null
     };
   }
@@ -932,6 +942,7 @@ function createCliEntryHelpers(deps) {
         '--codex',
         '--claude',
         '--cursor',
+        '--pi',
         '--registry',
         '-r',
         '--registry-branch',
