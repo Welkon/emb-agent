@@ -190,9 +190,12 @@ test('statusline hook labels datasheet_ingested workflow state before bootstrap'
     cost: { total_duration_ms: 30000 }
   });
 
-  assert.match(output, /datasheet read/);
-  assert.match(output, /next: bootstrap run --confirm/);
+  assert.match(output, /GPT-5/);
+  assert.match(output, /ctx/);
+  assert.match(output, /12%/);
   assert.match(output, /pkg:fw/);
+  assert.doesNotMatch(output, /datasheet read/);
+  assert.doesNotMatch(output, /next: bootstrap run --confirm/);
   assert.doesNotMatch(output, /tools ready/);
 });
 
@@ -224,9 +227,12 @@ test('statusline hook shows next recommendation after bootstrap is ready', () =>
     cost: { total_duration_ms: 30000 }
   });
 
-  assert.match(output, /tools ready/);
-  assert.match(output, /next: next/);
+  assert.match(output, /GPT-5/);
+  assert.match(output, /ctx/);
+  assert.match(output, /12%/);
   assert.match(output, /pkg:fw/);
+  assert.doesNotMatch(output, /tools ready/);
+  assert.doesNotMatch(output, /next: next/);
 });
 
 test('statusline hook shows knowledge graph freshness', () => {

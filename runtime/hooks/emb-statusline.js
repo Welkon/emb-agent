@@ -203,12 +203,12 @@ function formatContextPercent(raw) {
     return 'ctx 0%';
   }
   if (value >= 90) {
-    return `context ${colorize(31, `${Math.round(value)}%`)}`;
+    return `ctx ${colorize(31, `${Math.round(value)}%`)}`;
   }
   if (value >= 70) {
-    return `context ${colorize(33, `${Math.round(value)}%`)}`;
+    return `ctx ${colorize(33, `${Math.round(value)}%`)}`;
   }
-  return `context ${colorize(32, `${Math.round(value)}%`)}`;
+  return `ctx ${colorize(32, `${Math.round(value)}%`)}`;
 }
 
 function formatDuration(rawMs) {
@@ -298,36 +298,12 @@ function buildStatusLine(input) {
     infoParts.push(colorize(33, 'no task'));
   }
 
-  const lines = [];
-
-  const stateLabels = {
-    unknown: 'no hardware',
-    hw_declared: 'chip identified',
-    datasheet_ingested: 'datasheet read',
-    bootstrap_ready: 'tools ready',
-    implementing: 'building',
-    board_verified: 'verified',
-    resolved: 'done'
-  };
-  const stateColors = {
-    unknown: 31,
-    hw_declared: 33,
-    datasheet_ingested: 33,
-    bootstrap_ready: 32,
-    implementing: 36,
-    board_verified: 35,
-    resolved: 32
-  };
-  const stateColor = stateColors[workflowState] || 90;
-  const stateLabel = stateLabels[workflowState] || workflowState;
-  const nextStep = workflowStateHelpers.getWorkflowNext(workflowState);
-  lines.push(`${colorize(stateColor, `[${stateLabel}]`)} ${colorize(90, `next: ${nextStep.command}`)}`);
+  const lines = [infoParts.join(sep)];
 
   if (task) {
     lines.push(`${colorize(36, `[${task.priority || 'P2'}]`)} ${task.title} ${colorize(33, `(${task.status || 'unknown'})`)}`);
   }
-  lines.push(infoParts.join(sep));
-  return `${lines.join('\n')}\n`;
+  return `${lines.filter(Boolean).join('\n')}\n`;
 }
 
 function readStdin(callback) {

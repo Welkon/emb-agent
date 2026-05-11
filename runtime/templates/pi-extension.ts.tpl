@@ -117,27 +117,30 @@ function compactStatusLine(raw) {
     return "";
   }
 
-  const state = shortenMiddle(lines[0], 24);
-  const task = lines[1] ? shortenMiddle(lines[1], 30) : "";
-  const infoParts = lines[2]
-    ? lines[2]
-        .split("·")
-        .map(part => part.trim())
-        .filter(Boolean)
-        .filter((part, index) => !(index === 0 && !/^ctx|^context/i.test(part)))
-        .filter(part => !/^\d+[hm]$/i.test(part))
-    : [];
-  const taskCount = infoParts.find(part => /task\(s\)|open task/i.test(part));
-  const compactInfoParts = infoParts
+  const infoLine = lines.find(line => /\b(ctx|context)\b/i.test(line)) || lines[0] || "";
+  const taskLine = lines.find(line => line !== infoLine && /^\[P\d\]/.test(line)) || "";
+  const infoParts = infoLine
+    .split("·")
+    .map(part => part.trim())
+    .filter(Boolean)
+    .filter(part => !/^\d+[hm]$/i.test(part))
+    .filter(part => !/^\[[^\]]+\]\s+next:/i.test(part));
+  const primaryInfo = infoParts
+    .filter(part => /\b(ctx|context)\b/i.test(part) || infoParts.indexOf(part) === 0)
+    .slice(0, 2)
+    .map(part => shortenMiddle(part, 22));
+  const extraInfo = infoParts
+    .filter(part => !primaryInfo.some(kept => part.includes(kept) || kept.includes(part)))
     .filter(part => !/task\(s\)|open task/i.test(part))
-    .slice(0, 4)
+    .slice(0, 2)
     .map(part => shortenMiddle(part, 18));
-  if (taskCount) {
-    compactInfoParts.push(shortenMiddle(taskCount, 18));
-  }
-  const info = compactInfoParts.join(" · ");
+  const taskCount = infoParts.find(part => /task\(s\)|open task/i.test(part));
+  const info = [...primaryInfo, ...extraInfo, taskCount ? shortenMiddle(taskCount, 18) : ""]
+    .filter(Boolean)
+    .join(" · ");
+  const task = taskLine ? shortenMiddle(taskLine, 30) : "";
 
-  return [state, task, info]
+  return [info, task]
     .filter(Boolean)
     .join(" | ");
 }
