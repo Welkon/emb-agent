@@ -61,6 +61,46 @@ test('capability show and run route through capability-first metadata', async ()
   }
 });
 
+function writeTaskManifest(projectRoot, name, manifest) {
+  const taskDir = path.join(projectRoot, '.emb-agent', 'tasks', name);
+  fs.mkdirSync(taskDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(taskDir, 'task.json'),
+    JSON.stringify({ name, title: name, status: 'planning', priority: 'P2', ...manifest }, null, 2) + '\n',
+    'utf8'
+  );
+}
+
+test('capability scan suggests existing tasks before task intake', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-capability-task-selection-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await captureCliJson(['init']);
+    await captureCliJson(['declare', 'hardware', '--confirm', '--mcu', 'SC8P8122AD', '--package', 'SOP8']);
+    writeTaskManifest(tempProject, 'open-fw-task', {
+      title: 'Open firmware task',
+      status: 'planning',
+      priority: 'P1'
+    });
+    writeTaskManifest(tempProject, 'done-fw-task', {
+      title: 'Done firmware task',
+      status: 'completed',
+      priority: 'P0'
+    });
+
+    const scan = await captureCliJson(['scan']);
+
+    assert.equal(scan.action_card.status, 'blocked-by-task-selection');
+    assert.match(scan.action_card.first_cli, /task activate open-fw-task/);
+    assert.equal(scan.task_selection.recommended_task.name, 'open-fw-task');
+    assert.deepEqual(scan.task_selection.candidates.map(task => task.name), ['open-fw-task']);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('capability materialize all generates project-local workflow capability assets', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-capability-materialize-'));
   const currentCwd = process.cwd();

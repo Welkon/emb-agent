@@ -223,7 +223,9 @@ test('health specs reports active code-writing spec enforcement', () => {
     const brief = JSON.parse(stdout);
     assert.equal(brief.output_mode, 'brief');
     assert.equal(brief.specs_doctor.selected_code_writing_specs[0].name, 'embedded-space');
-    assert.match(brief.human_reply.zh, /embedded-space/);
+    assert.equal('human_reply' in brief, false);
+    assert.equal(brief.agent_protocol.gate.kind, 'health');
+    assert.match(brief.agent_protocol.ai_instruction.raw_output_policy, /Machine output is for AI routing only/);
   } finally {
     process.stdout.write = originalWrite;
     process.chdir(currentCwd);
@@ -549,7 +551,7 @@ test('installed codex runtime uses enabled hooks config as authorization signal'
   }
 });
 
-test('bootstrap run bypasses startup-hooks when host readiness is the only remaining blocker', async () => {
+test('bootstrap run bypasses startup-hooks but respects task-intake gate', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-bootstrap-run-bypass-'));
   const currentCwd = process.cwd();
   const originalWrite = process.stdout.write;
@@ -592,7 +594,9 @@ test('bootstrap run bypasses startup-hooks when host readiness is the only remai
     assert.equal(report.executed, true);
     assert.equal(report.stage.id, 'next-step');
     assert.equal(report.stage.bypassed_manual_stage.id, 'startup-hooks');
-    assert.equal(report.result.resolved_action, 'scan');
+    assert.equal(report.result.executed, false);
+    assert.equal(report.result.status, 'blocked-by-task-intake');
+    assert.equal(report.result.resolved_action, 'task add <summary>');
   } finally {
     if (previousWorkspaceTrust === undefined) {
       delete process.env.EMB_AGENT_WORKSPACE_TRUST;

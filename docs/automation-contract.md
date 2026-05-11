@@ -101,9 +101,18 @@ Typical `next --brief` contract:
     "recommended_path": "scan-first",
     "prd_path": "docs/prd/tasks/<task>.md"
   },
-  "action_card": {
-    "stage": "selection",
-    "first_cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs capability run scan"
+  "agent_protocol": {
+    "audience": "ai-host",
+    "gate": {
+      "blocking": false,
+      "allowed_actions": ["scan"]
+    },
+    "recommendation": {
+      "command": "scan"
+    },
+    "ai_instruction": {
+      "raw_output_policy": "Machine output is for AI routing only; do not paste it verbatim to the human."
+    }
   },
   "next_actions": [
     "Suggested flow: capability run scan -> capability run do -> capability run verify"

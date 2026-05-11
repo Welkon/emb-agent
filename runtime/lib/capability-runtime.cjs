@@ -15,6 +15,7 @@ function createCapabilityRuntimeHelpers(deps) {
     buildStartContext,
     buildStatus,
     getActiveTask,
+    listTaskCandidates,
     handleCatalogAndStateCommands,
     capabilityMaterializer
   } = deps;
@@ -65,9 +66,91 @@ function createCapabilityRuntimeHelpers(deps) {
     };
   }
 
+  function buildPrdConfirmationBlockedActionOutput(action, nextContext) {
+    const output = buildActionOutput(action);
+    return {
+      ...output,
+      requested_action: action,
+      blocked_action: action,
+      workflow_stage: nextContext && nextContext.workflow_stage
+        ? nextContext.workflow_stage
+        : output.workflow_stage,
+      action_card: nextContext && nextContext.action_card
+        ? nextContext.action_card
+        : output.action_card,
+      next_actions: Array.isArray(nextContext && nextContext.next_actions)
+        ? nextContext.next_actions
+        : output.next_actions,
+      next: nextContext && nextContext.next
+        ? nextContext.next
+        : null,
+      prd_confirmation: nextContext && nextContext.prd_confirmation
+        ? nextContext.prd_confirmation
+        : null
+    };
+  }
+
   function buildTaskIntakeBlockedActionOutput(action) {
     const output = buildActionOutput(action);
     const workLabel = action === 'do' ? 'mutation work' : 'task-scoped investigation';
+    const candidates = typeof listTaskCandidates === 'function'
+      ? (() => {
+          try {
+            return listTaskCandidates({ limit: 5 });
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+    const recommended = candidates[0] || null;
+
+    if (recommended) {
+      const firstCli = recommended.cli || buildCli(['task', 'activate', recommended.name]);
+      const thenCli = buildPreferredCapabilityCommand(action);
+      const reason = `No active task exists yet. Activate an existing open task before ${workLabel}.`;
+      const taskSelection = {
+        status: 'ready',
+        recommended_entry: `task activate ${recommended.name}`,
+        recommended_task: recommended,
+        candidates,
+        summary: `Existing open tasks are available. Activate ${recommended.name} before ${action}.`,
+        next_cli: firstCli,
+        then_cli: buildCli(capabilityCatalog.getCapabilityPrimaryArgs(action))
+      };
+
+      return {
+        ...output,
+        workflow_stage: {
+          name: 'task-selection',
+          why: reason,
+          exit_criteria: 'One existing open task is activated before mutation work resumes',
+          primary_command: 'task activate'
+        },
+        task_selection: taskSelection,
+        action_card: {
+          status: 'blocked-by-task-selection',
+          stage: 'task-selection',
+          action: action === 'do' ? 'Activate task before mutation' : 'Activate task before scan',
+          summary: reason,
+          reason: action === 'do'
+            ? 'Mutation work without active task context is blocked.'
+            : 'Scan work without active task context is blocked once bootstrap is already ready.',
+          first_step_label: 'Activate task',
+          first_instruction: `Use an existing open task first: ${recommended.name} — ${recommended.title || recommended.name}.`,
+          first_cli: firstCli,
+          then_cli: taskSelection.then_cli,
+          followup: `Then: ${thenCli}`
+        },
+        next_actions: unique([
+          `instruction=Activate an existing task before using ${action}`,
+          `task_selection=${taskSelection.summary}`,
+          ...candidates.map(task => `task_candidate=${task.name}; status=${task.status || 'open'}; priority=${task.priority || 'P2'}; title=${task.title || task.name}`),
+          `command=${firstCli}`,
+          `followup=Then: ${thenCli}`
+        ])
+      };
+    }
+
     const reason = `No active task exists yet. Create and activate a real task before ${workLabel}.`;
     const firstCli = buildCli(['task', 'add', '<summary>']);
     const thenCli = buildCli(['task', 'activate', '<name>']);
@@ -198,6 +281,15 @@ function createCapabilityRuntimeHelpers(deps) {
         return buildHealthBlockedActionOutput(action, nextContext);
       }
 
+      if (
+        (action === 'scan' || action === 'do') &&
+        nextContext &&
+        nextContext.next &&
+        String(nextContext.next.command || '').startsWith('prd confirm')
+      ) {
+        return buildPrdConfirmationBlockedActionOutput(action, nextContext);
+      }
+
       if (action === 'scan') {
         const activeTask = typeof getActiveTask === 'function' ? getActiveTask() : null;
         const startContext =
@@ -208,7 +300,10 @@ function createCapabilityRuntimeHelpers(deps) {
           !activeTask &&
           startContext &&
           startContext.immediate &&
-          startContext.immediate.command === 'task add <summary>'
+          (
+            startContext.immediate.command === 'task add <summary>' ||
+            String(startContext.immediate.command || '').startsWith('task activate ')
+          )
         ) {
           return buildTaskIntakeBlockedActionOutput(action);
         }

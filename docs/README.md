@@ -32,6 +32,8 @@ If the repository root README explains what emb-agent is, the docs directory sho
   How task manifests are structured and when to use them.
 - [Automation Output Contract](./automation-contract.md)
   The stable machine-readable surfaces for `--brief`, `external`, and `task worktree`.
+- [AI Host Contract](./ai-host-contract.md)
+  How host integrations should treat emb-agent output as machine protocol and let AI produce human-facing language.
 - [Workflow Layering](./workflow-layering.md)
   How to decide between built-in specs and project-local workflow extensions.
 

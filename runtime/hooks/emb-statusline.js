@@ -77,6 +77,24 @@ function getDeveloper(projectRoot) {
   return String(payload.name || '').trim();
 }
 
+const CLOSED_TASK_STATUSES = new Set(['completed', 'resolved', 'closed', 'rejected', 'archived', 'cancelled', 'canceled']);
+const BOOTSTRAP_TASK_NAMES = new Set(['00-bootstrap-project', 'bootstrap-project']);
+
+function normalizeTaskStatus(task) {
+  return String(task && task.status ? task.status : '').trim().toLowerCase();
+}
+
+function isClosedTask(task) {
+  const status = normalizeTaskStatus(task);
+  return status ? CLOSED_TASK_STATUSES.has(status) : false;
+}
+
+function isBootstrapTask(task) {
+  const name = String(task && task.name ? task.name : '').trim().toLowerCase();
+  const title = String(task && task.title ? task.title : '').trim().toLowerCase();
+  return BOOTSTRAP_TASK_NAMES.has(name) || title === 'bootstrap project notes';
+}
+
 function getCurrentTask(projectRoot) {
   const taskName = readText(path.join(projectRoot, '.emb-agent', '.current-task'));
   if (!taskName) {
@@ -88,12 +106,24 @@ function getCurrentTask(projectRoot) {
     return null;
   }
 
-  return {
+  const task = {
     name: taskName,
     title: String(manifest.title || manifest.name || taskName).trim(),
     status: String(manifest.status || '').trim(),
     priority: String(manifest.priority || 'P2').trim(),
     package: String(manifest.package || '').trim()
+  };
+
+  if (isClosedTask(task) || isBootstrapTask(task)) {
+    return null;
+  }
+
+  return {
+    name: taskName,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    package: task.package
   };
 }
 
@@ -113,7 +143,7 @@ function getWorkflowState(projectRoot, task) {
   });
 }
 
-function countTasks(projectRoot) {
+function countOpenTasks(projectRoot) {
   const tasksDir = path.join(projectRoot, '.emb-agent', 'tasks');
   if (!fs.existsSync(tasksDir) || !fs.statSync(tasksDir).isDirectory()) {
     return 0;
@@ -121,7 +151,9 @@ function countTasks(projectRoot) {
 
   return fs.readdirSync(tasksDir, { withFileTypes: true })
     .filter(entry => entry.isDirectory() && entry.name !== 'archive')
-    .filter(entry => fs.existsSync(path.join(tasksDir, entry.name, 'task.json')))
+    .map(entry => readJson(path.join(tasksDir, entry.name, 'task.json')))
+    .filter(task => task && typeof task === 'object')
+    .filter(task => !isClosedTask(task) && !isBootstrapTask(task))
     .length;
 }
 
@@ -200,7 +232,7 @@ function buildStatusLine(input) {
   const workflowState = getWorkflowState(projectRoot, task);
   const developer = getDeveloper(projectRoot);
   const branch = getGitBranch(projectRoot);
-  const taskCount = countTasks(projectRoot);
+  const taskCount = countOpenTasks(projectRoot);
   const wikiPageCount = countWikiPages(projectRoot);
   const packageState = getProjectPackageState(projectRoot);
   const sessionCheckpoint = getSessionCheckpoint(projectRoot, branch);
@@ -261,7 +293,7 @@ function buildStatusLine(input) {
     infoParts.push(colorize(32, developer));
   }
   if (taskCount > 0) {
-    infoParts.push(`${taskCount} task(s)`);
+    infoParts.push(`${taskCount} open task(s)`);
   } else if (workflowState !== 'unknown' && workflowState !== 'hw_declared') {
     infoParts.push(colorize(33, 'no task'));
   }

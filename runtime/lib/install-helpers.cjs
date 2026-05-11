@@ -2308,6 +2308,32 @@ function createInstallHelpers(deps) {
     return agentFiles.length;
   }
 
+  function buildDefaultHostCommandInvocation(runtimeCli, commandName) {
+    const command = String(commandName || '').trim();
+    const base = `${runtimeCli} ${command}`.trim();
+    return command === 'start' || command === 'next'
+      ? `${base} --brief`
+      : base;
+  }
+
+  function buildHostCommandUxLines(commandName, runtimeCli) {
+    const command = String(commandName || '').trim();
+    const lines = [];
+
+    if (command === 'start' || command === 'next') {
+      lines.push(`- Use \`${buildDefaultHostCommandInvocation(runtimeCli, command)}\` by default so the host sees compact routing JSON; only run full output when the user explicitly asks for it.`);
+    }
+
+    lines.push('- Treat emb-agent output as a machine protocol for the AI host, not as human-facing text. Use `agent_protocol` as the primary routing contract.');
+    lines.push('- Do not paste raw JSON or a full command transcript into chat. Summarize status, blockers, and the recommended action in plain language.');
+    lines.push('- Respect `agent_protocol.gate.allowed_actions` and `agent_protocol.gate.forbidden_actions` when present; do not bypass blocking gates by improvising another workflow.');
+    lines.push('- If the user request embeds an unconfirmed technical choice, route through `decision review` / `decision record` before implementation instead of letting the model silently validate the premise.');
+    lines.push('- Do not automatically execute `agent_protocol.recommendation.command`; stop after the recommendation unless the user explicitly asks to continue. If a legacy payload lacks `agent_protocol`, fall back to compact `next`/`immediate` fields only.');
+    lines.push('- When showing a follow-up action, prefer the short emb-agent command form (for example `capability run scan` or `task add <summary>`) over the full `node .../emb-agent.cjs ...` path unless the user needs a copy-paste CLI.');
+
+    return lines;
+  }
+
   function installCodexHooks(targetDir, target, args) {
     const hooksPath = path.join(targetDir, target.hooksConfigFileName || 'hooks.json');
     const current = stripJsonHostManagedHooks(readJsonObject(hooksPath));
@@ -2350,6 +2376,7 @@ function createInstallHelpers(deps) {
       extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
     );
     const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+    const defaultInvocation = buildDefaultHostCommandInvocation(runtimeCli, commandName);
 
     return [
       `# ${commandLabel}`,
@@ -2358,8 +2385,9 @@ function createInstallHelpers(deps) {
       '',
       '## Invocation',
       '',
-      `- When this command matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
+      `- When this command matches the user intent, run \`${defaultInvocation}\` with any required extra arguments.`,
       '- Use the runtime output as the source of truth for follow-up actions.',
+      ...buildHostCommandUxLines(commandName, runtimeCli),
       '',
       '## Original Guidance',
       '',
@@ -2411,6 +2439,7 @@ function createInstallHelpers(deps) {
       extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
     );
     const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+    const defaultInvocation = buildDefaultHostCommandInvocation(runtimeCli, commandName);
 
     return [
       `# ${commandLabel}`,
@@ -2419,8 +2448,9 @@ function createInstallHelpers(deps) {
       '',
       '## Invocation',
       '',
-      `- When this command matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
+      `- When this command matches the user intent, run \`${defaultInvocation}\` with any required extra arguments.`,
       '- Use the runtime output as the source of truth for follow-up actions.',
+      ...buildHostCommandUxLines(commandName, runtimeCli),
       '',
       '## Original Guidance',
       '',
@@ -2478,6 +2508,7 @@ function createInstallHelpers(deps) {
       'pi-extension.ts.tpl',
       {
         RUNTIME_CLI_JSON: JSON.stringify(runtimeCli),
+        RUNTIME_CLI_PATH_JSON: JSON.stringify(runtimeHost.resolveRuntimeHost(runtimeDir).cliPath.replace(/\\/g, '/')),
         SESSION_START_HOOK_JSON: JSON.stringify(hookPath('emb-session-start.js')),
         CONTEXT_MONITOR_HOOK_JSON: JSON.stringify(hookPath('emb-context-monitor.js')),
         STATUSLINE_HOOK_JSON: JSON.stringify(hookPath('emb-statusline.js')),
@@ -2498,6 +2529,7 @@ function createInstallHelpers(deps) {
       extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
     );
     const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+    const defaultInvocation = buildDefaultHostCommandInvocation(runtimeCli, commandName);
     const guardrails = buildCodexSkillGuardrails(commandName, runtimeCli);
     const conversationGuardrails = buildCodexConversationGuardrails(commandName);
 
@@ -2513,8 +2545,9 @@ function createInstallHelpers(deps) {
       '',
       '## Invocation',
       '',
-      `- When this skill matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
+      `- When this skill matches the user intent, run \`${defaultInvocation}\` with any required extra arguments.`,
       '- Use the runtime output as the source of truth for the next step instead of improvising a parallel workflow.',
+      ...buildHostCommandUxLines(commandName, runtimeCli),
       ...(guardrails.length > 0
         ? [
             '',
@@ -2546,6 +2579,7 @@ function createInstallHelpers(deps) {
       extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
     );
     const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+    const defaultInvocation = buildDefaultHostCommandInvocation(runtimeCli, commandName);
     const guardrails = buildCodexSkillGuardrails(commandName, runtimeCli);
     const conversationGuardrails = buildCodexConversationGuardrails(commandName);
 
@@ -2561,8 +2595,9 @@ function createInstallHelpers(deps) {
       '',
       '## Invocation',
       '',
-      `- When this skill matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
+      `- When this skill matches the user intent, run \`${defaultInvocation}\` with any required extra arguments.`,
       '- Use the runtime output as the source of truth for the next step instead of improvising a parallel workflow.',
+      ...buildHostCommandUxLines(commandName, runtimeCli),
       ...(guardrails.length > 0
         ? [
             '',
@@ -2630,6 +2665,7 @@ function createInstallHelpers(deps) {
       extractFrontmatterField(frontmatter, 'description') || `Run emb-agent ${commandName}`
     );
     const runtimeCli = runtimeHost.resolveRuntimeHost(runtimeDir).cliCommand;
+    const defaultInvocation = buildDefaultHostCommandInvocation(runtimeCli, commandName);
     const guardrails = buildCodexSkillGuardrails(commandName, runtimeCli);
     const conversationGuardrails = buildCodexConversationGuardrails(commandName);
 
@@ -2645,9 +2681,10 @@ function createInstallHelpers(deps) {
       '',
       '## Invocation',
       '',
-      `- When this skill matches the user intent, run \`${runtimeCli} ${commandName}\` with any required extra arguments.`,
+      `- When this skill matches the user intent, run \`${defaultInvocation}\` with any required extra arguments.`,
       `- In Pi, the installed extension also exposes \`/emb ${commandName}\` and \`/emb:${commandName}\` command wrappers.`,
       '- Use the runtime output as the source of truth for the next step instead of improvising a parallel workflow.',
+      ...buildHostCommandUxLines(commandName, runtimeCli),
       ...(guardrails.length > 0
         ? [
             '',
@@ -2740,10 +2777,10 @@ function createInstallHelpers(deps) {
     const shared = [
       '- Before running a visible command chain, send one short Chinese status line that says what you are checking and why.',
       '- After any command that changes routing, closes a blocker, writes truth, or fails, send one short Chinese result line before the next command.',
-      '- If the user says only "continue" after a final `operator_handoff`, run only the exact next CLI unless they explicitly ask to continue through task creation, implementation, verification, and closure.',
-      '- If `operator_handoff.status` is `blocked-by-task-intake`, ask the user for the concrete task in one sentence instead of leading with the placeholder CLI.',
-      '- When a `--brief` payload includes `operator_handoff`, use it as the final-answer contract: exact next CLI first for ready commands, one-sentence task prompt for task intake, blockers closed, then stop.',
-      '- Do not let the final visible item be a tool call, raw JSON, or bare command output.'
+      '- If the user says only "continue" after an `agent_protocol` recommendation, run only the allowed recommended action unless they explicitly ask to continue through task creation, implementation, verification, and closure.',
+      '- If `agent_protocol.gate.kind` is `task-intake`, ask the user for the concrete task in one sentence instead of leading with the placeholder CLI.',
+      '- When a `--brief` payload includes `agent_protocol`, use it as the final-answer contract: respect blocking gates, ask for the required confirmation/input, then stop.',
+      '- Do not expose long `node .../emb-agent.cjs ...` paths, raw JSON, bare command output, or a final visible tool call unless the user explicitly asks for copy-paste automation output.'
     ];
 
     if (commandName === 'next') {
@@ -3275,7 +3312,6 @@ function createInstallHelpers(deps) {
     let sharedSkillCount;
     let claudeCommandCount;
     let cursorCommandCount;
-    let piSkillCount;
     let piExtensionCount;
     try {
       agentCount = installAgents(targetDir, target, args);
@@ -3287,9 +3323,8 @@ function createInstallHelpers(deps) {
       claudeCommandCount = installClaudeCommands(targetDir, target, runtimeDir);
       cursorCommandCount = installCursorCommands(targetDir, target, runtimeDir);
       piExtensionCount = installPiExtension(targetDir, target, runtimeDir);
-      piSkillCount = installPiSkills(targetDir, target, runtimeDir);
       const installedSurfaceCount =
-        agentCount + codexSkillCount + sharedSkillCount + claudeCommandCount + cursorCommandCount + piExtensionCount + piSkillCount;
+        agentCount + codexSkillCount + sharedSkillCount + claudeCommandCount + cursorCommandCount + piExtensionCount;
       integrationActivity.succeed(
         installedSurfaceCount > 0
           ? `Host integration ready (${installedSurfaceCount} artifacts)`
@@ -3381,9 +3416,6 @@ function createInstallHelpers(deps) {
         : []),
       ...(piExtensionCount > 0
         ? [`Installed Pi extension: ${path.join(targetDir, 'extensions', 'emb-agent.ts')}`]
-        : []),
-      ...(piSkillCount > 0
-        ? [`Installed ${piSkillCount} Pi skills under: ${path.join(targetDir, 'skills')}`]
         : []),
       ...(target.managesHostConfig === false
         ? [`Runtime metadata: ${path.join(runtimeDir, 'HOST.json')}`]

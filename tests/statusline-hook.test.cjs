@@ -83,7 +83,44 @@ test('statusline hook summarizes current task, branch, and developer', () => {
   assert.match(output, /snapshot/);
   assert.match(output, /pkg:fw/);
   assert.match(output, /felix/);
-  assert.match(output, /1 task\(s\)/);
+  assert.match(output, /1 open task\(s\)/);
+});
+
+test('statusline hook hides closed stale current task and counts only open work tasks', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-statusline-open-tasks-'));
+  const embDir = path.join(tempProject, '.emb-agent');
+  const tasksDir = path.join(embDir, 'tasks');
+
+  fs.mkdirSync(tasksDir, { recursive: true });
+  fs.writeFileSync(path.join(embDir, '.current-task'), 'closed-task\n', 'utf8');
+  fs.writeFileSync(
+    path.join(embDir, 'project.json'),
+    JSON.stringify({ default_package: 'fw', active_package: 'fw' }, null, 2) + '\n',
+    'utf8'
+  );
+  for (const [name, manifest] of Object.entries({
+    '00-bootstrap-project': { title: 'Bootstrap project notes', status: 'planning', priority: 'P0' },
+    'closed-task': { title: 'Closed task should not be shown', status: 'completed', priority: 'P0' },
+    'open-task': { title: 'Open task should count', status: 'planning', priority: 'P1' }
+  })) {
+    fs.mkdirSync(path.join(tasksDir, name), { recursive: true });
+    fs.writeFileSync(
+      path.join(tasksDir, name, 'task.json'),
+      JSON.stringify({ name, ...manifest }, null, 2) + '\n',
+      'utf8'
+    );
+  }
+
+  const output = statuslineHook.buildStatusLine({
+    cwd: tempProject,
+    model: { display_name: 'GPT-5' },
+    context_window: { used_percentage: 20 }
+  });
+
+  assert.doesNotMatch(output, /Closed task should not be shown/);
+  assert.doesNotMatch(output, /closed-task/);
+  assert.match(output, /1 open task\(s\)/);
+  assert.doesNotMatch(output, /3 task\(s\)/);
 });
 
 test('statusline hook warns when the latest session checkpoint is from another branch', () => {

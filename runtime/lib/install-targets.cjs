@@ -73,7 +73,7 @@ function createInstallTargets(deps) {
       globalEnvVar: 'PI_CODING_AGENT_DIR',
       runtimeDirName: 'emb-agent',
       configFileName: 'settings.json',
-      agentLabel: 'Pi skills',
+      agentLabel: 'Pi integration',
       restartLabel: 'Pi',
       agentMode: 'none',
       hookMode: 'pi-extension',

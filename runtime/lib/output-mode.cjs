@@ -2,6 +2,7 @@
 
 const permissionGateHelpers = require('./permission-gates.cjs');
 const runtimeEventHelpers = require('./runtime-events.cjs');
+const agentProtocolHelpers = require('./agent-protocol.cjs');
 
 function isObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -17,18 +18,6 @@ function unique(values) {
 
 function truncateList(values, limit) {
   return toArray(values).slice(0, limit);
-}
-
-function summarizeHumanReply(value) {
-  if (!isObject(value)) {
-    return null;
-  }
-
-  return compactObject({
-    zh: value.zh || '',
-    en: value.en || '',
-    next: value.next || ''
-  });
 }
 
 function summarizeContextHygiene(value) {
@@ -468,102 +457,153 @@ function summarizeTaskConvergence(value) {
   });
 }
 
-function firstText(values) {
-  return toArray(values)
-    .map(value => String(value || '').trim())
-    .find(Boolean) || '';
-}
-
-function formatRuntimeEventsForHandoff(value) {
-  const summary = runtimeEventHelpers.summarizeRuntimeEvents(value);
-  if (!summary || !summary.total) {
-    return '';
-  }
-
-  const detail =
-    Array.isArray(summary.types) && summary.types.length > 0
-      ? summary.types.slice(0, 2).join(', ')
-      : Array.isArray(summary.categories) && summary.categories.length > 0
-        ? summary.categories.slice(0, 2).join(', ')
-        : '';
-
-  return detail
-    ? `${summary.status} / ${summary.total} (${detail})`
-    : `${summary.status} / ${summary.total}`;
-}
-
-function buildFinalReplyRule(status) {
-  if (status === 'blocked-by-task-intake') {
-    return 'Ask the user for the concrete task in one sentence first; do not lead with a placeholder CLI, raw tool output, or JSON.';
-  }
-
-  return 'Start with the exact next CLI, explain why in one sentence, summarize blockers closed, and never end on raw tool output.';
-}
-
-function buildOperatorHandoff(value, fallbackCommand, options) {
+function summarizeTaskCandidate(value) {
   if (!isObject(value)) {
     return null;
   }
 
-  const settings = isObject(options) ? options : {};
-  const preferImmediate = settings.prefer_immediate === true;
-  const next = isObject(value.next) ? value.next : {};
-  const immediate = isObject(value.immediate) ? value.immediate : {};
-  const taskIntake = isObject(value.task_intake) ? value.task_intake : {};
-  const actionCard = summarizeActionCard(value.action_card);
-  const convergence = summarizeTaskConvergence(value.task_convergence);
-  const command = preferImmediate
-    ? firstText([immediate.command, next.command, fallbackCommand])
-    : firstText([next.command, immediate.command, fallbackCommand]);
-  const taskIntakeCommand =
-    command === 'task add <summary>' ||
-    command === 'task add' ||
-    next.command === 'task add <summary>' ||
-    immediate.command === 'task add <summary>';
-  const nextCli = preferImmediate
-    ? firstText([
-        immediate.cli,
-        actionCard && actionCard.first_cli,
-        next.cli,
-        convergence && convergence.next_cli
-      ])
-    : firstText([
-        actionCard && actionCard.first_cli,
-        immediate.cli,
-        next.cli,
-        convergence && convergence.next_cli
-      ]);
-  const thenCli = firstText([
-    actionCard && actionCard.then_cli,
-    convergence && convergence.then_cli
-  ]);
-  const why = firstText([
-    actionCard && actionCard.summary,
-    next.reason,
-    immediate.reason,
-    convergence && convergence.summary
-  ]);
-  const first = firstText([
-    actionCard && actionCard.first_instruction,
-    convergence && Array.isArray(convergence.prompts) ? convergence.prompts[0] : '',
-    immediate.reason
-  ]);
-  const status = firstText([
-    actionCard && actionCard.status,
-    taskIntakeCommand && taskIntake.status === 'ready' ? 'blocked-by-task-intake' : '',
-    next.gated_by_health === true ? 'blocked-by-health' : '',
-    command ? 'ready-to-run' : ''
-  ]);
+  return compactObject({
+    name: value.name || '',
+    title: value.title || '',
+    status: value.status || '',
+    priority: value.priority || '',
+    package: value.package || '',
+    cli: value.cli || ''
+  });
+}
+
+function summarizeTaskSelection(value) {
+  if (!isObject(value)) {
+    return null;
+  }
 
   return compactObject({
-    status,
-    command,
-    next_cli: nextCli,
-    then_cli: thenCli,
-    why,
-    first,
-    runtime_events: formatRuntimeEventsForHandoff(value.runtime_events),
-    final_reply_rule: buildFinalReplyRule(status)
+    status: value.status || '',
+    recommended_entry: value.recommended_entry || '',
+    recommended_task: summarizeTaskCandidate(value.recommended_task),
+    summary: value.summary || '',
+    next_cli: value.next_cli || '',
+    then_cli: value.then_cli || '',
+    candidates: truncateList(toArray(value.candidates).map(summarizeTaskCandidate).filter(Boolean), 5)
+  });
+}
+
+function summarizePrdConfirmation(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    status: value.status || '',
+    confirmed: value.confirmed === undefined ? undefined : Boolean(value.confirmed),
+    stale: value.stale === undefined ? undefined : Boolean(value.stale),
+    confirmation_path: value.confirmation_path || '',
+    documents: truncateList(toArray(value.documents).map(item => isObject(item) ? compactObject({
+      path: item.path || '',
+      title: item.title || ''
+    }) : null).filter(Boolean), 8),
+    planned_task_count: Number.isInteger(value.planned_task_count) ? value.planned_task_count : undefined,
+    task_plan: truncateList(toArray(value.task_plan).map(item => isObject(item) ? compactObject({
+      name: item.name || '',
+      title: item.title || '',
+      source: item.source || '',
+      status: item.status || ''
+    }) : null).filter(Boolean), 8)
+  });
+}
+
+function summarizeDecisionReview(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    status: value.status || '',
+    question: value.question || '',
+    context: value.context || '',
+    options: truncateList(value.options, 6),
+    evidence: truncateList(value.evidence, 6),
+    review_questions: truncateList(value.review_questions, 6),
+    next_command: value.next_command || ''
+  });
+}
+
+function summarizeDecisionRecord(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  return compactObject({
+    id: value.id || '',
+    status: value.status || '',
+    question: value.question || '',
+    chosen: value.chosen || '',
+    path: value.path || '',
+    markdown_path: value.markdown_path || '',
+    evidence: truncateList(value.evidence, 6),
+    rejected: truncateList(toArray(value.rejected).map(item => isObject(item) ? compactObject({
+      option: item.option || '',
+      reason: item.reason || ''
+    }) : null).filter(Boolean), 6)
+  });
+}
+
+function buildBriefDecisionOutput(value) {
+  return compactObject({
+    output_mode: 'brief',
+    agent_protocol: summarizeAgentProtocol(value.agent_protocol),
+    command: value.command || '',
+    status: value.status || '',
+    summary: value.summary || '',
+    decision_dir: value.decision_dir || '',
+    count: Number.isInteger(value.count) ? value.count : undefined,
+    decisions: truncateList(toArray(value.decisions).map(summarizeDecisionRecord).filter(Boolean), 8),
+    decision_review: summarizeDecisionReview(value.decision_review),
+    decision: summarizeDecisionRecord(value.decision),
+    next: isObject(value.next) ? compactObject({
+      command: value.next.command || '',
+      reason: value.next.reason || '',
+      cli: value.next.cli || ''
+    }) : null
+  });
+}
+
+function summarizeAgentProtocol(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const gate = isObject(value.gate) ? value.gate : {};
+  const recommendation = isObject(value.recommendation) ? value.recommendation : {};
+  const aiInstruction = isObject(value.ai_instruction) ? value.ai_instruction : {};
+
+  return compactObject({
+    version: value.version || 'emb-agent.protocol/1',
+    audience: value.audience || 'ai-host',
+    gate: compactObject({
+      kind: gate.kind || '',
+      status: gate.status || '',
+      blocking: gate.blocking === undefined ? undefined : Boolean(gate.blocking),
+      reason: gate.reason || '',
+      allowed_actions: truncateList(gate.allowed_actions, 5),
+      forbidden_actions: truncateList(gate.forbidden_actions, 5),
+      human_prompt: gate.human_prompt || ''
+    }),
+    recommendation: compactObject({
+      command: recommendation.command || '',
+      cli: recommendation.cli || '',
+      reason: recommendation.reason || '',
+      requires_human_confirmation: recommendation.requires_human_confirmation === undefined
+        ? undefined
+        : Boolean(recommendation.requires_human_confirmation)
+    }),
+    ai_instruction: compactObject({
+      summary: aiInstruction.summary || '',
+      ask_user: aiInstruction.ask_user || '',
+      recommended_response_style: aiInstruction.recommended_response_style || '',
+      raw_output_policy: aiInstruction.raw_output_policy || '',
+      do_not: truncateList(aiInstruction.do_not, 6)
+    })
   });
 }
 
@@ -933,7 +973,10 @@ function buildBriefNextContext(value) {
       status: task.status || '',
       package: task.package || ''
     }),
+    agent_protocol: summarizeAgentProtocol(value.agent_protocol),
     task_convergence: summarizeTaskConvergence(value.task_convergence),
+    task_selection: summarizeTaskSelection(value.task_selection || next.task_selection),
+    prd_confirmation: summarizePrdConfirmation(value.prd_confirmation || next.prd_confirmation),
     next: compactObject({
       command: next.command || '',
       reason: next.reason || '',
@@ -947,8 +990,6 @@ function buildBriefNextContext(value) {
     }),
     capability_route: summarizeCapabilityRoute(value.capability_route || next.capability_route),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
-    action_card: summarizeActionCard(value.action_card),
-    operator_handoff: buildOperatorHandoff(value, next.command || 'next'),
     quality_gates: summarizeQualityGates(value.quality_gates),
     permission_gates: summarizePermissionGates(value.permission_gates),
     runtime_events: runtimeEventHelpers.summarizeRuntimeEvents(value.runtime_events),
@@ -986,6 +1027,7 @@ function buildBriefStartContext(value) {
 
   return compactObject({
     output_mode: 'brief',
+    agent_protocol: summarizeAgentProtocol(value.agent_protocol),
     entry: value.entry || 'start',
     summary: compactObject({
       project_root: summary.project_root || '',
@@ -1008,13 +1050,12 @@ function buildBriefStartContext(value) {
       reason: immediate.reason || '',
       cli: immediate.cli || ''
     }),
-    operator_handoff: buildOperatorHandoff(value, immediate.command || 'start', {
-      prefer_immediate: true
-    }),
     task_intake: compactObject({
       status: taskIntake.status || '',
       recommended_entry: taskIntake.recommended_entry || '',
       summary: taskIntake.summary || '',
+      recommended_task: summarizeTaskCandidate(taskIntake.recommended_task),
+      candidates: truncateList(toArray(taskIntake.candidates).map(summarizeTaskCandidate).filter(Boolean), 5),
       modes: truncateList(
         toArray(taskIntake.paths)
           .map(item => item && item.id ? item.id : '')
@@ -1055,7 +1096,6 @@ function buildBriefInitOutput(value) {
     project_profile: value.project_profile || session.project_profile || '',
     active_specs: toArray(value.active_specs || session.active_specs),
     developer: isObject(value.developer) ? value.developer : (isObject(session.developer) ? session.developer : null),
-    human_reply: summarizeHumanReply(value.human_reply),
     lazy_generation: summarizeLazyGeneration(value.lazy_generation),
     discovery: summarizeDiscovery(value.discovery || (value.detected && value.detected.discovery)),
     bootstrap: compactObject({
@@ -1114,7 +1154,6 @@ function buildBriefPlanOutput(value) {
     steps: truncateList(value.steps, 5),
     verification: truncateList(value.verification, 4),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
-    action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
@@ -1125,6 +1164,7 @@ function buildBriefDoOutput(value) {
 
   return compactObject({
     output_mode: 'brief',
+    agent_protocol: summarizeAgentProtocol(value.agent_protocol),
     chosen_agent: value.chosen_agent || '',
     prerequisites: truncateList(value.prerequisites, 4),
     safety_checks: truncateList(value.safety_checks, 4),
@@ -1135,7 +1175,6 @@ function buildBriefDoOutput(value) {
     }),
     code_writing_specs: summarizeCodeWritingSpecs(value.code_writing_specs),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
-    action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
@@ -1144,12 +1183,12 @@ function buildBriefDoOutput(value) {
 function buildBriefScanOutput(value) {
   return compactObject({
     output_mode: 'brief',
+    agent_protocol: summarizeAgentProtocol(value.agent_protocol),
     relevant_files: truncateList(value.relevant_files, 5),
     key_facts: truncateList(value.key_facts, 6),
     open_questions: truncateList(value.open_questions, 4),
     next_reads: truncateList(value.next_reads, 5),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
-    action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
@@ -1158,12 +1197,12 @@ function buildBriefScanOutput(value) {
 function buildBriefDebugOutput(value) {
   return compactObject({
     output_mode: 'brief',
+    agent_protocol: summarizeAgentProtocol(value.agent_protocol),
     chosen_agent: value.chosen_agent || '',
     hypotheses: truncateList(value.hypotheses, 4),
     checks: truncateList(value.checks, 4),
     next_step: value.next_step || '',
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
-    action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
@@ -1174,6 +1213,7 @@ function buildBriefReviewOutput(value) {
 
   return compactObject({
     output_mode: 'brief',
+    agent_protocol: summarizeAgentProtocol(value.agent_protocol),
     scope: compactObject({
       profile: scope.profile || '',
       specs: toArray(scope.specs),
@@ -1185,7 +1225,6 @@ function buildBriefReviewOutput(value) {
     required_checks: truncateList(value.required_checks, 5),
     review_agents: truncateList(value.review_agents, 4),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
-    action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
@@ -1196,6 +1235,7 @@ function buildBriefVerifyOutput(value) {
 
   return compactObject({
     output_mode: 'brief',
+    agent_protocol: summarizeAgentProtocol(value.agent_protocol),
     scope: compactObject({
       profile: scope.profile || '',
       specs: toArray(scope.specs),
@@ -1210,7 +1250,6 @@ function buildBriefVerifyOutput(value) {
     permission_gates: summarizePermissionGates(value.permission_gates),
     verification_focus: truncateList(value.verification_focus, 4),
     workflow_stage: summarizeWorkflowStage(value.workflow_stage),
-    action_card: summarizeActionCard(value.action_card),
     next_actions: truncateList(value.next_actions, 4),
     scheduler: summarizeScheduler(value.scheduler)
   });
@@ -1255,9 +1294,7 @@ function buildBriefHealthOutput(value) {
     primary_cli: primaryCli,
     next_commands: truncateList(value.next_commands, 4),
     specs_doctor: summarizeSpecsDoctor(value.specs_doctor),
-    human_reply: summarizeHumanReply(value.human_reply),
     subagent_bridge: summarizeSubagentBridge(value.subagent_bridge),
-    action_card: actionCard,
     recommended_flow: summarizeRecommendedFlow(value.recommended_flow),
     handoff_protocol: summarizeHandoffProtocol(value.handoff_protocol),
     quickstart: isObject(value.quickstart)
@@ -1280,7 +1317,6 @@ function buildBriefBootstrapOutput(value) {
     status: value.display_status || value.status || '',
     summary: value.display_summary || value.summary || '',
     current_stage: value.display_current_stage || value.current_stage || '',
-    action_card: summarizeActionCard(value.action_card),
     next_stage: compactObject({
       id: nextStage.display_id || nextStage.id || '',
       status: nextStage.display_status || nextStage.status || '',
@@ -1352,6 +1388,7 @@ function buildBriefDispatchOrchestrateOutput(value) {
 function buildBriefStatusOutput(value) {
   return compactObject({
     output_mode: 'brief',
+    agent_protocol: summarizeAgentProtocol(value.agent_protocol),
     project_root: value.project_root || '',
     project_profile: value.project_profile || '',
     active_specs: truncateList(value.active_specs, 4),
@@ -1395,11 +1432,11 @@ function buildBriefTaskLifecycleOutput(value) {
 
   return compactObject({
     output_mode: 'brief',
+    agent_protocol: summarizeAgentProtocol(value.agent_protocol),
     created: value.created === undefined ? undefined : Boolean(value.created),
     merged: value.merged === undefined ? undefined : Boolean(value.merged),
     activated: value.activated === undefined ? undefined : Boolean(value.activated),
     task: summarizeTaskRef(value.task),
-    human_reply: summarizeHumanReply(value.human_reply),
     task_semantic_merge: summarizeTaskSemanticMerge(value.task_semantic_merge),
     workspace: compactObject({
       mode: workspace.mode || '',
@@ -1452,6 +1489,10 @@ function applyBriefMode(value) {
 
   if (Object.prototype.hasOwnProperty.call(value, 'initialized') && Object.prototype.hasOwnProperty.call(value, 'bootstrap')) {
     return buildBriefInitOutput(value);
+  }
+
+  if (String(value.command || '').startsWith('decision') || isObject(value.decision_review) || isObject(value.decision)) {
+    return buildBriefDecisionOutput(value);
   }
 
   if (isObject(value.summary) && Array.isArray(value.next_actions) && Object.prototype.hasOwnProperty.call(value, 'carry_over')) {
@@ -1567,11 +1608,19 @@ function parseOutputModeArgs(tokens) {
 }
 
 function applyOutputMode(value, brief) {
+  const enriched = agentProtocolHelpers.enrich(value);
   if (!brief) {
-    return value;
+    return enriched;
   }
 
-  return applyBriefMode(value);
+  const briefValue = applyBriefMode(enriched);
+  if (isObject(briefValue) && isObject(enriched) && isObject(enriched.agent_protocol) && !isObject(briefValue.agent_protocol)) {
+    return {
+      agent_protocol: summarizeAgentProtocol(enriched.agent_protocol),
+      ...briefValue
+    };
+  }
+  return briefValue;
 }
 
 module.exports = {
@@ -1580,7 +1629,7 @@ module.exports = {
   summarizeContextHygiene,
   summarizeScheduler,
   summarizeToolRecommendation,
-  summarizeActionCard,
+  summarizeAgentProtocol,
   summarizeHealth,
   summarizePermissionGates,
   compactObject,

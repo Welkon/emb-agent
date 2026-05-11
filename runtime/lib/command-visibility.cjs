@@ -5,6 +5,7 @@ const PUBLIC_COMMAND_NAMES = [
   'start',
   'ingest',
   'next',
+  'decision',
   'task',
   'capability',
   'pause',

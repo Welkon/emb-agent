@@ -64,6 +64,15 @@ function createContextProtocolRuntime(deps) {
     const nextContext = initialized ? deps.buildNextContext() : null;
     const resumeContext = initialized ? deps.buildResumeContext() : null;
     const activeTask = deps.getActiveTask();
+    const taskCandidates = !activeTask && typeof deps.listTaskCandidates === 'function'
+      ? (() => {
+          try {
+            return deps.listTaskCandidates({ limit: 5 });
+          } catch {
+            return [];
+          }
+        })()
+      : [];
     const handoff = deps.loadHandoff();
     const boardEvidenceSummary = deps.boardEvidence.summarizeBoardEvidence(projectRoot, {
       limit: 8
@@ -82,26 +91,32 @@ function createContextProtocolRuntime(deps) {
     const taskIntake = deps.buildTaskIntake({
       activeTask,
       hasHandoff: Boolean(handoff),
-      bootstrapPending
+      bootstrapPending,
+      taskCandidates
     });
+    const recommendedTask = taskCandidates.length > 0 ? taskCandidates[0] : null;
     const immediateCommand = handoff
       ? 'resume'
       : bootstrapCommand
         ? bootstrapCommand
       : activeTask
         ? 'next'
-        : initialized
-          ? 'task add <summary>'
-          : 'start';
+        : initialized && recommendedTask
+          ? `task activate ${recommendedTask.name}`
+          : initialized
+            ? 'task add <summary>'
+            : 'start';
     const immediateReason = handoff
       ? 'An unconsumed handoff exists and should be restored before any new work.'
       : bootstrapCommand
         ? bootstrap.summary
       : activeTask
         ? 'An active task already exists. Continue that task before starting new work.'
-        : initialized
-          ? 'The emb-agent project bootstrap already exists. Create and activate a task before execution.'
-          : 'The emb-agent project has just been initialized in this workspace.';
+        : initialized && recommendedTask
+          ? `The emb-agent project has existing open tasks. Activate ${recommendedTask.name} before execution instead of creating a duplicate task.`
+          : initialized
+            ? 'The emb-agent project bootstrap already exists. Create and activate a task before execution.'
+            : 'The emb-agent project has just been initialized in this workspace.';
 
     return deps.runtimeEventHelpers.appendRuntimeEvent({
       entry: 'start',

@@ -26,6 +26,7 @@ Output the emb-agent help summary below and nothing else.
 - If requirements, hardware truth, or the changed surface are still unclear, use `task add <summary>` first and let `scan` converge the task before `plan` or `do`.
 - After `task add`, use the generated task `prd.md` as the lightweight convergence point: make goal, constraints, acceptance, and open questions explicit before choosing `scan` or `plan`.
 - If the change crosses timing, concurrency, release, or interface boundaries, expect the safer path to be `task add -> scan -> plan -> review -> verify`.
+- If the request assumes an unconfirmed technical choice, use `decision review` / `decision record` before implementation.
 - Capability shortcuts: `scan`, `plan`, `do`, `debug`, `review`, `verify` — equivalent to `capability run <name>`.
 
 ## Public Commands
@@ -36,6 +37,7 @@ The public command surface is intentionally small and grouped by default path.
 
 - `$emb-start`
 - `$emb-task`
+- `$emb-decision`
 - `$emb-ingest`
 - `$emb-next`
 

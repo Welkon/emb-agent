@@ -601,6 +601,8 @@ function createCliEntryHelpers(deps) {
           'start',
           'status',
           'bootstrap [run [--confirm]]',
+          'prd status',
+          'prd confirm [--create-tasks]',
           'next [run]'
         ]
       },
@@ -801,9 +803,35 @@ function createCliEntryHelpers(deps) {
     const activeTask = settings.activeTask || null;
     const hasHandoff = settings.hasHandoff === true;
     const bootstrapPending = settings.bootstrapPending === true;
+    const taskCandidates = Array.isArray(settings.taskCandidates)
+      ? settings.taskCandidates.filter(Boolean)
+      : [];
 
     if (activeTask || hasHandoff) {
       return null;
+    }
+
+    if (!bootstrapPending && taskCandidates.length > 0) {
+      const recommended = taskCandidates[0];
+      return {
+        status: 'task-selection',
+        recommended_entry: `task activate ${recommended.name}`,
+        recommended_task: recommended,
+        candidates: taskCandidates.slice(0, 5),
+        summary: `Existing open tasks are available. Activate ${recommended.name} before scan, plan, or mutation instead of creating another task.`,
+        paths: [
+          {
+            id: 'continue-existing-task',
+            when: 'Open tasks already exist and none is active in this session.',
+            commands: [
+              `task activate ${recommended.name}`,
+              buildPreferredCapabilityCommand('scan'),
+              buildPreferredCapabilityCommand('plan')
+            ],
+            outcome: 'Work resumes from an existing task PRD instead of duplicating task intake.'
+          }
+        ]
+      };
     }
 
     return {

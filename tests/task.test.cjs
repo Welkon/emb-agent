@@ -621,7 +621,9 @@ test('task add automatically merges exact open tasks', async () => {
     assert.equal(merged.task_semantic_merge.action, 'merged-existing-task');
     assert.equal(merged.task_semantic_merge.matched, true);
     assert.equal(merged.task_semantic_merge.selected.name, created.task.name);
-    assert.match(merged.human_reply.zh, /已把这次 task add 自动合并/);
+    assert.equal('human_reply' in merged, false);
+    assert.match(merged.task_semantic_merge.summary, /Merged task add request/);
+    assert.equal(merged.agent_protocol.recommendation.command, `task activate ${created.task.name}`);
     assert.equal(tasks.tasks.filter(task => task.name !== '00-bootstrap-project').length, 1);
     assert.equal(manifest.priority, 'P0');
     assert.equal(manifest.merged_requests.length, 1);

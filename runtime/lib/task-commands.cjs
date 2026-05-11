@@ -38,6 +38,8 @@ function createTaskCommandHelpers(deps) {
   const CONTEXT_CHANNELS = ['implement', 'check', 'debug'];
   const CODE_WRITING_CONTEXT_CHANNELS = new Set(['implement']);
   const TASK_STATUSES = ['planning', 'in_progress', 'review', 'completed', 'rejected'];
+  const CLOSED_TASK_STATUSES = new Set(['completed', 'resolved', 'closed', 'rejected', 'archived', 'cancelled', 'canceled']);
+  const BOOTSTRAP_TASK_NAMES = new Set(['00-bootstrap-project', 'bootstrap-project']);
   const TASK_DEV_TYPES = ['backend', 'frontend', 'fullstack', 'test', 'docs', 'embedded'];
   const TASK_PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
   const AAR_QUESTION_DEFS = [
@@ -3607,6 +3609,88 @@ function createTaskCommandHelpers(deps) {
     return { tasks };
   }
 
+  function getTaskStatusValue(task) {
+    return normalizeTaskStatus(task && task.status ? task.status : '');
+  }
+
+  function isClosedTask(task) {
+    const status = getTaskStatusValue(task);
+    return status ? CLOSED_TASK_STATUSES.has(status) : false;
+  }
+
+  function isBootstrapTask(task) {
+    const name = String(task && task.name ? task.name : '').trim().toLowerCase();
+    const title = String(task && task.title ? task.title : '').trim().toLowerCase();
+    return BOOTSTRAP_TASK_NAMES.has(name) || title === 'bootstrap project notes';
+  }
+
+  function isActionableTask(task) {
+    return Boolean(
+      task &&
+      String(task.name || '').trim() &&
+      !isClosedTask(task) &&
+      !isBootstrapTask(task)
+    );
+  }
+
+  function getTaskStatusRank(task) {
+    const status = getTaskStatusValue(task);
+    if (status === 'in_progress' || status === 'doing') return 0;
+    if (status === 'review') return 1;
+    if (status === 'ready') return 2;
+    if (status === 'planning' || status === 'todo' || status === 'open') return 3;
+    if (status === 'blocked') return 4;
+    return 5;
+  }
+
+  function getTaskPriorityRank(task) {
+    const priority = String(task && task.priority ? task.priority : 'P2').trim().toUpperCase();
+    const match = priority.match(/^P(\d+)$/);
+    return match ? Number(match[1]) : 2;
+  }
+
+  function compareActionableTasks(left, right) {
+    const statusDelta = getTaskStatusRank(left) - getTaskStatusRank(right);
+    if (statusDelta !== 0) return statusDelta;
+    const priorityDelta = getTaskPriorityRank(left) - getTaskPriorityRank(right);
+    if (priorityDelta !== 0) return priorityDelta;
+    return String(right.updated_at || right.updatedAt || '').localeCompare(String(left.updated_at || left.updatedAt || ''));
+  }
+
+  function summarizeTaskCandidate(task) {
+    return {
+      name: task.name,
+      title: task.title || task.name,
+      status: task.status || '',
+      priority: task.priority || 'P2',
+      package: task.package || '',
+      updated_at: task.updated_at || task.updatedAt || '',
+      cli: buildCli(['task', 'activate', task.name])
+    };
+  }
+
+  function listTaskCandidates(options = {}) {
+    const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : 5;
+    return listTasks().tasks
+      .filter(isActionableTask)
+      .sort(compareActionableTasks)
+      .slice(0, limit)
+      .map(summarizeTaskCandidate);
+  }
+
+  function getTaskInventory(options = {}) {
+    const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : 5;
+    const tasks = listTasks().tasks;
+    const actionable = tasks.filter(isActionableTask).sort(compareActionableTasks);
+    return {
+      total: tasks.length,
+      actionable_count: actionable.length,
+      closed_count: tasks.filter(isClosedTask).length,
+      bootstrap_count: tasks.filter(isBootstrapTask).length,
+      candidates: actionable.slice(0, limit).map(summarizeTaskCandidate)
+    };
+  }
+
   function createTask(rest) {
     const parsed = parseTaskAddArgs(rest);
     if (parsed.help) {
@@ -3772,6 +3856,15 @@ function createTaskCommandHelpers(deps) {
     const currentTask = fs.existsSync(pointerPath)
       ? fs.readFileSync(pointerPath, 'utf8').trim()
       : '';
+    let currentTaskRecord = null;
+    if (currentTask) {
+      try {
+        currentTaskRecord = readTask(currentTask);
+      } catch {
+        currentTaskRecord = null;
+      }
+    }
+    const staleCurrentTask = currentTaskRecord && (isClosedTask(currentTaskRecord) || isBootstrapTask(currentTaskRecord));
     const activeTask = getActiveTask();
 
     updateSession(current => {
@@ -3780,7 +3873,8 @@ function createTaskCommandHelpers(deps) {
 
     return {
       command: 'task status',
-      current_task: currentTask,
+      current_task: staleCurrentTask ? '' : currentTask,
+      stale_current_task: staleCurrentTask ? currentTask : '',
       active_task: activeTask
         ? {
             name: activeTask.name,
@@ -3806,6 +3900,7 @@ function createTaskCommandHelpers(deps) {
         package: '',
         updated_at: ''
       },
+      task_inventory: getTaskInventory({ limit: 5 }),
       focus: session.focus || '',
       task_convergence: activeTask
         ? buildTaskConvergence(activeTask, {
@@ -4556,7 +4651,8 @@ function createTaskCommandHelpers(deps) {
     }
 
     try {
-      return readTask(session.active_task.name);
+      const task = readTask(session.active_task.name);
+      return isClosedTask(task) ? null : task;
     } catch {
       return null;
     }
@@ -4831,6 +4927,8 @@ function createTaskCommandHelpers(deps) {
   return {
     getTasksDir,
     getActiveTask,
+    listTaskCandidates,
+    getTaskInventory,
     handleTaskCommands
   };
 }

@@ -786,6 +786,34 @@ function createDispatchCommandRuntimeHelpers(deps) {
         ? runOptions.delegation_context
         : dispatch;
 
+    if (dispatch.dispatch_ready === false) {
+      const executionMeta = {
+        source: dispatch.source,
+        requested_action: dispatch.requested_action,
+        resolved_action: dispatch.resolved_action,
+        entered_via: enteredVia,
+        kind: 'action-blocked',
+        cli: dispatch.cli || '',
+        workflow_stage: dispatch.workflow_stage || null,
+        agent_execution: dispatch.agent_execution || null,
+        tool_execution: dispatch.tool_execution || null,
+        context_hygiene: dispatch.context_hygiene || null,
+        next_actions: dispatch.next_actions || [],
+        handoff: dispatch.handoff || null,
+        permission_gates: dispatch.permission_gates || [],
+        executor_signal: dispatch.executor_signal || null
+      };
+      return annotateExecutionResult({
+        status: dispatch.action_context && dispatch.action_context.status ? dispatch.action_context.status : 'blocked',
+        executed: false,
+        reason: dispatch.reason || '',
+        resolved_action: dispatch.resolved_action,
+        cli: dispatch.cli || '',
+        action_context: dispatch.action_context || null,
+        capability_route: dispatch.capability_route || null
+      }, executionMeta);
+    }
+
     if (
       dispatch.walkthrough_recommendation &&
       dispatch.walkthrough_execution &&

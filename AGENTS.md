@@ -17,7 +17,7 @@ Host-specific helpers may also live in:
 - `.codex/skills/` for Codex emb-agent command mirrors
 - `.claude/commands/emb/` for Claude Code slash command mirrors
 - `.cursor/commands/` for Cursor command wrappers
-- `.pi/extensions/` and `.pi/skills/` for Pi command wrappers and skills
+- `.pi/extensions/` for Pi startup and command wrappers
 - `.codex/agents/`, `.claude/agents/`, or `.cursor/agents/` for optional custom agents
 
 Keep this managed block so future emb-agent updates can refresh the instructions.

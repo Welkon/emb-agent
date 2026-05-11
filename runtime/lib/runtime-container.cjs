@@ -64,6 +64,8 @@ function createRuntimeContainer(options = {}) {
     cliEntryHelpers: require(path.join(rootDir, 'lib', 'cli-entrypoints.cjs')),
     cliRouterHelpers: require(path.join(rootDir, 'lib', 'cli-router.cjs')),
     taskCommandHelpers: require(path.join(rootDir, 'lib', 'task-commands.cjs')),
+    prdCommandHelpers: require(path.join(rootDir, 'lib', 'prd-command.cjs')),
+    decisionCommandHelpers: require(path.join(rootDir, 'lib', 'decision-command.cjs')),
     projectStateStoreHelpers: require(path.join(rootDir, 'lib', 'project-state-store.cjs')),
     settingsCommandHelpers: require(path.join(rootDir, 'lib', 'settings-command.cjs')),
     sessionReportCommandHelpers: require(path.join(rootDir, 'lib', 'session-report-command.cjs')),

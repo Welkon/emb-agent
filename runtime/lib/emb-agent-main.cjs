@@ -52,6 +52,8 @@ const {
   cliEntryHelpers,
   cliRouterHelpers,
   taskCommandHelpers,
+  prdCommandHelpers,
+  decisionCommandHelpers,
   projectStateStoreHelpers,
   settingsCommandHelpers,
   sessionReportCommandHelpers,
@@ -304,6 +306,8 @@ function resolveSession() {
 
 const {
   getActiveTask,
+  listTaskCandidates,
+  getTaskInventory,
   handleTaskCommands
 } = taskCommandHelpers.createTaskCommandHelpers({
   childProcess,
@@ -324,6 +328,26 @@ const {
   docCache,
   adapterSources,
   rootDir: ROOT
+});
+
+const {
+  handlePrdCommands
+} = prdCommandHelpers.createPrdCommandHelpers({
+  fs,
+  path,
+  runtime,
+  resolveProjectRoot,
+  updateSession
+});
+
+const {
+  handleDecisionCommands
+} = decisionCommandHelpers.createDecisionCommandHelpers({
+  fs,
+  path,
+  runtime,
+  resolveProjectRoot,
+  updateSession
 });
 
 const {
@@ -358,6 +382,7 @@ const {
   loadContextSummary,
   enrichWithToolSuggestions,
   getActiveTask,
+  listTaskCandidates,
   listSkills: (...args) => listSkills(...args)
 });
 
@@ -656,6 +681,8 @@ const {
   handleScaffoldCommands,
   handleWorkflowCommands,
   handleHealthUpdateCommands,
+  handlePrdCommands,
+  handleDecisionCommands,
   handleTaskCommands,
   handleExecutorCommands,
   handleSettingsCommands,
@@ -795,6 +822,7 @@ const {
   buildBootstrapSummary,
   buildResumeContext,
   getActiveTask,
+  listTaskCandidates,
   loadHandoff,
   buildTaskIntake,
   buildStartWorkflow,
@@ -900,6 +928,7 @@ const {
   buildStartContext,
   buildStatus,
   getActiveTask,
+  listTaskCandidates,
   handleCatalogAndStateCommands,
   capabilityMaterializer
 });

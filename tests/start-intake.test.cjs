@@ -83,15 +83,26 @@ test('start exposes isolated task intake guidance during bootstrap', async () =>
     );
 
     const tty = await captureCliTtyOutput(['start']);
+    const plainStderr = tty.stderr.replace(/\x1b\[[0-9;]*m/g, '');
     assert.equal(tty.stdout.trim(), '');
-    assert.match(tty.stderr, /Next: .*emb-agent\.cjs next/);
-    assert.match(tty.stderr, /System PRD: docs\/prd\/system\.md/);
-    assert.match(tty.stderr, /First: Open docs\/prd\/system\.md/);
-    assert.match(tty.stderr, /Task Intake: After bootstrap and the system PRD are ready, create a task and PRD first\./);
+    assert.match(plainStderr, /Next: .*emb-agent\.cjs next/);
+    assert.match(plainStderr, /System PRD: docs\/prd\/system\.md/);
+    assert.match(plainStderr, /First: Open docs\/prd\/system\.md/);
+    assert.match(plainStderr, /Task Intake: After bootstrap and the system PRD are ready, create a task and PRD first\./);
   } finally {
     process.chdir(currentCwd);
   }
 });
+
+function writeTaskManifest(projectRoot, name, manifest) {
+  const taskDir = path.join(projectRoot, '.emb-agent', 'tasks', name);
+  fs.mkdirSync(taskDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(taskDir, 'task.json'),
+    JSON.stringify({ name, title: name, status: 'planning', priority: 'P2', ...manifest }, null, 2) + '\n',
+    'utf8'
+  );
+}
 
 test('next asks for task intake once hardware identity is locked', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-next-task-intake-'));
@@ -114,9 +125,59 @@ test('next asks for task intake once hardware identity is locked', async () => {
     assert.match(next.action_card.then_cli, /task activate <name>/);
 
     const briefNext = await captureCliJson(['next', '--brief']);
-    assert.equal(briefNext.operator_handoff.status, 'blocked-by-task-intake');
-    assert.match(briefNext.operator_handoff.final_reply_rule, /concrete task in one sentence/);
-    assert.match(briefNext.operator_handoff.final_reply_rule, /do not lead with a placeholder CLI/);
+    assert.equal(briefNext.agent_protocol.gate.kind, 'task-intake');
+    assert.equal(briefNext.agent_protocol.gate.blocking, true);
+    assert.ok(briefNext.agent_protocol.gate.forbidden_actions.includes('do'));
+    assert.match(briefNext.agent_protocol.ai_instruction.ask_user, /具体任务|concrete task/i);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('next recommends activating an existing open task before scan when no task is active', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-next-task-selection-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await captureCliJson(['init']);
+    await captureCliJson(['declare', 'hardware', '--confirm', '--mcu', 'SC8P8122AD', '--package', 'SOP8']);
+
+    writeTaskManifest(tempProject, '00-bootstrap-project', {
+      title: 'Bootstrap project notes',
+      status: 'planning',
+      priority: 'P0',
+      updated_at: '2026-05-10T00:00:00.000Z'
+    });
+    writeTaskManifest(tempProject, 'closed-task', {
+      title: 'Closed task should not be suggested',
+      status: 'completed',
+      priority: 'P0',
+      updated_at: '2026-05-11T00:00:00.000Z'
+    });
+    writeTaskManifest(tempProject, 'adc-work', {
+      title: 'Implement ADC mapping',
+      status: 'in_progress',
+      priority: 'P1',
+      updated_at: '2026-05-09T00:00:00.000Z'
+    });
+    fs.writeFileSync(path.join(tempProject, '.emb-agent', '.current-task'), 'closed-task\n', 'utf8');
+
+    const next = await captureCliJson(['next']);
+
+    assert.equal(next.next.command, 'task activate adc-work');
+    assert.match(next.next.reason, /open tasks already exist/i);
+    assert.equal(next.workflow_stage.name, 'task-selection');
+    assert.equal(next.action_card.status, 'ready-to-run');
+    assert.match(next.action_card.first_cli, /task activate adc-work/);
+    assert.equal(next.task_selection.recommended_task.name, 'adc-work');
+    assert.deepEqual(next.task_selection.candidates.map(task => task.name), ['adc-work']);
+
+    const briefNext = await captureCliJson(['next', '--brief']);
+    assert.equal(briefNext.next.command, 'task activate adc-work');
+    assert.equal(briefNext.task_selection.recommended_task.name, 'adc-work');
+    assert.equal(briefNext.agent_protocol.gate.kind, 'task-selection');
+    assert.equal(briefNext.agent_protocol.recommendation.command, 'task activate adc-work');
   } finally {
     process.chdir(currentCwd);
   }

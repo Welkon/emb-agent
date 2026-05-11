@@ -17,6 +17,7 @@ const capabilityRouter = require('./capability-router.cjs');
 const boardEvidence = require('./board-evidence.cjs');
 const knowledgeGraphState = require('./knowledge-graph-state.cjs');
 const systemPrd = require('./system-prd.cjs');
+const prdCommand = require('./prd-command.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
@@ -99,6 +100,7 @@ function createSessionFlowHelpers(deps) {
     loadContextSummary,
     enrichWithToolSuggestions,
     getActiveTask,
+    listTaskCandidates,
     listSkills
   } = deps;
   const blankSelectionModeCache = new Map();
@@ -239,6 +241,95 @@ function createSessionFlowHelpers(deps) {
     } catch {
       return null;
     }
+  }
+
+  function getOpenTaskCandidates(limit = 5) {
+    if (typeof listTaskCandidates !== 'function') {
+      return [];
+    }
+
+    try {
+      return listTaskCandidates({ limit });
+    } catch {
+      return [];
+    }
+  }
+
+  function getPrdConfirmationState(projectRoot) {
+    try {
+      return prdCommand.summarizePrdConfirmationState(projectRoot, {
+        fs,
+        path,
+        runtime
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  function buildPrdConfirmationNext(resolved) {
+    const projectRoot = resolved && resolved.session ? resolved.session.project_root : '';
+    if (!projectRoot) {
+      return null;
+    }
+
+    const prdState = getPrdConfirmationState(projectRoot);
+    if (!prdState || prdState.confirmed || prdState.documents.length === 0) {
+      return null;
+    }
+
+    const plannedTaskCount = Number.isInteger(prdState.planned_task_count)
+      ? prdState.planned_task_count
+      : 0;
+    if (plannedTaskCount === 0 && prdState.status !== 'stale') {
+      return null;
+    }
+
+    const stalePrefix = prdState.status === 'stale'
+      ? 'PRD changed after the last confirmation.'
+      : 'Project PRDs exist but are not confirmed yet.';
+    return {
+      command: 'prd confirm --create-tasks',
+      cli: buildCli(['prd', 'confirm', '--create-tasks']),
+      reason: `${stalePrefix} Confirm ${prdState.documents.length} PRD document(s); then emb-agent will create ${plannedTaskCount} execution task(s) from the PRD structure.`,
+      prd_confirmation: prdState
+    };
+  }
+
+  function buildTaskSelection(candidates, followupCommand) {
+    const tasks = Array.isArray(candidates) ? candidates.filter(Boolean) : [];
+    if (tasks.length === 0) {
+      return null;
+    }
+
+    const recommended = tasks[0];
+    const activateCli = recommended.cli || buildCli(['task', 'activate', recommended.name]);
+    const followup = String(followupCommand || '').trim();
+    return {
+      status: 'ready',
+      recommended_entry: `task activate ${recommended.name}`,
+      recommended_task: recommended,
+      candidates: tasks,
+      then_cli: followup ? buildPreferredCapabilityCli(followup) : buildPreferredCapabilityCli('scan'),
+      summary: `Existing open tasks are available. Activate ${recommended.name} before scan, plan, or mutation instead of creating another task.`,
+      next_cli: activateCli
+    };
+  }
+
+  function buildTaskActivationNext(candidates) {
+    const selection = buildTaskSelection(candidates, 'scan');
+    if (!selection || !selection.recommended_task) {
+      return null;
+    }
+
+    const task = selection.recommended_task;
+    const taskLabel = task.title && task.title !== task.name ? `${task.name} (${task.title})` : task.name;
+    return {
+      command: `task activate ${task.name}`,
+      cli: selection.next_cli,
+      reason: `No active task is set, but open tasks already exist. Activate ${taskLabel} first, then continue with scan or plan.`,
+      task_selection: selection
+    };
   }
 
   function buildTaskConvergenceForNext(resolved, taskLike) {
@@ -913,19 +1004,6 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
-    if (suggestScanTool) {
-      const firstTool = primaryToolRecommendation || suggestedTools[0];
-      return {
-        command: 'scan',
-        reason: peripheralWalkthrough
-          ? 'Broad peripheral walkthrough detected. Run scan first, then walk every ready tool instead of stopping at the first one.'
-          : firstTool
-            ? `Hardware/formula/tool triage is more likely here. Run scan and evaluate ${firstTool.tool || firstTool.name} first.`
-            : 'Hardware truth, register, pin, or formula triage is more likely here. Run scan before choosing a tool.',
-        task_convergence: peripheralWalkthrough ? null : taskConvergence
-      };
-    }
-
     if (taskConvergence) {
       const prdPath = taskConvergence.prd_path || buildTaskPrdPath(activeTask.name);
       const taskLabel = activeTask && activeTask.title ? activeTask.title : activeTask.name;
@@ -958,13 +1036,6 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
-    if (openQuestions.length > 0 && !suggestScanTool) {
-      return {
-        command: 'debug',
-        reason: `Open questions remain; narrow the root cause around "${openQuestions[0]}" first`
-      };
-    }
-
     if (!activeTask && initGuidance && !initGuidance.project_definition_required) {
       const identity = initGuidance.selected_identity && typeof initGuidance.selected_identity === 'object'
         ? initGuidance.selected_identity
@@ -972,6 +1043,14 @@ function createSessionFlowHelpers(deps) {
       const hardwareLabel = String(identity.model || '').trim()
         ? `Hardware identity is locked (${runtime.unique([identity.vendor, identity.model, identity.package]).filter(Boolean).join(' ')})`
         : 'Project bootstrap is ready';
+      const taskActivation = buildTaskActivationNext(getOpenTaskCandidates(5));
+      if (taskActivation) {
+        return taskActivation;
+      }
+      const prdConfirmation = buildPrdConfirmationNext(resolved);
+      if (prdConfirmation) {
+        return prdConfirmation;
+      }
       return {
         command: 'task add <summary>',
         cli: buildCli(['task', 'add', '<summary>']),
@@ -982,6 +1061,26 @@ function createSessionFlowHelpers(deps) {
           recommended_entry: 'task add <summary>',
           then_cli: buildCli(['task', 'activate', '<name>'])
         }
+      };
+    }
+
+    if (suggestScanTool) {
+      const firstTool = primaryToolRecommendation || suggestedTools[0];
+      return {
+        command: 'scan',
+        reason: peripheralWalkthrough
+          ? 'Broad peripheral walkthrough detected. Run scan first, then walk every ready tool instead of stopping at the first one.'
+          : firstTool
+            ? `Hardware/formula/tool triage is more likely here. Run scan and evaluate ${firstTool.tool || firstTool.name} first.`
+            : 'Hardware truth, register, pin, or formula triage is more likely here. Run scan before choosing a tool.',
+        task_convergence: peripheralWalkthrough ? null : taskConvergence
+      };
+    }
+
+    if (openQuestions.length > 0 && !suggestScanTool) {
+      return {
+        command: 'debug',
+        reason: `Open questions remain; narrow the root cause around "${openQuestions[0]}" first`
       };
     }
 
@@ -1574,6 +1673,13 @@ function createSessionFlowHelpers(deps) {
         taskConvergence && taskConvergence.next_cli ? `task_next=${taskConvergence.next_cli}` : '',
         taskConvergence && taskConvergence.then_cli ? `task_then=${taskConvergence.then_cli}` : '',
         taskConvergence && taskConvergence.review_hint ? `task_review=${taskConvergence.review_hint}` : '',
+        next && next.prd_confirmation && next.prd_confirmation.status
+          ? `prd_confirmation=${next.prd_confirmation.status}; documents=${next.prd_confirmation.documents.length}; planned_tasks=${next.prd_confirmation.planned_task_count || 0}`
+          : '',
+        next && next.task_selection && next.task_selection.summary ? `task_selection=${next.task_selection.summary}` : '',
+        ...(next && next.task_selection && Array.isArray(next.task_selection.candidates)
+          ? next.task_selection.candidates.slice(0, 5).map(task => `task_candidate=${task.name}; status=${task.status || 'open'}; priority=${task.priority || 'P2'}; title=${task.title || task.name}`)
+          : []),
         next && next.task_prompt ? `user_prompt=${next.task_prompt}` : '',
         ...walkthroughRuntimeActions,
         ...peripheralWalkthroughActions,
@@ -1699,6 +1805,24 @@ function createSessionFlowHelpers(deps) {
         why: 'Current work has complexity or architecture risk and needs a preflight plan',
         exit_criteria: 'Execution scope, constraints, and checks are explicit',
         primary_command: command
+      };
+    }
+
+    if (command.startsWith('task activate ')) {
+      return {
+        name: 'task-selection',
+        why: 'Project truth is ready and open tasks exist, but none is active in this session',
+        exit_criteria: 'One existing open task is activated before scan, plan, or mutation',
+        primary_command: 'task activate'
+      };
+    }
+
+    if (command.startsWith('prd confirm')) {
+      return {
+        name: 'prd-confirmation',
+        why: 'Project PRDs must be confirmed before emb-agent derives execution tasks',
+        exit_criteria: 'PRD manifest is confirmed and concrete execution tasks exist',
+        primary_command: 'prd confirm'
       };
     }
 
@@ -1831,6 +1955,8 @@ function createSessionFlowHelpers(deps) {
       if (normalized.startsWith('walkthrough_plan=')) return walkthroughMode ? 3 : 5;
       if (normalized.includes('do not stop at the first matching tool')) return 0;
 
+      if (normalized.startsWith('task_selection=')) return 0;
+      if (normalized.startsWith('task_candidate=')) return 1;
       if (normalized.startsWith('task_convergence=')) return 0;
       if (normalized.startsWith('task_route=')) return 1;
       if (normalized.startsWith('task_prd=')) return 2;
@@ -1879,6 +2005,7 @@ function createSessionFlowHelpers(deps) {
       : null;
     const followupCli = String(quickstart.followup || '').replace(/^Then:\s*/i, '').trim();
     const taskIntakeCommand = command.command === 'task add <summary>' || command.command === 'task add';
+    const prdConfirmationCommand = String(command.command || '').startsWith('prd confirm');
     const taskActivateCli = command.task_intake && command.task_intake.then_cli
       ? command.task_intake.then_cli
       : buildCli(['task', 'activate', '<name>']);
@@ -1886,11 +2013,15 @@ function createSessionFlowHelpers(deps) {
       ? 'Close health blockers'
       : taskIntakeCommand
         ? 'Create a task'
+      : prdConfirmationCommand
+        ? 'Confirm PRD and create tasks'
       : `Continue with ${command.command || 'next'}`;
     const firstLabel = command.gated_by_health
       ? (firstQuickstartStep && firstQuickstartStep.label ? firstQuickstartStep.label : 'Run health closure first')
       : taskIntakeCommand
         ? 'Give the task'
+      : prdConfirmationCommand
+        ? 'Confirm PRD'
       : `Run ${command.command || 'next'}`;
     const selectedHints = command.gated_by_health
       ? { first: '', second: '' }
@@ -1899,6 +2030,8 @@ function createSessionFlowHelpers(deps) {
       ? (quickstart.user_summary || nextActions[0] || '')
       : taskIntakeCommand
         ? (command.task_prompt || 'Give the task you want done in one sentence, then activate it before continuing.')
+      : prdConfirmationCommand
+        ? 'Confirm the PRD contract, then let emb-agent create execution tasks from the subsystem PRDs.'
       : (selectedHints.first || nextActions[0] || '');
     const firstCli = firstQuickstartStep && firstQuickstartStep.cli
       ? firstQuickstartStep.cli
@@ -1919,7 +2052,9 @@ function createSessionFlowHelpers(deps) {
         ? 'blocked-by-health'
         : taskIntakeCommand
           ? 'blocked-by-task-intake'
-          : 'ready-to-run',
+          : prdConfirmationCommand
+            ? 'blocked-by-prd-confirmation'
+            : 'ready-to-run',
       stage: stage.name || command.command || '',
       action: actionName,
       summary: command.reason || stage.why || '',
@@ -2096,6 +2231,8 @@ function createSessionFlowHelpers(deps) {
         walkthrough_recommendation: guidance.walkthrough_recommendation,
         transcript_review: nextCommand.transcript_review || null,
         transcript_recommendation: nextCommand.transcript_recommendation || null,
+        task_selection: nextCommand.task_selection || null,
+        prd_confirmation: nextCommand.prd_confirmation || null,
         knowledge_graph: {
           state: knowledgeGraph.state,
           stale: knowledgeGraph.stale,
@@ -2106,6 +2243,8 @@ function createSessionFlowHelpers(deps) {
       knowledge_graph: knowledgeGraph,
       board_evidence: boardEvidenceSummary,
       task_convergence: taskConvergence,
+      task_selection: nextCommand.task_selection || null,
+      prd_confirmation: nextCommand.prd_confirmation || null,
       capability_route: capabilityRoute,
       product_layer: productLayer,
       action_card: buildNextActionCard({

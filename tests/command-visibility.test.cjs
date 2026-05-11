@@ -88,9 +88,10 @@ test('commands list hides removed aliases and exposes capability surface', async
   const listed = await captureCliJson(['commands', 'list']);
 
   assert.ok(Array.isArray(listed));
-  assert.equal(listed.length, 8);
+  assert.equal(listed.length, 9);
   assert.ok(listed.includes('help'));
   assert.ok(listed.includes('start'));
+  assert.ok(listed.includes('decision'));
   assert.ok(listed.includes('capability'));
   assert.ok(!listed.includes('scan'));
   assert.ok(!listed.includes('review'));

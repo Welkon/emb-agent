@@ -132,9 +132,10 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'lib', 'scheduler.cjs')), true);
     assert.equal(fs.existsSync(cliPath), true);
     assert.equal(fs.existsSync(path.join(tempHome, '.env.example')), true);
-    assert.equal(installedCommandFiles.length, 8);
+    assert.equal(installedCommandFiles.length, 9);
     assert.ok(installedCommandFiles.includes('help.md'));
     assert.ok(installedCommandFiles.includes('start.md'));
+    assert.ok(installedCommandFiles.includes('decision.md'));
     assert.ok(installedCommandFiles.includes('capability.md'));
     assert.ok(!installedCommandFiles.includes('init.md'));
     assert.ok(!installedCommandFiles.includes('verify.md'));
@@ -169,15 +170,15 @@ test('installer lays down config/lib and runtime commands work', async () => {
     );
     assert.match(
       fs.readFileSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md'), 'utf8'),
-      /operator_handoff/
+      /agent_protocol/
     );
     assert.match(
       fs.readFileSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md'), 'utf8'),
-      /Do not let the final visible item be a tool call/
+      /Do not expose long `node \.\.\.\/emb-agent\.cjs \.\.\.` paths/
     );
     assert.match(
       fs.readFileSync(path.join(tempHome, 'skills', 'emb-next', 'SKILL.md'), 'utf8'),
-      /If the user says only "continue" after a final `operator_handoff`/
+      /If the user says only "continue" after an `agent_protocol` recommendation/
     );
     assert.match(
       fs.readFileSync(path.join(tempHome, 'skills', 'emb-capability', 'SKILL.md'), 'utf8'),
@@ -197,7 +198,7 @@ test('installer lays down config/lib and runtime commands work', async () => {
     assert.doesNotMatch(fs.readFileSync(path.join(runtimeRoot, 'hooks', 'emb-session-start.js'), 'utf8'), /\{\{EMB_VERSION\}\}/);
     assert.match(stdout, /Install profile: core/);
     assert.match(stdout, /Created env example:/);
-    assert.match(stdout, /Installed 8 Codex skills under:/);
+    assert.match(stdout, /Installed 9 Codex skills under:/);
     assert.match(stdout, /Tip: create .*\.env from \.env\.example/);
     assert.match(stdout, /Tip: set MINERU_API_KEY/);
     assert.match(stdout, /Default chip support source: git@github\.com:Welkon\/emb-agent-adapters\.git/);
@@ -962,7 +963,7 @@ test('installer lays down claude agents and settings hooks', async () => {
     assert.match(JSON.stringify(settings.hooks.PostToolUse), /emb-context-monitor\.js/);
     assert.match(
       fs.readFileSync(path.join(tempHome, 'commands', 'emb', 'start.md'), 'utf8'),
-      /When this command matches the user intent, run `node .*emb-agent\/bin\/emb-agent\.cjs start`/
+      /When this command matches the user intent, run `node .*emb-agent\/bin\/emb-agent\.cjs start --brief`/
     );
     const sessionFlowContent = fs.readFileSync(path.join(runtimeRoot, 'lib', 'session-flow.cjs'), 'utf8');
     assert.doesNotMatch(sessionFlowContent, /~\/\.codex\/emb-agent\/bin\/emb-agent\.cjs/);
@@ -975,7 +976,7 @@ test('installer lays down claude agents and settings hooks', async () => {
     assert.equal(resolvedHost.subagentBridge.available, false);
     assert.equal(resolvedHost.subagentBridge.mode, 'disabled');
     assert.equal(resolvedHost.subagentBridge.source, 'none');
-    assert.match(stdout, /Installed 8 Claude commands under:/);
+    assert.match(stdout, /Installed 9 Claude commands under:/);
     assert.match(stdout, /Updated Claude Code config:/);
   } finally {
     process.stdout.write = originalWrite;
@@ -1009,7 +1010,7 @@ test('installer defaults Claude to project-scoped .claude layout', async () => {
       type: 'command',
       command: 'node ".claude/emb-agent/hooks/emb-statusline.js"'
     });
-    assert.match(stdout, /Installed 8 Claude commands under:/);
+    assert.match(stdout, /Installed 9 Claude commands under:/);
     assert.match(stdout, /\.claude\/commands\/emb/);
   } finally {
     process.chdir(currentCwd);
@@ -1050,7 +1051,7 @@ test('installer lays down cursor commands and settings hooks', async () => {
     assert.match(JSON.stringify(settings.hooks.PostToolUse), /emb-context-monitor\.js/);
     assert.match(
       fs.readFileSync(path.join(tempHome, 'commands', 'emb-start.md'), 'utf8'),
-      /When this command matches the user intent, run `node .*emb-agent\/bin\/emb-agent\.cjs start`/
+      /When this command matches the user intent, run `node .*emb-agent\/bin\/emb-agent\.cjs start --brief`/
     );
     assert.equal(hostMetadata.name, 'cursor');
     assert.equal(hostMetadata.subagent_bridge, undefined);
@@ -1060,7 +1061,7 @@ test('installer lays down cursor commands and settings hooks', async () => {
     assert.equal(resolvedHost.subagentBridge.available, false);
     assert.equal(resolvedHost.subagentBridge.mode, 'disabled');
     assert.equal(resolvedHost.subagentBridge.source, 'none');
-    assert.match(stdout, /Installed 8 Cursor commands under:/);
+    assert.match(stdout, /Installed 9 Cursor commands under:/);
     assert.match(stdout, /Updated Cursor config:/);
   } finally {
     process.stdout.write = originalWrite;
@@ -1092,7 +1093,7 @@ test('installer defaults Cursor to project-scoped .cursor layout', async () => {
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'req.yaml')), true);
-    assert.match(stdout, /Installed 8 Cursor commands under:/);
+    assert.match(stdout, /Installed 9 Cursor commands under:/);
     assert.match(stdout, /\.cursor\/commands/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /open a Cursor session\. emb-agent will inject the startup context automatically\./);
@@ -1103,7 +1104,7 @@ test('installer defaults Cursor to project-scoped .cursor layout', async () => {
   }
 });
 
-test('installer lays down Pi extension and skills', async () => {
+test('installer lays down Pi extension', async () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-pi-home-'));
   const originalWrite = process.stdout.write;
   let stdout = '';
@@ -1118,7 +1119,7 @@ test('installer lays down Pi extension and skills', async () => {
 
     const runtimeRoot = path.join(tempHome, 'emb-agent');
     const extensionPath = path.join(tempHome, 'extensions', 'emb-agent.ts');
-    const skillPath = path.join(tempHome, 'skills', 'emb-start', 'SKILL.md');
+
     const runtimeHost = require(path.join(runtimeRoot, 'lib', 'runtime-host.cjs'));
     const resolvedHost = runtimeHost.resolveRuntimeHost(runtimeRoot);
     const hostMetadata = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'HOST.json'), 'utf8'));
@@ -1126,14 +1127,13 @@ test('installer lays down Pi extension and skills', async () => {
 
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'bin', 'emb-agent.cjs')), true);
     assert.equal(fs.existsSync(extensionPath), true);
-    assert.equal(fs.existsSync(skillPath), true);
     assert.equal(fs.existsSync(path.join(tempHome, 'settings.json')), false);
+    assert.equal(fs.existsSync(path.join(tempHome, 'skills', 'emb-start', 'SKILL.md')), false);
     assert.equal(fs.existsSync(path.join(tempHome, 'agents', 'emb-arch-reviewer.md')), false);
     assert.match(fs.readFileSync(extensionPath, 'utf8'), /registerCommand\("emb"/);
     assert.match(fs.readFileSync(extensionPath, 'utf8'), /`emb:\$\{commandName\}`/);
+    assert.doesNotMatch(fs.readFileSync(extensionPath, 'utf8'), /emb-\$\{commandName\}/);
     assert.match(fs.readFileSync(extensionPath, 'utf8'), /emb-session-start\.js/);
-    assert.match(fs.readFileSync(skillPath, 'utf8'), /This Pi skill routes matching requests to the emb-agent command `start`/);
-    assert.match(fs.readFileSync(skillPath, 'utf8'), /\/emb start/);
     assert.equal(hostMetadata.name, 'pi');
     assert.equal(hostMetadata.config_file_name, 'settings.json');
     assert.equal(hostMetadata.subagent_bridge, undefined);
@@ -1142,7 +1142,7 @@ test('installer lays down Pi extension and skills', async () => {
     assert.match(resolvedHost.cliCommand, /emb-agent\/bin\/emb-agent\.cjs$/);
     assert.deepEqual(configData.developer, { name: 'felix', runtime: 'pi' });
     assert.match(stdout, /Installed Pi extension:/);
-    assert.match(stdout, /Installed 8 Pi skills under:/);
+    assert.doesNotMatch(stdout, /Pi skills under:/);
     assert.match(stdout, /Runtime metadata:/);
     assert.doesNotMatch(stdout, /Updated Pi config:/);
   } finally {
@@ -1171,7 +1171,7 @@ test('installer defaults Pi to project-scoped .pi layout', async () => {
 
     assert.equal(fs.existsSync(path.join(runtimeRoot, 'bin', 'emb-agent.cjs')), true);
     assert.equal(fs.existsSync(path.join(piRoot, 'extensions', 'emb-agent.ts')), true);
-    assert.equal(fs.existsSync(path.join(piRoot, 'skills', 'emb-next', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(piRoot, 'skills', 'emb-next', 'SKILL.md')), false);
     assert.equal(fs.existsSync(path.join(piRoot, 'settings.json')), false);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'project.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'hw.yaml')), true);
@@ -1207,7 +1207,9 @@ test('installer uninstall removes local Pi managed surfaces and preserves user s
     await installer.main(['--pi', '--developer', 'felix']);
     assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'emb-agent')), true);
     assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'extensions', 'emb-agent.ts')), true);
-    assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'skills', 'emb-start', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(tempProject, '.pi', 'skills', 'emb-start', 'SKILL.md')), false);
+    fs.mkdirSync(path.join(tempProject, '.pi', 'skills', 'emb-start'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, '.pi', 'skills', 'emb-start', 'SKILL.md'), '# stale managed mirror\n', 'utf8');
 
     await installer.main(['--pi', '--uninstall']);
 
@@ -1276,9 +1278,9 @@ test('installer defaults Codex to project-scoped .codex layout with local state 
     assert.match(resolvedHost.subagentBridge.command, /emb-codex-subagent-bridge\.cjs/);
 
     installedCli.main(['start']);
-    assert.match(stdout, /Installed 8 Codex skills under:/);
+    assert.match(stdout, /Installed 9 Codex skills under:/);
     assert.match(stdout, /\.codex\/skills/);
-    assert.doesNotMatch(stdout, /Installed 8 shared skills under:/);
+    assert.doesNotMatch(stdout, /Installed 9 shared skills under:/);
     assert.match(stdout, /Sub-agent bridge: .*emb-codex-subagent-bridge\.cjs/);
     assert.match(stdout, /Bootstrapped emb-agent project in:/);
     assert.match(stdout, /Bootstrap task:/);

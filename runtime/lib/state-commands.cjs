@@ -27,6 +27,8 @@ function createStateCommandHelpers(deps) {
     handleScaffoldCommands,
     handleWorkflowCommands,
     handleHealthUpdateCommands,
+    handlePrdCommands,
+    handleDecisionCommands,
     handleTaskCommands,
     handleExecutorCommands,
     handleSettingsCommands,
@@ -74,6 +76,16 @@ function createStateCommandHelpers(deps) {
       : undefined;
     if (healthUpdateResult !== undefined) {
       return healthUpdateResult;
+    }
+
+    const prdResult = handlePrdCommands ? handlePrdCommands(cmd, subcmd, rest) : undefined;
+    if (prdResult !== undefined) {
+      return prdResult;
+    }
+
+    const decisionResult = handleDecisionCommands ? handleDecisionCommands(cmd, subcmd, rest) : undefined;
+    if (decisionResult !== undefined) {
+      return decisionResult;
     }
 
     const taskResult = handleTaskCommands ? handleTaskCommands(cmd, subcmd, rest) : undefined;

@@ -4,6 +4,7 @@
 import { spawnSync } from "node:child_process";
 
 const RUNTIME_CLI = {{RUNTIME_CLI_JSON}};
+const RUNTIME_CLI_PATH = {{RUNTIME_CLI_PATH_JSON}};
 const SESSION_START_HOOK = {{SESSION_START_HOOK_JSON}};
 const CONTEXT_MONITOR_HOOK = {{CONTEXT_MONITOR_HOOK_JSON}};
 const STATUSLINE_HOOK = {{STATUSLINE_HOOK_JSON}};
@@ -94,38 +95,202 @@ function runStatusLine(cwd, model) {
   return output;
 }
 
-function compactStatusLine(raw) {
-  return String(raw || "")
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean)
-    .join("  ");
+function stripAnsi(text) {
+  return String(text || "").replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-function buildCommandPrompt(commandLine) {
-  const invocation = String(commandLine || "").trim()
-    ? `${RUNTIME_CLI} ${String(commandLine || "").trim()}`
-    : RUNTIME_CLI;
+function shortenMiddle(text, maxLength) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  if (!value || value.length <= maxLength) {
+    return value;
+  }
+  const keep = Math.max(4, Math.floor((maxLength - 1) / 2));
+  return `${value.slice(0, keep)}…${value.slice(-keep)}`;
+}
 
+function compactStatusLine(raw) {
+  const lines = String(raw || "")
+    .split(/\r?\n/)
+    .map(line => stripAnsi(line).replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return "";
+  }
+
+  const state = shortenMiddle(lines[0], 24);
+  const task = lines[1] ? shortenMiddle(lines[1], 30) : "";
+  const infoParts = lines[2]
+    ? lines[2]
+        .split("·")
+        .map(part => part.trim())
+        .filter(Boolean)
+        .filter((part, index) => !(index === 0 && !/^ctx|^context/i.test(part)))
+        .filter(part => !/^\d+[hm]$/i.test(part))
+    : [];
+  const taskCount = infoParts.find(part => /task\(s\)|open task/i.test(part));
+  const compactInfoParts = infoParts
+    .filter(part => !/task\(s\)|open task/i.test(part))
+    .slice(0, 4)
+    .map(part => shortenMiddle(part, 18));
+  if (taskCount) {
+    compactInfoParts.push(shortenMiddle(taskCount, 18));
+  }
+  const info = compactInfoParts.join(" · ");
+
+  return [state, task, info]
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function splitCommandLine(input) {
+  const args = [];
+  let current = "";
+  let quote = "";
+  let escape = false;
+
+  for (const char of String(input || "")) {
+    if (escape) {
+      current += char;
+      escape = false;
+      continue;
+    }
+    if (char === "\\") {
+      escape = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) {
+        quote = "";
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (current) {
+        args.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+
+  if (current) {
+    args.push(current);
+  }
+  return args;
+}
+
+function withCompactOutput(argv) {
+  const args = Array.isArray(argv) ? argv.slice() : [];
+  const hasOutputFlag = args.includes("--brief") || args.includes("--json");
+  if (!hasOutputFlag && (args[0] === "start" || args[0] === "next")) {
+    args.push("--brief");
+  }
+  return args;
+}
+
+function runEmbAgent(argv, cwd) {
+  const args = withCompactOutput(argv);
+  const result = spawnSync(process.execPath, [RUNTIME_CLI_PATH, ...args], {
+    cwd: cwd || process.cwd(),
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024,
+    timeout: 120000,
+    env: {
+      ...process.env,
+      EMB_AGENT_WORKSPACE_TRUST: "1"
+    }
+  });
+
+  return {
+    argv: args,
+    status: typeof result.status === "number" ? result.status : 1,
+    stdout: String(result.stdout || "").trim(),
+    stderr: String(result.stderr || result.error || "").trim()
+  };
+}
+
+function parseJsonMaybe(text) {
+  try {
+    return JSON.parse(String(text || ""));
+  } catch {
+    return null;
+  }
+}
+
+function truncateText(text, maxLength = 3000) {
+  const value = String(text || "").trim();
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength)}\n... (${value.length - maxLength} chars truncated)`;
+}
+
+function formatFailureResult(result) {
   return [
-    `emb-agent Pi command wrapper requested: \`${invocation}\`.`,
+    `emb-agent ${result.argv.join(" ")}: failed`,
+    truncateText(result.stderr || result.stdout)
+  ].filter(Boolean).join("\n");
+}
+
+function buildAiProtocolMessage(result) {
+  const payload = parseJsonMaybe(result.stdout) || {
+    status: result.status === 0 ? "ok" : "failed",
+    stdout: truncateText(result.stdout, 1200),
+    stderr: truncateText(result.stderr, 1200)
+  };
+  return [
+    "emb-agent machine protocol follows.",
+    "Use it only for routing; do not paste raw JSON, long node commands, or command transcripts to the human.",
+    "Reply to the human in concise Chinese with the state, the blocking gate if any, and the next confirmation/input needed.",
+    "Respect agent_protocol.gate.allowed_actions and agent_protocol.gate.forbidden_actions when present.",
     "",
-    "Run that CLI in the current repository using the bash tool.",
-    "Use the runtime output as the source of truth for follow-up actions; do not improvise a parallel workflow.",
-    "If the output contains `operator_handoff`, follow it as the final-answer contract.",
-    "If the output reports blockers, close the blocker or ask one concise question before continuing."
+    JSON.stringify({ argv: result.argv, status: result.status, payload }, null, 2)
   ].join("\n");
 }
 
-function sendCommandPrompt(pi, ctx, commandLine) {
-  const prompt = buildCommandPrompt(commandLine);
-  if (ctx.isIdle()) {
-    pi.sendUserMessage(prompt);
-  } else {
-    pi.sendUserMessage(prompt, { deliverAs: "followUp" });
+function runCommandAndReport(pi, ctx, commandLine) {
+  const argv = splitCommandLine(commandLine || "help");
+  const result = runEmbAgent(argv.length > 0 ? argv : ["help"], ctx.cwd);
+
+  if (result.status !== 0) {
+    pi.sendMessage({
+      customType: "emb-agent",
+      content: formatFailureResult(result),
+      display: true,
+      details: {
+        kind: "command-result",
+        argv: result.argv,
+        status: result.status
+      }
+    });
     if (ctx.hasUI) {
-      ctx.ui.notify("Queued emb-agent command after the current turn.", "info");
+      ctx.ui.notify("emb-agent command failed", "error");
     }
+    return;
+  }
+
+  pi.sendMessage(
+    {
+      customType: "emb-agent-protocol",
+      content: buildAiProtocolMessage(result),
+      display: false,
+      details: {
+        kind: "machine-protocol",
+        argv: result.argv,
+        status: result.status
+      }
+    },
+    { triggerTurn: true, deliverAs: ctx.isIdle() ? "followUp" : "steer" }
+  );
+  if (ctx.hasUI) {
+    ctx.ui.notify("emb-agent routed context to AI", "info");
   }
 }
 
@@ -150,9 +315,9 @@ export default function embAgentPiExtension(pi) {
     lastMonitorMessage = message;
     pi.sendMessage(
       {
-        customType: "emb-agent",
+        customType: "emb-agent-protocol",
         content: message,
-        display: true,
+        display: false,
         details: { kind: "context-monitor" }
       },
       { deliverAs: ctx.isIdle() ? "nextTurn" : "steer" }
@@ -162,20 +327,20 @@ export default function embAgentPiExtension(pi) {
   pi.registerCommand("emb", {
     description: "Run an emb-agent CLI command, for example /emb next or /emb task add <summary>",
     handler: async (args, ctx) => {
-      sendCommandPrompt(pi, ctx, String(args || "").trim() || "help");
+      runCommandAndReport(pi, ctx, String(args || "").trim() || "help");
+      updateStatus(ctx);
     }
   });
 
   for (const commandName of [...PUBLIC_COMMANDS, ...ACTION_ALIASES]) {
-    for (const wrapperName of [`emb:${commandName}`, `emb-${commandName}`]) {
-      pi.registerCommand(wrapperName, {
-        description: `Run emb-agent ${commandName}`,
-        handler: async (args, ctx) => {
-          const suffix = String(args || "").trim();
-          sendCommandPrompt(pi, ctx, suffix ? `${commandName} ${suffix}` : commandName);
-        }
-      });
-    }
+    pi.registerCommand(`emb:${commandName}`, {
+      description: `Run emb-agent ${commandName}`,
+      handler: async (args, ctx) => {
+        const suffix = String(args || "").trim();
+        runCommandAndReport(pi, ctx, suffix ? `${commandName} ${suffix}` : commandName);
+        updateStatus(ctx);
+      }
+    });
   }
 
   pi.on("session_start", async (_event, ctx) => {

@@ -33,7 +33,8 @@ test('next --brief returns condensed next context', async () => {
   assert.equal(output.output_mode, 'brief');
   assert.ok(output.current);
   assert.ok(output.next);
-  assert.ok(output.action_card);
+  assert.equal('action_card' in output, false);
+  assert.ok(output.agent_protocol);
   assert.ok(Array.isArray(output.next_actions));
   assert.ok(output.next_actions.length <= 5);
   assert.ok(output.runtime_events);
@@ -46,7 +47,7 @@ test('next --brief returns condensed next context', async () => {
   assert.equal(output.board_evidence.can_continue, true);
 });
 
-test('action --brief surfaces unified action cards and followups', async () => {
+test('action --brief surfaces agent protocol and followups', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-brief-action-'));
   const currentCwd = process.cwd();
 
@@ -59,10 +60,10 @@ test('action --brief surfaces unified action cards and followups', async () => {
     assert.equal(output.output_mode, 'brief');
     assert.ok(output.workflow_stage);
     assert.equal(output.workflow_stage.name, 'selection');
-    assert.ok(output.action_card);
-    assert.equal(output.action_card.stage, 'scan');
-    assert.equal(output.action_card.summary, 'Action=scan. Lock the real change surface before mutation.');
-    assert.match(output.action_card.then_cli, /emb-agent\.cjs capability run verify$/);
+    assert.equal('action_card' in output, false);
+    assert.equal(output.agent_protocol.recommendation.command, 'capability run plan');
+    assert.match(output.agent_protocol.recommendation.reason, /Action=scan/);
+    assert.match(output.agent_protocol.recommendation.cli, /emb-agent\.cjs capability run plan$/);
     assert.ok(Array.isArray(output.next_actions));
     assert.ok(output.next_actions.length > 0);
     assert.ok(output.next_actions.some(item => item.startsWith('instruction=')));
@@ -72,7 +73,7 @@ test('action --brief surfaces unified action cards and followups', async () => {
   }
 });
 
-test('action --brief keeps action card reasons in key-value form', async () => {
+test('action --brief keeps action reasons in agent protocol', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-brief-action-reason-'));
   const currentCwd = process.cwd();
 
@@ -84,10 +85,10 @@ test('action --brief keeps action card reasons in key-value form', async () => {
     const output = await captureCliJson(['capability', 'run', 'debug', '--brief']);
 
     assert.equal(output.output_mode, 'brief');
-    assert.ok(output.action_card);
-    assert.equal(output.action_card.stage, 'debug');
-    assert.equal(output.action_card.summary, 'Action=debug. Eliminate hypotheses one by one before patching.');
-    assert.match(output.action_card.reason, /^primary_agent=/);
+    assert.equal('action_card' in output, false);
+    assert.equal(output.workflow_stage.primary_command, 'debug');
+    assert.match(output.agent_protocol.recommendation.reason, /Action=debug/);
+    assert.match(output.next_actions.join('\n'), /decision_point=/);
   } finally {
     process.chdir(currentCwd);
   }
