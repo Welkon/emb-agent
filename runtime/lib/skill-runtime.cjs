@@ -590,16 +590,27 @@ function createSkillRuntimeHelpers(deps) {
       metadata.allowed_tools || metadata['allowed-tools'] || FALLBACK_ALLOWED_TOOLS
     );
     const hooks = toStringArray(metadata.hooks || []);
-    const executionMode = normalizeExecutionMode(metadata.execution_mode || metadata.execution || '');
+    let executionMode = normalizeExecutionMode(metadata.execution_mode || metadata.execution || '');
     const source = extras.source || (sourceRoot && sourceRoot.source ? sourceRoot.source : 'project');
-    const command = resolveCommandArray(
+    let command = resolveCommandArray(
       metadata.command || metadata.command_argv || metadata.entry || metadata.exec || ''
     );
     const commandInput = normalizeCommandInputMode(
       metadata.command_input || metadata.input_mode || metadata.input || ''
     );
-    const workingDirectory = String(metadata.working_directory || metadata.cwd || '').trim();
+    let workingDirectory = String(metadata.working_directory || metadata.cwd || '').trim();
     const evidenceHint = toStringArray(metadata.evidence_hint || metadata.evidence || []);
+    const baseDir = extras.base_dir || getSkillBaseDir(filePath);
+
+    if (
+      skillName === 'xc8-build' &&
+      fs.existsSync(path.join(baseDir, 'scripts', 'build_xc8.py')) &&
+      (command.length === 0 || executionMode === 'inline')
+    ) {
+      executionMode = 'command';
+      command = command.length > 0 ? command : ['python3', 'scripts/build_xc8.py'];
+      workingDirectory = workingDirectory || 'project';
+    }
 
     return {
       name: skillName,
@@ -615,7 +626,7 @@ function createSkillRuntimeHelpers(deps) {
       source,
       source_priority: extras.source_priority || sourcePriority(source),
       file_path: filePath,
-      base_dir: extras.base_dir || getSkillBaseDir(filePath),
+      base_dir: baseDir,
       display_path: getDisplayPath(
         filePath,
         extras.display_root || (sourceRoot ? sourceRoot.display_root : builtInDisplayRoot)
@@ -1964,9 +1975,10 @@ function createSkillRuntimeHelpers(deps) {
       throw new Error(`Skill ${skill.name} resolved to an empty command`);
     }
 
-    const cwd = skill.working_directory
-      ? path.resolve(skill.base_dir, skill.working_directory)
-      : skill.base_dir;
+    const workingDirectory = String(skill.working_directory || '').trim();
+    const cwd = workingDirectory === 'project'
+      ? resolveProjectRoot()
+      : (workingDirectory ? path.resolve(skill.base_dir, workingDirectory) : skill.base_dir);
     const commandRuntime = resolvePluginCommandRuntime(skill);
     const result = childProcess.spawnSync(argv[0], argv.slice(1), {
       cwd,

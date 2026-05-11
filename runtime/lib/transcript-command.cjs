@@ -524,6 +524,7 @@ function createTranscriptCommandHelpers(deps) {
     const ZH_QUESTION = /(有没有|会不会|多少|确认|查询|是不是|应该.*吗|行吗)/iu;
     const ZH_RISK = /(问题|偏高|偶发|失败|风险|漏电|倒灌|反灌|无法|不能)/iu;
     const ZH_POWER = /(低功耗|休眠|比较器|上拉|下拉|待机功耗)/iu;
+    const PREFERENCE_PATTERN = /(prefer|avoid|do not|don't|no helper|without helper|不要|不想|避免|优先|偏好|尽量|希望)/iu;
 
     entries.forEach(({ line, role }) => {
       const fromAssistant = role === 'assistant';
@@ -540,6 +541,9 @@ function createTranscriptCommandHelpers(deps) {
       }
       if (fromUserLike && isQuestion) {
         questions.push(line);
+      }
+      if (fromUserLike && !isQuestion && PREFERENCE_PATTERN.test(line)) {
+        preferences.push(line);
       }
       if (fromUserLike && ZH_RISK.test(line)) {
         risks.push(line);
@@ -568,7 +572,7 @@ function createTranscriptCommandHelpers(deps) {
       message_count: messages.length,
       semantic_review: buildSemanticReview(transcript),
       confirmed_facts: takeUnique(hardwareFacts, 24),
-      candidate_facts: takeUnique(lines.filter(line => hardwarePattern.test(line) && !isCodePasteLine(line) && !isHeadingLikeLine(line)), 24),
+      candidate_facts: takeUnique(lines.filter(line => HARDWARE_PATTERN.test(line) && !isCodePasteLine(line) && !isHeadingLikeLine(line)), 24),
       user_preferences: takeUnique(preferences, 16),
       open_questions: takeUnique(questions, 16),
       open_risks: takeUnique(risks, 16),

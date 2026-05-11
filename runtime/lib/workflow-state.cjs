@@ -163,6 +163,9 @@ function readHardwareConfig(projectRoot, deps) {
 
   const content = fs.readFileSync(hwPath, 'utf8');
   const lines = Array.isArray(content) ? content : String(content || '').split(/\r?\n/);
+  const parsed = runtime && typeof runtime.parseSimpleYaml === 'function'
+    ? runtime.parseSimpleYaml(hwPath) || {}
+    : {};
 
   function readIndentedKey(prefix) {
     const line = lines.find(item => item.startsWith(prefix));
@@ -172,9 +175,22 @@ function readHardwareConfig(projectRoot, deps) {
     return cleaned.trim();
   }
 
-  const model = readIndentedKey('  model:');
+  function cleanValue(value) {
+    return String(value || '').trim().replace(/^["']|["']$/g, '').trim();
+  }
+
+  function pushDatasheet(values, value) {
+    const cleaned = cleanValue(value);
+    if (cleaned && cleaned !== '[]') {
+      values.push(cleaned);
+    }
+  }
+
+  const topChip = typeof parsed.chip === 'string' ? cleanValue(parsed.chip) : '';
+  const topPackage = typeof parsed.package === 'string' ? cleanValue(parsed.package) : '';
+  const model = readIndentedKey('  model:') || topChip;
   const vendor = readIndentedKey('  vendor:');
-  const packageName = readIndentedKey('  package:');
+  const packageName = readIndentedKey('  package:') || topPackage;
 
   const config = {};
   if (model) {
@@ -189,23 +205,47 @@ function readHardwareConfig(projectRoot, deps) {
   }
 
   const datasheetLines = [];
-  let inDatasheetBlock = false;
+  if (Array.isArray(parsed.datasheets)) {
+    parsed.datasheets.forEach(item => pushDatasheet(datasheetLines, item));
+  } else if (typeof parsed.datasheets === 'string') {
+    pushDatasheet(datasheetLines, parsed.datasheets);
+  }
+  if (Array.isArray(parsed.datasheet)) {
+    parsed.datasheet.forEach(item => pushDatasheet(datasheetLines, item));
+  } else if (typeof parsed.datasheet === 'string') {
+    pushDatasheet(datasheetLines, parsed.datasheet);
+  }
+
+  let datasheetBlockIndent = null;
   for (const raw of lines) {
-    if (raw.startsWith('  datasheet:')) {
-      inDatasheetBlock = true;
+    const keyMatch = raw.match(/^(\s*)datasheets?:\s*(.*)$/);
+    if (keyMatch) {
+      const inlineValue = keyMatch[2].trim();
+      if (inlineValue) {
+        pushDatasheet(datasheetLines, inlineValue);
+        datasheetBlockIndent = null;
+      } else {
+        datasheetBlockIndent = keyMatch[1].length;
+      }
       continue;
     }
-    if (inDatasheetBlock && raw.startsWith('    - ')) {
-      const val = raw.slice(6).trim().replace(/^["']|["']$/g, '');
-      if (val) datasheetLines.push(val);
-    } else if (inDatasheetBlock && raw.trim() === '') {
+    if (datasheetBlockIndent !== null && raw.trim() === '') {
       continue;
-    } else if (inDatasheetBlock && !raw.startsWith('    ')) {
-      inDatasheetBlock = false;
+    }
+    if (datasheetBlockIndent !== null) {
+      const indent = raw.match(/^\s*/)[0].length;
+      const trimmed = raw.trim();
+      if (indent > datasheetBlockIndent && trimmed.startsWith('- ')) {
+        pushDatasheet(datasheetLines, trimmed.slice(2));
+        continue;
+      }
+      if (indent <= datasheetBlockIndent) {
+        datasheetBlockIndent = null;
+      }
     }
   }
   if (datasheetLines.length > 0) {
-    config.datasheets = datasheetLines;
+    config.datasheets = [...new Set(datasheetLines)];
   }
 
   return config;

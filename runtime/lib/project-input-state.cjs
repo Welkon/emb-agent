@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const attachProjectCli = require('../scripts/attach-project.cjs');
 
 const GENERATED_DOCS = new Set([
@@ -63,6 +64,14 @@ function detectBlankProjectSelectionMode(options) {
       : attachProjectCli.detectProjectInputs;
 
   if (!projectRoot || hasHardwareIdentity || hasChipProfile) {
+    return false;
+  }
+
+  try {
+    if (!fs.existsSync(projectRoot) || !fs.statSync(projectRoot).isDirectory()) {
+      return false;
+    }
+  } catch {
     return false;
   }
 

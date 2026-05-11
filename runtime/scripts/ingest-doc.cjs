@@ -400,17 +400,103 @@ function inferModel(identity, args, markdown) {
   return candidates[0] || '';
 }
 
+function normalizePackageName(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/^([A-Z]+)-(\d+)$/, '$1$2');
+}
+
+function inferPackageCandidates(markdown) {
+  const found = [];
+  const pattern = /\b(SOP-?\d+|SSOP-?\d+|DIP-?\d+|QFN-?\d+|LQFP-?\d+|TSSOP-?\d+|QFP-?\d+|SOT-?\d+|DFN-?\d+)\b/gi;
+  let match;
+
+  while ((match = pattern.exec(String(markdown || ''))) !== null) {
+    found.push(normalizePackageName(match[1]));
+  }
+
+  return normalizeDraftList(found).slice(0, 8);
+}
+
 function inferPackage(markdown) {
-  const match = String(markdown || '').match(
-    /\b(SOP-?\d+|SSOP-?\d+|DIP-?\d+|QFN-?\d+|LQFP-?\d+|TSSOP-?\d+|QFP-?\d+)\b/i
-  );
-  return match ? match[1].toUpperCase() : '';
+  const candidates = inferPackageCandidates(markdown);
+  return candidates.length === 1 ? candidates[0] : '';
+}
+
+function countPatternMatches(text, patterns) {
+  return patterns.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
+}
+
+function inferHardwareDocRole(identity, args, markdown, model) {
+  const text = [
+    args && args.title,
+    identity && identity.source_path,
+    model,
+    markdown
+  ].filter(Boolean).join('\n');
+  const chargerScore = countPatternMatches(text, [
+    /\bTP405\d[A-Z0-9-]*\b/i,
+    /\bbattery\s+charger\b/i,
+    /\bLi[- ]?ion\b/i,
+    /\bcharge\s+current\b/i,
+    /\bconstant[- ]current\b/i,
+    /\bconstant[- ]voltage\b/i,
+    /\bPROG\b/i,
+    /\bCHRG\b/i,
+    /\bBAT\b/i
+  ]);
+  const ledDriverScore = countPatternMatches(text, [
+    /\bBP2958[A-Z0-9-]*\b/i,
+    /\bLED\s+driver\b/i,
+    /\bconstant\s+current\s+LED\b/i,
+    /\bdimming\b/i,
+    /\bDIM\b/i
+  ]);
+  const mcuScore = countPatternMatches(text, [
+    /\bMCU\b/i,
+    /\bmicro[- ]?controller\b/i,
+    /\bGPIO\b/i,
+    /\bI\/?O\s+PORT\b/i,
+    /\bTimer(?:\d+)?\b/i,
+    /\bPWM\b/i,
+    /\bADC\b/i,
+    /\bWatchdog\b|\bWDT\b/i,
+    /\binterrupt\b/i,
+    /\binstruction\s+set\b/i,
+    /\bprogram\s+memory\b/i,
+    /\bOTP\b/i
+  ]);
+
+  if (chargerScore > 0 && chargerScore >= mcuScore) {
+    return 'battery-charger';
+  }
+  if (ledDriverScore > 0 && ledDriverScore >= mcuScore) {
+    return 'led-driver';
+  }
+  if (mcuScore > 0) {
+    return 'mcu';
+  }
+
+  return 'component';
 }
 
 function inferPeripherals(markdown) {
   const text = String(markdown || '');
+  const peripherals = [];
+  const timerMatches = normalizeDraftList(
+    (text.match(/\b(?:TIMER\d+|TM\d+)\b/gi) || []).map(item => item.toUpperCase())
+  );
+
+  timerMatches.forEach(name => {
+    peripherals.push({
+      name: name.replace(/^TIMER/, 'Timer'),
+      usage: 'Mentioned in parsed document'
+    });
+  });
+
   const patterns = [
-    ['Timer', /\bTIMER(?:\d+)?\b/i],
+    ['Timer', /\bTIMER\b/i],
     ['PWM', /\bPWM\b/i],
     ['UART', /\bUART\b/i],
     ['I2C', /\bI2C\b|\bIIC\b/i],
@@ -421,12 +507,25 @@ function inferPeripherals(markdown) {
     ['GPIO', /\bGPIO\b|\bIO PORT\b/i]
   ];
 
-  return patterns
+  patterns
     .filter(([, pattern]) => pattern.test(text))
-    .map(([name]) => ({
-      name,
-      usage: 'Mentioned in parsed document'
-    }))
+    .forEach(([name]) => {
+      peripherals.push({
+        name,
+        usage: 'Mentioned in parsed document'
+      });
+    });
+
+  const seen = new Set();
+  return peripherals
+    .filter(item => {
+      const key = String(item.name || '').toLowerCase();
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
     .slice(0, 8);
 }
 
@@ -459,28 +558,56 @@ function inferPinTruth(lines) {
 function buildHardwareDraftFacts(identity, args, markdown) {
   const lines = normalizeMarkdownLines(markdown);
   const model = inferModel(identity, args, markdown);
+  const packageCandidates = inferPackageCandidates(markdown);
   const pkg = inferPackage(markdown);
+  const documentRole = inferHardwareDocRole(identity, args, markdown, model);
+  const isMcuDocument = documentRole === 'mcu';
   const peripherals = inferPeripherals(markdown);
   const constraints = pickConstraintLines(lines);
   const truths = normalizeDraftList([
-    model ? `Parsed document title/model candidate: ${model}` : '',
+    model
+      ? (isMcuDocument
+          ? `Parsed document title/model candidate: ${model}`
+          : `Parsed hardware component candidate: ${model}`)
+      : '',
+    `Parsed hardware document role: ${documentRole}`,
     pkg ? `Parsed document mentions package ${pkg}` : '',
-    ...peripherals.map(item => `Parsed document mentions peripheral ${item.name}`),
-    inferPinTruth(lines)
+    packageCandidates.length > 1
+      ? `Parsed document mentions multiple package candidates: ${packageCandidates.join(', ')}`
+      : '',
+    ...(isMcuDocument ? peripherals.map(item => `Parsed document mentions peripheral ${item.name}`) : []),
+    isMcuDocument ? inferPinTruth(lines) : ''
   ]);
   const unknowns = normalizeDraftList([
     model ? '' : 'Model could not be confidently extracted from parsed document',
-    pkg ? '' : 'Package string not found in parsed document',
-    peripherals.length > 0 ? '' : 'Peripheral list not confidently extracted from parsed document',
+    packageCandidates.length > 1
+      ? 'Multiple package candidates were found; confirm the actual board package before setting mcu.package'
+      : (pkg ? '' : 'Package string not found in parsed document'),
+    isMcuDocument
+      ? (peripherals.length > 0 ? '' : 'Peripheral list not confidently extracted from parsed document')
+      : `Document classified as ${documentRole}; do not apply it as MCU identity without board or schematic evidence`,
     constraints.length > 0 ? '' : 'No explicit timing/electrical constraint lines were extracted'
   ]);
 
   return {
+    document_role: documentRole,
     mcu: {
-      model,
-      package: pkg
+      model: isMcuDocument ? model : '',
+      package: isMcuDocument ? pkg : ''
     },
-    peripherals,
+    components: isMcuDocument
+      ? []
+      : [
+          {
+            model,
+            role: documentRole,
+            package: pkg,
+            package_candidates: packageCandidates,
+            source: identity.source_path
+          }
+        ],
+    package_candidates: packageCandidates,
+    peripherals: isMcuDocument ? peripherals : [],
     truths,
     constraints,
     unknowns,
@@ -1271,6 +1398,11 @@ function buildApplyReadyHint(docId, selectedPreset, presetDiff, enabled) {
   };
 }
 
+function isNonMcuHardwareDraft(data) {
+  const role = String((data && data.document_role) || '').trim();
+  return Boolean(role && role !== 'mcu');
+}
+
 function buildAutoApplyReadyHint(projectRoot, entry) {
   if (!entry || !entry.doc_id) {
     return null;
@@ -1282,13 +1414,19 @@ function buildAutoApplyReadyHint(projectRoot, entry) {
   }
 
   const only = normalizeOnlyFields(to, []);
-  if (shouldSkipApply(entry, to, only, false)) {
+  let draft = null;
+
+  try {
+    draft = loadDraftFacts(projectRoot, entry, to);
+  } catch {
     return null;
   }
 
-  try {
-    loadDraftFacts(projectRoot, entry, to);
-  } catch {
+  if (to === 'hardware' && isNonMcuHardwareDraft(draft.data)) {
+    return null;
+  }
+
+  if (shouldSkipApply(entry, to, only, false)) {
     return null;
   }
 
@@ -1379,8 +1517,12 @@ function buildDocAgentAnalysis(projectRoot, entry, artifacts, explicitHardwareFa
   }
 
   const hardwareFacts = explicitHardwareFacts || (draft && draft.data ? draft.data : {});
+  const documentRole = String(hardwareFacts.document_role || 'mcu').trim();
   const model = String((hardwareFacts.mcu && hardwareFacts.mcu.model) || '').trim();
   const packageName = String((hardwareFacts.mcu && hardwareFacts.mcu.package) || '').trim();
+  if (!model || documentRole !== 'mcu') {
+    return null;
+  }
   const chipSeed =
     model ||
     String(entry.title || '').replace(path.extname(String(entry.title || '')), '').trim() ||
@@ -1442,6 +1584,36 @@ function buildDocRecommendedFlow(entry, agentAnalysis) {
     : null;
   const docId = entry && entry.doc_id ? entry.doc_id : '';
   const intendedTo = entry && entry.intended_to ? entry.intended_to : '';
+
+  if (intendedTo === 'hardware' && !analysis) {
+    return {
+      id: 'doc-to-component-review',
+      mode: 'component-facts-staged',
+      source_kind: 'component-document',
+      summary: 'Stage component-level hardware facts only; do not initialize chip-support analysis until an MCU document is confirmed.',
+      steps: [
+        {
+          id: 'ingest-doc',
+          kind: 'completed',
+          doc_id: docId,
+          target_domain: intendedTo
+        },
+        {
+          id: 'review-component-facts',
+          kind: 'review',
+          required: true,
+          target: resolveTruthTarget(intendedTo),
+          notes: 'Review component facts against the schematic/BOM before mapping anything into MCU identity.'
+        },
+        {
+          id: 'next',
+          kind: 'command',
+          cli: runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, ['next']),
+          argv: ['next']
+        }
+      ]
+    };
+  }
 
   return {
     id: 'doc-to-chip-support-analysis',

@@ -868,11 +868,44 @@ function buildProjectAgentsGuide(language) {
   ].join('\n');
 }
 
+function replaceManagedAgentsBlocks(existingContent, managedContent, force) {
+  const existing = String(existingContent || '');
+  const managed = String(managedContent || '').replace(/\s*$/, '\n');
+  const pattern = /<!-- EMB-AGENT:START -->[\s\S]*?<!-- EMB-AGENT:END -->\s*/g;
+  let seen = false;
+  const replaced = existing.replace(pattern, () => {
+    if (seen) {
+      return '';
+    }
+    seen = true;
+    return managed;
+  });
+
+  if (seen) {
+    return replaced.replace(/\s*$/, '\n');
+  }
+
+  if (!force) {
+    return null;
+  }
+
+  const prefix = existing.trim()
+    ? `${existing.replace(/\s*$/, '')}\n\n`
+    : '';
+  return `${prefix}${managed}`;
+}
+
 function ensureProjectAgentsGuide(projectRoot, force, language, runtimeTarget) {
   const filePath = path.join(projectRoot, PROJECT_AGENTS_PATH);
   const existedBefore = fs.existsSync(filePath);
 
-  if (existedBefore && !force) {
+  const content = buildProjectAgentsGuide(language);
+  const existingContent = existedBefore ? fs.readFileSync(filePath, 'utf8') : '';
+  const nextContent = existedBefore
+    ? replaceManagedAgentsBlocks(existingContent, content, force)
+    : content;
+
+  if (nextContent === null || nextContent === existingContent) {
     return {
       path: PROJECT_AGENTS_PATH,
       created: false,
@@ -881,19 +914,25 @@ function ensureProjectAgentsGuide(projectRoot, force, language, runtimeTarget) {
     };
   }
 
-  const content = buildProjectAgentsGuide(language);
-  fs.writeFileSync(filePath, content, 'utf8');
+  fs.writeFileSync(filePath, nextContent, 'utf8');
 
   const claudePath = path.join(projectRoot, 'CLAUDE.md');
   const isClaude = String(runtimeTarget || '').toLowerCase() === 'claude';
   if (isClaude) {
-    fs.writeFileSync(claudePath, content, 'utf8');
+    const claudeExisted = fs.existsSync(claudePath);
+    const claudeExisting = claudeExisted ? fs.readFileSync(claudePath, 'utf8') : '';
+    const claudeNext = claudeExisted
+      ? replaceManagedAgentsBlocks(claudeExisting, content, force)
+      : content;
+    if (claudeNext !== null && claudeNext !== claudeExisting) {
+      fs.writeFileSync(claudePath, claudeNext, 'utf8');
+    }
   }
 
   return {
     path: PROJECT_AGENTS_PATH,
     created: !existedBefore,
-    updated: existedBefore && force,
+    updated: existedBefore,
     reused: false
   };
 }

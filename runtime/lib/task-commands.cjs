@@ -677,6 +677,7 @@ function createTaskCommandHelpers(deps) {
     const control = stripPermissionControlTokens(rest);
     const tokens = control.tokens;
     const result = {
+      help: false,
       type: 'implement',
       summary: '',
       description: '',
@@ -690,12 +691,18 @@ function createTaskCommandHelpers(deps) {
       branch: '',
       baseBranch: resolveDefaultBaseBranch(),
       worktreePath: '',
-      notes: ''
+      notes: '',
+      forceNew: false,
+      mergeExisting: ''
     };
     const summaryParts = [];
 
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index];
+      if (token === '--help' || token === '-h') {
+        result.help = true;
+        continue;
+      }
       if (token === '--type') {
         result.type = tokens[index + 1] || '';
         index += 1;
@@ -756,6 +763,15 @@ function createTaskCommandHelpers(deps) {
         index += 1;
         continue;
       }
+      if (token === '--no-merge' || token === '--force-new') {
+        result.forceNew = true;
+        continue;
+      }
+      if (token === '--merge-existing') {
+        result.mergeExisting = tokens[index + 1] || '';
+        index += 1;
+        continue;
+      }
       if (token === '--note') {
         result.notes = tokens[index + 1] || '';
         index += 1;
@@ -765,6 +781,9 @@ function createTaskCommandHelpers(deps) {
     }
 
     result.summary = summaryParts.join(' ').trim();
+    if (result.help) {
+      return result;
+    }
     if (!result.summary) {
       throw new Error('Missing task summary');
     }
@@ -780,6 +799,7 @@ function createTaskCommandHelpers(deps) {
     result.description = String(result.description || '').trim();
     result.worktreePath = String(result.worktreePath || '').trim();
     result.notes = String(result.notes || '').trim();
+    result.mergeExisting = String(result.mergeExisting || '').trim();
     result.explicit_confirmation = control.explicit_confirmation;
     return result;
   }
@@ -804,6 +824,15 @@ function createTaskCommandHelpers(deps) {
     const control = stripPermissionControlTokens(rest);
     const tokens = control.tokens;
     const name = String(tokens[0] || '').trim();
+
+    if (name === '--help' || name === '-h') {
+      return {
+        help: true,
+        name: '',
+        rest: [],
+        explicit_confirmation: control.explicit_confirmation
+      };
+    }
 
     if (!name) {
       throw new Error(`Missing task name${commandLabel ? ` for ${commandLabel}` : ''}`);
@@ -1453,6 +1482,20 @@ function createTaskCommandHelpers(deps) {
     return path.join(getTaskDir(name), 'prd.md');
   }
 
+  function shouldRenderChineseTaskPrd() {
+    const agentsPath = path.join(resolveProjectRoot(), 'AGENTS.md');
+    if (!fs.existsSync(agentsPath)) {
+      return false;
+    }
+
+    const content = fs.readFileSync(agentsPath, 'utf8');
+    if (/Reply language:\s*(Chinese|zh|中文)/iu.test(content)) {
+      return true;
+    }
+
+    return /[\u4e00-\u9fff]/u.test(content);
+  }
+
   function buildTaskPrdContent(task) {
     const taskLike = task || {};
     const bindings = taskLike.bindings || {};
@@ -1464,6 +1507,46 @@ function createTaskCommandHelpers(deps) {
 
     if (hardware.model || hardware.package) {
       constraints.push(`${hardware.model || 'unknown MCU'} ${hardware.package || ''}`.trim());
+    }
+
+    if (shouldRenderChineseTaskPrd()) {
+      return [
+        `# ${taskLike.title || taskLike.name || '任务 PRD'}`,
+        '',
+        '## 目标',
+        '',
+        taskLike.goal || taskLike.description || taskLike.title || '定义这个任务最小且可验证的结果。',
+        '',
+        '## 范围',
+        '',
+        `- 类型: ${taskLike.type || 'implement'}`,
+        `- 优先级: ${taskLike.priority || 'P2'}`,
+        `- 状态: ${taskLike.status || 'planning'}`,
+        '',
+        '## 约束',
+        '',
+        ...(constraints.length > 0 ? constraints.map(item => `- ${item}`) : ['- 保持改动收敛，并绑定项目 truth/evidence。']),
+        '',
+        '## 验收清单',
+        '',
+        '- [ ] 修改代码或文档前已重新读取相关 truth 和 evidence',
+        '- [ ] 产出最小必要实现或分析结果',
+        '- [ ] 明确记录验证证据',
+        '- [ ] task resolve 前完成 AAR scan',
+        '',
+        '## 参考',
+        '',
+        ...(references.length > 0 ? references.map(item => `- ${item}`) : ['- 暂无']),
+        '',
+        '## 待确认问题',
+        '',
+        ...(openQuestions.length > 0 ? openQuestions.map(item => `- ${item}`) : ['- 暂无']),
+        '',
+        '## 已知风险',
+        '',
+        ...(knownRisks.length > 0 ? knownRisks.map(item => `- ${item}`) : ['- 暂无']),
+        ''
+      ].join('\n');
     }
 
     return [
@@ -1899,7 +1982,8 @@ function createTaskCommandHelpers(deps) {
     return {
       score,
       reasons,
-      merge:
+      merge: false,
+      candidate:
         score >= TASK_SEMANTIC_MERGE_THRESHOLD ||
         (score >= TASK_SEMANTIC_MERGE_SOFT_THRESHOLD && (sameScope || samePackage))
     };
@@ -1915,11 +1999,26 @@ function createTaskCommandHelpers(deps) {
       package: task.package || '',
       similarity_score: roundSimilarityScore(score.score),
       merge: score.merge === true,
+      candidate: score.candidate === true,
       reasons: runtime.unique(score.reasons || [])
     };
   }
 
   function findTaskSemanticMerge(parsed) {
+    if (parsed.forceNew) {
+      return {
+        enabled: false,
+        matched: false,
+        action: 'create-new-task',
+        incoming_summary: parsed.summary,
+        similarity_threshold: TASK_SEMANTIC_MERGE_THRESHOLD,
+        soft_similarity_threshold: TASK_SEMANTIC_MERGE_SOFT_THRESHOLD,
+        selected: null,
+        duplicate_candidates: [],
+        summary: 'Task merge was disabled for this request.'
+      };
+    }
+
     const openStatuses = new Set(['planning', 'in_progress', 'review']);
     const parent = String(parsed.parent || '').trim();
     const candidates = listTasks().tasks
@@ -1935,7 +2034,28 @@ function createTaskCommandHelpers(deps) {
         right.similarity_score - left.similarity_score ||
         String(left.name || '').localeCompare(String(right.name || ''))
       );
-    const selected = candidates.find(item => item.merge === true) || null;
+    let selected = candidates.find(item => item.merge === true) || null;
+
+    if (parsed.mergeExisting) {
+      const explicit = listTasks().tasks.find(task => task.name === parsed.mergeExisting);
+      if (!explicit) {
+        throw new Error(`Task not found for --merge-existing: ${parsed.mergeExisting}`);
+      }
+      if (!openStatuses.has(explicit.status)) {
+        throw new Error(`Task is not open for --merge-existing: ${parsed.mergeExisting}`);
+      }
+      selected = {
+        name: explicit.name,
+        title: explicit.title,
+        status: explicit.status,
+        scope: explicit.scope || '',
+        package: explicit.package || '',
+        similarity_score: 1,
+        merge: true,
+        candidate: true,
+        reasons: ['explicit-merge-existing']
+      };
+    }
 
     return {
       enabled: true,
@@ -1948,7 +2068,7 @@ function createTaskCommandHelpers(deps) {
       duplicate_candidates: candidates.slice(0, 3),
       summary: selected
         ? `Found similar open task ${selected.name}; merge this task add request instead of creating a duplicate.`
-        : 'No similar open task crossed the automatic merge threshold.'
+        : 'No exact open task match was found. Fuzzy semantic matches are candidates only.'
     };
   }
 
@@ -3438,6 +3558,9 @@ function createTaskCommandHelpers(deps) {
 
   function createTask(rest) {
     const parsed = parseTaskAddArgs(rest);
+    if (parsed.help) {
+      return buildTaskAddHelpPayload();
+    }
     const previewBindings = buildTaskBindings(parsed.summary);
     const semanticMerge = findTaskSemanticMerge(parsed);
     const blocked = applyTaskWritePermission({
@@ -4189,6 +4312,9 @@ function createTaskCommandHelpers(deps) {
 
   function scanTaskAar(rest) {
     const input = parseNamedTaskWriteArgs(rest, 'task aar scan');
+    if (input.help) {
+      return buildTaskAarHelpPayload('task aar scan');
+    }
     const task = readTask(input.name);
     const blocked = applyTaskWritePermission({
       scanned: false,
@@ -4240,6 +4366,9 @@ function createTaskCommandHelpers(deps) {
 
   function recordTaskAar(rest) {
     const input = parseNamedTaskWriteArgs(rest, 'task aar record');
+    if (input.help) {
+      return buildTaskAarHelpPayload('task aar record');
+    }
     const task = readTask(input.name);
     const blocked = applyTaskWritePermission({
       recorded: false,
@@ -4383,7 +4512,8 @@ function createTaskCommandHelpers(deps) {
       usage: [
         'task list',
         'task status',
-        'task add [--confirm] <summary>',
+        'task add [--confirm] [--no-merge|--force-new] <summary>',
+        'task add [--confirm] --merge-existing <name> <summary>',
         'task activate [--confirm] [--worktree] <name>',
         'task show <name>',
         'task resolve [--confirm] <name> [note]',
@@ -4424,6 +4554,59 @@ function createTaskCommandHelpers(deps) {
         'task resolve auto-merges managed git worktree changes into the main workspace before cleanup.',
         'Use context focus get|set|clear for session focus; task resolve clears the active task pointer.'
       ]
+    };
+  }
+
+  function buildTaskAddHelpPayload() {
+    return {
+      command: 'task add',
+      usage: [
+        'task add [--confirm] <summary>',
+        'task add [--confirm] --no-merge <summary>',
+        'task add [--confirm] --force-new <summary>',
+        'task add [--confirm] --merge-existing <name> <summary>'
+      ],
+      options: [
+        '--type <kind>',
+        '--description <text>',
+        '--dev-type <embedded|docs|test|infra>',
+        '--scope <slug>',
+        '--package <name>',
+        '--priority <P0|P1|P2|P3>',
+        '--assignee <name>',
+        '--parent <task>',
+        '--branch <branch>',
+        '--base-branch <branch>',
+        '--worktree-path <path>',
+        '--note <text>',
+        '--no-merge',
+        '--force-new',
+        '--merge-existing <name>'
+      ],
+      notes: [
+        'Exact title or slug matches can still merge automatically.',
+        'Fuzzy semantic matches are reported as duplicate_candidates but are not merged unless --merge-existing is used.'
+      ]
+    };
+  }
+
+  function buildTaskAarHelpPayload(commandName) {
+    const command = commandName || 'task aar';
+    return {
+      command,
+      usage: command === 'task aar record'
+        ? [
+            'task aar record <name> --aar-summary <text> --aar-detail <text>',
+            'task aar record <name> --aar-new-pattern yes|no --aar-new-trap yes|no --aar-missing-rule yes|no --aar-outdated-rule yes|no'
+          ]
+        : [
+            'task aar scan <name> --aar-new-pattern yes|no --aar-new-trap yes|no --aar-missing-rule yes|no --aar-outdated-rule yes|no',
+            'task aar scan <name> --aar-skip-reason <text>'
+          ],
+      guidance: {
+        questions: buildAarQuestionPrompts(),
+        ...buildAarGuidance()
+      }
     };
   }
 
@@ -4506,7 +4689,7 @@ function createTaskCommandHelpers(deps) {
       return cleanupTaskWorktreeCommand(rest.slice(1));
     }
 
-    if (subcmd === 'aar' && (!rest[0] || rest[0] === 'help')) {
+    if (subcmd === 'aar' && (!rest[0] || rest[0] === 'help' || rest[0] === '--help' || rest[0] === '-h')) {
       return {
         guidance: {
           questions: buildAarQuestionPrompts(),

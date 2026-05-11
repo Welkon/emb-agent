@@ -181,6 +181,55 @@ test('skills discover directory bundles and execute command skills from project 
   }
 });
 
+test('skills run infers command execution for inline xc8-build skill with bundled script', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-xc8-inline-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await captureJson(['init']);
+
+    const skillDir = path.join(tempProject, '.emb-agent', 'skills', 'xc8-build');
+    writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      [
+        '---',
+        'name: xc8-build',
+        'description: Build firmware with XC8.',
+        'execution_mode: inline',
+        '---',
+        '',
+        '# xc8-build',
+        '',
+        'Build the current firmware project.',
+        ''
+      ].join('\n')
+    );
+    writeFile(
+      path.join(skillDir, 'scripts', 'build_xc8.py'),
+      [
+        'import json',
+        'import os',
+        'import sys',
+        '',
+        'print(json.dumps({"status": "ok", "cwd": os.getcwd(), "argv": sys.argv[1:]}))',
+        ''
+      ].join('\n')
+    );
+
+    const runResult = await captureJson(['skills', 'run', 'xc8-build', '--', '--verify']);
+
+    assert.equal(runResult.skill.execution_mode, 'command');
+    assert.equal(runResult.execution.mode, 'command');
+    assert.equal(runResult.command_result.status, 'ok');
+    assert.equal(runResult.command_result.cwd, tempProject);
+    assert.equal(runResult.command_result.parsed_output.cwd, tempProject);
+    assert.deepEqual(runResult.command_result.parsed_output.argv, ['--verify']);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
 test('skills install can add, disable, enable, and remove plugin-managed skills', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-plugin-project-'));
   const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-skill-plugin-bundle-'));

@@ -120,6 +120,45 @@ function createDispatchHelpers(deps) {
         getWalkthroughRuntime(resolvedSession.session)
       );
 
+      if (resolvedAction === 'task add <summary>' || resolvedAction === 'task add') {
+        const capabilityRoute = capabilityRouter.buildCapabilityRoute(resolvedAction, {
+          command: resolvedAction,
+          primary_entry_cli: next.next.cli,
+          primary_entry_kind: 'command',
+          primary_entry_name: 'task add'
+        });
+        return {
+          source: 'next',
+          requested_action: 'next',
+          resolved_action: resolvedAction,
+          reason: next.next.reason,
+          cli: next.next.cli,
+          capability_route: capabilityRoute,
+          dispatch_ready: false,
+          agent_execution: null,
+          workflow_stage: next.workflow_stage || null,
+          knowledge_graph: next.knowledge_graph || null,
+          context_hygiene: next.context_hygiene,
+          next_actions: next.next_actions,
+          current: next.current,
+          diagnostics,
+          executor_signal: executorSignal,
+          health: next.health || null,
+          permission_gates: next.permission_gates || [],
+          handoff: next.handoff,
+          tool_execution: null,
+          action_context: {
+            status: 'blocked-by-task-intake',
+            action_card: next.action_card || null,
+            workflow_stage: next.workflow_stage || null,
+            next_actions: next.next_actions || [],
+            context_hygiene: next.context_hygiene || null
+          },
+          walkthrough_recommendation: walkthroughRecommendation,
+          walkthrough_execution: walkthroughExecution
+        };
+      }
+
       if (resolvedAction === 'arch-review') {
         const archDispatch = buildArchReviewDispatchContext();
         const capabilityRoute = capabilityRouter.buildCapabilityRoute(resolvedAction, {

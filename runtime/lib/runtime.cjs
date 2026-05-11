@@ -1571,8 +1571,32 @@ function validateProfile(name, profile) {
   };
 }
 
+function normalizeCaseInsensitiveProjectRoot(projectRoot) {
+  const resolved = String(projectRoot || '').replace(/\\/g, '/');
+  const match = resolved.match(/^\/mnt\/([A-Za-z])(?:\/(.*))?$/);
+  if (!match) {
+    return projectRoot;
+  }
+
+  const rest = match[2] ? `/${match[2].toLowerCase()}` : '';
+  return `/mnt/${match[1].toLowerCase()}${rest}`;
+}
+
+function canonicalizeProjectRoot(projectRoot) {
+  const resolved = path.resolve(projectRoot || process.cwd());
+  let realPath = resolved;
+
+  try {
+    realPath = fs.realpathSync.native(resolved);
+  } catch {
+    realPath = resolved;
+  }
+
+  return normalizeCaseInsensitiveProjectRoot(realPath);
+}
+
 function getProjectKey(projectRoot) {
-  return crypto.createHash('sha1').update(path.resolve(projectRoot)).digest('hex').slice(0, 12);
+  return crypto.createHash('sha1').update(canonicalizeProjectRoot(projectRoot)).digest('hex').slice(0, 12);
 }
 
 function detectGitBranch(projectRoot) {
@@ -1593,7 +1617,7 @@ function detectGitBranch(projectRoot) {
 }
 
 function getProjectStatePaths(rootDir, cwd, runtimeConfig) {
-  const projectRoot = path.resolve(cwd);
+  const projectRoot = canonicalizeProjectRoot(cwd);
   const projectKey = getProjectKey(projectRoot);
   const stateDir = path.resolve(rootDir, runtimeConfig.project_state_dir);
   const legacyStateDir = path.resolve(
@@ -1960,6 +1984,7 @@ function validateContextSummary(summary, runtimeConfig) {
 
 module.exports = {
   cleanupStaleLock,
+  canonicalizeProjectRoot,
   ensureDir,
   ensureProjectStateStorage,
   buildSessionStateView,

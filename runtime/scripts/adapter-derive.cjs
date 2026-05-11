@@ -1121,7 +1121,7 @@ function buildBindingNotes(baseNotes, evidence) {
 }
 
 function buildTimerBinding(toolName, config) {
-  const timers = matchPeripherals(config.peripherals, /\bTIMER(?:\d+)?\b/i)
+  const timers = matchPeripherals(config.peripherals, /\b(?:TIMER(?:\d+)?|TM\d+)\b/i)
     .map(item => String(item.name || '').trim())
     .filter(Boolean);
   const timerName = timers[0] || '';

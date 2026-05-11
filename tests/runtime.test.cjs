@@ -47,6 +47,19 @@ test('loadRuntimeConfig returns validated defaults', () => {
   assert.equal(config.max_last_files, 12);
 });
 
+test('project state keys canonicalize WSL Windows mount casing', () => {
+  const config = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
+  const upperPath = '/mnt/d/Proj/extrap/emb/test-f/RH-SZZ-002';
+  const lowerPath = '/mnt/d/proj/extrap/emb/test-f/rh-szz-002';
+
+  assert.equal(runtime.canonicalizeProjectRoot(upperPath), lowerPath);
+  assert.equal(runtime.getProjectKey(upperPath), runtime.getProjectKey(lowerPath));
+  assert.equal(
+    runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), upperPath, config).projectRoot,
+    lowerPath
+  );
+});
+
 test('normalizeSession fills metadata and trims arrays', () => {
   const config = runtime.loadRuntimeConfig(path.join(repoRoot, 'runtime'));
   const paths = runtime.getProjectStatePaths(path.join(repoRoot, 'runtime'), '/tmp/example-proj', config);

@@ -538,7 +538,53 @@ test('capability do requires selected code-writing specs without making them glo
   }
 });
 
-test('task add automatically merges similar open tasks', async () => {
+test('task help flags do not create synthetic tasks', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-help-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const addHelp = await captureCliJson(['task', 'add', '--help']);
+    const aarHelp = await captureCliJson(['task', 'aar', 'record', '--help']);
+
+    assert.equal(addHelp.command, 'task add');
+    assert.equal(aarHelp.command, 'task aar record');
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', 'help')), false);
+    assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', '--help')), false);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task add renders Chinese PRD when project asks for Chinese replies', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-zh-prd-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+    writeText(
+      path.join(tempProject, 'AGENTS.md'),
+      'Reply language: Chinese (Simplified). Always reply in this language.\n'
+    );
+
+    const created = await captureCliJson(['task', 'add', '实现低功耗电量检测']);
+    const prdText = fs.readFileSync(
+      path.join(tempProject, '.emb-agent', 'tasks', created.task.name, 'prd.md'),
+      'utf8'
+    );
+
+    assert.match(prdText, /## 目标/);
+    assert.match(prdText, /## 验收清单/);
+    assert.doesNotMatch(prdText, /## Acceptance Checklist/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task add automatically merges exact open tasks', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-merge-'));
   const currentCwd = process.cwd();
 
@@ -551,7 +597,7 @@ test('task add automatically merges similar open tasks', async () => {
       '--brief',
       'task',
       'add',
-      'implement pwm adapter for TM2',
+      'Implement TM2 PWM adapter',
       '--priority',
       'P0',
       '--note',
@@ -578,6 +624,36 @@ test('task add automatically merges similar open tasks', async () => {
     assert.equal(manifest.priority, 'P0');
     assert.equal(manifest.merged_requests.length, 1);
     assert.match(manifest.notes, /Merged task add/);
+  } finally {
+    process.chdir(currentCwd);
+  }
+});
+
+test('task add reports fuzzy duplicates without auto-merging them', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-task-fuzzy-candidate-'));
+  const currentCwd = process.cwd();
+
+  try {
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const created = await captureCliJson(['task', 'add', 'Implement TM2 PWM adapter', '--priority', 'P2']);
+    const candidate = await captureCliJson([
+      'task',
+      'add',
+      'implement pwm adapter for TM2',
+      '--priority',
+      'P1'
+    ]);
+    const tasks = await captureCliJson(['task', 'list']);
+
+    assert.equal(created.created, true);
+    assert.equal(candidate.created, true);
+    assert.equal(candidate.merged, false);
+    assert.equal(candidate.task.name === created.task.name, false);
+    assert.equal(candidate.task_semantic_merge.matched, false);
+    assert.ok(candidate.task_semantic_merge.duplicate_candidates.some(item => item.name === created.task.name));
+    assert.equal(tasks.tasks.filter(task => task.name !== '00-bootstrap-project').length, 2);
   } finally {
     process.chdir(currentCwd);
   }

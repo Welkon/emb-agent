@@ -1594,6 +1594,7 @@ function createKnowledgeRuntimeHelpers(deps) {
   function buildKnowledgeGraph() {
     ensureKnowledgeDirs();
     ensureGraphDirs();
+    ensureWikiStubs();
     const nodes = new Map();
     const edges = new Map();
     addTruthFileGraph(nodes, edges, 'project.json', 'Project configuration truth.');
@@ -1628,7 +1629,6 @@ function createKnowledgeRuntimeHelpers(deps) {
     fs.writeFileSync(graphPath, JSON.stringify(graph, null, 2) + '\n', 'utf8');
     fs.writeFileSync(reportPath, buildGraphReportMarkdown(graph), 'utf8');
     fs.writeFileSync(getGraphPath('cache', 'manifest.json'), JSON.stringify(graph.manifest, null, 2) + '\n', 'utf8');
-    ensureWikiStubs();
     appendLog('graph', 'Build knowledge graph', [
       `Wrote ${getGraphRelativePath('graph.json')}`,
       `Wrote ${getGraphRelativePath('GRAPH_REPORT.md')}`,

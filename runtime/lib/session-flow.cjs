@@ -953,6 +953,13 @@ function createSessionFlowHelpers(deps) {
       };
     }
 
+    if (openQuestions.length > 0 && !suggestScanTool) {
+      return {
+        command: 'debug',
+        reason: `Open questions remain; narrow the root cause around "${openQuestions[0]}" first`
+      };
+    }
+
     if (!activeTask && initGuidance && !initGuidance.project_definition_required) {
       const identity = initGuidance.selected_identity && typeof initGuidance.selected_identity === 'object'
         ? initGuidance.selected_identity
@@ -970,13 +977,6 @@ function createSessionFlowHelpers(deps) {
           recommended_entry: 'task add <summary>',
           then_cli: buildCli(['task', 'activate', '<name>'])
         }
-      };
-    }
-
-    if (openQuestions.length > 0 && !suggestScanTool) {
-      return {
-        command: 'debug',
-        reason: `Open questions remain; narrow the root cause around "${openQuestions[0]}" first`
       };
     }
 

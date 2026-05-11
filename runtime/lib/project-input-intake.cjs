@@ -108,7 +108,7 @@ function buildPendingProjectInputIntake(projectRoot, options = {}) {
     preferred = {
       type: 'doc',
       file: pendingDocs[0],
-      summary: `Discovered hardware PDF ${pendingDocs[0]}. Parse it into staged hardware facts before confirming the MCU/package in ${hwPath}.`,
+      summary: `Discovered hardware PDF ${pendingDocs[0]}. Parse it into staged hardware or component facts before confirming the MCU/package fields in ${hwPath}.`,
       cli: `ingest doc --file ${pendingDocs[0]} --kind datasheet --to hardware`,
       argv: ['ingest', 'doc', '--file', pendingDocs[0], '--kind', 'datasheet', '--to', 'hardware']
     };

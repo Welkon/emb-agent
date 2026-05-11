@@ -209,6 +209,77 @@ test('ingest doc caches parsed markdown and reuses cache on repeated call', asyn
   }
 });
 
+test('ingest doc stages charger datasheets as components instead of MCU truth', async () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-ingest-component-doc-'));
+  const currentCwd = process.cwd();
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    initProject.main(['--project', tempProject]);
+    fs.mkdirSync(path.join(tempProject, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(tempProject, 'docs', 'TP4054.pdf'), 'fake charger pdf content', 'utf8');
+
+    process.chdir(tempProject);
+    await cli.main(['init']);
+
+    const ingested = await cli.runIngestCommand(
+      'doc',
+      ['--file', 'docs/TP4054.pdf', '--kind', 'datasheet', '--to', 'hardware'],
+      {
+        providerImpls: {
+          mineru: {
+            async parseDocument() {
+              return {
+                provider: 'mineru',
+                mode: 'agent',
+                task_id: 'task-tp4054',
+                markdown: '# TP4054\n\nSingle cell Li-ion battery charger.\n\n- PROG sets charge current\n- CHRG is open drain status output\n- BAT connects to battery cell\n',
+                metadata: {}
+              };
+            }
+          }
+        }
+      }
+    );
+    const facts = JSON.parse(
+      fs.readFileSync(path.join(tempProject, ingested.artifacts.hardware_facts_json), 'utf8')
+    );
+    const docsList = ingestDocCli.listDocs(tempProject);
+
+    assert.equal(ingested.write_mode, 'staged-truth');
+    assert.equal(ingested.truth_write.status, 'staged');
+    assert.equal(ingested.apply_ready, null);
+    assert.equal(ingested.agent_analysis, null);
+    assert.equal(ingested.recommended_flow.id, 'doc-to-component-review');
+    assert.equal(facts.document_role, 'battery-charger');
+    assert.equal(facts.mcu.model, '');
+    assert.equal(facts.mcu.package, '');
+    assert.equal(facts.components[0].model, 'TP4054');
+    assert.equal(facts.components[0].role, 'battery-charger');
+    assert.ok(facts.truths.some(item => item.includes('hardware component candidate: TP4054')));
+    assert.equal(docsList.documents[0].apply_pending, false);
+  } finally {
+    process.chdir(currentCwd);
+    process.stdout.write = originalWrite;
+  }
+});
+
+test('hardware draft leaves MCU package empty when a datasheet lists multiple packages', () => {
+  const facts = ingestDocCli.buildHardwareDraftFacts(
+    { source_path: 'docs/SC8P062B.pdf' },
+    { title: 'SC8P062B.pdf' },
+    '# SC8P062B MCU\n\n- SOP8 pin assignment\n- SOP14 pin assignment\n- Timer16 and PWM are supported\n'
+  );
+
+  assert.equal(facts.document_role, 'mcu');
+  assert.equal(facts.mcu.model, 'SC8P062B');
+  assert.equal(facts.mcu.package, '');
+  assert.deepEqual(facts.package_candidates, ['SOP8', 'SOP14']);
+  assert.ok(facts.unknowns.some(item => item.includes('Multiple package candidates')));
+});
+
 test('apply doc supports selective field application with --only', async () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-apply-only-'));
   const currentCwd = process.cwd();

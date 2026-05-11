@@ -298,6 +298,53 @@ test('init-project with battery-charger spec adds deferred power charging note t
   });
 });
 
+test('init refreshes a single managed AGENTS block without dropping user text', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-agents-refresh-'));
+  const originalWrite = process.stdout.write;
+
+  process.stdout.write = () => true;
+
+  try {
+    fs.mkdirSync(tempProject, { recursive: true });
+    fs.writeFileSync(
+      path.join(tempProject, 'AGENTS.md'),
+      [
+        '# Local Rules',
+        '',
+        'Keep this user-owned section.',
+        '',
+        '<!-- EMB-AGENT:START -->',
+        'old managed block',
+        '<!-- EMB-AGENT:END -->',
+        '',
+        'Middle user note.',
+        '',
+        '<!-- EMB-AGENT:START -->',
+        'duplicate managed block',
+        '<!-- EMB-AGENT:END -->',
+        '',
+        'Tail user note.',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    initProject.main(['--project', tempProject, '--lang', 'zh']);
+
+    const content = fs.readFileSync(path.join(tempProject, 'AGENTS.md'), 'utf8');
+    const starts = content.match(/<!-- EMB-AGENT:START -->/g) || [];
+
+    assert.equal(starts.length, 1);
+    assert.match(content, /Keep this user-owned section/);
+    assert.match(content, /Middle user note/);
+    assert.match(content, /Tail user note/);
+    assert.match(content, /Reply language: Chinese \(Simplified\)/);
+    assert.doesNotMatch(content, /duplicate managed block/);
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+});
+
 test('init-project with Padauk firmware spec adds deferred implementation-style note target', () => {
   const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-init-padauk-firmware-'));
   const originalWrite = process.stdout.write;
