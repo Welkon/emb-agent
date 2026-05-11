@@ -45,9 +45,14 @@ AI hosts and command wrappers must:
 1. Treat emb-agent output as machine protocol.
 2. Respect `agent_protocol.gate.allowed_actions` and `agent_protocol.gate.forbidden_actions`.
 3. Ask the human only for the next needed confirmation or input.
-4. If the user embeds an unconfirmed technical choice, route through `decision review` / `decision record` before implementation instead of silently validating the premise.
-5. Avoid showing raw JSON, full command transcripts, or long `node .../emb-agent.cjs ...` paths unless explicitly requested.
-6. Keep direct CLI/human-readable output available for debugging and automation only.
+4. If `agent_protocol.gate.kind` is `execution`, treat the payload as an execution brief: perform the requested repository change now, then verify after implementation evidence exists.
+5. If the user embeds an unconfirmed technical choice, route through `decision review` / `decision record` before implementation instead of silently validating the premise.
+6. Avoid showing raw JSON, full command transcripts, or long `node .../emb-agent.cjs ...` paths unless explicitly requested.
+7. Keep direct CLI/human-readable output available for debugging and automation only.
+
+## Execution gate
+
+`capability run do --brief` may return an execution brief instead of direct mutations. In AI-host mode this means emb-agent has opened the workflow gate and supplied constraints; the host AI must do the actual edit/write/test work. The host must not jump straight to `verify`, mark the task done, or tell the human implementation completed until it has either changed the repository or recorded an explicit no-op rationale.
 
 ## Decision review gate
 

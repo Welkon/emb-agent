@@ -332,6 +332,11 @@ test('applyOutputMode keeps required code-writing specs in brief do output', () 
   }, true);
 
   assert.equal(output.output_mode, 'brief');
+  assert.equal(output.agent_protocol.gate.kind, 'execution');
+  assert.equal(output.agent_protocol.gate.status, 'ready-for-ai-implementation');
+  assert.equal(output.agent_protocol.recommendation.command, 'ai-host implement');
+  assert.match(output.agent_protocol.ai_instruction.summary, /execution brief, not evidence/i);
+  assert.ok(output.agent_protocol.gate.forbidden_actions.some(item => /verify before/i.test(item)));
   assert.equal(output.code_writing_specs.status, 'required');
   assert.equal(output.code_writing_specs.applies_to, 'code-writing');
   assert.deepEqual(output.code_writing_specs.items.map(item => item.name), ['embedded-space']);

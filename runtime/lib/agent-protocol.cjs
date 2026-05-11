@@ -265,9 +265,75 @@ function buildRecommendation(value, command, cli) {
   });
 }
 
+function isExecutionBrief(value) {
+  return isObject(value) && isObject(value.execution_brief) && Array.isArray(value.prerequisites);
+}
+
+function buildExecutionProtocol(value) {
+  const workflowStage = isObject(value.workflow_stage) ? value.workflow_stage : {};
+  const action = isObject(value.action_card) ? value.action_card : {};
+  const executionBrief = isObject(value.execution_brief) ? value.execution_brief : {};
+  const firstStep = firstText([
+    toArray(executionBrief.suggested_steps)[0],
+    toArray(value.prerequisites)[0],
+    action.first_instruction
+  ]);
+  const summary = firstText([
+    action.summary,
+    firstStep,
+    workflowStage.why,
+    'Use this execution brief to make the requested repository changes.'
+  ]);
+
+  return compactObject({
+    version: 'emb-agent.protocol/1',
+    audience: 'ai-host',
+    visibility: {
+      raw_output: 'hidden-from-human-by-default',
+      human_output_owner: 'host-ai'
+    },
+    gate: {
+      kind: 'execution',
+      status: 'ready-for-ai-implementation',
+      blocking: false,
+      reason: summary,
+      allowed_actions: [
+        'read required specs and task PRD',
+        'edit repository files for the active task',
+        'run targeted local checks',
+        'capability run verify after implementation evidence exists'
+      ],
+      forbidden_actions: [
+        'capability run verify before making implementation changes or recording no-op evidence',
+        'claim implementation is complete without repository changes or explicit no-op rationale',
+        'task resolve before verification'
+      ],
+      human_prompt: ''
+    },
+    recommendation: {
+      command: 'ai-host implement',
+      reason: 'emb-agent returned an execution brief only; the AI host must now perform the actual repository change, then verify.',
+      requires_human_confirmation: false
+    },
+    ai_instruction: {
+      audience: 'ai-host',
+      summary: 'This payload is an execution brief, not evidence that implementation already happened.',
+      ask_user: '',
+      recommended_response_style: 'Do not stop at summarizing the do output. Implement the smallest durable change within the brief, then run verification when evidence exists.',
+      raw_output_policy: 'Machine output is for AI routing only; do not paste it verbatim to the human.',
+      do_not: [
+        'Do not tell the human the implementation is done just because emb-agent do returned successfully.',
+        'Do not run capability run verify until you have made the requested change or recorded an explicit no-op rationale.',
+        'Do not expose long node .../emb-agent.cjs paths unless the user asks for copy-paste automation output.'
+      ]
+    }
+  });
+}
+
 function buildAgentProtocol(value) {
   if (!isObject(value)) return null;
   if (isObject(value.agent_protocol)) return value.agent_protocol;
+  if (isExecutionBrief(value)) return buildExecutionProtocol(value);
 
   const command = getCommand(value);
   const cli = getCli(value, command);
