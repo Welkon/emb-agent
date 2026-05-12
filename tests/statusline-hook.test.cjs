@@ -78,7 +78,9 @@ test('statusline hook summarizes current task, branch, and developer', () => {
   assert.match(output, /\[P1\]/);
   assert.match(output, /Exercise ADC path/);
   assert.match(output, /in_progress/);
-  assert.match(output, /Claude Sonnet/);
+  assert.doesNotMatch(output, /Claude Sonnet/);
+  assert.doesNotMatch(output, /ctx/);
+  assert.doesNotMatch(output, /42%/);
   assert.match(output, /feat\/statusline/);
   assert.match(output, /snapshot/);
   assert.match(output, /pkg:fw/);
@@ -190,9 +192,9 @@ test('statusline hook labels datasheet_ingested workflow state before bootstrap'
     cost: { total_duration_ms: 30000 }
   });
 
-  assert.match(output, /GPT-5/);
-  assert.match(output, /ctx/);
-  assert.match(output, /12%/);
+  assert.doesNotMatch(output, /GPT-5/);
+  assert.doesNotMatch(output, /ctx/);
+  assert.doesNotMatch(output, /12%/);
   assert.match(output, /pkg:fw/);
   assert.doesNotMatch(output, /datasheet read/);
   assert.doesNotMatch(output, /next: bootstrap run --confirm/);
@@ -227,9 +229,9 @@ test('statusline hook shows next recommendation after bootstrap is ready', () =>
     cost: { total_duration_ms: 30000 }
   });
 
-  assert.match(output, /GPT-5/);
-  assert.match(output, /ctx/);
-  assert.match(output, /12%/);
+  assert.doesNotMatch(output, /GPT-5/);
+  assert.doesNotMatch(output, /ctx/);
+  assert.doesNotMatch(output, /12%/);
   assert.match(output, /pkg:fw/);
   assert.doesNotMatch(output, /tools ready/);
   assert.doesNotMatch(output, /next: next/);

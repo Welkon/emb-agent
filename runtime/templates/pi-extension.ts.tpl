@@ -81,16 +81,9 @@ function runContextMonitor(cwd) {
   }, 30000));
 }
 
-function runStatusLine(cwd, model) {
+function runStatusLine(cwd) {
   const output = runNodeHook(STATUSLINE_HOOK, {
-    cwd,
-    model: model
-      ? {
-          display_name: model.name || model.id || "",
-          name: model.name || model.id || "",
-          provider: model.provider || ""
-        }
-      : undefined
+    cwd
   }, 10000);
   return output;
 }
@@ -117,7 +110,7 @@ function compactStatusLine(raw) {
     return "";
   }
 
-  const infoLine = lines.find(line => /\b(ctx|context)\b/i.test(line)) || lines[0] || "";
+  const infoLine = lines[0] || "";
   const taskLine = lines.find(line => line !== infoLine && /^\[P\d\]/.test(line)) || "";
   const infoParts = infoLine
     .split("·")
@@ -126,7 +119,6 @@ function compactStatusLine(raw) {
     .filter(part => !/^\d+[hm]$/i.test(part))
     .filter(part => !/^\[[^\]]+\]\s+next:/i.test(part));
   const primaryInfo = infoParts
-    .filter(part => /\b(ctx|context)\b/i.test(part) || infoParts.indexOf(part) === 0)
     .slice(0, 2)
     .map(part => shortenMiddle(part, 22));
   const extraInfo = infoParts
@@ -308,7 +300,7 @@ export default function embAgentPiExtension(pi) {
     if (!ctx.hasUI) {
       return;
     }
-    const status = compactStatusLine(runStatusLine(ctx.cwd, ctx.model));
+    const status = compactStatusLine(runStatusLine(ctx.cwd));
     ctx.ui.setStatus("emb-agent", status || undefined);
   }
 

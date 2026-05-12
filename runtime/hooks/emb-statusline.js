@@ -197,20 +197,6 @@ function colorize(code, text) {
   return `\u001b[${code}m${text}\u001b[0m`;
 }
 
-function formatContextPercent(raw) {
-  const value = Number(raw || 0);
-  if (!Number.isFinite(value) || value <= 0) {
-    return 'ctx 0%';
-  }
-  if (value >= 90) {
-    return `ctx ${colorize(31, `${Math.round(value)}%`)}`;
-  }
-  if (value >= 70) {
-    return `ctx ${colorize(33, `${Math.round(value)}%`)}`;
-  }
-  return `ctx ${colorize(32, `${Math.round(value)}%`)}`;
-}
-
 function formatDuration(rawMs) {
   const totalSeconds = Math.max(0, Math.floor(Number(rawMs || 0) / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -237,15 +223,6 @@ function buildStatusLine(input) {
   const packageState = getProjectPackageState(projectRoot);
   const sessionCheckpoint = getSessionCheckpoint(projectRoot, branch);
   const graphState = getKnowledgeGraphState(projectRoot);
-  const model = String(
-    (input && input.model && (input.model.display_name || input.model.name)) ||
-    input.model ||
-    ''
-  ).trim();
-  const contextPercent =
-    (input && input.context_window && input.context_window.used_percentage) ||
-    (input && input.contextWindow && input.contextWindow.used_percentage) ||
-    0;
   const durationMs =
     (input && input.cost && input.cost.total_duration_ms) ||
     (input && input.duration_ms) ||
@@ -254,10 +231,6 @@ function buildStatusLine(input) {
   const sep = ` ${colorize(90, '·')} `;
   const infoParts = [];
 
-  if (model) {
-    infoParts.push(model);
-  }
-  infoParts.push(formatContextPercent(contextPercent));
   if (branch) {
     infoParts.push(colorize(35, branch));
   }
