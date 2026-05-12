@@ -133,6 +133,11 @@ function createTaskCommandHelpers(deps) {
     'Which truth, hardware facts, or code entry points bound the change?',
     'What evidence will prove the task is actually closed?'
   ];
+  const TASK_ALIGNMENT_PROMPTS = [
+    '目标是否完整、可验证，且没有把未知项当事实？',
+    '范围边界、非目标、硬件/接口/时序约束是否和用户预期一致？',
+    '验收证据和待确认问题是否足够清楚；还有哪些点需要继续追问？'
+  ];
 
   function stripPermissionControlTokens(tokens) {
     const list = Array.isArray(tokens) ? tokens : [];
@@ -1577,6 +1582,7 @@ function createTaskCommandHelpers(deps) {
         '',
         '## 验收清单',
         '',
+        '- [ ] 已和用户对齐目标、边界、约束、验收和待确认问题；不明确处已反复沟通达成一致',
         '- [ ] 修改代码或文档前已重新读取相关 truth 和 evidence',
         '- [ ] 产出最小必要实现或分析结果',
         '- [ ] 明确记录验证证据',
@@ -1623,6 +1629,7 @@ function createTaskCommandHelpers(deps) {
       '',
       '## Acceptance Checklist',
       '',
+      '- [ ] Goal, boundaries, constraints, acceptance, and open questions were aligned with the user; ambiguous items were iterated until agreement',
       '- [ ] Relevant truth and evidence were re-read before changing code or docs',
       '- [ ] The minimal required implementation or analysis result is produced',
       '- [ ] Verification evidence is captured explicitly',
@@ -1649,6 +1656,35 @@ function createTaskCommandHelpers(deps) {
     runtime.ensureDir(path.dirname(prdPath));
     fs.writeFileSync(prdPath, buildTaskPrdContent(task), 'utf8');
     return path.relative(resolveProjectRoot(), prdPath).replace(/\\/g, '/');
+  }
+
+  function buildTaskAlignment(taskLike, options = {}) {
+    const task = taskLike || {};
+    const settings = options && typeof options === 'object' ? options : {};
+    const prdPath = String(
+      settings.prd_path ||
+      (task.artifacts && task.artifacts.prd) ||
+      (task.name ? getTaskPrdRelativePath(task.name) : '')
+    ).trim();
+    const nextCommand = task.name ? `task activate ${task.name}` : '';
+    const openQuestions = Array.isArray(task.open_questions) ? task.open_questions.filter(Boolean) : [];
+
+    return {
+      status: 'needs-human-alignment',
+      scope: 'task-prd',
+      subject: task.title || task.name || '',
+      task: task.name || '',
+      prd_path: prdPath,
+      summary: 'After creating a task PRD, align unclear goal, boundary, constraint, acceptance, and open-question items with the user before activation or execution.',
+      prompts: TASK_ALIGNMENT_PROMPTS.slice(),
+      open_questions: openQuestions,
+      next_after_agreement: nextCommand
+        ? {
+            command: nextCommand,
+            reason: 'User has explicitly agreed that the task PRD is clear enough to proceed.'
+          }
+        : null
+    };
   }
 
   function buildTaskConvergence(taskLike, options = {}) {
@@ -3823,13 +3859,16 @@ function createTaskCommandHelpers(deps) {
       merged: false,
       task: readTask(name),
       task_semantic_merge: semanticMerge,
+      alignment: buildTaskAlignment(readTask(name), {
+        prd_path: prdPath
+      }),
       task_convergence: buildTaskConvergence(readTask(name), {
         activated: false,
         prd_path: prdPath
       }),
       human_reply: buildHumanReply(
-        `已创建任务 ${name}。先看 ${prdPath} 锁定目标、约束和验收，再激活任务继续。`,
-        `Created task ${name}. Read ${prdPath} first, then activate the task.`,
+        `已创建任务 ${name}。先看 ${prdPath}，把目标、边界、约束、验收和待确认项逐条对齐；不明确的地方先沟通到一致，再激活任务。`,
+        `Created task ${name}. Review ${prdPath}, align goal, boundaries, constraints, acceptance, and open questions with the user, then activate the task after agreement.`,
         buildCli(['task', 'activate', name])
       )
     }, blocked.permission);

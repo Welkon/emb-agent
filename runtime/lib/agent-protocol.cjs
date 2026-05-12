@@ -265,6 +265,121 @@ function buildRecommendation(value, command, cli) {
   });
 }
 
+function isAlignmentPayload(value) {
+  if (!isObject(value)) return false;
+  const alignment = isObject(value.alignment) ? value.alignment : {};
+  if (String(alignment.status || '').includes('needs-human-alignment')) return true;
+  if (value.created === true && isObject(value.task) && isObject(value.task_convergence)) return true;
+  if (String(value.command || '') === 'prd confirm' && toArray(value.created_tasks).length > 0) return true;
+  return false;
+}
+
+function getAlignmentNextCommand(value, alignment) {
+  const task = isObject(value.task) ? value.task : {};
+  const taskConvergence = isObject(value.task_convergence) ? value.task_convergence : {};
+  const createdTasks = toArray(value.created_tasks).filter(isObject);
+  const firstCreatedTask = createdTasks[0] || {};
+  const nextAfterAgreement = isObject(alignment.next_after_agreement) ? alignment.next_after_agreement : {};
+  const next = isObject(value.next) ? value.next : {};
+
+  return firstText([
+    nextAfterAgreement.command,
+    next.command,
+    commandFromCli(taskConvergence.next_cli),
+    task.name ? `task activate ${task.name}` : '',
+    firstCreatedTask.name ? `task activate ${firstCreatedTask.name}` : ''
+  ]);
+}
+
+function buildAlignmentProtocol(value) {
+  const alignment = isObject(value.alignment) ? value.alignment : {};
+  const task = isObject(value.task) ? value.task : {};
+  const taskConvergence = isObject(value.task_convergence) ? value.task_convergence : {};
+  const createdTasks = toArray(value.created_tasks).filter(isObject);
+  const firstCreatedTask = createdTasks[0] || {};
+  const nextCommand = getAlignmentNextCommand(value, alignment);
+  const prdPath = firstText([
+    alignment.prd_path,
+    isObject(task.artifacts) ? task.artifacts.prd : '',
+    taskConvergence.prd_path,
+    firstCreatedTask.task_prd
+  ]);
+  const promptList = unique([
+    ...toArray(alignment.prompts),
+    ...toArray(taskConvergence.prompts),
+    '确认目标、边界、约束、验收和待确认项是否一致；不明确就逐条追问。'
+  ]);
+  const scope = firstText([
+    alignment.scope,
+    createdTasks.length > 0 ? 'prd-generated-tasks' : '',
+    value.created === true ? 'task-prd' : ''
+  ]);
+  const subject = firstText([
+    alignment.subject,
+    task.title,
+    task.name,
+    firstCreatedTask.title,
+    firstCreatedTask.name,
+    prdPath,
+    'PRD/task'
+  ]);
+  const summary = firstText([
+    alignment.summary,
+    createdTasks.length > 0 ? `Created ${createdTasks.length} execution task(s) from PRD; align unclear goals, boundaries, acceptance, and open questions with the user before activation or implementation.` : '',
+    value.created === true ? `Created task ${task.name || subject}; align the generated PRD with the user before activation or implementation.` : '',
+    'After creating a PRD or task, clarify all ambiguous parts with the user until explicit agreement.'
+  ]);
+  const allowed = [
+    'ask user to review unclear PRD/task items',
+    'update PRD or task PRD with clarified agreement',
+    prdPath ? `review ${prdPath}` : '',
+    nextCommand ? `${nextCommand} after explicit user agreement` : ''
+  ];
+
+  return compactObject({
+    version: 'emb-agent.protocol/1',
+    audience: 'ai-host',
+    visibility: {
+      raw_output: 'hidden-from-human-by-default',
+      human_output_owner: 'host-ai'
+    },
+    gate: {
+      kind: 'alignment',
+      status: 'blocked-by-human-alignment',
+      blocking: true,
+      reason: summary,
+      allowed_actions: unique(allowed),
+      forbidden_actions: [
+        'task activate before user confirms PRD/task agreement',
+        'scan before user confirms PRD/task agreement',
+        'plan before user confirms PRD/task agreement',
+        'do before user confirms PRD/task agreement',
+        'verify before user confirms PRD/task agreement'
+      ],
+      human_prompt: 'Ask the user to review unclear PRD/task items and iterate until explicit agreement before continuing.'
+    },
+    recommendation: {
+      command: 'ai-host clarify-prd-task-alignment',
+      reason: summary,
+      requires_human_confirmation: true
+    },
+    ai_instruction: {
+      audience: 'ai-host',
+      summary,
+      ask_user: `我已创建${scope === 'prd-generated-tasks' ? ' PRD 派生任务' : '任务/PRD'}。请确认目标、边界、约束、验收和待确认项是否一致；不明确的地方我们逐条沟通，达成一致后我再继续。${prdPath ? ` 先从 ${prdPath} 开始。` : ''}`,
+      recommended_response_style: 'Answer in concise Chinese. List only the unclear items or confirmation points, ask the user to confirm/correct them, update PRD/task truth when clarified, and stop until agreement is explicit.',
+      raw_output_policy: 'Machine output is for AI routing only; do not paste it verbatim to the human.',
+      do_not: [
+        'Do not continue to task activation, scan, plan, do, verify, or task resolve just because a PRD/task was created.',
+        'Do not silently assume unclear requirements, hardware truth, scope boundaries, or acceptance checks.',
+        'Do not leave resolved clarification only in chat; update the PRD/task truth before continuing.',
+        'Do not expose long node .../emb-agent.cjs paths unless the user asks for copy-paste automation output.'
+      ],
+      prompts: promptList.slice(0, 6)
+    }
+  });
+}
+
 function isExecutionBrief(value) {
   return isObject(value) && isObject(value.execution_brief) && Array.isArray(value.prerequisites);
 }
@@ -333,6 +448,7 @@ function buildExecutionProtocol(value) {
 function buildAgentProtocol(value) {
   if (!isObject(value)) return null;
   if (isObject(value.agent_protocol)) return value.agent_protocol;
+  if (isAlignmentPayload(value)) return buildAlignmentProtocol(value);
   if (isExecutionBrief(value)) return buildExecutionProtocol(value);
 
   const command = getCommand(value);

@@ -24,7 +24,7 @@ Output the emb-agent help summary below and nothing else.
 
 - If the target files and acceptance check are already explicit, use `task add <summary>` and move into `plan` or `next`.
 - If requirements, hardware truth, or the changed surface are still unclear, use `task add <summary>` first and let `scan` converge the task before `plan` or `do`.
-- After `task add`, use the generated task `prd.md` as the lightweight convergence point: make goal, constraints, acceptance, and open questions explicit before choosing `scan` or `plan`.
+- After `task add` or PRD-derived task creation, use the generated PRD/task PRD as the convergence point: ask the user about unclear goal, boundary, constraint, acceptance, and open-question items, update the artifact, and repeat until explicit agreement before `scan`, `plan`, or `do`.
 - If the change crosses timing, concurrency, release, or interface boundaries, expect the safer path to be `task add -> scan -> plan -> review -> verify`.
 - If the request assumes an unconfirmed technical choice, use `decision review` / `decision record` before implementation.
 - Capability shortcuts: `scan`, `plan`, `do`, `debug`, `review`, `verify` — equivalent to `capability run <name>`.

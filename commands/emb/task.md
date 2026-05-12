@@ -27,7 +27,7 @@ allowed-tools:
 - Prefer the lightest subcommand that keeps facts, evidence, and project truth aligned.
 - Usually `start` should decide when you need `task add` or `task activate`; use `task` directly once the task lifecycle is already explicit.
 - If the change surface is still unclear, create the task first so `prd.md` exists, then use `capability run scan` to converge scope before `capability run plan` or `capability run do`.
-- After `task add`, treat the generated `prd.md` as the lightweight convergence point: lock goal, constraints, acceptance, and open questions before deciding whether the next capability is `scan` or `plan`.
+- After `task add`, treat the generated `prd.md` as the lightweight convergence point: discuss unclear goal, boundary, constraint, acceptance, and open-question items with the user until explicit agreement before deciding whether the next capability is `scan` or `plan`.
 - When converting conversation into a task, synthesize what is already known first. Ask only for missing load-bearing decisions, and prefer reading project files, `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, schematics, PCB artifacts, manuals, and task context over interviewing the user.
 - For large work, split into task/subtask vertical slices: each slice should produce a narrow but complete, verifiable path through the relevant firmware, hardware truth, support, documentation, and verification surfaces.
 - Mark slices that need human judgment, bench access, part selection, or schematic/layout acceptance as human-gated instead of pretending they are agent-ready.

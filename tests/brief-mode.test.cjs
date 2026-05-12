@@ -106,6 +106,10 @@ test('task lifecycle --brief exposes convergence summary', async () => {
     assert.equal(created.output_mode, 'brief');
     assert.equal(created.created, true);
     assert.equal(created.task.status, 'planning');
+    assert.equal(created.alignment.status, 'needs-human-alignment');
+    assert.equal(created.agent_protocol.gate.kind, 'alignment');
+    assert.equal(created.agent_protocol.recommendation.command, 'ai-host clarify-prd-task-alignment');
+    assert.match(created.agent_protocol.ai_instruction.ask_user, /不明确|一致/);
     assert.equal(created.task_convergence.recommended_path, 'scan-first');
     assert.match(created.task_convergence.prd_path, /docs\/prd\/tasks\/converge-comparator-timing\.md$/);
     assert.match(created.task_convergence.next_cli, /task activate converge-comparator-timing$/);

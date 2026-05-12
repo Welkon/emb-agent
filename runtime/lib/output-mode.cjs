@@ -457,6 +457,28 @@ function summarizeTaskConvergence(value) {
   });
 }
 
+function summarizeAlignment(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const nextAfterAgreement = isObject(value.next_after_agreement) ? value.next_after_agreement : {};
+  return compactObject({
+    status: value.status || '',
+    scope: value.scope || '',
+    subject: value.subject || '',
+    task: value.task || '',
+    prd_path: value.prd_path || '',
+    summary: value.summary || '',
+    prompts: truncateList(value.prompts, 4),
+    open_questions: truncateList(value.open_questions, 4),
+    next_after_agreement: compactObject({
+      command: nextAfterAgreement.command || '',
+      reason: nextAfterAgreement.reason || ''
+    })
+  });
+}
+
 function summarizeTaskCandidate(value) {
   if (!isObject(value)) {
     return null;
@@ -602,7 +624,8 @@ function summarizeAgentProtocol(value) {
       ask_user: aiInstruction.ask_user || '',
       recommended_response_style: aiInstruction.recommended_response_style || '',
       raw_output_policy: aiInstruction.raw_output_policy || '',
-      do_not: truncateList(aiInstruction.do_not, 6)
+      do_not: truncateList(aiInstruction.do_not, 6),
+      prompts: truncateList(aiInstruction.prompts, 6)
     })
   });
 }
@@ -1438,6 +1461,7 @@ function buildBriefTaskLifecycleOutput(value) {
     activated: value.activated === undefined ? undefined : Boolean(value.activated),
     task: summarizeTaskRef(value.task),
     task_semantic_merge: summarizeTaskSemanticMerge(value.task_semantic_merge),
+    alignment: summarizeAlignment(value.alignment),
     workspace: compactObject({
       mode: workspace.mode || '',
       path: workspace.path || ''

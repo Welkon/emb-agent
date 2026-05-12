@@ -23,5 +23,5 @@ allowed-tools:
 - In terminal mode, read the `Events:` line as the shortest explanation of why the runtime recommended the next step.
 - If `next` surfaces hardware-document chip-support guidance, the intended path is `adapter analysis init` -> agent fills artifact -> `adapter derive --from-analysis`.
 - If the task is a reported bug, prefer a reproducible feedback loop and `capability run debug` before implementation.
-- If the task is broad or ambiguous, prefer `task add` or `capability run scan` before `plan` or `do`; keep open questions in task/project truth instead of chat-only state.
+- If the task is broad or ambiguous, prefer `task add` or `capability run scan` before `plan` or `do`; after creating PRD/task artifacts, clarify unclear items with the user until agreement and keep the result in task/project truth instead of chat-only state.
 - If schematic or PCB review raises advice, keep routing non-blocking unless the current task explicitly depends on the affected electrical, layout, bring-up, or manufacturing fact.

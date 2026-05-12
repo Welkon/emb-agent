@@ -2327,6 +2327,7 @@ function createInstallHelpers(deps) {
     lines.push('- Treat emb-agent output as a machine protocol for the AI host, not as human-facing text. Use `agent_protocol` as the primary routing contract.');
     lines.push('- Do not paste raw JSON or a full command transcript into chat. Summarize status, blockers, and the recommended action in plain language.');
     lines.push('- Respect `agent_protocol.gate.allowed_actions` and `agent_protocol.gate.forbidden_actions` when present; do not bypass blocking gates by improvising another workflow.');
+    lines.push('- If `agent_protocol.gate.kind` is `alignment`, stop after creating the PRD/task, ask the user about unclear items, update the PRD/task truth, and repeat until explicit agreement before activation, planning, or implementation.');
     lines.push('- If `agent_protocol.gate.kind` is `execution`, treat the payload as an execution brief: perform the requested repository change now, then verify after implementation evidence exists.');
     lines.push('- If the user request embeds an unconfirmed technical choice, route through `decision review` / `decision record` before implementation instead of letting the model silently validate the premise.');
     lines.push('- Do not automatically execute `agent_protocol.recommendation.command`; stop after the recommendation unless the user explicitly asks to continue. If a legacy payload lacks `agent_protocol`, fall back to compact `next`/`immediate` fields only.');

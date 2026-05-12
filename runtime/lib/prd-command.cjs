@@ -4,6 +4,11 @@ const crypto = require('crypto');
 
 const PRD_CONFIRMATION_FILE = 'prd-confirmation.json';
 const PRD_ROOT = 'docs/prd';
+const PRD_TASK_ALIGNMENT_PROMPTS = [
+  '生成的任务拆分是否符合用户期望的实现顺序和边界？',
+  '每个任务的目标、非目标、约束和验收证据是否清楚？',
+  '还有哪些待确认项会影响实现，必须先追问到一致？'
+];
 const IGNORED_PRD_DIRS = new Set(['archive', 'tasks']);
 const EXECUTION_PRD_DIRS = new Set(['subsystems', 'features', 'modules', 'components']);
 const VERIFICATION_FILE_NAMES = new Set(['verification', 'validation', 'test-plan', 'acceptance']);
@@ -292,7 +297,7 @@ function buildTaskPrdContent(task, sourceTitle) {
       '',
       '## 验收清单',
       '',
-      `- [ ] 已确认 ${sourceTitle || task.source} 中的目标、边界和待确认项`,
+      `- [ ] 已和用户确认 ${sourceTitle || task.source} 中的目标、边界和待确认项；不明确处已反复沟通达成一致`,
       '- [ ] 产出最小必要实现或验证结果',
       '- [ ] 记录构建、静态检查或实板验证证据',
       '- [ ] task resolve 前完成 AAR scan',
@@ -335,7 +340,7 @@ function buildTaskPrdContent(task, sourceTitle) {
     '',
     '## Acceptance Checklist',
     '',
-    `- [ ] Goal, boundaries, and unknowns from ${sourceTitle || task.source} are confirmed`,
+    `- [ ] Goal, boundaries, and unknowns from ${sourceTitle || task.source} were aligned with the user; ambiguous items were iterated until agreement`,
     '- [ ] The smallest required implementation or verification result is produced',
     '- [ ] Build, static check, or bench evidence is recorded',
     '- [ ] AAR scan is completed before task resolve',
@@ -456,6 +461,35 @@ function createExecutionTasks(projectRoot, deps, taskPlan, documents) {
   return { created, skipped };
 }
 
+function buildPrdTaskAlignment(taskCreation) {
+  const created = Array.isArray(taskCreation && taskCreation.created)
+    ? taskCreation.created
+    : [];
+  if (created.length === 0) return null;
+
+  const first = created[0] || {};
+  return {
+    status: 'needs-human-alignment',
+    scope: 'prd-generated-tasks',
+    subject: `${created.length} generated execution task(s)`,
+    prd_path: first.task_prd || '',
+    summary: 'After PRD confirmation creates execution tasks, align the generated task split, unclear requirements, boundaries, and acceptance evidence with the user before activation or implementation.',
+    prompts: PRD_TASK_ALIGNMENT_PROMPTS.slice(),
+    created_tasks: created.map(task => ({
+      name: task.name,
+      title: task.title,
+      source_prd: task.source_prd,
+      task_prd: task.task_prd
+    })),
+    next_after_agreement: first.name
+      ? {
+          command: `task activate ${first.name}`,
+          reason: 'User has explicitly agreed that the generated task split and first task PRD are clear enough to proceed.'
+        }
+      : null
+  };
+}
+
 function parseConfirmArgs(tokens) {
   const args = Array.isArray(tokens) ? tokens : [];
   const options = {
@@ -543,6 +577,7 @@ function createPrdCommandHelpers(deps) {
         documents: state.documents,
         created_tasks: taskCreation.created,
         skipped_tasks: taskCreation.skipped,
+        alignment: buildPrdTaskAlignment(taskCreation),
         next: taskCreation.created.length > 0
           ? {
               command: `task activate ${taskCreation.created[0].name}`,

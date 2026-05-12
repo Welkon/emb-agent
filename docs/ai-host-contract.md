@@ -45,10 +45,15 @@ AI hosts and command wrappers must:
 1. Treat emb-agent output as machine protocol.
 2. Respect `agent_protocol.gate.allowed_actions` and `agent_protocol.gate.forbidden_actions`.
 3. Ask the human only for the next needed confirmation or input.
-4. If `agent_protocol.gate.kind` is `execution`, treat the payload as an execution brief: perform the requested repository change now, then verify after implementation evidence exists.
-5. If the user embeds an unconfirmed technical choice, route through `decision review` / `decision record` before implementation instead of silently validating the premise.
-6. Avoid showing raw JSON, full command transcripts, or long `node .../emb-agent.cjs ...` paths unless explicitly requested.
-7. Keep direct CLI/human-readable output available for debugging and automation only.
+4. If `agent_protocol.gate.kind` is `alignment`, stop after PRD/task creation, ask the user about unclear items, update the PRD/task truth, and repeat until explicit agreement before activation, planning, or implementation.
+5. If `agent_protocol.gate.kind` is `execution`, treat the payload as an execution brief: perform the requested repository change now, then verify after implementation evidence exists.
+6. If the user embeds an unconfirmed technical choice, route through `decision review` / `decision record` before implementation instead of silently validating the premise.
+7. Avoid showing raw JSON, full command transcripts, or long `node .../emb-agent.cjs ...` paths unless explicitly requested.
+8. Keep direct CLI/human-readable output available for debugging and automation only.
+
+## Alignment gate
+
+After a PRD or task is created, `agent_protocol.gate.kind = "alignment"` means the host should not immediately activate, scan, plan, implement, verify, or close. The host should summarize only the unclear goal/scope/constraint/acceptance points, ask the user to confirm or correct them, update the PRD/task artifact with the agreed truth, and repeat until the user explicitly agrees.
 
 ## Execution gate
 

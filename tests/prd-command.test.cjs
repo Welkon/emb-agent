@@ -71,6 +71,11 @@ test('prd confirmation is generic and creates execution tasks from docs/prd stru
       confirmed.created_tasks.map(item => item.name),
       ['implement-sensor-loop', 'run-verification']
     );
+    assert.equal(confirmed.alignment.status, 'needs-human-alignment');
+    assert.equal(confirmed.agent_protocol.gate.kind, 'alignment');
+    assert.equal(confirmed.agent_protocol.gate.blocking, true);
+    assert.equal(confirmed.agent_protocol.recommendation.command, 'ai-host clarify-prd-task-alignment');
+    assert.match(confirmed.agent_protocol.ai_instruction.ask_user, /不明确|一致/);
     assert.equal(fs.existsSync(path.join(tempProject, '.emb-agent', 'tasks', 'implement-sensor-loop', 'task.json')), true);
     assert.equal(fs.existsSync(path.join(tempProject, 'docs', 'prd', 'tasks', 'implement-sensor-loop.md')), true);
 
