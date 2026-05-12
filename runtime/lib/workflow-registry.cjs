@@ -10,9 +10,16 @@ const PROJECT_TEMPLATES_DIR = 'templates';
 const WORKFLOW_REGISTRY_FILE = 'workflow.json';
 const CODE_WRITING_SPEC_NAMES = new Set([
   'embedded-space',
+  'low-rom-space',
   'padauk-space',
-  'padauk-firmware'
+  'padauk-firmware',
+  'scmcu-space'
 ]);
+const LOW_ROM_PROGRAM_PERCENT = 80;
+const LOW_RAM_DATA_PERCENT = 75;
+const TINY_PROGRAM_TOTAL = 8192;
+const TINY_DATA_TOTAL = 1024;
+const RESOURCE_SUMMARY_SCAN_LIMIT = 200;
 
 function ensureObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -106,6 +113,7 @@ function normalizeApplyWhen(raw, label) {
       profiles: [],
       task_types: [],
       task_statuses: [],
+      resource_pressure: [],
       requires_active_task: false,
       has_handoff: false
     };
@@ -119,6 +127,7 @@ function normalizeApplyWhen(raw, label) {
     profiles: ensureStringArray(source.profiles || [], `${label}.profiles`),
     task_types: ensureStringArray(source.task_types || [], `${label}.task_types`),
     task_statuses: ensureStringArray(source.task_statuses || [], `${label}.task_statuses`),
+    resource_pressure: ensureStringArray(source.resource_pressure || [], `${label}.resource_pressure`),
     requires_active_task: ensureBoolean(source.requires_active_task, false),
     has_handoff: ensureBoolean(source.has_handoff, false)
   };
@@ -502,6 +511,7 @@ function evaluateSpecReason(spec, context) {
   const defaultPackage = String((context && context.default_package) || '').trim();
   const task = context && context.task ? context.task : null;
   const handoff = Boolean(context && context.handoff);
+  const resourcePressure = new Set(toUniqueStringArray(context && context.resource_pressure));
   const packageCandidates = new Set(
     [activePackage, defaultPackage, task && task.package ? String(task.package).trim() : ''].filter(Boolean)
   );
@@ -534,6 +544,11 @@ function evaluateSpecReason(spec, context) {
   if (handoff && applyWhen.has_handoff) {
     reasons.push('handoff');
   }
+  applyWhen.resource_pressure.forEach(name => {
+    if (resourcePressure.has(name)) {
+      reasons.push(`resource:${name}`);
+    }
+  });
 
   if (reasons.length === 0 && spec.auto_inject) {
     const hasNoConditions =
@@ -543,6 +558,7 @@ function evaluateSpecReason(spec, context) {
       applyWhen.profiles.length === 0 &&
       applyWhen.task_types.length === 0 &&
       applyWhen.task_statuses.length === 0 &&
+      applyWhen.resource_pressure.length === 0 &&
       !applyWhen.requires_active_task &&
       !applyWhen.has_handoff;
     if (hasNoConditions) {
@@ -599,18 +615,199 @@ function specMatchesEnforcementScope(spec, scope) {
   return normalizedScope === 'code-writing' && CODE_WRITING_SPEC_NAMES.has(String((spec && spec.name) || '').trim());
 }
 
+function inferSpecEnforcementScope(spec, preferredScope) {
+  const normalizedPreferred = String(preferredScope || '').trim();
+  if (normalizedPreferred && specMatchesEnforcementScope(spec, normalizedPreferred)) {
+    return normalizedPreferred;
+  }
+
+  const declaredScopes = Array.isArray(spec && spec.enforcement_scopes)
+    ? spec.enforcement_scopes.map(item => String(item || '').trim()).filter(Boolean)
+    : [];
+  if (declaredScopes.length > 0) {
+    return declaredScopes[0];
+  }
+
+  const name = String((spec && spec.name) || '').trim();
+  if (CODE_WRITING_SPEC_NAMES.has(name)) {
+    return 'code-writing';
+  }
+
+  return '';
+}
+
+function toUniqueStringArray(value) {
+  const list = Array.isArray(value)
+    ? value
+    : (value === undefined || value === null || value === '' ? [] : [value]);
+  return Array.from(new Set(list.map(item => String(item || '').trim()).filter(Boolean)));
+}
+
+function percentFromMemoryBlock(block) {
+  if (!block || typeof block !== 'object') {
+    return null;
+  }
+  if (typeof block.percent === 'number' && Number.isFinite(block.percent)) {
+    return block.percent;
+  }
+  if (
+    typeof block.used === 'number' && Number.isFinite(block.used) &&
+    typeof block.total === 'number' && Number.isFinite(block.total) &&
+    block.total > 0
+  ) {
+    return (block.used / block.total) * 100;
+  }
+  return null;
+}
+
+function totalFromMemoryBlock(block) {
+  if (!block || typeof block !== 'object') {
+    return null;
+  }
+  return typeof block.total === 'number' && Number.isFinite(block.total) && block.total > 0
+    ? block.total
+    : null;
+}
+
+function firstMemoryBlock(memory, names) {
+  if (!memory || typeof memory !== 'object') {
+    return null;
+  }
+  for (const name of names) {
+    if (memory[name] && typeof memory[name] === 'object') {
+      return memory[name];
+    }
+  }
+  return null;
+}
+
+function pressureFromBuildSummary(summary) {
+  const memory = summary && summary.memory && typeof summary.memory === 'object' ? summary.memory : null;
+  if (!memory) {
+    return [];
+  }
+
+  const pressure = [];
+  const program = firstMemoryBlock(memory, ['program_space', 'program', 'rom', 'flash', 'text']);
+  const data = firstMemoryBlock(memory, ['data_space', 'data', 'ram', 'sram', 'bss_data']);
+  const programPercent = percentFromMemoryBlock(program);
+  const dataPercent = percentFromMemoryBlock(data);
+  const programTotal = totalFromMemoryBlock(program);
+  const dataTotal = totalFromMemoryBlock(data);
+
+  if ((programPercent !== null && programPercent >= LOW_ROM_PROGRAM_PERCENT) ||
+      (programTotal !== null && programTotal <= TINY_PROGRAM_TOTAL)) {
+    pressure.push('low-rom');
+    pressure.push('constrained-memory');
+  }
+  if ((dataPercent !== null && dataPercent >= LOW_RAM_DATA_PERCENT) ||
+      (dataTotal !== null && dataTotal <= TINY_DATA_TOTAL)) {
+    pressure.push('low-ram');
+    pressure.push('constrained-memory');
+  }
+
+  return pressure;
+}
+
+function detectResourcePressureFromBuildSummaries(projectRoot) {
+  const normalizedRoot = String(projectRoot || '').trim();
+  if (!normalizedRoot) {
+    return [];
+  }
+
+  const buildDir = path.join(normalizedRoot, 'build');
+  if (!fs.existsSync(buildDir) || !fs.statSync(buildDir).isDirectory()) {
+    return [];
+  }
+
+  const summaries = [];
+  function walk(dir) {
+    if (summaries.length >= RESOURCE_SUMMARY_SCAN_LIMIT) {
+      return;
+    }
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (summaries.length >= RESOURCE_SUMMARY_SCAN_LIMIT) {
+        return;
+      }
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.isFile() && entry.name === 'build_summary.json') {
+        let mtimeMs = 0;
+        try {
+          mtimeMs = fs.statSync(fullPath).mtimeMs;
+        } catch {
+          mtimeMs = 0;
+        }
+        summaries.push({ fullPath, mtimeMs });
+      }
+    }
+  }
+
+  walk(buildDir);
+  summaries.sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+  for (const item of summaries.slice(0, 5)) {
+    try {
+      const pressure = pressureFromBuildSummary(JSON.parse(fs.readFileSync(item.fullPath, 'utf8')));
+      if (pressure.length > 0) {
+        return Array.from(new Set(pressure));
+      }
+    } catch {
+      // Ignore stale or partial build summaries.
+    }
+  }
+
+  return [];
+}
+
+function projectRootFromExtDir(projectExtDir) {
+  const normalized = String(projectExtDir || '').trim();
+  if (!normalized) {
+    return '';
+  }
+  const absolute = path.resolve(normalized);
+  return path.basename(absolute) === '.emb-agent'
+    ? path.dirname(absolute)
+    : path.dirname(absolute);
+}
+
+function enrichContextWithResourcePressure(context, projectExtDir) {
+  const source = context && typeof context === 'object' ? context : {};
+  const detected = detectResourcePressureFromBuildSummaries(projectRootFromExtDir(projectExtDir));
+  if (detected.length === 0) {
+    return source;
+  }
+  return {
+    ...source,
+    resource_pressure: toUniqueStringArray([...toUniqueStringArray(source.resource_pressure), ...detected])
+  };
+}
+
 function resolveAutoInjectedSpecs(registry, context = {}, options = {}) {
   const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : 6;
   const includeSelectedSpecs = options.include_selected_specs === true;
   const selectedSpecsOnly = options.selected_specs_only === true;
   const selectedReason = String(options.selected_reason || 'selected-active-spec').trim() || 'selected-active-spec';
   const selectedEnforcementScope = String(options.selected_enforcement_scope || '').trim();
+  const enforcementScopeFilter = String(options.enforcement_scope_filter || '').trim();
+  const autoRequiredEnforcementScope = String(options.auto_required_enforcement_scope || '').trim();
   const activeSpecNames = new Set(((context && context.specs) || []).map(item => String(item || '').trim()).filter(Boolean));
   const byName = new Map();
   const autoEntries = selectedSpecsOnly
     ? []
     : ((registry && registry.specs) || [])
-      .filter(item => item && item.auto_inject)
+      .filter(item =>
+        item &&
+        item.auto_inject &&
+        (!enforcementScopeFilter || specMatchesEnforcementScope(item, enforcementScopeFilter))
+      )
     .map(item => ({
       ...item,
       reasons: evaluateSpecReason(item, context)
@@ -623,7 +820,11 @@ function resolveAutoInjectedSpecs(registry, context = {}, options = {}) {
     .slice(0, limit);
 
   autoEntries.forEach(item => {
-    const entry = buildSpecSnapshotEntry(item, item.reasons || []);
+    const autoScope = inferSpecEnforcementScope(item, enforcementScopeFilter || autoRequiredEnforcementScope);
+    const entry = buildSpecSnapshotEntry(item, item.reasons || [], {
+      required: Boolean(autoRequiredEnforcementScope && specMatchesEnforcementScope(item, autoRequiredEnforcementScope)),
+      enforcement_scope: autoScope
+    });
     byName.set(entry.name, mergeSpecSnapshotEntry(byName.get(entry.name), entry));
   });
 
@@ -633,13 +834,14 @@ function resolveAutoInjectedSpecs(registry, context = {}, options = {}) {
         item &&
         item.selectable &&
         activeSpecNames.has(item.name) &&
+        (!enforcementScopeFilter || specMatchesEnforcementScope(item, enforcementScopeFilter)) &&
         specMatchesEnforcementScope(item, selectedEnforcementScope)
       )
       .forEach(item => {
         const entry = buildSpecSnapshotEntry(item, [selectedReason], {
           selected_active: true,
           required: true,
-          enforcement_scope: selectedEnforcementScope
+          enforcement_scope: selectedEnforcementScope || enforcementScopeFilter
         });
         byName.set(entry.name, mergeSpecSnapshotEntry(byName.get(entry.name), entry));
       });
@@ -655,8 +857,9 @@ function resolveAutoInjectedSpecs(registry, context = {}, options = {}) {
 
 function buildInjectedSpecSnapshot(runtimeRoot, projectExtDir, context = {}, options = {}) {
   const registry = loadWorkflowRegistry(runtimeRoot, { projectExtDir });
+  const enrichedContext = enrichContextWithResourcePressure(context, projectExtDir);
   return {
-    items: resolveAutoInjectedSpecs(registry, context, options),
+    items: resolveAutoInjectedSpecs(registry, enrichedContext, options),
     registry_paths: registry.registry_paths || {}
   };
 }

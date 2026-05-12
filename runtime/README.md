@@ -54,6 +54,8 @@ Project state is stored by default at:
   Built-in project profiles.
 - `registry/`
   Built-in catalog metadata for templates and workflow-registry merging.
+- `specs/`
+  Built-in baseline specs such as `embedded-space` and auto-triggered resource-pressure specs such as `low-rom-space`.
 - `tools/`
   Core abstract tool specs.
 - `lib/chip-catalog.cjs`

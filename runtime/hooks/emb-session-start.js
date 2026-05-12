@@ -109,15 +109,13 @@ function buildUpdateLines() {
 }
 
 function buildInjectedWorkflowSpecLines(projectRoot, resume) {
-  const registry = workflowRegistry.loadWorkflowRegistry(getRuntimeRoot(), {
-    projectExtDir: runtime.getProjectExtDir(projectRoot)
-  });
-  const specs = workflowRegistry.resolveAutoInjectedSpecs(registry, {
+  const snapshot = workflowRegistry.buildInjectedSpecSnapshot(getRuntimeRoot(), runtime.getProjectExtDir(projectRoot), {
     profile: resume && resume.summary ? resume.summary.profile : '',
     specs: resume && resume.summary ? (resume.summary.specs || []) : [],
     task: resume ? resume.task : null,
     handoff: resume ? resume.handoff : null
   }, { limit: 5 });
+  const specs = snapshot.items || [];
 
   if (specs.length === 0) {
     return [];

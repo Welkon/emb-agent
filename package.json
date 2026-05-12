@@ -16,6 +16,7 @@
     "runtime/registry",
     "runtime/scaffolds",
     "runtime/schemas",
+    "runtime/specs",
     "runtime/profiles",
     "runtime/README.md",
     "runtime/scripts",

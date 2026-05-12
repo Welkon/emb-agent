@@ -303,7 +303,7 @@ function createHealthUpdateCommandHelpers(deps) {
         unresolvedSpecs.push(`${name}: Spec not found`);
         return;
       }
-      if (entry.selectable !== true) {
+      if (entry.selectable !== true && entry.auto_inject !== true) {
         unresolvedSpecs.push(`${name}: Spec is not selectable`);
         return;
       }
@@ -324,9 +324,11 @@ function createHealthUpdateCommandHelpers(deps) {
       },
       {
         include_selected_specs: true,
-        selected_specs_only: true,
+        selected_specs_only: false,
         selected_reason: 'required-for-code-writing',
-        selected_enforcement_scope: 'code-writing'
+        selected_enforcement_scope: 'code-writing',
+        enforcement_scope_filter: 'code-writing',
+        auto_required_enforcement_scope: 'code-writing'
       }
     );
     const selectedCodeWritingSpecs = (snapshot.items || [])
@@ -360,10 +362,19 @@ function createHealthUpdateCommandHelpers(deps) {
     checks.push(
       createCheck(
         'active_specs_configured',
-        activeSpecs.length > 0 ? 'pass' : 'warn',
-        activeSpecs.length > 0 ? 'Active specs are configured' : 'No active specs are configured',
-        [`active_specs=${activeSpecs.join(',') || '(none)'}`],
-        activeSpecs.length > 0 ? '' : 'Run settings set specs <name>[,<name>] or reinstall with --spec <name>.'
+        activeSpecs.length > 0 || selectedCodeWritingSpecs.length > 0 ? 'pass' : 'warn',
+        activeSpecs.length > 0
+          ? 'User-selected specs are configured'
+          : (selectedCodeWritingSpecs.length > 0
+              ? 'Built-in baseline specs are active; no user-selected specs are required'
+              : 'No active specs are configured'),
+        [
+          `active_specs=${activeSpecs.join(',') || '(none)'}`,
+          `auto_code_writing_specs=${selectedCodeWritingNames.join(',') || '(none)'}`
+        ],
+        activeSpecs.length > 0 || selectedCodeWritingSpecs.length > 0
+          ? ''
+          : 'Run spec add <name> for a vendor/domain spec, or check built-in workflow registry installation.'
       )
     );
     checks.push(
@@ -382,14 +393,14 @@ function createHealthUpdateCommandHelpers(deps) {
         'code_writing_specs_enforced',
         selectedCodeWritingSpecs.length > 0 ? 'pass' : 'info',
         selectedCodeWritingSpecs.length > 0
-          ? 'Selected active code-writing specs are required before source edits'
-          : 'No selected active specs are marked as code-writing requirements',
+          ? 'Code-writing specs are required before source edits'
+          : 'No selected or auto-injected specs are marked as code-writing requirements',
         selectedCodeWritingSpecs.length > 0
           ? selectedCodeWritingSpecs.map(item => `${item.name} -> ${item.path}`)
-          : ['code-writing specs are enforced only when an active selectable spec matches the code-writing scope'],
+          : ['code-writing specs are enforced when a built-in baseline or active selectable spec matches the code-writing scope'],
         selectedCodeWritingSpecs.length > 0
           ? ''
-          : 'If embedded-space should be mandatory for firmware edits, activate that selectable spec first.'
+          : 'Check the built-in workflow registry or activate the needed vendor/domain spec.'
       )
     );
     checks.push(
@@ -409,14 +420,14 @@ function createHealthUpdateCommandHelpers(deps) {
       )
     );
 
-    if (activeSpecs.length === 0) {
-      recommendations.push('Activate the project specs that should steer AI behavior, for example settings set specs embedded-space.');
+    if (activeSpecs.length === 0 && selectedCodeWritingSpecs.length === 0) {
+      recommendations.push('Activate the project specs that should steer AI behavior, or check that built-in baseline specs are installed.');
     }
     if (unresolvedSpecs.length > 0) {
       recommendations.push('Fix .emb-agent/project.json active_specs or the workflow registry before relying on spec enforcement.');
     }
     if (selectedCodeWritingSpecs.length === 0) {
-      recommendations.push('To force embedded-space during firmware edits, register it as selectable and activate it, then rerun health specs.');
+      recommendations.push('To force source-edit rules, install built-in baseline specs or activate a code-writing vendor/domain spec, then rerun health specs.');
     }
     if (selectedCodeWritingSpecs.length > 0) {
       recommendations.push('Before source edits, run capability run do or task activate so required_code_writing_specs is visible in the action context.');

@@ -13,10 +13,8 @@ const runtime = require(path.join(repoRoot, 'runtime', 'lib', 'runtime.cjs'));
 const workflowRegistry = require(path.join(repoRoot, 'runtime', 'lib', 'workflow-registry.cjs'));
 
 function assertProjectLocalInjected(specs) {
-  assert.deepEqual(
-    (Array.isArray(specs) ? specs : []).map(item => item.name),
-    ['project-local']
-  );
+  const names = (Array.isArray(specs) ? specs : []).map(item => item.name);
+  assert.ok(names.includes('project-local'));
 }
 
 function writeText(filePath, content) {

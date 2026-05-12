@@ -610,7 +610,7 @@ function prepareProjectWorkflowSetup(projectRoot, args, options = {}) {
 function loadSelectableSpecForProject(projectRoot, name, registry) {
   const catalog = registry || loadWorkflowCatalog(projectRoot);
   const entry = (catalog.specs || []).find(item => item.name === name);
-  if (!entry || entry.selectable !== true) {
+  if (!entry || (entry.selectable !== true && entry.auto_inject !== true)) {
     throw new Error(`Selectable spec not found: ${name}`);
   }
   return entry;

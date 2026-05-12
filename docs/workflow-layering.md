@@ -28,21 +28,33 @@ Examples:
 
 If a rule is really about tasks, queues, locks, ISR boundaries, or scheduler behavior, it probably belongs in a profile or profile-linked spec.
 
-### 3. Built-in selectable specs
+### 3. Built-in baseline specs
 
-Built-in selectable specs should represent stable engineering domains with clear reuse across multiple projects.
+Built-in baseline specs represent MCU rules that users should not have to select manually.
 
-Good built-in spec candidates:
+Current built-in baseline specs:
+
+- `embedded-space`: generic MCU firmware rules, always auto-injected as the MCU baseline.
+- `low-rom-space`: resource-pressure rules, auto-injected only when build/resource evidence indicates constrained ROM/RAM.
+
+These reduce user choice burden while keeping vendor and product details out of the core baseline.
+
+### 4. Selectable or external specs
+
+Selectable specs should represent stable engineering domains with clear reuse across multiple projects, or vendor/toolchain conventions that are detected/imported only when relevant.
+
+Good selectable spec candidates:
 
 - `sensor-node`
 - `connected-appliance`
 - `battery-charger`
 - `motor-drive`
-- `padauk-firmware`
+- `scmcu-space`
+- `padauk-space`
 
-These describe repeated risk structures such as sampling windows, local/remote consistency, power fallback, or fault shutdown.
+These describe repeated risk structures such as sampling windows, local/remote consistency, power fallback, fault shutdown, IDE behavior, or compiler dialect constraints.
 
-### 4. Project-local specs and templates
+### 5. Project-local specs and templates
 
 Product-specific workflow guidance should usually live in the project repository under `.emb-agent/`.
 
@@ -63,19 +75,22 @@ Project-local workflow extensions belong in:
 
 ## Decision rule
 
-Before adding a new built-in spec, ask:
+Before adding a new built-in or selectable spec, ask:
 
 1. Does this apply to many unrelated embedded projects?
 2. Is it an engineering risk pattern rather than a product story?
 3. Would another team understand and reuse it without product-specific background?
+4. Does it belong in the always-on MCU baseline, a resource-pressure profile, a vendor/toolchain spec, or a project-local rule?
 
-If the answer is "no" to any of those, prefer a project-local extension.
+If the answer is "no" to the reuse questions, prefer a project-local extension. If the rule is vendor/compiler/IDE-specific, prefer an external vendor spec instead of `embedded-space`.
 
 ## Example
 
 `motor-drive` is a reasonable built-in selectable spec because PWM, current sense, startup, and protection are stable cross-project engineering concerns.
 
-`padauk-firmware` is a reasonable built-in selectable spec because constrained toolchain rules, Simple-C syntax limits, case-insensitive naming traps, and low-ROM ISR discipline recur across many unrelated Padauk projects.
+`low-rom-space` is a reasonable built-in baseline spec because ROM/RAM pressure changes implementation tradeoffs across vendors, but it is auto-injected from resource evidence instead of shown as a manual user choice.
+
+`scmcu-space` and `padauk-space` are reasonable external vendor specs because constrained toolchain rules, IDE behavior, syntax limits, and naming traps recur across many unrelated projects for those vendors.
 
 `smart-pillbox` is better treated as a project-local selectable spec, because adherence state, reminder semantics, and caregiver flows are product-specific.
 

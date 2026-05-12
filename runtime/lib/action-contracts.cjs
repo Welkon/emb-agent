@@ -373,7 +373,9 @@ function createActionContractHelpers(deps) {
         include_selected_specs: settings.include_selected_specs === true,
         selected_specs_only: settings.selected_specs_only === true,
         selected_reason: settings.selected_reason,
-        selected_enforcement_scope: settings.selected_enforcement_scope
+        selected_enforcement_scope: settings.selected_enforcement_scope,
+        enforcement_scope_filter: settings.enforcement_scope_filter,
+        auto_required_enforcement_scope: settings.auto_required_enforcement_scope
       }
     );
 
@@ -421,7 +423,8 @@ function createActionContractHelpers(deps) {
       include_selected_specs: action === 'do',
       selected_specs_only: false,
       selected_reason: 'required-for-code-writing',
-      selected_enforcement_scope: action === 'do' ? 'code-writing' : ''
+      selected_enforcement_scope: action === 'do' ? 'code-writing' : '',
+      auto_required_enforcement_scope: action === 'do' ? 'code-writing' : ''
     });
     const codeWritingSpecs = action === 'do'
       ? buildCodeWritingSpecContract(injectedSpecs)

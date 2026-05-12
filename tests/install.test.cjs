@@ -14,10 +14,8 @@ const {
 } = require(path.join(repoRoot, 'tests', 'support-workflow-source.cjs'));
 
 function assertProjectLocalInjected(specs) {
-  assert.deepEqual(
-    (Array.isArray(specs) ? specs : []).map(item => item.name),
-    ['project-local']
-  );
+  const names = (Array.isArray(specs) ? specs : []).map(item => item.name);
+  assert.ok(names.includes('project-local'));
 }
 
 async function captureCliJson(cliImpl, args) {

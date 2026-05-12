@@ -140,5 +140,75 @@
       "default_output": "docs/VERIFICATION.md"
     }
   ],
-  "specs": []
+  "specs": [
+    {
+      "name": "embedded-space",
+      "title": "Embedded Space",
+      "path": "specs/embedded-space.md",
+      "summary": "Generic MCU firmware rules: hardware truth, ownership, timing, thin ISR design, safe state, and target verification.",
+      "auto_inject": true,
+      "selectable": false,
+      "priority": 58,
+      "apply_when": {
+        "always": true
+      },
+      "focus_areas": [
+        "hardware_truth",
+        "state_ownership",
+        "isr_shared_state",
+        "time_base",
+        "safe_state",
+        "verification"
+      ],
+      "extra_review_axes": [
+        "register_truth",
+        "atomic_shared_state",
+        "timebase_jitter",
+        "state_ownership",
+        "hardware_leakage"
+      ],
+      "preferred_notes": [],
+      "default_agents": [],
+      "enforcement_scopes": [
+        "code-writing"
+      ]
+    },
+    {
+      "name": "low-rom-space",
+      "title": "Low ROM Space",
+      "path": "specs/low-rom-space.md",
+      "summary": "ROM/RAM-constrained MCU firmware rules: direct state, helper gates, map-driven abstraction, and resource-budget review.",
+      "auto_inject": true,
+      "selectable": false,
+      "priority": 61,
+      "apply_when": {
+        "resource_pressure": [
+          "low-rom",
+          "low-ram",
+          "constrained-memory"
+        ]
+      },
+      "focus_areas": [
+        "rom_budget",
+        "ram_budget",
+        "direct_state",
+        "time_base_slicing",
+        "helper_gate",
+        "abstraction_cost"
+      ],
+      "extra_review_axes": [
+        "map_file_budget",
+        "helper_cost",
+        "dispatch_cost",
+        "table_cost",
+        "stack_cost",
+        "resource_headroom"
+      ],
+      "preferred_notes": [],
+      "default_agents": [],
+      "enforcement_scopes": [
+        "code-writing"
+      ]
+    }
+  ]
 }

@@ -1486,7 +1486,9 @@ function createTaskCommandHelpers(deps) {
       include_selected_specs: settings.include_selected_specs === true,
       selected_specs_only: settings.selected_specs_only === true,
       selected_reason: settings.selected_reason,
-      selected_enforcement_scope: settings.selected_enforcement_scope
+      selected_enforcement_scope: settings.selected_enforcement_scope,
+      enforcement_scope_filter: settings.enforcement_scope_filter,
+      auto_required_enforcement_scope: settings.auto_required_enforcement_scope
     });
   }
 
@@ -1776,9 +1778,11 @@ function createTaskCommandHelpers(deps) {
     const injected = buildInjectedSpecContext(taskLike, session);
     const codeWritingSpecs = buildInjectedSpecContext(taskLike, session, {
       include_selected_specs: true,
-      selected_specs_only: true,
+      selected_specs_only: false,
       selected_reason: 'required-for-code-writing',
-      selected_enforcement_scope: 'code-writing'
+      selected_enforcement_scope: 'code-writing',
+      enforcement_scope_filter: 'code-writing',
+      auto_required_enforcement_scope: 'code-writing'
     });
     const lines = [
       '# Auto Injected Specs',

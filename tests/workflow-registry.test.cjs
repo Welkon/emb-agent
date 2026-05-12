@@ -60,6 +60,42 @@ test('workflow registry merges built-in and project specs and resolves auto inje
   });
 });
 
+test('workflow registry auto-injects embedded baseline and low-rom pressure specs', () => {
+  const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-lowrom-'));
+  const projectExtDir = runtime.initProjectLayout(tempProject);
+  workflowRegistry.syncProjectWorkflowLayout(projectExtDir, { write: true });
+  fs.mkdirSync(path.join(tempProject, 'build', 'xc8', 'latest'), { recursive: true });
+  fs.writeFileSync(
+    path.join(tempProject, 'build', 'xc8', 'latest', 'build_summary.json'),
+    JSON.stringify({
+      memory: {
+        program_space: { used: 1719, total: 2048, percent: 83.9 },
+        data_space: { used: 115, total: 160, percent: 71.9 }
+      }
+    }) + '\n',
+    'utf8'
+  );
+
+  const snapshot = workflowRegistry.buildInjectedSpecSnapshot(path.join(repoRoot, 'runtime'), projectExtDir, {
+    profile: 'baremetal-loop',
+    specs: [],
+    task: { type: 'implement', status: 'planning' }
+  }, {
+    limit: 8,
+    enforcement_scope_filter: 'code-writing',
+    auto_required_enforcement_scope: 'code-writing'
+  });
+  const byName = new Map(snapshot.items.map(item => [item.name, item]));
+
+  assert.ok(byName.has('embedded-space'));
+  assert.ok(byName.has('low-rom-space'));
+  assert.equal(byName.get('embedded-space').required, true);
+  assert.equal(byName.get('low-rom-space').required, true);
+  assert.equal(byName.get('embedded-space').scope, 'built-in');
+  assert.equal(byName.get('low-rom-space').scope, 'built-in');
+  assert.ok(byName.get('low-rom-space').reasons.some(reason => reason.startsWith('resource:')));
+});
+
 test('workflow registry treats selected active specs as code-writing requirements only when requested', () => {
   return withSupportSourceEnv(() => {
     const tempProject = fs.mkdtempSync(path.join(os.tmpdir(), 'emb-agent-workflow-selected-spec-'));
