@@ -29,7 +29,8 @@ Do not add new core product logic to CJS unless it is a temporary bridge. New du
 Already done on `beta`:
 
 - `emb_sidequest` Pi tool and `/emb:sidequest` command.
-- Rust workspace with `crates/emb-agent-rs` spike.
+- Rust workspace with `crates/emb-agent-core` plus the `crates/emb-agent-rs` CLI spike.
+- Core hook planning, project snapshot, JSON helper, and rendering modules live in `emb-agent-core`.
 - Rust lightweight `start`, `statusline`, `hook session-start`, `hook statusline`.
 - Rust `hook resolve --json` command plan.
 - Pi extension consumes installer-provided hook plans.
@@ -76,7 +77,7 @@ crates/
   emb-agent-rs/            # temporary spike binary; later replaced by emb-agent-cli
 ```
 
-During migration, `crates/emb-agent-rs` may temporarily contain modules that later move into dedicated crates.
+During migration, `crates/emb-agent-rs` should remain a thin routing binary. Durable runtime modules should move into `emb-agent-core` first, then into dedicated crates when boundaries are clear.
 
 ### Final command surface
 
@@ -933,7 +934,7 @@ Recommended next tasks after this plan:
 3. Replace direct CJS hook command construction with Rust-generated plans where safe.
 4. Implement Rust `context-monitor` minimal version.
 5. Add source-layout end-to-end test verifying generated Codex/Cursor/Pi hook commands.
-6. Split `crates/emb-agent-rs` into `emb-agent-core` and `emb-agent-cli` once hook resolver stabilizes.
+6. Continue thinning `crates/emb-agent-rs`; introduce `emb-agent-cli` once the CLI routing boundary is stable.
 
 ## Stop Conditions
 

@@ -1,0 +1,206 @@
+use crate::json::json_quote;
+use crate::project::ProjectSnapshot;
+
+pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
+    if !snapshot.initialized && snapshot.project_root.is_empty() {
+        return String::new();
+    }
+
+    let mut parts = vec!["emb-rs".to_string()];
+    if !snapshot.mcu_model.is_empty() {
+        let chip = if snapshot.mcu_package.is_empty() {
+            snapshot.mcu_model.clone()
+        } else {
+            format!("{} {}", snapshot.mcu_model, snapshot.mcu_package)
+        };
+        parts.push(format!("chip: {chip}"));
+    } else {
+        parts.push("chip: undeclared".to_string());
+    }
+    parts.push(format!("{} task(s)", snapshot.open_tasks));
+    if snapshot.wiki_pages > 0 {
+        parts.push(format!("wiki: {}", snapshot.wiki_pages));
+    }
+    if !snapshot.git_branch.is_empty() {
+        parts.push(format!("branch: {}", snapshot.git_branch));
+    }
+    parts.push(format!("next: {}", snapshot.recommended_command));
+
+    let mut line = parts.join(" · ");
+    if let Some(task) = &snapshot.current_task {
+        line.push_str(&format!(" | [{}] {}", task.priority, task.title));
+    }
+    line
+}
+
+pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
+    if !snapshot.initialized && snapshot.project_root.is_empty() {
+        return "<emb-agent-session-context>\nNo emb-agent project found. Run emb-agent init/bootstrap from the project root.\n</emb-agent-session-context>".to_string();
+    }
+
+    let mut lines = vec![
+        "<emb-agent-session-context>".to_string(),
+        "emb-agent Rust spike context is injected for this session.".to_string(),
+        "Use this as lightweight project state; fall back to the Node runtime for full workflow behavior.".to_string(),
+        "</emb-agent-session-context>".to_string(),
+        String::new(),
+        "<current-state>".to_string(),
+        format!("Project root: {}", snapshot.project_root),
+        format!("Runtime: emb-agent-rs spike"),
+        format!("Recommended next command: {}", snapshot.recommended_command),
+        format!("Reason: {}", snapshot.recommended_reason),
+    ];
+
+    if !snapshot.developer.is_empty() {
+        lines.push(format!("Developer: {}", snapshot.developer));
+    }
+    if !snapshot.mcu_model.is_empty() {
+        lines.push(format!("MCU: {}", snapshot.mcu_model));
+    }
+    if !snapshot.mcu_package.is_empty() {
+        lines.push(format!("MCU package: {}", snapshot.mcu_package));
+    }
+    if !snapshot.default_package.is_empty() || !snapshot.active_package.is_empty() {
+        lines.push(format!(
+            "Package: default={}, active={}",
+            fallback(&snapshot.default_package, "(none)"),
+            fallback(&snapshot.active_package, "(none)")
+        ));
+    }
+    lines.push(format!("Open tasks: {}", snapshot.open_tasks));
+    lines.push(format!("Wiki pages: {}", snapshot.wiki_pages));
+    if !snapshot.git_branch.is_empty() {
+        lines.push(format!("Git branch: {}", snapshot.git_branch));
+    }
+    if let Some(task) = &snapshot.current_task {
+        lines.push(format!("Active task: {} ({})", task.name, task.title));
+        lines.push(format!(
+            "Task status: {} / Priority: {}",
+            task.status, task.priority
+        ));
+    }
+
+    lines.extend([
+        "</current-state>".to_string(),
+        String::new(),
+        "<ready>".to_string(),
+        "Rust spike context is intentionally minimal and read-only.".to_string(),
+        "Use the Node emb-agent runtime for mutation-heavy commands until parity is reached."
+            .to_string(),
+        "</ready>".to_string(),
+    ]);
+
+    lines.join("\n")
+}
+
+pub fn build_host_session_start_payload(host: &str, message: &str) -> String {
+    let event_name = "SessionStart";
+    match host {
+        "cursor" => format!("{{\"additional_context\":{}}}", json_quote(message)),
+        "codex" => format!(
+            "{{\"suppressOutput\":true,\"systemMessage\":{},\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{}}}}}",
+            json_quote(&format!(
+                "emb-agent rust context injected ({} chars)",
+                message.len()
+            )),
+            json_quote(event_name),
+            json_quote(message)
+        ),
+        _ => format!(
+            "{{\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{}}}}}",
+            json_quote(event_name),
+            json_quote(message)
+        ),
+    }
+}
+
+pub fn build_start_json(snapshot: &ProjectSnapshot) -> String {
+    let task_json = if let Some(task) = &snapshot.current_task {
+        format!(
+            "{{\"name\":{},\"title\":{},\"status\":{},\"priority\":{}}}",
+            json_quote(&task.name),
+            json_quote(&task.title),
+            json_quote(&task.status),
+            json_quote(&task.priority)
+        )
+    } else {
+        "null".to_string()
+    };
+
+    format!(
+        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs-spike\",\"summary\":{{\"initialized\":{},\"project_root\":{},\"mcu_model\":{},\"mcu_package\":{},\"open_tasks\":{},\"wiki_pages\":{},\"active_task\":{}}},\"immediate\":{{\"command\":{},\"reason\":{}}}}}",
+        snapshot.initialized,
+        json_quote(&snapshot.project_root),
+        json_quote(&snapshot.mcu_model),
+        json_quote(&snapshot.mcu_package),
+        snapshot.open_tasks,
+        snapshot.wiki_pages,
+        task_json,
+        json_quote(&snapshot.recommended_command),
+        json_quote(&snapshot.recommended_reason)
+    )
+}
+
+fn fallback<'a>(value: &'a str, default_value: &'a str) -> &'a str {
+    if value.trim().is_empty() {
+        default_value
+    } else {
+        value
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::project::{ProjectSnapshot, TaskSnapshot};
+
+    fn sample_snapshot() -> ProjectSnapshot {
+        ProjectSnapshot {
+            initialized: true,
+            project_root: "/tmp/demo".to_string(),
+            developer: "Felix".to_string(),
+            mcu_model: "ESP32-C3".to_string(),
+            mcu_package: "QFN32".to_string(),
+            default_package: "core".to_string(),
+            active_package: "core".to_string(),
+            git_branch: "beta".to_string(),
+            open_tasks: 1,
+            wiki_pages: 1,
+            current_task: Some(TaskSnapshot {
+                name: "task-1".to_string(),
+                title: "Implement ADC".to_string(),
+                status: "active".to_string(),
+                priority: "P1".to_string(),
+                package: "core".to_string(),
+            }),
+            recommended_command: "do".to_string(),
+            recommended_reason: "Active task is selected".to_string(),
+        }
+    }
+
+    #[test]
+    fn builds_host_payloads() {
+        let message = "hello\nworld";
+        assert!(build_host_session_start_payload("pi", message).contains("hookSpecificOutput"));
+        assert!(build_host_session_start_payload("codex", message).contains("suppressOutput"));
+        assert!(build_host_session_start_payload("cursor", message).contains("additional_context"));
+    }
+
+    #[test]
+    fn statusline_includes_core_state() {
+        let line = build_statusline(&sample_snapshot());
+        assert!(line.contains("emb-rs"));
+        assert!(line.contains("ESP32-C3 QFN32"));
+        assert!(line.contains("1 task(s)"));
+        assert!(line.contains("[P1] Implement ADC"));
+    }
+
+    #[test]
+    fn start_json_includes_active_task() {
+        let json = build_start_json(&sample_snapshot());
+        assert!(json.contains("\"status\":\"ok\""));
+        assert!(json.contains("\"runtime\":\"emb-agent-rs-spike\""));
+        assert!(json.contains("\"active_task\""));
+        assert!(json.contains("Implement ADC"));
+    }
+}

@@ -34,11 +34,11 @@ For current behavior gaps, see [`rust-parity-gap.md`](./rust-parity-gap.md).
 The Rust spike is now split into:
 
 ```text
-crates/emb-agent-core/   # shared hook plan/diagnostics primitives
-crates/emb-agent-rs/     # CLI binary and temporary project-state prototype
+crates/emb-agent-core/   # shared hook plans, project snapshots, rendering helpers
+crates/emb-agent-rs/     # CLI routing binary
 ```
 
-`emb-agent-core` is the first shared crate. New durable runtime logic should move there or into future focused crates instead of growing the binary crate.
+`emb-agent-core` is the first shared crate. It currently contains `hooks`, `project`, `render`, and `json` modules. New durable runtime logic should move there or into future focused crates instead of growing the binary crate.
 
 ## Current Scope
 
