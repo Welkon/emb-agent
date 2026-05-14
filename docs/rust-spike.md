@@ -39,4 +39,21 @@ It currently reads only lightweight `.emb-agent/` project state:
 ```bash
 cargo fmt --check
 cargo test --workspace
+node tests/rust-parity.test.cjs
+npm run test:rust
 ```
+
+## Benchmark
+
+```bash
+npm run bench:rust-hook
+# or change sample size
+EMB_BENCH_ITER=50 npm run bench:rust-hook
+```
+
+The benchmark compares:
+
+- Node `runtime/hooks/emb-statusline.js`
+- `cargo run -p emb-agent-rs -- hook statusline`
+- compiled `target/debug/emb-agent-rs hook statusline`
+
