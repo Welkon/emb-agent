@@ -58,6 +58,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         "hook" => run_hook(&args),
+        "diagnostics" => run_diagnostics(&args),
         "start" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let snapshot = snapshot_from_cwd(&cwd);
@@ -73,6 +74,24 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         other => Err(format!("unknown command: {other}")),
+    }
+}
+
+fn run_diagnostics(args: &[String]) -> Result<(), String> {
+    let topic = args.get(1).map(String::as_str).unwrap_or("");
+    match topic {
+        "hooks" => {
+            let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
+            let runtime_dir =
+                option_value(args, "--runtime-dir").unwrap_or_else(|| "runtime".to_string());
+            println!(
+                "{}",
+                build_hooks_diagnostics_json(&host, Path::new(&runtime_dir))
+            );
+            Ok(())
+        }
+        "" => Err("missing diagnostics topic; expected hooks".to_string()),
+        other => Err(format!("unknown diagnostics topic: {other}")),
     }
 }
 
@@ -105,7 +124,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n"
+        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n"
     );
 }
 
@@ -323,6 +342,27 @@ fn build_hook_plan_json(plan: &HookPlan) -> String {
         json_quote(&plan.fallback),
         json_quote(&plan.reason),
         plan.supported
+    )
+}
+
+fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
+    let session_start = build_hook_plan(host, "session-start", runtime_dir);
+    let statusline = build_hook_plan(host, "statusline", runtime_dir);
+    let context_monitor = build_hook_plan(host, "context-monitor", runtime_dir);
+    let source_root = runtime_dir.parent().unwrap_or_else(|| Path::new("."));
+    let rust_binary = rust_binary_path(source_root);
+    format!(
+        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs-spike\",\"host\":{},\"runtime_dir\":{},\"source_runtime\":{},\"rust_binary\":{},\"rust_binary_exists\":{},\"env\":{{\"EMB_AGENT_RUST_HOOKS\":{},\"EMB_AGENT_RUST_HOOK_CMD\":{}}},\"hooks\":{{\"session_start\":{},\"statusline\":{},\"context_monitor\":{}}}}}",
+        json_quote(host),
+        json_quote(&runtime_dir.to_string_lossy()),
+        is_source_runtime_layout(runtime_dir),
+        json_quote(&rust_binary.to_string_lossy()),
+        rust_binary.exists(),
+        json_quote(&env::var("EMB_AGENT_RUST_HOOKS").unwrap_or_default()),
+        json_quote(&env::var("EMB_AGENT_RUST_HOOK_CMD").unwrap_or_default()),
+        build_hook_plan_json(&session_start),
+        build_hook_plan_json(&statusline),
+        build_hook_plan_json(&context_monitor)
     )
 }
 
@@ -881,5 +921,22 @@ mod tests {
         assert!(json.contains("\"hook\":\"statusline\""));
         assert!(json.contains("\"runtime\":\"rust\""));
         assert!(json.contains("\"supported\":true"));
+    }
+
+    #[test]
+    fn hook_diagnostics_json_includes_all_hook_plans() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|path| path.parent())
+            .unwrap()
+            .to_path_buf();
+        let runtime_dir = root.join("runtime");
+        let json = build_hooks_diagnostics_json("pi", &runtime_dir);
+        assert!(json.contains("\"status\":\"ok\""));
+        assert!(json.contains("\"host\":\"pi\""));
+        assert!(json.contains("\"session_start\""));
+        assert!(json.contains("\"statusline\""));
+        assert!(json.contains("\"context_monitor\""));
+        assert!(json.contains("rust-hook-not-implemented"));
     }
 }

@@ -140,3 +140,17 @@ test('rust hook resolver emits a unified source-layout command plan', { skip: !h
   assert.match(contextMonitor.command, /emb-context-monitor\.js/);
   assert.equal(contextMonitor.fallback, '');
 });
+
+test('rust hook diagnostics reports all hook plans and fallback state', { skip: !hasCargo() }, () => {
+  const diagnostics = JSON.parse(runRust(['diagnostics', 'hooks', '--json', '--host', 'pi', '--runtime-dir', 'runtime']));
+  assert.equal(diagnostics.status, 'ok');
+  assert.equal(diagnostics.runtime, 'emb-agent-rs-spike');
+  assert.equal(diagnostics.host, 'pi');
+  assert.equal(diagnostics.source_runtime, true);
+  assert.equal(typeof diagnostics.rust_binary, 'string');
+  assert.equal(typeof diagnostics.rust_binary_exists, 'boolean');
+  assert.equal(diagnostics.hooks.session_start.runtime, 'rust');
+  assert.equal(diagnostics.hooks.statusline.runtime, 'rust');
+  assert.equal(diagnostics.hooks.context_monitor.runtime, 'node');
+  assert.equal(diagnostics.hooks.context_monitor.reason, 'rust-hook-not-implemented');
+});

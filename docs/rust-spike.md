@@ -37,6 +37,7 @@ The prototype lives in `crates/emb-agent-rs` and provides:
 cargo run -p emb-agent-rs -- start --brief --json --cwd .
 cargo run -p emb-agent-rs -- statusline --cwd .
 cargo run -p emb-agent-rs -- hook resolve --host pi --hook session-start --runtime-dir runtime --json
+cargo run -p emb-agent-rs -- diagnostics hooks --json --host pi --runtime-dir runtime
 cargo run -p emb-agent-rs -- hook session-start --cwd . --host pi
 cargo run -p emb-agent-rs -- hook statusline --cwd .
 ```
@@ -74,6 +75,23 @@ Example source-layout session-start plan:
 ```
 
 `context-monitor` still resolves to Node because Rust does not implement it yet.
+
+## Hook Diagnostics
+
+Use diagnostics to inspect all hook plans at once:
+
+```bash
+cargo run -p emb-agent-rs -- diagnostics hooks --json --host pi --runtime-dir runtime
+```
+
+The payload includes:
+
+- selected host,
+- runtime directory,
+- source-runtime detection,
+- Rust binary path and existence,
+- resolver-related environment variables,
+- plans for `session_start`, `statusline`, and `context_monitor`.
 
 ## Host Hook Selection
 
