@@ -28,6 +28,30 @@ It currently reads only lightweight `.emb-agent/` project state:
 - `.emb-agent/tasks/*/task.json`
 - `.emb-agent/wiki/**/*.md`
 
+## Pi Extension Hook Selection
+
+In source/development runtime layout, the Pi extension now defaults lightweight hooks to Rust:
+
+- `session_start` → `emb-agent-rs hook session-start --host pi`
+- statusline → `emb-agent-rs hook statusline`
+
+Fallback behavior:
+
+- If `target/debug/emb-agent-rs` exists, the Pi extension uses the compiled binary.
+- Otherwise, source layout falls back to `cargo run -q -p emb-agent-rs -- ...`.
+- If Rust execution fails, the extension automatically falls back to the existing Node hook.
+- Installed/non-source runtimes continue to use Node hooks by default.
+
+Environment overrides:
+
+```bash
+EMB_AGENT_RUST_HOOKS=1   # force Rust hook path
+EMB_AGENT_RUST_HOOKS=0   # force Node hook path
+EMB_AGENT_RUST_HOOK_CMD="/path/to/emb-agent-rs"  # custom Rust hook command
+```
+
+`emb-context-monitor.js` is still Node-only in this spike.
+
 ## Non-goals
 
 - It does not replace `runtime/bin/emb-agent.cjs`.
@@ -56,4 +80,3 @@ The benchmark compares:
 - Node `runtime/hooks/emb-statusline.js`
 - `cargo run -p emb-agent-rs -- hook statusline`
 - compiled `target/debug/emb-agent-rs hook statusline`
-
