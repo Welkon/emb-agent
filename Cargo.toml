@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/emb-agent-rs"]
+resolver = "3"
