@@ -8,6 +8,27 @@ This branch contains an additive Rust prototype for the emb-agent runtime.
 - Explore a stricter systems-language core for project state, hook payloads, and future embedded tooling.
 - Keep the existing Node runtime as the source of truth until Rust reaches parity.
 
+## Development Flow
+
+Build the Rust hook binary before using Pi in this source checkout:
+
+```bash
+npm run dev:rust-hooks
+```
+
+This creates `target/debug/emb-agent-rs`. The Pi extension will prefer that binary in source layout, avoiding the slower `cargo run` fallback.
+
+Recommended loop:
+
+```bash
+npm run dev:rust-hooks
+npm run test:rust
+node tests/pi-extension-rust-hooks.test.cjs
+EMB_BENCH_ITER=50 npm run bench:rust-hook
+```
+
+For current behavior gaps, see [`rust-parity-gap.md`](./rust-parity-gap.md).
+
 ## Current Scope
 
 The prototype lives in `crates/emb-agent-rs` and provides:
@@ -62,9 +83,9 @@ EMB_AGENT_RUST_HOOK_CMD="/path/to/emb-agent-rs"  # custom Rust hook command
 
 ```bash
 cargo fmt --check
-cargo test --workspace
-node tests/rust-parity.test.cjs
+npm run dev:rust-hooks
 npm run test:rust
+node tests/pi-extension-rust-hooks.test.cjs
 ```
 
 ## Benchmark

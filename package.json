@@ -42,6 +42,7 @@
     "test:behavior": "node scripts/behavior-drift-check.cjs",
     "test:rust": "cargo test --workspace && node tests/rust-parity.test.cjs",
     "test:ci": "npm test && npm run test:behavior",
+    "dev:rust-hooks": "cargo build -p emb-agent-rs",
     "bench:brief": "node benchmarks/brief-benchmark.cjs",
     "bench:rust-hook": "node benchmarks/rust-vs-node-hook.cjs",
     "pack:dry-run": "npm pack --dry-run",
