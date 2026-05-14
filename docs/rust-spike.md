@@ -36,6 +36,7 @@ The prototype lives in `crates/emb-agent-rs` and provides:
 ```bash
 cargo run -p emb-agent-rs -- start --brief --json --cwd .
 cargo run -p emb-agent-rs -- statusline --cwd .
+cargo run -p emb-agent-rs -- hook resolve --host pi --hook session-start --runtime-dir runtime --json
 cargo run -p emb-agent-rs -- hook session-start --cwd . --host pi
 cargo run -p emb-agent-rs -- hook statusline --cwd .
 ```
@@ -48,6 +49,31 @@ It currently reads only lightweight `.emb-agent/` project state:
 - `.emb-agent/.current-task`
 - `.emb-agent/tasks/*/task.json`
 - `.emb-agent/wiki/**/*.md`
+
+## Hook Resolver
+
+Rust is the source of truth for new hook command planning:
+
+```bash
+cargo run -p emb-agent-rs -- hook resolve --host pi --hook session-start --runtime-dir runtime --json
+cargo run -p emb-agent-rs -- hook resolve --host cursor --hook context-monitor --runtime-dir runtime --json
+```
+
+Example source-layout session-start plan:
+
+```json
+{
+  "hook": "session-start",
+  "host": "pi",
+  "runtime": "rust",
+  "command": "target/debug/emb-agent-rs hook session-start --host pi",
+  "fallback": "node runtime/hooks/emb-session-start.js",
+  "reason": "source-runtime-default",
+  "supported": true
+}
+```
+
+`context-monitor` still resolves to Node because Rust does not implement it yet.
 
 ## Pi Extension Hook Selection
 

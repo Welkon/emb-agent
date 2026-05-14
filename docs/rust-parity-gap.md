@@ -6,18 +6,19 @@ The Rust prototype is intentionally lightweight. It is a fast hook/runtime subst
 
 ## Summary
 
-| Surface | Node runtime | Rust spike |
-|---|---|---|
-| `statusline` | Full statusline: branch, session checkpoint, knowledge graph freshness, wiki count, package, duration, developer, open tasks, active task | Lightweight statusline: chip, task count, wiki count, branch, next command, active task |
-| `session-start` | Full startup context: bootstrap, resume/handoff, active task context, update notices, workflow specs, workflow state, knowledge graph/wiki/cache highlights | Minimal startup context: project root, recommended command, developer, MCU, package, open tasks, wiki pages, branch, active task |
-| `context-monitor` | Node hook exists and monitors context after tool use | Not implemented in Rust |
-| `start --brief --json` | Full workflow-aware start payload | Minimal project-state payload |
-| project init/bootstrap | Full Node implementation | Not implemented |
-| task commands | Full Node implementation | Read-only task snapshot only |
-| knowledge graph | Build/read/refresh/report | Not implemented |
-| skills/plugins | Full discovery/install/run implementation | Not implemented |
-| sub-agent bridge | Full bridge/job implementation | Not implemented |
-| file mutations | Node workflow commands may write | Rust spike is read-only |
+| Surface                | Node runtime                                                                                                                                                | Rust spike                                                                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `statusline`           | Full statusline: branch, session checkpoint, knowledge graph freshness, wiki count, package, duration, developer, open tasks, active task                   | Lightweight statusline: chip, task count, wiki count, branch, next command, active task                                          |
+| `session-start`        | Full startup context: bootstrap, resume/handoff, active task context, update notices, workflow specs, workflow state, knowledge graph/wiki/cache highlights | Minimal startup context: project root, recommended command, developer, MCU, package, open tasks, wiki pages, branch, active task |
+| `context-monitor`      | Node hook exists and monitors context after tool use                                                                                                        | Not implemented in Rust                                                                                                          |
+| `start --brief --json` | Full workflow-aware start payload                                                                                                                           | Minimal project-state payload                                                                                                    |
+| project init/bootstrap | Full Node implementation                                                                                                                                    | Not implemented                                                                                                                  |
+| task commands          | Full Node implementation                                                                                                                                    | Read-only task snapshot only                                                                                                     |
+| knowledge graph        | Build/read/refresh/report                                                                                                                                   | Not implemented                                                                                                                  |
+| skills/plugins         | Full discovery/install/run implementation                                                                                                                   | Not implemented                                                                                                                  |
+| sub-agent bridge       | Full bridge/job implementation                                                                                                                              | Not implemented                                                                                                                  |
+| file mutations         | Node workflow commands may write                                                                                                                            | Rust spike is read-only                                                                                                          |
+| hook resolver          | Host-specific install helpers build commands directly                                                                                                       | `emb-agent-rs hook resolve --json` emits a unified hook plan for consumers                                                       |
 
 ## Intentional differences
 

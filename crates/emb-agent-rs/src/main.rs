@@ -29,6 +29,17 @@ struct ProjectSnapshot {
     recommended_reason: String,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct HookPlan {
+    hook: String,
+    host: String,
+    runtime: String,
+    command: String,
+    fallback: String,
+    reason: String,
+    supported: bool,
+}
+
 fn main() {
     if let Err(error) = run(env::args().skip(1).collect()) {
         eprintln!("emb-agent-rs error: {error}");
@@ -68,8 +79,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
 fn run_hook(args: &[String]) -> Result<(), String> {
     let hook_name = args.get(1).map(String::as_str).unwrap_or("");
     match hook_name {
+        "resolve" => {
+            let plan = resolve_hook_plan_from_args(args);
+            println!("{}", build_hook_plan_json(&plan));
+            Ok(())
+        }
         "session-start" => {
-            let cwd = option_value(args, "--cwd").unwrap_or_else(current_dir_string);
+            let cwd = hook_cwd(args);
             let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
             let snapshot = snapshot_from_cwd(&cwd);
             let context = build_session_context(&snapshot);
@@ -77,19 +93,19 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "statusline" => {
-            let cwd = option_value(args, "--cwd").unwrap_or_else(current_dir_string);
+            let cwd = hook_cwd(args);
             let snapshot = snapshot_from_cwd(&cwd);
             println!("{}", build_statusline(&snapshot));
             Ok(())
         }
-        "" => Err("missing hook name; expected session-start or statusline".to_string()),
+        "" => Err("missing hook name; expected resolve, session-start, or statusline".to_string()),
         other => Err(format!("unknown hook: {other}")),
     }
 }
 
 fn print_help() {
     println!(
-        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n"
+        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n"
     );
 }
 
@@ -104,6 +120,219 @@ fn option_value(args: &[String], name: &str) -> Option<String> {
     args.windows(2)
         .find(|pair| pair[0] == name)
         .map(|pair| pair[1].clone())
+}
+
+fn hook_cwd(args: &[String]) -> String {
+    option_value(args, "--cwd")
+        .or_else(|| stdin_json_string_field("cwd"))
+        .unwrap_or_else(current_dir_string)
+}
+
+fn stdin_json_string_field(key: &str) -> Option<String> {
+    use std::io::{IsTerminal, Read};
+    let mut stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        return None;
+    }
+    let mut raw = String::new();
+    if stdin.read_to_string(&mut raw).is_err() {
+        return None;
+    }
+    let value = json_string_field(&raw, key);
+    if value.trim().is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn resolve_hook_plan_from_args(args: &[String]) -> HookPlan {
+    let hook = option_value(args, "--hook").unwrap_or_else(|| "session-start".to_string());
+    let host = option_value(args, "--host").unwrap_or_else(|| "external".to_string());
+    let runtime_dir = option_value(args, "--runtime-dir").unwrap_or_else(|| "runtime".to_string());
+    build_hook_plan(&host, &hook, Path::new(&runtime_dir))
+}
+
+fn build_hook_plan(host: &str, hook: &str, runtime_dir: &Path) -> HookPlan {
+    let normalized_hook = normalize_hook_name(hook);
+    let normalized_host = String::from(if host.trim().is_empty() {
+        "external"
+    } else {
+        host.trim()
+    });
+    let node_command = build_node_hook_command(runtime_dir, &normalized_hook);
+    let rust_supported = is_rust_hook_supported(&normalized_hook);
+
+    if !rust_supported {
+        return HookPlan {
+            hook: normalized_hook,
+            host: normalized_host,
+            runtime: "node".to_string(),
+            command: node_command,
+            fallback: String::new(),
+            reason: "rust-hook-not-implemented".to_string(),
+            supported: true,
+        };
+    }
+
+    match env_flag("EMB_AGENT_RUST_HOOKS") {
+        Some(false) => HookPlan {
+            hook: normalized_hook,
+            host: normalized_host,
+            runtime: "node".to_string(),
+            command: node_command,
+            fallback: String::new(),
+            reason: "forced-node".to_string(),
+            supported: true,
+        },
+        Some(true) => {
+            let command = build_rust_hook_command(runtime_dir, &normalized_host, &normalized_hook);
+            HookPlan {
+                hook: normalized_hook,
+                host: normalized_host,
+                runtime: "rust".to_string(),
+                command,
+                fallback: node_command,
+                reason: "forced-rust".to_string(),
+                supported: true,
+            }
+        }
+        None => {
+            if is_source_runtime_layout(runtime_dir) {
+                let command =
+                    build_rust_hook_command(runtime_dir, &normalized_host, &normalized_hook);
+                HookPlan {
+                    hook: normalized_hook,
+                    host: normalized_host,
+                    runtime: "rust".to_string(),
+                    command,
+                    fallback: node_command,
+                    reason: "source-runtime-default".to_string(),
+                    supported: true,
+                }
+            } else {
+                HookPlan {
+                    hook: normalized_hook,
+                    host: normalized_host,
+                    runtime: "node".to_string(),
+                    command: node_command,
+                    fallback: String::new(),
+                    reason: "installed-runtime-default".to_string(),
+                    supported: true,
+                }
+            }
+        }
+    }
+}
+
+fn normalize_hook_name(hook: &str) -> String {
+    match hook.trim() {
+        "emb-session-start.js" | "SessionStart" | "session_start" => "session-start".to_string(),
+        "emb-statusline.js" | "statusLine" | "status_line" => "statusline".to_string(),
+        "emb-context-monitor.js" | "PostToolUse" | "context_monitor" => {
+            "context-monitor".to_string()
+        }
+        value if !value.is_empty() => value.to_string(),
+        _ => "session-start".to_string(),
+    }
+}
+
+fn is_rust_hook_supported(hook: &str) -> bool {
+    matches!(hook, "session-start" | "statusline")
+}
+
+fn hook_file_name(hook: &str) -> &'static str {
+    match hook {
+        "session-start" => "emb-session-start.js",
+        "statusline" => "emb-statusline.js",
+        "context-monitor" => "emb-context-monitor.js",
+        _ => "emb-session-start.js",
+    }
+}
+
+fn build_node_hook_command(runtime_dir: &Path, hook: &str) -> String {
+    format!(
+        "node {}",
+        shell_quote(&runtime_dir.join("hooks").join(hook_file_name(hook)))
+    )
+}
+
+fn build_rust_hook_command(runtime_dir: &Path, host: &str, hook: &str) -> String {
+    let source_root = runtime_dir.parent().unwrap_or_else(|| Path::new("."));
+    let binary = rust_binary_path(source_root);
+    let command_prefix = env::var("EMB_AGENT_RUST_HOOK_CMD")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            if binary.exists() {
+                shell_quote(&binary)
+            } else if is_source_runtime_layout(runtime_dir) {
+                "cargo run -q -p emb-agent-rs --".to_string()
+            } else {
+                "emb-agent-rs".to_string()
+            }
+        });
+
+    let mut parts = vec![command_prefix, "hook".to_string(), hook.to_string()];
+    if hook == "session-start" {
+        parts.push("--host".to_string());
+        parts.push(host.to_string());
+    }
+    parts.join(" ")
+}
+
+fn rust_binary_path(source_root: &Path) -> PathBuf {
+    source_root
+        .join("target")
+        .join("debug")
+        .join(if cfg!(windows) {
+            "emb-agent-rs.exe"
+        } else {
+            "emb-agent-rs"
+        })
+}
+
+fn is_source_runtime_layout(runtime_dir: &Path) -> bool {
+    runtime_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name == "runtime")
+        .unwrap_or(false)
+        && runtime_dir
+            .parent()
+            .map(|parent| parent.join("Cargo.toml").exists())
+            .unwrap_or(false)
+}
+
+fn env_flag(name: &str) -> Option<bool> {
+    match env::var(name).ok()?.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn build_hook_plan_json(plan: &HookPlan) -> String {
+    format!(
+        "{{\"hook\":{},\"host\":{},\"runtime\":{},\"command\":{},\"fallback\":{},\"reason\":{},\"supported\":{}}}",
+        json_quote(&plan.hook),
+        json_quote(&plan.host),
+        json_quote(&plan.runtime),
+        json_quote(&plan.command),
+        json_quote(&plan.fallback),
+        json_quote(&plan.reason),
+        plan.supported
+    )
+}
+
+fn shell_quote(path: &Path) -> String {
+    let value = path.to_string_lossy().replace('\\', "/");
+    if value.contains(' ') || value.contains('"') {
+        json_quote(&value)
+    } else {
+        value
+    }
 }
 
 fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
@@ -602,5 +831,55 @@ mod tests {
         assert!(line.contains("1 task(s)"));
         assert!(line.contains("[P1] Implement ADC"));
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn hook_resolver_defaults_source_runtime_to_rust() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|path| path.parent())
+            .unwrap()
+            .to_path_buf();
+        let runtime_dir = root.join("runtime");
+        let plan = build_hook_plan("pi", "session-start", &runtime_dir);
+        assert_eq!(plan.runtime, "rust");
+        assert_eq!(plan.reason, "source-runtime-default");
+        assert_eq!(
+            plan.fallback,
+            build_node_hook_command(&runtime_dir, "session-start")
+        );
+        assert!(plan.command.contains(" hook session-start --host pi"));
+    }
+
+    #[test]
+    fn hook_resolver_keeps_context_monitor_on_node() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|path| path.parent())
+            .unwrap()
+            .to_path_buf();
+        let runtime_dir = root.join("runtime");
+        let plan = build_hook_plan("cursor", "context-monitor", &runtime_dir);
+        assert_eq!(plan.runtime, "node");
+        assert_eq!(plan.reason, "rust-hook-not-implemented");
+        assert!(plan.command.contains("emb-context-monitor.js"));
+        assert!(plan.fallback.is_empty());
+    }
+
+    #[test]
+    fn hook_plan_json_is_machine_readable() {
+        let plan = HookPlan {
+            hook: "statusline".to_string(),
+            host: "pi".to_string(),
+            runtime: "rust".to_string(),
+            command: "emb-agent-rs hook statusline".to_string(),
+            fallback: "node runtime/hooks/emb-statusline.js".to_string(),
+            reason: "test".to_string(),
+            supported: true,
+        };
+        let json = build_hook_plan_json(&plan);
+        assert!(json.contains("\"hook\":\"statusline\""));
+        assert!(json.contains("\"runtime\":\"rust\""));
+        assert!(json.contains("\"supported\":true"));
     }
 }

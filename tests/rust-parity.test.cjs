@@ -123,3 +123,20 @@ test('rust session-start hook payload is pi-compatible and self-contained', { sk
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('rust hook resolver emits a unified source-layout command plan', { skip: !hasCargo() }, () => {
+  const plan = JSON.parse(runRust(['hook', 'resolve', '--host', 'pi', '--hook', 'session-start', '--runtime-dir', 'runtime', '--json']));
+  assert.equal(plan.hook, 'session-start');
+  assert.equal(plan.host, 'pi');
+  assert.equal(plan.runtime, 'rust');
+  assert.equal(plan.reason, 'source-runtime-default');
+  assert.match(plan.command, /hook session-start --host pi/);
+  assert.match(plan.fallback, /node runtime\/hooks\/emb-session-start\.js/);
+
+  const contextMonitor = JSON.parse(runRust(['hook', 'resolve', '--host', 'cursor', '--hook', 'context-monitor', '--runtime-dir', 'runtime', '--json']));
+  assert.equal(contextMonitor.hook, 'context-monitor');
+  assert.equal(contextMonitor.runtime, 'node');
+  assert.equal(contextMonitor.reason, 'rust-hook-not-implemented');
+  assert.match(contextMonitor.command, /emb-context-monitor\.js/);
+  assert.equal(contextMonitor.fallback, '');
+});
