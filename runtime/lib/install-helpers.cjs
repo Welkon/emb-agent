@@ -159,7 +159,7 @@ function createInstallHelpers(deps) {
       }
       return 'core';
     }
-    if (!Object.prototype.hasOwnProperty.call(INSTALL_PROFILES, normalized)) {
+    if (!Object.hasOwn(INSTALL_PROFILES, normalized)) {
       throw new Error(`Unsupported install profile: ${value}`);
     }
     return normalized;
@@ -788,8 +788,8 @@ function createInstallHelpers(deps) {
 
   function resolveInteractiveWorkflowArgs(prompted) {
     const installSpecsProvided = prompted && (
-      Object.prototype.hasOwnProperty.call(prompted, 'installSpecs') ||
-      Object.prototype.hasOwnProperty.call(prompted, 'installWorkflows')
+      Object.hasOwn(prompted, 'installSpecs') ||
+      Object.hasOwn(prompted, 'installWorkflows')
     );
     const explicitRegistry = String(prompted && prompted.registry ? prompted.registry : '').trim();
     const explicitRegistryBranch = String(
@@ -801,7 +801,7 @@ function createInstallHelpers(deps) {
     const requestedSpecs = normalizeInteractiveWorkflowSpecs(prompted && prompted.specs);
     const installSpecs = installSpecsProvided
       ? readInteractiveBoolean(
-          prompted && Object.prototype.hasOwnProperty.call(prompted, 'installSpecs')
+          prompted && Object.hasOwn(prompted, 'installSpecs')
             ? prompted.installSpecs
             : prompted.installWorkflows,
           false
@@ -832,7 +832,7 @@ function createInstallHelpers(deps) {
 
   function resolveInteractiveSkillArgs(prompted) {
     const installSkillsProvided =
-      prompted && Object.prototype.hasOwnProperty.call(prompted, 'installSkills');
+      prompted && Object.hasOwn(prompted, 'installSkills');
     const requestedSkillSources = normalizeInteractiveSkillSources(prompted && prompted.skillSources);
     const requestedSkillNames = normalizeInteractiveSkillNames(prompted && prompted.skillNames);
     const installSkills = installSkillsProvided
@@ -2038,11 +2038,105 @@ function createInstallHelpers(deps) {
     fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + '\n', 'utf8');
   }
 
+  function normalizeHookNameFromFile(hookFileName) {
+    const name = String(hookFileName || '').trim();
+    if (name === 'emb-session-start.js') return 'session-start';
+    if (name === 'emb-statusline.js') return 'statusline';
+    if (name === 'emb-context-monitor.js') return 'context-monitor';
+    return name.replace(/^emb-/, '').replace(/\.js$/, '');
+  }
+
+  function buildNodeHookCommandForRuntime(runtimeDir, hookFileName) {
+    return `node ${JSON.stringify(path.join(runtimeDir, 'hooks', hookFileName).replace(/\\/g, '/'))}`;
+  }
+
+  function buildRustResolverInvocation(runtimeDir) {
+    const sourceRoot = path.resolve(runtimeDir, '..');
+    const binaryPath = path.join(sourceRoot, 'target', 'debug', process.platform === 'win32' ? 'emb-agent-rs.exe' : 'emb-agent-rs');
+    if (fs.existsSync(binaryPath)) {
+      return {
+        command: binaryPath,
+        args: ['hook', 'resolve'],
+        cwd: sourceRoot
+      };
+    }
+    if (path.basename(path.resolve(runtimeDir)) === 'runtime' && fs.existsSync(path.join(sourceRoot, 'Cargo.toml'))) {
+      return {
+        command: 'cargo',
+        args: ['run', '-q', '-p', 'emb-agent-rs', '--', 'hook', 'resolve'],
+        cwd: sourceRoot
+      };
+    }
+    return null;
+  }
+
+  function buildFallbackHookPlan(runtimeDir, target, hookName, hookFileName, reason) {
+    return {
+      hook: hookName,
+      host: target && target.name ? target.name : 'external',
+      runtime: 'node',
+      command: buildNodeHookCommandForRuntime(runtimeDir, hookFileName),
+      fallback: '',
+      reason: reason || 'node-fallback',
+      supported: true
+    };
+  }
+
+  function buildResolvedHookPlan(runtimeDir, target, hookFileName) {
+    const hookName = normalizeHookNameFromFile(hookFileName);
+    const fallback = buildFallbackHookPlan(runtimeDir, target, hookName, hookFileName, 'resolver-unavailable');
+    const invocation = buildRustResolverInvocation(runtimeDir);
+    if (!invocation) {
+      return fallback;
+    }
+
+    try {
+      const result = require('child_process').spawnSync(
+        invocation.command,
+        [
+          ...invocation.args,
+          '--host', target && target.name ? target.name : 'external',
+          '--hook', hookName,
+          '--runtime-dir', runtimeDir,
+          '--json'
+        ],
+        {
+          cwd: invocation.cwd,
+          encoding: 'utf8',
+          timeout: 15000,
+          maxBuffer: 1024 * 1024,
+          env: {
+            ...process.env,
+            EMB_AGENT_WORKSPACE_TRUST: '1'
+          }
+        }
+      );
+      if (result.error || result.status !== 0) {
+        return fallback;
+      }
+      const parsed = JSON.parse(String(result.stdout || '').trim() || '{}');
+      if (!parsed || typeof parsed !== 'object' || typeof parsed.command !== 'string') {
+        return fallback;
+      }
+      return {
+        hook: String(parsed.hook || hookName),
+        host: String(parsed.host || (target && target.name ? target.name : 'external')),
+        runtime: String(parsed.runtime || 'node'),
+        command: String(parsed.command || fallback.command),
+        fallback: String(parsed.fallback || ''),
+        reason: String(parsed.reason || 'rust-resolver'),
+        supported: parsed.supported !== false
+      };
+    } catch {
+      return fallback;
+    }
+  }
+
   function buildJsonHostHookCommand(targetDir, target, hookFileName, isLocal) {
-    const hookPath = isLocal
-      ? path.join('.', target.localDirName, target.runtimeDirName, 'hooks', hookFileName)
-      : path.join(targetDir, target.runtimeDirName, 'hooks', hookFileName);
-    return `node "${hookPath.replace(/\\/g, '/')}"`;
+    const runtimeDir = isLocal
+      ? path.join('.', target.localDirName, target.runtimeDirName)
+      : path.join(targetDir, target.runtimeDirName);
+    return buildResolvedHookPlan(runtimeDir, target, hookFileName).command;
   }
 
   function ensureJsonHostHooks(settingsPath, targetDir, target, isLocal) {
@@ -2514,6 +2608,10 @@ function createInstallHelpers(deps) {
         SESSION_START_HOOK_JSON: JSON.stringify(hookPath('emb-session-start.js')),
         CONTEXT_MONITOR_HOOK_JSON: JSON.stringify(hookPath('emb-context-monitor.js')),
         STATUSLINE_HOOK_JSON: JSON.stringify(hookPath('emb-statusline.js')),
+        HOOK_RUNTIME_JSON: JSON.stringify({
+          session_start: buildResolvedHookPlan(runtimeDir, target, 'emb-session-start.js'),
+          statusline: buildResolvedHookPlan(runtimeDir, target, 'emb-statusline.js')
+        }),
         PUBLIC_COMMANDS_JSON: JSON.stringify(listManagedPublicCommandNames())
       },
       targetDir,

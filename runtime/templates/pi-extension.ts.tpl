@@ -12,10 +12,7 @@ const RUNTIME_CLI_PATH = {{RUNTIME_CLI_PATH_JSON}};
 const SESSION_START_HOOK = {{SESSION_START_HOOK_JSON}};
 const CONTEXT_MONITOR_HOOK = {{CONTEXT_MONITOR_HOOK_JSON}};
 const STATUSLINE_HOOK = {{STATUSLINE_HOOK_JSON}};
-const RUNTIME_ROOT = path.dirname(path.dirname(RUNTIME_CLI_PATH));
-const SOURCE_ROOT = path.dirname(RUNTIME_ROOT);
-const RUST_HOOK_BINARY = path.join(SOURCE_ROOT, "target", "debug", process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs");
-const IS_SOURCE_RUNTIME = path.basename(RUNTIME_ROOT) === "runtime" && fs.existsSync(path.join(SOURCE_ROOT, "Cargo.toml"));
+const HOOK_RUNTIME = {{HOOK_RUNTIME_JSON}};
 const PUBLIC_COMMANDS = {{PUBLIC_COMMANDS_JSON}};
 const ACTION_ALIASES = ["scan", "plan", "do", "debug", "review", "verify"];
 
@@ -43,54 +40,16 @@ function runNodeHook(filePath, payload, timeoutMs = 120000) {
   }
 }
 
-function normalizeEnvFlag(value) {
-  const text = String(value || "").trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(text)) return true;
-  if (["0", "false", "no", "off"].includes(text)) return false;
-  return null;
-}
-
-function shouldUseRustHooks() {
-  const explicit = normalizeEnvFlag(process.env.EMB_AGENT_RUST_HOOKS);
-  if (explicit !== null) {
-    return explicit;
-  }
-  return IS_SOURCE_RUNTIME;
-}
-
-function buildRustHookInvocation(args) {
-  const commandOverride = String(process.env.EMB_AGENT_RUST_HOOK_CMD || "").trim();
-  if (commandOverride) {
-    const words = splitCommandLine(commandOverride);
-    if (words.length > 0) {
-      return { command: words[0], args: [...words.slice(1), ...args], cwd: SOURCE_ROOT };
-    }
-  }
-
-  if (fs.existsSync(RUST_HOOK_BINARY)) {
-    return { command: RUST_HOOK_BINARY, args, cwd: SOURCE_ROOT };
-  }
-
-  if (IS_SOURCE_RUNTIME) {
-    return { command: "cargo", args: ["run", "-q", "-p", "emb-agent-rs", "--", ...args], cwd: SOURCE_ROOT };
-  }
-
-  return null;
-}
-
-function runRustHook(args, cwd, timeoutMs = 120000) {
-  if (!shouldUseRustHooks()) {
-    return "";
-  }
-
-  const invocation = buildRustHookInvocation(args);
-  if (!invocation) {
+function runCommandString(commandText, payload, timeoutMs = 120000) {
+  const words = splitCommandLine(commandText || "");
+  if (words.length === 0) {
     return "";
   }
 
   try {
-    const result = spawnSync(invocation.command, invocation.args, {
-      cwd: invocation.cwd || cwd || process.cwd(),
+    const result = spawnSync(words[0], words.slice(1), {
+      cwd: payload && payload.cwd ? payload.cwd : process.cwd(),
+      input: JSON.stringify(payload || {}),
       encoding: "utf8",
       maxBuffer: 1024 * 1024,
       timeout: timeoutMs,
@@ -108,6 +67,26 @@ function runRustHook(args, cwd, timeoutMs = 120000) {
   } catch {
     return "";
   }
+}
+
+function getHookRuntimePlan(name) {
+  const plans = HOOK_RUNTIME && typeof HOOK_RUNTIME === "object" ? HOOK_RUNTIME : {};
+  const plan = plans[name];
+  return plan && typeof plan === "object" ? plan : null;
+}
+
+function runResolvedHook(name, payload, timeoutMs, nodeHookFile) {
+  const plan = getHookRuntimePlan(name);
+  if (plan && typeof plan.command === "string") {
+    const output = runCommandString(plan.command, payload, timeoutMs);
+    if (output) return output;
+    if (typeof plan.fallback === "string" && plan.fallback.trim()) {
+      const fallbackOutput = runCommandString(plan.fallback, payload, timeoutMs);
+      if (fallbackOutput) return fallbackOutput;
+    }
+  }
+
+  return runNodeHook(nodeHookFile, payload, timeoutMs);
 }
 
 function extractAdditionalContext(rawOutput) {
@@ -139,18 +118,12 @@ function extractAdditionalContext(rawOutput) {
 }
 
 function runSessionStart(cwd) {
-  const rustOutput = runRustHook(["hook", "session-start", "--cwd", cwd || process.cwd(), "--host", "pi"], cwd);
-  if (rustOutput) {
-    const context = extractAdditionalContext(rustOutput);
-    if (context) return context;
-  }
-
-  return extractAdditionalContext(runNodeHook(SESSION_START_HOOK, {
+  return extractAdditionalContext(runResolvedHook("session_start", {
     event: "SessionStart",
     hook_event_name: "SessionStart",
     cwd,
     workspace_trusted: true
-  }));
+  }, 120000, SESSION_START_HOOK));
 }
 
 function runContextMonitor(cwd) {
@@ -163,15 +136,9 @@ function runContextMonitor(cwd) {
 }
 
 function runStatusLine(cwd) {
-  const rustOutput = runRustHook(["hook", "statusline", "--cwd", cwd || process.cwd()], cwd, 10000);
-  if (rustOutput) {
-    return rustOutput;
-  }
-
-  const output = runNodeHook(STATUSLINE_HOOK, {
+  return runResolvedHook("statusline", {
     cwd
-  }, 10000);
-  return output;
+  }, 10000, STATUSLINE_HOOK);
 }
 
 function stripAnsi(text) {

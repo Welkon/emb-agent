@@ -16,7 +16,7 @@ Build the Rust hook binary before using Pi in this source checkout:
 npm run dev:rust-hooks
 ```
 
-This creates `target/debug/emb-agent-rs`. The Pi extension will prefer that binary in source layout, avoiding the slower `cargo run` fallback.
+This creates `target/debug/emb-agent-rs`. Source-layout hook plans point at that binary and fall back to Node if it is missing or fails.
 
 Recommended loop:
 
@@ -75,21 +75,21 @@ Example source-layout session-start plan:
 
 `context-monitor` still resolves to Node because Rust does not implement it yet.
 
-## Pi Extension Hook Selection
+## Host Hook Selection
 
-In source/development runtime layout, the Pi extension now defaults lightweight hooks to Rust:
+The installer asks the Rust resolver for lightweight hook plans, then hosts consume those plans:
 
-- `session_start` → `emb-agent-rs hook session-start --host pi`
-- statusline → `emb-agent-rs hook statusline`
+- `session_start` → `emb-agent-rs hook session-start --host <host>` when Rust is selected
+- statusline → `emb-agent-rs hook statusline` when Rust is selected
+- `context-monitor` → Node until Rust implements it
 
 Fallback behavior:
 
-- If `target/debug/emb-agent-rs` exists, the Pi extension uses the compiled binary.
-- Otherwise, source layout falls back to `cargo run -q -p emb-agent-rs -- ...`.
-- If Rust execution fails, the extension automatically falls back to the existing Node hook.
+- Source-layout plans point at `target/debug/emb-agent-rs` for Rust-supported hooks.
+- If Rust execution fails, Pi extension falls back to the existing Node hook command from the plan.
 - Installed/non-source runtimes continue to use Node hooks by default.
 
-Environment overrides:
+Resolver environment overrides, evaluated when hook plans are generated:
 
 ```bash
 EMB_AGENT_RUST_HOOKS=1   # force Rust hook path

@@ -265,10 +265,10 @@ fn build_rust_hook_command(runtime_dir: &Path, host: &str, hook: &str) -> String
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| {
-            if binary.exists() {
+            if is_source_runtime_layout(runtime_dir) {
                 shell_quote(&binary)
-            } else if is_source_runtime_layout(runtime_dir) {
-                "cargo run -q -p emb-agent-rs --".to_string()
+            } else if binary.exists() {
+                shell_quote(&binary)
             } else {
                 "emb-agent-rs".to_string()
             }
