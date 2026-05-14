@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 
 use emb_agent_core::{
     HookPlan, build_context_monitor_output, build_hook_plan, build_hook_plan_json,
-    build_hooks_diagnostics_json, build_host_session_start_payload, build_session_context,
-    build_start_json, build_statusline, json_string_field, snapshot_from_cwd,
+    build_hooks_diagnostics_json, build_host_session_start_payload, build_project_state_json,
+    build_session_context, build_start_json, build_statusline, json_string_field,
+    project_state_from_cwd, snapshot_from_cwd,
 };
 
 fn main() {
@@ -57,7 +58,13 @@ fn run_diagnostics(args: &[String]) -> Result<(), String> {
             );
             Ok(())
         }
-        "" => Err("missing diagnostics topic; expected hooks".to_string()),
+        "project" => {
+            let cwd = option_value(args, "--cwd").unwrap_or_else(current_dir_string);
+            let state = project_state_from_cwd(&cwd);
+            println!("{}", build_project_state_json(&state));
+            Ok(())
+        }
+        "" => Err("missing diagnostics topic; expected hooks or project".to_string()),
         other => Err(format!("unknown diagnostics topic: {other}")),
     }
 }
@@ -101,7 +108,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs hook context-monitor [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n"
+        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs hook context-monitor [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n  emb-agent-rs diagnostics project --json [--cwd DIR]\n"
     );
 }
 

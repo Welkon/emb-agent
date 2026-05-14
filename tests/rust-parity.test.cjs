@@ -52,8 +52,22 @@ function makeProject() {
   fs.mkdirSync(taskDir, { recursive: true });
   fs.mkdirSync(wikiDir, { recursive: true });
   fs.writeFileSync(path.join(embDir, 'project.json'), JSON.stringify({
+    project_profile: 'baremetal-loop',
+    active_specs: ['project-local'],
+    packages: [
+      {
+        name: 'fw',
+        path: 'firmware',
+        type: 'firmware',
+        submodule: false
+      }
+    ],
     default_package: 'fw',
-    active_package: 'fw'
+    active_package: 'fw',
+    flash_flow: 'repo_hex',
+    preferences: {
+      verification_mode: 'strict'
+    }
   }, null, 2) + '\n', 'utf8');
   fs.writeFileSync(path.join(embDir, '.developer'), JSON.stringify({ name: 'felix' }, null, 2) + '\n', 'utf8');
   fs.writeFileSync(path.join(embDir, '.current-task'), 'adc-task\n', 'utf8');
@@ -62,6 +76,40 @@ function makeProject() {
     '  vendor: Espressif',
     '  model: ESP32-C3',
     '  package: QFN32',
+    'board:',
+    '  name: RustParityBoard',
+    '  target: repo_hex',
+    'signals:',
+    '  - name: ADC_IN',
+    '    pin: GPIO4',
+    '    direction: input',
+    '    default_state: floating',
+    '    confirmed: true',
+    '    note: battery divider',
+    'peripherals:',
+    '  - name: ADC1',
+    '    usage: battery sense',
+    'constraints:',
+    '  - Preserve sleep current',
+    'unknowns:',
+    '  - Divider tolerance',
+    ''
+  ].join('\n'), 'utf8');
+  fs.writeFileSync(path.join(embDir, 'req.yaml'), [
+    'goals:',
+    '  - Exercise ADC path',
+    'features:',
+    '  - Battery telemetry',
+    'constraints:',
+    '  - Reuse existing board pins',
+    'acceptance:',
+    '  - ADC path is stable over ten samples',
+    'failure_policy:',
+    '  - Fail safe on ADC timeout',
+    'unknowns:',
+    '  - Production temperature range',
+    'sources:',
+    '  - docs/prd/system.md',
     ''
   ].join('\n'), 'utf8');
   fs.writeFileSync(path.join(taskDir, 'task.json'), JSON.stringify({
@@ -95,6 +143,39 @@ test('rust start --brief --json captures the same lightweight project facts', { 
     assert.equal(payload.summary.active_task.title, 'Exercise ADC path');
     assert.equal(payload.summary.active_task.priority, 'P1');
     assert.equal(payload.immediate.command, 'do');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rust diagnostics project exposes typed project-state fixture', { skip: !hasCargo() }, () => {
+  const root = makeProject();
+  try {
+    const payload = JSON.parse(runRust(['diagnostics', 'project', '--json', '--cwd', root]));
+    assert.equal(payload.status, 'ok');
+    assert.equal(payload.initialized, true);
+    assert.equal(payload.project_root, fs.realpathSync(root));
+    assert.equal(payload.config.project_profile, 'baremetal-loop');
+    assert.deepEqual(payload.config.active_specs, ['project-local']);
+    assert.equal(payload.config.packages[0].name, 'fw');
+    assert.equal(payload.config.packages[0].path, 'firmware');
+    assert.equal(payload.config.packages[0].type, 'firmware');
+    assert.equal(payload.config.default_package, 'fw');
+    assert.equal(payload.config.active_package, 'fw');
+    assert.equal(payload.config.flash_flow, 'repo_hex');
+    assert.equal(payload.config.preferences.verification_mode, 'strict');
+    assert.equal(payload.config.preferences.plan_mode, 'auto');
+    assert.equal(payload.hardware.model, 'ESP32-C3');
+    assert.equal(payload.hardware.board_name, 'RustParityBoard');
+    assert.equal(payload.hardware.signals[0].name, 'ADC_IN');
+    assert.equal(payload.hardware.signals[0].confirmed, true);
+    assert.equal(payload.hardware.peripherals[0].name, 'ADC1');
+    assert.deepEqual(payload.requirements.goals, ['Exercise ADC path']);
+    assert.deepEqual(payload.requirements.features, ['Battery telemetry']);
+    assert.equal(payload.requirements.acceptance[0], 'ADC path is stable over ten samples');
+    assert.equal(payload.current_task.name, 'adc-task');
+    assert.equal(payload.current_task.package, 'fw');
+    assert.equal(payload.open_tasks, 1);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

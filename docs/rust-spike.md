@@ -50,19 +50,21 @@ cargo run -p emb-agent-rs -- start --brief --json --cwd .
 cargo run -p emb-agent-rs -- statusline --cwd .
 cargo run -p emb-agent-rs -- hook resolve --host pi --hook session-start --runtime-dir runtime --json
 cargo run -p emb-agent-rs -- diagnostics hooks --json --host pi --runtime-dir runtime
+cargo run -p emb-agent-rs -- diagnostics project --json --cwd .
 cargo run -p emb-agent-rs -- hook session-start --cwd . --host pi
 cargo run -p emb-agent-rs -- hook statusline --cwd .
 printf '{"cwd":".","workspace_trusted":true,"context_window":{"remaining_percentage":18}}' \
   | cargo run -p emb-agent-rs -- hook context-monitor
 ```
 
-It currently reads only lightweight `.emb-agent/` project state:
+It currently reads typed, lightweight `.emb-agent/` project state:
 
-- `.emb-agent/project.json`
-- `.emb-agent/hw.yaml`
+- `.emb-agent/project.json` → `ProjectConfig`, packages, preferences, developer defaults
+- `.emb-agent/hw.yaml` → `HardwareTruth`, MCU, board, signals, peripherals, constraints
+- `.emb-agent/req.yaml` → `RequirementsTruth`, goals, features, constraints, acceptance, unknowns
 - `.emb-agent/.developer`
 - `.emb-agent/.current-task`
-- `.emb-agent/tasks/*/task.json`
+- `.emb-agent/tasks/*/task.json` → `TaskRef`
 - `.emb-agent/wiki/**/*.md`
 
 ## Hook Resolver

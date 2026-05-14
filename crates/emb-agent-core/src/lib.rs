@@ -16,7 +16,12 @@ pub use hooks::{
     shell_quote,
 };
 pub use json::{json_quote, json_string_field};
-pub use project::{ProjectSnapshot, TaskSnapshot, find_project_root, snapshot_from_cwd};
+pub use project::{
+    DeveloperInfo, HardwarePeripheral, HardwareSignal, HardwareTruth, ProjectConfig,
+    ProjectPackage, ProjectPreferences, ProjectSnapshot, ProjectState, RequirementsTruth, TaskRef,
+    TaskSnapshot, build_project_state_json, find_project_root, project_state_from_cwd,
+    read_project_state, snapshot_from_cwd,
+};
 pub use render::{
     build_host_session_start_payload, build_session_context, build_start_json, build_statusline,
 };

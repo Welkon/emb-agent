@@ -929,10 +929,10 @@ Initial targets:
 
 Recommended next tasks after this plan:
 
-1. Expand Rust `context-monitor` parity for graph freshness and full status-derived context hygiene.
-2. Add forced-Rust install coverage for any remaining host-specific hook surfaces.
-3. Continue thinning `crates/emb-agent-rs`; introduce `emb-agent-cli` once the CLI routing boundary is stable.
-4. Start typed project-state parity fixtures for `.emb-agent/project.json`, `hw.yaml`, `req.yaml`, and task refs.
+1. Expand typed project-state parity fixtures to cover state paths, fallback state storage, and local/global roots.
+2. Expand Rust `context-monitor` parity for graph freshness and full status-derived context hygiene.
+3. Add forced-Rust install coverage for any remaining host-specific hook surfaces.
+4. Continue thinning `crates/emb-agent-rs`; introduce `emb-agent-cli` once the CLI routing boundary is stable.
 
 ## Stop Conditions
 
