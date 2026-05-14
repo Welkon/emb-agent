@@ -35,6 +35,7 @@ This is not the normal emb-agent continuity path. Prefer `session record`, `task
 - `transcript review --from <analysis-json> --accept-heuristic`
   Explicitly accept the heuristic buckets as a shortcut when no AI-authored reviewed file is available.
 - `transcript apply --from <analysis-json> --confirm`
+- If analysis reports `board_validation_candidates`, convert the reviewed bench feedback into `verify board --result <pass|fail|partial> ...` records; transcript import itself does not mutate board truth.
   Apply only reviewed recovery signals to live session state. This updates questions, risks, and transcript diagnostics; it does not mutate project truth files.
 
 ## Safety

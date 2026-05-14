@@ -42,6 +42,7 @@ function createCommandGroupHelpers(deps) {
     confirmVerifySignoff,
     rejectVerifySignoff,
     saveVerifyReport,
+    saveBoardValidation,
     addNoteEntry,
     ingestDocCli,
     referenceLookupCli
@@ -224,6 +225,10 @@ function createCommandGroupHelpers(deps) {
 
     if (cmd === 'verify' && subcmd === 'save') {
       return saveVerifyReport(rest);
+    }
+
+    if (cmd === 'verify' && subcmd === 'board') {
+      return saveBoardValidation(rest);
     }
 
     if (cmd === 'verify' && subcmd === 'confirm') {

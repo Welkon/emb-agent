@@ -114,6 +114,7 @@ your-project/
 │   ├── project.json             ← project settings
 │   ├── hw.yaml                  ← chip model, pins, signals, peripherals
 │   ├── req.yaml                 ← goals, interfaces, acceptance rules
+│   ├── board-truth/             ← real-board validation pass/fail records
 │   ├── graph/                   ← auto-generated knowledge graph
 │   ├── wiki/                    ← long-term knowledge storage
 │   ├── tasks/                   ← task definitions and context

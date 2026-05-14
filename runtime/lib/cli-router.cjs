@@ -135,6 +135,9 @@ function createCliRouter(deps) {
       if (cmd === 'capability' && subcmd === 'materialize') {
         return `Materializing capability ${rest[0] || 'all'}`.trim();
       }
+      if (cmd === 'verify' && subcmd === 'board') {
+        return 'Recording board validation truth';
+      }
       if (cmd === 'executor' && subcmd === 'run') {
         return `Running executor ${rest[0] || ''}`.trim();
       }

@@ -667,6 +667,8 @@ function createProjectConfigHelpers(deps) {
         active_specs: resolved.session.active_specs,
         preferences: getPreferences(resolved.session),
         quality_gates: resolved.project_config ? resolved.project_config.quality_gates : null,
+        chip_substitutes: resolved.project_config ? resolved.project_config.chip_substitutes : [],
+        flash_flow: resolved.project_config ? resolved.project_config.flash_flow : '',
         agents: resolved.effective.agents,
         review_agents: resolved.effective.review_agents,
         review_axes: resolved.effective.review_axes,
@@ -700,6 +702,8 @@ function createProjectConfigHelpers(deps) {
         project_profile: resolved.session.project_profile,
         active_specs: resolved.session.active_specs,
         chip_support_sources: [],
+        chip_substitutes: [],
+        flash_flow: '',
         executors: {},
         quality_gates: {
           required_skills: [],

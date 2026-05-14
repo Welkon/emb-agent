@@ -310,6 +310,14 @@ test('project config defaults can override runtime defaults', () => {
       {
         project_profile: 'tasked-runtime',
         active_specs: ['connected-appliance'],
+        chip_substitutes: [
+          {
+            target: 'SC8P062BD',
+            substitute: 'SC8F072',
+            reason: 'erasable debug substitute'
+          }
+        ],
+        flash_flow: 'official_ide_only',
         executors: {
           build: {
             description: 'firmware build',
@@ -371,6 +379,14 @@ test('project config defaults can override runtime defaults', () => {
 
   assert.equal(projectConfig.project_profile, 'tasked-runtime');
   assert.deepEqual(projectConfig.active_specs, ['connected-appliance']);
+  assert.equal(projectConfig.flash_flow, 'official_ide_only');
+  assert.deepEqual(projectConfig.chip_substitutes, [
+    {
+      target: 'SC8P062BD',
+      substitute: 'SC8F072',
+      reason: 'erasable debug substitute'
+    }
+  ]);
   assert.deepEqual(projectConfig.executors.build.argv, ['make', '-C', 'firmware']);
   assert.equal(projectConfig.executors.build.allow_extra_args, true);
   assert.equal(projectConfig.executors.build.env.BUILD_MODE, 'release');
@@ -504,6 +520,43 @@ test('project config rejects malformed executors', () => {
       config
     ),
     /permissions\.writes\.deny/
+  );
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        chip_substitutes: {
+          target: 'SC8P062BD',
+          substitute: 'SC8F072'
+        }
+      },
+      config
+    ),
+    /chip_substitutes must be an array/
+  );
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        chip_substitutes: [
+          {
+            target: 'SC8P062BD'
+          }
+        ]
+      },
+      config
+    ),
+    /chip_substitutes\[0\]\.substitute/
+  );
+
+  assert.throws(
+    () => runtime.validateProjectConfig(
+      {
+        flash_flow: 'unknown-flow'
+      },
+      config
+    ),
+    /flash_flow/
   );
 });
 

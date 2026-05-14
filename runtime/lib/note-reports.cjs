@@ -650,6 +650,252 @@ function createNoteReportHelpers(deps) {
     };
   }
 
+  function parseBoardValidationArgs(tokens) {
+    const control = stripPermissionControlTokens(tokens);
+    const argv = control.tokens;
+    const result = {
+      summaryParts: [],
+      result: '',
+      build: '',
+      firmware: '',
+      evidence: [],
+      metrics: [],
+      truths: [],
+      followups: []
+    };
+
+    for (let index = 0; index < argv.length; index += 1) {
+      const token = argv[index];
+      if (token === '--result') {
+        result.result = argv[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--build') {
+        result.build = argv[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--firmware') {
+        result.firmware = argv[index + 1] || '';
+        index += 1;
+        continue;
+      }
+      if (token === '--evidence') {
+        const value = argv[index + 1] || '';
+        if (!value) throw new Error('Missing value after --evidence');
+        result.evidence.push(value);
+        index += 1;
+        continue;
+      }
+      if (token === '--metric') {
+        const value = argv[index + 1] || '';
+        if (!value) throw new Error('Missing value after --metric');
+        result.metrics.push(value);
+        index += 1;
+        continue;
+      }
+      if (token === '--truth') {
+        const value = argv[index + 1] || '';
+        if (!value) throw new Error('Missing value after --truth');
+        result.truths.push(value);
+        index += 1;
+        continue;
+      }
+      if (token === '--followup') {
+        const value = argv[index + 1] || '';
+        if (!value) throw new Error('Missing value after --followup');
+        result.followups.push(value);
+        index += 1;
+        continue;
+      }
+      result.summaryParts.push(token);
+    }
+
+    return {
+      summary: result.summaryParts.join(' ').trim(),
+      result: normalizeBoardValidationResult(result.result),
+      build: result.build.trim(),
+      firmware: result.firmware.trim(),
+      evidence: result.evidence,
+      metrics: result.metrics,
+      truths: result.truths,
+      followups: result.followups,
+      explicit_confirmation: control.explicit_confirmation
+    };
+  }
+
+  function normalizeBoardValidationResult(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      throw new Error('Missing board validation --result');
+    }
+    if (['pass', 'passed', 'ok', 'green', '确认', '通过', '对了'].includes(normalized)) {
+      return 'pass';
+    }
+    if (['fail', 'failed', 'ng', 'red', '不对', '失败'].includes(normalized)) {
+      return 'fail';
+    }
+    if (['partial', 'mixed', '部分'].includes(normalized)) {
+      return 'partial';
+    }
+    throw new Error(`Unsupported board validation result: ${value}`);
+  }
+
+  function getBoardValidationPaths() {
+    const markdown = runtime.resolveProjectDataPath(resolveProjectRoot(), 'board-truth', 'BOARD-VALIDATION.md');
+    const jsonPath = runtime.resolveProjectDataPath(resolveProjectRoot(), 'board-truth', 'board-validation.json');
+    return {
+      markdown,
+      json: jsonPath,
+      markdown_relative: runtime.getProjectAssetRelativePath('board-truth', 'BOARD-VALIDATION.md'),
+      json_relative: runtime.getProjectAssetRelativePath('board-truth', 'board-validation.json')
+    };
+  }
+
+  function buildBoardValidationMarkdownRecord(record) {
+    const lines = [
+      `### ${record.validated_at} | ${record.result.toUpperCase()}`,
+      `- Summary: ${record.summary}`
+    ];
+    if (record.build) lines.push(`- Build: ${record.build}`);
+    if (record.firmware) lines.push(`- Firmware: ${record.firmware}`);
+    if (record.metrics.length > 0) {
+      lines.push('- Metrics:');
+      record.metrics.forEach(item => lines.push(`  - ${item}`));
+    }
+    if (record.evidence.length > 0) {
+      lines.push('- Evidence:');
+      record.evidence.forEach(item => lines.push(`  - ${item}`));
+    }
+    if (record.truths.length > 0) {
+      lines.push('- Board truth:');
+      record.truths.forEach(item => lines.push(`  - ${item}`));
+    }
+    if (record.followups.length > 0) {
+      lines.push('- Follow-up:');
+      record.followups.forEach(item => lines.push(`  - ${item}`));
+    }
+    return lines.join('\n') + '\n';
+  }
+
+  function appendBoardValidationRecord(content, record) {
+    const header = '# Board Validation Truth';
+    const marker = '## Records';
+    const base = content && content.trim()
+      ? content
+      : `${header}\n\nReal-board validation records captured by emb-agent. User bench feedback outranks agent inference.\n`;
+    const normalized = base.endsWith('\n') ? base : `${base}\n`;
+    if (!normalized.includes(marker)) {
+      return `${normalized.trimEnd()}\n\n${marker}\n\n${buildBoardValidationMarkdownRecord(record)}`;
+    }
+    return normalized.replace(marker, `${marker}\n\n${buildBoardValidationMarkdownRecord(record).trimEnd()}`);
+  }
+
+  function loadBoardValidationJson(jsonPath) {
+    if (!fs.existsSync(jsonPath)) {
+      return { version: 1, records: [] };
+    }
+    try {
+      const data = runtime.readJson(jsonPath);
+      return {
+        version: 1,
+        records: Array.isArray(data.records) ? data.records : []
+      };
+    } catch {
+      return { version: 1, records: [] };
+    }
+  }
+
+  function saveBoardValidation(tokens) {
+    const input = parseBoardValidationArgs(tokens);
+    if (!input.summary) {
+      throw new Error('Missing board validation summary');
+    }
+
+    const paths = getBoardValidationPaths();
+    const permissionCheck = applyWritePermission({
+      target: paths.markdown_relative,
+      json: paths.json_relative,
+      summary: input.summary,
+      result: input.result,
+      build: input.build,
+      firmware: input.firmware,
+      evidence: input.evidence,
+      metrics: input.metrics,
+      truths: input.truths,
+      followups: input.followups,
+      synced_truth: false
+    }, 'verify-board', input.explicit_confirmation);
+
+    if (permissionCheck.permission.decision !== 'allow') {
+      return permissionCheck.result;
+    }
+
+    const record = {
+      validated_at: new Date().toISOString(),
+      result: input.result,
+      summary: input.summary,
+      build: input.build,
+      firmware: input.firmware,
+      evidence: input.evidence,
+      metrics: input.metrics,
+      truths: input.truths,
+      followups: input.followups
+    };
+
+    runtime.ensureDir(path.dirname(paths.markdown));
+    const currentMarkdown = fs.existsSync(paths.markdown) ? runtime.readText(paths.markdown) : '';
+    fs.writeFileSync(paths.markdown, appendBoardValidationRecord(currentMarkdown, record), 'utf8');
+
+    const json = loadBoardValidationJson(paths.json);
+    json.records = [record, ...json.records].slice(0, 200);
+    runtime.writeJson(paths.json, json);
+
+    let syncedTruth = false;
+    if (input.truths.length > 0) {
+      ingestTruthCli.ingestHardware(resolveProjectRoot(), {
+        mcu: '',
+        board: '',
+        target: '',
+        truths: input.truths,
+        constraints: [],
+        unknowns: input.followups || [],
+        sources: runtime.unique([paths.markdown_relative, ...input.evidence]),
+        force: false
+      });
+      syncedTruth = true;
+    }
+
+    updateSession(current => {
+      current.last_command = 'verify board';
+      current.last_files = runtime
+        .unique([
+          paths.markdown_relative,
+          paths.json_relative,
+          syncedTruth ? runtime.getProjectAssetRelativePath('hw.yaml') : '',
+          ...(current.last_files || [])
+        ])
+        .slice(0, RUNTIME_CONFIG.max_last_files);
+      current.diagnostics = current.diagnostics || {};
+      current.diagnostics.latest_board_validation = record;
+    });
+
+    return permissionGateHelpers.applyPermissionDecision({
+      target: paths.markdown_relative,
+      json: paths.json_relative,
+      summary: input.summary,
+      result: input.result,
+      build: input.build,
+      firmware: input.firmware,
+      evidence: input.evidence,
+      metrics: input.metrics,
+      truths: input.truths,
+      followups: input.followups,
+      synced_truth: syncedTruth
+    }, permissionCheck.permission);
+  }
+
   function parseVerifySignoffArgs(tokens) {
     const list = Array.isArray(tokens) ? tokens : [];
     const filtered = [];
@@ -1374,8 +1620,10 @@ function createNoteReportHelpers(deps) {
     syncRequirementsFromPlan,
     savePlanReport,
     parseVerifySaveArgs,
+    parseBoardValidationArgs,
     parseVerifySignoffArgs,
     buildVerifyEntry,
+    saveBoardValidation,
     confirmVerifySignoff,
     rejectVerifySignoff,
     saveVerifyReport,

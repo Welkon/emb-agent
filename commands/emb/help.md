@@ -69,6 +69,7 @@ The public command surface is intentionally small and grouped by default path.
 - After `ingest doc`, prefer `adapter analysis init` and then `adapter derive --from-analysis` instead of treating raw documents as final chip support.
 - If the chip is known and you only need support for the current project, prefer `adapter derive --from-project` before thinking about shared sources.
 - If support is still only valid for the current project, keep it `project-only` first and publish it to a shared adapters catalog only after review.
+- When the user confirms real-board behavior (`this build is right`, current draw, wake works/fails), record it with `verify board --result <pass|fail|partial> <summary> --evidence <build/log/measurement> --truth <stable board fact>` instead of leaving it in chat only.
 
 ## Advanced Help
 

@@ -80,7 +80,7 @@ Pair it with vendor, chip-family, or project-local specs for compiler dialects, 
 - For sleep/low-power work, separate runtime safe states from sleep-current states. A display or bus may require high-Z while running, but the lowest sleep current may require deterministic input/output levels on non-wake pins.
 - Treat vendor example code and measured board behavior as first-class evidence for low-power entry and wake sequencing. If a manual mnemonic and an official example differ, try the example path before inventing a register sequence.
 - Always confirm whether the user flashes the command-line artifact, an IDE-built artifact, or a programmer configuration. Do not assume a local HEX includes configuration bits or is the artifact being burned.
-- Record bench gaps and assumptions close to the task or project truth, not only in conversation.
+- Record bench gaps and assumptions close to the task or project truth, not only in conversation. When the user confirms real-board pass/fail/current/wake behavior, preserve it as a board validation record before treating it as settled truth.
 
 ## Avoid Without Project-Specific Justification
 

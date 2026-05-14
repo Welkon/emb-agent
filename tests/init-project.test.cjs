@@ -171,6 +171,8 @@ test('init-project creates project defaults and defers note templates into a boo
     assert.equal(projectConfig.project_profile, 'tasked-runtime');
     assert.deepEqual(projectConfig.active_specs, ['connected-appliance']);
     assert.deepEqual(projectConfig.chip_support_sources, []);
+    assert.deepEqual(projectConfig.chip_substitutes, []);
+    assert.equal(projectConfig.flash_flow, '');
     assert.deepEqual(projectConfig.executors, {});
     assert.deepEqual(projectConfig.quality_gates.required_skills, []);
     assert.deepEqual(projectConfig.quality_gates.required_executors, []);

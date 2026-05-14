@@ -516,6 +516,7 @@ function createTranscriptCommandHelpers(deps) {
     const trials = [];
     const pinStates = [];
     const powerSleepChecklist = [];
+    const boardValidationCandidates = [];
 
     const PIN_PATTERN = /\bR[ABCD]\d\b|\bP[ABCD]\d\b/giu;
     const HARDWARE_PATTERN = /(R[ABCD]\d|P[ABCD]\d|PWM|USB|Type-?C|VBUS|uA|μA|mA|\d(?:\.\d+)?V)/iu;
@@ -528,6 +529,8 @@ function createTranscriptCommandHelpers(deps) {
     const ZH_RISK = /(问题|偏高|偶发|失败|风险|漏电|倒灌|反灌|无法|不能)/iu;
     const ZH_POWER = /(低功耗|休眠|比较器|上拉|下拉|待机功耗)/iu;
     const PREFERENCE_PATTERN = /(prefer|avoid|do not|don't|no helper|without helper|不要|不想|避免|优先|偏好|尽量|希望)/iu;
+    const BOARD_PASS_PATTERN = /(validated|works|pass|fixed|right now|current.*uA|这版.*(对|可以|正常)|现在.*(对了|正常|可以|好了)|能.*唤醒|功耗.*(<|低于|uA|μA)|不闪|稳定)/iu;
+    const BOARD_FAIL_PATTERN = /(fails|failed|not working|regression|这版.*不对|还是.*不|不能.*唤醒|无法.*唤醒|功耗.*(偏高|mA)|闪烁|不亮|没.*PWM)/iu;
 
     entries.forEach(({ line, role }) => {
       const fromAssistant = role === 'assistant';
@@ -553,6 +556,10 @@ function createTranscriptCommandHelpers(deps) {
       }
       if (POWER_PATTERN.test(line) || ZH_POWER.test(line)) {
         powerSleepChecklist.push(line);
+      }
+      if (fromUserLike && !isQuestion && (BOARD_PASS_PATTERN.test(line) || BOARD_FAIL_PATTERN.test(line))) {
+        const verdict = BOARD_FAIL_PATTERN.test(line) ? 'fail' : 'pass';
+        boardValidationCandidates.push(`${verdict}: ${line}`);
       }
 
       const pinMatches = line.match(PIN_PATTERN) || [];
@@ -583,10 +590,12 @@ function createTranscriptCommandHelpers(deps) {
       repeated_symptoms: takeUnique(repeatedSymptoms, 12),
       pin_state_candidates: takeUnique(pinStates, 24),
       power_sleep_checklist: takeUnique(powerSleepChecklist, 16),
+      board_validation_candidates: takeUnique(boardValidationCandidates, 16),
       recommended_next: buildRecommendedNext({
         risks,
         repeatedSymptoms,
         powerSleepChecklist,
+        boardValidationCandidates,
         questions
       })
     };
@@ -597,6 +606,12 @@ function createTranscriptCommandHelpers(deps) {
       return {
         route: 'debug-forensics',
         reason: 'Repeated transcript symptoms should be treated as a debug loop, not another implementation pass.'
+      };
+    }
+    if ((inputs.boardValidationCandidates || []).length > 0) {
+      return {
+        route: 'board-validation-record',
+        reason: 'User bench feedback was found; record it with verify board before it stays chat-only.'
       };
     }
     if ((inputs.powerSleepChecklist || []).length > 0) {
@@ -665,7 +680,8 @@ function createTranscriptCommandHelpers(deps) {
       ['Hardware Trials', analysis.hardware_trials],
       ['Repeated Symptoms', analysis.repeated_symptoms],
       ['Pin State Candidates', analysis.pin_state_candidates],
-      ['Power Sleep Checklist', analysis.power_sleep_checklist]
+      ['Power Sleep Checklist', analysis.power_sleep_checklist],
+      ['Board Validation Candidates', analysis.board_validation_candidates]
     ].forEach(([title, items]) => {
       lines.push('', `## ${title}`, '');
       const list = Array.isArray(items) ? items : [];
@@ -728,6 +744,7 @@ function createTranscriptCommandHelpers(deps) {
         hardware_trials: analysis.hardware_trials || [],
         pin_state_candidates: analysis.pin_state_candidates || [],
         power_sleep_checklist: analysis.power_sleep_checklist || [],
+        board_validation_candidates: analysis.board_validation_candidates || [],
         recommended_next: analysis.recommended_next || {}
       }, null, 2),
       '```',
@@ -777,6 +794,7 @@ function createTranscriptCommandHelpers(deps) {
       confirmed_facts: (analysis.confirmed_facts || []).slice(0, 12),
       user_preferences: (analysis.user_preferences || []).slice(0, 8),
       pin_state_candidates: (analysis.pin_state_candidates || []).slice(0, 12),
+      board_validation_candidates: (analysis.board_validation_candidates || []).slice(0, 12),
       semantic_review: {
         required: semanticReview.required !== false,
         status: semanticReview.status || 'pending',

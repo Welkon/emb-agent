@@ -1302,6 +1302,49 @@ function validateAdapterSources(config) {
   return normalized;
 }
 
+function validateChipSubstitute(source, index) {
+  const label = `chip_substitutes[${index}]`;
+  const input = source === undefined || source === null ? {} : source;
+  expectObject(input, label);
+
+  return {
+    target: ensureString(input.target, `${label}.target`),
+    substitute: ensureString(input.substitute || input.debug_device || input.alias, `${label}.substitute`),
+    reason: ensureOptionalString(input.reason, `${label}.reason`)
+  };
+}
+
+function validateChipSubstitutes(config) {
+  if (config === undefined || config === null) {
+    return [];
+  }
+  if (!Array.isArray(config)) {
+    throw new Error('chip_substitutes must be an array');
+  }
+
+  const normalized = config.map((item, index) => validateChipSubstitute(item, index));
+  const seen = new Set();
+
+  normalized.forEach(item => {
+    const key = `${item.target}\n${item.substitute}`;
+    if (seen.has(key)) {
+      throw new Error(`chip_substitutes contains duplicate pair: ${item.target} / ${item.substitute}`);
+    }
+    seen.add(key);
+  });
+
+  return normalized;
+}
+
+function validateFlashFlow(value) {
+  return ensureChoice(
+    value,
+    'flash_flow',
+    ['', 'repo_hex', 'official_ide_only', 'external_programmer'],
+    ''
+  );
+}
+
 function validateDefaultAdapterSourceConfig(config) {
   const source = config === undefined || config === null ? {} : config;
   expectObject(source, 'default_chip_support_source');
@@ -1457,6 +1500,8 @@ function validateProjectConfig(config, runtimeConfig) {
     default_package: packages.length > 0 ? defaultPackage : '',
     active_package: packages.length > 0 ? (activePackage || defaultPackage) : '',
     chip_support_sources: validateAdapterSources(config.chip_support_sources || []),
+    chip_substitutes: validateChipSubstitutes(config.chip_substitutes || []),
+    flash_flow: validateFlashFlow(config.flash_flow),
     executors: validateExecutors(config.executors || {}),
     quality_gates: validateQualityGates(config.quality_gates || {}),
     permissions: validatePermissionsConfig(config.permissions || {}),

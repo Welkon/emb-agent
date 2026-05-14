@@ -739,6 +739,7 @@ const {
   confirmVerifySignoff,
   rejectVerifySignoff,
   saveVerifyReport,
+  saveBoardValidation,
   addNoteEntry
 } = noteReportRuntimeHelpers.createNoteReportRuntime({
   fs,
@@ -977,14 +978,15 @@ const {
   handleCatalogAndStateCommands,
   handleCapabilityCommands,
   saveScanReport,
-    savePlanReport,
-    saveReviewReport,
-    confirmVerifySignoff,
-    rejectVerifySignoff,
-    saveVerifyReport,
-    addNoteEntry,
-    ingestDocCli,
-    referenceLookupCli
+  savePlanReport,
+  saveReviewReport,
+  confirmVerifySignoff,
+  rejectVerifySignoff,
+  saveVerifyReport,
+  saveBoardValidation,
+  addNoteEntry,
+  ingestDocCli,
+  referenceLookupCli
 });
 
 const {
