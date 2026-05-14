@@ -3,6 +3,7 @@ pub mod hooks;
 pub mod json;
 pub mod project;
 pub mod render;
+pub mod state_paths;
 
 pub use context_monitor::{
     ContextMetrics, build_context_monitor_output, build_context_monitor_output_from_value,
@@ -24,4 +25,11 @@ pub use project::{
 };
 pub use render::{
     build_host_session_start_payload, build_session_context, build_start_json, build_statusline,
+};
+pub use state_paths::{
+    ProjectStateFilePaths, ProjectStatePaths, StatePathConfig, build_project_state_file_paths,
+    build_project_state_paths_json, canonicalize_project_root, get_fallback_project_state_dir,
+    get_project_asset_relative_path, get_project_key, get_project_key_from_canonical_root,
+    get_project_state_paths, normalize_case_insensitive_project_root, normalize_path,
+    normalize_project_relative_path, resolve_project_data_path, sha1_hex12,
 };

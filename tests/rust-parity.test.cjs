@@ -181,6 +181,27 @@ test('rust diagnostics project exposes typed project-state fixture', { skip: !ha
   }
 });
 
+
+test('rust diagnostics state-paths mirrors Node storage path conventions', { skip: !hasCargo() }, () => {
+  const root = makeProject();
+  try {
+    const payload = JSON.parse(runRust(['diagnostics', 'state-paths', '--json', '--cwd', root, '--runtime-dir', 'runtime']));
+    assert.equal(payload.status, 'ok');
+    assert.equal(payload.project_root, fs.realpathSync(root));
+    assert.match(payload.project_key, /^[a-f0-9]{12}$/);
+    assert.match(payload.state_dir, /state\/emb-agent\/projects$/);
+    assert.match(payload.legacy_state_dir, /runtime\/state\/projects$/);
+    assert.match(payload.session_path, new RegExp(`${payload.project_key}\\.json$`));
+    assert.match(payload.handoff_path, new RegExp(`${payload.project_key}\\.handoff\\.json$`));
+    assert.match(payload.context_summary_path, new RegExp(`${payload.project_key}\\.context-summary\\.json$`));
+    assert.match(payload.fallback_state_dir, /emb-agent-state\/[^/]+\/projects$/);
+    assert.equal(payload.primary.session_path, payload.session_path);
+    assert.equal(payload.fallback.session_path, `${payload.fallback_state_dir}/${payload.project_key}.json`);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('rust statusline preserves core statusline semantics from node hook', { skip: !hasCargo() }, () => {
   const root = makeProject();
   try {

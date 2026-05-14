@@ -929,7 +929,7 @@ Initial targets:
 
 Recommended next tasks after this plan:
 
-1. Expand typed project-state parity fixtures to cover state paths, fallback state storage, and local/global roots.
+1. Expand typed project-state parity fixtures to cover session state view/inspection and read-only fallback behavior.
 2. Expand Rust `context-monitor` parity for graph freshness and full status-derived context hygiene.
 3. Add forced-Rust install coverage for any remaining host-specific hook surfaces.
 4. Continue thinning `crates/emb-agent-rs`; introduce `emb-agent-cli` once the CLI routing boundary is stable.

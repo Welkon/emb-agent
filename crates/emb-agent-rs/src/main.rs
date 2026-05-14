@@ -2,10 +2,10 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use emb_agent_core::{
-    HookPlan, build_context_monitor_output, build_hook_plan, build_hook_plan_json,
+    HookPlan, StatePathConfig, build_context_monitor_output, build_hook_plan, build_hook_plan_json,
     build_hooks_diagnostics_json, build_host_session_start_payload, build_project_state_json,
-    build_session_context, build_start_json, build_statusline, json_string_field,
-    project_state_from_cwd, snapshot_from_cwd,
+    build_project_state_paths_json, build_session_context, build_start_json, build_statusline,
+    get_project_state_paths, json_string_field, project_state_from_cwd, snapshot_from_cwd,
 };
 
 fn main() {
@@ -64,7 +64,19 @@ fn run_diagnostics(args: &[String]) -> Result<(), String> {
             println!("{}", build_project_state_json(&state));
             Ok(())
         }
-        "" => Err("missing diagnostics topic; expected hooks or project".to_string()),
+        "state-paths" => {
+            let cwd = option_value(args, "--cwd").unwrap_or_else(current_dir_string);
+            let runtime_dir =
+                option_value(args, "--runtime-dir").unwrap_or_else(|| "runtime".to_string());
+            let paths = get_project_state_paths(
+                Path::new(&runtime_dir),
+                Path::new(&cwd),
+                &StatePathConfig::default(),
+            );
+            println!("{}", build_project_state_paths_json(&paths));
+            Ok(())
+        }
+        "" => Err("missing diagnostics topic; expected hooks, project, or state-paths".to_string()),
         other => Err(format!("unknown diagnostics topic: {other}")),
     }
 }
@@ -108,7 +120,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs hook context-monitor [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n  emb-agent-rs diagnostics project --json [--cwd DIR]\n"
+        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs hook context-monitor [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n  emb-agent-rs diagnostics project --json [--cwd DIR]\n  emb-agent-rs diagnostics state-paths --json [--cwd DIR] [--runtime-dir ./runtime]\n"
     );
 }
 
