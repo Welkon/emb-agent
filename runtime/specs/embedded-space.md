@@ -77,6 +77,9 @@ Pair it with vendor, chip-family, or project-local specs for compiler dialects, 
 - Inspect compiler warnings, memory/resource usage, map/listing output where available, and generated artifacts relevant to startup and interrupts.
 - For timing-sensitive work, verify tick cadence, ISR latency, sleep/wake recovery, and worst-case main-loop execution.
 - For hardware outputs, verify reset behavior, enable/disable transitions, fault injection, and no unintended pulses.
+- For sleep/low-power work, separate runtime safe states from sleep-current states. A display or bus may require high-Z while running, but the lowest sleep current may require deterministic input/output levels on non-wake pins.
+- Treat vendor example code and measured board behavior as first-class evidence for low-power entry and wake sequencing. If a manual mnemonic and an official example differ, try the example path before inventing a register sequence.
+- Always confirm whether the user flashes the command-line artifact, an IDE-built artifact, or a programmer configuration. Do not assume a local HEX includes configuration bits or is the artifact being burned.
 - Record bench gaps and assumptions close to the task or project truth, not only in conversation.
 
 ## Avoid Without Project-Specific Justification
