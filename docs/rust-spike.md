@@ -24,6 +24,7 @@ Recommended loop:
 npm run dev:rust-hooks
 npm run test:rust
 node tests/pi-extension-rust-hooks.test.cjs
+node tests/rust-hook-install-source-layout.test.cjs
 EMB_BENCH_ITER=50 npm run bench:rust-hook
 ```
 

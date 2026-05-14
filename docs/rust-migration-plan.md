@@ -929,12 +929,10 @@ Initial targets:
 
 Recommended next tasks after this plan:
 
-1. Add `emb-agent-rs diagnostics hooks --json`.
-2. Convert Pi/Codex/Cursor/Claude installer paths to consume Rust hook resolver consistently.
-3. Replace direct CJS hook command construction with Rust-generated plans where safe.
-4. Expand Rust `context-monitor` parity for graph freshness and full status-derived context hygiene.
-5. Add source-layout end-to-end test verifying generated Codex/Cursor/Pi hook commands.
-6. Continue thinning `crates/emb-agent-rs`; introduce `emb-agent-cli` once the CLI routing boundary is stable.
+1. Expand Rust `context-monitor` parity for graph freshness and full status-derived context hygiene.
+2. Add forced-Rust install coverage for any remaining host-specific hook surfaces.
+3. Continue thinning `crates/emb-agent-rs`; introduce `emb-agent-cli` once the CLI routing boundary is stable.
+4. Start typed project-state parity fixtures for `.emb-agent/project.json`, `hw.yaml`, `req.yaml`, and task refs.
 
 ## Stop Conditions
 

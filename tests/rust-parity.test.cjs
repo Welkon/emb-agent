@@ -20,13 +20,28 @@ function hasCargo() {
   }
 }
 
-function runRust(args, cwd = repoRoot, input = '') {
+function runRust(args, cwd = repoRoot, input = '', env = {}) {
   return childProcess.execFileSync('cargo', ['run', '-q', '-p', 'emb-agent-rs', '--', ...args], {
     cwd,
     encoding: 'utf8',
+    env: {
+      ...process.env,
+      ...env
+    },
     input,
     stdio: ['pipe', 'pipe', 'pipe']
   }).trim();
+}
+
+function resolveHookPlan(hook, env = {}, host = 'pi') {
+  return JSON.parse(runRust([
+    'hook',
+    'resolve',
+    '--host', host,
+    '--hook', hook,
+    '--runtime-dir', 'runtime',
+    '--json'
+  ], repoRoot, '', env));
 }
 
 function makeProject() {
@@ -171,6 +186,35 @@ test('rust context-monitor hook emits pi-compatible critical context warning', {
     assert.equal(repeated, '');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rust hook resolver honors runtime override environment', { skip: !hasCargo() }, () => {
+  const hooks = ['session-start', 'statusline', 'context-monitor'];
+
+  for (const hook of hooks) {
+    const nodePlan = resolveHookPlan(hook, { EMB_AGENT_RUST_HOOKS: '0' });
+    assert.equal(nodePlan.hook, hook);
+    assert.equal(nodePlan.runtime, 'node');
+    assert.equal(nodePlan.reason, 'forced-node');
+    assert.match(nodePlan.command, new RegExp(`emb-${hook}\\.js`));
+    assert.equal(nodePlan.fallback, '');
+
+    const rustPlan = resolveHookPlan(hook, { EMB_AGENT_RUST_HOOKS: '1' });
+    assert.equal(rustPlan.hook, hook);
+    assert.equal(rustPlan.runtime, 'rust');
+    assert.equal(rustPlan.reason, 'forced-rust');
+    assert.match(rustPlan.command, new RegExp(`hook ${hook}`));
+    assert.match(rustPlan.fallback, new RegExp(`emb-${hook}\\.js`));
+  }
+
+  for (const hook of hooks) {
+    const customPlan = resolveHookPlan(hook, {
+      EMB_AGENT_RUST_HOOKS: '1',
+      EMB_AGENT_RUST_HOOK_CMD: '/tmp/custom-emb-agent-rs'
+    });
+    assert.equal(customPlan.runtime, 'rust');
+    assert.match(customPlan.command, new RegExp(`^/tmp/custom-emb-agent-rs hook ${hook}`));
   }
 });
 

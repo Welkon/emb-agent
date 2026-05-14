@@ -2052,6 +2052,14 @@ function createInstallHelpers(deps) {
 
   function buildRustResolverInvocation(runtimeDir) {
     const sourceRoot = path.resolve(runtimeDir, '..');
+    const overrideCommand = String(process.env.EMB_AGENT_RUST_HOOK_CMD || '').trim();
+    if (overrideCommand && fs.existsSync(overrideCommand)) {
+      return {
+        command: overrideCommand,
+        args: ['hook', 'resolve'],
+        cwd: sourceRoot
+      };
+    }
     const binaryPath = path.join(sourceRoot, 'target', 'debug', process.platform === 'win32' ? 'emb-agent-rs.exe' : 'emb-agent-rs');
     if (fs.existsSync(binaryPath)) {
       return {
