@@ -99,7 +99,7 @@ pub fn normalize_hook_name(hook: &str) -> String {
 }
 
 pub fn is_rust_hook_supported(hook: &str) -> bool {
-    matches!(hook, "session-start" | "statusline")
+    matches!(hook, "session-start" | "statusline" | "context-monitor")
 }
 
 pub fn hook_file_name(hook: &str) -> &'static str {
@@ -243,13 +243,16 @@ mod tests {
     }
 
     #[test]
-    fn hook_resolver_keeps_context_monitor_on_node() {
+    fn hook_resolver_defaults_context_monitor_to_rust_in_source_layout() {
         let runtime_dir = repo_root().join("runtime");
         let plan = build_hook_plan("cursor", "context-monitor", &runtime_dir);
-        assert_eq!(plan.runtime, "node");
-        assert_eq!(plan.reason, "rust-hook-not-implemented");
-        assert!(plan.command.contains("emb-context-monitor.js"));
-        assert!(plan.fallback.is_empty());
+        assert_eq!(plan.runtime, "rust");
+        assert_eq!(plan.reason, "source-runtime-default");
+        assert!(plan.command.contains(" hook context-monitor"));
+        assert_eq!(
+            plan.fallback,
+            build_node_hook_command(&runtime_dir, "context-monitor")
+        );
     }
 
     #[test]
@@ -278,6 +281,6 @@ mod tests {
         assert!(json.contains("\"session_start\""));
         assert!(json.contains("\"statusline\""));
         assert!(json.contains("\"context_monitor\""));
-        assert!(json.contains("rust-hook-not-implemented"));
+        assert!(json.contains("\"hook\":\"context-monitor\""));
     }
 }

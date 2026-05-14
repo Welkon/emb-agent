@@ -38,7 +38,7 @@ crates/emb-agent-core/   # shared hook plans, project snapshots, rendering helpe
 crates/emb-agent-rs/     # CLI routing binary
 ```
 
-`emb-agent-core` is the first shared crate. It currently contains `hooks`, `project`, `render`, and `json` modules. New durable runtime logic should move there or into future focused crates instead of growing the binary crate.
+`emb-agent-core` is the first shared crate. It currently contains `hooks`, `context_monitor`, `project`, `render`, and `json` modules. New durable runtime logic should move there or into future focused crates instead of growing the binary crate.
 
 ## Current Scope
 
@@ -51,6 +51,8 @@ cargo run -p emb-agent-rs -- hook resolve --host pi --hook session-start --runti
 cargo run -p emb-agent-rs -- diagnostics hooks --json --host pi --runtime-dir runtime
 cargo run -p emb-agent-rs -- hook session-start --cwd . --host pi
 cargo run -p emb-agent-rs -- hook statusline --cwd .
+printf '{"cwd":".","workspace_trusted":true,"context_window":{"remaining_percentage":18}}' \
+  | cargo run -p emb-agent-rs -- hook context-monitor
 ```
 
 It currently reads only lightweight `.emb-agent/` project state:
@@ -85,7 +87,7 @@ Example source-layout session-start plan:
 }
 ```
 
-`context-monitor` still resolves to Node because Rust does not implement it yet.
+`context-monitor` now resolves to Rust in source layouts. It is a minimal metrics/session-hygiene implementation and still falls back to the Node hook in generated plans.
 
 ## Hook Diagnostics
 
@@ -110,7 +112,7 @@ The installer asks the Rust resolver for lightweight hook plans, then hosts cons
 
 - `session_start` → `emb-agent-rs hook session-start --host <host>` when Rust is selected
 - statusline → `emb-agent-rs hook statusline` when Rust is selected
-- `context-monitor` → Node until Rust implements it
+- `context-monitor` → `emb-agent-rs hook context-monitor` when Rust is selected
 
 Fallback behavior:
 
@@ -126,7 +128,7 @@ EMB_AGENT_RUST_HOOKS=0   # force Node hook path
 EMB_AGENT_RUST_HOOK_CMD="/path/to/emb-agent-rs"  # custom Rust hook command
 ```
 
-`emb-context-monitor.js` is still Node-only in this spike.
+`emb-context-monitor.js` remains the Node fallback and still has fuller graph/session behavior than the minimal Rust implementation.
 
 ## Non-goals
 

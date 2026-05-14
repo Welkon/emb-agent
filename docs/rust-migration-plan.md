@@ -31,7 +31,7 @@ Already done on `beta`:
 - `emb_sidequest` Pi tool and `/emb:sidequest` command.
 - Rust workspace with `crates/emb-agent-core` plus the `crates/emb-agent-rs` CLI spike.
 - Core hook planning, project snapshot, JSON helper, and rendering modules live in `emb-agent-core`.
-- Rust lightweight `start`, `statusline`, `hook session-start`, `hook statusline`.
+- Rust lightweight `start`, `statusline`, `hook session-start`, `hook statusline`, and minimal `hook context-monitor`.
 - Rust `hook resolve --json` command plan.
 - Pi extension consumes installer-provided hook plans.
 - Installer can consume Rust hook resolver plans and fallback to Node.
@@ -932,7 +932,7 @@ Recommended next tasks after this plan:
 1. Add `emb-agent-rs diagnostics hooks --json`.
 2. Convert Pi/Codex/Cursor/Claude installer paths to consume Rust hook resolver consistently.
 3. Replace direct CJS hook command construction with Rust-generated plans where safe.
-4. Implement Rust `context-monitor` minimal version.
+4. Expand Rust `context-monitor` parity for graph freshness and full status-derived context hygiene.
 5. Add source-layout end-to-end test verifying generated Codex/Cursor/Pi hook commands.
 6. Continue thinning `crates/emb-agent-rs`; introduce `emb-agent-cli` once the CLI routing boundary is stable.
 

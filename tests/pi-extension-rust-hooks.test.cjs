@@ -19,6 +19,7 @@ test('pi extension template consumes installer-provided hook runtime plans with 
   assert.match(template, /runNodeHook\(nodeHookFile, payload, timeoutMs\)/);
 
   assert.match(template, /runResolvedHook\("session_start"/);
+  assert.match(template, /runResolvedHook\("context_monitor"/);
   assert.match(template, /runResolvedHook\("statusline"/);
   assert.doesNotMatch(template, /IS_SOURCE_RUNTIME/);
   assert.doesNotMatch(template, /function shouldUseRustHooks\(\)/);

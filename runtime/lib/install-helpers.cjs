@@ -2082,6 +2082,15 @@ function createInstallHelpers(deps) {
     };
   }
 
+  function commandMatchesManagedHook(command, hookFileName) {
+    const value = String(command || '');
+    if (value.includes(hookFileName)) {
+      return true;
+    }
+    const hookName = normalizeHookNameFromFile(hookFileName);
+    return new RegExp(`\\bhook\\s+${escapeRegExp(hookName)}\\b`).test(value);
+  }
+
   function buildResolvedHookPlan(runtimeDir, target, hookFileName) {
     const hookName = normalizeHookNameFromFile(hookFileName);
     const fallback = buildFallbackHookPlan(runtimeDir, target, hookName, hookFileName, 'resolver-unavailable');
@@ -2164,7 +2173,7 @@ function createInstallHelpers(deps) {
         typeof existingStatusLine === 'object' &&
         !Array.isArray(existingStatusLine) &&
         typeof existingStatusLine.command === 'string' &&
-        existingStatusLine.command.includes('emb-statusline.js');
+        commandMatchesManagedHook(existingStatusLine.command, 'emb-statusline.js');
 
       if (!existingStatusLine || statusLineManaged) {
         next.statusLine = {
@@ -2177,11 +2186,11 @@ function createInstallHelpers(deps) {
     const hasSessionStartHook = next.hooks.SessionStart.some(entry =>
       entry &&
       (
-        (typeof entry.command === 'string' && entry.command.includes('emb-session-start.js')) ||
+        (typeof entry.command === 'string' && commandMatchesManagedHook(entry.command, 'emb-session-start.js')) ||
         (
           Array.isArray(entry.hooks) &&
           entry.hooks.some(hook =>
-            hook && typeof hook.command === 'string' && hook.command.includes('emb-session-start.js')
+            hook && typeof hook.command === 'string' && commandMatchesManagedHook(hook.command, 'emb-session-start.js')
           )
         )
       )
@@ -2207,11 +2216,11 @@ function createInstallHelpers(deps) {
     const hasContextMonitorHook = next.hooks.PostToolUse.some(entry =>
       entry &&
       (
-        (typeof entry.command === 'string' && entry.command.includes('emb-context-monitor.js')) ||
+        (typeof entry.command === 'string' && commandMatchesManagedHook(entry.command, 'emb-context-monitor.js')) ||
         (
           Array.isArray(entry.hooks) &&
           entry.hooks.some(hook =>
-            hook && typeof hook.command === 'string' && hook.command.includes('emb-context-monitor.js')
+            hook && typeof hook.command === 'string' && commandMatchesManagedHook(hook.command, 'emb-context-monitor.js')
           )
         )
       )
@@ -2266,7 +2275,7 @@ function createInstallHelpers(deps) {
         settings.statusLine &&
         typeof settings.statusLine === 'object' &&
         typeof settings.statusLine.command === 'string' &&
-        settings.statusLine.command.includes('emb-statusline.js')
+        commandMatchesManagedHook(settings.statusLine.command, 'emb-statusline.js')
       ) {
         const next = { ...settings };
         delete next.statusLine;
@@ -2281,7 +2290,7 @@ function createInstallHelpers(deps) {
       next.statusLine &&
       typeof next.statusLine === 'object' &&
       typeof next.statusLine.command === 'string' &&
-      next.statusLine.command.includes('emb-statusline.js')
+      commandMatchesManagedHook(next.statusLine.command, 'emb-statusline.js')
     ) {
       delete next.statusLine;
     }
@@ -2295,7 +2304,10 @@ function createInstallHelpers(deps) {
           }
 
           if (typeof entry.command === 'string') {
-            if (entry.command.includes('emb-session-start.js') || entry.command.includes('emb-context-monitor.js')) {
+            if (
+              commandMatchesManagedHook(entry.command, 'emb-session-start.js') ||
+              commandMatchesManagedHook(entry.command, 'emb-context-monitor.js')
+            ) {
               return null;
             }
             return entry;
@@ -2309,7 +2321,8 @@ function createInstallHelpers(deps) {
             if (!hook || typeof hook.command !== 'string') {
               return true;
             }
-            return !hook.command.includes('emb-session-start.js') && !hook.command.includes('emb-context-monitor.js');
+            return !commandMatchesManagedHook(hook.command, 'emb-session-start.js') &&
+              !commandMatchesManagedHook(hook.command, 'emb-context-monitor.js');
           });
 
           if (hooks.length === 0) {
@@ -2610,7 +2623,8 @@ function createInstallHelpers(deps) {
         STATUSLINE_HOOK_JSON: JSON.stringify(hookPath('emb-statusline.js')),
         HOOK_RUNTIME_JSON: JSON.stringify({
           session_start: buildResolvedHookPlan(runtimeDir, target, 'emb-session-start.js'),
-          statusline: buildResolvedHookPlan(runtimeDir, target, 'emb-statusline.js')
+          statusline: buildResolvedHookPlan(runtimeDir, target, 'emb-statusline.js'),
+          context_monitor: buildResolvedHookPlan(runtimeDir, target, 'emb-context-monitor.js')
         }),
         PUBLIC_COMMANDS_JSON: JSON.stringify(listManagedPublicCommandNames())
       },

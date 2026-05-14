@@ -2,9 +2,9 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use emb_agent_core::{
-    HookPlan, build_hook_plan, build_hook_plan_json, build_hooks_diagnostics_json,
-    build_host_session_start_payload, build_session_context, build_start_json, build_statusline,
-    json_string_field, snapshot_from_cwd,
+    HookPlan, build_context_monitor_output, build_hook_plan, build_hook_plan_json,
+    build_hooks_diagnostics_json, build_host_session_start_payload, build_session_context,
+    build_start_json, build_statusline, json_string_field, snapshot_from_cwd,
 };
 
 fn main() {
@@ -84,14 +84,24 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             println!("{}", build_statusline(&snapshot));
             Ok(())
         }
-        "" => Err("missing hook name; expected resolve, session-start, or statusline".to_string()),
+        "context-monitor" => {
+            let output = build_context_monitor_output(&stdin_payload_or_cwd(args));
+            if !output.is_empty() {
+                println!("{output}");
+            }
+            Ok(())
+        }
+        "" => Err(
+            "missing hook name; expected resolve, session-start, statusline, or context-monitor"
+                .to_string(),
+        ),
         other => Err(format!("unknown hook: {other}")),
     }
 }
 
 fn print_help() {
     println!(
-        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n"
+        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs hook context-monitor [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n"
     );
 }
 
@@ -115,6 +125,30 @@ fn hook_cwd(args: &[String]) -> String {
 }
 
 fn stdin_json_string_field(key: &str) -> Option<String> {
+    let raw = read_stdin_payload()?;
+    let value = json_string_field(&raw, key);
+    if value.trim().is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn stdin_payload_or_cwd(args: &[String]) -> String {
+    let raw = read_stdin_payload().unwrap_or_default();
+    if raw.trim().is_empty() {
+        format!(
+            "{{\"cwd\":{},\"workspace_trusted\":true}}",
+            emb_agent_core::json_quote(
+                &option_value(args, "--cwd").unwrap_or_else(current_dir_string)
+            )
+        )
+    } else {
+        raw
+    }
+}
+
+fn read_stdin_payload() -> Option<String> {
     use std::io::{IsTerminal, Read};
     let mut stdin = std::io::stdin();
     if stdin.is_terminal() {
@@ -124,12 +158,7 @@ fn stdin_json_string_field(key: &str) -> Option<String> {
     if stdin.read_to_string(&mut raw).is_err() {
         return None;
     }
-    let value = json_string_field(&raw, key);
-    if value.trim().is_empty() {
-        None
-    } else {
-        Some(value)
-    }
+    Some(raw)
 }
 
 fn resolve_hook_plan_from_args(args: &[String]) -> HookPlan {

@@ -9,6 +9,7 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const statuslineHook = require(path.join(repoRoot, 'runtime', 'hooks', 'emb-statusline.js'));
+const contextMonitorHook = require(path.join(repoRoot, 'runtime', 'hooks', 'emb-context-monitor.js'));
 
 function hasCargo() {
   try {
@@ -19,11 +20,12 @@ function hasCargo() {
   }
 }
 
-function runRust(args, cwd = repoRoot) {
+function runRust(args, cwd = repoRoot, input = '') {
   return childProcess.execFileSync('cargo', ['run', '-q', '-p', 'emb-agent-rs', '--', ...args], {
     cwd,
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
+    input,
+    stdio: ['pipe', 'pipe', 'pipe']
   }).trim();
 }
 
@@ -135,10 +137,41 @@ test('rust hook resolver emits a unified source-layout command plan', { skip: !h
 
   const contextMonitor = JSON.parse(runRust(['hook', 'resolve', '--host', 'cursor', '--hook', 'context-monitor', '--runtime-dir', 'runtime', '--json']));
   assert.equal(contextMonitor.hook, 'context-monitor');
-  assert.equal(contextMonitor.runtime, 'node');
-  assert.equal(contextMonitor.reason, 'rust-hook-not-implemented');
-  assert.match(contextMonitor.command, /emb-context-monitor\.js/);
-  assert.equal(contextMonitor.fallback, '');
+  assert.equal(contextMonitor.host, 'cursor');
+  assert.equal(contextMonitor.runtime, 'rust');
+  assert.equal(contextMonitor.reason, 'source-runtime-default');
+  assert.match(contextMonitor.command, /hook context-monitor/);
+  assert.match(contextMonitor.fallback, /node runtime\/hooks\/emb-context-monitor\.js/);
+});
+
+test('rust context-monitor hook emits pi-compatible critical context warning', { skip: !hasCargo() }, () => {
+  const root = makeProject();
+  try {
+    const input = {
+      cwd: root,
+      event: 'PostToolUse',
+      workspace_trusted: true,
+      context_window: {
+        remaining_percentage: 18
+      }
+    };
+    const nodeMetrics = contextMonitorHook.parseContextMetrics(input);
+    assert.equal(nodeMetrics.remaining, 18);
+    assert.equal(nodeMetrics.used, 82);
+
+    const output = runRust(['hook', 'context-monitor'], repoRoot, JSON.stringify(input));
+    assert.notEqual(output, '');
+    const payload = JSON.parse(output);
+    assert.equal(payload.hookSpecificOutput.hookEventName, 'PostToolUse');
+    assert.match(payload.hookSpecificOutput.additionalContext, /EMB CONTEXT CRITICAL/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /pause/);
+    assert.match(payload.hookSpecificOutput.additionalContext, /host clear\/new-context control/);
+
+    const repeated = runRust(['hook', 'context-monitor'], repoRoot, JSON.stringify(input));
+    assert.equal(repeated, '');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('rust hook diagnostics reports all hook plans and fallback state', { skip: !hasCargo() }, () => {
@@ -151,6 +184,6 @@ test('rust hook diagnostics reports all hook plans and fallback state', { skip: 
   assert.equal(typeof diagnostics.rust_binary_exists, 'boolean');
   assert.equal(diagnostics.hooks.session_start.runtime, 'rust');
   assert.equal(diagnostics.hooks.statusline.runtime, 'rust');
-  assert.equal(diagnostics.hooks.context_monitor.runtime, 'node');
-  assert.equal(diagnostics.hooks.context_monitor.reason, 'rust-hook-not-implemented');
+  assert.equal(diagnostics.hooks.context_monitor.runtime, 'rust');
+  assert.equal(diagnostics.hooks.context_monitor.reason, 'source-runtime-default');
 });

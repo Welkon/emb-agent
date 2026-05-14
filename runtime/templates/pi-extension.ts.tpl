@@ -127,12 +127,12 @@ function runSessionStart(cwd) {
 }
 
 function runContextMonitor(cwd) {
-  return extractAdditionalContext(runNodeHook(CONTEXT_MONITOR_HOOK, {
+  return extractAdditionalContext(runResolvedHook("context_monitor", {
     event: "PostToolUse",
     hook_event_name: "PostToolUse",
     cwd,
     workspace_trusted: true
-  }, 30000));
+  }, 30000, CONTEXT_MONITOR_HOOK));
 }
 
 function runStatusLine(cwd) {

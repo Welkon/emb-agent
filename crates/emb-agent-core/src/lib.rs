@@ -1,8 +1,14 @@
+pub mod context_monitor;
 pub mod hooks;
 pub mod json;
 pub mod project;
 pub mod render;
 
+pub use context_monitor::{
+    ContextMetrics, build_context_monitor_output, build_context_monitor_output_from_value,
+    build_fresh_context_instruction, build_metrics_message, build_session_message,
+    parse_context_metrics, should_emit,
+};
 pub use hooks::{
     HookPlan, build_hook_plan, build_hook_plan_json, build_hooks_diagnostics_json,
     build_node_hook_command, build_rust_hook_command, env_flag, hook_file_name,
