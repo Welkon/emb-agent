@@ -1,8 +1,7 @@
 [package]
-name = "emb-agent-rs"
+name = "emb-agent-core"
 version = "0.0.0"
 edition = "2024"
 publish = false
 
 [dependencies]
-emb-agent-core = { path = "../emb-agent-core" }

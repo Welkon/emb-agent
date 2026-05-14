@@ -29,9 +29,20 @@ EMB_BENCH_ITER=50 npm run bench:rust-hook
 
 For current behavior gaps, see [`rust-parity-gap.md`](./rust-parity-gap.md).
 
+## Current Layout
+
+The Rust spike is now split into:
+
+```text
+crates/emb-agent-core/   # shared hook plan/diagnostics primitives
+crates/emb-agent-rs/     # CLI binary and temporary project-state prototype
+```
+
+`emb-agent-core` is the first shared crate. New durable runtime logic should move there or into future focused crates instead of growing the binary crate.
+
 ## Current Scope
 
-The prototype lives in `crates/emb-agent-rs` and provides:
+The prototype CLI lives in `crates/emb-agent-rs` and provides:
 
 ```bash
 cargo run -p emb-agent-rs -- start --brief --json --cwd .
