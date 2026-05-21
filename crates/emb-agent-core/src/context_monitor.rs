@@ -10,6 +10,7 @@ use crate::json::json_quote;
 const WARNING_REMAINING_PERCENT: f64 = 35.0;
 const CRITICAL_REMAINING_PERCENT: f64 = 25.0;
 const DEBOUNCE_CALLS: u64 = 5;
+const METRICS_STALE_MS: u128 = 60_000;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ContextMetrics {
@@ -27,19 +28,38 @@ pub fn build_context_monitor_output_from_value(data: &Value) -> String {
         return String::new();
     }
 
-    let metrics = parse_context_metrics(data);
+    let project_root = project_root_from_payload(data);
+    let live_metrics = parse_context_metrics(data);
+
+    // Persist live metrics to bridge so subsequent calls without
+    // context-window data can still warn about low remaining %.
+    let bridge_metrics = if let Some(metrics) = live_metrics {
+        write_bridge(&project_root, metrics);
+        Some(metrics)
+    } else {
+        read_bridge(&project_root)
+    };
+
     let context_hygiene = data
         .get("context_hygiene")
         .or_else(|| data.get("contextHygiene"));
-    let metrics_message = metrics
+    let metrics_message = bridge_metrics
         .as_ref()
         .map(|metrics| build_metrics_message(metrics, context_hygiene))
         .unwrap_or_default();
     let session_message = build_session_message(context_hygiene);
+
+    // graph_message is empty for now (knowledge graph refresh is Phase 5).
+    // The slot exists so the message priority matches Node's behavior when
+    // graph refresh is added: metrics > session > graph.
+    let graph_message = "";
+
     let message = if !metrics_message.is_empty() {
         metrics_message.as_str()
     } else if !session_message.is_empty() {
         session_message.as_str()
+    } else if !graph_message.is_empty() {
+        graph_message
     } else {
         ""
     };
@@ -51,7 +71,7 @@ pub fn build_context_monitor_output_from_value(data: &Value) -> String {
     let mut level = context_hygiene
         .and_then(|value| string_member(value, "level"))
         .unwrap_or_else(|| "stable".to_string());
-    if let Some(metrics) = metrics {
+    if let Some(metrics) = bridge_metrics {
         if metrics.remaining <= CRITICAL_REMAINING_PERCENT {
             level = "critical".to_string();
         } else if metrics.remaining <= WARNING_REMAINING_PERCENT {
@@ -59,11 +79,14 @@ pub fn build_context_monitor_output_from_value(data: &Value) -> String {
         }
     }
 
-    let project_root = project_root_from_payload(data);
-    let signature =
-        build_emit_signature(&level, &metrics_message, &session_message, context_hygiene);
-    if !should_emit(&project_root, &level, &signature) {
-        return String::new();
+    // Graph messages bypass shouldEmit (one-shot auto-refresh notifications).
+    // Metrics and session messages use dedup via shouldEmit.
+    if graph_message.is_empty() {
+        let signature =
+            build_emit_signature(&level, &metrics_message, &session_message, context_hygiene);
+        if !should_emit(&project_root, &level, &signature) {
+            return String::new();
+        }
     }
 
     let event_name = string_member(data, "hook_event_name")
@@ -455,6 +478,44 @@ fn now_ms() -> u128 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or(0)
+}
+
+fn bridge_path(project_root: &str) -> PathBuf {
+    env::temp_dir().join(format!(
+        "emb-agent-rs-ctx-{}.bridge.json",
+        stable_hash_hex(project_root)
+    ))
+}
+
+fn read_bridge(project_root: &str) -> Option<ContextMetrics> {
+    let path = bridge_path(project_root);
+    let Ok(text) = fs::read_to_string(&path) else {
+        return None;
+    };
+    let value: Value = serde_json::from_str(&text).ok()?;
+    let timestamp = value.get("timestamp").and_then(Value::as_u64).unwrap_or(0) as u128;
+    if now_ms().saturating_sub(timestamp) > METRICS_STALE_MS {
+        return None;
+    }
+    let remaining = value
+        .get("remaining")
+        .and_then(Value::as_f64)
+        .filter(|f| f.is_finite() && *f > 0.0)?;
+    let used = value
+        .get("used")
+        .and_then(Value::as_f64)
+        .filter(|f| f.is_finite())?;
+    Some(ContextMetrics { remaining, used })
+}
+
+fn write_bridge(project_root: &str, metrics: ContextMetrics) {
+    let path = bridge_path(project_root);
+    let payload = json!({
+        "remaining": metrics.remaining,
+        "used": metrics.used,
+        "timestamp": now_ms(),
+    });
+    let _ = fs::write(&path, payload.to_string());
 }
 
 fn stable_hash_hex(value: &str) -> String {
