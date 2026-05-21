@@ -72,12 +72,14 @@ pub fn build_hook_plan(host: &str, hook: &str, runtime_dir: &Path) -> HookPlan {
                     supported: true,
                 }
             } else {
+                let command =
+                    build_rust_hook_command(runtime_dir, &normalized_host, &normalized_hook);
                 HookPlan {
                     hook: normalized_hook,
                     host: normalized_host,
-                    runtime: "node".to_string(),
-                    command: node_command,
-                    fallback: String::new(),
+                    runtime: "rust".to_string(),
+                    command,
+                    fallback: node_command,
                     reason: "installed-runtime-default".to_string(),
                     supported: true,
                 }
@@ -296,5 +298,28 @@ mod tests {
         assert!(json.contains("\"statusline\""));
         assert!(json.contains("\"context_monitor\""));
         assert!(json.contains("\"hook\":\"context-monitor\""));
+    }
+
+    #[test]
+    fn hook_resolver_defaults_installed_runtime_to_rust_with_node_fallback() {
+        let tmp = std::env::temp_dir().join(format!(
+            "emb-agent-rs-test-installed-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let runtime_dir = tmp.join("emb-agent").join("runtime");
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+        // No Cargo.toml in parent → not a source layout
+        let plan = build_hook_plan("claude", "statusline", &runtime_dir);
+        assert_eq!(plan.runtime, "rust");
+        assert_eq!(plan.reason, "installed-runtime-default");
+        assert!(!plan.fallback.is_empty());
+        assert!(plan.fallback.contains("node"));
+        // Without the binary present, falls back to PATH lookup
+        assert!(plan.command.contains("emb-agent-rs"));
+        let _ = std::fs::remove_dir_all(tmp);
     }
 }
