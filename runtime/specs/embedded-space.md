@@ -17,6 +17,7 @@ Pair it with vendor, chip-family, or project-local specs for compiler dialects, 
 
 ## Scope And Layering
 
+- **Specs are coding constraints only.** Put design decisions, rationale, interview conclusions, domain knowledge, and "why we chose X over Y" in `.emb-agent/wiki/decisions/`, not in spec files. Specs answer "what rule must code follow"; wiki answers "why that rule exists."
 - Keep this spec vendor-neutral and MCU-family-neutral.
 - Do not add compiler dialect, IDE project-file, SFR header, absolute-address syntax, package pinout, memory-size threshold, vendor library, or chip-specific peripheral rules here.
 - Put vendor/toolchain rules in selectable vendor specs such as `scmcu-space` or `padauk-space`.
