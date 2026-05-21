@@ -12,3 +12,4 @@ runtime/state/projects/*
 
 .pi-lens/
 **/.pi-lens/
+bin/emb-agent-rs
