@@ -77,6 +77,7 @@ pub struct ProjectPreferences {
     pub review_mode: String,
     pub verification_mode: String,
     pub orchestration_mode: String,
+    pub auto_runner: bool,
 }
 
 impl Default for ProjectPreferences {
@@ -87,6 +88,7 @@ impl Default for ProjectPreferences {
             review_mode: "auto".to_string(),
             verification_mode: "lean".to_string(),
             orchestration_mode: "auto".to_string(),
+            auto_runner: false,
         }
     }
 }
@@ -362,6 +364,14 @@ impl ProjectPreferences {
                 value_string(value, "orchestration_mode"),
                 defaults.orchestration_mode,
             ]),
+            auto_runner: value
+                .get("auto_runner")
+                .map(|v| match v {
+                    Value::Bool(b) => *b,
+                    Value::Number(n) => n.as_i64() == Some(1),
+                    _ => false,
+                })
+                .unwrap_or(false),
         }
     }
 }
@@ -480,6 +490,7 @@ pub fn build_project_state_json(state: &ProjectState) -> String {
                 "review_mode": state.config.preferences.review_mode,
                 "verification_mode": state.config.preferences.verification_mode,
                 "orchestration_mode": state.config.preferences.orchestration_mode,
+                "auto_runner": state.config.preferences.auto_runner,
             },
             "hooks": {
                 "session_start": {
