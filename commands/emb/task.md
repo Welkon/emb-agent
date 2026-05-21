@@ -42,3 +42,11 @@ allowed-tools:
 - Prefer `task worktree status` or `task worktree show <name>` before `create` or `cleanup`; they expose `workspace_state`, `attention`, and a plain-language summary for the operator.
 - During debugging tasks, require a feedback loop before mutation when practical: failing test, CLI fixture, parser fixture, captured trace, simulator run, bench step, or a clearly documented non-reproducible gap.
 - Before `task resolve`, complete `task aar scan`. If any answer is `yes`, complete `task aar record` first.
+
+### Trace and Insight Integration
+
+- **After implement**: run `trace record` to log changed files, referenced specs, and key decisions.
+- **After check**: append review outcome and discovered pitfalls to the trace.
+- **After finish-work**: run `trace record` with final commit and reviewer, then `insight extract --confirm` to push durable learnings (decisions, pitfalls, invariants) into `.emb-agent/wiki/`.
+- Trace entries are append-only. Insights are written as wiki pages linked back to the task.
+- In auto-runner mode, trace recording and insight extraction happen automatically at each phase boundary.

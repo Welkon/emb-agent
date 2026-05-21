@@ -14,6 +14,8 @@ Use this spec when an MCU project has tight or unknown ROM/RAM headroom and feat
 
 Pair it with `embedded-space` for generic MCU safety/ownership rules and with vendor specs such as `scmcu-space` or `padauk-space` for compiler and IDE conventions.
 
+- **Specs are coding constraints only.** Record the memory budget numbers and size gates here. Record *why* those numbers were chosen (memory map analysis, production headroom policy, past overflow incidents) in `.emb-agent/wiki/decisions/`.
+
 ## Core Stance
 
 - When two correct implementations exist, choose the smaller, shallower, and more direct one until the build proves there is room for abstraction.
