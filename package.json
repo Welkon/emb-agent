@@ -8,6 +8,7 @@
   "files": [
     "bin",
     "commands",
+    "scripts/postinstall.cjs",
     "agents",
     "runtime/bin",
     "runtime/config.json",
@@ -37,7 +38,12 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Welkon/emb-agent"
+  },
   "scripts": {
+    "postinstall": "node scripts/postinstall.cjs",
     "test": "node scripts/run-tests.cjs",
     "test:behavior": "node scripts/behavior-drift-check.cjs",
     "test:rust": "cargo test --workspace && node tests/rust-parity.test.cjs",

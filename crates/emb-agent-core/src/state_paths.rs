@@ -345,26 +345,18 @@ mod tests {
             paths.legacy_state_dir,
             "/home/felix/.codex/emb-agent/state/projects"
         );
-        assert!(
-            paths
-                .session_path
-                .ends_with(&format!("{}.json", paths.project_key))
-        );
-        assert!(
-            paths
-                .handoff_path
-                .ends_with(&format!("{}.handoff.json", paths.project_key))
-        );
-        assert!(
-            paths
-                .context_summary_path
-                .ends_with(&format!("{}.context-summary.json", paths.project_key))
-        );
-        assert!(
-            paths
-                .lock_path
-                .ends_with(&format!("{}.lock", paths.project_key))
-        );
+        assert!(paths
+            .session_path
+            .ends_with(&format!("{}.json", paths.project_key)));
+        assert!(paths
+            .handoff_path
+            .ends_with(&format!("{}.handoff.json", paths.project_key)));
+        assert!(paths
+            .context_summary_path
+            .ends_with(&format!("{}.context-summary.json", paths.project_key)));
+        assert!(paths
+            .lock_path
+            .ends_with(&format!("{}.lock", paths.project_key)));
         assert!(paths.fallback_state_dir.contains("/emb-agent-state/"));
         assert_eq!(paths.storage_mode, "primary");
     }

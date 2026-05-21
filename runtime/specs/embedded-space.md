@@ -8,6 +8,7 @@ enforcement_scope: code-writing
 focus_areas: [hardware_truth, state_ownership, isr_shared_state, time_base, c_interface_boundaries, board_binding, verification]
 extra_review_axes: [register_truth, atomic_shared_state, timebase_jitter, state_ownership, hardware_leakage, integration_boundaries]
 ---
+
 # Embedded Space
 
 Use this spec for vendor-neutral MCU firmware. It defines general embedded rules that apply across 8-bit, 16-bit, and 32-bit MCU projects.
@@ -70,6 +71,15 @@ Pair it with vendor, chip-family, or project-local specs for compiler dialects, 
 - Do not split code only because a file is long, and do not merge distinct hardware owners only to reduce file count.
 - If using handles, callbacks, ops tables, or registration, document the real variation they represent and how failures/null operations are handled.
 - Application code should not call through internal dispatch fields directly; public wrappers own validation and dispatch.
+
+## Boundary Validation
+
+- Validate inputs once at the system edge: ADC samples, sensor readings, communication packets, external memory reads, user inputs, configuration bytes. After validation, trust internal invariants.
+- Do not scatter defensive null-pointer, range, or validity checks across internal functions when the caller has already guaranteed the invariant through the validated entry path.
+- When the same validation check appears three or more times across different internal call sites, redesign the boundary first — move validation to the entry point and narrow the internal interface to accept only trusted, valid data.
+- Document the invariant that makes each internal check unnecessary (e.g., "caller guarantees `adc_reading` is in [0, 4095] after edge validation").
+- This principle matters on resource-constrained MCUs: every redundant `if (ptr != NULL)`, range check, or error-return path costs flash, RAM, and cycles. Make each check pay for itself.
+- Treat register writes, interrupt flags, and DMA buffer ownership the same way: validate the buffer descriptor or channel config once at setup, then trust the hardware contract during the transfer.
 
 ## Verification Discipline
 

@@ -120,17 +120,19 @@ pub fn build_node_hook_command(runtime_dir: &Path, hook: &str) -> String {
 
 pub fn build_rust_hook_command(runtime_dir: &Path, host: &str, hook: &str) -> String {
     let source_root = runtime_dir.parent().unwrap_or_else(|| Path::new("."));
-    let binary = rust_binary_path(source_root);
     let command_prefix = env::var("EMB_AGENT_RUST_HOOK_CMD")
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| {
-            if is_source_runtime_layout(runtime_dir) {
+            let binary = rust_binary_path(source_root);
+            if binary.exists() {
                 shell_quote(&binary)
-            } else if binary.exists() {
+            } else if is_source_runtime_layout(runtime_dir) {
+                // Source layout without built binary: suggest cargo build
                 shell_quote(&binary)
             } else {
+                // Installed but binary missing: try PATH fallback
                 "emb-agent-rs".to_string()
             }
         });
@@ -144,14 +146,26 @@ pub fn build_rust_hook_command(runtime_dir: &Path, host: &str, hook: &str) -> St
 }
 
 pub fn rust_binary_path(source_root: &Path) -> PathBuf {
-    source_root
-        .join("target")
-        .join("debug")
-        .join(if cfg!(windows) {
-            "emb-agent-rs.exe"
-        } else {
-            "emb-agent-rs"
-        })
+    let exe_name = if cfg!(windows) {
+        "emb-agent-rs.exe"
+    } else {
+        "emb-agent-rs"
+    };
+
+    // Source layout: target/debug/emb-agent-rs
+    let source_layout = source_root.join("target").join("debug").join(exe_name);
+    if source_layout.exists() {
+        return source_layout;
+    }
+
+    // Installed layout: bin/emb-agent-rs (placed by postinstall or installer)
+    let installed = source_root.join("bin").join(exe_name);
+    if installed.exists() {
+        return installed;
+    }
+
+    // Fallback: the source-layout path (caller checks existence again)
+    source_layout
 }
 
 pub fn is_source_runtime_layout(runtime_dir: &Path) -> bool {
