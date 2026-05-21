@@ -23,25 +23,25 @@ jobs:
             artifact: emb-agent-rs-linux-arm64
 
           - target: x86_64-apple-darwin
-            os: macos-13
-            artifact: emb-agent-rs-macos-x64
-
-          - target: aarch64-apple-darwin
             os: macos-latest
-            artifact: emb-agent-rs-macos-arm64
+            artifact: emb-agent-rs-macos-x64
+            extra_targets: aarch64-apple-darwin
+            extra_artifact: emb-agent-rs-macos-arm64
 
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             artifact: emb-agent-rs-windows-x64.exe
 
     runs-on: ${{ matrix.os }}
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.target }}${{ matrix.extra_targets && format(',{0}', matrix.extra_targets) }}
 
       - name: Install cross-compilation linker (Linux ARM64)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -53,6 +53,10 @@ jobs:
       - name: Build (release)
         run: cargo build -p emb-agent-rs --release --target ${{ matrix.target }}
 
+      - name: Build extra target (release)
+        if: matrix.extra_targets
+        run: cargo build -p emb-agent-rs --release --target ${{ matrix.extra_targets }}
+
       - name: Rename artifact
         shell: bash
         run: |
@@ -61,11 +65,21 @@ jobs:
           else
             cp "target/${{ matrix.target }}/release/emb-agent-rs" "${{ matrix.artifact }}"
           fi
+          if [[ -n "${{ matrix.extra_artifact }}" ]]; then
+            cp "target/${{ matrix.extra_targets }}/release/emb-agent-rs" "${{ matrix.extra_artifact }}"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.extra_artifact
+        with:
+          name: ${{ matrix.extra_artifact }}
+          path: ${{ matrix.extra_artifact }}
           if-no-files-found: error
 
   release:
