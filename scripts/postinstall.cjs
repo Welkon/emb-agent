@@ -7,6 +7,7 @@
  * Force repo: EMB_AGENT_REPO=owner/name
  *
  * Failures are non-fatal: the Node fallback remains available.
+ * Can be required from installer to cover npx (which skips postinstall).
  */
 
 const fs = require("fs");
@@ -15,7 +16,7 @@ const https = require("https");
 
 const REPO_DEFAULT = "Welkon/emb-agent";
 
-function main() {
+function downloadRustBinary(pkgDir) {
 	if (process.env.EMB_AGENT_SKIP_RUST_DOWNLOAD) {
 		console.log(
 			"[emb-agent] Rust binary download skipped (EMB_AGENT_SKIP_RUST_DOWNLOAD set)",
@@ -23,14 +24,16 @@ function main() {
 		return;
 	}
 
-	const pkgDir = path.resolve(__dirname, "..");
-	const pkg = JSON.parse(
-		fs.readFileSync(path.join(pkgDir, "package.json"), "utf8"),
-	);
-	const version = pkg.version;
-
 	const platform = process.platform;
 	const arch = process.arch;
+	const exeName = platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs";
+	const destDir = path.join(pkgDir, "bin");
+	const dest = path.join(destDir, exeName);
+
+	// Already downloaded — skip
+	if (fs.existsSync(dest)) {
+		return;
+	}
 
 	const artifact = artifactName(platform, arch);
 	if (!artifact) {
@@ -40,11 +43,12 @@ function main() {
 		return;
 	}
 
+	const pkg = JSON.parse(
+		fs.readFileSync(path.join(pkgDir, "package.json"), "utf8"),
+	);
+	const version = pkg.version;
 	const repo = process.env.EMB_AGENT_REPO || REPO_DEFAULT;
 	const url = `https://github.com/${repo}/releases/download/v${version}/${artifact}`;
-	const destDir = path.join(pkgDir, "bin");
-	const exeName = platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs";
-	const dest = path.join(destDir, exeName);
 	const tmpDest = path.join(destDir, artifact);
 
 	console.log(
@@ -147,4 +151,8 @@ function cleanup(dest) {
 	}
 }
 
-main();
+if (require.main === module) {
+  downloadRustBinary(path.resolve(__dirname, ".."));
+}
+
+module.exports = { downloadRustBinary };

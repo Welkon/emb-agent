@@ -74,6 +74,10 @@ module.exports = {
 };
 
 if (require.main === module) {
+  // npx skips postinstall; ensure the Rust binary is downloaded before installing.
+  // Already-downloaded check inside downloadRustBinary prevents redundant downloads.
+  require('../scripts/postinstall.cjs').downloadRustBinary(REPO_ROOT);
+
   Promise.resolve(main(process.argv.slice(2))).catch(error => {
     process.stderr.write(`emb-agent install error: ${error.message}\n`);
     process.exit(1);
