@@ -185,5 +185,16 @@ fn resolve_hook_plan_from_args(args: &[String]) -> HookPlan {
     let hook = option_value(args, "--hook").unwrap_or_else(|| "session-start".to_string());
     let host = option_value(args, "--host").unwrap_or_else(|| "external".to_string());
     let runtime_dir = option_value(args, "--runtime-dir").unwrap_or_else(|| "runtime".to_string());
-    build_hook_plan(&host, &hook, Path::new(&runtime_dir))
+
+    // Read per-hook config from the project if a --cwd was provided
+    let hook_config = option_value(args, "--cwd").and_then(|cwd| {
+        let state = project_state_from_cwd(&cwd);
+        if state.initialized {
+            Some(state.config.hooks)
+        } else {
+            None
+        }
+    });
+
+    build_hook_plan(&host, &hook, Path::new(&runtime_dir), hook_config.as_ref())
 }

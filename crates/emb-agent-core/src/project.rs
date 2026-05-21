@@ -59,6 +59,7 @@ pub struct ProjectConfig {
     pub flash_flow: String,
     pub developer: DeveloperInfo,
     pub preferences: ProjectPreferences,
+    pub hooks: HookConfig,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -86,6 +87,82 @@ impl Default for ProjectPreferences {
             review_mode: "auto".to_string(),
             verification_mode: "lean".to_string(),
             orchestration_mode: "auto".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HookEntry {
+    pub enabled: bool,
+    pub runtime: String,
+}
+
+impl Default for HookEntry {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            runtime: "auto".to_string(),
+        }
+    }
+}
+
+impl HookEntry {
+    fn from_value(value: &Value) -> Self {
+        let enabled = value
+            .get("enabled")
+            .map(|v| match v {
+                Value::Bool(b) => *b,
+                Value::String(s) => matches!(s.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes"),
+                Value::Number(n) => n.as_i64() == Some(1),
+                _ => true,
+            })
+            .unwrap_or(true);
+        let runtime = value_string(value, "runtime");
+        Self {
+            enabled,
+            runtime: first_non_empty(&[runtime, "auto".to_string()]),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
+pub struct HookConfig {
+    pub session_start: HookEntry,
+    pub statusline: HookEntry,
+    pub context_monitor: HookEntry,
+}
+
+
+impl HookConfig {
+    fn from_value(value: &Value) -> Self {
+        let session_start = value
+            .get("session_start")
+            .or_else(|| value.get("sessionStart"))
+            .map(HookEntry::from_value)
+            .unwrap_or_default();
+        let statusline = value
+            .get("statusline")
+            .map(HookEntry::from_value)
+            .unwrap_or_default();
+        let context_monitor = value
+            .get("context_monitor")
+            .or_else(|| value.get("contextMonitor"))
+            .map(HookEntry::from_value)
+            .unwrap_or_default();
+        Self {
+            session_start,
+            statusline,
+            context_monitor,
+        }
+    }
+
+    pub fn hook_entry(&self, hook: &str) -> &HookEntry {
+        match hook {
+            "session-start" | "session_start" => &self.session_start,
+            "statusline" => &self.statusline,
+            "context-monitor" | "context_monitor" => &self.context_monitor,
+            _ => &self.session_start,
         }
     }
 }
@@ -248,6 +325,7 @@ impl ProjectConfig {
             preferences: ProjectPreferences::from_value(
                 value.get("preferences").unwrap_or(&Value::Null),
             ),
+            hooks: HookConfig::from_value(value.get("hooks").unwrap_or(&Value::Null)),
         }
     }
 }
@@ -402,6 +480,20 @@ pub fn build_project_state_json(state: &ProjectState) -> String {
                 "review_mode": state.config.preferences.review_mode,
                 "verification_mode": state.config.preferences.verification_mode,
                 "orchestration_mode": state.config.preferences.orchestration_mode,
+            },
+            "hooks": {
+                "session_start": {
+                    "enabled": state.config.hooks.session_start.enabled,
+                    "runtime": &state.config.hooks.session_start.runtime,
+                },
+                "statusline": {
+                    "enabled": state.config.hooks.statusline.enabled,
+                    "runtime": &state.config.hooks.statusline.runtime,
+                },
+                "context_monitor": {
+                    "enabled": state.config.hooks.context_monitor.enabled,
+                    "runtime": &state.config.hooks.context_monitor.runtime,
+                },
             },
         },
         "developer": {

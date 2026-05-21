@@ -2,6 +2,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use crate::json::json_quote;
+use crate::project::HookConfig;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HookPlan {
@@ -14,7 +15,12 @@ pub struct HookPlan {
     pub supported: bool,
 }
 
-pub fn build_hook_plan(host: &str, hook: &str, runtime_dir: &Path) -> HookPlan {
+pub fn build_hook_plan(
+    host: &str,
+    hook: &str,
+    runtime_dir: &Path,
+    hook_config: Option<&HookConfig>,
+) -> HookPlan {
     let normalized_hook = normalize_hook_name(hook);
     let normalized_host = String::from(if host.trim().is_empty() {
         "external"
@@ -23,6 +29,21 @@ pub fn build_hook_plan(host: &str, hook: &str, runtime_dir: &Path) -> HookPlan {
     });
     let node_command = build_node_hook_command(runtime_dir, &normalized_hook);
     let rust_supported = is_rust_hook_supported(&normalized_hook);
+
+    let entry = hook_config.map(|cfg| cfg.hook_entry(&normalized_hook));
+
+    // Per-hook disable via config (env overrides take precedence below)
+    if entry.map(|e| !e.enabled).unwrap_or(false) && env_flag("EMB_AGENT_RUST_HOOKS").is_none() {
+        return HookPlan {
+            hook: normalized_hook,
+            host: normalized_host,
+            runtime: "node".to_string(),
+            command: String::new(),
+            fallback: String::new(),
+            reason: "hook-disabled-by-config".to_string(),
+            supported: false,
+        };
+    }
 
     if !rust_supported {
         return HookPlan {
@@ -59,19 +80,43 @@ pub fn build_hook_plan(host: &str, hook: &str, runtime_dir: &Path) -> HookPlan {
             }
         }
         None => {
-            if is_source_runtime_layout(runtime_dir) {
+            // Per-hook runtime config: "rust" → force Rust, "node" → force Node
+            let config_runtime = entry.map(|e| e.runtime.as_str()).unwrap_or("auto");
+            let use_rust = match config_runtime {
+                "rust" => true,
+                "node" => false,
+                _ => is_source_runtime_layout(runtime_dir),
+            };
+
+            if use_rust {
                 let command =
                     build_rust_hook_command(runtime_dir, &normalized_host, &normalized_hook);
+                let reason = if config_runtime == "rust" {
+                    "config-rust"
+                } else {
+                    "source-runtime-default"
+                };
                 HookPlan {
                     hook: normalized_hook,
                     host: normalized_host,
                     runtime: "rust".to_string(),
                     command,
                     fallback: node_command,
-                    reason: "source-runtime-default".to_string(),
+                    reason: reason.to_string(),
+                    supported: true,
+                }
+            } else if config_runtime == "node" {
+                HookPlan {
+                    hook: normalized_hook,
+                    host: normalized_host,
+                    runtime: "node".to_string(),
+                    command: node_command,
+                    fallback: String::new(),
+                    reason: "config-node".to_string(),
                     supported: true,
                 }
             } else {
+                // Installed layout, auto runtime → Rust with Node fallback
                 let command =
                     build_rust_hook_command(runtime_dir, &normalized_host, &normalized_hook);
                 HookPlan {
@@ -204,9 +249,9 @@ pub fn build_hook_plan_json(plan: &HookPlan) -> String {
 }
 
 pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
-    let session_start = build_hook_plan(host, "session-start", runtime_dir);
-    let statusline = build_hook_plan(host, "statusline", runtime_dir);
-    let context_monitor = build_hook_plan(host, "context-monitor", runtime_dir);
+    let session_start = build_hook_plan(host, "session-start", runtime_dir, None);
+    let statusline = build_hook_plan(host, "statusline", runtime_dir, None);
+    let context_monitor = build_hook_plan(host, "context-monitor", runtime_dir, None);
     let source_root = runtime_dir.parent().unwrap_or_else(|| Path::new("."));
     let rust_binary = rust_binary_path(source_root);
     format!(
@@ -248,7 +293,7 @@ mod tests {
     #[test]
     fn hook_resolver_defaults_source_runtime_to_rust() {
         let runtime_dir = repo_root().join("runtime");
-        let plan = build_hook_plan("pi", "session-start", &runtime_dir);
+        let plan = build_hook_plan("pi", "session-start", &runtime_dir, None);
         assert_eq!(plan.runtime, "rust");
         assert_eq!(plan.reason, "source-runtime-default");
         assert_eq!(
@@ -261,7 +306,7 @@ mod tests {
     #[test]
     fn hook_resolver_defaults_context_monitor_to_rust_in_source_layout() {
         let runtime_dir = repo_root().join("runtime");
-        let plan = build_hook_plan("cursor", "context-monitor", &runtime_dir);
+        let plan = build_hook_plan("cursor", "context-monitor", &runtime_dir, None);
         assert_eq!(plan.runtime, "rust");
         assert_eq!(plan.reason, "source-runtime-default");
         assert!(plan.command.contains(" hook context-monitor"));
@@ -313,7 +358,7 @@ mod tests {
         let runtime_dir = tmp.join("emb-agent").join("runtime");
         std::fs::create_dir_all(&runtime_dir).unwrap();
         // No Cargo.toml in parent → not a source layout
-        let plan = build_hook_plan("claude", "statusline", &runtime_dir);
+        let plan = build_hook_plan("claude", "statusline", &runtime_dir, None);
         assert_eq!(plan.runtime, "rust");
         assert_eq!(plan.reason, "installed-runtime-default");
         assert!(!plan.fallback.is_empty());

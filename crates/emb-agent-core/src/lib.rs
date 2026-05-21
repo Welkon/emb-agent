@@ -18,7 +18,8 @@ pub use hooks::{
 };
 pub use json::{json_quote, json_string_field};
 pub use project::{
-    DeveloperInfo, HardwarePeripheral, HardwareSignal, HardwareTruth, ProjectConfig,
+    DeveloperInfo, HardwarePeripheral, HardwareSignal, HardwareTruth, HookConfig, HookEntry,
+    ProjectConfig,
     ProjectPackage, ProjectPreferences, ProjectSnapshot, ProjectState, RequirementsTruth, TaskRef,
     TaskSnapshot, build_project_state_json, find_project_root, project_state_from_cwd,
     read_project_state, snapshot_from_cwd,
