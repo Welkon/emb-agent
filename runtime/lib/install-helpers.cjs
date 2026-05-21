@@ -3667,7 +3667,7 @@ function createInstallHelpers(deps) {
 		];
 		for (const candidate of candidates) {
 			if (fs.existsSync(candidate)) {
-				const destBinDir = path.join(targetDir, "bin");
+				const destBinDir = path.join(runtimeDir, "bin");
 				ensureDir(destBinDir);
 				fs.copyFileSync(candidate, path.join(destBinDir, exeName));
 				try {
