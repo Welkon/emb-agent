@@ -9,13 +9,29 @@ const path = require("path");
 const repoRoot = path.resolve(__dirname, "..");
 const cli = require(path.join(repoRoot, "runtime", "bin", "emb-agent.cjs"));
 const installer = require(path.join(repoRoot, "bin", "install.js"));
-const sessionStartHook = require(
-	path.join(repoRoot, "runtime", "hooks", "emb-session-start.js"),
-);
 const runtime = require(path.join(repoRoot, "runtime", "lib", "runtime.cjs"));
 const packageVersion = JSON.parse(
 	fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 ).version;
+
+function resolveSchDocFixture() {
+	const envPath = process.env.EMB_AGENT_SCHDOC_FIXTURE
+		? path.resolve(process.env.EMB_AGENT_SCHDOC_FIXTURE)
+		: "";
+	return (
+		[
+			envPath,
+			path.resolve(
+				repoRoot,
+				"..",
+				"test-f",
+				"QYY-001",
+				"docs",
+				"QYY-001.SchDoc",
+			),
+		].find((candidate) => candidate && fs.existsSync(candidate)) || ""
+	);
+}
 
 function writeText(filePath, content) {
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -309,25 +325,22 @@ test("health specs reports active code-writing spec enforcement", () => {
 	}
 });
 
-test("health prioritizes discovered schematic intake before manual hardware identity", async () => {
+test("health prioritizes discovered schematic intake before manual hardware identity", async (t) => {
 	const tempProject = fs.mkdtempSync(
 		path.join(os.tmpdir(), "emb-agent-health-schematic-intake-"),
 	);
 	const currentCwd = process.cwd();
 	const originalWrite = process.stdout.write;
 	const previousTrust = process.env.EMB_AGENT_WORKSPACE_TRUST;
-	const fixturePath = path.resolve(
-		repoRoot,
-		"..",
-		"参考资料",
-		"docs",
-		"QP-SS26-0303电路图.SchDoc",
-	);
+	const fixturePath = resolveSchDocFixture();
 	let stdout = "";
 
 	try {
-		if (!fs.existsSync(fixturePath)) {
-			throw new Error(`Missing SchDoc fixture: ${fixturePath}`);
+		if (!fixturePath) {
+			t.skip(
+				"Missing optional SchDoc fixture; set EMB_AGENT_SCHDOC_FIXTURE to run this source-intake coverage.",
+			);
+			return;
 		}
 
 		process.env.EMB_AGENT_WORKSPACE_TRUST = "1";
