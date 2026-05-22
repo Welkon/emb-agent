@@ -556,7 +556,16 @@ async function parseDocumentAgent(request, integration, options) {
   const created = (raw && raw.data) || raw || {};
   if (!created.task_id || !created.file_url) {
     if (isAgentLimitResponse(raw)) {
-      throw new Error(raw.msg || `MinerU agent limit exceeded (code ${raw.code})`);
+      const params = request.pages || '';
+      const hint = params
+        ? `MinerU agent limit exceeded: ${raw.msg || `code ${raw.code}`}. ` +
+          `Try a smaller --pages range (max ~20 pages per request for free agent). ` +
+          `Or set MINERU_API_KEY env for full-document API parsing without page limits.`
+        : `MinerU agent limit exceeded: ${raw.msg || `code ${raw.code}`}. ` +
+          `Document is too large for free agent mode (max ~20 pages). ` +
+          `Solutions: (1) set MINERU_API_KEY env var for full API parsing, ` +
+          `or (2) use --pages to process the document in chunks (e.g. --pages 1-20).`;
+      throw new Error(hint);
     }
     const preview = JSON.stringify(raw).slice(0, 500);
     throw new Error(`MinerU did not return task_id/file_url. Response: ${preview}`);

@@ -854,6 +854,24 @@ async function ingestDoc(argv, options) {
     });
   }
 
+  if (args.provider === 'mineru' && !args.pages) {
+    const fileSizeMB = (fs.statSync(identity.absolute_path).size / (1024 * 1024)).toFixed(1);
+    const hasApiKey = Boolean(
+      String((integration && integration.api_key) || '').trim() ||
+      String(process.env.MINERU_API_KEY || '').trim()
+    );
+    if (Number(fileSizeMB) > 2 && !hasApiKey) {
+      emitUiEvent(options, 'doc-size-warning', {
+        doc_id: identity.doc_id,
+        file_size_mb: fileSizeMB
+      });
+      process.stderr.write(
+        `⚠ MinerU free agent mode may fail for large files (${fileSizeMB}MB). ` +
+        `Set MINERU_API_KEY env var for full API parsing, or use --pages to chunk the document.\n`
+      );
+    }
+  }
+
   emitUiEvent(options, 'doc-parse-start', {
     doc_id: identity.doc_id,
     provider: args.provider
