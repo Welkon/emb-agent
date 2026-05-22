@@ -298,6 +298,7 @@ function buildAiProtocolMessage(result) {
     "Use it only for routing; do not paste raw JSON, long node commands, or command transcripts to the human.",
     "Reply to the human in concise Chinese with the state, the blocking gate if any, and the next confirmation/input needed.",
     "Respect agent_protocol.gate.allowed_actions and agent_protocol.gate.forbidden_actions when present.",
+    "If agent_protocol.gate.kind is prd-exploration, do not confirm PRD or create/activate tasks yet: ask detailed exploratory questions, update docs/prd/system.md, .emb-agent/req.yaml, and child PRDs, then stop until explicit agreement.",
     "If agent_protocol.gate.kind is alignment, stop after PRD/task creation, ask about unclear items, update PRD/task truth, and repeat until explicit agreement before activation/planning/implementation.",
     "If agent_protocol.gate.kind is execution, treat this as an execution brief: perform the requested repository change, then verify after implementation evidence exists.",
     "",

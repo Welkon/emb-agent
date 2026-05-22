@@ -45,11 +45,16 @@ AI hosts and command wrappers must:
 1. Treat emb-agent output as machine protocol.
 2. Respect `agent_protocol.gate.allowed_actions` and `agent_protocol.gate.forbidden_actions`.
 3. Ask the human only for the next needed confirmation or input.
-4. If `agent_protocol.gate.kind` is `alignment`, stop after PRD/task creation, ask the user about unclear items, update the PRD/task truth, and repeat until explicit agreement before activation, planning, or implementation.
-5. If `agent_protocol.gate.kind` is `execution`, treat the payload as an execution brief: perform the requested repository change now, then verify after implementation evidence exists.
-6. If the user embeds an unconfirmed technical choice, route through `decision review` / `decision record` before implementation instead of silently validating the premise.
-7. Avoid showing raw JSON, full command transcripts, or long `node .../emb-agent.cjs ...` paths unless explicitly requested.
-8. Keep direct CLI/human-readable output available for debugging and automation only.
+4. If `agent_protocol.gate.kind` is `prd-exploration`, do not confirm PRD or create/activate tasks yet: ask detailed exploratory questions, update `docs/prd/system.md`, `.emb-agent/req.yaml`, and child execution PRDs, then stop until explicit agreement.
+5. If `agent_protocol.gate.kind` is `alignment`, stop after PRD/task creation, ask the user about unclear items, update the PRD/task truth, and repeat until explicit agreement before activation, planning, or implementation.
+6. If `agent_protocol.gate.kind` is `execution`, treat the payload as an execution brief: perform the requested repository change now, then verify after implementation evidence exists.
+7. If the user embeds an unconfirmed technical choice, route through `decision review` / `decision record` before implementation instead of silently validating the premise.
+8. Avoid showing raw JSON, full command transcripts, or long `node .../emb-agent.cjs ...` paths unless explicitly requested.
+9. Keep direct CLI/human-readable output available for debugging and automation only.
+
+## PRD exploration gate
+
+Before a system PRD can be confirmed, `agent_protocol.gate.kind = "prd-exploration"` means the host should run a human-facing requirement exploration loop first. The host should ask what behavior, interactions, defaults, abnormal cases, power/reset behavior, constraints, and acceptance evidence the user actually wants; mark schematic/manual inference separately from confirmed facts; update `docs/prd/system.md`; mirror structured truth into `.emb-agent/req.yaml`; create child execution PRDs under `docs/prd/features`, `modules`, `components`, or `subsystems`; and stop until explicit user agreement.
 
 ## Alignment gate
 

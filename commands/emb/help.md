@@ -20,6 +20,12 @@ Output the emb-agent help summary below and nothing else.
 - Use `next` for the default continuation once bootstrap and task context are in place.
 - Use `help advanced` or `help --all` only when you need the full installed surface.
 
+## PRD Intake
+
+- Before confirming a system PRD, interrogate the user about product behavior, interactions, defaults, failure/power/reset cases, constraints, and acceptance evidence; do not fill PRD from hardware guesses alone.
+- Mirror confirmed structured truth into `.emb-agent/req.yaml` and create child execution PRDs under `docs/prd/features|modules|components|subsystems/*.md` before `prd confirm --create-tasks`.
+- If `agent_protocol.gate.kind=prd-exploration`, stop before `prd confirm`, `task add`, `task activate`, `scan`, `plan`, or `do`; ask questions, update PRD/req truth, and wait for explicit agreement.
+
 ## Task Intake
 
 - If the target files and acceptance check are already explicit, use `task add <summary>` and move into `plan` or `next`.

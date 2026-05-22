@@ -773,8 +773,9 @@ test('hardware ADC intent makes next prefer adc-scale over generic timer-calc', 
 
     const next = cli.buildNextContext();
 
+    assert.equal(next.next.command, 'ai-host explore-prd');
+    assert.match(next.next.reason, /System PRD is not ready/);
     assert.equal(next.next.tool_recommendation.tool, 'adc-scale');
-    assert.match(next.next.reason, /adc-scale/);
     assert.match(next.next.tool_recommendation.cli_draft, /tool run adc-scale/);
     assert.match(next.next.tool_recommendation.cli_draft, /--channel PA0/);
     assert.equal(next.hardware.mcu.signals[0].name, 'ADC_IN');

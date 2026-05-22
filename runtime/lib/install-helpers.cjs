@@ -2922,6 +2922,9 @@ function createInstallHelpers(deps) {
 			"- Respect `agent_protocol.gate.allowed_actions` and `agent_protocol.gate.forbidden_actions` when present; do not bypass blocking gates by improvising another workflow.",
 		);
 		lines.push(
+			"- If `agent_protocol.gate.kind` is `prd-exploration`, do not confirm PRD or create/activate tasks yet: ask detailed exploratory questions, update docs/prd/system.md, .emb-agent/req.yaml, and child PRDs, then stop until explicit agreement.",
+		);
+		lines.push(
 			"- If `agent_protocol.gate.kind` is `alignment`, stop after creating the PRD/task, ask the user about unclear items, update the PRD/task truth, and repeat until explicit agreement before activation, planning, or implementation.",
 		);
 		lines.push(
