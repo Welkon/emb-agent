@@ -2,7 +2,8 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use emb_agent_core::{
-    build_context_monitor_output, build_debug_output_json, build_hook_plan, build_hook_plan_json,
+    build_chip_diff_json, build_chip_swap_json, build_context_monitor_output,
+    build_debug_output_json, build_hook_plan, build_hook_plan_json,
     build_hooks_diagnostics_json, build_host_session_start_payload, build_plan_output_json,
     build_project_state_json, build_project_state_paths_json, build_review_output_json,
     build_scan_output_json, build_session_context, build_start_json, build_statusline,
@@ -39,6 +40,27 @@ fn run(args: Vec<String>) -> Result<(), String> {
         "review" => action_cmd(&args, build_review_output_json),
         "verify" => action_cmd(&args, build_verify_output_json),
         "debug" => action_cmd(&args, build_debug_output_json),
+        "chip" => match args.get(1).map(String::as_str) {
+            Some("diff") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let from = option_value(&args, "--from").ok_or("missing --from")?;
+                let to = option_value(&args, "--to").ok_or("missing --to")?;
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", build_chip_diff_json(&ext_dir, &from, &to));
+                Ok(())
+            }
+            Some("swap") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let from = option_value(&args, "--from").ok_or("missing --from")?;
+                let to = option_value(&args, "--to").ok_or("missing --to")?;
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                let hw_path = ext_dir.join("hw.yaml");
+                let hw_yaml = std::fs::read_to_string(&hw_path).unwrap_or_default();
+                println!("{}", build_chip_swap_json(&ext_dir, &hw_yaml, &from, &to));
+                Ok(())
+            }
+            _ => Err("chip: expected diff or swap subcommand".to_string()),
+        },
         "hook" => run_hook(&args),
         "diagnostics" => run_diagnostics(&args),
         "start" => {

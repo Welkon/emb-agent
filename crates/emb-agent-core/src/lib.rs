@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod chip_diff;
 pub mod context_monitor;
 pub mod hooks;
 pub mod json;
@@ -14,6 +15,11 @@ pub use actions::{
     build_verify_output_json,
 };
 
+pub use chip_diff::{
+    ChipDiffReport, ChipPin, ChipProfile, ChipSwapPlan, MigratedSignal, PinDiff,
+    PinCompatibility, SignalMigrationStatus, build_chip_diff_json, build_chip_swap_json,
+    diff_chips,
+};
 pub use context_monitor::{
     ContextMetrics, build_context_monitor_output, build_context_monitor_output_from_value,
     build_fresh_context_instruction, build_metrics_message, build_session_message,

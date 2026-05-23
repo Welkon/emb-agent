@@ -1983,6 +1983,14 @@ function createCliRouter(deps) {
       return;
     }
 
+    if (cmd === 'chip') {
+      const chipResult = tryChipCommand(subcmd, rest);
+      if (chipResult !== undefined) {
+        emitJson(chipResult);
+        return;
+      }
+    }
+
     const actionCommandResult = handleActionCommands(cmd, subcmd, rest);
     if (actionCommandResult !== undefined) {
       if (cmd === 'capability' && subcmd === 'run') {
@@ -2061,6 +2069,60 @@ function createCliRouter(deps) {
       }
     });
     process.exitCode = 1;
+  }
+
+  function tryChipCommand(subcmd, rest) {
+    if (!['diff', 'swap'].includes(subcmd)) {
+      return undefined;
+    }
+    const fs = require('fs');
+    const childProcess = require('child_process');
+    const bin = findRustBinary();
+    if (!bin) {
+      return {
+        status: 'error',
+        error: {
+          code: 'rust-binary-not-found',
+          message: 'emb-agent-rs binary not found. Run `cargo build` in the emb-agent repo, or set EMB_AGENT_RUST_HOOKS=0 to skip Rust acceleration.'
+        }
+      };
+    }
+    const fromIdx = rest.indexOf('--from');
+    const toIdx = rest.indexOf('--to');
+    const from = fromIdx >= 0 ? rest[fromIdx + 1] : '';
+    const to = toIdx >= 0 ? rest[toIdx + 1] : '';
+    if (!from || !to) {
+      return {
+        status: 'error',
+        error: { code: 'missing-args', message: 'chip ' + subcmd + ' requires --from <chip> and --to <chip>' }
+      };
+    }
+    try {
+      const cwd = process.cwd();
+      const args = ['chip', subcmd, '--from', from, '--to', to, '--cwd', cwd];
+      const result = childProcess.spawnSync(bin, args, {
+        encoding: 'utf8', timeout: 10000, stdio: ['pipe', 'pipe', 'ignore']
+      });
+      if (result.status !== 0 || !result.stdout) {
+        return { status: 'error', error: { code: 'chip-command-failed', message: result.stderr || result.error || 'unknown error' } };
+      }
+      return JSON.parse(result.stdout);
+    } catch (e) {
+      return { status: 'error', error: { code: 'chip-command-error', message: e.message } };
+    }
+  }
+
+  function findRustBinary() {
+    const path = require('path');
+    const fs = require('fs');
+    const exeName = process.platform === 'win32' ? 'emb-agent-rs.exe' : 'emb-agent-rs';
+    const repoRoot = path.resolve(__dirname, '..', '..');
+    const candidates = [
+      path.join(repoRoot, 'target', 'debug', exeName),
+      path.join(process.cwd(), '.pi', 'emb-agent', 'bin', exeName),
+      exeName,
+    ];
+    return candidates.find(c => { try { return fs.existsSync(c); } catch { return false; } }) || '';
   }
 
   return {
