@@ -1,3 +1,4 @@
+pub mod actions;
 pub mod context_monitor;
 pub mod hooks;
 pub mod json;
@@ -5,6 +6,13 @@ pub mod project;
 pub mod render;
 pub mod scan;
 pub mod state_paths;
+
+pub use actions::{
+    DebugOutput, PlanOutput, ReviewOutput, VerifyOutput, WorkflowStage,
+    build_debug_output, build_debug_output_json, build_plan_output, build_plan_output_json,
+    build_review_output, build_review_output_json, build_verify_output,
+    build_verify_output_json,
+};
 
 pub use context_monitor::{
     ContextMetrics, build_context_monitor_output, build_context_monitor_output_from_value,

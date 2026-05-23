@@ -35,8 +35,10 @@ function createCapabilityRuntimeHelpers(deps) {
 		return buildCli(["capability", "run", name]);
 	}
 
-	const RUST_SCAN_CACHE = new Map();
-	function tryRustScan(projectRoot) {
+	const RUST_CACHE = new Map();
+	const RUST_ACTIONS = ["scan", "plan", "review", "verify", "debug"];
+
+	function tryRustAction(projectRoot, action) {
 		const envDisabled = (process.env.EMB_AGENT_RUST_HOOKS || "").trim();
 		if (
 			envDisabled === "0" ||
@@ -46,18 +48,15 @@ function createCapabilityRuntimeHelpers(deps) {
 			return null;
 		}
 
-		if (RUST_SCAN_CACHE.has("available")) {
-			if (!RUST_SCAN_CACHE.get("available")) return null;
+		const cacheKey = `available-${action}`;
+		if (RUST_CACHE.has(cacheKey)) {
+			if (!RUST_CACHE.get(cacheKey)) return null;
 		}
 
 		const repoRoot = path.resolve(__dirname, "..", "..");
 		const exeName =
 			process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs";
 
-		// Look for the binary in multiple locations:
-		// 1. Source layout: <repo>/target/debug/emb-agent-rs
-		// 2. Installed Pi extension: .pi/emb-agent/bin/emb-agent-rs
-		// 3. PATH
 		const candidates = [
 			path.join(repoRoot, "target", "debug", exeName),
 			path.join(projectRoot, ".pi", "emb-agent", "bin", exeName),
@@ -73,14 +72,14 @@ function createCapabilityRuntimeHelpers(deps) {
 			}
 		});
 		if (!binaryPath) {
-			RUST_SCAN_CACHE.set("available", false);
+			RUST_CACHE.set(cacheKey, false);
 			return null;
 		}
 
 		try {
 			const result = childProcess.spawnSync(
 				binaryPath,
-				["scan", "--cwd", projectRoot],
+				[action, "--cwd", projectRoot],
 				{
 					encoding: "utf8",
 					timeout: 5000,
@@ -88,19 +87,22 @@ function createCapabilityRuntimeHelpers(deps) {
 				},
 			);
 			if (result.status !== 0 || !result.stdout) {
-				RUST_SCAN_CACHE.set("available", false);
+				RUST_CACHE.set(cacheKey, false);
 				return null;
 			}
-			RUST_SCAN_CACHE.set("available", true);
+			RUST_CACHE.set(cacheKey, true);
 			return JSON.parse(result.stdout);
 		} catch {
-			RUST_SCAN_CACHE.set("available", false);
+			RUST_CACHE.set(cacheKey, false);
 			return null;
 		}
 	}
 
-	function applyRustScanAcceleration(result) {
+	function applyRustAcceleration(result, action) {
 		if (!result || typeof result !== "object") {
+			return result;
+		}
+		if (!RUST_ACTIONS.includes(action)) {
 			return result;
 		}
 		const projectRoot =
@@ -108,21 +110,63 @@ function createCapabilityRuntimeHelpers(deps) {
 		if (!projectRoot) {
 			return result;
 		}
-		const rustOutput = tryRustScan(projectRoot);
-		if (rustOutput && rustOutput.relevant_files) {
-			result.relevant_files = rustOutput.relevant_files;
-			result.key_facts = rustOutput.key_facts || result.key_facts;
-			result.open_questions =
-				rustOutput.open_questions || result.open_questions;
-			result.next_reads = rustOutput.next_reads || result.next_reads;
-			if (rustOutput.workflow_stage) {
-				result.workflow_stage = {
-					...(result.workflow_stage || {}),
-					...rustOutput.workflow_stage,
-				};
-			}
-			result._rust_scan = true;
+		const rustOutput = tryRustAction(projectRoot, action);
+		if (!rustOutput) {
+			return result;
 		}
+
+		// Merge Rust output fields into JS result
+		const mergeFields = [
+			"relevant_files",
+			"key_facts",
+			"open_questions",
+			"next_reads",
+		];
+		for (const field of mergeFields) {
+			if (rustOutput[field]) {
+				result[field] = rustOutput[field];
+			}
+		}
+		if (rustOutput.workflow_stage) {
+			result.workflow_stage = {
+				...(result.workflow_stage || {}),
+				...rustOutput.workflow_stage,
+			};
+		}
+
+		// Action-specific fields
+		if (action === "plan") {
+			if (rustOutput.goal) result.goal = rustOutput.goal;
+			if (rustOutput.truth_sources)
+				result.truth_sources = rustOutput.truth_sources;
+			if (rustOutput.constraints)
+				result.constraints = rustOutput.constraints;
+			if (rustOutput.risks) result.risks = rustOutput.risks;
+			if (rustOutput.steps) result.steps = rustOutput.steps;
+			if (rustOutput.verification)
+				result.verification = rustOutput.verification;
+		} else if (action === "review") {
+			if (rustOutput.axes) result.axes = rustOutput.axes;
+			if (rustOutput.findings_template)
+				result.findings_template = rustOutput.findings_template;
+			if (rustOutput.required_checks)
+				result.required_checks = rustOutput.required_checks;
+		} else if (action === "verify") {
+			if (rustOutput.checklist)
+				result.checklist = rustOutput.checklist;
+			if (rustOutput.evidence_targets)
+				result.evidence_targets = rustOutput.evidence_targets;
+			if (rustOutput.next_step && !result.next_step)
+				result.next_step = rustOutput.next_step;
+		} else if (action === "debug") {
+			if (rustOutput.hypotheses)
+				result.hypotheses = rustOutput.hypotheses;
+			if (rustOutput.checks) result.checks = rustOutput.checks;
+			if (rustOutput.next_step && !result.next_step)
+				result.next_step = rustOutput.next_step;
+		}
+
+		result._rust = action;
 		return result;
 	}
 
@@ -432,7 +476,7 @@ function createCapabilityRuntimeHelpers(deps) {
 						))
 				) {
 					const blockedResult = buildTaskIntakeBlockedActionOutput(action);
-					return applyRustScanAcceleration(blockedResult);
+					return applyRustAcceleration(blockedResult, action);
 				}
 			}
 
@@ -445,7 +489,7 @@ function createCapabilityRuntimeHelpers(deps) {
 			}
 
 			const result = buildActionOutput(action);
-			return applyRustScanAcceleration(result);
+			return applyRustAcceleration(result, action);
 		}
 
 		if (definition.execution_kind === "arch-review") {

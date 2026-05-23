@@ -2,11 +2,12 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use emb_agent_core::{
-    build_context_monitor_output, build_hook_plan, build_hook_plan_json,
-    build_hooks_diagnostics_json, build_host_session_start_payload, build_project_state_json,
-    build_project_state_paths_json, build_scan_output_json, build_session_context,
-    build_start_json, build_statusline, get_project_state_paths, json_string_field,
-    project_state_from_cwd, snapshot_from_cwd, HookPlan, StatePathConfig,
+    build_context_monitor_output, build_debug_output_json, build_hook_plan,
+    build_hook_plan_json, build_hooks_diagnostics_json, build_host_session_start_payload,
+    build_plan_output_json, build_project_state_json, build_project_state_paths_json,
+    build_review_output_json, build_scan_output_json, build_session_context, build_start_json,
+    build_statusline, build_verify_output_json, get_project_state_paths, json_string_field,
+    project_state_from_cwd, snapshot_from_cwd, HookPlan, ProjectSnapshot, StatePathConfig,
 };
 
 fn main() {
@@ -14,6 +15,16 @@ fn main() {
         eprintln!("emb-agent-rs error: {error}");
         std::process::exit(1);
     }
+}
+
+fn action_cmd(
+    args: &[String],
+    builder: fn(&ProjectSnapshot) -> String,
+) -> Result<(), String> {
+    let cwd = option_value(args, "--cwd").unwrap_or_else(current_dir_string);
+    let snapshot = snapshot_from_cwd(&cwd);
+    println!("{}", builder(&snapshot));
+    Ok(())
 }
 
 fn run(args: Vec<String>) -> Result<(), String> {
@@ -26,12 +37,11 @@ fn run(args: Vec<String>) -> Result<(), String> {
             println!("{}", build_statusline(&snapshot));
             Ok(())
         }
-        "scan" => {
-            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
-            let snapshot = snapshot_from_cwd(&cwd);
-            println!("{}", build_scan_output_json(&snapshot));
-            Ok(())
-        }
+        "scan" => action_cmd(&args, build_scan_output_json),
+        "plan" => action_cmd(&args, build_plan_output_json),
+        "review" => action_cmd(&args, build_review_output_json),
+        "verify" => action_cmd(&args, build_verify_output_json),
+        "debug" => action_cmd(&args, build_debug_output_json),
         "hook" => run_hook(&args),
         "diagnostics" => run_diagnostics(&args),
         "start" => {
@@ -127,7 +137,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "emb-agent-rs spike\n\nUSAGE:\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs hook context-monitor [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n  emb-agent-rs diagnostics project --json [--cwd DIR]\n  emb-agent-rs diagnostics state-paths --json [--cwd DIR] [--runtime-dir ./runtime]\n"
+        "emb-agent-rs\n\nUSAGE:\n  emb-agent-rs scan [--cwd DIR]\n  emb-agent-rs plan [--cwd DIR]\n  emb-agent-rs review [--cwd DIR]\n  emb-agent-rs verify [--cwd DIR]\n  emb-agent-rs debug [--cwd DIR]\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs hook context-monitor [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n  emb-agent-rs diagnostics project --json [--cwd DIR]\n  emb-agent-rs diagnostics state-paths --json [--cwd DIR] [--runtime-dir ./runtime]\n"
     );
 }
 
