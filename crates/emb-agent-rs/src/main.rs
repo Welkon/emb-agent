@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 use emb_agent_core::{
     build_context_monitor_output, build_hook_plan, build_hook_plan_json,
     build_hooks_diagnostics_json, build_host_session_start_payload, build_project_state_json,
-    build_project_state_paths_json, build_session_context, build_start_json, build_statusline,
-    get_project_state_paths, json_string_field, project_state_from_cwd, snapshot_from_cwd,
-    HookPlan, StatePathConfig,
+    build_project_state_paths_json, build_scan_output_json, build_session_context,
+    build_start_json, build_statusline, get_project_state_paths, json_string_field,
+    project_state_from_cwd, snapshot_from_cwd, HookPlan, StatePathConfig,
 };
 
 fn main() {
@@ -24,6 +24,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let snapshot = snapshot_from_cwd(&cwd);
             println!("{}", build_statusline(&snapshot));
+            Ok(())
+        }
+        "scan" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let snapshot = snapshot_from_cwd(&cwd);
+            println!("{}", build_scan_output_json(&snapshot));
             Ok(())
         }
         "hook" => run_hook(&args),

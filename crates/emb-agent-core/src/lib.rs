@@ -3,6 +3,7 @@ pub mod hooks;
 pub mod json;
 pub mod project;
 pub mod render;
+pub mod scan;
 pub mod state_paths;
 
 pub use context_monitor::{
@@ -27,6 +28,7 @@ pub use project::{
 pub use render::{
     build_host_session_start_payload, build_session_context, build_start_json, build_statusline,
 };
+pub use scan::{ScanOutput, ScanWorkflowStage, build_scan_output, build_scan_output_json};
 pub use state_paths::{
     ProjectStateFilePaths, ProjectStatePaths, StatePathConfig, build_project_state_file_paths,
     build_project_state_paths_json, canonicalize_project_root, get_fallback_project_state_dir,

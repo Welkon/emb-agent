@@ -1,433 +1,546 @@
-'use strict';
+"use strict";
 
-const runtimeHostHelpers = require('./runtime-host.cjs');
-const capabilityCatalog = require('./capability-catalog.cjs');
-const capabilityRouter = require('./capability-router.cjs');
+const childProcess = require("child_process");
+const path = require("path");
 
-const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
+const runtimeHostHelpers = require("./runtime-host.cjs");
+const capabilityCatalog = require("./capability-catalog.cjs");
+const capabilityRouter = require("./capability-router.cjs");
+
+const RUNTIME_HOST =
+	runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 
 function createCapabilityRuntimeHelpers(deps) {
-  const {
-    updateSession,
-    buildActionOutput,
-    buildArchReviewContext,
-    buildNextContext,
-    buildStartContext,
-    buildStatus,
-    getActiveTask,
-    listTaskCandidates,
-    handleCatalogAndStateCommands,
-    capabilityMaterializer
-  } = deps;
+	const {
+		updateSession,
+		buildActionOutput,
+		buildArchReviewContext,
+		buildNextContext,
+		buildStartContext,
+		buildStatus,
+		getActiveTask,
+		listTaskCandidates,
+		handleCatalogAndStateCommands,
+		capabilityMaterializer,
+	} = deps;
 
-  function buildCli(args) {
-    return runtimeHostHelpers.buildCliCommand(RUNTIME_HOST, Array.isArray(args) ? args : []);
-  }
+	function buildCli(args) {
+		return runtimeHostHelpers.buildCliCommand(
+			RUNTIME_HOST,
+			Array.isArray(args) ? args : [],
+		);
+	}
 
-  function buildCapabilityRunCli(name) {
-    return buildCli(['capability', 'run', name]);
-  }
+	function buildCapabilityRunCli(name) {
+		return buildCli(["capability", "run", name]);
+	}
 
-  function unique(items) {
-    return Array.from(new Set((items || []).filter(Boolean)));
-  }
+	const RUST_SCAN_CACHE = new Map();
+	function tryRustScan(projectRoot) {
+		const envDisabled =
+			(process.env.EMB_AGENT_RUST_HOOKS || "").trim();
+		if (envDisabled === "0" || envDisabled === "false" || envDisabled === "no") {
+			return null;
+		}
 
-  function buildPreferredCapabilityCommand(name) {
-    return capabilityCatalog.getCapabilityPrimaryArgs(name).join(' ');
-  }
+		if (RUST_SCAN_CACHE.has("available")) {
+			if (!RUST_SCAN_CACHE.get("available")) return null;
+		}
 
-  function shouldBlockActionWithHealth(nextContext) {
-    return Boolean(
-      nextContext &&
-      nextContext.next &&
-      (nextContext.next.gated_by_health || nextContext.next.command === 'health')
-    );
-  }
+		const repoRoot = path.resolve(__dirname, "..", "..");
+		const exeName =
+			process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs";
+		const binaryPath = path.join(repoRoot, "target", "debug", exeName);
 
-  function buildHealthBlockedActionOutput(action, nextContext) {
-    const output = buildActionOutput('health');
+		const fs = require("fs");
+		if (!fs.existsSync(binaryPath)) {
+			RUST_SCAN_CACHE.set("available", false);
+			return null;
+		}
 
-    return {
-      ...output,
-      requested_action: action,
-      blocked_action: action,
-      workflow_stage: nextContext && nextContext.workflow_stage
-        ? nextContext.workflow_stage
-        : output.workflow_stage,
-      action_card: nextContext && nextContext.action_card
-        ? nextContext.action_card
-        : output.action_card,
-      next_actions: Array.isArray(nextContext && nextContext.next_actions)
-        ? nextContext.next_actions
-        : output.next_actions,
-      next: nextContext && nextContext.next
-        ? nextContext.next
-        : null
-    };
-  }
+		try {
+			const result = childProcess.spawnSync(
+				binaryPath,
+				["scan", "--cwd", projectRoot],
+				{
+					encoding: "utf8",
+					timeout: 5000,
+					stdio: ["pipe", "pipe", "ignore"],
+				},
+			);
+			if (result.status !== 0 || !result.stdout) {
+				RUST_SCAN_CACHE.set("available", false);
+				return null;
+			}
+			RUST_SCAN_CACHE.set("available", true);
+			return JSON.parse(result.stdout);
+		} catch {
+			RUST_SCAN_CACHE.set("available", false);
+			return null;
+		}
+	}
 
-  function buildPrdConfirmationBlockedActionOutput(action, nextContext) {
-    const output = buildActionOutput(action);
-    return {
-      ...output,
-      requested_action: action,
-      blocked_action: action,
-      workflow_stage: nextContext && nextContext.workflow_stage
-        ? nextContext.workflow_stage
-        : output.workflow_stage,
-      action_card: nextContext && nextContext.action_card
-        ? nextContext.action_card
-        : output.action_card,
-      next_actions: Array.isArray(nextContext && nextContext.next_actions)
-        ? nextContext.next_actions
-        : output.next_actions,
-      next: nextContext && nextContext.next
-        ? nextContext.next
-        : null,
-      prd_confirmation: nextContext && nextContext.prd_confirmation
-        ? nextContext.prd_confirmation
-        : null
-    };
-  }
+	function applyRustScanAcceleration(result) {
+		if (!result || typeof result !== "object") {
+			return result;
+		}
+		const projectRoot =
+			(result.current && result.current.project_root) || process.cwd();
+		if (!projectRoot) {
+			return result;
+		}
+		const rustOutput = tryRustScan(projectRoot);
+		if (rustOutput && rustOutput.relevant_files) {
+			result.relevant_files = rustOutput.relevant_files;
+			result.key_facts = rustOutput.key_facts || result.key_facts;
+			result.open_questions =
+				rustOutput.open_questions || result.open_questions;
+			result.next_reads = rustOutput.next_reads || result.next_reads;
+			if (rustOutput.workflow_stage) {
+				result.workflow_stage = {
+					...(result.workflow_stage || {}),
+					...rustOutput.workflow_stage,
+				};
+			}
+			result._rust_scan = true;
+		}
+		return result;
+	}
 
-  function buildTaskIntakeBlockedActionOutput(action) {
-    const output = buildActionOutput(action);
-    const workLabel = action === 'do' ? 'mutation work' : 'task-scoped investigation';
-    const candidates = typeof listTaskCandidates === 'function'
-      ? (() => {
-          try {
-            return listTaskCandidates({ limit: 5 });
-          } catch {
-            return [];
-          }
-        })()
-      : [];
-    const recommended = candidates[0] || null;
+	function unique(items) {
+		return Array.from(new Set((items || []).filter(Boolean)));
+	}
 
-    if (recommended) {
-      const firstCli = recommended.cli || buildCli(['task', 'activate', recommended.name]);
-      const thenCli = buildPreferredCapabilityCommand(action);
-      const reason = `No active task exists yet. Activate an existing open task before ${workLabel}.`;
-      const taskSelection = {
-        status: 'ready',
-        recommended_entry: `task activate ${recommended.name}`,
-        recommended_task: recommended,
-        candidates,
-        summary: `Existing open tasks are available. Activate ${recommended.name} before ${action}.`,
-        next_cli: firstCli,
-        then_cli: buildCli(capabilityCatalog.getCapabilityPrimaryArgs(action))
-      };
+	function buildPreferredCapabilityCommand(name) {
+		return capabilityCatalog.getCapabilityPrimaryArgs(name).join(" ");
+	}
 
-      return {
-        ...output,
-        workflow_stage: {
-          name: 'task-selection',
-          why: reason,
-          exit_criteria: 'One existing open task is activated before mutation work resumes',
-          primary_command: 'task activate'
-        },
-        task_selection: taskSelection,
-        action_card: {
-          status: 'blocked-by-task-selection',
-          stage: 'task-selection',
-          action: action === 'do' ? 'Activate task before mutation' : 'Activate task before scan',
-          summary: reason,
-          reason: action === 'do'
-            ? 'Mutation work without active task context is blocked.'
-            : 'Scan work without active task context is blocked once bootstrap is already ready.',
-          first_step_label: 'Activate task',
-          first_instruction: `Use an existing open task first: ${recommended.name} — ${recommended.title || recommended.name}.`,
-          first_cli: firstCli,
-          then_cli: taskSelection.then_cli,
-          followup: `Then: ${thenCli}`
-        },
-        next_actions: unique([
-          `instruction=Activate an existing task before using ${action}`,
-          `task_selection=${taskSelection.summary}`,
-          ...candidates.map(task => `task_candidate=${task.name}; status=${task.status || 'open'}; priority=${task.priority || 'P2'}; title=${task.title || task.name}`),
-          `command=${firstCli}`,
-          `followup=Then: ${thenCli}`
-        ])
-      };
-    }
+	function shouldBlockActionWithHealth(nextContext) {
+		return Boolean(
+			nextContext &&
+				nextContext.next &&
+				(nextContext.next.gated_by_health ||
+					nextContext.next.command === "health"),
+		);
+	}
 
-    const reason = `No active task exists yet. Create and activate a real task before ${workLabel}.`;
-    const firstCli = buildCli(['task', 'add', '<summary>']);
-    const thenCli = buildCli(['task', 'activate', '<name>']);
+	function buildHealthBlockedActionOutput(action, nextContext) {
+		const output = buildActionOutput("health");
 
-    return {
-      ...output,
-      workflow_stage: {
-        name: 'task-intake',
-        why: reason,
-        exit_criteria: 'A real task is created and activated before mutation work resumes',
-        primary_command: 'task add'
-      },
-      action_card: {
-        status: 'blocked-by-task-intake',
-        stage: 'task-intake',
-        action: action === 'do' ? 'Create task before mutation' : 'Create task before scan',
-        summary: reason,
-        reason: action === 'do'
-          ? 'Mutation work without task context is blocked.'
-          : 'Scan work without task context is blocked once bootstrap is already ready.',
-        first_step_label: 'Create task',
-        first_instruction: `Create a task and PRD first. If scope or hardware truth is still unclear, run ${buildPreferredCapabilityCommand('scan')} before ${buildPreferredCapabilityCommand('plan')} or ${buildPreferredCapabilityCommand('do')}.`,
-        first_cli: firstCli,
-        then_cli: thenCli,
-        followup: `Then: ${thenCli}`
-      },
-      next_actions: unique([
-        `instruction=Create and activate a task before using ${action}`,
-        `command=${firstCli}`,
-        `followup=Then: ${thenCli}`
-      ])
-    };
-  }
+		return {
+			...output,
+			requested_action: action,
+			blocked_action: action,
+			workflow_stage:
+				nextContext && nextContext.workflow_stage
+					? nextContext.workflow_stage
+					: output.workflow_stage,
+			action_card:
+				nextContext && nextContext.action_card
+					? nextContext.action_card
+					: output.action_card,
+			next_actions: Array.isArray(nextContext && nextContext.next_actions)
+				? nextContext.next_actions
+				: output.next_actions,
+			next: nextContext && nextContext.next ? nextContext.next : null,
+		};
+	}
 
-  function buildCapabilityDescriptor(definition) {
-    const materializationPlan =
-      capabilityMaterializer && typeof capabilityMaterializer.buildMaterializationPlan === 'function'
-        ? capabilityMaterializer.buildMaterializationPlan(definition)
-        : null;
-    const primaryEntryCli =
-      definition.category === 'workflow-capability'
-        ? buildCapabilityRunCli(definition.name)
-        : buildCli([definition.primary_command || definition.name]);
+	function buildPrdConfirmationBlockedActionOutput(action, nextContext) {
+		const output = buildActionOutput(action);
+		return {
+			...output,
+			requested_action: action,
+			blocked_action: action,
+			workflow_stage:
+				nextContext && nextContext.workflow_stage
+					? nextContext.workflow_stage
+					: output.workflow_stage,
+			action_card:
+				nextContext && nextContext.action_card
+					? nextContext.action_card
+					: output.action_card,
+			next_actions: Array.isArray(nextContext && nextContext.next_actions)
+				? nextContext.next_actions
+				: output.next_actions,
+			next: nextContext && nextContext.next ? nextContext.next : null,
+			prd_confirmation:
+				nextContext && nextContext.prd_confirmation
+					? nextContext.prd_confirmation
+					: null,
+		};
+	}
 
-    return {
-      name: definition.name,
-      title: definition.title || definition.name,
-      category: definition.category,
-      execution_kind: definition.execution_kind,
-      description: definition.description || '',
-      orchestratable: Boolean(definition.orchestratable),
-      materializable: Boolean(definition.materializable),
-      capability_route: capabilityRouter.buildCapabilityRoute(definition.name, {
-        command: definition.primary_command || definition.name,
-        cli: primaryEntryCli,
-        primary_entry_cli: primaryEntryCli
-      }),
-      materialization: materializationPlan
-        ? {
-            spec_name: materializationPlan.spec_name,
-            spec_relative_path: materializationPlan.spec_relative_path,
-            template_name: materializationPlan.template_name,
-            template_relative_path: materializationPlan.template_relative_path,
-            default_output: materializationPlan.default_output
-          }
-        : null
-    };
-  }
+	function buildTaskIntakeBlockedActionOutput(action) {
+		const output = buildActionOutput(action);
+		const workLabel =
+			action === "do" ? "mutation work" : "task-scoped investigation";
+		const candidates =
+			typeof listTaskCandidates === "function"
+				? (() => {
+						try {
+							return listTaskCandidates({ limit: 5 });
+						} catch {
+							return [];
+						}
+					})()
+				: [];
+		const recommended = candidates[0] || null;
 
-  function listCapabilities(args) {
-    const tokens = Array.isArray(args) ? args : [];
-    const includeRuntimeSurfaces = tokens.includes('--all');
-    const unknown = tokens.filter(token => token !== '--all');
+		if (recommended) {
+			const firstCli =
+				recommended.cli || buildCli(["task", "activate", recommended.name]);
+			const thenCli = buildPreferredCapabilityCommand(action);
+			const reason = `No active task exists yet. Activate an existing open task before ${workLabel}.`;
+			const taskSelection = {
+				status: "ready",
+				recommended_entry: `task activate ${recommended.name}`,
+				recommended_task: recommended,
+				candidates,
+				summary: `Existing open tasks are available. Activate ${recommended.name} before ${action}.`,
+				next_cli: firstCli,
+				then_cli: buildCli(capabilityCatalog.getCapabilityPrimaryArgs(action)),
+			};
 
-    if (unknown.length > 0) {
-      throw new Error(`Unknown capability list option: ${unknown[0]}`);
-    }
+			return {
+				...output,
+				workflow_stage: {
+					name: "task-selection",
+					why: reason,
+					exit_criteria:
+						"One existing open task is activated before mutation work resumes",
+					primary_command: "task activate",
+				},
+				task_selection: taskSelection,
+				action_card: {
+					status: "blocked-by-task-selection",
+					stage: "task-selection",
+					action:
+						action === "do"
+							? "Activate task before mutation"
+							: "Activate task before scan",
+					summary: reason,
+					reason:
+						action === "do"
+							? "Mutation work without active task context is blocked."
+							: "Scan work without active task context is blocked once bootstrap is already ready.",
+					first_step_label: "Activate task",
+					first_instruction: `Use an existing open task first: ${recommended.name} — ${recommended.title || recommended.name}.`,
+					first_cli: firstCli,
+					then_cli: taskSelection.then_cli,
+					followup: `Then: ${thenCli}`,
+				},
+				next_actions: unique([
+					`instruction=Activate an existing task before using ${action}`,
+					`task_selection=${taskSelection.summary}`,
+					...candidates.map(
+						(task) =>
+							`task_candidate=${task.name}; status=${task.status || "open"}; priority=${task.priority || "P2"}; title=${task.title || task.name}`,
+					),
+					`command=${firstCli}`,
+					`followup=Then: ${thenCli}`,
+				]),
+			};
+		}
 
-    return {
-      command: 'capability list',
-      capabilities: capabilityCatalog
-        .listCapabilityDefinitions({
-          include_runtime_surfaces: includeRuntimeSurfaces
-        })
-        .map(buildCapabilityDescriptor)
-    };
-  }
+		const reason = `No active task exists yet. Create and activate a real task before ${workLabel}.`;
+		const firstCli = buildCli(["task", "add", "<summary>"]);
+		const thenCli = buildCli(["task", "activate", "<name>"]);
 
-  function showCapability(name) {
-    const definition = capabilityCatalog.requireCapabilityDefinition(name, {
-      include_runtime_surfaces: true
-    });
+		return {
+			...output,
+			workflow_stage: {
+				name: "task-intake",
+				why: reason,
+				exit_criteria:
+					"A real task is created and activated before mutation work resumes",
+				primary_command: "task add",
+			},
+			action_card: {
+				status: "blocked-by-task-intake",
+				stage: "task-intake",
+				action:
+					action === "do"
+						? "Create task before mutation"
+						: "Create task before scan",
+				summary: reason,
+				reason:
+					action === "do"
+						? "Mutation work without task context is blocked."
+						: "Scan work without task context is blocked once bootstrap is already ready.",
+				first_step_label: "Create task",
+				first_instruction: `Create a task and PRD first. If scope or hardware truth is still unclear, run ${buildPreferredCapabilityCommand("scan")} before ${buildPreferredCapabilityCommand("plan")} or ${buildPreferredCapabilityCommand("do")}.`,
+				first_cli: firstCli,
+				then_cli: thenCli,
+				followup: `Then: ${thenCli}`,
+			},
+			next_actions: unique([
+				`instruction=Create and activate a task before using ${action}`,
+				`command=${firstCli}`,
+				`followup=Then: ${thenCli}`,
+			]),
+		};
+	}
 
-    return {
-      command: 'capability show',
-      capability: buildCapabilityDescriptor(definition)
-    };
-  }
+	function buildCapabilityDescriptor(definition) {
+		const materializationPlan =
+			capabilityMaterializer &&
+			typeof capabilityMaterializer.buildMaterializationPlan === "function"
+				? capabilityMaterializer.buildMaterializationPlan(definition)
+				: null;
+		const primaryEntryCli =
+			definition.category === "workflow-capability"
+				? buildCapabilityRunCli(definition.name)
+				: buildCli([definition.primary_command || definition.name]);
 
-  function executeCapability(name, options = {}) {
-    const definition = capabilityCatalog.requireCapabilityDefinition(name, {
-      include_runtime_surfaces: true
-    });
+		return {
+			name: definition.name,
+			title: definition.title || definition.name,
+			category: definition.category,
+			execution_kind: definition.execution_kind,
+			description: definition.description || "",
+			orchestratable: Boolean(definition.orchestratable),
+			materializable: Boolean(definition.materializable),
+			capability_route: capabilityRouter.buildCapabilityRoute(definition.name, {
+				command: definition.primary_command || definition.name,
+				cli: primaryEntryCli,
+				primary_entry_cli: primaryEntryCli,
+			}),
+			materialization: materializationPlan
+				? {
+						spec_name: materializationPlan.spec_name,
+						spec_relative_path: materializationPlan.spec_relative_path,
+						template_name: materializationPlan.template_name,
+						template_relative_path: materializationPlan.template_relative_path,
+						default_output: materializationPlan.default_output,
+					}
+				: null,
+		};
+	}
 
-    if (
-      definition.materializable &&
-      definition.materialization &&
-      capabilityMaterializer &&
-      typeof capabilityMaterializer.materializeCapability === 'function'
-    ) {
-      capabilityMaterializer.materializeCapability(definition.name, { force: false });
-    }
+	function listCapabilities(args) {
+		const tokens = Array.isArray(args) ? args : [];
+		const includeRuntimeSurfaces = tokens.includes("--all");
+		const unknown = tokens.filter((token) => token !== "--all");
 
-    const skipSessionUpdate = options.skip_session_update === true;
-    const sessionCommand = String(options.session_command || `capability run ${definition.name}`).trim();
+		if (unknown.length > 0) {
+			throw new Error(`Unknown capability list option: ${unknown[0]}`);
+		}
 
-    if (!skipSessionUpdate && typeof updateSession === 'function') {
-      updateSession(current => {
-        current.last_command = sessionCommand;
-      });
-    }
+		return {
+			command: "capability list",
+			capabilities: capabilityCatalog
+				.listCapabilityDefinitions({
+					include_runtime_surfaces: includeRuntimeSurfaces,
+				})
+				.map(buildCapabilityDescriptor),
+		};
+	}
 
-    if (definition.execution_kind === 'workflow-action') {
-      const action = definition.action_name || definition.name;
-      const nextContext = typeof buildNextContext === 'function' ? buildNextContext() : null;
+	function showCapability(name) {
+		const definition = capabilityCatalog.requireCapabilityDefinition(name, {
+			include_runtime_surfaces: true,
+		});
 
-      if ((action === 'scan' || action === 'do') && shouldBlockActionWithHealth(nextContext)) {
-        return buildHealthBlockedActionOutput(action, nextContext);
-      }
+		return {
+			command: "capability show",
+			capability: buildCapabilityDescriptor(definition),
+		};
+	}
 
-      if (
-        (action === 'scan' || action === 'do') &&
-        nextContext &&
-        nextContext.next &&
-        String(nextContext.next.command || '').startsWith('prd confirm')
-      ) {
-        return buildPrdConfirmationBlockedActionOutput(action, nextContext);
-      }
+	function executeCapability(name, options = {}) {
+		const definition = capabilityCatalog.requireCapabilityDefinition(name, {
+			include_runtime_surfaces: true,
+		});
 
-      if (action === 'scan') {
-        const activeTask = typeof getActiveTask === 'function' ? getActiveTask() : null;
-        const startContext =
-          !activeTask && typeof buildStartContext === 'function'
-            ? buildStartContext()
-            : null;
-        if (
-          !activeTask &&
-          startContext &&
-          startContext.immediate &&
-          (
-            startContext.immediate.command === 'task add <summary>' ||
-            String(startContext.immediate.command || '').startsWith('task activate ')
-          )
-        ) {
-          return buildTaskIntakeBlockedActionOutput(action);
-        }
-      }
+		if (
+			definition.materializable &&
+			definition.materialization &&
+			capabilityMaterializer &&
+			typeof capabilityMaterializer.materializeCapability === "function"
+		) {
+			capabilityMaterializer.materializeCapability(definition.name, {
+				force: false,
+			});
+		}
 
-      if (action === 'do') {
-        const activeTask = typeof getActiveTask === 'function' ? getActiveTask() : null;
-        if (!activeTask) {
-          return buildTaskIntakeBlockedActionOutput(action);
-        }
-      }
+		const skipSessionUpdate = options.skip_session_update === true;
+		const sessionCommand = String(
+			options.session_command || `capability run ${definition.name}`,
+		).trim();
 
-      return buildActionOutput(action);
-    }
+		if (!skipSessionUpdate && typeof updateSession === "function") {
+			updateSession((current) => {
+				current.last_command = sessionCommand;
+			});
+		}
 
-    if (definition.execution_kind === 'arch-review') {
-      return buildArchReviewContext();
-    }
+		if (definition.execution_kind === "workflow-action") {
+			const action = definition.action_name || definition.name;
+			const nextContext =
+				typeof buildNextContext === "function" ? buildNextContext() : null;
 
-    if (definition.execution_kind === 'runtime-surface') {
-      if (definition.name === 'status') {
-        return buildStatus();
-      }
-      if (definition.name === 'next') {
-        return buildNextContext();
-      }
-      if (definition.name === 'health') {
-        return handleCatalogAndStateCommands('health', '', []);
-      }
-    }
+			if (
+				(action === "scan" || action === "do") &&
+				shouldBlockActionWithHealth(nextContext)
+			) {
+				return buildHealthBlockedActionOutput(action, nextContext);
+			}
 
-    throw new Error(`Capability is not executable: ${definition.name}`);
-  }
+			if (
+				(action === "scan" || action === "do") &&
+				nextContext &&
+				nextContext.next &&
+				String(nextContext.next.command || "").startsWith("prd confirm")
+			) {
+				return buildPrdConfirmationBlockedActionOutput(action, nextContext);
+			}
 
-  function parseMaterializeArgs(args) {
-    const tokens = Array.isArray(args) ? args : [];
-    const options = {
-      target: 'all',
-      force: false
-    };
+			if (action === "scan") {
+				const activeTask =
+					typeof getActiveTask === "function" ? getActiveTask() : null;
+				const startContext =
+					!activeTask && typeof buildStartContext === "function"
+						? buildStartContext()
+						: null;
+				if (
+					!activeTask &&
+					startContext &&
+					startContext.immediate &&
+					(startContext.immediate.command === "task add <summary>" ||
+						String(startContext.immediate.command || "").startsWith(
+							"task activate ",
+						))
+				) {
+					const blockedResult = buildTaskIntakeBlockedActionOutput(action);
+					return applyRustScanAcceleration(blockedResult);
+				}
+			}
 
-    for (let index = 0; index < tokens.length; index += 1) {
-      const token = tokens[index];
-      if (!options.target || options.target === 'all') {
-        if (!token.startsWith('--')) {
-          options.target = token;
-          continue;
-        }
-      }
-      if (token === '--force') {
-        options.force = true;
-        continue;
-      }
-      throw new Error(`Unknown capability materialize option: ${token}`);
-    }
+			if (action === "do") {
+				const activeTask =
+					typeof getActiveTask === "function" ? getActiveTask() : null;
+				if (!activeTask) {
+					return buildTaskIntakeBlockedActionOutput(action);
+				}
+			}
 
-    return options;
-  }
+			const result = buildActionOutput(action);
+			return applyRustScanAcceleration(result);
+		}
 
-  function materializeCapabilities(args) {
-    const parsed = parseMaterializeArgs(args);
-    const result = capabilityMaterializer.materializeCapabilitySet(parsed.target, {
-      force: parsed.force
-    });
+		if (definition.execution_kind === "arch-review") {
+			return buildArchReviewContext();
+		}
 
-    if (typeof updateSession === 'function') {
-      updateSession(current => {
-        current.last_command = `capability materialize ${parsed.target}`;
-      });
-    }
+		if (definition.execution_kind === "runtime-surface") {
+			if (definition.name === "status") {
+				return buildStatus();
+			}
+			if (definition.name === "next") {
+				return buildNextContext();
+			}
+			if (definition.name === "health") {
+				return handleCatalogAndStateCommands("health", "", []);
+			}
+		}
 
-    return {
-      command: 'capability materialize',
-      ...result
-    };
-  }
+		throw new Error(`Capability is not executable: ${definition.name}`);
+	}
 
-  function handleCapabilityCommands(cmd, subcmd, rest) {
-    if (cmd !== 'capability') {
-      return undefined;
-    }
+	function parseMaterializeArgs(args) {
+		const tokens = Array.isArray(args) ? args : [];
+		const options = {
+			target: "all",
+			force: false,
+		};
 
-    if (!subcmd) {
-      throw new Error('capability requires a subcommand');
-    }
+		for (let index = 0; index < tokens.length; index += 1) {
+			const token = tokens[index];
+			if (!options.target || options.target === "all") {
+				if (!token.startsWith("--")) {
+					options.target = token;
+					continue;
+				}
+			}
+			if (token === "--force") {
+				options.force = true;
+				continue;
+			}
+			throw new Error(`Unknown capability materialize option: ${token}`);
+		}
 
-    if (subcmd === 'list') {
-      return listCapabilities(rest);
-    }
+		return options;
+	}
 
-    if (subcmd === 'show') {
-      if (!rest[0]) {
-        throw new Error('Missing capability name');
-      }
-      return showCapability(rest[0]);
-    }
+	function materializeCapabilities(args) {
+		const parsed = parseMaterializeArgs(args);
+		const result = capabilityMaterializer.materializeCapabilitySet(
+			parsed.target,
+			{
+				force: parsed.force,
+			},
+		);
 
-    if (subcmd === 'run') {
-      if (!rest[0]) {
-        throw new Error('Missing capability name');
-      }
-      return executeCapability(rest[0], {
-        session_command: `capability run ${capabilityCatalog.resolveCapabilityName(rest[0]) || rest[0]}`
-      });
-    }
+		if (typeof updateSession === "function") {
+			updateSession((current) => {
+				current.last_command = `capability materialize ${parsed.target}`;
+			});
+		}
 
-    if (subcmd === 'materialize') {
-      return materializeCapabilities(rest);
-    }
+		return {
+			command: "capability materialize",
+			...result,
+		};
+	}
 
-    throw new Error(`Unknown capability subcommand: ${subcmd}`);
-  }
+	function handleCapabilityCommands(cmd, subcmd, rest) {
+		if (cmd !== "capability") {
+			return undefined;
+		}
 
-  return {
-    buildCapabilityRunCli,
-    buildCapabilityDescriptor,
-    executeCapability,
-    handleCapabilityCommands,
-    listCapabilities,
-    materializeCapabilities,
-    showCapability
-  };
+		if (!subcmd) {
+			throw new Error("capability requires a subcommand");
+		}
+
+		if (subcmd === "list") {
+			return listCapabilities(rest);
+		}
+
+		if (subcmd === "show") {
+			if (!rest[0]) {
+				throw new Error("Missing capability name");
+			}
+			return showCapability(rest[0]);
+		}
+
+		if (subcmd === "run") {
+			if (!rest[0]) {
+				throw new Error("Missing capability name");
+			}
+			return executeCapability(rest[0], {
+				session_command: `capability run ${capabilityCatalog.resolveCapabilityName(rest[0]) || rest[0]}`,
+			});
+		}
+
+		if (subcmd === "materialize") {
+			return materializeCapabilities(rest);
+		}
+
+		throw new Error(`Unknown capability subcommand: ${subcmd}`);
+	}
+
+	return {
+		buildCapabilityRunCli,
+		buildCapabilityDescriptor,
+		executeCapability,
+		handleCapabilityCommands,
+		listCapabilities,
+		materializeCapabilities,
+		showCapability,
+	};
 }
 
 module.exports = {
-  createCapabilityRuntimeHelpers
+	createCapabilityRuntimeHelpers,
 };
