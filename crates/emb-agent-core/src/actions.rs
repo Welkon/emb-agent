@@ -86,8 +86,7 @@ pub fn build_plan_output(snapshot: &ProjectSnapshot) -> PlanOutput {
         "Turn the concept-stage system contract into a ranked device shortlist with explicit criteria"
             .to_string()
     } else {
-        "Lock the task plan: truth sources, constraints, steps, and verification"
-            .to_string()
+        "Lock the task plan: truth sources, constraints, steps, and verification".to_string()
     };
 
     let truth_sources = if blank {
@@ -120,8 +119,7 @@ pub fn build_plan_output(snapshot: &ProjectSnapshot) -> PlanOutput {
 
     let risks = if blank {
         vec![
-            "Selecting a chip based on intuition or category without explicit criteria"
-                .to_string(),
+            "Selecting a chip based on intuition or category without explicit criteria".to_string(),
             "Filling the shortlist without verifying candidate evidence".to_string(),
         ]
     } else {
@@ -141,8 +139,7 @@ pub fn build_plan_output(snapshot: &ProjectSnapshot) -> PlanOutput {
         vec![
             "1. Lock truth sources: hw.yaml, req.yaml, datasheet pages".to_string(),
             "2. Define constraints: resource bounds, timing, pins".to_string(),
-            "3. Sequence implementation steps with verification checkpoints"
-                .to_string(),
+            "3. Sequence implementation steps with verification checkpoints".to_string(),
         ]
     };
 
@@ -211,8 +208,7 @@ pub fn build_review_output(snapshot: &ProjectSnapshot) -> ReviewOutput {
         },
         required_checks: vec![
             "This is not a code-style review".to_string(),
-            "Separate confirmed risks from risks that still need verification"
-                .to_string(),
+            "Separate confirmed risks from risks that still need verification".to_string(),
             "Keep conclusions tied to real system boundaries".to_string(),
         ],
         review_agents: vec!["emb-hw-scout".to_string()],
@@ -268,7 +264,10 @@ pub fn build_verify_output(snapshot: &ProjectSnapshot) -> VerifyOutput {
             "List this round's verification targets first".to_string()
         },
         verification_focus: if blank {
-            vec!["selection-completeness".to_string(), "failure-paths".to_string()]
+            vec![
+                "selection-completeness".to_string(),
+                "failure-paths".to_string(),
+            ]
         } else {
             vec!["board-behavior".to_string(), "failure-paths".to_string()]
         },
@@ -287,26 +286,21 @@ pub fn build_debug_output(snapshot: &ProjectSnapshot) -> DebugOutput {
             ]
         } else {
             vec![
-                "Update order for ISR and main-loop shared state is incorrect"
-                    .to_string(),
+                "Update order for ISR and main-loop shared state is incorrect".to_string(),
                 "Timing windows or register configuration do not satisfy current behavior"
                     .to_string(),
-                "Pin mux or board-connection understanding is incorrect"
-                    .to_string(),
+                "Pin mux or board-connection understanding is incorrect".to_string(),
             ]
         },
         checks: if blank {
             vec![
-                "Check system contract completeness in docs/prd/system.md"
-                    .to_string(),
+                "Check system contract completeness in docs/prd/system.md".to_string(),
                 "Check req.yaml for explicit constraints".to_string(),
             ]
         } else {
             vec![
-                "Check ISR set/clear flag handling and main-loop consumption order"
-                    .to_string(),
-                "Check critical registers, pin muxing, and timing requirements"
-                    .to_string(),
+                "Check ISR set/clear flag handling and main-loop consumption order".to_string(),
+                "Check critical registers, pin muxing, and timing requirements".to_string(),
             ]
         },
         next_step: "Pin down the current symptom first".to_string(),
@@ -326,10 +320,7 @@ fn stage(name: &str, why: &str) -> WorkflowStage {
     WorkflowStage {
         name: name.to_string(),
         why: why.to_string(),
-        exit_criteria: format!(
-            "{} is complete enough to move to the next stage",
-            name
-        ),
+        exit_criteria: format!("{} is complete enough to move to the next stage", name),
         primary_command: format!("capability run {}", name),
         stage: name.to_string(),
         action: format!("Continue with {}", name),

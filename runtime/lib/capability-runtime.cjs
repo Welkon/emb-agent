@@ -139,8 +139,7 @@ function createCapabilityRuntimeHelpers(deps) {
 			if (rustOutput.goal) result.goal = rustOutput.goal;
 			if (rustOutput.truth_sources)
 				result.truth_sources = rustOutput.truth_sources;
-			if (rustOutput.constraints)
-				result.constraints = rustOutput.constraints;
+			if (rustOutput.constraints) result.constraints = rustOutput.constraints;
 			if (rustOutput.risks) result.risks = rustOutput.risks;
 			if (rustOutput.steps) result.steps = rustOutput.steps;
 			if (rustOutput.verification)
@@ -152,15 +151,13 @@ function createCapabilityRuntimeHelpers(deps) {
 			if (rustOutput.required_checks)
 				result.required_checks = rustOutput.required_checks;
 		} else if (action === "verify") {
-			if (rustOutput.checklist)
-				result.checklist = rustOutput.checklist;
+			if (rustOutput.checklist) result.checklist = rustOutput.checklist;
 			if (rustOutput.evidence_targets)
 				result.evidence_targets = rustOutput.evidence_targets;
 			if (rustOutput.next_step && !result.next_step)
 				result.next_step = rustOutput.next_step;
 		} else if (action === "debug") {
-			if (rustOutput.hypotheses)
-				result.hypotheses = rustOutput.hypotheses;
+			if (rustOutput.hypotheses) result.hypotheses = rustOutput.hypotheses;
 			if (rustOutput.checks) result.checks = rustOutput.checks;
 			if (rustOutput.next_step && !result.next_step)
 				result.next_step = rustOutput.next_step;
