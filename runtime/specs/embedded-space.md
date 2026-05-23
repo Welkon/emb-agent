@@ -11,93 +11,56 @@ extra_review_axes: [register_truth, atomic_shared_state, timebase_jitter, state_
 
 # Embedded Space
 
-Use this spec for vendor-neutral MCU firmware. It defines general embedded rules that apply across 8-bit, 16-bit, and 32-bit MCU projects.
+Use this spec for vendor-neutral MCU firmware rules across 8-bit, 16-bit, and 32-bit bare-metal architectures.
+Pair it with vendor and project specs for toolchain quirks, register layouts, and physical pinout maps.
 
-Pair it with vendor, chip-family, or project-local specs for compiler dialects, IDE behavior, memory budgets, package pinout, peripheral formulas, and board-specific constraints.
-
-## Scope And Layering
-
-- **Specs are coding constraints only.** Put design decisions, rationale, interview conclusions, domain knowledge, and "why we chose X over Y" in `.emb-agent/wiki/decisions/`, not in spec files. Specs answer "what rule must code follow"; wiki answers "why that rule exists."
-- Keep this spec vendor-neutral and MCU-family-neutral.
-- Do not add compiler dialect, IDE project-file, SFR header, absolute-address syntax, package pinout, memory-size threshold, vendor library, or chip-specific peripheral rules here.
-- Put vendor/toolchain rules in selectable vendor specs such as `scmcu-space` or `padauk-space`.
-- Put concrete chip/package/board facts in project truth (`hw.yaml`, `req.yaml`) or project-local specs.
-- When multiple specs apply, use this order: hardware truth and measured behavior first, then project-local/chip/vendor specs, then this generic embedded-space guidance.
+- **Specs are coding constraints only.** Put architecture decisions and rationales in `.emb-agent/wiki/decisions/`. Specs enforce "what rule code must obey"; the wiki archives "why that rule rules."
 
 ## Core Stance
 
-- Prioritize correct product behavior and hardware safety before code shape.
-- Start design from real hardware ownership, timing, and failure modes, not abstract architecture vocabulary.
-- Prefer simple, reviewable control flow when it satisfies the product requirement.
-- Add abstraction only when it isolates real hardware variation, removes real duplication, protects a clear invariant, or improves verification.
-- Treat register writes, power-state transitions, sleep entry, wake recovery, and output enable paths as safety-relevant operations.
+- **Safety Over Form:** Prioritize flawless hardware execution safety and deterministic power-on states above code aesthetics or software design patterns.
+- **Physical Sovereignty First:** Build logic upwards from explicit register ownership, clock domains, and electrical failure vectors, never from abstract proxy layers.
+- **Atomic Operations Trapping:** Treat peripheral register writes, sleep entries, wake routines, and power-rail switches as safety-critical entry points requiring isolated verification paths.
 
-## Hardware Truth And Ownership
+## Hardware Truth And Monolithic Ownership
 
-- Confirm the exact MCU, package, board net, active level, and peripheral mux before changing hardware behavior.
-- One module should own each physical output, peripheral, and shared hardware resource at a time.
-- Application logic should consume semantic state and call hardware/platform APIs; it should not scatter board pin or register decisions across unrelated modules.
-- Board/platform code may know concrete pins, channels, and registers. Generic application modules should not.
-- Before enabling an output or changing a mux, define the reset/default state, fault state, and owner for every affected pin.
+- Verify the exact silicon footprint, pin mux mapping, and hardware electrical active-state level before emitting single-bit changes.
+- **The Exclusive Owner Rule:** Exactly one firmware module must own a given physical IO pin, hardware peripheral, or shared register map channel. No parallel mutation allowed.
+- Keep board configurations isolated to hardware platform interfaces. Application-layer modules must interact exclusively with semantic states, completely blind to underlying pin maps or port registers.
 
-## Time Base And Main Loop
+## Bounded Time Base And Main Loop Control
 
-- Use an explicit time base for debounce, filtering, display refresh, control loops, timeouts, and watchdog policy.
-- Keep periodic work bounded. Each slice should have a stated cadence, owner, and worst-case expectation.
-- Avoid blocking waits in the main loop unless the product timing and watchdog policy explicitly allow them.
-- When multiple cadences are derived from one tick, keep dividers/counters direct and reviewable.
-- Before relying on a time base, verify clock source, prescaler/reload settings, interrupt cadence, jitter tolerance, and sleep/wake interaction.
+- Execute all software debouncing, current limits, control cadences, and watchdog timeouts via a unified, explicit hardware-driven time base.
+- **Zero In-Loop Blocking:** Forbid arbitrary or unmeasured delay loops within the foreground execution path. Every main loop task slice must execute with an upfront bounded runtime limit.
+- Validate timebase configurations (clock multipliers, divider reload matches, interrupt latencies) against physical execution loops before deploying timing logic.
 
-## ISR And Shared State
+## Thin ISR And Isolated Shared State
 
-- Keep ISR work minimal: identify the source, clear/latch the interrupt condition, update the minimum shared state, and return.
-- Do not put debounce policy, long ADC conversions, display policy, control state machines, blocking waits, logging, or watchdog feeding in an ISR unless a project-specific rule explicitly justifies it.
-- Mark ISR-shared variables with the project's required volatile/atomic mechanism.
-- Protect multi-byte or non-atomic shared state when it is accessed from both ISR and main context.
-- Define what happens when interrupts are disabled, missed, nested, or delayed.
+- **Naked Interruption Rule:** ISR logic must only execute absolute minimum hardware maintenance: identify source flags, clear/latch the interrupt condition, mutate the minimum atomic shared state state-vector, and exit immediately.
+- Absolutely no logic state machines, analog-to-digital conversions, long loops, or display data loading within an ISR context.
+- Enforce strict `volatile` compiler qualifiers or explicit atomic primitives on all variables shared across the interruption boundary. Protect non-atomic multi-byte memory states with explicit, narrow critical section locks.
 
-## State, Faults, And Outputs
+## Explicit State & Fault Defenses
 
-- Model unknown, fault, startup, and safe/off states explicitly.
-- Unknown or invalid inputs should not silently map to an active output state.
-- Output enable decisions should be centralized enough that safety review can find every path that can turn hardware on.
-- On startup, before sleep, after wake, and on fault, drive or release pins into documented safe states.
-- Separate input sampling/filtering from product action decisions when that improves reviewability.
+- Explicitly map unknown initialization vectors, fault events, and startup windows into dedicated, deterministic software safe states.
+- Anomalous or noise-filtered input conditions must never trigger active, high-power output transitions. Centralize output-enable paths so a safety review can audit every mechanism capable of driving physical current.
 
-## C Interfaces And Module Boundaries
+## Edge Sovereignty (Boundary Validation Gate)
 
-- Headers should expose the smallest stable surface: public types, handles, constants, and function declarations needed by callers.
-- Keep writable module state private where practical.
-- A module split should reflect real ownership: hardware resource, timing domain, state owner, protocol boundary, or independently verified behavior.
-- Do not split code only because a file is long, and do not merge distinct hardware owners only to reduce file count.
-- If using handles, callbacks, ops tables, or registration, document the real variation they represent and how failures/null operations are handled.
-- Application code should not call through internal dispatch fields directly; public wrappers own validation and dispatch.
-
-## Boundary Validation
-
-- Validate inputs once at the system edge: ADC samples, sensor readings, communication packets, external memory reads, user inputs, configuration bytes. After validation, trust internal invariants.
-- Do not scatter defensive null-pointer, range, or validity checks across internal functions when the caller has already guaranteed the invariant through the validated entry path.
-- When the same validation check appears three or more times across different internal call sites, redesign the boundary first — move validation to the entry point and narrow the internal interface to accept only trusted, valid data.
-- Document the invariant that makes each internal check unnecessary (e.g., "caller guarantees `adc_reading` is in [0, 4095] after edge validation").
-- This principle matters on resource-constrained MCUs: every redundant `if (ptr != NULL)`, range check, or error-return path costs flash, RAM, and cycles. Make each check pay for itself.
-- Treat register writes, interrupt flags, and DMA buffer ownership the same way: validate the buffer descriptor or channel config once at setup, then trust the hardware contract during the transfer.
+- **The Monolithic Gate:** Validate all raw inputs—such as ADC values, raw capacitive touch frequencies, packet buffers, or IO read samples—**exactly once at the system edge boundary**. Once inside the system gate, trust the established structural invariants completely.
+- **Zero Downstream Defensive Bloat:** Eradicate all redundant internal validation checks (e.g., duplicated `if (ptr != NULL)`, out-of-range bounds checks, or repetitive safety cascades) inside inner module loops. Every internal check represents a flash, RAM, and clock-cycle deficit that a low-ROM MCU cannot tolerate.
+- Shift the responsibility up: If an internal module requires verified inputs, enforce that invariant on the caller at the entrance boundary. Trust the data contract implicitly during core execution transfers.
 
 ## Verification Discipline
 
-- Verify with the toolchain, IDE, or build flow that will be used for the target artifact.
-- Inspect compiler warnings, memory/resource usage, map/listing output where available, and generated artifacts relevant to startup and interrupts.
-- For timing-sensitive work, verify tick cadence, ISR latency, sleep/wake recovery, and worst-case main-loop execution.
-- For hardware outputs, verify reset behavior, enable/disable transitions, fault injection, and no unintended pulses.
-- For sleep/low-power work, separate runtime safe states from sleep-current states. A display or bus may require high-Z while running, but the lowest sleep current may require deterministic input/output levels on non-wake pins.
-- Treat vendor example code and measured board behavior as first-class evidence for low-power entry and wake sequencing. If a manual mnemonic and an official example differ, try the example path before inventing a register sequence.
-- Always confirm whether the user flashes the command-line artifact, an IDE-built artifact, or a programmer configuration. Do not assume a local HEX includes configuration bits or is the artifact being burned.
-- Record bench gaps and assumptions close to the task or project truth, not only in conversation. When the user confirms real-board pass/fail/current/wake behavior, preserve it as a board validation record before treating it as settled truth.
+- Compulsory audit of compiler diagnostic warning tags, linker script memory maps, and listing allocation files after every compilation target.
+- For low-power implementations, explicitly isolate runtime high-impedance states from sleep configuration vectors. Avoid assuming nominal register behavior; prioritize official vendor example flow logic for sleep entry and wake-up transitions.
+- Never assume compiled output artifacts perfectly incorporate physical configuration bits or fuses. Validate the actual artifact map being flashed onto the physical bench board.
 
 ## Avoid Without Project-Specific Justification
 
-- Hidden ownership of pins or peripherals.
-- Unbounded blocking in main-loop firmware.
-- ISR paths that perform product policy or long work.
-- Enabling outputs from unknown, invalid, or partially initialized state.
-- Hardware behavior inferred from chip family name instead of package/board truth.
-- Toolchain-specific syntax or memory-placement rules in generic modules.
+- Hidden or distributed IO pin ownership matrix.
+- Unbounded blocking instructions or busy-waits within the main foreground execution frame.
+- ISR processing paths that handle high-level application policy or heavy arithmetic computations.
+- Driving current or enabling output lines from uninitialized or speculative initial states.
+- Toolchain-specific dialect macros injected into generic application-layer files.

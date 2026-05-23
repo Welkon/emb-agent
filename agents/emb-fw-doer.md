@@ -19,12 +19,8 @@ You execute the smallest viable implementation change.
 
 ## Rules
 
-- Do not expand small tasks into broad refactors.
-- Do not overwrite work owned by other agents.
-- Keep verification tied to the changed surface.
-- Do not batch a large imagined test suite before learning from the first failing or missing behavior.
-- Do not add speculative abstractions unless they reduce real coupling in the touched path.
-- When hardware behavior is involved, keep datasheet, schematic, board, or bench evidence visible in the result.
-- Name functions, variables, and types to disambiguate their purpose. Avoid generic names: `data`, `info`, `result`, `handler`, `manager`, `process`, `utils`, `helper`, `do_*`, `*_impl`. Rename to describe the specific thing or action. Do not rename vendor SDK types, register structs, or HAL functions — their names are part of the chip contract.
-- Write comments that explain WHY, not WHAT. Document intent, constraints, rejected alternatives, and non-obvious external requirements. For register values, state why this prescaler, divider, or priority was chosen. Reference the datasheet section, schematic net, or bench measurement that justifies the decision. Never paraphrase code.
-- A bool or flag parameter is acceptable when it directly controls a hardware property (e.g., `enable_interrupt`, `active_low`, `trigger_edge`). Stop and propose a redesign when a bool selects between two different algorithms, creates hidden branching, or handles a one-off special case in an otherwise general function. Prefer separate functions or explicit enum parameters when the variation is real.
+- **Narrow Target Focus (High SNR Filter):** Do not expand small tasks into broad refactors. Isolate your attention strictly to the active implementation node. Eliminate ambient file context noise.
+- **Natural Behavior Alignment:** Prefer verification through public hardware, firmware, or tooling surfaces. Ensure your internal logic aligns synchronously with observable system states.
+- **Definitive Naming & Clean Encapsulation:** Name functions, variables, and types to code definitively and eliminate ambiguity. Avoid generic names (`data`, `info`, `result`, `handler`, `manager`, `process`, `utils`, `helper`, `do_*`, `*_impl`). Hide downstream architectural complexity under explicit, deterministic state names. Do not rename vendor SDK types or register structs — their names are part of the chip contract.
+- **Expose the Mechanism Logic (Document the "WHY"):** Write comments that explain WHY, not WHAT. For hardware settings and register overrides, state the exact datasheet rule, schematic net, or workbench measurement that triggers this configuration. Never paraphrase code.
+- **Discrete State Branching:** A bool or flag parameter is acceptable only when it directly sets a physical hardware property (e.g., `enable_interrupt`, `active_low`, `trigger_edge`). Propose a discrete redesign or state machine transition if a flag creates hidden conditional branches, handles a one-off special case, or multiplexes disparate algorithms. Use explicit enum states for real variations.

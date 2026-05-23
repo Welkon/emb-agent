@@ -90,7 +90,7 @@ test('absorbed engineering workflow stays in commands and agents, not core skill
   const taskCommand = fs.readFileSync(path.join(commandsDir, 'task.md'), 'utf8');
   const skillsCommand = fs.readFileSync(path.join(commandsDir, 'skills.md'), 'utf8');
 
-  assert.match(bugHunter, /fast feedback loop/);
+  assert.match(bugHunter, /tight feedback loop/);
   assert.match(bugHunter, /falsifiable prediction/);
   assert.match(fwDoer, /vertical slices/);
   assert.match(taskCommand, /vertical slices/);

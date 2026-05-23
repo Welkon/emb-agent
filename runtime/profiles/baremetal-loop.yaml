@@ -1,26 +1,40 @@
 name: baremetal-loop
+# Supremely Still Main Loop + Precision Trigger ISR
 runtime_model: main_loop_plus_isr
 concurrency_model: interrupt_shared_state
 resource_priority:
+  # Strict equilibrium against memory bloat
   - flash
   - ram
   - stack
+  # Minimized interrupt response lag
   - isr_latency
 search_priority:
+  # Absolute truth (Datasheets and Schematics)
   - hardware_truth
   - registers
+  # Discrete State Machines (e.g., StateSmith outputs)
   - entry_points
   - shared_state
 guardrails:
+  # Eliminate proxy layers
   - no_heavy_abstraction
+  # Stillness principle: ISR must only flag and trigger, never calculate
   - thin_isr
   - scan_handle_output
+  # Validate physical evidence before touching registers
   - verify_hardware_before_change
+  # Use explicit state vectors over fluid conditionals
   - prefer_direct_state
+  # Strip ambient token/context noise aggressively
+  - high_snr_input_filter
 review_axes:
+  # Interplay between Foreground loop and Background ISR
   - interrupt_safety
+  # Resource contention and critical sections
   - shared_state
   - timing_path
+  # Rigid enforcement of ultra-low ROM/RAM boundaries
   - memory_budget
   - pin_mux_conflicts
 notes_targets:
