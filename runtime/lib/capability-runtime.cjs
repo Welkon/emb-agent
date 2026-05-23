@@ -37,9 +37,12 @@ function createCapabilityRuntimeHelpers(deps) {
 
 	const RUST_SCAN_CACHE = new Map();
 	function tryRustScan(projectRoot) {
-		const envDisabled =
-			(process.env.EMB_AGENT_RUST_HOOKS || "").trim();
-		if (envDisabled === "0" || envDisabled === "false" || envDisabled === "no") {
+		const envDisabled = (process.env.EMB_AGENT_RUST_HOOKS || "").trim();
+		if (
+			envDisabled === "0" ||
+			envDisabled === "false" ||
+			envDisabled === "no"
+		) {
 			return null;
 		}
 
@@ -50,10 +53,26 @@ function createCapabilityRuntimeHelpers(deps) {
 		const repoRoot = path.resolve(__dirname, "..", "..");
 		const exeName =
 			process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs";
-		const binaryPath = path.join(repoRoot, "target", "debug", exeName);
+
+		// Look for the binary in multiple locations:
+		// 1. Source layout: <repo>/target/debug/emb-agent-rs
+		// 2. Installed Pi extension: .pi/emb-agent/bin/emb-agent-rs
+		// 3. PATH
+		const candidates = [
+			path.join(repoRoot, "target", "debug", exeName),
+			path.join(projectRoot, ".pi", "emb-agent", "bin", exeName),
+			exeName,
+		];
 
 		const fs = require("fs");
-		if (!fs.existsSync(binaryPath)) {
+		const binaryPath = candidates.find((c) => {
+			try {
+				return fs.existsSync(c);
+			} catch {
+				return false;
+			}
+		});
+		if (!binaryPath) {
 			RUST_SCAN_CACHE.set("available", false);
 			return null;
 		}
