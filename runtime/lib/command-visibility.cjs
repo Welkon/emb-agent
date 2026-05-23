@@ -1,22 +1,23 @@
-'use strict';
+"use strict";
 
 const PUBLIC_COMMAND_NAMES = [
-  'help',
-  'start',
-  'ingest',
-  'next',
-  'decision',
-  'task',
-  'capability',
-  'pause',
-  'resume'
+	"help",
+	"start",
+	"ingest",
+	"next",
+	"decision",
+	"task",
+	"capability",
+	"pause",
+	"resume",
+	"migrate",
 ];
 
 function isPublicCommandName(name) {
-  return PUBLIC_COMMAND_NAMES.includes(String(name || '').trim());
+	return PUBLIC_COMMAND_NAMES.includes(String(name || "").trim());
 }
 
 module.exports = {
-  PUBLIC_COMMAND_NAMES,
-  isPublicCommandName
+	PUBLIC_COMMAND_NAMES,
+	isPublicCommandName,
 };

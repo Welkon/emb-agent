@@ -2762,6 +2762,14 @@ function createCliRouter(deps) {
 			}
 		}
 
+		if (cmd === "migrate") {
+			const migrateResult = tryMigrateCommand(subcmd, rest);
+			if (migrateResult !== undefined) {
+				emitJson(migrateResult);
+				return;
+			}
+		}
+
 		const actionCommandResult = handleActionCommands(cmd, subcmd, rest);
 		if (actionCommandResult !== undefined) {
 			if (cmd === "capability" && subcmd === "run") {
@@ -2862,6 +2870,265 @@ function createCliRouter(deps) {
 		process.exitCode = 1;
 	}
 
+	function tryMigrateCommand(_subcmd, rest) {
+		// migrate is a guided chip migration workflow: chip diff -> chip swap -> task create
+		const fs = require("fs");
+		const path = require("path");
+		// The CLI parser may put --from/--to flags in subcmd position; reconstruct full args
+		const fullArgs =
+			_subcmd && _subcmd.startsWith("--") ? [_subcmd, ...rest] : rest;
+		const fromIdx = fullArgs.indexOf("--from");
+		const toIdx = fullArgs.indexOf("--to");
+		const from = fromIdx >= 0 ? fullArgs[fromIdx + 1] : "";
+		const to = toIdx >= 0 ? fullArgs[toIdx + 1] : "";
+
+		if (!from || !to) {
+			return {
+				usage: "migrate",
+				summary:
+					"Guided chip migration workflow: compare chips, create migration plan, and prepare task.",
+				usage_example: "emb-agent migrate --from <old-chip> --to <new-chip>",
+				notes: [
+					"Chip profiles must exist in .emb-agent/extensions/chips/profiles/<name>.json for both chips.",
+					"If the target chip profile doesn't exist, you'll be guided to ingest its datasheet first.",
+					"After diff, use --confirm to write the migration plan and auto-create a task.",
+				],
+			};
+		}
+
+		const cwd = process.cwd();
+		const extDir = path.join(cwd, ".emb-agent");
+		const profilesDir = path.join(extDir, "extensions", "chips", "profiles");
+
+		// Normalize chip names: lowercase, replace spaces/underscores with dashes
+		function normalizeChipName(name) {
+			return String(name || "")
+				.toLowerCase()
+				.replace(/[\s_]+/g, "-");
+		}
+
+		const fromNorm = normalizeChipName(from);
+		const toNorm = normalizeChipName(to);
+
+		const steps = [];
+		const missingProfiles = [];
+		const foundProfiles = [];
+
+		// Check profiles
+		for (const [name, norm] of [
+			[from, fromNorm],
+			[to, toNorm],
+		]) {
+			const profilePath = path.join(profilesDir, norm + ".json");
+			if (fs.existsSync(profilePath)) {
+				foundProfiles.push({ name, norm, path: profilePath });
+			} else {
+				missingProfiles.push({ name, norm, path: profilePath });
+			}
+		}
+
+		// Check for available datasheets to ingest
+		const docsDir = path.join(cwd, "docs");
+		const availablePdfs = [];
+		if (fs.existsSync(docsDir)) {
+			try {
+				const files = fs.readdirSync(docsDir, {
+					withFileTypes: true,
+					recursive: true,
+				});
+				for (const f of files) {
+					if (f.isFile() && f.name.toLowerCase().endsWith(".pdf")) {
+						const relPath = path.relative(
+							cwd,
+							path.join(f.parentPath || f.path, f.name),
+						);
+						availablePdfs.push(relPath);
+					}
+				}
+			} catch (e) {
+				// ignore scanning errors
+			}
+		}
+
+		// Find matching PDFs for missing profiles
+		const suggestedIngestions = [];
+		for (const mp of missingProfiles) {
+			const chipLower = mp.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+			// Try to find PDFs with matching chip name
+			let matching = availablePdfs.filter((pdf) => {
+				const pdfLower = pdf.toLowerCase().replace(/[^a-z0-9]/g, "");
+				return pdfLower.includes(chipLower);
+			});
+			// If no exact match, try partial by stripping package suffix (e.g., S1B, S8, T20)
+			if (matching.length === 0 && chipLower.length > 6) {
+				// Strip common suffixes: single letter + digits + optional letter at end
+				const baseModel = chipLower.replace(/[stq]\d+[a-z]?$/i, "");
+				matching = availablePdfs.filter((pdf) => {
+					const pdfLower = pdf.toLowerCase().replace(/[^a-z0-9]/g, "");
+					return baseModel.length > 4 && pdfLower.includes(baseModel);
+				});
+			}
+			if (matching.length > 0) {
+				// Prefer datasheets/user manuals over other PDFs
+				const preferred = matching.filter(
+					(p) =>
+						p.toLowerCase().includes("datasheet") ||
+						p.toLowerCase().includes("用户手册") ||
+						p.toLowerCase().includes("usermanual") ||
+						p.toLowerCase().includes("硬件设计") ||
+						p.toLowerCase().includes("hardware"),
+				);
+				const bestPdf = preferred.length > 0 ? preferred[0] : matching[0];
+				suggestedIngestions.push({
+					chip: mp.name,
+					pdfs: matching.slice(0, 5),
+					command: `ingest doc --file ${bestPdf} --kind datasheet --to hardware`,
+				});
+			}
+		}
+
+		if (missingProfiles.length > 0) {
+			steps.push({
+				step: "ingest-chip-profiles",
+				status: "blocked",
+				summary: `Missing chip profile(s): ${missingProfiles.map((m) => m.name).join(", ")}`,
+				missing_profiles: missingProfiles.map((m) => ({
+					chip: m.name,
+					expected_path: path.relative(cwd, m.path),
+				})),
+				suggested_ingestions: suggestedIngestions,
+				next_action:
+					suggestedIngestions.length > 0
+						? `Run: ${suggestedIngestions[0].command}`
+						: `Add chip profiles to ${path.relative(cwd, profilesDir)}`,
+				note: "Chip profiles are parsed from datasheets using `ingest doc`. After ingestion, run `migrate --from <old> --to <new>` again.",
+			});
+
+			return {
+				status: "blocked",
+				summary: "migrate blocked: missing chip profile(s)",
+				migration: {
+					from,
+					to,
+					found_profiles: foundProfiles.map((f) => f.name),
+					missing_profiles: missingProfiles.map((m) => m.name),
+				},
+				steps,
+				available_pdfs: availablePdfs,
+			};
+		}
+
+		// Both profiles exist — run chip diff first
+		steps.push({
+			step: "chip-diff",
+			status: "ready",
+			summary: `Run chip diff ${from} → ${to}`,
+			command: `chip diff --from ${from} --to ${to}`,
+		});
+
+		// Try to run chip diff
+		try {
+			const diffResult = tryChipCommand("diff", ["--from", from, "--to", to]);
+			if (diffResult.status === "error") {
+				steps[0].status = "failed";
+				steps[0].error = diffResult.error;
+				return {
+					status: "error",
+					summary: "migrate: chip diff failed",
+					migration: { from, to },
+					steps,
+					error: diffResult.error,
+				};
+			}
+
+			// Diff succeeded
+			steps[0].status = "ok";
+			steps[0].result = {
+				migration_risk: diffResult.diff
+					? diffResult.diff.migration_risk
+					: "unknown",
+				footprint_match: diffResult.diff
+					? diffResult.diff.footprint_match
+					: "unknown",
+				affected_signals: diffResult.affected_signals
+					? diffResult.affected_signals.length + " signals"
+					: "unknown",
+			};
+
+			// Optionally run chip swap --confirm to create the migration plan
+			const confirmIdx = rest.indexOf("--confirm");
+			if (confirmIdx >= 0) {
+				steps.push({
+					step: "chip-swap",
+					status: "ready",
+					summary: `Run chip swap ${from} → ${to} (with plan generation)`,
+					command: `chip swap --from ${from} --to ${to} --confirm`,
+				});
+
+				const swapResult = tryChipCommand("swap", [
+					"--from",
+					from,
+					"--to",
+					to,
+					"--confirm",
+				]);
+				if (swapResult.status === "error") {
+					steps[steps.length - 1].status = "failed";
+					steps[steps.length - 1].error = swapResult.error;
+				} else {
+					steps[steps.length - 1].status = "ok";
+					if (swapResult._decision_written) {
+						steps[steps.length - 1].decision_written =
+							swapResult._decision_written;
+					}
+					if (swapResult._next_step) {
+						steps[steps.length - 1].next_step = swapResult._next_step;
+					}
+				}
+
+				return {
+					status: "ok",
+					summary: `migrate ${from} → ${to}: plan created`,
+					migration: {
+						from,
+						to,
+						diff: diffResult.diff,
+						affected_signals: diffResult.affected_signals,
+						required_code_changes: diffResult.required_code_changes,
+						verification_checklist: diffResult.verification_checklist,
+					},
+					steps,
+					next_step:
+						swapResult._next_step ||
+						`task add "Migrate firmware for ${from} → ${to}"`,
+					note: "Run `next` to get the recommended next action for the migration task.",
+				};
+			}
+
+			// No --confirm: just show diff results
+			return {
+				status: "ok",
+				summary: `migrate ${from} → ${to}: diff ready`,
+				migration: {
+					from,
+					to,
+					diff: diffResult.diff,
+					affected_signals: diffResult.affected_signals,
+					required_code_changes: diffResult.required_code_changes,
+					verification_checklist: diffResult.verification_checklist,
+				},
+				steps,
+				next_step: `Run: chip swap --from ${from} --to ${to} --confirm (to create migration plan and task)`,
+				note: "Add --confirm to auto-create a migration plan and task.",
+			};
+		} catch (e) {
+			return {
+				status: "error",
+				error: { code: "migrate-error", message: e.message },
+			};
+		}
+	}
+
 	function tryChipCommand(subcmd, rest) {
 		if (!subcmd || !["diff", "swap"].includes(subcmd)) {
 			return {
@@ -2887,7 +3154,8 @@ function createCliRouter(deps) {
 				status: "error",
 				error: {
 					code: "rust-binary-not-found",
-					message: "emb-agent-rs binary not found. Run `cargo build` in the emb-agent repo.",
+					message:
+						"emb-agent-rs binary not found. Run `cargo build` in the emb-agent repo.",
 				},
 			};
 		}
@@ -2902,8 +3170,7 @@ function createCliRouter(deps) {
 				status: "error",
 				error: {
 					code: "missing-args",
-					message:
-						"chip " + subcmd + " requires --from <chip> and --to <chip>",
+					message: "chip " + subcmd + " requires --from <chip> and --to <chip>",
 				},
 			};
 		}
@@ -2965,7 +3232,7 @@ function createCliRouter(deps) {
 				fs.writeFileSync(fullPath, planMd, "utf8");
 				output._decision_written = decisionPath;
 				output._next_step =
-					'task add "Migrate firmware for ' + from + ' → ' + to + '"';
+					'task add "Migrate firmware for ' + from + " → " + to + '"';
 			}
 
 			return output;
