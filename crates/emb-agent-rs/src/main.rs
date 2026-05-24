@@ -174,32 +174,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             print_help();
             Ok(())
         }
-        other => {
-            // Universal Node fallback for commands not yet in Rust
-            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
-            let node_cli = std::path::Path::new(&cwd)
-                .join(".pi")
-                .join("emb-agent")
-                .join("bin")
-                .join("emb-agent.cjs");
-            if node_cli.exists() {
-                let mut node_args = vec![
-                    node_cli.to_string_lossy().to_string(),
-                ];
-                node_args.extend(args.iter().cloned());
-                let result = std::process::Command::new("node")
-                    .args(&node_args)
-                    .current_dir(&cwd)
-                    .env("EMB_AGENT_RUST_HOOKS", "0") // prevent recursion
-                    .output();
-                if let Ok(output) = result
-                    && output.status.success() {
-                        print!("{}", String::from_utf8_lossy(&output.stdout));
-                        return Ok(());
-                    }
-            }
-            Err(format!("unknown command: {other}"))
-        }
+        other => Err(format!("unknown command: {other}")),
     }
 }
 
