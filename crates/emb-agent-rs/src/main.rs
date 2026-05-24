@@ -247,11 +247,46 @@ fn run(args: Vec<String>) -> Result<(), String> {
             println!("{}", emb_agent_core::task_ops::task_resolve(&ext_dir, name, note));
             Ok(())
         },
+        // Complex commands: spawn Node for now
+        "ingest" | "capability" | "support" | "adapter" | "dispatch"
+        | "executor" | "note" | "memory" | "scaffold" | "update"
+        | "transcript" | "settings" | "prefs" | "tool" | "decision"
+        | "init" | "commands" | "snippet" | "workflow" | "orchestrate"
+        | "insight" | "trace" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            spawn_node_fallback(&args, &cwd)
+        },
         "help" | "--help" | "-h" => {
             print_help();
             Ok(())
         }
         other => Err(format!("unknown command: {other}")),
+    }
+}
+
+/// Spawn Node emb-agent.cjs for complex commands not yet in Rust
+fn spawn_node_fallback(args: &[String], cwd: &str) -> Result<(), String> {
+    let node_cli = std::path::Path::new(cwd)
+        .join(".pi")
+        .join("emb-agent")
+        .join("bin")
+        .join("emb-agent.cjs");
+    if !node_cli.exists() {
+        let cmd = args.first().map(|s| s.as_str()).unwrap_or("?");
+        return Err(format!("{cmd}: Node fallback unavailable (emb-agent.cjs not found)"));
+    }
+    let result = std::process::Command::new("node")
+        .arg(&node_cli)
+        .args(args.iter().skip(1))
+        .current_dir(cwd)
+        .env("EMB_AGENT_RUST_HOOKS", "0")
+        .output()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    if result.status.success() {
+        print!("{}", String::from_utf8_lossy(&result.stdout));
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&result.stderr).to_string())
     }
 }
 

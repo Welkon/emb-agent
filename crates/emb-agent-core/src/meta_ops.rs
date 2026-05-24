@@ -1,6 +1,6 @@
+use crate::json::{json_quote, json_string_field};
 use std::fs;
 use std::path::Path;
-use crate::json::{json_quote, json_string_field};
 
 /// Bootstrap status
 pub fn bootstrap_status(ext_dir: &Path) -> String {
@@ -73,7 +73,8 @@ pub fn declare_hardware(ext_dir: &Path, mcu: &str, package: &str) -> String {
 
     format!(
         "{{\"status\":\"ok\",\"declared\":true,\"mcu\":{},\"package\":{}}}",
-        json_quote(mcu), json_quote(package)
+        json_quote(mcu),
+        json_quote(package)
     )
 }
 
@@ -96,14 +97,23 @@ pub fn pause_session(ext_dir: &Path, note: &str) -> String {
             .unwrap_or_default()
             .as_secs()
             .to_string();
-        obj.insert("last_command".to_string(), serde_json::Value::String("pause".to_string()));
+        obj.insert(
+            "last_command".to_string(),
+            serde_json::Value::String("pause".to_string()),
+        );
         obj.insert("paused_at".to_string(), serde_json::Value::String(now));
         if !note.is_empty() {
-            obj.insert("pause_note".to_string(), serde_json::Value::String(note.to_string()));
+            obj.insert(
+                "pause_note".to_string(),
+                serde_json::Value::String(note.to_string()),
+            );
         }
     }
 
-    let _ = fs::write(&session_path, serde_json::to_string_pretty(&session).unwrap_or_default());
+    let _ = fs::write(
+        &session_path,
+        serde_json::to_string_pretty(&session).unwrap_or_default(),
+    );
 
     format!("{{\"status\":\"ok\",\"paused\":true}}")
 }
@@ -118,10 +128,16 @@ pub fn resume_session(ext_dir: &Path) -> String {
     let content = fs::read_to_string(&session_path).unwrap_or_default();
     let mut session: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
     if let Some(obj) = session.as_object_mut() {
-        obj.insert("last_command".to_string(), serde_json::Value::String("resume".to_string()));
+        obj.insert(
+            "last_command".to_string(),
+            serde_json::Value::String("resume".to_string()),
+        );
         obj.insert("paused_at".to_string(), serde_json::Value::Null);
     }
-    let _ = fs::write(&session_path, serde_json::to_string_pretty(&session).unwrap_or_default());
+    let _ = fs::write(
+        &session_path,
+        serde_json::to_string_pretty(&session).unwrap_or_default(),
+    );
 
     r#"{"status":"ok","resumed":true}"#.to_string()
 }
@@ -134,10 +150,15 @@ pub fn doc_list(ext_dir: &Path) -> String {
     }
     let content = fs::read_to_string(&index_path).unwrap_or_default();
     let docs: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
-    let count = docs.get("documents").and_then(|d| d.as_array()).map(|a| a.len()).unwrap_or(0);
+    let count = docs
+        .get("documents")
+        .and_then(|d| d.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
     format!(
         "{{\"status\":\"ok\",\"documents\":{},\"count\":{}}}",
-        serde_json::to_string(docs.get("documents").unwrap_or(&serde_json::Value::Null)).unwrap_or_default(),
+        serde_json::to_string(docs.get("documents").unwrap_or(&serde_json::Value::Null))
+            .unwrap_or_default(),
         count
     )
 }
@@ -169,17 +190,31 @@ pub fn session_show(ext_dir: &Path) -> String {
     let session_path = ext_dir.join("state").join("default-session.json");
     let exists = session_path.exists();
     let (last_command, paused_at) = if exists {
-        fs::read_to_string(&session_path).ok()
+        fs::read_to_string(&session_path)
+            .ok()
             .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
             .map(|s| {
-                let lc = s.get("last_command").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let pa = s.get("paused_at").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let lc = s
+                    .get("last_command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let pa = s
+                    .get("paused_at")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 (lc, pa)
-            }).unwrap_or_default()
-    } else { (String::new(), String::new()) };
+            })
+            .unwrap_or_default()
+    } else {
+        (String::new(), String::new())
+    };
     format!(
         "{{\"status\":\"ok\",\"session\":{{\"exists\":{},\"last_command\":{},\"paused_at\":{}}}}}",
-        exists, json_quote(&last_command), json_quote(&paused_at)
+        exists,
+        json_quote(&last_command),
+        json_quote(&paused_at)
     )
 }
 
@@ -188,13 +223,21 @@ pub fn context_show(ext_dir: &Path) -> String {
     let ctx_path = ext_dir.join("state").join("default-session.json");
     let exists = ctx_path.exists();
     let summary: String = if exists {
-        fs::read_to_string(&ctx_path).ok()
+        fs::read_to_string(&ctx_path)
+            .ok()
             .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
-            .and_then(|s| s.get("context_summary").and_then(|v| v.as_str()).map(String::from))
+            .and_then(|s| {
+                s.get("context_summary")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+            })
             .unwrap_or_default()
-    } else { String::new() };
+    } else {
+        String::new()
+    };
     format!(
         "{{\"status\":\"ok\",\"context\":{{\"exists\":{},\"summary\":{}}}}}",
-        exists, json_quote(&summary)
+        exists,
+        json_quote(&summary)
     )
 }
