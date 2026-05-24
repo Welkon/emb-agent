@@ -1,6 +1,6 @@
+use crate::json::json_quote;
 use std::fs;
 use std::path::Path;
-use crate::json::json_quote;
 
 /// Return PRD status (checks if system.md and req.yaml exist)
 pub fn prd_status(ext_dir: &Path) -> String {
@@ -16,7 +16,8 @@ pub fn prd_status(ext_dir: &Path) -> String {
     let tasks_dir = project_root.join("docs").join("prd").join("tasks");
     if tasks_dir.exists() {
         if let Ok(entries) = fs::read_dir(&tasks_dir) {
-            task_prd_count = entries.filter_map(|e| e.ok())
+            task_prd_count = entries
+                .filter_map(|e| e.ok())
                 .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
                 .count();
         }

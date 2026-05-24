@@ -1,6 +1,6 @@
+use serde_json::{json, Value};
 use std::fs;
 use std::path::Path;
-use serde_json::{json, Value};
 
 use crate::json::json_quote;
 
@@ -13,11 +13,21 @@ pub fn task_add(ext_dir: &Path, summary: &str, _task_type: &str, priority: &str)
     let name = summary
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string();
-    let name = if name.len() > 60 { name[..60].to_string() } else { name };
+    let name = if name.len() > 60 {
+        name[..60].to_string()
+    } else {
+        name
+    };
 
     let task_dir = tasks_dir.join(&name);
     if task_dir.exists() {
@@ -29,7 +39,11 @@ pub fn task_add(ext_dir: &Path, summary: &str, _task_type: &str, priority: &str)
     let _ = fs::create_dir_all(&task_dir);
 
     let now = chrono_now();
-    let task_id = format!("{}-{}", now.split('T').next().unwrap_or("task"), &name[..8.min(name.len())]);
+    let task_id = format!(
+        "{}-{}",
+        now.split('T').next().unwrap_or("task"),
+        &name[..8.min(name.len())]
+    );
 
     let task = json!({
         "id": task_id,
@@ -111,7 +125,10 @@ pub fn task_activate(ext_dir: &Path, name: &str) -> String {
     if let Some(obj) = task.as_object_mut() {
         obj.insert("status".to_string(), json!("in_progress"));
     }
-    let _ = fs::write(&task_path, serde_json::to_string_pretty(&task).unwrap_or_default());
+    let _ = fs::write(
+        &task_path,
+        serde_json::to_string_pretty(&task).unwrap_or_default(),
+    );
 
     // Write current task file
     let current_task_file = ext_dir.join(".current-task");
@@ -142,11 +159,18 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
             obj.insert("resolution_note".to_string(), json!(note));
         }
     }
-    let _ = fs::write(&task_path, serde_json::to_string_pretty(&task).unwrap_or_default());
+    let _ = fs::write(
+        &task_path,
+        serde_json::to_string_pretty(&task).unwrap_or_default(),
+    );
 
     // Clear current task if this was active
     let current_task_file = ext_dir.join(".current-task");
-    if fs::read_to_string(&current_task_file).unwrap_or_default().trim() == name {
+    if fs::read_to_string(&current_task_file)
+        .unwrap_or_default()
+        .trim()
+        == name
+    {
         let _ = fs::write(&current_task_file, "");
     }
 

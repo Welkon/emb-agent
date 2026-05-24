@@ -121,17 +121,25 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Some("add") => {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
                 let summary = args.get(2).map(|s| s.as_str()).unwrap_or("New task");
-                let task_type = option_value(&args, "--type").unwrap_or_else(|| "implement".to_string());
-                let priority = option_value(&args, "--priority").unwrap_or_else(|| "P2".to_string());
+                let task_type =
+                    option_value(&args, "--type").unwrap_or_else(|| "implement".to_string());
+                let priority =
+                    option_value(&args, "--priority").unwrap_or_else(|| "P2".to_string());
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
-                println!("{}", emb_agent_core::task_ops::task_add(&ext_dir, summary, &task_type, &priority));
+                println!(
+                    "{}",
+                    emb_agent_core::task_ops::task_add(&ext_dir, summary, &task_type, &priority)
+                );
                 Ok(())
             }
             Some("activate") => {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
                 let name = args.get(2).ok_or("task activate requires <name>")?;
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
-                println!("{}", emb_agent_core::task_ops::task_activate(&ext_dir, name));
+                println!(
+                    "{}",
+                    emb_agent_core::task_ops::task_activate(&ext_dir, name)
+                );
                 Ok(())
             }
             Some("resolve") => {
@@ -139,7 +147,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let name = args.get(2).ok_or("task resolve requires <name>")?;
                 let note = args.get(3).map(|s| s.as_str()).unwrap_or("");
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
-                println!("{}", emb_agent_core::task_ops::task_resolve(&ext_dir, name, note));
+                println!(
+                    "{}",
+                    emb_agent_core::task_ops::task_resolve(&ext_dir, name, note)
+                );
                 Ok(())
             }
             _ => Err("task: expected list, show, add, activate, or resolve".to_string()),
@@ -163,7 +174,32 @@ fn run(args: Vec<String>) -> Result<(), String> {
             print_help();
             Ok(())
         }
-        other => Err(format!("unknown command: {other}")),
+        other => {
+            // Universal Node fallback for commands not yet in Rust
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let node_cli = std::path::Path::new(&cwd)
+                .join(".pi")
+                .join("emb-agent")
+                .join("bin")
+                .join("emb-agent.cjs");
+            if node_cli.exists() {
+                let mut node_args = vec![
+                    node_cli.to_string_lossy().to_string(),
+                ];
+                node_args.extend(args.iter().cloned());
+                let result = std::process::Command::new("node")
+                    .args(&node_args)
+                    .current_dir(&cwd)
+                    .env("EMB_AGENT_RUST_HOOKS", "0") // prevent recursion
+                    .output();
+                if let Ok(output) = result
+                    && output.status.success() {
+                        print!("{}", String::from_utf8_lossy(&output.stdout));
+                        return Ok(());
+                    }
+            }
+            Err(format!("unknown command: {other}"))
+        }
     }
 }
 
