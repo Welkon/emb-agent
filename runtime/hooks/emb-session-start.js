@@ -199,9 +199,7 @@ function runHook(rawInput) {
 						".pi",
 						"emb-agent",
 						"bin",
-						process.platform === "win32"
-							? "emb-agent-rs.exe"
-							: "emb-agent-rs",
+						process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs",
 					);
 				if (fs.existsSync(rustBin)) {
 					const result = require("child_process").spawnSync(
@@ -215,11 +213,7 @@ function runHook(rawInput) {
 							env: { ...process.env, EMB_AGENT_WORKSPACE_TRUST: "1" },
 						},
 					);
-					if (
-						result.status === 0 &&
-						result.stdout &&
-						result.stdout.trim()
-					) {
+					if (result.status === 0 && result.stdout && result.stdout.trim()) {
 						return result.stdout.trim();
 					}
 				}
