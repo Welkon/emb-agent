@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // emb-hook-version: {{EMB_VERSION}}
 
-'use strict';
+
 
 const fs = require('fs');
 const path = require('path');
@@ -294,8 +294,10 @@ function buildSessionContext(projectRoot, start, resume, options) {
 
   lines.push('</current-state>', '');
   lines.push('<ready>');
-  lines.push('Startup context is already injected above.');
-  lines.push('Only suggest running start when the user explicitly wants to re-render the entry context manually.');
+  lines.push('CRITICAL: The context above is the SINGLE source of truth for this session.');
+  lines.push('Do NOT re-run `start` on subsequent turns. Trust the Recommended next command from above.');
+  lines.push('Only re-run `start` when: (a) the user explicitly asks, or (b) you just started a brand-new session.');
+  lines.push('On every turn, follow the active task or the `next` recommendation without re-querying start.');
   lines.push('If bootstrap is incomplete, guide the user through the shortest next step instead of redirecting back to start.');
   lines.push('</ready>');
 
