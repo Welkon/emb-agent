@@ -1,524 +1,655 @@
 #!/usr/bin/env node
 // emb-hook-version: {{EMB_VERSION}}
 
-
-
-const fs = require('fs');
-const path = require('path');
-const childProcess = require('child_process');
-const hookDispatchHelpers = require('../lib/hook-dispatch.cjs');
-const hookTrustHelpers = require('../lib/hook-trust.cjs');
-const runtimeHostHelpers = require('../lib/runtime-host.cjs');
-const updateCheckHelpers = require('../lib/update-check.cjs');
-const coreProtocolHelpers = require('../lib/core-protocols.cjs');
-const runtime = require('../lib/runtime.cjs');
-const workflowRegistry = require('../lib/workflow-registry.cjs');
-const sessionReportStoreHelpers = require('../lib/session-report-store.cjs');
-const specLoader = require('../lib/spec-loader.cjs');
-const workflowStateHelpers = require('../lib/workflow-state.cjs');
-const knowledgeGraphState = require('../lib/knowledge-graph-state.cjs');
+const fs = require("fs");
+const path = require("path");
+const childProcess = require("child_process");
+const hookDispatchHelpers = require("../lib/hook-dispatch.cjs");
+const hookTrustHelpers = require("../lib/hook-trust.cjs");
+const runtimeHostHelpers = require("../lib/runtime-host.cjs");
+const updateCheckHelpers = require("../lib/update-check.cjs");
+const coreProtocolHelpers = require("../lib/core-protocols.cjs");
+const runtime = require("../lib/runtime.cjs");
+const workflowRegistry = require("../lib/workflow-registry.cjs");
+const sessionReportStoreHelpers = require("../lib/session-report-store.cjs");
+const specLoader = require("../lib/spec-loader.cjs");
+const workflowStateHelpers = require("../lib/workflow-state.cjs");
+const knowledgeGraphState = require("../lib/knowledge-graph-state.cjs");
 
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const HOOK_VERSION = '{{EMB_VERSION}}';
-const RUNTIME_HOST = runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
+const HOOK_VERSION = "{{EMB_VERSION}}";
+const RUNTIME_HOST =
+	runtimeHostHelpers.resolveRuntimeHostFromModuleDir(__dirname);
 const hookDispatch = hookDispatchHelpers.createHookDispatchHelpers({
-  fs,
-  path,
-  process,
-  runtimeHost: RUNTIME_HOST
+	fs,
+	path,
+	process,
+	runtimeHost: RUNTIME_HOST,
 });
-const sessionReportStore = sessionReportStoreHelpers.createSessionReportStoreHelpers({
-  fs,
-  path,
-  runtime
-});
+const sessionReportStore =
+	sessionReportStoreHelpers.createSessionReportStoreHelpers({
+		fs,
+		path,
+		runtime,
+	});
 
 function getRuntimeRoot() {
-  return RUNTIME_HOST.runtimeRoot;
+	return RUNTIME_HOST.runtimeRoot;
 }
 
 function getStateRoot() {
-  return RUNTIME_HOST.stateRoot;
+	return RUNTIME_HOST.stateRoot;
 }
 
 function getUpdateCachePath() {
-  return updateCheckHelpers.getUpdateCachePath(path, getStateRoot());
+	return updateCheckHelpers.getUpdateCachePath(path, getStateRoot());
 }
 
 function readInstalledVersion() {
-  return updateCheckHelpers.readInstalledVersion(fs, path, getRuntimeRoot());
+	return updateCheckHelpers.readInstalledVersion(fs, path, getRuntimeRoot());
 }
 
 function parseVersion(version) {
-  return updateCheckHelpers.parseVersion(version);
+	return updateCheckHelpers.parseVersion(version);
 }
 
 function compareVersions(left, right) {
-  return updateCheckHelpers.compareVersions(left, right);
+	return updateCheckHelpers.compareVersions(left, right);
 }
 
 function readUpdateCache() {
-  return updateCheckHelpers.readUpdateCache(fs, getUpdateCachePath());
+	return updateCheckHelpers.readUpdateCache(fs, getUpdateCachePath());
 }
 
 function isUpdateCacheStale(cache) {
-  return updateCheckHelpers.isUpdateCacheStale(cache, UPDATE_CHECK_INTERVAL_MS);
+	return updateCheckHelpers.isUpdateCacheStale(cache, UPDATE_CHECK_INTERVAL_MS);
 }
 
 function triggerUpdateCheck(cache) {
-  const cachePath = getUpdateCachePath();
-  runtime.ensureDir(path.dirname(cachePath));
-  const installed = readInstalledVersion();
+	const cachePath = getUpdateCachePath();
+	runtime.ensureDir(path.dirname(cachePath));
+	const installed = readInstalledVersion();
 
-  return updateCheckHelpers.triggerUpdateCheck({
-    fs,
-    path,
-    childProcess,
-    process,
-    cachePath,
-    installed,
-    packageName: 'emb-agent',
-    intervalMs: UPDATE_CHECK_INTERVAL_MS,
-    cache
-  });
+	return updateCheckHelpers.triggerUpdateCheck({
+		fs,
+		path,
+		childProcess,
+		process,
+		cachePath,
+		installed,
+		packageName: "emb-agent",
+		intervalMs: UPDATE_CHECK_INTERVAL_MS,
+		cache,
+	});
 }
 
 function detectStaleInstall() {
-  const installed = readInstalledVersion();
-  const hookVersion = process.env.EMB_AGENT_FORCE_HOOK_VERSION || HOOK_VERSION;
-  return updateCheckHelpers.detectStaleInstall(installed, hookVersion);
+	const installed = readInstalledVersion();
+	const hookVersion = process.env.EMB_AGENT_FORCE_HOOK_VERSION || HOOK_VERSION;
+	return updateCheckHelpers.detectStaleInstall(installed, hookVersion);
 }
 
 function buildUpdateLines() {
-  const lines = [];
-  const staleInstall = detectStaleInstall();
-  const cache = readUpdateCache();
-  triggerUpdateCheck(cache);
+	const lines = [];
+	const staleInstall = detectStaleInstall();
+	const cache = readUpdateCache();
+	triggerUpdateCheck(cache);
 
-  if (staleInstall) {
-    lines.push(`Detected stale install: hooks=${staleInstall.hook}, runtime=${staleInstall.installed}`);
-    lines.push('Re-run emb-agent install to keep hooks / runtime / agents in sync.');
-  }
+	if (staleInstall) {
+		lines.push(
+			`Detected stale install: hooks=${staleInstall.hook}, runtime=${staleInstall.installed}`,
+		);
+		lines.push(
+			"Re-run emb-agent install to keep hooks / runtime / agents in sync.",
+		);
+	}
 
-  if (cache && cache.update_available && cache.latest) {
-    lines.push(`Found a newer emb-agent version: ${cache.installed || 'unknown'} -> ${cache.latest}`);
-    lines.push('Manual release mode is active; run the release check and reinstall manually when needed.');
-  }
+	if (cache && cache.update_available && cache.latest) {
+		lines.push(
+			`Found a newer emb-agent version: ${cache.installed || "unknown"} -> ${cache.latest}`,
+		);
+		lines.push(
+			"Manual release mode is active; run the release check and reinstall manually when needed.",
+		);
+	}
 
-  return lines;
+	return lines;
 }
 
 function buildInjectedWorkflowSpecLines(projectRoot, resume) {
-  const snapshot = workflowRegistry.buildInjectedSpecSnapshot(getRuntimeRoot(), runtime.getProjectExtDir(projectRoot), {
-    profile: resume && resume.summary ? resume.summary.profile : '',
-    specs: resume && resume.summary ? (resume.summary.specs || []) : [],
-    task: resume ? resume.task : null,
-    handoff: resume ? resume.handoff : null
-  }, { limit: 5 });
-  const specs = snapshot.items || [];
+	const snapshot = workflowRegistry.buildInjectedSpecSnapshot(
+		getRuntimeRoot(),
+		runtime.getProjectExtDir(projectRoot),
+		{
+			profile: resume && resume.summary ? resume.summary.profile : "",
+			specs: resume && resume.summary ? resume.summary.specs || [] : [],
+			task: resume ? resume.task : null,
+			handoff: resume ? resume.handoff : null,
+		},
+		{ limit: 5 },
+	);
+	const specs = snapshot.items || [];
 
-  if (specs.length === 0) {
-    return [];
-  }
+	if (specs.length === 0) {
+		return [];
+	}
 
-  return [
-    'Auto-injected workflow specs:',
-    ...specs.map(item => {
-      const reason = item.reasons.join(', ');
-      return `- ${item.name} (${item.display_path}): ${item.summary}${reason ? ` [${reason}]` : ''}`;
-    })
-  ];
+	return [
+		"Auto-injected workflow specs:",
+		...specs.map((item) => {
+			const reason = item.reasons.join(", ");
+			return `- ${item.name} (${item.display_path}): ${item.summary}${reason ? ` [${reason}]` : ""}`;
+		}),
+	];
 }
 
 function buildSessionReportLines(projectRoot, currentBranch) {
-  const storedContinuity = sessionReportStore.readStoredSessionContinuity(
-    runtime.getProjectExtDir(projectRoot),
-    {
-      cwd: projectRoot
-    }
-  );
-  const continuity = sessionReportStore.buildSessionReportContinuity(
-    runtime.getProjectExtDir(projectRoot),
-    {
-      cwd: projectRoot,
-      current_branch: currentBranch
-    }
-  );
+	const storedContinuity = sessionReportStore.readStoredSessionContinuity(
+		runtime.getProjectExtDir(projectRoot),
+		{
+			cwd: projectRoot,
+		},
+	);
+	const continuity = sessionReportStore.buildSessionReportContinuity(
+		runtime.getProjectExtDir(projectRoot),
+		{
+			cwd: projectRoot,
+			current_branch: currentBranch,
+		},
+	);
 
-  if (!continuity.present || !continuity.preferred) {
-    return [];
-  }
+	if (!continuity.present || !continuity.preferred) {
+		return [];
+	}
 
-  const report = continuity.preferred;
-  const lines = [
-    storedContinuity && storedContinuity.markdown_file
-      ? `Continuity file: ${storedContinuity.markdown_file}`
-      : '',
-    `Latest session checkpoint: ${report.summary || report.id}`,
-    `Checkpoint file: ${report.markdown_file || report.json_file || '(unknown)'}`
-  ].filter(Boolean);
+	const report = continuity.preferred;
+	const lines = [
+		storedContinuity && storedContinuity.markdown_file
+			? `Continuity file: ${storedContinuity.markdown_file}`
+			: "",
+		`Latest session checkpoint: ${report.summary || report.id}`,
+		`Checkpoint file: ${report.markdown_file || report.json_file || "(unknown)"}`,
+	].filter(Boolean);
 
-  if (report.generated_at) {
-    lines.push(`Checkpoint recorded: ${report.generated_at}`);
-  }
-  if (report.next_command) {
-    lines.push(`Checkpoint next command: ${report.next_command}`);
-  }
-  if (report.next_reason) {
-    lines.push(`Checkpoint reason: ${report.next_reason}`);
-  }
+	if (report.generated_at) {
+		lines.push(`Checkpoint recorded: ${report.generated_at}`);
+	}
+	if (report.next_command) {
+		lines.push(`Checkpoint next command: ${report.next_command}`);
+	}
+	if (report.next_reason) {
+		lines.push(`Checkpoint reason: ${report.next_reason}`);
+	}
 
-  if (continuity.branch_status === 'match') {
-    lines.push(`Checkpoint branch: ${report.git_branch} (matches current branch)`);
-  } else if (continuity.branch_status === 'mismatch') {
-    lines.push(`Checkpoint branch: ${report.git_branch} (current branch: ${continuity.current_branch || 'unknown'})`);
-  } else if (report.git_branch) {
-    lines.push(`Checkpoint branch: ${report.git_branch}`);
-  }
+	if (continuity.branch_status === "match") {
+		lines.push(
+			`Checkpoint branch: ${report.git_branch} (matches current branch)`,
+		);
+	} else if (continuity.branch_status === "mismatch") {
+		lines.push(
+			`Checkpoint branch: ${report.git_branch} (current branch: ${continuity.current_branch || "unknown"})`,
+		);
+	} else if (report.git_branch) {
+		lines.push(`Checkpoint branch: ${report.git_branch}`);
+	}
 
-  return lines;
+	return lines;
 }
 
 function buildWorkflowStateLines(projectRoot, start, resume) {
-  const activeTask = resume && resume.task ? resume.task : null;
-  const state = workflowStateHelpers.resolveProjectWorkflowState(projectRoot, activeTask, {
-    fs,
-    path,
-    runtime,
-    bootstrap: start && start.bootstrap ? start.bootstrap : null
-  });
-  const nextStep = workflowStateHelpers.getWorkflowNext(state);
+	const activeTask = resume && resume.task ? resume.task : null;
+	const state = workflowStateHelpers.resolveProjectWorkflowState(
+		projectRoot,
+		activeTask,
+		{
+			fs,
+			path,
+			runtime,
+			bootstrap: start && start.bootstrap ? start.bootstrap : null,
+		},
+	);
+	const nextStep = workflowStateHelpers.getWorkflowNext(state);
 
-  return [
-    `<workflow-state status="${state}">`,
-    `Current state: ${state}`,
-    `Next step: ${nextStep.command}`,
-    `Reason: ${nextStep.reason}`,
-    '</workflow-state>'
-  ];
+	return [
+		`<workflow-state status="${state}">`,
+		`Current state: ${state}`,
+		`Next step: ${nextStep.command}`,
+		`Reason: ${nextStep.reason}`,
+		"</workflow-state>",
+	];
 }
 
 function buildSpecInjectionLines(projectRoot) {
-  const specLoaderHelpers = specLoader.createSpecLoaderHelpers({ fs, path });
-  const specsDir = path.join(runtime.getProjectExtDir(projectRoot), 'specs');
+	const specLoaderHelpers = specLoader.createSpecLoaderHelpers({ fs, path });
+	const specsDir = path.join(runtime.getProjectExtDir(projectRoot), "specs");
 
-  if (!fs.existsSync(specsDir)) {
-    return [];
-  }
+	if (!fs.existsSync(specsDir)) {
+		return [];
+	}
 
-  const hwPath = runtime.resolveProjectDataPath(projectRoot, 'hw.yaml');
-  const hwConfig = (fs.existsSync(hwPath)) ? runtime.parseSimpleYaml(hwPath) : {};
+	const hwPath = runtime.resolveProjectDataPath(projectRoot, "hw.yaml");
+	const hwConfig = fs.existsSync(hwPath) ? runtime.parseSimpleYaml(hwPath) : {};
 
-  return specLoaderHelpers.getSpecIndexLines(specsDir, [], hwConfig, []);
+	return specLoaderHelpers.getSpecIndexLines(specsDir, [], hwConfig, []);
 }
 
 function buildSessionContext(projectRoot, start, resume, options) {
-  const settings = options && typeof options === 'object' ? options : {};
-  const lines = [
-    '<emb-agent-session-context>',
-    'emb-agent startup context is already injected for this session.',
-    'Do not ask the user to run start just to load bootstrap state.',
-    'Use the injected state below as the source of truth and continue from the recommended next step.',
-    '</emb-agent-session-context>',
-    '',
-    '<current-state>',
-    `Project root: ${projectRoot}`,
-    settings.initializedDuringHook
-      ? 'Repository bootstrap: initialized automatically during SessionStart'
-      : 'Repository bootstrap: already initialized',
-    `Recommended next command: ${start.immediate.command}`,
-    `Recommended CLI: ${start.immediate.cli}`,
-    `Reason: ${start.immediate.reason}`
-  ];
+	const settings = options && typeof options === "object" ? options : {};
+	const lines = [
+		"<emb-agent-session-context>",
+		"emb-agent startup context is already injected for this session.",
+		"Do not ask the user to run start just to load bootstrap state.",
+		"Use the injected state below as the source of truth and continue from the recommended next step.",
+		"</emb-agent-session-context>",
+		"",
+		"<current-state>",
+		`Project root: ${projectRoot}`,
+		settings.initializedDuringHook
+			? "Repository bootstrap: initialized automatically during SessionStart"
+			: "Repository bootstrap: already initialized",
+		`Recommended next command: ${start.immediate.command}`,
+		`Recommended CLI: ${start.immediate.cli}`,
+		`Reason: ${start.immediate.reason}`,
+	];
 
-  if (start.bootstrap) {
-    lines.push(`Bootstrap status: ${start.bootstrap.status}`);
-    if (start.bootstrap.stage) {
-      lines.push(`Bootstrap stage: ${start.bootstrap.stage}`);
-    }
-    if (start.bootstrap.summary) {
-      lines.push(`Bootstrap summary: ${start.bootstrap.summary}`);
-    }
-  }
+	if (start.bootstrap) {
+		lines.push(`Bootstrap status: ${start.bootstrap.status}`);
+		if (start.bootstrap.stage) {
+			lines.push(`Bootstrap stage: ${start.bootstrap.stage}`);
+		}
+		if (start.bootstrap.summary) {
+			lines.push(`Bootstrap summary: ${start.bootstrap.summary}`);
+		}
+	}
 
-  if (resume && resume.handoff) {
-    lines.push(`Pending handoff: ${resume.handoff.next_action || 'resume the existing handoff before new work'}`);
-  }
+	if (resume && resume.handoff) {
+		lines.push(
+			`Pending handoff: ${resume.handoff.next_action || "resume the existing handoff before new work"}`,
+		);
+	}
 
-  if (resume && resume.task) {
-    const implementFiles = (((resume.task.context || {}).implement) || [])
-      .slice(0, 4)
-      .map(item => item.path)
-      .filter(Boolean);
-    const prdPath = resume.task.artifacts && resume.task.artifacts.prd
-      ? resume.task.artifacts.prd
-      : `docs/prd/tasks/${resume.task.name}.md`;
+	if (resume && resume.task) {
+		const implementFiles = ((resume.task.context || {}).implement || [])
+			.slice(0, 4)
+			.map((item) => item.path)
+			.filter(Boolean);
+		const prdPath =
+			resume.task.artifacts && resume.task.artifacts.prd
+				? resume.task.artifacts.prd
+				: `docs/prd/tasks/${resume.task.name}.md`;
 
-    lines.push(`Active task: ${resume.task.name} (${resume.task.title})`);
-    lines.push(`Task status: ${resume.task.status} / Type: ${resume.task.type}`);
-    lines.push(`Task PRD: ${prdPath}`);
-    lines.push(
-      implementFiles.length > 0
-        ? `Task implement context: ${implementFiles.join(', ')}`
-        : `Task implement context: run task context list ${resume.task.name}`
-    );
-  }
+		lines.push(`Active task: ${resume.task.name} (${resume.task.title})`);
+		lines.push(
+			`Task status: ${resume.task.status} / Type: ${resume.task.type}`,
+		);
+		lines.push(`Task PRD: ${prdPath}`);
+		lines.push(
+			implementFiles.length > 0
+				? `Task implement context: ${implementFiles.join(", ")}`
+				: `Task implement context: run task context list ${resume.task.name}`,
+		);
+	}
 
-  if (
-    !summaryHasActiveTask(start) &&
-    start.task_intake &&
-    typeof start.task_intake === 'object' &&
-    start.task_intake.summary
-  ) {
-    lines.push(
-      `${
-        start.task_intake.status === 'blocked-by-bootstrap'
-          ? 'Task intake after bootstrap'
-          : 'Task intake'
-      }: ${start.task_intake.summary}`
-    );
-  }
+	if (
+		!summaryHasActiveTask(start) &&
+		start.task_intake &&
+		typeof start.task_intake === "object" &&
+		start.task_intake.summary
+	) {
+		lines.push(
+			`${
+				start.task_intake.status === "blocked-by-bootstrap"
+					? "Task intake after bootstrap"
+					: "Task intake"
+			}: ${start.task_intake.summary}`,
+		);
+	}
 
-  if (Array.isArray(settings.sessionReportLines) && settings.sessionReportLines.length > 0) {
-    lines.push(...settings.sessionReportLines);
-  }
-  if (Array.isArray(settings.graphLines) && settings.graphLines.length > 0) {
-    lines.push(...settings.graphLines);
-  }
-  if (Array.isArray(settings.specLines) && settings.specLines.length > 0) {
-    lines.push(...settings.specLines);
-  }
-  if (Array.isArray(settings.updateLines) && settings.updateLines.length > 0) {
-    lines.push(...settings.updateLines);
-  }
+	if (
+		Array.isArray(settings.sessionReportLines) &&
+		settings.sessionReportLines.length > 0
+	) {
+		lines.push(...settings.sessionReportLines);
+	}
+	if (Array.isArray(settings.graphLines) && settings.graphLines.length > 0) {
+		lines.push(...settings.graphLines);
+	}
+	if (Array.isArray(settings.specLines) && settings.specLines.length > 0) {
+		lines.push(...settings.specLines);
+	}
+	if (Array.isArray(settings.updateLines) && settings.updateLines.length > 0) {
+		lines.push(...settings.updateLines);
+	}
 
-  lines.push('</current-state>', '');
-  lines.push('<ready>');
-  lines.push('CRITICAL: The context above is the SINGLE source of truth for this session.');
-  lines.push('Do NOT re-run `start` on subsequent turns. Trust the Recommended next command from above.');
-  lines.push('Only re-run `start` when: (a) the user explicitly asks, or (b) you just started a brand-new session.');
-  lines.push('On every turn, follow the active task or the `next` recommendation without re-querying start.');
-  lines.push('If bootstrap is incomplete, guide the user through the shortest next step instead of redirecting back to start.');
-  lines.push('</ready>');
+	lines.push("</current-state>", "");
+	lines.push("<ready>");
+	lines.push(
+		"CRITICAL: The context above is the SINGLE source of truth for this session.",
+	);
+	lines.push(
+		"Do NOT re-run `start` on subsequent turns. Trust the Recommended next command from above.",
+	);
+	lines.push(
+		"Only re-run `start` when: (a) the user explicitly asks, or (b) you just started a brand-new session.",
+	);
+	lines.push(
+		"On every turn, follow the active task or the `next` recommendation without re-querying start.",
+	);
+	lines.push(
+		"If bootstrap is incomplete, guide the user through the shortest next step instead of redirecting back to start.",
+	);
+	lines.push("</ready>");
 
-  return lines.join('\n');
+	return lines.join("\n");
 }
 
 function summaryHasActiveTask(start) {
-  return Boolean(
-    start &&
-    start.summary &&
-    typeof start.summary === 'object' &&
-    start.summary.active_task &&
-    typeof start.summary.active_task === 'object' &&
-    start.summary.active_task.name
-  );
+	return Boolean(
+		start &&
+			start.summary &&
+			typeof start.summary === "object" &&
+			start.summary.active_task &&
+			typeof start.summary.active_task === "object" &&
+			start.summary.active_task.name,
+	);
 }
 
 function buildHostSessionStartPayload(data, message) {
-  const eventName = data && (data.hook_event_name || data.event)
-    ? String(data.hook_event_name || data.event)
-    : 'SessionStart';
+	const eventName =
+		data && (data.hook_event_name || data.event)
+			? String(data.hook_event_name || data.event)
+			: "SessionStart";
 
-  if (RUNTIME_HOST.name === 'cursor') {
-    return {
-      additional_context: message
-    };
-  }
+	if (RUNTIME_HOST.name === "cursor") {
+		return {
+			additional_context: message,
+		};
+	}
 
-  if (RUNTIME_HOST.name === 'codex') {
-    return {
-      suppressOutput: true,
-      systemMessage: `emb-agent context injected (${message.length} chars)`,
-      hookSpecificOutput: {
-        hookEventName: eventName,
-        additionalContext: message
-      }
-    };
-  }
+	if (RUNTIME_HOST.name === "codex") {
+		return {
+			suppressOutput: true,
+			systemMessage: `emb-agent context injected (${message.length} chars)`,
+			hookSpecificOutput: {
+				hookEventName: eventName,
+				additionalContext: message,
+			},
+		};
+	}
 
-  return {
-    hookSpecificOutput: {
-      hookEventName: eventName,
-      additionalContext: message
-    }
-  };
+	return {
+		hookSpecificOutput: {
+			hookEventName: eventName,
+			additionalContext: message,
+		},
+	};
 }
 
 function runHook(rawInput) {
-  return hookDispatch.runHookWithProjectContext(rawInput, ({ data, projectRoot }) => {
-    const cli = require(path.join(__dirname, '..', 'bin', 'emb-agent.cjs'));
-    const projectConfigPath = runtime.resolveProjectDataPath(projectRoot, 'project.json');
-    const hadProjectConfig = fs.existsSync(projectConfigPath);
-    const start = cli.buildStartContext();
-    const resume = start.summary && start.summary.initialized ? cli.buildResumeContext() : { handoff: null, task: null };
-    const session = typeof cli.loadSession === 'function' ? cli.loadSession() : null;
-    const updateLines = buildUpdateLines();
-    const coreProtocolLines = coreProtocolHelpers.buildCoreProtocolLines();
-    const workflowSpecLines = buildInjectedWorkflowSpecLines(projectRoot, resume);
-    const workflowStateLines = buildWorkflowStateLines(projectRoot, start, resume);
-    const constraintSpecLines = buildSpecInjectionLines(projectRoot);
-    const sessionReportLines = buildSessionReportLines(
-      projectRoot,
-      session && session.git_branch ? session.git_branch : ''
-    );
-    const graphLines = [];
-    const graphPath = path.join(runtime.getProjectExtDir(projectRoot), 'graph', 'graph.json');
-    const graphReportPath = path.join(runtime.getProjectExtDir(projectRoot), 'graph', 'GRAPH_REPORT.md');
-    let graphBuiltThisHook = false;
+	return hookDispatch.runHookWithProjectContext(
+		rawInput,
+		({ data, projectRoot }) => {
+			const cli = require(path.join(__dirname, "..", "bin", "emb-agent.cjs"));
+			const projectConfigPath = runtime.resolveProjectDataPath(
+				projectRoot,
+				"project.json",
+			);
+			const hadProjectConfig = fs.existsSync(projectConfigPath);
+			const start = cli.buildStartContext();
+			const resume =
+				start.summary && start.summary.initialized
+					? cli.buildResumeContext()
+					: { handoff: null, task: null };
+			const session =
+				typeof cli.loadSession === "function" ? cli.loadSession() : null;
+			const updateLines = buildUpdateLines();
+			const coreProtocolLines = coreProtocolHelpers.buildCoreProtocolLines();
+			const workflowSpecLines = buildInjectedWorkflowSpecLines(
+				projectRoot,
+				resume,
+			);
+			const workflowStateLines = buildWorkflowStateLines(
+				projectRoot,
+				start,
+				resume,
+			);
+			const constraintSpecLines = buildSpecInjectionLines(projectRoot);
+			const sessionReportLines = buildSessionReportLines(
+				projectRoot,
+				session && session.git_branch ? session.git_branch : "",
+			);
+			const graphLines = [];
+			const graphPath = path.join(
+				runtime.getProjectExtDir(projectRoot),
+				"graph",
+				"graph.json",
+			);
+			const graphReportPath = path.join(
+				runtime.getProjectExtDir(projectRoot),
+				"graph",
+				"GRAPH_REPORT.md",
+			);
+			let graphBuiltThisHook = false;
 
-    // Auto-build graph if missing.
-    if (!fs.existsSync(graphPath) || !fs.existsSync(graphReportPath)) {
-      try {
-        cli.handleKnowledgeCommands('knowledge', 'graph', ['build']);
-        graphBuiltThisHook = true;
-        graphLines.push('Knowledge graph: auto-built during SessionStart');
-      } catch (err) {
-        graphLines.push(`Knowledge graph: build failed (${err.message || 'unknown'}); run knowledge graph refresh`);
-      }
-    }
+			// Auto-build graph if missing.
+			if (!fs.existsSync(graphPath) || !fs.existsSync(graphReportPath)) {
+				try {
+					cli.handleKnowledgeCommands("knowledge", "graph", ["build"]);
+					graphBuiltThisHook = true;
+					graphLines.push("Knowledge graph: auto-built during SessionStart");
+				} catch (err) {
+					graphLines.push(
+						`Knowledge graph: build failed (${err.message || "unknown"}); run knowledge graph refresh`,
+					);
+				}
+			}
 
-    if (fs.existsSync(graphPath) && fs.existsSync(graphReportPath)) {
-      try {
-        const graph = JSON.parse(String(fs.readFileSync(graphPath, 'utf8') || '{}'));
-        const freshness = knowledgeGraphState.readKnowledgeGraphFreshness(projectRoot, graph, {
-          fs,
-          path,
-          runtime
-        });
+			if (fs.existsSync(graphPath) && fs.existsSync(graphReportPath)) {
+				try {
+					const graph = JSON.parse(
+						String(fs.readFileSync(graphPath, "utf8") || "{}"),
+					);
+					const freshness = knowledgeGraphState.readKnowledgeGraphFreshness(
+						projectRoot,
+						graph,
+						{
+							fs,
+							path,
+							runtime,
+						},
+					);
 
-        // Auto-refresh stale graph (only if not already built this hook invocation).
-        if (freshness.stale && !graphBuiltThisHook) {
-          try {
-            cli.handleKnowledgeCommands('knowledge', 'graph', ['build']);
-            graphBuiltThisHook = true;
-            graphLines.push('Knowledge graph: auto-refreshed (tracked files changed)');
-          } catch (refreshErr) {
-            graphLines.push(`Knowledge graph stale: ${freshness.changed_files.length} tracked file(s) changed; auto-refresh failed (${refreshErr.message || 'unknown'}), run knowledge graph refresh`);
-            freshness.changed_files.slice(0, 5).forEach(file => {
-              graphLines.push(`- stale: ${file}`);
-            });
-          }
-        }
+					// Auto-refresh stale graph (only if not already built this hook invocation).
+					if (freshness.stale && !graphBuiltThisHook) {
+						try {
+							cli.handleKnowledgeCommands("knowledge", "graph", ["build"]);
+							graphBuiltThisHook = true;
+							graphLines.push(
+								"Knowledge graph: auto-refreshed (tracked files changed)",
+							);
+						} catch (refreshErr) {
+							graphLines.push(
+								`Knowledge graph stale: ${freshness.changed_files.length} tracked file(s) changed; auto-refresh failed (${refreshErr.message || "unknown"}), run knowledge graph refresh`,
+							);
+							freshness.changed_files.slice(0, 5).forEach((file) => {
+								graphLines.push(`- stale: ${file}`);
+							});
+						}
+					}
 
-        if (!graphBuiltThisHook) {
-          const reportLines = String(fs.readFileSync(graphReportPath, 'utf8') || '')
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line && !line.startsWith('#'))
-            .filter(line => /^-\s+(Nodes|Edges|Ambiguous edges|knowledge graph query|[^:]+:\s+\d+)/.test(line))
-            .slice(0, 12);
-          graphLines.push('Knowledge graph: .emb-agent/graph/graph.json');
-          if (graph.stats && typeof graph.stats === 'object') {
-            graphLines.push(
-              `Graph summary: nodes=${graph.stats.nodes || 0}, edges=${graph.stats.edges || 0}, ambiguous=${graph.stats.ambiguous_edges || 0}`
-            );
-          }
-          if (freshness.stale) {
-            graphLines.push(`Knowledge graph stale: ${freshness.changed_files.length} tracked file(s) changed; run knowledge graph refresh`);
-            freshness.changed_files.slice(0, 5).forEach(file => {
-              graphLines.push(`- stale: ${file}`);
-            });
-          }
-          if (reportLines.length > 0) {
-            graphLines.push('Graph report highlights:');
-            graphLines.push(...reportLines);
-          }
-        }
+					if (!graphBuiltThisHook) {
+						const reportLines = String(
+							fs.readFileSync(graphReportPath, "utf8") || "",
+						)
+							.split("\n")
+							.map((line) => line.trim())
+							.filter((line) => line && !line.startsWith("#"))
+							.filter((line) =>
+								/^-\s+(Nodes|Edges|Ambiguous edges|knowledge graph query|[^:]+:\s+\d+)/.test(
+									line,
+								),
+							)
+							.slice(0, 12);
+						graphLines.push("Knowledge graph: .emb-agent/graph/graph.json");
+						if (graph.stats && typeof graph.stats === "object") {
+							graphLines.push(
+								`Graph summary: nodes=${graph.stats.nodes || 0}, edges=${graph.stats.edges || 0}, ambiguous=${graph.stats.ambiguous_edges || 0}`,
+							);
+						}
+						if (freshness.stale) {
+							graphLines.push(
+								`Knowledge graph stale: ${freshness.changed_files.length} tracked file(s) changed; run knowledge graph refresh`,
+							);
+							freshness.changed_files.slice(0, 5).forEach((file) => {
+								graphLines.push(`- stale: ${file}`);
+							});
+						}
+						if (reportLines.length > 0) {
+							graphLines.push("Graph report highlights:");
+							graphLines.push(...reportLines);
+						}
+					}
 
-        // After successful auto-build, re-read graph to report stats.
-        if (graphBuiltThisHook) {
-          try {
-            const rebuiltGraph = JSON.parse(String(fs.readFileSync(graphPath, 'utf8') || '{}'));
-            if (rebuiltGraph.stats && typeof rebuiltGraph.stats === 'object') {
-              graphLines.push(
-                `Graph summary: nodes=${rebuiltGraph.stats.nodes || 0}, edges=${rebuiltGraph.stats.edges || 0}, ambiguous=${rebuiltGraph.stats.ambiguous_edges || 0}`
-              );
-            }
-          } catch {
-            // Stats unavailable after build; non-fatal.
-          }
-        }
-      } catch {
-        graphLines.push('Knowledge graph: .emb-agent/graph/graph.json (report unreadable; run knowledge graph refresh)');
-      }
-    }
-    const wikiLines = [];
-    try {
-      const wikiDir = path.join(runtime.getProjectExtDir(projectRoot), 'wiki');
-      if (fs.existsSync(wikiDir)) {
-        let wikiPageCount = 0;
-        function countWikiPages(dir) {
-          fs.readdirSync(dir, { withFileTypes: true }).forEach(entry => {
-            if (entry.isDirectory()) { countWikiPages(path.join(dir, entry.name)); return; }
-            if (entry.name.endsWith('.md') && entry.name !== 'index.md' && entry.name !== 'log.md') {
-              wikiPageCount += 1;
-            }
-          });
-        }
-        countWikiPages(wikiDir);
-        if (wikiPageCount === 0) {
-          wikiLines.push('Knowledge wiki: no pages yet. Write firmware/discovery notes to .emb-agent/wiki/ for persistent memory.');
-        } else {
-          wikiLines.push(`Knowledge wiki: ${wikiPageCount} page(s). Update or add pages after each new discovery.`);
-        }
-      }
-    } catch { /* wiki read is optional */ }
+					// After successful auto-build, re-read graph to report stats.
+					if (graphBuiltThisHook) {
+						try {
+							const rebuiltGraph = JSON.parse(
+								String(fs.readFileSync(graphPath, "utf8") || "{}"),
+							);
+							if (
+								rebuiltGraph.stats &&
+								typeof rebuiltGraph.stats === "object"
+							) {
+								graphLines.push(
+									`Graph summary: nodes=${rebuiltGraph.stats.nodes || 0}, edges=${rebuiltGraph.stats.edges || 0}, ambiguous=${rebuiltGraph.stats.ambiguous_edges || 0}`,
+								);
+							}
+						} catch {
+							// Stats unavailable after build; non-fatal.
+						}
+					}
+				} catch {
+					graphLines.push(
+						"Knowledge graph: .emb-agent/graph/graph.json (report unreadable; run knowledge graph refresh)",
+					);
+				}
+			}
+			const wikiLines = [];
+			try {
+				const wikiDir = path.join(
+					runtime.getProjectExtDir(projectRoot),
+					"wiki",
+				);
+				if (fs.existsSync(wikiDir)) {
+					let wikiPageCount = 0;
+					function countWikiPages(dir) {
+						fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
+							if (entry.isDirectory()) {
+								countWikiPages(path.join(dir, entry.name));
+								return;
+							}
+							if (
+								entry.name.endsWith(".md") &&
+								entry.name !== "index.md" &&
+								entry.name !== "log.md"
+							) {
+								wikiPageCount += 1;
+							}
+						});
+					}
+					countWikiPages(wikiDir);
+					if (wikiPageCount === 0) {
+						wikiLines.push(
+							"Knowledge wiki: no pages yet. Write firmware/discovery notes to .emb-agent/wiki/ for persistent memory.",
+						);
+					} else {
+						wikiLines.push(
+							`Knowledge wiki: ${wikiPageCount} page(s). Update or add pages after each new discovery.`,
+						);
+					}
+				}
+			} catch {
+				/* wiki read is optional */
+			}
 
-    const cacheArtifactLines = [];
-    try {
-      const docsIndexPath = path.join(runtime.getProjectExtDir(projectRoot), 'cache', 'docs', 'index.json');
-      if (fs.existsSync(docsIndexPath)) {
-        const docsIndex = JSON.parse(fs.readFileSync(docsIndexPath, 'utf8'));
-        const docs = Array.isArray(docsIndex.documents) ? docsIndex.documents : [];
-        if (docs.length > 0) {
-          cacheArtifactLines.push('.emb-agent/cache/docs/');
-          docs.slice(0, 5).forEach(doc => {
-            cacheArtifactLines.push(`  ${doc.doc_id}/ — ${doc.title || doc.source || 'parse.md'}`);
-          });
-        }
-      }
-      const schematicsDir = path.join(runtime.getProjectExtDir(projectRoot), 'cache', 'schematics');
-      if (fs.existsSync(schematicsDir)) {
-        cacheArtifactLines.push('.emb-agent/cache/schematics/');
-        fs.readdirSync(schematicsDir, { withFileTypes: true }).forEach(entry => {
-          if (!entry.isDirectory()) return;
-          cacheArtifactLines.push(`  ${entry.name}/`);
-        });
-      }
-    } catch { /* cache read is optional */ }
+			const cacheArtifactLines = [];
+			try {
+				const docsIndexPath = path.join(
+					runtime.getProjectExtDir(projectRoot),
+					"cache",
+					"docs",
+					"index.json",
+				);
+				if (fs.existsSync(docsIndexPath)) {
+					const docsIndex = JSON.parse(fs.readFileSync(docsIndexPath, "utf8"));
+					const docs = Array.isArray(docsIndex.documents)
+						? docsIndex.documents
+						: [];
+					if (docs.length > 0) {
+						cacheArtifactLines.push(".emb-agent/cache/docs/");
+						docs.slice(0, 5).forEach((doc) => {
+							cacheArtifactLines.push(
+								`  ${doc.doc_id}/ — ${doc.title || doc.source || "parse.md"}`,
+							);
+						});
+					}
+				}
+				const schematicsDir = path.join(
+					runtime.getProjectExtDir(projectRoot),
+					"cache",
+					"schematics",
+				);
+				if (fs.existsSync(schematicsDir)) {
+					cacheArtifactLines.push(".emb-agent/cache/schematics/");
+					fs.readdirSync(schematicsDir, { withFileTypes: true }).forEach(
+						(entry) => {
+							if (!entry.isDirectory()) return;
+							cacheArtifactLines.push(`  ${entry.name}/`);
+						},
+					);
+				}
+			} catch {
+				/* cache read is optional */
+			}
 
-    const message = buildSessionContext(projectRoot, start, resume, {
-      initializedDuringHook: !hadProjectConfig && fs.existsSync(projectConfigPath),
-      updateLines,
-      specLines: [...coreProtocolLines, ...workflowSpecLines, ...workflowStateLines, ...constraintSpecLines],
-      sessionReportLines,
-      graphLines: [...graphLines, ...wikiLines, ...cacheArtifactLines]
-    });
+			const message = buildSessionContext(projectRoot, start, resume, {
+				initializedDuringHook:
+					!hadProjectConfig && fs.existsSync(projectConfigPath),
+				updateLines,
+				specLines: [
+					...coreProtocolLines,
+					...workflowSpecLines,
+					...workflowStateLines,
+					...constraintSpecLines,
+				],
+				sessionReportLines,
+				graphLines: [...graphLines, ...wikiLines, ...cacheArtifactLines],
+			});
 
-    if (!message) {
-      return '';
-    }
+			if (!message) {
+				return "";
+			}
 
-    return JSON.stringify(buildHostSessionStartPayload(data, message));
-  });
+			return JSON.stringify(buildHostSessionStartPayload(data, message));
+		},
+	);
 }
 
 if (require.main === module) {
-  hookDispatch.runHookCli(runHook);
+	hookDispatch.runHookCli(runHook);
 }
 
 module.exports = {
-  buildInjectedWorkflowSpecLines,
-  buildUpdateLines,
-  compareVersions,
-  detectStaleInstall,
-  getUpdateCachePath,
-  isUpdateCacheStale,
-  readInstalledVersion,
-  readUpdateCache,
-  hookDispatch,
-  hookTrustHelpers,
-  runHook,
-  triggerUpdateCheck
+	buildInjectedWorkflowSpecLines,
+	buildUpdateLines,
+	compareVersions,
+	detectStaleInstall,
+	getUpdateCachePath,
+	isUpdateCacheStale,
+	readInstalledVersion,
+	readUpdateCache,
+	hookDispatch,
+	hookTrustHelpers,
+	runHook,
+	triggerUpdateCheck,
 };

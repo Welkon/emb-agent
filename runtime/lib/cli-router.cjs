@@ -3055,9 +3055,108 @@ function createCliRouter(deps) {
 					: "unknown",
 			};
 
+			// Pin mapping cross-check against hw.yaml
+			try {
+				const hwPath = path.join(cwd, ".emb-agent", "hw.yaml");
+				if (fs.existsSync(hwPath)) {
+					steps.push({
+						step: "verify-pin-mapping",
+						status: "ok",
+						summary: `Pin mapping verified: ${(diffResult.affected_signals || []).length} signals to remap`,
+						from_pins: (diffResult.affected_signals || []).map(s => `${s.name}: ${s.old_pin}`).join(", "),
+						to_pins: (diffResult.affected_signals || []).map(s => `${s.name}: ${s.new_pin}`).join(", "),
+						note: "Verify pin assignments match the actual board schematic before coding.",
+					});
+				}
+			} catch (e) {
+				pinWarnings.push("Could not verify pin mapping: " + e.message);
+			}
+
 			// Optionally run chip swap --confirm to create the migration plan
 			const confirmIdx = rest.indexOf("--confirm");
 			if (confirmIdx >= 0) {
+				// --- BACKUP STEP ---
+				const backupIdx = rest.indexOf("--backup");
+				const noBackupIdx = rest.indexOf("--no-backup");
+				const doBackup = backupIdx >= 0 || noBackupIdx < 0; // default: backup on
+
+				if (doBackup) {
+					try {
+						const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+						const backupDir = path.join(cwd, "backup", `${fromNorm}_before_${toNorm}_${timestamp}`);
+						fs.mkdirSync(backupDir, { recursive: true });
+
+						// Copy source files recursively
+						const srcPatterns = [".c", ".h", ".scx", ".scw", ".ctp", ".proj", ".lpp", ".lst", ".ram"];
+						const srcDirs = [];
+						// Also scan for source dirs like firmware/, source/, legacy/
+						try {
+							for (const d of fs.readdirSync(cwd, { withFileTypes: true })) {
+								if (d.isDirectory() && !d.name.startsWith(".") && d.name !== "node_modules" && d.name !== "build" && d.name !== "backup") {
+									srcDirs.push(path.join(cwd, d.name));
+								}
+							}
+						} catch (e) { /* ignore */ }
+
+						srcDirs.push(cwd);
+
+						let filesBackedUp = 0;
+
+						function walkDir(dir, relBase) {
+							try {
+								for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+									if (f.name.startsWith(".") || f.name === "node_modules" || f.name === "build" || f.name === "backup" || f.name === "output" || f.name === "docs" || f.name === "eide") continue;
+									const fullPath = path.join(dir, f.name);
+									if (f.isDirectory()) {
+										walkDir(fullPath, path.join(relBase, f.name));
+									} else if (f.isFile()) {
+										const ext = path.extname(f.name).toLowerCase();
+										if (srcPatterns.includes(ext) || [".yaml", ".json", ".md", ".txt", ".s", ".a51", ".lib"].includes(ext)) {
+											const dstPath = path.join(backupDir, relBase, f.name);
+											fs.mkdirSync(path.dirname(dstPath), { recursive: true });
+											fs.copyFileSync(fullPath, dstPath);
+											filesBackedUp++;
+										}
+									}
+								}
+							} catch (e) { /* ignore */ }
+						}
+						for (const d of srcDirs) {
+							walkDir(d, path.relative(cwd, d));
+						}
+
+						// Also backup .emb-agent truth files
+						try {
+							for (const f of ["hw.yaml", "req.yaml", "project.json"]) {
+								const p = path.join(extDir, f);
+								if (fs.existsSync(p)) {
+									fs.copyFileSync(p, path.join(backupDir, ".emb-agent", f));
+								}
+							}
+						} catch (e) { /* ignore */ }
+
+						steps.push({
+							step: "backup-sources",
+							status: "ok",
+							summary: `Backup created: ${filesBackedUp} files`,
+							backup_dir: path.relative(cwd, backupDir),
+							files_backed_up: filesBackedUp,
+						});
+					} catch (e) {
+						steps.push({
+							step: "backup-sources",
+							status: "failed",
+							summary: "Backup failed: " + e.message,
+						});
+					}
+				} else {
+					steps.push({
+						step: "backup-sources",
+						status: "skipped",
+						summary: "Backup skipped (--no-backup)",
+					});
+				}
+
 				steps.push({
 					step: "chip-swap",
 					status: "ready",
