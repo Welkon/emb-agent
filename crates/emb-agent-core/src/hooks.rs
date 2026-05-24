@@ -255,7 +255,7 @@ pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
     let source_root = runtime_dir.parent().unwrap_or_else(|| Path::new("."));
     let rust_binary = rust_binary_path(source_root);
     format!(
-        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs-spike\",\"host\":{},\"runtime_dir\":{},\"source_runtime\":{},\"rust_binary\":{},\"rust_binary_exists\":{},\"env\":{{\"EMB_AGENT_RUST_HOOKS\":{},\"EMB_AGENT_RUST_HOOK_CMD\":{}}},\"hooks\":{{\"session_start\":{},\"statusline\":{},\"context_monitor\":{}}}}}",
+        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs\",\"host\":{},\"runtime_dir\":{},\"source_runtime\":{},\"rust_binary\":{},\"rust_binary_exists\":{},\"env\":{{\"EMB_AGENT_RUST_HOOKS\":{},\"EMB_AGENT_RUST_HOOK_CMD\":{}}},\"hooks\":{{\"session_start\":{},\"statusline\":{},\"context_monitor\":{}}}}}",
         json_quote(host),
         json_quote(&runtime_dir.to_string_lossy()),
         is_source_runtime_layout(runtime_dir),
