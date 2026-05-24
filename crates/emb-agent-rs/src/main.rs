@@ -118,7 +118,31 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     None => Err(format!("task not found: {name}")),
                 }
             }
-            _ => Err("task: expected list or show".to_string()),
+            Some("add") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let summary = args.get(2).map(|s| s.as_str()).unwrap_or("New task");
+                let task_type = option_value(&args, "--type").unwrap_or_else(|| "implement".to_string());
+                let priority = option_value(&args, "--priority").unwrap_or_else(|| "P2".to_string());
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::task_ops::task_add(&ext_dir, summary, &task_type, &priority));
+                Ok(())
+            }
+            Some("activate") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let name = args.get(2).ok_or("task activate requires <name>")?;
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::task_ops::task_activate(&ext_dir, name));
+                Ok(())
+            }
+            Some("resolve") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let name = args.get(2).ok_or("task resolve requires <name>")?;
+                let note = args.get(3).map(|s| s.as_str()).unwrap_or("");
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::task_ops::task_resolve(&ext_dir, name, note));
+                Ok(())
+            }
+            _ => Err("task: expected list, show, add, activate, or resolve".to_string()),
         },
         "health" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
@@ -126,6 +150,15 @@ fn run(args: Vec<String>) -> Result<(), String> {
             println!("{}", build_health_json(&snapshot));
             Ok(())
         }
+        "prd" => match args.get(1).map(String::as_str) {
+            Some("status") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::prd_ops::prd_status(&ext_dir));
+                Ok(())
+            }
+            _ => Err("prd: expected status".to_string()),
+        },
         "help" | "--help" | "-h" => {
             print_help();
             Ok(())

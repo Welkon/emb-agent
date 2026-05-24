@@ -3,10 +3,12 @@ pub mod chip_diff;
 pub mod context_monitor;
 pub mod hooks;
 pub mod json;
+pub mod prd_ops;
 pub mod project;
 pub mod render;
 pub mod scan;
 pub mod state_paths;
+pub mod task_ops;
 
 pub use actions::{
     DebugOutput, PlanOutput, ReviewOutput, VerifyOutput, WorkflowStage,

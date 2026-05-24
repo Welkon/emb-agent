@@ -1909,7 +1909,7 @@ function createCliRouter(deps) {
 			"verify",
 			"debug",
 		];
-		const RUST_TASK_SUBCOMMANDS = ["list", "show"];
+		const RUST_TASK_SUBCOMMANDS = ["list", "show", "add", "activate", "resolve"];
 		const isRustTaskCommand =
 			cmd === "task" && RUST_TASK_SUBCOMMANDS.includes(subcmd || "");
 		const isRustCommand =
@@ -1921,8 +1921,9 @@ function createCliRouter(deps) {
 			if (rustBin) {
 				const rustArgs = [cmd];
 				if (subcmd) rustArgs.push(subcmd);
-				if (cmd === "task" && subcmd === "show") {
-					rustArgs.push(rest[0] || "");
+				if (cmd === "task" && ["show", "add", "activate", "resolve"].includes(subcmd || "")) {
+					const taskArgs = rest.filter(a => !a.startsWith("--"));
+					rustArgs.push(...taskArgs.slice(0, 3));
 				} else {
 					rustArgs.push(...rest.filter((a) => !a.startsWith("--cwd")));
 				}
