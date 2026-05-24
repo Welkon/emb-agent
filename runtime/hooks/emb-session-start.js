@@ -418,11 +418,7 @@ function runHook(rawInput) {
 								},
 							},
 						);
-						if (
-							result.status === 0 &&
-							result.stdout &&
-							result.stdout.trim()
-						) {
+						if (result.status === 0 && result.stdout && result.stdout.trim()) {
 							return result.stdout.trim();
 						}
 					}

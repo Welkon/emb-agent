@@ -641,3 +641,75 @@ pub fn build_chip_swap_json(ext_dir: &Path, hw_yaml: &str, from: &str, to: &str)
     let plan = build_chip_swap_plan(ext_dir, hw_yaml, from, to);
     serde_json::to_string_pretty(&plan).unwrap_or_default()
 }
+
+pub fn build_chip_swap_confirm_json(
+    ext_dir: &Path,
+    hw_yaml: &str,
+    from: &str,
+    to: &str,
+) -> String {
+    let plan = build_chip_swap_plan(ext_dir, hw_yaml, from, to);
+
+    // Write the migration plan to wiki/decisions/
+    let wiki_dir = ext_dir.join("wiki").join("decisions");
+    let _ = fs::create_dir_all(&wiki_dir);
+
+    let filename = format!(
+        "chip-swap-{}-to-{}-{}.md",
+        from,
+        to,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    );
+    let decision_path = wiki_dir.join(&filename);
+
+    let mut md = vec![
+        format!("# Chip Swap: {} → {}", from, to),
+        String::new(),
+        "## Summary".to_string(),
+        format!("- Risk: {}", plan.diff.migration_risk),
+        format!("- Footprint: {}", plan.diff.footprint_match),
+        String::new(),
+        "## Signal Migration".to_string(),
+    ];
+    for s in &plan.affected_signals {
+        md.push(format!(
+            "- **{}**: pin {} → {} [{}]",
+            s.name, s.old_pin, s.new_pin, format!("{:?}", s.status).to_lowercase()
+        ));
+    }
+    md.push(String::new());
+    md.push("## Required Code Changes".to_string());
+    for c in &plan.required_code_changes {
+        md.push(format!("- {}", c));
+    }
+    md.push(String::new());
+    md.push("## Verification Checklist".to_string());
+    for c in &plan.verification_checklist {
+        md.push(format!("- [ ] {}", c));
+    }
+
+    let _ = fs::write(&decision_path, md.join("\n"));
+
+    let next_step = format!("task add \"Migrate firmware for {} → {}\"", from, to);
+    let rel_path = decision_path
+        .strip_prefix(ext_dir.parent().unwrap_or(Path::new(".")))
+        .unwrap_or(&decision_path)
+        .to_string_lossy()
+        .to_string();
+
+    let mut result: serde_json::Value = serde_json::to_value(&plan).unwrap_or_default();
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert(
+            "_decision_written".to_string(),
+            serde_json::Value::String(rel_path),
+        );
+        obj.insert(
+            "_next_step".to_string(),
+            serde_json::Value::String(next_step),
+        );
+    }
+    serde_json::to_string_pretty(&result).unwrap_or_default()
+}

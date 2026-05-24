@@ -17,8 +17,8 @@ pub use actions::{
 
 pub use chip_diff::{
     ChipDiffReport, ChipPin, ChipProfile, ChipSwapPlan, MigratedSignal, PinDiff,
-    PinCompatibility, SignalMigrationStatus, build_chip_diff_json, build_chip_swap_json,
-    diff_chips,
+    PinCompatibility, SignalMigrationStatus, build_chip_diff_json,
+    build_chip_swap_confirm_json, build_chip_swap_json, diff_chips,
 };
 pub use context_monitor::{
     ContextMetrics, build_context_monitor_output, build_context_monitor_output_from_value,

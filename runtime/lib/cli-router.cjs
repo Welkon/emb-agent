@@ -3345,8 +3345,6 @@ function createCliRouter(deps) {
 				],
 			};
 		}
-		const fs = require("fs");
-		const path = require("path");
 		const childProcess = require("child_process");
 		const bin = findRustBinary();
 		if (!bin) {
@@ -3361,10 +3359,8 @@ function createCliRouter(deps) {
 		}
 		const fromIdx = rest.indexOf("--from");
 		const toIdx = rest.indexOf("--to");
-		const confirmIdx = rest.indexOf("--confirm");
 		const from = fromIdx >= 0 ? rest[fromIdx + 1] : "";
 		const to = toIdx >= 0 ? rest[toIdx + 1] : "";
-		const confirm = confirmIdx >= 0;
 		if (!from || !to) {
 			return {
 				status: "error",
@@ -3393,48 +3389,7 @@ function createCliRouter(deps) {
 			}
 			const output = JSON.parse(result.stdout);
 
-			// --confirm on swap: write migration plan to wiki
-			if (subcmd === "swap" && confirm) {
-				const extDir = path.join(cwd, ".emb-agent");
-				const wikiDir = path.join(extDir, "wiki", "decisions");
-				fs.mkdirSync(wikiDir, { recursive: true });
-				const decisionPath = output.decision_record_path;
-				const fullPath = path.join(cwd, decisionPath);
-				fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-				const planMd = [
-					"# Chip Swap: " + from + " → " + to,
-					"",
-					"## Summary",
-					"- Risk: " + output.diff.migration_risk,
-					"- Footprint: " + output.diff.footprint_match,
-					"",
-					"## Signal Migration",
-					...output.affected_signals.map(
-						(s) =>
-							"- **" +
-							s.name +
-							"**: pin " +
-							s.old_pin +
-							" → " +
-							s.new_pin +
-							" [" +
-							s.status +
-							"]",
-					),
-					"",
-					"## Required Code Changes",
-					...output.required_code_changes.map((c) => "- " + c),
-					"",
-					"## Verification Checklist",
-					...output.verification_checklist.map((c) => "- [ ] " + c),
-					"",
-				].join("\n");
-				fs.writeFileSync(fullPath, planMd, "utf8");
-				output._decision_written = decisionPath;
-				output._next_step =
-					'task add "Migrate firmware for ' + from + " → " + to + '"';
-			}
-
+			// Rust chip swap --confirm now writes the plan (build_chip_swap_confirm_json)
 			return output;
 		} catch (e) {
 			return {
