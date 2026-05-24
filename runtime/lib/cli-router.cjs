@@ -3063,8 +3063,12 @@ function createCliRouter(deps) {
 						step: "verify-pin-mapping",
 						status: "ok",
 						summary: `Pin mapping verified: ${(diffResult.affected_signals || []).length} signals to remap`,
-						from_pins: (diffResult.affected_signals || []).map(s => `${s.name}: ${s.old_pin}`).join(", "),
-						to_pins: (diffResult.affected_signals || []).map(s => `${s.name}: ${s.new_pin}`).join(", "),
+						from_pins: (diffResult.affected_signals || [])
+							.map((s) => `${s.name}: ${s.old_pin}`)
+							.join(", "),
+						to_pins: (diffResult.affected_signals || [])
+							.map((s) => `${s.name}: ${s.new_pin}`)
+							.join(", "),
 						note: "Verify pin assignments match the actual board schematic before coding.",
 					});
 				}
@@ -3082,21 +3086,46 @@ function createCliRouter(deps) {
 
 				if (doBackup) {
 					try {
-						const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-						const backupDir = path.join(cwd, "backup", `${fromNorm}_before_${toNorm}_${timestamp}`);
+						const timestamp = new Date()
+							.toISOString()
+							.replace(/[:.]/g, "-")
+							.slice(0, 19);
+						const backupDir = path.join(
+							cwd,
+							"backup",
+							`${fromNorm}_before_${toNorm}_${timestamp}`,
+						);
 						fs.mkdirSync(backupDir, { recursive: true });
 
 						// Copy source files recursively
-						const srcPatterns = [".c", ".h", ".scx", ".scw", ".ctp", ".proj", ".lpp", ".lst", ".ram"];
+						const srcPatterns = [
+							".c",
+							".h",
+							".scx",
+							".scw",
+							".ctp",
+							".proj",
+							".lpp",
+							".lst",
+							".ram",
+						];
 						const srcDirs = [];
 						// Also scan for source dirs like firmware/, source/, legacy/
 						try {
 							for (const d of fs.readdirSync(cwd, { withFileTypes: true })) {
-								if (d.isDirectory() && !d.name.startsWith(".") && d.name !== "node_modules" && d.name !== "build" && d.name !== "backup") {
+								if (
+									d.isDirectory() &&
+									!d.name.startsWith(".") &&
+									d.name !== "node_modules" &&
+									d.name !== "build" &&
+									d.name !== "backup"
+								) {
 									srcDirs.push(path.join(cwd, d.name));
 								}
 							}
-						} catch (e) { /* ignore */ }
+						} catch (e) {
+							/* ignore */
+						}
 
 						srcDirs.push(cwd);
 
@@ -3105,13 +3134,33 @@ function createCliRouter(deps) {
 						function walkDir(dir, relBase) {
 							try {
 								for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
-									if (f.name.startsWith(".") || f.name === "node_modules" || f.name === "build" || f.name === "backup" || f.name === "output" || f.name === "docs" || f.name === "eide") continue;
+									if (
+										f.name.startsWith(".") ||
+										f.name === "node_modules" ||
+										f.name === "build" ||
+										f.name === "backup" ||
+										f.name === "output" ||
+										f.name === "docs" ||
+										f.name === "eide"
+									)
+										continue;
 									const fullPath = path.join(dir, f.name);
 									if (f.isDirectory()) {
 										walkDir(fullPath, path.join(relBase, f.name));
 									} else if (f.isFile()) {
 										const ext = path.extname(f.name).toLowerCase();
-										if (srcPatterns.includes(ext) || [".yaml", ".json", ".md", ".txt", ".s", ".a51", ".lib"].includes(ext)) {
+										if (
+											srcPatterns.includes(ext) ||
+											[
+												".yaml",
+												".json",
+												".md",
+												".txt",
+												".s",
+												".a51",
+												".lib",
+											].includes(ext)
+										) {
 											const dstPath = path.join(backupDir, relBase, f.name);
 											fs.mkdirSync(path.dirname(dstPath), { recursive: true });
 											fs.copyFileSync(fullPath, dstPath);
@@ -3119,7 +3168,9 @@ function createCliRouter(deps) {
 										}
 									}
 								}
-							} catch (e) { /* ignore */ }
+							} catch (e) {
+								/* ignore */
+							}
 						}
 						for (const d of srcDirs) {
 							walkDir(d, path.relative(cwd, d));
@@ -3133,7 +3184,9 @@ function createCliRouter(deps) {
 									fs.copyFileSync(p, path.join(backupDir, ".emb-agent", f));
 								}
 							}
-						} catch (e) { /* ignore */ }
+						} catch (e) {
+							/* ignore */
+						}
 
 						steps.push({
 							step: "backup-sources",

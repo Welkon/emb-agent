@@ -6,7 +6,7 @@ pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
         return String::new();
     }
 
-    let mut parts = vec!["emb-rs".to_string()];
+    let mut parts = vec!["emb".to_string()];
     if !snapshot.mcu_model.is_empty() {
         let chip = if snapshot.mcu_package.is_empty() {
             snapshot.mcu_model.clone()
@@ -40,13 +40,15 @@ pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
 
     let mut lines = vec![
         "<emb-agent-session-context>".to_string(),
-        "emb-agent Rust spike context is injected for this session.".to_string(),
-        "Use this as lightweight project state; fall back to the Node runtime for full workflow behavior.".to_string(),
+        "emb-agent startup context is already injected for this session.".to_string(),
+        "Do not ask the user to run start just to load bootstrap state.".to_string(),
+        "Use the injected state below as the source of truth and continue from the recommended next step.".to_string(),
         "</emb-agent-session-context>".to_string(),
         String::new(),
         "<current-state>".to_string(),
         format!("Project root: {}", snapshot.project_root),
-        format!("Runtime: emb-agent-rs spike"),
+        format!("Bootstrap status: {}", snapshot.bootstrap_status),
+        format!("Workflow state: {}", snapshot.workflow_state),
         format!("Recommended next command: {}", snapshot.recommended_command),
         format!("Reason: {}", snapshot.recommended_reason),
     ];
@@ -80,13 +82,18 @@ pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
         ));
     }
 
+    if !snapshot.task_intake_summary.is_empty() {
+        lines.push(format!("Task intake: {}", snapshot.task_intake_summary));
+    }
+
     lines.extend([
         "</current-state>".to_string(),
         String::new(),
         "<ready>".to_string(),
-        "Rust spike context is intentionally minimal and read-only.".to_string(),
-        "Use the Node emb-agent runtime for mutation-heavy commands until parity is reached."
-            .to_string(),
+        "Startup context is already injected above.".to_string(),
+        "Do NOT re-run `start` on subsequent turns. Trust the Recommended next command from above.".to_string(),
+        "Only re-run `start` when: (a) the user explicitly asks, or (b) you just started a brand-new session.".to_string(),
+        "On every turn, follow the active task or the `next` recommendation without re-querying start.".to_string(),
         "</ready>".to_string(),
     ]);
 
@@ -128,7 +135,7 @@ pub fn build_start_json(snapshot: &ProjectSnapshot) -> String {
     };
 
     format!(
-        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs-spike\",\"summary\":{{\"initialized\":{},\"project_root\":{},\"mcu_model\":{},\"mcu_package\":{},\"open_tasks\":{},\"wiki_pages\":{},\"active_task\":{}}},\"immediate\":{{\"command\":{},\"reason\":{}}}}}",
+        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs\",\"summary\":{{\"initialized\":{},\"project_root\":{},\"mcu_model\":{},\"mcu_package\":{},\"open_tasks\":{},\"wiki_pages\":{},\"active_task\":{}}},\"immediate\":{{\"command\":{},\"reason\":{}}}}}",
         snapshot.initialized,
         json_quote(&snapshot.project_root),
         json_quote(&snapshot.mcu_model),
@@ -189,7 +196,7 @@ mod tests {
     #[test]
     fn statusline_includes_core_state() {
         let line = build_statusline(&sample_snapshot());
-        assert!(line.contains("emb-rs"));
+        assert!(line.contains("emb"));
         assert!(line.contains("ESP32-C3 QFN32"));
         assert!(line.contains("1 task(s)"));
         assert!(line.contains("[P1] Implement ADC"));
@@ -199,7 +206,7 @@ mod tests {
     fn start_json_includes_active_task() {
         let json = build_start_json(&sample_snapshot());
         assert!(json.contains("\"status\":\"ok\""));
-        assert!(json.contains("\"runtime\":\"emb-agent-rs-spike\""));
+        assert!(json.contains("\"runtime\":\"emb-agent-rs\""));
         assert!(json.contains("\"active_task\""));
         assert!(json.contains("Implement ADC"));
     }

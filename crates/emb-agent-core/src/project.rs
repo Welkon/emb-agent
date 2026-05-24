@@ -32,6 +32,10 @@ pub struct ProjectSnapshot {
     pub current_task: Option<TaskSnapshot>,
     pub recommended_command: String,
     pub recommended_reason: String,
+    pub bootstrap_status: String,
+    pub workflow_state: String,
+    pub has_hardware_truth: bool,
+    pub task_intake_summary: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -237,9 +241,32 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         };
     }
 
+    let has_hardware = !state.hardware.model.is_empty();
+    let bootstrap_status = if !state.config.active_specs.is_empty() {
+        "ready"
+    } else if has_hardware {
+        "bootstrap_ready"
+    } else {
+        "needs-hardware"
+    };
+    let workflow_state = if state.current_task.is_some() {
+        "task_active"
+    } else if has_hardware {
+        "ready"
+    } else {
+        "bootstrap"
+    };
+    let task_intake_summary = if state.current_task.is_some() {
+        String::new()
+    } else if has_hardware {
+        "Create a task via `task add` before implementation.".to_string()
+    } else {
+        "After bootstrap and the system PRD are ready, create a task and PRD first.".to_string()
+    };
+
     let (recommended_command, recommended_reason) = if state.current_task.is_some() {
         ("do".to_string(), "Active task is selected".to_string())
-    } else if state.hardware.model.is_empty() {
+    } else if !has_hardware {
         (
             "declare hardware".to_string(),
             "MCU model is not declared".to_string(),
@@ -271,6 +298,10 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         }),
         recommended_command,
         recommended_reason,
+        bootstrap_status: bootstrap_status.to_string(),
+        workflow_state: workflow_state.to_string(),
+        has_hardware_truth: has_hardware,
+        task_intake_summary,
     }
 }
 
