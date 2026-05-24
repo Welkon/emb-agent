@@ -369,9 +369,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                 let file = option_value(&args, "--file").unwrap_or_default();
                 let kind = option_value(&args, "--kind").unwrap_or_else(|| "datasheet".to_string());
-                println!("{}", emb_agent_core::ext_ops::ingest_doc(&ext_dir, &file, &kind));
+                println!(
+                    "{}",
+                    emb_agent_core::ext_ops::ingest_doc(&ext_dir, &file, &kind)
+                );
                 Ok(())
-            },
+            }
             _ => Err("ingest: expected doc --file <path>".to_string()),
         },
         "support" | "adapter" => {
@@ -379,71 +382,80 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             println!("{}", emb_agent_core::ext_ops::support_status(&ext_dir));
             Ok(())
-        },
+        }
         "dispatch" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             let job = args.get(1).map(|s| s.as_str()).unwrap_or("");
-            println!("{}", emb_agent_core::ext_ops::dispatch_orchestrate(&ext_dir, job));
+            println!(
+                "{}",
+                emb_agent_core::ext_ops::dispatch_orchestrate(&ext_dir, job)
+            );
             Ok(())
-        },
+        }
         "scaffold" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             let name = args.get(1).map(|s| s.as_str()).unwrap_or("");
-            println!("{}", emb_agent_core::ext_ops::scaffold_generate(&ext_dir, name));
+            println!(
+                "{}",
+                emb_agent_core::ext_ops::scaffold_generate(&ext_dir, name)
+            );
             Ok(())
-        },
+        }
         "transcript" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             println!("{}", emb_agent_core::ext_ops::transcript_show(&ext_dir));
             Ok(())
-        },
+        }
         "prefs" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             println!("{}", emb_agent_core::ext_ops::prefs_show(&ext_dir));
             Ok(())
-        },
+        }
         "tool" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             let name = args.get(1).map(|s| s.as_str()).unwrap_or("");
             println!("{}", emb_agent_core::ext_ops::tool_run(&ext_dir, name));
             Ok(())
-        },
+        }
         "snippet" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             let title = args.get(1).map(|s| s.as_str()).unwrap_or("");
-            println!("{}", emb_agent_core::ext_ops::snippet_draft(&ext_dir, title));
+            println!(
+                "{}",
+                emb_agent_core::ext_ops::snippet_draft(&ext_dir, title)
+            );
             Ok(())
-        },
+        }
         "workflow" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             println!("{}", emb_agent_core::ext_ops::workflow_status(&ext_dir));
             Ok(())
-        },
+        }
         "orchestrate" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             println!("{}", emb_agent_core::ext_ops::orchestrate_status(&ext_dir));
             Ok(())
-        },
+        }
         "insight" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             println!("{}", emb_agent_core::ext_ops::insight_show(&ext_dir));
             Ok(())
-        },
+        }
         "trace" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             println!("{}", emb_agent_core::ext_ops::trace_show(&ext_dir));
             Ok(())
-        },
+        }
         other => Err(format!("unknown command: {other}")),
     }
 }
