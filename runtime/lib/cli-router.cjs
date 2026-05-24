@@ -1899,55 +1899,6 @@ function createCliRouter(deps) {
 
 		const [cmd, subcmd, ...rest] = rewriteArgs(args);
 
-		// Fast-path: delegate read-only queries to Rust binary for speed
-		const RUST_COMMANDS = ["start", "next", "status", "health"];
-		const RUST_ACTION_COMMANDS = [
-			"scan",
-			"plan",
-			"do",
-			"review",
-			"verify",
-			"debug",
-		];
-		const RUST_TASK_SUBCOMMANDS = ["list", "show", "add", "activate", "resolve"];
-		const isRustTaskCommand =
-			cmd === "task" && RUST_TASK_SUBCOMMANDS.includes(subcmd || "");
-		const isRustCommand =
-			RUST_COMMANDS.includes(cmd) ||
-			RUST_ACTION_COMMANDS.includes(cmd) ||
-			isRustTaskCommand;
-		if (isRustCommand && process.env.EMB_AGENT_RUST_HOOKS !== "0") {
-			const rustBin = findRustBinary();
-			if (rustBin) {
-				const rustArgs = [cmd];
-				if (subcmd) rustArgs.push(subcmd);
-				if (cmd === "task" && ["show", "add", "activate", "resolve"].includes(subcmd || "")) {
-					const taskArgs = rest.filter(a => !a.startsWith("--"));
-					rustArgs.push(...taskArgs.slice(0, 3));
-				} else {
-					rustArgs.push(...rest.filter((a) => !a.startsWith("--cwd")));
-				}
-				rustArgs.push("--cwd", process.cwd());
-				if (args.includes("--json") || args.includes("--brief")) {
-					rustArgs.push("--json");
-				}
-				try {
-					const result = require("child_process").spawnSync(rustBin, rustArgs, {
-						encoding: "utf8",
-						timeout: 5000,
-						maxBuffer: 1024 * 1024,
-						env: { ...process.env, EMB_AGENT_WORKSPACE_TRUST: "1" },
-					});
-					if (result.status === 0 && result.stdout) {
-						process.stdout.write(result.stdout.trim() + "\n");
-						return;
-					}
-				} catch (e) {
-					/* fall through to Node */
-				}
-			}
-		}
-
 		function isDefaultRemoteChipSupportBootstrapStage(stage) {
 			return Boolean(
 				stage &&
