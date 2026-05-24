@@ -2,6 +2,7 @@ pub mod actions;
 pub mod chip_diff;
 pub mod context_monitor;
 pub mod hooks;
+pub mod meta_ops;
 pub mod json;
 pub mod prd_ops;
 pub mod project;

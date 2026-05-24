@@ -170,6 +170,42 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             _ => Err("prd: expected status".to_string()),
         },
+        "doc" => match args.get(1).map(String::as_str) {
+            Some("list") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::meta_ops::doc_list(&ext_dir));
+                Ok(())
+            }
+            _ => Err("doc: expected list".to_string()),
+        },
+        "knowledge" => match args.get(1).map(String::as_str) {
+            Some("status") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::meta_ops::knowledge_status(&ext_dir));
+                Ok(())
+            }
+            _ => Err("knowledge: expected status".to_string()),
+        },
+        "session" => match args.get(1).map(String::as_str) {
+            Some("show") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::meta_ops::session_show(&ext_dir));
+                Ok(())
+            }
+            _ => Err("session: expected show".to_string()),
+        },
+        "context" => match args.get(1).map(String::as_str) {
+            Some("show") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::meta_ops::context_show(&ext_dir));
+                Ok(())
+            }
+            _ => Err("context: expected show".to_string()),
+        },
         "help" | "--help" | "-h" => {
             print_help();
             Ok(())
