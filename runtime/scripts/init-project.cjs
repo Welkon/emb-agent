@@ -647,7 +647,7 @@ function buildTemplateIndex(registry) {
 
 function applyTemplate(content, context) {
   return content.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_, key) => {
-    return Object.prototype.hasOwnProperty.call(context, key) ? String(context[key]) : '';
+    return  Object.hasOwn(context, key) ? String(context[key]) : '';
   });
 }
 
@@ -702,7 +702,7 @@ function buildTemplateContext(projectRoot, projectConfig) {
 
 function createTemplateFile(templateName, outputPath, context, force, templatesByName) {
   const meta =
-    templatesByName && Object.prototype.hasOwnProperty.call(templatesByName, templateName)
+    templatesByName && Object.hasOwn(templatesByName, templateName)
       ? templatesByName[templateName]
       : null;
   if (!meta || !meta.absolute_path) {
@@ -880,6 +880,8 @@ function buildProjectAgentsGuide(language) {
     '',
     'These instructions are for AI assistants working in this project.',
     '',
+    '⚠️ Read `.emb-agent/specs/project-local.md` at session start — it contains mandatory workflow rules and session gates.',
+    '',
     ...langLine,
     'Use the `start` command when starting a new session to:',
     '- Initialize the project if needed',
@@ -890,7 +892,7 @@ function buildProjectAgentsGuide(language) {
     '- System PRD (`docs/prd/system.md`)',
     '- Structured truth (`.emb-agent/project.json`, `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`)',
     '- Task workflow (`.emb-agent/tasks/`)',
-    '- Project-local specs (`specs/`)',
+    '- Project-local specs (`.emb-agent/specs/`)',
     '',
     'Host-specific helpers may also live in:',
     '- `.codex/skills/` for Codex emb-agent command mirrors',
