@@ -3,12 +3,14 @@ use std::path::{Path, PathBuf};
 
 use emb_agent_core::{
     build_chip_diff_json, build_chip_swap_json, build_context_monitor_output,
-    build_debug_output_json, build_hook_plan, build_hook_plan_json, build_hooks_diagnostics_json,
-    build_host_session_start_payload, build_next_json, build_plan_output_json, build_project_state_json,
-    build_project_state_paths_json, build_review_output_json, build_scan_output_json,
-    build_session_context, build_start_json, build_status_json, build_statusline, build_verify_output_json,
-    get_project_state_paths, json_string_field, project_state_from_cwd, snapshot_from_cwd,
-    HookPlan, ProjectSnapshot, StatePathConfig,
+    build_debug_output_json, build_health_json, build_hook_plan, build_hook_plan_json,
+    build_hooks_diagnostics_json, build_host_session_start_payload, build_next_json,
+    build_plan_output_json, build_project_state_json, build_project_state_paths_json,
+    build_review_output_json, build_scan_output_json, build_session_context, build_start_json,
+    build_status_json, build_statusline, build_task_list_json, build_task_show_json,
+    build_verify_output_json, get_project_state_paths, json_string_field,
+    project_state_from_cwd, read_all_tasks, read_task, snapshot_from_cwd, HookPlan,
+    ProjectSnapshot, StatePathConfig,
 };
 
 fn main() {
@@ -87,6 +89,34 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let snapshot = snapshot_from_cwd(&cwd);
             println!("{}", build_status_json(&snapshot));
+            Ok(())
+        }
+        "task" => match args.get(1).map(String::as_str) {
+            Some("list") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                let tasks = read_all_tasks(&ext_dir);
+                println!("{}", build_task_list_json(&tasks));
+                Ok(())
+            }
+            Some("show") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let name = args.get(2).ok_or("task show requires <name>")?;
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                match read_task(&ext_dir, name) {
+                    Some(task) => {
+                        println!("{}", build_task_show_json(&task.to_string()));
+                        Ok(())
+                    }
+                    None => Err(format!("task not found: {name}")),
+                }
+            }
+            _ => Err("task: expected list or show".to_string()),
+        },
+        "health" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let snapshot = snapshot_from_cwd(&cwd);
+            println!("{}", build_health_json(&snapshot));
             Ok(())
         }
         "help" | "--help" | "-h" => {

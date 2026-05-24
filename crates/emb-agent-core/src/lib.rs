@@ -37,11 +37,12 @@ pub use project::{
     ProjectConfig,
     ProjectPackage, ProjectPreferences, ProjectSnapshot, ProjectState, RequirementsTruth, TaskRef,
     TaskSnapshot, build_project_state_json, find_project_root, project_state_from_cwd,
-    read_project_state, snapshot_from_cwd,
+    read_all_tasks, read_project_state, read_task, snapshot_from_cwd,
 };
 pub use render::{
-    build_host_session_start_payload, build_next_json, build_session_context,
-    build_start_json, build_status_json, build_statusline,
+    build_health_json, build_host_session_start_payload, build_next_json,
+    build_session_context, build_start_json, build_status_json, build_statusline,
+    build_task_list_json, build_task_show_json,
 };
 pub use scan::{ScanOutput, ScanWorkflowStage, build_scan_output, build_scan_output_json};
 pub use state_paths::{

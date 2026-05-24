@@ -184,6 +184,51 @@ fn build_task_json(snapshot: &ProjectSnapshot) -> String {
     }
 }
 
+pub fn build_task_list_json(tasks: &[crate::project::TaskSnapshot]) -> String {
+    let items: Vec<String> = tasks.iter().map(|t| {
+        format!(
+            "{{\"name\":{},\"title\":{},\"status\":{},\"priority\":{}}}",
+            json_quote(&t.name),
+            json_quote(&t.title),
+            json_quote(&t.status),
+            json_quote(&t.priority)
+        )
+    }).collect();
+    format!(
+        "{{\"status\":\"ok\",\"tasks\":[{}],\"count\":{}}}",
+        items.join(","),
+        tasks.len()
+    )
+}
+
+pub fn build_task_show_json(task_json: &str) -> String {
+    format!(
+        "{{\"status\":\"ok\",\"task\":{}}}",
+        task_json
+    )
+}
+
+pub fn build_health_json(snapshot: &ProjectSnapshot) -> String {
+    let initialized = snapshot.initialized;
+    let has_mcu = !snapshot.mcu_model.is_empty();
+    let _has_task = snapshot.current_task.is_some();
+    let checks = [("project_initialized", initialized, "Project has .emb-agent directory"),
+        ("mcu_declared", has_mcu, "MCU model is declared in hw.yaml"),
+        ("bootstrap_ready", snapshot.bootstrap_status == "ready", "Bootstrap is complete")];
+    let pass_count = checks.iter().filter(|(_, ok, _)| *ok).count();
+    let fail_count = checks.len() - pass_count;
+    let checks_json: Vec<String> = checks.iter().map(|(name, ok, desc)| {
+        format!("{{\"name\":{},\"pass\":{},\"description\":{}}}", json_quote(name), ok, json_quote(desc))
+    }).collect();
+    format!(
+        "{{\"status\":{},\"pass\":{},\"fail\":{},\"warn\":0,\"checks\":[{}]}}",
+        json_quote(if fail_count == 0 { "pass" } else { "fail" }),
+        pass_count,
+        fail_count,
+        checks_json.join(",")
+    )
+}
+
 fn fallback<'a>(value: &'a str, default_value: &'a str) -> &'a str {
     if value.trim().is_empty() {
         default_value

@@ -305,6 +305,34 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     }
 }
 
+/// Read all tasks from the .emb-agent/tasks/ directory
+pub fn read_all_tasks(ext_dir: &Path) -> Vec<TaskSnapshot> {
+    let tasks_dir = ext_dir.join("tasks");
+    let mut tasks = Vec::new();
+    if let Ok(entries) = fs::read_dir(&tasks_dir) {
+        for entry in entries.flatten() {
+            let task_json_path = entry.path().join("task.json");
+            if let Ok(content) = fs::read_to_string(&task_json_path) {
+                    tasks.push(TaskSnapshot {
+                        name: json_string_field(&content, "name"),
+                        title: json_string_field(&content, "title"),
+                        status: json_string_field(&content, "status"),
+                        priority: json_string_field(&content, "priority"),
+                        package: json_string_field(&content, "package"),
+                    });
+            }
+        }
+    }
+    tasks
+}
+
+/// Read a single task by name
+pub fn read_task(ext_dir: &Path, name: &str) -> Option<Value> {
+    let task_path = ext_dir.join("tasks").join(name).join("task.json");
+    let content = fs::read_to_string(&task_path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
 pub fn project_state_from_cwd(cwd: &str) -> ProjectState {
     let Some(root) = find_project_root(Path::new(cwd)) else {
         return ProjectState::default();
