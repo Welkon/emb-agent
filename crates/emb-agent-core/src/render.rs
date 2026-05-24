@@ -281,6 +281,10 @@ mod tests {
             }),
             recommended_command: "do".to_string(),
             recommended_reason: "Active task is selected".to_string(),
+            bootstrap_status: "ready".to_string(),
+            workflow_state: "task_active".to_string(),
+            has_hardware_truth: true,
+            task_intake_summary: String::new(),
         }
     }
 
