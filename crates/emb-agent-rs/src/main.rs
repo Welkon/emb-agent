@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 use emb_agent_core::{
     build_chip_diff_json, build_chip_swap_json, build_context_monitor_output,
     build_debug_output_json, build_hook_plan, build_hook_plan_json, build_hooks_diagnostics_json,
-    build_host_session_start_payload, build_plan_output_json, build_project_state_json,
+    build_host_session_start_payload, build_next_json, build_plan_output_json, build_project_state_json,
     build_project_state_paths_json, build_review_output_json, build_scan_output_json,
-    build_session_context, build_start_json, build_statusline, build_verify_output_json,
+    build_session_context, build_start_json, build_status_json, build_statusline, build_verify_output_json,
     get_project_state_paths, json_string_field, project_state_from_cwd, snapshot_from_cwd,
     HookPlan, ProjectSnapshot, StatePathConfig,
 };
@@ -71,6 +71,22 @@ fn run(args: Vec<String>) -> Result<(), String> {
             } else {
                 println!("{}", build_session_context(&snapshot));
             }
+            Ok(())
+        }
+        "next" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let snapshot = snapshot_from_cwd(&cwd);
+            if args.iter().any(|arg| arg == "--json") || args.iter().any(|arg| arg == "--brief") {
+                println!("{}", build_next_json(&snapshot));
+            } else {
+                println!("{}", build_session_context(&snapshot));
+            }
+            Ok(())
+        }
+        "status" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let snapshot = snapshot_from_cwd(&cwd);
+            println!("{}", build_status_json(&snapshot));
             Ok(())
         }
         "help" | "--help" | "-h" => {
@@ -156,7 +172,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "emb-agent-rs\n\nUSAGE:\n  emb-agent-rs scan [--cwd DIR]\n  emb-agent-rs plan [--cwd DIR]\n  emb-agent-rs review [--cwd DIR]\n  emb-agent-rs verify [--cwd DIR]\n  emb-agent-rs debug [--cwd DIR]\n  emb-agent-rs start --brief --json [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook resolve --hook session-start --host pi --runtime-dir ./runtime --json\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs hook context-monitor [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n  emb-agent-rs diagnostics project --json [--cwd DIR]\n  emb-agent-rs diagnostics state-paths --json [--cwd DIR] [--runtime-dir ./runtime]\n"
+        "emb-agent-rs\n\nUSAGE:\n  emb-agent-rs start [--brief --json] [--cwd DIR]\n  emb-agent-rs next [--brief --json] [--cwd DIR]\n  emb-agent-rs status [--cwd DIR]\n  emb-agent-rs scan [--cwd DIR]\n  emb-agent-rs plan [--cwd DIR]\n  emb-agent-rs review [--cwd DIR]\n  emb-agent-rs verify [--cwd DIR]\n  emb-agent-rs debug [--cwd DIR]\n  emb-agent-rs chip diff --from CHIP --to CHIP [--cwd DIR]\n  emb-agent-rs chip swap --from CHIP --to CHIP [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs hook context-monitor [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n  emb-agent-rs diagnostics project --json [--cwd DIR]\n  emb-agent-rs diagnostics state-paths --json [--cwd DIR] [--runtime-dir ./runtime]\n"
     );
 }
 

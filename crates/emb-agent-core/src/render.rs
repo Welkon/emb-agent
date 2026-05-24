@@ -122,18 +122,7 @@ pub fn build_host_session_start_payload(host: &str, message: &str) -> String {
 }
 
 pub fn build_start_json(snapshot: &ProjectSnapshot) -> String {
-    let task_json = if let Some(task) = &snapshot.current_task {
-        format!(
-            "{{\"name\":{},\"title\":{},\"status\":{},\"priority\":{}}}",
-            json_quote(&task.name),
-            json_quote(&task.title),
-            json_quote(&task.status),
-            json_quote(&task.priority)
-        )
-    } else {
-        "null".to_string()
-    };
-
+    let task_json = build_task_json(snapshot);
     format!(
         "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs\",\"summary\":{{\"initialized\":{},\"project_root\":{},\"mcu_model\":{},\"mcu_package\":{},\"open_tasks\":{},\"wiki_pages\":{},\"active_task\":{}}},\"immediate\":{{\"command\":{},\"reason\":{}}}}}",
         snapshot.initialized,
@@ -146,6 +135,53 @@ pub fn build_start_json(snapshot: &ProjectSnapshot) -> String {
         json_quote(&snapshot.recommended_command),
         json_quote(&snapshot.recommended_reason)
     )
+}
+
+pub fn build_next_json(snapshot: &ProjectSnapshot) -> String {
+    let task_json = build_task_json(snapshot);
+    format!(
+        "{{\"status\":\"ok\",\"summary\":{{\"command\":{},\"reason\":{},\"workflow_state\":{},\"bootstrap_status\":{},\"active_task\":{}}}}}",
+        json_quote(&snapshot.recommended_command),
+        json_quote(&snapshot.recommended_reason),
+        json_quote(&snapshot.workflow_state),
+        json_quote(&snapshot.bootstrap_status),
+        task_json
+    )
+}
+
+pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
+    let task_json = build_task_json(snapshot);
+    format!(
+        "{{\"status\":\"ok\",\"project\":{{\"root\":{},\"initialized\":{},\"mcu\":{},\"package\":{},\"developer\":{},\"branch\":{},\"bootstrap\":{},\"workflow\":{}}},\"tasks\":{{\"open\":{},\"wiki_pages\":{},\"active\":{}}},\"next\":{{\"command\":{},\"reason\":{},\"task_intake\":{}}}}}",
+        json_quote(&snapshot.project_root),
+        snapshot.initialized,
+        json_quote(&snapshot.mcu_model),
+        json_quote(&snapshot.mcu_package),
+        json_quote(&snapshot.developer),
+        json_quote(&snapshot.git_branch),
+        json_quote(&snapshot.bootstrap_status),
+        json_quote(&snapshot.workflow_state),
+        snapshot.open_tasks,
+        snapshot.wiki_pages,
+        task_json,
+        json_quote(&snapshot.recommended_command),
+        json_quote(&snapshot.recommended_reason),
+        json_quote(&snapshot.task_intake_summary)
+    )
+}
+
+fn build_task_json(snapshot: &ProjectSnapshot) -> String {
+    if let Some(task) = &snapshot.current_task {
+        format!(
+            "{{\"name\":{},\"title\":{},\"status\":{},\"priority\":{}}}",
+            json_quote(&task.name),
+            json_quote(&task.title),
+            json_quote(&task.status),
+            json_quote(&task.priority)
+        )
+    } else {
+        "null".to_string()
+    }
 }
 
 fn fallback<'a>(value: &'a str, default_value: &'a str) -> &'a str {

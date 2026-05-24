@@ -40,7 +40,8 @@ pub use project::{
     read_project_state, snapshot_from_cwd,
 };
 pub use render::{
-    build_host_session_start_payload, build_session_context, build_start_json, build_statusline,
+    build_host_session_start_payload, build_next_json, build_session_context,
+    build_start_json, build_status_json, build_statusline,
 };
 pub use scan::{ScanOutput, ScanWorkflowStage, build_scan_output, build_scan_output_json};
 pub use state_paths::{
