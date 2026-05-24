@@ -259,30 +259,36 @@ fn run(args: Vec<String>) -> Result<(), String> {
         // Implemented in Rust
         "init" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
-            println!("{}", emb_agent_core::ext_ops::init_project(std::path::Path::new(&cwd)));
+            println!(
+                "{}",
+                emb_agent_core::ext_ops::init_project(std::path::Path::new(&cwd))
+            );
             Ok(())
-        },
+        }
         "update" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             println!("{}", emb_agent_core::ext_ops::update_check(&ext_dir));
             Ok(())
-        },
+        }
         "settings" => match args.get(1).map(String::as_str) {
             Some("show") => {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                 println!("{}", emb_agent_core::ext_ops::settings_show(&ext_dir));
                 Ok(())
-            },
+            }
             Some("set") => {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                 let key = option_value(&args, "--key").unwrap_or_default();
                 let value = option_value(&args, "--value").unwrap_or_default();
-                println!("{}", emb_agent_core::ext_ops::settings_set(&ext_dir, &key, &value));
+                println!(
+                    "{}",
+                    emb_agent_core::ext_ops::settings_set(&ext_dir, &key, &value)
+                );
                 Ok(())
-            },
+            }
             _ => Err("settings: expected show or set".to_string()),
         },
         "decision" => match args.get(1).map(String::as_str) {
@@ -291,13 +297,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                 println!("{}", emb_agent_core::ext_ops::decision_status(&ext_dir));
                 Ok(())
-            },
+            }
             _ => Err("decision: expected status".to_string()),
         },
         "commands" => {
             println!("{}", emb_agent_core::ext_ops::commands_list());
             Ok(())
-        },
+        }
         "note" => match args.get(1).map(String::as_str) {
             Some("add") => {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
@@ -305,13 +311,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let text = args.get(2).map(|s| s.as_str()).unwrap_or("");
                 println!("{}", emb_agent_core::ext_ops::note_add(&ext_dir, text));
                 Ok(())
-            },
+            }
             Some("show") => {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                 println!("{}", emb_agent_core::ext_ops::note_show(&ext_dir));
                 Ok(())
-            },
+            }
             _ => Err("note: expected add or show".to_string()),
         },
         "memory" => match args.get(1).map(String::as_str) {
@@ -319,15 +325,18 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                 let summary = args.get(2).map(|s| s.as_str()).unwrap_or("");
-                println!("{}", emb_agent_core::ext_ops::memory_remember(&ext_dir, summary));
+                println!(
+                    "{}",
+                    emb_agent_core::ext_ops::memory_remember(&ext_dir, summary)
+                );
                 Ok(())
-            },
+            }
             Some("list") => {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                 println!("{}", emb_agent_core::ext_ops::memory_list(&ext_dir));
                 Ok(())
-            },
+            }
             _ => Err("memory: expected remember or list".to_string()),
         },
         "capability" => match args.get(1).map(String::as_str) {
@@ -335,9 +344,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                 let name = args.get(2).map(|s| s.as_str()).unwrap_or("");
-                println!("{}", emb_agent_core::ext_ops::capability_run(&ext_dir, name));
+                println!(
+                    "{}",
+                    emb_agent_core::ext_ops::capability_run(&ext_dir, name)
+                );
                 Ok(())
-            },
+            }
             _ => Err("capability: expected run <name>".to_string()),
         },
         "executor" => match args.get(1).map(String::as_str) {
@@ -347,15 +359,90 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let name = args.get(2).map(|s| s.as_str()).unwrap_or("");
                 println!("{}", emb_agent_core::ext_ops::executor_run(&ext_dir, name));
                 Ok(())
-            },
+            }
             _ => Err("executor: expected run <name>".to_string()),
         },
-        // Not yet implemented (rare/niche)
-        "ingest" | "support" | "adapter" | "dispatch" | "scaffold"
-        | "transcript" | "prefs" | "tool" | "snippet" | "workflow"
-        | "orchestrate" | "insight" | "trace" => {
-            let cmd = args.first().map(|s| s.as_str()).unwrap_or("?");
-            Err(format!("{cmd}: not yet implemented in Rust"))
+        // All commands implemented
+        "ingest" => match args.get(1).map(String::as_str) {
+            Some("doc") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                let file = option_value(&args, "--file").unwrap_or_default();
+                let kind = option_value(&args, "--kind").unwrap_or_else(|| "datasheet".to_string());
+                println!("{}", emb_agent_core::ext_ops::ingest_doc(&ext_dir, &file, &kind));
+                Ok(())
+            },
+            _ => Err("ingest: expected doc --file <path>".to_string()),
+        },
+        "support" | "adapter" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            println!("{}", emb_agent_core::ext_ops::support_status(&ext_dir));
+            Ok(())
+        },
+        "dispatch" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            let job = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            println!("{}", emb_agent_core::ext_ops::dispatch_orchestrate(&ext_dir, job));
+            Ok(())
+        },
+        "scaffold" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            let name = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            println!("{}", emb_agent_core::ext_ops::scaffold_generate(&ext_dir, name));
+            Ok(())
+        },
+        "transcript" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            println!("{}", emb_agent_core::ext_ops::transcript_show(&ext_dir));
+            Ok(())
+        },
+        "prefs" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            println!("{}", emb_agent_core::ext_ops::prefs_show(&ext_dir));
+            Ok(())
+        },
+        "tool" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            let name = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            println!("{}", emb_agent_core::ext_ops::tool_run(&ext_dir, name));
+            Ok(())
+        },
+        "snippet" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            let title = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            println!("{}", emb_agent_core::ext_ops::snippet_draft(&ext_dir, title));
+            Ok(())
+        },
+        "workflow" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            println!("{}", emb_agent_core::ext_ops::workflow_status(&ext_dir));
+            Ok(())
+        },
+        "orchestrate" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            println!("{}", emb_agent_core::ext_ops::orchestrate_status(&ext_dir));
+            Ok(())
+        },
+        "insight" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            println!("{}", emb_agent_core::ext_ops::insight_show(&ext_dir));
+            Ok(())
+        },
+        "trace" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            println!("{}", emb_agent_core::ext_ops::trace_show(&ext_dir));
+            Ok(())
         },
         other => Err(format!("unknown command: {other}")),
     }
