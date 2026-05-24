@@ -1,6 +1,7 @@
 pub mod actions;
 pub mod chip_diff;
 pub mod context_monitor;
+pub mod ext_ops;
 pub mod hooks;
 pub mod meta_ops;
 pub mod json;

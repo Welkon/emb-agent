@@ -256,18 +256,107 @@ fn run(args: Vec<String>) -> Result<(), String> {
             );
             Ok(())
         }
-        // Complex commands: not yet in Rust (Node code deleted)
-        "ingest" | "capability" | "support" | "adapter" | "dispatch" | "executor" | "note"
-        | "memory" | "scaffold" | "update" | "transcript" | "settings" | "prefs" | "tool"
-        | "decision" | "init" | "commands" | "snippet" | "workflow" | "orchestrate" | "insight"
-        | "trace" => {
-            let cmd = args.first().map(|s| s.as_str()).unwrap_or("?");
-            Err(format!("{cmd}: not yet in Rust. Use `emb-agent-rs start` for current state."))
-        }
-        "help" | "--help" | "-h" => {
-            print_help();
+        // Implemented in Rust
+        "init" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            println!("{}", emb_agent_core::ext_ops::init_project(std::path::Path::new(&cwd)));
             Ok(())
-        }
+        },
+        "update" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            println!("{}", emb_agent_core::ext_ops::update_check(&ext_dir));
+            Ok(())
+        },
+        "settings" => match args.get(1).map(String::as_str) {
+            Some("show") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::ext_ops::settings_show(&ext_dir));
+                Ok(())
+            },
+            Some("set") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                let key = option_value(&args, "--key").unwrap_or_default();
+                let value = option_value(&args, "--value").unwrap_or_default();
+                println!("{}", emb_agent_core::ext_ops::settings_set(&ext_dir, &key, &value));
+                Ok(())
+            },
+            _ => Err("settings: expected show or set".to_string()),
+        },
+        "decision" => match args.get(1).map(String::as_str) {
+            Some("status") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::ext_ops::decision_status(&ext_dir));
+                Ok(())
+            },
+            _ => Err("decision: expected status".to_string()),
+        },
+        "commands" => {
+            println!("{}", emb_agent_core::ext_ops::commands_list());
+            Ok(())
+        },
+        "note" => match args.get(1).map(String::as_str) {
+            Some("add") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                let text = args.get(2).map(|s| s.as_str()).unwrap_or("");
+                println!("{}", emb_agent_core::ext_ops::note_add(&ext_dir, text));
+                Ok(())
+            },
+            Some("show") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::ext_ops::note_show(&ext_dir));
+                Ok(())
+            },
+            _ => Err("note: expected add or show".to_string()),
+        },
+        "memory" => match args.get(1).map(String::as_str) {
+            Some("remember") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                let summary = args.get(2).map(|s| s.as_str()).unwrap_or("");
+                println!("{}", emb_agent_core::ext_ops::memory_remember(&ext_dir, summary));
+                Ok(())
+            },
+            Some("list") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::ext_ops::memory_list(&ext_dir));
+                Ok(())
+            },
+            _ => Err("memory: expected remember or list".to_string()),
+        },
+        "capability" => match args.get(1).map(String::as_str) {
+            Some("run") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                let name = args.get(2).map(|s| s.as_str()).unwrap_or("");
+                println!("{}", emb_agent_core::ext_ops::capability_run(&ext_dir, name));
+                Ok(())
+            },
+            _ => Err("capability: expected run <name>".to_string()),
+        },
+        "executor" => match args.get(1).map(String::as_str) {
+            Some("run") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                let name = args.get(2).map(|s| s.as_str()).unwrap_or("");
+                println!("{}", emb_agent_core::ext_ops::executor_run(&ext_dir, name));
+                Ok(())
+            },
+            _ => Err("executor: expected run <name>".to_string()),
+        },
+        // Not yet implemented (rare/niche)
+        "ingest" | "support" | "adapter" | "dispatch" | "scaffold"
+        | "transcript" | "prefs" | "tool" | "snippet" | "workflow"
+        | "orchestrate" | "insight" | "trace" => {
+            let cmd = args.first().map(|s| s.as_str()).unwrap_or("?");
+            Err(format!("{cmd}: not yet implemented in Rust"))
+        },
         other => Err(format!("unknown command: {other}")),
     }
 }

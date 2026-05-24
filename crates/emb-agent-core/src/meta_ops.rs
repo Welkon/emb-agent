@@ -115,7 +115,7 @@ pub fn pause_session(ext_dir: &Path, note: &str) -> String {
         serde_json::to_string_pretty(&session).unwrap_or_default(),
     );
 
-    format!("{{\"status\":\"ok\",\"paused\":true}}")
+    "{\"status\":\"ok\",\"paused\":true}".to_string()
 }
 
 /// Resume session
@@ -169,16 +169,13 @@ pub fn knowledge_status(ext_dir: &Path) -> String {
     let graph_exists = graph_path.exists();
     let mut nodes = 0;
     let mut edges = 0;
-    if graph_exists {
-        if let Ok(content) = fs::read_to_string(&graph_path) {
-            if let Ok(graph) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(stats) = graph.get("stats") {
+    if graph_exists
+        && let Ok(content) = fs::read_to_string(&graph_path)
+            && let Ok(graph) = serde_json::from_str::<serde_json::Value>(&content)
+                && let Some(stats) = graph.get("stats") {
                     nodes = stats.get("nodes").and_then(|n| n.as_u64()).unwrap_or(0) as usize;
                     edges = stats.get("edges").and_then(|e| e.as_u64()).unwrap_or(0) as usize;
                 }
-            }
-        }
-    }
     format!(
         "{{\"status\":\"ok\",\"graph\":{{\"exists\":{},\"nodes\":{},\"edges\":{}}}}}",
         graph_exists, nodes, edges
