@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // emb-hook-version: {{EMB_VERSION}}
 
-'use strict';
+
 
 const childProcess = require('child_process');
 const fs = require('fs');
@@ -300,6 +300,23 @@ function readStdin(callback) {
 
 if (require.main === module) {
   readStdin(input => {
+    // Fast-path: delegate to Rust binary
+    if (process.env.EMB_AGENT_RUST_HOOKS !== "0") {
+      try {
+        const projectRoot = findProjectRoot(input.cwd || process.cwd());
+        const rustBin = process.env.EMB_AGENT_RUST_BINARY ||
+          path.join(projectRoot, ".pi", "emb-agent", "bin", process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs");
+        if (fs.existsSync(rustBin)) {
+          const result = childProcess.spawnSync(rustBin, ["statusline", "--cwd", projectRoot], {
+            encoding: "utf8", timeout: 3000, env: { ...process.env, EMB_AGENT_WORKSPACE_TRUST: "1" }
+          });
+          if (result.status === 0 && result.stdout && result.stdout.trim()) {
+            process.stdout.write(result.stdout.trim());
+            return;
+          }
+        }
+      } catch (e) { /* fall through */ }
+    }
     const output = buildStatusLine(input);
     if (output) {
       process.stdout.write(output);

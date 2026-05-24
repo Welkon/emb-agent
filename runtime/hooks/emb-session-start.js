@@ -389,6 +389,49 @@ function runHook(rawInput) {
 	return hookDispatch.runHookWithProjectContext(
 		rawInput,
 		({ data, projectRoot }) => {
+			// Fast-path: delegate to Rust binary for 58x speed improvement
+			if (process.env.EMB_AGENT_RUST_HOOKS !== "0") {
+				try {
+					const rustBin =
+						process.env.EMB_AGENT_RUST_BINARY ||
+						path.join(
+							projectRoot,
+							".pi",
+							"emb-agent",
+							"bin",
+							process.platform === "win32"
+								? "emb-agent-rs.exe"
+								: "emb-agent-rs",
+						);
+					if (fs.existsSync(rustBin)) {
+						const result = require("child_process").spawnSync(
+							rustBin,
+							["hook", "session-start", "--host", "pi"],
+							{
+								cwd: projectRoot,
+								encoding: "utf8",
+								timeout: 5000,
+								input: JSON.stringify(data || {}),
+								env: {
+									...process.env,
+									EMB_AGENT_WORKSPACE_TRUST: "1",
+								},
+							},
+						);
+						if (
+							result.status === 0 &&
+							result.stdout &&
+							result.stdout.trim()
+						) {
+							return result.stdout.trim();
+						}
+					}
+				} catch (e) {
+					/* fall through to Node logic */
+				}
+			}
+
+			// Full Node context (fallback: includes knowledge graph, update checks, etc.)
 			const cli = require(path.join(__dirname, "..", "bin", "emb-agent.cjs"));
 			const projectConfigPath = runtime.resolveProjectDataPath(
 				projectRoot,

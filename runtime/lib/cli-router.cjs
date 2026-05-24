@@ -1901,10 +1901,21 @@ function createCliRouter(deps) {
 
 		// Fast-path: delegate read-only queries to Rust binary for speed
 		const RUST_COMMANDS = ["start", "next", "status", "health"];
-		const RUST_ACTION_COMMANDS = ["scan", "plan", "do", "review", "verify", "debug"];
+		const RUST_ACTION_COMMANDS = [
+			"scan",
+			"plan",
+			"do",
+			"review",
+			"verify",
+			"debug",
+		];
 		const RUST_TASK_SUBCOMMANDS = ["list", "show"];
-		const isRustTaskCommand = cmd === "task" && RUST_TASK_SUBCOMMANDS.includes(subcmd || "");
-		const isRustCommand = RUST_COMMANDS.includes(cmd) || RUST_ACTION_COMMANDS.includes(cmd) || isRustTaskCommand;
+		const isRustTaskCommand =
+			cmd === "task" && RUST_TASK_SUBCOMMANDS.includes(subcmd || "");
+		const isRustCommand =
+			RUST_COMMANDS.includes(cmd) ||
+			RUST_ACTION_COMMANDS.includes(cmd) ||
+			isRustTaskCommand;
 		if (isRustCommand && process.env.EMB_AGENT_RUST_HOOKS !== "0") {
 			const rustBin = findRustBinary();
 			if (rustBin) {
@@ -1913,7 +1924,7 @@ function createCliRouter(deps) {
 				if (cmd === "task" && subcmd === "show") {
 					rustArgs.push(rest[0] || "");
 				} else {
-					rustArgs.push(...rest.filter(a => !a.startsWith("--cwd")));
+					rustArgs.push(...rest.filter((a) => !a.startsWith("--cwd")));
 				}
 				rustArgs.push("--cwd", process.cwd());
 				if (args.includes("--json") || args.includes("--brief")) {
@@ -1924,13 +1935,15 @@ function createCliRouter(deps) {
 						encoding: "utf8",
 						timeout: 5000,
 						maxBuffer: 1024 * 1024,
-						env: { ...process.env, EMB_AGENT_WORKSPACE_TRUST: "1" }
+						env: { ...process.env, EMB_AGENT_WORKSPACE_TRUST: "1" },
 					});
 					if (result.status === 0 && result.stdout) {
 						process.stdout.write(result.stdout.trim() + "\n");
 						return;
 					}
-				} catch (e) { /* fall through to Node */ }
+				} catch (e) {
+					/* fall through to Node */
+				}
 			}
 		}
 

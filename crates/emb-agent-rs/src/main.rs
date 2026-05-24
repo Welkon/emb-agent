@@ -8,9 +8,8 @@ use emb_agent_core::{
     build_plan_output_json, build_project_state_json, build_project_state_paths_json,
     build_review_output_json, build_scan_output_json, build_session_context, build_start_json,
     build_status_json, build_statusline, build_task_list_json, build_task_show_json,
-    build_verify_output_json, get_project_state_paths, json_string_field,
-    project_state_from_cwd, read_all_tasks, read_task, snapshot_from_cwd, HookPlan,
-    ProjectSnapshot, StatePathConfig,
+    build_verify_output_json, get_project_state_paths, json_string_field, project_state_from_cwd,
+    read_all_tasks, read_task, snapshot_from_cwd, HookPlan, ProjectSnapshot, StatePathConfig,
 };
 
 fn main() {
