@@ -206,6 +206,47 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
             _ => Err("context: expected show".to_string()),
         },
+        "bootstrap" => match args.get(1).map(String::as_str) {
+            Some("status") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                println!("{}", emb_agent_core::meta_ops::bootstrap_status(&ext_dir));
+                Ok(())
+            }
+            _ => Err("bootstrap: expected status".to_string()),
+        },
+        "declare" => match args.get(1).map(String::as_str) {
+            Some("hardware") => {
+                let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                let mcu = option_value(&args, "--mcu").unwrap_or_default();
+                let pkg = option_value(&args, "--package").unwrap_or_default();
+                println!("{}", emb_agent_core::meta_ops::declare_hardware(&ext_dir, &mcu, &pkg));
+                Ok(())
+            }
+            _ => Err("declare: expected hardware".to_string()),
+        },
+        "pause" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            let note = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            println!("{}", emb_agent_core::meta_ops::pause_session(&ext_dir, note));
+            Ok(())
+        },
+        "resume" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            println!("{}", emb_agent_core::meta_ops::resume_session(&ext_dir));
+            Ok(())
+        },
+        "resolve" => {
+            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+            let name = args.get(1).ok_or("resolve requires <task-name>")?;
+            let note = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+            println!("{}", emb_agent_core::task_ops::task_resolve(&ext_dir, name, note));
+            Ok(())
+        },
         "help" | "--help" | "-h" => {
             print_help();
             Ok(())
@@ -289,7 +330,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "emb-agent-rs\n\nUSAGE:\n  emb-agent-rs start [--brief --json] [--cwd DIR]\n  emb-agent-rs next [--brief --json] [--cwd DIR]\n  emb-agent-rs status [--cwd DIR]\n  emb-agent-rs scan [--cwd DIR]\n  emb-agent-rs plan [--cwd DIR]\n  emb-agent-rs review [--cwd DIR]\n  emb-agent-rs verify [--cwd DIR]\n  emb-agent-rs debug [--cwd DIR]\n  emb-agent-rs chip diff --from CHIP --to CHIP [--cwd DIR]\n  emb-agent-rs chip swap --from CHIP --to CHIP [--cwd DIR]\n  emb-agent-rs statusline [--cwd DIR]\n  emb-agent-rs hook session-start [--cwd DIR] [--host pi|codex|cursor]\n  emb-agent-rs hook statusline [--cwd DIR]\n  emb-agent-rs hook context-monitor [--cwd DIR]\n  emb-agent-rs diagnostics hooks --json [--host pi] [--runtime-dir ./runtime]\n  emb-agent-rs diagnostics project --json [--cwd DIR]\n  emb-agent-rs diagnostics state-paths --json [--cwd DIR] [--runtime-dir ./runtime]\n"
+        "emb-agent-rs\n\nUSAGE:\n  Session:    start, next, status, health, pause [note], resume\n  Tasks:      task list, task show <name>, task add <summary>, task activate <name>, task resolve <name> [note], resolve <name>\n  Chips:      chip diff --from X --to Y, chip swap --from X --to Y [--confirm]\n  Actions:    scan, plan, do, review, verify, debug [--cwd DIR]\n  Truth:      prd status, doc list, knowledge status, session show, context show\n  Hardware:   declare hardware --mcu <name> [--package <name>], bootstrap status\n  Hooks:      hook session-start|statusline|context-monitor, statusline\n  Diag:       diagnostics hooks|project|state-paths --json\n  Options:    --cwd DIR, --brief, --json\n"
     );
 }
 
