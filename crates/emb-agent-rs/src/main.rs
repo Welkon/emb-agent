@@ -221,7 +221,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                 let mcu = option_value(&args, "--mcu").unwrap_or_default();
                 let pkg = option_value(&args, "--package").unwrap_or_default();
-                println!("{}", emb_agent_core::meta_ops::declare_hardware(&ext_dir, &mcu, &pkg));
+                println!(
+                    "{}",
+                    emb_agent_core::meta_ops::declare_hardware(&ext_dir, &mcu, &pkg)
+                );
                 Ok(())
             }
             _ => Err("declare: expected hardware".to_string()),
@@ -230,32 +233,37 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             let note = args.get(1).map(|s| s.as_str()).unwrap_or("");
-            println!("{}", emb_agent_core::meta_ops::pause_session(&ext_dir, note));
+            println!(
+                "{}",
+                emb_agent_core::meta_ops::pause_session(&ext_dir, note)
+            );
             Ok(())
-        },
+        }
         "resume" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
             println!("{}", emb_agent_core::meta_ops::resume_session(&ext_dir));
             Ok(())
-        },
+        }
         "resolve" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
             let name = args.get(1).ok_or("resolve requires <task-name>")?;
             let note = args.get(2).map(|s| s.as_str()).unwrap_or("");
             let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
-            println!("{}", emb_agent_core::task_ops::task_resolve(&ext_dir, name, note));
+            println!(
+                "{}",
+                emb_agent_core::task_ops::task_resolve(&ext_dir, name, note)
+            );
             Ok(())
-        },
-        // Complex commands: spawn Node for now
-        "ingest" | "capability" | "support" | "adapter" | "dispatch"
-        | "executor" | "note" | "memory" | "scaffold" | "update"
-        | "transcript" | "settings" | "prefs" | "tool" | "decision"
-        | "init" | "commands" | "snippet" | "workflow" | "orchestrate"
-        | "insight" | "trace" => {
-            let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
-            spawn_node_fallback(&args, &cwd)
-        },
+        }
+        // Complex commands: not yet in Rust (Node code deleted)
+        "ingest" | "capability" | "support" | "adapter" | "dispatch" | "executor" | "note"
+        | "memory" | "scaffold" | "update" | "transcript" | "settings" | "prefs" | "tool"
+        | "decision" | "init" | "commands" | "snippet" | "workflow" | "orchestrate" | "insight"
+        | "trace" => {
+            let cmd = args.first().map(|s| s.as_str()).unwrap_or("?");
+            Err(format!("{cmd}: not yet in Rust. Use `emb-agent-rs start` for current state."))
+        }
         "help" | "--help" | "-h" => {
             print_help();
             Ok(())
@@ -273,7 +281,9 @@ fn spawn_node_fallback(args: &[String], cwd: &str) -> Result<(), String> {
         .join("emb-agent.cjs");
     if !node_cli.exists() {
         let cmd = args.first().map(|s| s.as_str()).unwrap_or("?");
-        return Err(format!("{cmd}: Node fallback unavailable (emb-agent.cjs not found)"));
+        return Err(format!(
+            "{cmd}: Node fallback unavailable (emb-agent.cjs not found)"
+        ));
     }
     let result = std::process::Command::new("node")
         .arg(&node_cli)

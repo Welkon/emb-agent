@@ -32,7 +32,7 @@ async function main(argv) {
 	const args = Array.isArray(argv) ? argv : process.argv.slice(2);
 	const rustBin = findRustBinary();
 
-	if (rustBin && process.env.EMB_AGENT_RUST_HOOKS !== '0') {
+	if (rustBin && process.env.EMB_AGENT_RUST_HOOKS !== "0") {
 		// Primary: spawn Rust binary
 		const result = childProcess.spawnSync(rustBin, args, {
 			encoding: "utf8",
