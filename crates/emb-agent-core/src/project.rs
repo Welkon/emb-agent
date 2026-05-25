@@ -21,6 +21,8 @@ pub struct TaskSnapshot {
 pub struct ProjectSnapshot {
     pub initialized: bool,
     pub project_root: String,
+    pub active_variant: String,
+    pub variant_dir: String,
     pub developer: String,
     pub mcu_model: String,
     pub mcu_package: String,
@@ -43,6 +45,8 @@ pub struct ProjectState {
     pub initialized: bool,
     pub project_root: String,
     pub ext_dir: String,
+    pub state_dir: String,
+    pub active_variant: String,
     pub config: ProjectConfig,
     pub developer: DeveloperInfo,
     pub hardware: HardwareTruth,
@@ -281,6 +285,8 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     ProjectSnapshot {
         initialized: state.initialized,
         project_root: state.project_root,
+        active_variant: state.active_variant,
+        variant_dir: state.state_dir,
         developer: state.developer.name,
         mcu_model: state.hardware.model,
         mcu_package: state.hardware.package,
@@ -307,19 +313,20 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
 
 /// Read all tasks from the .emb-agent/tasks/ directory
 pub fn read_all_tasks(ext_dir: &Path) -> Vec<TaskSnapshot> {
-    let tasks_dir = ext_dir.join("tasks");
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let tasks_dir = state_dir.join("tasks");
     let mut tasks = Vec::new();
     if let Ok(entries) = fs::read_dir(&tasks_dir) {
         for entry in entries.flatten() {
             let task_json_path = entry.path().join("task.json");
             if let Ok(content) = fs::read_to_string(&task_json_path) {
-                    tasks.push(TaskSnapshot {
-                        name: json_string_field(&content, "name"),
-                        title: json_string_field(&content, "title"),
-                        status: json_string_field(&content, "status"),
-                        priority: json_string_field(&content, "priority"),
-                        package: json_string_field(&content, "package"),
-                    });
+                tasks.push(TaskSnapshot {
+                    name: json_string_field(&content, "name"),
+                    title: json_string_field(&content, "title"),
+                    status: json_string_field(&content, "status"),
+                    priority: json_string_field(&content, "priority"),
+                    package: json_string_field(&content, "package"),
+                });
             }
         }
     }
@@ -328,7 +335,8 @@ pub fn read_all_tasks(ext_dir: &Path) -> Vec<TaskSnapshot> {
 
 /// Read a single task by name
 pub fn read_task(ext_dir: &Path, name: &str) -> Option<Value> {
-    let task_path = ext_dir.join("tasks").join(name).join("task.json");
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let task_path = state_dir.join("tasks").join(name).join("task.json");
     let content = fs::read_to_string(&task_path).ok()?;
     serde_json::from_str(&content).ok()
 }
@@ -345,22 +353,26 @@ pub fn read_project_state(project_root: &Path) -> ProjectState {
         .canonicalize()
         .unwrap_or_else(|_| project_root.to_path_buf());
     let ext = root.join(".emb-agent");
-    let project_json = read_text(&ext.join("project.json"));
-    let hw_yaml = read_text(&ext.join("hw.yaml"));
-    let req_yaml = read_text(&ext.join("req.yaml"));
+    let active_variant = crate::variant_ops::active_variant_name(&ext).unwrap_or_default();
+    let state_dir = crate::variant_ops::active_state_dir(&ext);
+    let project_json = read_text(&state_dir.join("project.json"));
+    let hw_yaml = read_text(&state_dir.join("hw.yaml"));
+    let req_yaml = read_text(&state_dir.join("req.yaml"));
     let developer_json = read_text(&ext.join(".developer"));
-    let current_task = read_current_task_ref(&ext);
+    let current_task = read_current_task_ref(&state_dir);
 
     ProjectState {
-        initialized: ext.join("project.json").exists(),
+        initialized: state_dir.join("project.json").exists() || ext.join("project.json").exists(),
         project_root: root.to_string_lossy().to_string(),
         ext_dir: ext.to_string_lossy().to_string(),
+        state_dir: state_dir.to_string_lossy().to_string(),
+        active_variant,
         config: ProjectConfig::from_json(&project_json),
         developer: DeveloperInfo::from_json(&developer_json),
         hardware: HardwareTruth::from_yaml(&hw_yaml),
         requirements: RequirementsTruth::from_yaml(&req_yaml),
-        open_tasks: count_open_tasks(&ext),
-        wiki_pages: count_wiki_pages(&ext),
+        open_tasks: count_open_tasks(&state_dir),
+        wiki_pages: count_wiki_pages(&state_dir),
         git_branch: git_branch(&root),
         current_task,
     }
@@ -527,6 +539,8 @@ pub fn build_project_state_json(state: &ProjectState) -> String {
         "initialized": state.initialized,
         "project_root": state.project_root,
         "ext_dir": state.ext_dir,
+        "state_dir": state.state_dir,
+        "active_variant": state.active_variant,
         "config": {
             "project_profile": state.config.project_profile,
             "active_specs": state.config.active_specs,

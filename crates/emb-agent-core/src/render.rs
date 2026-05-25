@@ -7,6 +7,9 @@ pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
     }
 
     let mut parts = vec!["emb".to_string()];
+    if !snapshot.active_variant.is_empty() {
+        parts.push(format!("variant: {}", snapshot.active_variant));
+    }
     if !snapshot.mcu_model.is_empty() {
         let chip = if snapshot.mcu_package.is_empty() {
             snapshot.mcu_model.clone()
@@ -58,6 +61,8 @@ pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
         String::new(),
         "<current-state>".to_string(),
         format!("Project root: {}", snapshot.project_root),
+        format!("Active variant: {}", fallback(&snapshot.active_variant, "(none)")),
+        format!("Variant state dir: {}", fallback(&snapshot.variant_dir, "(root .emb-agent)")),
         format!("Bootstrap status: {}", snapshot.bootstrap_status),
         format!("Workflow state: {}", snapshot.workflow_state),
         format!("Recommended next command: {}", snapshot.recommended_command),
@@ -124,6 +129,10 @@ pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
 
     let mut lines = vec!["# Hi\n".to_string()];
 
+    if !snapshot.active_variant.is_empty() {
+        lines.push(format!("**当前变体**: {}\n", snapshot.active_variant));
+    }
+
     if !snapshot.mcu_model.is_empty() {
         let chip = if snapshot.mcu_package.is_empty() {
             snapshot.mcu_model.clone()
@@ -186,9 +195,11 @@ pub fn build_host_session_start_payload(host: &str, message: &str, welcome: &str
 pub fn build_start_json(snapshot: &ProjectSnapshot) -> String {
     let task_json = build_task_json(snapshot);
     format!(
-        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs\",\"summary\":{{\"initialized\":{},\"project_root\":{},\"mcu_model\":{},\"mcu_package\":{},\"open_tasks\":{},\"wiki_pages\":{},\"active_task\":{}}},\"immediate\":{{\"command\":{},\"reason\":{}}}}}",
+        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs\",\"summary\":{{\"initialized\":{},\"project_root\":{},\"active_variant\":{},\"variant_dir\":{},\"mcu_model\":{},\"mcu_package\":{},\"open_tasks\":{},\"wiki_pages\":{},\"active_task\":{}}},\"immediate\":{{\"command\":{},\"reason\":{}}}}}",
         snapshot.initialized,
         json_quote(&snapshot.project_root),
+        json_quote(&snapshot.active_variant),
+        json_quote(&snapshot.variant_dir),
         json_quote(&snapshot.mcu_model),
         json_quote(&snapshot.mcu_package),
         snapshot.open_tasks,
@@ -241,7 +252,8 @@ pub fn build_next_json(snapshot: &ProjectSnapshot) -> String {
         )
     };
     format!(
-        "{{\"status\":\"ok\",\"action\":{},\"reason\":{},\"workflow_state\":{},\"bootstrap_status\":{},\"active_task\":{},\"open_tasks\":{},\"instructions\":{}}}",
+        "{{\"status\":\"ok\",\"variant\":{},\"action\":{},\"reason\":{},\"workflow_state\":{},\"bootstrap_status\":{},\"active_task\":{},\"open_tasks\":{},\"instructions\":{}}}",
+        json_quote(&snapshot.active_variant),
         json_quote(action),
         json_quote(&snapshot.recommended_reason),
         json_quote(&snapshot.workflow_state),
@@ -255,9 +267,11 @@ pub fn build_next_json(snapshot: &ProjectSnapshot) -> String {
 pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
     let task_json = build_task_json(snapshot);
     format!(
-        "{{\"status\":\"ok\",\"project\":{{\"root\":{},\"initialized\":{},\"mcu\":{},\"package\":{},\"developer\":{},\"branch\":{},\"bootstrap\":{},\"workflow\":{}}},\"tasks\":{{\"open\":{},\"wiki_pages\":{},\"active\":{}}},\"next\":{{\"command\":{},\"reason\":{},\"task_intake\":{}}}}}",
+        "{{\"status\":\"ok\",\"project\":{{\"root\":{},\"initialized\":{},\"active_variant\":{},\"variant_dir\":{},\"mcu\":{},\"package\":{},\"developer\":{},\"branch\":{},\"bootstrap\":{},\"workflow\":{}}},\"tasks\":{{\"open\":{},\"wiki_pages\":{},\"active\":{}}},\"next\":{{\"command\":{},\"reason\":{},\"task_intake\":{}}}}}",
         json_quote(&snapshot.project_root),
         snapshot.initialized,
+        json_quote(&snapshot.active_variant),
+        json_quote(&snapshot.variant_dir),
         json_quote(&snapshot.mcu_model),
         json_quote(&snapshot.mcu_package),
         json_quote(&snapshot.developer),
@@ -367,6 +381,8 @@ mod tests {
         ProjectSnapshot {
             initialized: true,
             project_root: "/tmp/demo".to_string(),
+            active_variant: "esp32-c3".to_string(),
+            variant_dir: "/tmp/demo/.emb-agent/variants/esp32-c3".to_string(),
             developer: "Felix".to_string(),
             mcu_model: "ESP32-C3".to_string(),
             mcu_package: "QFN32".to_string(),
@@ -394,9 +410,9 @@ mod tests {
     #[test]
     fn builds_host_payloads() {
         let message = "hello\nworld";
-        assert!(build_host_session_start_payload("pi", message).contains("hookSpecificOutput"));
-        assert!(build_host_session_start_payload("codex", message).contains("suppressOutput"));
-        assert!(build_host_session_start_payload("cursor", message).contains("additional_context"));
+        assert!(build_host_session_start_payload("pi", message, "").contains("hookSpecificOutput"));
+        assert!(build_host_session_start_payload("codex", message, "").contains("suppressOutput"));
+        assert!(build_host_session_start_payload("cursor", message, "").contains("additional_context"));
     }
 
     #[test]

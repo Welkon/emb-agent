@@ -95,7 +95,9 @@ pub fn decision_status(ext_dir: &Path) -> String {
 pub fn commands_list() -> String {
     let commands = [
         "start next status health pause resume",
-        "task list show add activate resolve",
+        "task list show add activate resolve bug add/list/resolve",
+        "variant list status create use fork diff",
+        "workspace list status create use fork diff (alias)",
         "chip diff swap",
         "scan plan do review verify debug",
         "prd status doc list knowledge status session show context show",

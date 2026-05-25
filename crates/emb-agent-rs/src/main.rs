@@ -27,6 +27,50 @@ fn action_cmd(args: &[String], builder: fn(&ProjectSnapshot) -> String) -> Resul
     Ok(())
 }
 
+fn run_variant(args: &[String]) -> Result<(), String> {
+    let cwd = option_value(args, "--cwd").unwrap_or_else(current_dir_string);
+    let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+    match args.get(1).map(String::as_str) {
+        Some("list") => {
+            println!("{}", emb_agent_core::variant_ops::variant_list(&ext_dir));
+            Ok(())
+        }
+        Some("status") => {
+            println!("{}", emb_agent_core::variant_ops::variant_status(&ext_dir));
+            Ok(())
+        }
+        Some("use") => {
+            let name = args.get(2).ok_or("variant use requires <name>")?;
+            println!("{}", emb_agent_core::variant_ops::variant_use(&ext_dir, name));
+            Ok(())
+        }
+        Some("create") => {
+            let name = args.get(2).ok_or("variant create requires <name>")?;
+            let mcu = option_value(args, "--mcu").unwrap_or_default();
+            let package = option_value(args, "--package").unwrap_or_default();
+            let src = option_value(args, "--src").unwrap_or_else(|| format!("firmware/{name}"));
+            println!("{}", emb_agent_core::variant_ops::variant_create(&ext_dir, name, &mcu, &package, &src));
+            Ok(())
+        }
+        Some("fork") => {
+            let from = args.get(2).ok_or("variant fork requires <from> <to>")?;
+            let to = args.get(3).ok_or("variant fork requires <from> <to>")?;
+            let mcu = option_value(args, "--mcu").unwrap_or_default();
+            let package = option_value(args, "--package").unwrap_or_default();
+            let src = option_value(args, "--src").unwrap_or_default();
+            println!("{}", emb_agent_core::variant_ops::variant_fork(&ext_dir, from, to, &mcu, &package, &src));
+            Ok(())
+        }
+        Some("diff") => {
+            let a = args.get(2).ok_or("variant diff requires <a> <b>")?;
+            let b = args.get(3).ok_or("variant diff requires <a> <b>")?;
+            println!("{}", emb_agent_core::variant_ops::variant_diff(&ext_dir, a, b));
+            Ok(())
+        }
+        _ => Err("variant: expected list, status, create, use, fork, or diff".to_string()),
+    }
+}
+
 fn run(args: Vec<String>) -> Result<(), String> {
     let command = args.first().map(String::as_str).unwrap_or("help");
 
@@ -99,6 +143,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             println!("{}", build_status_json(&snapshot));
             Ok(())
         }
+        "variant" | "workspace" => run_variant(&args),
         "task" => match args.get(1).map(String::as_str) {
             Some("list") => {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
@@ -170,16 +215,20 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 }
                 Some("list") => {
                     let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
-                    let parent = args.get(3).map(|s| s.as_str());
+                    let parent = args
+                        .get(3)
+                        .filter(|s| !s.starts_with("--"))
+                        .map(|s| s.as_str());
                     let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
-                    println!("{}", emb_agent_core::bug_ops::bug_list(&ext_dir, parent, None));
+                    println!(
+                        "{}",
+                        emb_agent_core::bug_ops::bug_list(&ext_dir, parent, None, option_value(&args, "--variant").as_deref())
+                    );
                     Ok(())
                 }
                 Some("resolve") => {
                     let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
-                    let bug_id = args
-                        .get(3)
-                        .ok_or("task bug resolve requires <bug-id>")?;
+                    let bug_id = args.get(3).ok_or("task bug resolve requires <bug-id>")?;
                     let note = args.get(4).map(|s| s.as_str()).unwrap_or("");
                     let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                     println!(
@@ -604,7 +653,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "emb-agent-rs\n\nUSAGE:\n  Session:    start, next, status, health, pause [note], resume\n  Tasks:      task list, task show <name>, task add <summary>, task activate <name>, task resolve <name> [note], resolve <name>\n  Chips:      chip diff --from X --to Y, chip swap --from X --to Y [--confirm]\n  Actions:    scan, plan, do, review, verify, debug [--cwd DIR]\n  Truth:      prd status, doc list, knowledge status, session show, context show\n  Hardware:   declare hardware --mcu <name> [--package <name>], bootstrap status\n  Hooks:      hook session-start|statusline|context-monitor, statusline\n  Diag:       diagnostics hooks|project|state-paths --json\n  Options:    --cwd DIR, --brief, --json\n"
+        "emb-agent-rs\n\nUSAGE:\n  Session:    start, next, status, health, pause [note], resume\n  Tasks:      task list, task show <name>, task add <summary>, task activate <name>, task resolve <name> [note], resolve <name>\n  Chips:      chip diff --from X --to Y, chip swap --from X --to Y [--confirm]\n  Variants:   variant list|status|create|use|fork|diff (workspace alias)\n  Actions:    scan, plan, do, review, verify, debug [--cwd DIR]\n  Truth:      prd status, doc list, knowledge status, session show, context show\n  Hardware:   declare hardware --mcu <name> [--package <name>], bootstrap status\n  Hooks:      hook session-start|statusline|context-monitor, statusline\n  Diag:       diagnostics hooks|project|state-paths --json\n  Options:    --cwd DIR, --brief, --json\n"
     );
 }
 

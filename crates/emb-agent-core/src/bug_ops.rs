@@ -29,34 +29,41 @@ pub fn bug_add(ext_dir: &Path, parent_task: &str, summary: &str) -> String {
         counter += 1;
     }
 
-    // Detect current hardware version
+    // Detect current variant and hardware version
+    let variant = crate::variant_ops::active_variant_name(ext_dir).unwrap_or_default();
     let hw = detect_hw(ext_dir);
 
     // Write bug JSON
     let now = chrono_now();
     let bug_json = format!(
-        "{{\n  \"id\": {},\n  \"title\": {},\n  \"parent_task\": {},\n  \"hw\": {},\n  \"type\": \"bug\",\n  \"status\": \"open\",\n  \"priority\": \"P1\",\n  \"found_at\": {},\n  \"resolved_at\": null,\n  \"resolution_note\": null\n}}",
+        "{{\n  \"id\": {},\n  \"title\": {},\n  \"parent_task\": {},\n  \"variant\": {},\n  \"hw\": {},\n  \"type\": \"bug\",\n  \"status\": \"open\",\n  \"priority\": \"P1\",\n  \"found_at\": {},\n  \"resolved_at\": null,\n  \"resolution_note\": null\n}}",
         json_quote(&final_id),
         json_quote(summary),
         json_quote(parent_task),
+        json_quote(&variant),
         json_quote(&hw),
         json_quote(&now)
     );
     let _ = fs::write(bugs_dir.join(format!("{}.json", final_id)), &bug_json);
 
     format!(
-        "{{\"status\":\"ok\",\"created\":true,\"bug\":{{\"id\":{},\"title\":{},\"parent_task\":{},\"hw\":{},\"status\":\"open\"}},\"next\":\"do\",\"next_instructions\":\"Bug recorded. Fix the code, then run `emb-agent-rs task bug resolve {} {} 'fix note'`.\"}}",
+        "{{\"status\":\"ok\",\"created\":true,\"bug\":{{\"id\":{},\"title\":{},\"parent_task\":{},\"variant\":{},\"hw\":{},\"status\":\"open\"}},\"next\":\"do\",\"next_instructions\":{}}}",
         json_quote(&final_id),
         json_quote(summary),
         json_quote(parent_task),
+        json_quote(&variant),
         json_quote(&hw),
-        json_quote(parent_task),
-        json_quote(&final_id)
+        json_quote(&format!("Bug recorded. Fix the code, then run `emb-agent-rs task bug resolve {} 'fix note'`.", final_id))
     )
 }
 
 /// List bugs, optionally filtered by task or status
-pub fn bug_list(ext_dir: &Path, parent_task: Option<&str>, status_filter: Option<&str>) -> String {
+pub fn bug_list(
+    ext_dir: &Path,
+    parent_task: Option<&str>,
+    status_filter: Option<&str>,
+    variant_filter: Option<&str>,
+) -> String {
     let bugs_dir = ext_dir.join("bugs");
     let mut bugs = Vec::new();
 
@@ -76,6 +83,10 @@ pub fn bug_list(ext_dir: &Path, parent_task: Option<&str>, status_filter: Option
                         .get("parent_task")
                         .and_then(|t| t.as_str())
                         .unwrap_or("?");
+                    let variant = bug
+                        .get("variant")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
 
                     // Filter
                     if let Some(filter) = parent_task
@@ -84,6 +95,10 @@ pub fn bug_list(ext_dir: &Path, parent_task: Option<&str>, status_filter: Option
                         }
                     if let Some(filter) = status_filter
                         && status != filter {
+                            continue;
+                        }
+                    if let Some(filter) = variant_filter
+                        && variant != filter {
                             continue;
                         }
 
@@ -96,10 +111,11 @@ pub fn bug_list(ext_dir: &Path, parent_task: Option<&str>, status_filter: Option
                         .unwrap_or("");
 
                     bugs.push(format!(
-                        "{{\"id\":{},\"title\":{},\"parent_task\":{},\"hw\":{},\"status\":{},\"found_at\":{}}}",
+                        "{{\"id\":{},\"title\":{},\"parent_task\":{},\"variant\":{},\"hw\":{},\"status\":{},\"found_at\":{}}}",
                         json_quote(id),
                         json_quote(title),
                         json_quote(pt),
+                        json_quote(variant),
                         json_quote(hw),
                         json_quote(status),
                         json_quote(found)
@@ -169,28 +185,16 @@ pub fn bug_resolve(ext_dir: &Path, bug_id: &str, note: &str) -> String {
 }
 
 fn detect_hw(ext_dir: &Path) -> String {
-    // Read project.json to get current MCU model
-    let proj_path = ext_dir.join("project.json");
-    if let Ok(content) = fs::read_to_string(&proj_path)
-        && let Ok(proj) = serde_json::from_str::<serde_json::Value>(&content)
-            && let Some(hw) = proj.get("hardware") {
-                let model = hw
-                    .get("model")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("");
-                let pkg = hw
-                    .get("package")
-                    .and_then(|p| p.as_str())
-                    .unwrap_or("");
-                if model.is_empty() {
-                    return "unknown".to_string();
-                }
-                if pkg.is_empty() {
-                    return model.to_string();
-                }
-                return format!("{} {}", model, pkg);
-            }
-    "unknown".to_string()
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let hw_yaml = fs::read_to_string(state_dir.join("hw.yaml")).unwrap_or_default();
+    let hw = crate::project::HardwareTruth::from_yaml(&hw_yaml);
+    if hw.model.is_empty() {
+        return "unknown".to_string();
+    }
+    if hw.package.is_empty() {
+        return hw.model;
+    }
+    format!("{} {}", hw.model, hw.package)
 }
 
 fn chrono_now() -> String {

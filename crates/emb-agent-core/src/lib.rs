@@ -12,6 +12,7 @@ pub mod render;
 pub mod scan;
 pub mod state_paths;
 pub mod task_ops;
+pub mod variant_ops;
 
 pub use bug_ops::{bug_add, bug_list, bug_resolve};
 pub use actions::{
@@ -53,6 +54,10 @@ pub use render::{
     build_welcome_message,
 };
 pub use scan::{ScanOutput, ScanWorkflowStage, build_scan_output, build_scan_output_json};
+pub use variant_ops::{
+    active_state_dir, active_variant_dir, active_variant_name, variant_create, variant_diff,
+    variant_fork, variant_list, variant_status, variant_use,
+};
 pub use state_paths::{
     ProjectStateFilePaths, ProjectStatePaths, StatePathConfig, build_project_state_file_paths,
     build_project_state_paths_json, canonicalize_project_root, get_fallback_project_state_dir,

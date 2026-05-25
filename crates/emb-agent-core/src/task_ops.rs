@@ -6,7 +6,8 @@ use crate::json::json_quote;
 
 /// Create a new task
 pub fn task_add(ext_dir: &Path, summary: &str, _task_type: &str, priority: &str) -> String {
-    let tasks_dir = ext_dir.join("tasks");
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let tasks_dir = state_dir.join("tasks");
     let _ = fs::create_dir_all(&tasks_dir);
 
     // Generate a unique task name from summary
@@ -111,7 +112,8 @@ pub fn task_add(ext_dir: &Path, summary: &str, _task_type: &str, priority: &str)
 
 /// Activate a task (set as current)
 pub fn task_activate(ext_dir: &Path, name: &str) -> String {
-    let task_path = ext_dir.join("tasks").join(name).join("task.json");
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let task_path = state_dir.join("tasks").join(name).join("task.json");
     if !task_path.exists() {
         return format!(
             "{{\"status\":\"error\",\"error\":{{\"code\":\"not-found\",\"message\":\"Task not found: {}\"}}}}",
@@ -131,7 +133,7 @@ pub fn task_activate(ext_dir: &Path, name: &str) -> String {
     );
 
     // Write current task file
-    let current_task_file = ext_dir.join(".current-task");
+    let current_task_file = state_dir.join(".current-task");
     let _ = fs::write(&current_task_file, name);
 
     format!(
@@ -142,7 +144,8 @@ pub fn task_activate(ext_dir: &Path, name: &str) -> String {
 
 /// Resolve (complete) a task
 pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
-    let task_path = ext_dir.join("tasks").join(name).join("task.json");
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let task_path = state_dir.join("tasks").join(name).join("task.json");
     if !task_path.exists() {
         return format!(
             "{{\"status\":\"error\",\"error\":{{\"code\":\"not-found\",\"message\":\"Task not found: {}\"}}}}",
@@ -165,7 +168,7 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     );
 
     // Clear current task if this was active
-    let current_task_file = ext_dir.join(".current-task");
+    let current_task_file = state_dir.join(".current-task");
     if fs::read_to_string(&current_task_file)
         .unwrap_or_default()
         .trim()
