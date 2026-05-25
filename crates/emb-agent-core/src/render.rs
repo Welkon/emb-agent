@@ -201,13 +201,24 @@ pub fn build_start_json(snapshot: &ProjectSnapshot) -> String {
 
 pub fn build_next_json(snapshot: &ProjectSnapshot) -> String {
     let task_json = build_task_json(snapshot);
+    let (action, instructions) = if snapshot.current_task.is_some() {
+        ("do", "Active task exists. Run `emb-agent-rs do` to continue implementation.")
+    } else if snapshot.open_tasks > 0 {
+        ("activate", "Tasks exist but none active. Run `emb-agent-rs task list` to see tasks, then `emb-agent-rs task activate <name>` to activate the one you want to work on.")
+    } else if snapshot.bootstrap_status != "ready" {
+        ("bootstrap", "Project needs bootstrap. Run `emb-agent-rs bootstrap status`.")
+    } else {
+        (snapshot.recommended_command.as_str(), snapshot.task_intake_summary.as_str())
+    };
     format!(
-        "{{\"status\":\"ok\",\"summary\":{{\"command\":{},\"reason\":{},\"workflow_state\":{},\"bootstrap_status\":{},\"active_task\":{}}}}}",
-        json_quote(&snapshot.recommended_command),
+        "{{\"status\":\"ok\",\"action\":{},\"reason\":{},\"workflow_state\":{},\"bootstrap_status\":{},\"active_task\":{},\"open_tasks\":{},\"instructions\":{}}}",
+        json_quote(action),
         json_quote(&snapshot.recommended_reason),
         json_quote(&snapshot.workflow_state),
         json_quote(&snapshot.bootstrap_status),
-        task_json
+        task_json,
+        snapshot.open_tasks,
+        json_quote(instructions)
     )
 }
 
