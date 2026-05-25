@@ -38,7 +38,18 @@ pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
         return "<emb-agent-session-context>\nNo emb-agent project found. Run emb-agent init/bootstrap from the project root.\n</emb-agent-session-context>".to_string();
     }
 
+    let welcome = build_welcome_message(snapshot);
+    let welcome_block = if welcome.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<user-welcome>\nThe following welcome was shown to the user at session start. Greet the user briefly using this context, then wait for their first request.\n\n{}\n</user-welcome>\n\n",
+            welcome
+        )
+    };
+
     let mut lines = vec![
+        welcome_block,
         "<emb-agent-session-context>".to_string(),
         "emb-agent startup context is already injected for this session.".to_string(),
         "Do not ask the user to run start just to load bootstrap state.".to_string(),
