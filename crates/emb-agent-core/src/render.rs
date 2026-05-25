@@ -105,9 +105,7 @@ pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
         return String::new();
     }
 
-    let mut lines = vec![
-        "# Hi\n".to_string(),
-    ];
+    let mut lines = vec!["# Hi\n".to_string()];
 
     if !snapshot.mcu_model.is_empty() {
         let chip = if snapshot.mcu_package.is_empty() {
@@ -123,7 +121,10 @@ pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
     }
 
     if let Some(task) = &snapshot.current_task {
-        lines.push(format!("**当前任务**: `{}` — {} [{}]\n", task.name, task.title, task.priority));
+        lines.push(format!(
+            "**当前任务**: `{}` — {} [{}]\n",
+            task.name, task.title, task.priority
+        ));
     }
 
     lines.extend([

@@ -296,8 +296,13 @@ export default async function (pi, config) {
     if (ctx.hasUI && welcome) {
       ctx.ui.notify("emb-agent ready", "info");
       pi.sendMessage({
-        role: "assistant",
-        content: welcome
+        customType: "emb-agent-welcome",
+        content: welcome,
+        display: true,
+        details: { kind: "welcome" }
+      }, {
+        deliverAs: "nextTurn",
+        triggerTurn: false
       });
     }
   });
