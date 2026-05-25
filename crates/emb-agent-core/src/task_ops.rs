@@ -135,7 +135,7 @@ pub fn task_activate(ext_dir: &Path, name: &str) -> String {
     let _ = fs::write(&current_task_file, name);
 
     format!(
-        "{{\"status\":\"ok\",\"activated\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}}}}",
+        "{{\"status\":\"ok\",\"activated\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"next\":\"do\",\"next_instructions\":\"Task activated. Run `emb-agent-rs do` to start implementation.\"}}",
         json_quote(name)
     )
 }
@@ -175,7 +175,7 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     }
 
     format!(
-        "{{\"status\":\"ok\",\"resolved\":true,\"task\":{{\"name\":{},\"status\":\"completed\"}}}}",
+        "{{\"status\":\"ok\",\"resolved\":true,\"task\":{{\"name\":{},\"status\":\"completed\"}},\"next\":\"next\",\"next_instructions\":\"Task completed. Run `emb-agent-rs next` to find the next task or action.\"}}",
         json_quote(name)
     )
 }

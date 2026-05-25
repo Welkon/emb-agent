@@ -343,19 +343,47 @@ fn dedup(values: Vec<String>) -> Vec<String> {
 }
 
 pub fn build_plan_output_json(snapshot: &ProjectSnapshot) -> String {
-    serde_json::to_string_pretty(&build_plan_output(snapshot)).unwrap_or_default()
+    let output = build_plan_output(snapshot);
+    let (next, next_instructions) = crate::render::build_next_routing(snapshot);
+    let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("next".to_string(), serde_json::Value::String(next));
+        obj.insert("next_instructions".to_string(), serde_json::Value::String(next_instructions));
+    }
+    serde_json::to_string_pretty(&json).unwrap_or_default()
 }
 
 pub fn build_review_output_json(snapshot: &ProjectSnapshot) -> String {
-    serde_json::to_string_pretty(&build_review_output(snapshot)).unwrap_or_default()
+    let output = build_review_output(snapshot);
+    let (next, next_instructions) = crate::render::build_next_routing(snapshot);
+    let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("next".to_string(), serde_json::Value::String(next));
+        obj.insert("next_instructions".to_string(), serde_json::Value::String(next_instructions));
+    }
+    serde_json::to_string_pretty(&json).unwrap_or_default()
 }
 
 pub fn build_verify_output_json(snapshot: &ProjectSnapshot) -> String {
-    serde_json::to_string_pretty(&build_verify_output(snapshot)).unwrap_or_default()
+    let output = build_verify_output(snapshot);
+    let (next, next_instructions) = crate::render::build_next_routing(snapshot);
+    let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("next".to_string(), serde_json::Value::String(next));
+        obj.insert("next_instructions".to_string(), serde_json::Value::String(next_instructions));
+    }
+    serde_json::to_string_pretty(&json).unwrap_or_default()
 }
 
 pub fn build_debug_output_json(snapshot: &ProjectSnapshot) -> String {
-    serde_json::to_string_pretty(&build_debug_output(snapshot)).unwrap_or_default()
+    let output = build_debug_output(snapshot);
+    let (next, next_instructions) = crate::render::build_next_routing(snapshot);
+    let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("next".to_string(), serde_json::Value::String(next));
+        obj.insert("next_instructions".to_string(), serde_json::Value::String(next_instructions));
+    }
+    serde_json::to_string_pretty(&json).unwrap_or_default()
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -409,5 +437,12 @@ pub fn build_do_output(snapshot: &ProjectSnapshot) -> DoOutput {
 }
 
 pub fn build_do_output_json(snapshot: &ProjectSnapshot) -> String {
-    serde_json::to_string_pretty(&build_do_output(snapshot)).unwrap_or_default()
+    let output = build_do_output(snapshot);
+    let (next, next_instructions) = crate::render::build_next_routing(snapshot);
+    let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("next".to_string(), serde_json::Value::String(next));
+        obj.insert("next_instructions".to_string(), serde_json::Value::String(next_instructions));
+    }
+    serde_json::to_string_pretty(&json).unwrap_or_default()
 }
