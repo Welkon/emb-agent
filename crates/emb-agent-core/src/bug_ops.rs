@@ -2,107 +2,119 @@ use crate::json::json_quote;
 use std::fs;
 use std::path::Path;
 
-/// Create a bug sub-task under a parent task
+/// Create a bug in flat .emb-agent/bugs/ directory
 pub fn bug_add(ext_dir: &Path, parent_task: &str, summary: &str) -> String {
-    let bugs_dir = ext_dir
-        .join("tasks")
-        .join(parent_task)
-        .join("bugs");
+    let bugs_dir = ext_dir.join("bugs");
     let _ = fs::create_dir_all(&bugs_dir);
 
-    // Generate bug name from summary
-    let name = summary
+    // Generate bug ID from summary
+    let id = summary
         .to_lowercase()
         .chars()
         .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
         .collect::<String>()
         .trim_matches('-')
         .to_string();
-    let name = if name.len() > 50 {
-        format!("bug-{}", &name[..50])
+    let id = if id.len() > 50 {
+        format!("bug-{}", &id[..50])
     } else {
-        format!("bug-{}", name)
+        format!("bug-{}", id)
     };
 
-    let bug_dir = bugs_dir.join(&name);
-    if bug_dir.exists() {
-        return format!(
-            "{{\"status\":\"error\",\"error\":{{\"code\":\"bug-exists\",\"message\":\"Bug already exists: {}\"}}}}",
-            name
-        );
+    // Deduplicate: append number if exists
+    let mut final_id = id.clone();
+    let mut counter = 1;
+    while bugs_dir.join(format!("{}.json", final_id)).exists() {
+        final_id = format!("{}-{}", id, counter);
+        counter += 1;
     }
-    let _ = fs::create_dir_all(&bug_dir);
 
-    // Write bug manifest
+    // Detect current hardware version
+    let hw = detect_hw(ext_dir);
+
+    // Write bug JSON
     let now = chrono_now();
     let bug_json = format!(
-        "{{\n  \"name\": {},\n  \"title\": {},\n  \"parent_task\": {},\n  \"type\": \"bug\",\n  \"status\": \"open\",\n  \"priority\": \"P1\",\n  \"found_at\": {},\n  \"phase\": \"debug\"\n}}",
-        json_quote(&name),
+        "{{\n  \"id\": {},\n  \"title\": {},\n  \"parent_task\": {},\n  \"hw\": {},\n  \"type\": \"bug\",\n  \"status\": \"open\",\n  \"priority\": \"P1\",\n  \"found_at\": {},\n  \"resolved_at\": null,\n  \"resolution_note\": null\n}}",
+        json_quote(&final_id),
         json_quote(summary),
         json_quote(parent_task),
+        json_quote(&hw),
         json_quote(&now)
     );
-    let _ = fs::write(bug_dir.join("bug.json"), &bug_json);
-
-    // Write evidence skeleton
-    let evidence = format!(
-        "# Bug: {}\n\n**Parent task:** {}\n**Found:** {}\n**Status:** open\n\n## Symptoms\n\n(Describe what went wrong)\n\n## Root Cause\n\n(What caused the bug)\n\n## Fix\n\n(How it was fixed)\n\n## Verification\n\n(How the fix was verified)\n",
-        summary, parent_task, now
-    );
-    let _ = fs::write(bug_dir.join("evidence.md"), evidence);
+    let _ = fs::write(bugs_dir.join(format!("{}.json", final_id)), &bug_json);
 
     format!(
-        "{{\"status\":\"ok\",\"created\":true,\"bug\":{{\"name\":{},\"title\":{},\"parent_task\":{},\"status\":\"open\",\"phase\":\"debug\"}},\"next\":\"do\",\"next_instructions\":\"Bug recorded. Continue fixing: read the bug evidence at .emb-agent/tasks/{}/bugs/{}/evidence.md, fix the code, run `emb-agent-rs verify`.\"}}",
-        json_quote(&name),
+        "{{\"status\":\"ok\",\"created\":true,\"bug\":{{\"id\":{},\"title\":{},\"parent_task\":{},\"hw\":{},\"status\":\"open\"}},\"next\":\"do\",\"next_instructions\":\"Bug recorded. Fix the code, then run `emb-agent-rs task bug resolve {} {} 'fix note'`.\"}}",
+        json_quote(&final_id),
         json_quote(summary),
         json_quote(parent_task),
-        parent_task,
-        name
+        json_quote(&hw),
+        json_quote(parent_task),
+        json_quote(&final_id)
     )
 }
 
-/// List bugs for a task or all bugs
-pub fn bug_list(ext_dir: &Path, parent_task: Option<&str>) -> String {
-    let tasks_dir = ext_dir.join("tasks");
+/// List bugs, optionally filtered by task or status
+pub fn bug_list(ext_dir: &Path, parent_task: Option<&str>, status_filter: Option<&str>) -> String {
+    let bugs_dir = ext_dir.join("bugs");
     let mut bugs = Vec::new();
 
-    if let Ok(task_entries) = fs::read_dir(&tasks_dir) {
-        for task_entry in task_entries.flatten() {
-            let task_name = task_entry.file_name().to_string_lossy().to_string();
-            if let Some(filter) = parent_task
-                && task_name != filter {
-                    continue;
-                }
-            let bugs_dir = task_entry.path().join("bugs");
-            if let Ok(bug_entries) = fs::read_dir(&bugs_dir) {
-                for bug_entry in bug_entries.flatten() {
-                    let bug_json = bug_entry.path().join("bug.json");
-                    if let Ok(content) = fs::read_to_string(&bug_json)
-                        && let Ok(bug) = serde_json::from_str::<serde_json::Value>(&content) {
-                            let status = bug
-                                .get("status")
-                                .and_then(|s| s.as_str())
-                                .unwrap_or("?");
-                            let title = bug
-                                .get("title")
-                                .and_then(|t| t.as_str())
-                                .unwrap_or("?");
-                            let name = bug
-                                .get("name")
-                                .and_then(|n| n.as_str())
-                                .unwrap_or("?");
-                            bugs.push(format!(
-                                "{{\"name\":{},\"title\":{},\"parent_task\":{},\"status\":{}}}",
-                                json_quote(name),
-                                json_quote(title),
-                                json_quote(&task_name),
-                                json_quote(status)
-                            ));
-                        }
-                }
+    if let Ok(entries) = fs::read_dir(&bugs_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
             }
+            if let Ok(content) = fs::read_to_string(&path)
+                && let Ok(bug) = serde_json::from_str::<serde_json::Value>(&content) {
+                    let status = bug
+                        .get("status")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("?");
+                    let pt = bug
+                        .get("parent_task")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("?");
+
+                    // Filter
+                    if let Some(filter) = parent_task
+                        && pt != filter {
+                            continue;
+                        }
+                    if let Some(filter) = status_filter
+                        && status != filter {
+                            continue;
+                        }
+
+                    let id = bug.get("id").and_then(|i| i.as_str()).unwrap_or("?");
+                    let title = bug.get("title").and_then(|t| t.as_str()).unwrap_or("?");
+                    let hw = bug.get("hw").and_then(|h| h.as_str()).unwrap_or("");
+                    let found = bug
+                        .get("found_at")
+                        .and_then(|f| f.as_str())
+                        .unwrap_or("");
+
+                    bugs.push(format!(
+                        "{{\"id\":{},\"title\":{},\"parent_task\":{},\"hw\":{},\"status\":{},\"found_at\":{}}}",
+                        json_quote(id),
+                        json_quote(title),
+                        json_quote(pt),
+                        json_quote(hw),
+                        json_quote(status),
+                        json_quote(found)
+                    ));
+                }
         }
     }
+
+    bugs.sort_by_key(|b| {
+        if b.contains("\"open\"") {
+            "0".to_string()
+        } else {
+            "1".to_string()
+        }
+    });
 
     format!(
         "{{\"status\":\"ok\",\"bugs\":[{}],\"count\":{}}}",
@@ -111,56 +123,74 @@ pub fn bug_list(ext_dir: &Path, parent_task: Option<&str>) -> String {
     )
 }
 
-/// Resolve a bug sub-task
-pub fn bug_resolve(ext_dir: &Path, parent_task: &str, bug_name: &str, note: &str) -> String {
-    let bug_dir = ext_dir
-        .join("tasks")
-        .join(parent_task)
-        .join("bugs")
-        .join(bug_name);
-    let bug_json = bug_dir.join("bug.json");
+/// Resolve a bug
+pub fn bug_resolve(ext_dir: &Path, bug_id: &str, note: &str) -> String {
+    let bug_path = ext_dir.join("bugs").join(format!("{}.json", bug_id));
 
-    if !bug_json.exists() {
+    if !bug_path.exists() {
         return format!(
-            "{{\"status\":\"error\",\"error\":{{\"code\":\"not-found\",\"message\":\"Bug not found: {} under task {}\"}}}}",
-            bug_name, parent_task
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"not-found\",\"message\":\"Bug not found: {}\"}}}}",
+            bug_id
         );
     }
 
-    let content = fs::read_to_string(&bug_json).unwrap_or_default();
+    let content = fs::read_to_string(&bug_path).unwrap_or_default();
     let mut bug: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
+    let now = chrono_now();
     if let Some(obj) = bug.as_object_mut() {
         obj.insert("status".to_string(), serde_json::json!("resolved"));
         obj.insert(
             "resolved_at".to_string(),
-            serde_json::json!(chrono_now()),
+            serde_json::json!(&now),
         );
         if !note.is_empty() {
-            obj.insert("resolution_note".to_string(), serde_json::json!(note));
+            obj.insert(
+                "resolution_note".to_string(),
+                serde_json::json!(note),
+            );
         }
     }
     let _ = fs::write(
-        &bug_json,
+        &bug_path,
         serde_json::to_string_pretty(&bug).unwrap_or_default(),
     );
 
-    // Update evidence.md with resolution
-    let evidence_path = bug_dir.join("evidence.md");
-    if let Ok(existing) = fs::read_to_string(&evidence_path) {
-        let updated = format!(
-            "{}\n\n## Resolution ({})\n\n{}\n",
-            existing.trim_end(),
-            chrono_now(),
-            if note.is_empty() { "Fixed." } else { note }
-        );
-        let _ = fs::write(&evidence_path, updated);
-    }
+    let pt = bug
+        .get("parent_task")
+        .and_then(|t| t.as_str())
+        .unwrap_or("?");
 
     format!(
-        "{{\"status\":\"ok\",\"resolved\":true,\"bug\":{{\"name\":{},\"parent_task\":{}}},\"next\":\"do\",\"next_instructions\":\"Bug resolved. Continue implementation: run `emb-agent-rs do`.\"}}",
-        json_quote(bug_name),
-        json_quote(parent_task)
+        "{{\"status\":\"ok\",\"resolved\":true,\"bug\":{{\"id\":{},\"parent_task\":{},\"resolved_at\":{}}},\"next\":\"do\",\"next_instructions\":\"Bug resolved. Continue implementation: run `emb-agent-rs do`.\"}}",
+        json_quote(bug_id),
+        json_quote(pt),
+        json_quote(&now)
     )
+}
+
+fn detect_hw(ext_dir: &Path) -> String {
+    // Read project.json to get current MCU model
+    let proj_path = ext_dir.join("project.json");
+    if let Ok(content) = fs::read_to_string(&proj_path)
+        && let Ok(proj) = serde_json::from_str::<serde_json::Value>(&content)
+            && let Some(hw) = proj.get("hardware") {
+                let model = hw
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("");
+                let pkg = hw
+                    .get("package")
+                    .and_then(|p| p.as_str())
+                    .unwrap_or("");
+                if model.is_empty() {
+                    return "unknown".to_string();
+                }
+                if pkg.is_empty() {
+                    return model.to_string();
+                }
+                return format!("{} {}", model, pkg);
+            }
+    "unknown".to_string()
 }
 
 fn chrono_now() -> String {
@@ -168,42 +198,39 @@ fn chrono_now() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
     let secs = duration.as_secs();
-    // Simple ISO 8601
     let days_since_epoch = secs / 86400;
     let time_of_day = secs % 86400;
-    let hours = time_of_day / 3600;
-    let minutes = (time_of_day % 3600) / 60;
-    let seconds = time_of_day % 60;
+    let h = time_of_day / 3600;
+    let m = (time_of_day % 3600) / 60;
+    let s = time_of_day % 60;
 
-    // Calculate year/month/day from days since epoch (approximate)
     let mut y = 1970i64;
-    let mut remaining_days = days_since_epoch as i64;
+    let mut remaining = days_since_epoch as i64;
     loop {
-        let days_in_year = if is_leap(y) { 366 } else { 365 };
-        if remaining_days < days_in_year {
+        let days = if is_leap(y) { 366 } else { 365 };
+        if remaining < days {
             break;
         }
-        remaining_days -= days_in_year;
+        remaining -= days;
         y += 1;
     }
-    let month_days = if is_leap(y) {
+    let month_days: [i64; 12] = if is_leap(y) {
         [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     } else {
         [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     };
-    let mut m = 1usize;
+    let mut mo = 1usize;
     for &md in month_days.iter() {
-        if remaining_days < md as i64 {
+        if remaining < md {
             break;
         }
-        remaining_days -= md as i64;
-        m += 1;
+        remaining -= md;
+        mo += 1;
     }
-    let d = remaining_days + 1;
-
+    let d = remaining + 1;
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        y, m, d, hours, minutes, seconds
+        y, mo, d, h, m, s
     )
 }
 

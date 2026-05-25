@@ -157,26 +157,35 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Some("bug") => match args.get(2).map(String::as_str) {
                 Some("add") => {
                     let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
-                    let parent = args.get(3).ok_or("task bug add requires <parent-task> <summary>")?;
+                    let parent = args
+                        .get(3)
+                        .ok_or("task bug add requires <parent-task> <summary>")?;
                     let summary = args.get(4).map(|s| s.as_str()).unwrap_or("Bug");
                     let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
-                    println!("{}", emb_agent_core::bug_ops::bug_add(&ext_dir, parent, summary));
+                    println!(
+                        "{}",
+                        emb_agent_core::bug_ops::bug_add(&ext_dir, parent, summary)
+                    );
                     Ok(())
                 }
                 Some("list") => {
                     let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
                     let parent = args.get(3).map(|s| s.as_str());
                     let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
-                    println!("{}", emb_agent_core::bug_ops::bug_list(&ext_dir, parent));
+                    println!("{}", emb_agent_core::bug_ops::bug_list(&ext_dir, parent, None));
                     Ok(())
                 }
                 Some("resolve") => {
                     let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
-                    let parent = args.get(3).ok_or("task bug resolve requires <parent-task> <bug-name>")?;
-                    let bug_name = args.get(4).ok_or("task bug resolve requires <parent-task> <bug-name>")?;
-                    let note = args.get(5).map(|s| s.as_str()).unwrap_or("");
+                    let bug_id = args
+                        .get(3)
+                        .ok_or("task bug resolve requires <bug-id>")?;
+                    let note = args.get(4).map(|s| s.as_str()).unwrap_or("");
                     let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
-                    println!("{}", emb_agent_core::bug_ops::bug_resolve(&ext_dir, parent, bug_name, note));
+                    println!(
+                        "{}",
+                        emb_agent_core::bug_ops::bug_resolve(&ext_dir, bug_id, note)
+                    );
                     Ok(())
                 }
                 _ => Err("task bug: expected add, list, or resolve".to_string()),
