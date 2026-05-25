@@ -47,6 +47,16 @@ fn run_variant(args: &[String]) -> Result<(), String> {
             );
             Ok(())
         }
+        Some("adopt") => {
+            let name = args.get(2).ok_or("variant adopt requires <name>")?;
+            let src = option_value(args, "--src").unwrap_or_else(|| format!("firmware/{name}"));
+            let clean_root = args.iter().any(|arg| arg == "--clean-root");
+            println!(
+                "{}",
+                emb_agent_core::variant_ops::variant_adopt(&ext_dir, name, &src, clean_root)
+            );
+            Ok(())
+        }
         Some("create") => {
             let name = args.get(2).ok_or("variant create requires <name>")?;
             let mcu = option_value(args, "--mcu").unwrap_or_default();
@@ -79,7 +89,7 @@ fn run_variant(args: &[String]) -> Result<(), String> {
             );
             Ok(())
         }
-        _ => Err("variant: expected list, status, create, use, fork, or diff".to_string()),
+        _ => Err("variant: expected list, status, adopt, create, use, fork, or diff".to_string()),
     }
 }
 
@@ -670,7 +680,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "emb-agent-rs\n\nUSAGE:\n  Session:    start, next, status, health, pause [note], resume\n  Tasks:      task list, task show <name>, task add <summary>, task activate <name>, task resolve <name> [note], resolve <name>\n  Chips:      chip diff --from X --to Y, chip swap --from X --to Y [--confirm]\n  Variants:   variant list|status|create|use|fork|diff (workspace alias)\n  Actions:    scan, plan, do, review, verify, debug [--cwd DIR]\n  Truth:      prd status, doc list, knowledge status, session show, context show\n  Hardware:   declare hardware --mcu <name> [--package <name>], bootstrap status\n  Hooks:      hook session-start|statusline|context-monitor, statusline\n  Diag:       diagnostics hooks|project|state-paths --json\n  Options:    --cwd DIR, --brief, --json\n"
+        "emb-agent-rs\n\nUSAGE:\n  Session:    start, next, status, health, pause [note], resume\n  Tasks:      task list, task show <name>, task add <summary>, task activate <name>, task resolve <name> [note], resolve <name>\n  Chips:      chip diff --from X --to Y, chip swap --from X --to Y [--confirm]\n  Variants:   variant list|status|adopt|create|use|fork|diff (workspace alias)\n  Actions:    scan, plan, do, review, verify, debug [--cwd DIR]\n  Truth:      prd status, doc list, knowledge status, session show, context show\n  Hardware:   declare hardware --mcu <name> [--package <name>], bootstrap status\n  Hooks:      hook session-start|statusline|context-monitor, statusline\n  Diag:       diagnostics hooks|project|state-paths --json\n  Options:    --cwd DIR, --brief, --json\n"
     );
 }
 

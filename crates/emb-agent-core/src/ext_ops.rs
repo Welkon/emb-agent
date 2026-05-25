@@ -96,7 +96,7 @@ pub fn commands_list() -> String {
     let commands = [
         "start next status health pause resume",
         "task list show add activate resolve bug add/list/resolve",
-        "variant list status create use fork diff",
+        "variant list status adopt create use fork diff",
         "workspace list status create use fork diff (alias)",
         "chip diff swap",
         "scan plan do review verify debug",

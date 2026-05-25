@@ -55,8 +55,8 @@ pub use render::{
 };
 pub use scan::{ScanOutput, ScanWorkflowStage, build_scan_output, build_scan_output_json};
 pub use variant_ops::{
-    active_state_dir, active_variant_dir, active_variant_name, variant_create, variant_diff,
-    variant_fork, variant_list, variant_status, variant_use,
+    active_state_dir, active_variant_dir, active_variant_name, variant_adopt, variant_create,
+    variant_diff, variant_fork, variant_list, variant_status, variant_use,
 };
 pub use state_paths::{
     ProjectStateFilePaths, ProjectStatePaths, StatePathConfig, build_project_state_file_paths,

@@ -107,6 +107,59 @@ pub fn variant_use(ext_dir: &Path, name: &str) -> String {
     )
 }
 
+pub fn variant_adopt(ext_dir: &Path, name: &str, src: &str, clean_root: bool) -> String {
+    let name = safe_name(name);
+    if name.is_empty() {
+        return "{\"status\":\"error\",\"error\":{\"code\":\"bad-name\",\"message\":\"variant name is required\"}}".to_string();
+    }
+    let dir = ext_dir.join(VARIANTS_DIR).join(&name);
+    if dir.exists() {
+        return format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"exists\",\"message\":\"Variant already exists: {}\"}}}}",
+            name
+        );
+    }
+
+    create_variant_dirs(&dir);
+    for file in ["project.json", "hw.yaml", "req.yaml", ".current-task"] {
+        let from = ext_dir.join(file);
+        if from.exists() {
+            let _ = fs::copy(&from, dir.join(file));
+        }
+    }
+    for directory in ["tasks", "wiki"] {
+        let from = ext_dir.join(directory);
+        if from.exists() {
+            let _ = copy_dir_filtered(&from, &dir.join(directory));
+        }
+    }
+
+    let hw = read_hw(&dir);
+    let src = if src.is_empty() { format!("firmware/{}", name) } else { src.to_string() };
+    seed_variant_files(ext_dir, &dir, &name, &hw.model, &hw.package, &src);
+    let _ = fs::write(ext_dir.join(ACTIVE_VARIANT_FILE), &name);
+
+    if clean_root {
+        for file in ["hw.yaml", "req.yaml"] {
+            let _ = fs::remove_file(ext_dir.join(file));
+        }
+        for directory in ["tasks", "wiki"] {
+            let _ = fs::remove_dir_all(ext_dir.join(directory));
+        }
+        write_variant_readme(ext_dir);
+    }
+
+    format!(
+        "{{\"status\":\"ok\",\"adopted\":true,\"active\":{},\"variant\":{{\"name\":{},\"mcu\":{},\"package\":{},\"src\":{}}},\"clean_root\":{},\"next\":\"next\",\"next_instructions\":\"Root state adopted as variant. Run `emb-agent-rs next --json` to continue.\"}}",
+        json_quote(&name),
+        json_quote(&name),
+        json_quote(&hw.model),
+        json_quote(&hw.package),
+        json_quote(&src),
+        clean_root
+    )
+}
+
 pub fn variant_create(ext_dir: &Path, name: &str, mcu: &str, package: &str, src: &str) -> String {
     let name = safe_name(name);
     if name.is_empty() {
@@ -246,6 +299,27 @@ fn list_variant_infos(ext_dir: &Path, active: &str) -> Vec<VariantInfo> {
 fn create_variant_dirs(dir: &Path) {
     let _ = fs::create_dir_all(dir.join("tasks"));
     let _ = fs::create_dir_all(dir.join("wiki"));
+}
+
+fn write_variant_readme(ext_dir: &Path) {
+    let content = r#"# emb-agent state
+
+This project uses product variants.
+
+Active variant is recorded in `.emb-agent/active-variant`.
+Variant-specific truth lives under `.emb-agent/variants/<variant>/`:
+
+- project.json
+- hw.yaml
+- req.yaml
+- tasks/
+- wiki/
+
+Shared product-level state remains at root: project.json, bugs/, cache/, specs/, migrations/.
+
+Do not treat root `.emb-agent/` as a chip hardware context when `active-variant` exists.
+"#;
+    let _ = fs::write(ext_dir.join("README.md"), content);
 }
 
 fn seed_variant_files(ext_dir: &Path, dir: &Path, name: &str, mcu: &str, package: &str, src: &str) {
