@@ -100,23 +100,67 @@ pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
     lines.join("\n")
 }
 
-pub fn build_host_session_start_payload(host: &str, message: &str) -> String {
+pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
+    if !snapshot.initialized && snapshot.project_root.is_empty() {
+        return String::new();
+    }
+
+    let mut lines = vec![
+        "# Hi\n".to_string(),
+    ];
+
+    if !snapshot.mcu_model.is_empty() {
+        let chip = if snapshot.mcu_package.is_empty() {
+            snapshot.mcu_model.clone()
+        } else {
+            format!("{} ({})", snapshot.mcu_model, snapshot.mcu_package)
+        };
+        lines.push(format!("**当前芯片**: {}\n", chip));
+    }
+
+    if snapshot.open_tasks > 0 {
+        lines.push(format!("**待处理任务**: {} 个\n", snapshot.open_tasks));
+    }
+
+    if let Some(task) = &snapshot.current_task {
+        lines.push(format!("**当前任务**: `{}` — {} [{}]\n", task.name, task.title, task.priority));
+    }
+
+    lines.extend([
+        "\n接下来你可以：".to_string(),
+        "1. **直接说出需求**（比如「帮我检查原理图」）— 我会自动分配任务".to_string(),
+        "2. 输入 `/emb:next` — 查看推荐工作流".to_string(),
+        "3. 输入 `/emb:task list` — 浏览任务列表".to_string(),
+        "4. 输入 `/emb:status` — 查看项目状态".to_string(),
+    ]);
+
+    lines.join("\n")
+}
+
+pub fn build_host_session_start_payload(host: &str, message: &str, welcome: &str) -> String {
     let event_name = "SessionStart";
+    let welcome_json = if welcome.is_empty() {
+        "null".to_string()
+    } else {
+        json_quote(welcome)
+    };
     match host {
         "cursor" => format!("{{\"additional_context\":{}}}", json_quote(message)),
         "codex" => format!(
-            "{{\"suppressOutput\":true,\"systemMessage\":{},\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{}}}}}",
+            "{{\"suppressOutput\":true,\"systemMessage\":{},\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{},\"welcome\":{}}}}}",
             json_quote(&format!(
                 "emb-agent rust context injected ({} chars)",
                 message.len()
             )),
             json_quote(event_name),
-            json_quote(message)
+            json_quote(message),
+            welcome_json
         ),
         _ => format!(
-            "{{\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{}}}}}",
+            "{{\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{},\"welcome\":{}}}}}",
             json_quote(event_name),
-            json_quote(message)
+            json_quote(message),
+            welcome_json
         ),
     }
 }

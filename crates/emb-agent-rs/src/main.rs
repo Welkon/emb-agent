@@ -8,7 +8,8 @@ use emb_agent_core::{
     build_next_json, build_plan_output_json, build_project_state_json,
     build_project_state_paths_json, build_review_output_json, build_scan_output_json,
     build_session_context, build_start_json, build_status_json, build_statusline,
-    build_task_list_json, build_task_show_json, build_verify_output_json, get_project_state_paths,
+    build_task_list_json, build_task_show_json, build_verify_output_json,
+    build_welcome_message, get_project_state_paths,
     json_string_field, project_state_from_cwd, read_all_tasks, read_task, snapshot_from_cwd,
     HookPlan, ProjectSnapshot, StatePathConfig,
 };
@@ -537,7 +538,8 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
             let snapshot = snapshot_from_cwd(&cwd);
             let context = build_session_context(&snapshot);
-            println!("{}", build_host_session_start_payload(&host, &context));
+            let welcome = build_welcome_message(&snapshot);
+            println!("{}", build_host_session_start_payload(&host, &context, &welcome));
             Ok(())
         }
         "statusline" => {
