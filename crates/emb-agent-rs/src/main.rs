@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 
 use emb_agent_core::{
     build_chip_diff_json, build_chip_swap_confirm_json, build_chip_swap_json,
-    build_context_monitor_output, build_debug_output_json, build_health_json, build_hook_plan,
+    build_context_monitor_output, build_debug_output_json,
+    build_do_output_json, build_health_json, build_hook_plan,
     build_hook_plan_json, build_hooks_diagnostics_json, build_host_session_start_payload,
     build_next_json, build_plan_output_json, build_project_state_json,
     build_project_state_paths_json, build_review_output_json, build_scan_output_json,
@@ -39,6 +40,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         "scan" => action_cmd(&args, build_scan_output_json),
         "plan" => action_cmd(&args, build_plan_output_json),
+        "do" => action_cmd(&args, build_do_output_json),
         "review" => action_cmd(&args, build_review_output_json),
         "verify" => action_cmd(&args, build_verify_output_json),
         "debug" => action_cmd(&args, build_debug_output_json),

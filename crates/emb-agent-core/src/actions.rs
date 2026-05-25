@@ -357,3 +357,57 @@ pub fn build_verify_output_json(snapshot: &ProjectSnapshot) -> String {
 pub fn build_debug_output_json(snapshot: &ProjectSnapshot) -> String {
     serde_json::to_string_pretty(&build_debug_output(snapshot)).unwrap_or_default()
 }
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DoOutput {
+    pub status: String,
+    pub action: String,
+    pub active_task: Option<TaskInfo>,
+    pub recommendation: String,
+    pub instructions: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TaskInfo {
+    pub name: String,
+    pub title: String,
+    pub phase: String,
+    pub priority: String,
+}
+
+pub fn build_do_output(snapshot: &ProjectSnapshot) -> DoOutput {
+    let active_task = snapshot.current_task.as_ref().map(|t| TaskInfo {
+        name: t.name.clone(),
+        title: t.title.clone(),
+        phase: "implement".to_string(),
+        priority: t.priority.clone(),
+    });
+
+    let (recommendation, instructions) = if snapshot.current_task.is_some() {
+        (
+            "Implement the active task",
+            "Active task exists. Proceed with implementation:\n\
+1. Read the task PRD (.emb-agent/tasks/<task>/task.json)\n\
+2. Write firmware code in src/\n\
+3. Compile and verify with `emb-agent-rs verify`\n\
+4. After passing, run `emb-agent-rs review`".to_string(),
+        )
+    } else {
+        (
+            "No active task",
+            "No active task. Run `emb-agent-rs next` to get routing recommendation.".to_string(),
+        )
+    };
+
+    DoOutput {
+        status: "ok".to_string(),
+        action: "do".to_string(),
+        active_task,
+        recommendation: recommendation.to_string(),
+        instructions,
+    }
+}
+
+pub fn build_do_output_json(snapshot: &ProjectSnapshot) -> String {
+    serde_json::to_string_pretty(&build_do_output(snapshot)).unwrap_or_default()
+}

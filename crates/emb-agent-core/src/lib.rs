@@ -14,7 +14,8 @@ pub mod task_ops;
 
 pub use actions::{
     DebugOutput, PlanOutput, ReviewOutput, VerifyOutput, WorkflowStage,
-    build_debug_output, build_debug_output_json, build_plan_output, build_plan_output_json,
+    build_debug_output, build_debug_output_json, build_do_output, build_do_output_json,
+    build_plan_output, build_plan_output_json,
     build_review_output, build_review_output_json, build_verify_output,
     build_verify_output_json,
 };
