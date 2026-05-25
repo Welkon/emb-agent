@@ -101,10 +101,16 @@ pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
         "</current-state>".to_string(),
         String::new(),
         "<ready>".to_string(),
-        "Startup context is already injected above.".to_string(),
-        "Do NOT re-run `start` on subsequent turns. Trust the Recommended next command from above.".to_string(),
-        "Only re-run `start` when: (a) the user explicitly asks, or (b) you just started a brand-new session.".to_string(),
-        "On every turn, follow the active task or the `next` recommendation without re-querying start.".to_string(),
+        "HARD GATE — your first action in this session:".to_string(),
+        format!(
+            "Run `emb-agent-rs {} --json` NOW and follow its output exactly. Do NOT manually explore files or decide next steps on your own until you have its recommendation.",
+            snapshot.recommended_command
+        ),
+        String::new(),
+        "Rules:".to_string(),
+        "- Do NOT re-run `start` on subsequent turns.".to_string(),
+        "- The Recommended command IS a CLI command — execute it, don't treat it as a conversational hint.".to_string(),
+        "- After running the recommended command, follow its output.".to_string(),
         "</ready>".to_string(),
     ]);
 
