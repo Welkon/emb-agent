@@ -290,20 +290,8 @@ export default async function (pi, config) {
     startupContextInjected = false;
     lastMonitorMessage = "";
     updateStatus(ctx);
-
-    // Show welcome message to user
-    const welcome = runWelcomeMessage(ctx.cwd);
-    if (ctx.hasUI && welcome) {
+    if (ctx.hasUI) {
       ctx.ui.notify("emb-agent ready", "info");
-      pi.sendMessage({
-        customType: "emb-agent-welcome",
-        content: welcome,
-        display: true,
-        details: { kind: "welcome" }
-      }, {
-        deliverAs: "nextTurn",
-        triggerTurn: false
-      });
     }
   });
 
@@ -312,9 +300,13 @@ export default async function (pi, config) {
       startupContext = runSessionStart(ctx.cwd);
     }
     if (!startupContext || startupContextInjected) return undefined;
+    const welcome = runWelcomeMessage(ctx.cwd);
     startupContextInjected = true;
+    const prefix = welcome
+      ? `${welcome}\n\n---\n\nThe above welcome was shown to the user. Greet briefly and wait for their request.\n\n`
+      : "";
     return {
-      systemPrompt: `${event.systemPrompt}\n\n${startupContext}`
+      systemPrompt: `${prefix}${event.systemPrompt}\n\n${startupContext}`
     };
   });
 
