@@ -412,7 +412,9 @@ mod tests {
         let message = "hello\nworld";
         assert!(build_host_session_start_payload("pi", message, "").contains("hookSpecificOutput"));
         assert!(build_host_session_start_payload("codex", message, "").contains("suppressOutput"));
-        assert!(build_host_session_start_payload("cursor", message, "").contains("additional_context"));
+        assert!(
+            build_host_session_start_payload("cursor", message, "").contains("additional_context")
+        );
     }
 
     #[test]

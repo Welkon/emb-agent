@@ -250,7 +250,6 @@ pub fn executor_run(_ext_dir: &Path, name: &str) -> String {
     format!("{{\"status\":\"ok\",\"executor\":{},\"note\":\"Executor framework not yet migrated to Rust\"}}", json_quote(name))
 }
 
-
 /// Ingest doc (registers PDF in cache index)
 pub fn ingest_doc(ext_dir: &Path, file: &str, kind: &str) -> String {
     let cache_dir = ext_dir.join("cache").join("docs");
@@ -284,7 +283,10 @@ pub fn ingest_doc(ext_dir: &Path, file: &str, kind: &str) -> String {
     if let Some(docs) = index.get_mut("documents").and_then(|d| d.as_array_mut()) {
         docs.push(entry);
     }
-    let _ = fs::write(&index_path, serde_json::to_string_pretty(&index).unwrap_or_default());
+    let _ = fs::write(
+        &index_path,
+        serde_json::to_string_pretty(&index).unwrap_or_default(),
+    );
 
     format!(
         "{{\"status\":\"ok\",\"ingested\":true,\"doc_id\":{},\"note\":\"MinerU parsing not yet in Rust. Use Node runtime for full ingestion.\"}}",
@@ -294,7 +296,8 @@ pub fn ingest_doc(ext_dir: &Path, file: &str, kind: &str) -> String {
 
 /// Support/adapter status
 pub fn support_status(_ext_dir: &Path) -> String {
-    r#"{"status":"ok","sources":[],"note":"Chip support source management not yet in Rust"}"#.to_string()
+    r#"{"status":"ok","sources":[],"note":"Chip support source management not yet in Rust"}"#
+        .to_string()
 }
 
 /// Dispatch orchestrate
@@ -320,8 +323,14 @@ pub fn prefs_show(ext_dir: &Path) -> String {
     }
     let content = fs::read_to_string(&project_path).unwrap_or_default();
     let proj: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
-    let prefs = proj.get("preferences").cloned().unwrap_or(serde_json::json!({"truth_source_mode":"hardware_first"}));
-    format!("{{\"status\":\"ok\",\"prefs\":{}}}", serde_json::to_string(&prefs).unwrap_or_default())
+    let prefs = proj
+        .get("preferences")
+        .cloned()
+        .unwrap_or(serde_json::json!({"truth_source_mode":"hardware_first"}));
+    format!(
+        "{{\"status\":\"ok\",\"prefs\":{}}}",
+        serde_json::to_string(&prefs).unwrap_or_default()
+    )
 }
 
 /// Tool run
@@ -336,7 +345,8 @@ pub fn snippet_draft(_ext_dir: &Path, _title: &str) -> String {
 
 /// Workflow status
 pub fn workflow_status(_ext_dir: &Path) -> String {
-    r#"{"status":"ok","workflow":"active","note":"Workflow management not yet in Rust"}"#.to_string()
+    r#"{"status":"ok","workflow":"active","note":"Workflow management not yet in Rust"}"#
+        .to_string()
 }
 
 /// Orchestrate status

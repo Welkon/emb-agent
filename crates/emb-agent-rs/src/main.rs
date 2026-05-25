@@ -41,7 +41,10 @@ fn run_variant(args: &[String]) -> Result<(), String> {
         }
         Some("use") => {
             let name = args.get(2).ok_or("variant use requires <name>")?;
-            println!("{}", emb_agent_core::variant_ops::variant_use(&ext_dir, name));
+            println!(
+                "{}",
+                emb_agent_core::variant_ops::variant_use(&ext_dir, name)
+            );
             Ok(())
         }
         Some("create") => {
@@ -49,7 +52,10 @@ fn run_variant(args: &[String]) -> Result<(), String> {
             let mcu = option_value(args, "--mcu").unwrap_or_default();
             let package = option_value(args, "--package").unwrap_or_default();
             let src = option_value(args, "--src").unwrap_or_else(|| format!("firmware/{name}"));
-            println!("{}", emb_agent_core::variant_ops::variant_create(&ext_dir, name, &mcu, &package, &src));
+            println!(
+                "{}",
+                emb_agent_core::variant_ops::variant_create(&ext_dir, name, &mcu, &package, &src)
+            );
             Ok(())
         }
         Some("fork") => {
@@ -58,13 +64,19 @@ fn run_variant(args: &[String]) -> Result<(), String> {
             let mcu = option_value(args, "--mcu").unwrap_or_default();
             let package = option_value(args, "--package").unwrap_or_default();
             let src = option_value(args, "--src").unwrap_or_default();
-            println!("{}", emb_agent_core::variant_ops::variant_fork(&ext_dir, from, to, &mcu, &package, &src));
+            println!(
+                "{}",
+                emb_agent_core::variant_ops::variant_fork(&ext_dir, from, to, &mcu, &package, &src)
+            );
             Ok(())
         }
         Some("diff") => {
             let a = args.get(2).ok_or("variant diff requires <a> <b>")?;
             let b = args.get(3).ok_or("variant diff requires <a> <b>")?;
-            println!("{}", emb_agent_core::variant_ops::variant_diff(&ext_dir, a, b));
+            println!(
+                "{}",
+                emb_agent_core::variant_ops::variant_diff(&ext_dir, a, b)
+            );
             Ok(())
         }
         _ => Err("variant: expected list, status, create, use, fork, or diff".to_string()),
@@ -222,7 +234,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
                     let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
                     println!(
                         "{}",
-                        emb_agent_core::bug_ops::bug_list(&ext_dir, parent, None, option_value(&args, "--variant").as_deref())
+                        emb_agent_core::bug_ops::bug_list(
+                            &ext_dir,
+                            parent,
+                            None,
+                            option_value(&args, "--variant").as_deref()
+                        )
                     );
                     Ok(())
                 }
