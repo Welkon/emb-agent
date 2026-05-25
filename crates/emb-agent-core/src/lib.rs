@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod bug_ops;
 pub mod chip_diff;
 pub mod context_monitor;
 pub mod ext_ops;
@@ -12,6 +13,7 @@ pub mod scan;
 pub mod state_paths;
 pub mod task_ops;
 
+pub use bug_ops::{bug_add, bug_list, bug_resolve};
 pub use actions::{
     DebugOutput, PlanOutput, ReviewOutput, VerifyOutput, WorkflowStage,
     build_debug_output, build_debug_output_json, build_do_output, build_do_output_json,

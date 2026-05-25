@@ -201,13 +201,22 @@ pub fn build_start_json(snapshot: &ProjectSnapshot) -> String {
 
 pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
     if snapshot.current_task.is_some() {
-        ("do".to_string(), "Active task exists. Run `emb-agent-rs do` to continue implementation.".to_string())
+        (
+            "do".to_string(),
+            "Active task exists. Run `emb-agent-rs do` to continue implementation.".to_string(),
+        )
     } else if snapshot.open_tasks > 0 {
         ("activate".to_string(), "Tasks exist but none active. Run `emb-agent-rs task list` to see tasks, then `emb-agent-rs task activate <name>` to start working.".to_string())
     } else if snapshot.bootstrap_status != "ready" {
-        ("bootstrap".to_string(), "Project needs bootstrap. Run `emb-agent-rs bootstrap status`.".to_string())
+        (
+            "bootstrap".to_string(),
+            "Project needs bootstrap. Run `emb-agent-rs bootstrap status`.".to_string(),
+        )
     } else {
-        ("task add".to_string(), "No tasks exist. Create one with `emb-agent-rs task add <summary>`.".to_string())
+        (
+            "task add".to_string(),
+            "No tasks exist. Create one with `emb-agent-rs task add <summary>`.".to_string(),
+        )
     }
 }
 

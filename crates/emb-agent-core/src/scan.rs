@@ -193,7 +193,10 @@ pub fn build_scan_output_json(snapshot: &ProjectSnapshot) -> String {
     let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
     if let Some(obj) = json.as_object_mut() {
         obj.insert("next".to_string(), serde_json::Value::String(next));
-        obj.insert("next_instructions".to_string(), serde_json::Value::String(next_instructions));
+        obj.insert(
+            "next_instructions".to_string(),
+            serde_json::Value::String(next_instructions),
+        );
     }
     serde_json::to_string_pretty(&json).unwrap_or_default()
 }
