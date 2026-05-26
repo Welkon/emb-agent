@@ -33,7 +33,7 @@ async function runEmbAgent(
   args: string[],
   cwd: string,
 ): Promise<EmbAgentResult | null> {
-  const binPath = join(cwd, ".omp", "emb-agent", "bin", "emb-agent.cjs");
+  const binPath = join(cwd, ".pi", "emb-agent", "bin", "emb-agent.cjs");
   const file = Bun.file(binPath);
   if (!(await file.exists())) return null;
 
@@ -162,7 +162,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("emb-status", {
     description: "Show emb-agent project status",
     handler: async (_args, ctx) => {
-      const result = await runEmbAgent(["external", "status"], ctx.cwd);
+      const result = await runEmbAgent(["status", "--brief"], ctx.cwd);
       if (!result) {
         ctx.ui.notify("emb-agent not found or not initialized", "warning");
         return;
@@ -195,7 +195,7 @@ export default function (pi: ExtensionAPI) {
       const result = await runEmbAgent(["init"], ctx.cwd);
       if (!result) {
         ctx.ui.notify(
-          "Failed to init emb-agent. Run: npx emb-agent --target omp",
+          "Failed to init emb-agent. Run: npx emb-agent --target pi",
           "warning",
         );
         return;

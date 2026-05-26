@@ -15,4 +15,4 @@
 
 ## Windsurf Notes
 
-- <!-- FILL: Windsurf-specific workflow rule -->
+- Treat `agent_protocol.gate` fields from emb-agent JSON as authoritative; execute allowed host actions yourself and never ask the user to run emb-agent commands manually.

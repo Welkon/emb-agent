@@ -49,34 +49,45 @@ function binarySrc() { return path.join(RUST_BIN_DIR, binaryName()); }
 // ── Download binary from GitHub Releases ──────────────────────────
 
 function downloadBinary(dest, callback) {
-	var key = platformKey();
-	var ext = key.startsWith("windows") ? ".exe" : "";
-	// Try github releases: https://github.com/Welkon/emb-agent/releases/download/v<VERSION>/emb-agent-rs-<platform><ext>
+	var tmp = dest + ".download";
+	var settled = false;
+	function done(success) {
+		if (settled) return;
+		settled = true;
+		if (!success) {
+			try { fs.unlinkSync(tmp); } catch (_) {}
+		}
+		callback(success);
+	}
+	function finishFile(file) {
+		file.close(function () {
+			try { fs.renameSync(tmp, dest); } catch (_) { done(false); return; }
+			try { fs.chmodSync(dest, 0o755); } catch (_) {}
+			done(true);
+		});
+	}
+	function fetch(url, redirects) {
+		var file = fs.createWriteStream(tmp);
+		var req = https.get(url, function (res) {
+			if ((res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) && res.headers.location && redirects > 0) {
+				res.resume();
+				file.close(function () { fetch(res.headers.location, redirects - 1); });
+				return;
+			}
+			if (res.statusCode !== 200) {
+				res.resume();
+				file.close(function () { done(false); });
+				return;
+			}
+			res.pipe(file);
+			file.on("finish", function () { finishFile(file); });
+		});
+		req.on("error", function () { file.close(function () { done(false); }); });
+		file.on("error", function () { done(false); });
+	}
 	var url = "https://github.com/Welkon/emb-agent/releases/download/v" + VERSION + "/" + binaryName();
 	console.log("    Downloading " + binaryName() + " from GitHub Releases...");
-	var file = fs.createWriteStream(dest);
-
-	https.get(url, function (res) {
-		if (res.statusCode === 302) {
-			https.get(res.headers.location, function (r2) {
-				r2.pipe(file);
-				file.on("finish", function () {
-					file.close();
-					try { fs.chmodSync(dest, 0o755); } catch (_) {}
-					callback(true);
-				});
-			}).on("error", function () { callback(false); });
-		} else if (res.statusCode === 200) {
-			res.pipe(file);
-			file.on("finish", function () {
-				file.close();
-				try { fs.chmodSync(dest, 0o755); } catch (_) {}
-				callback(true);
-			});
-		} else {
-			callback(false);
-		}
-	}).on("error", function () { callback(false); });
+	fetch(url, 3);
 }
 
 function deployRustBinary(embDir, callback) {
@@ -194,14 +205,15 @@ function installForHost(projectRoot, host) {
 	ensureDir(path.join(embDir, "agents"));
 
 	// Rust binary (async download)
-	var done = 0;
+	var finished = false;
+	var fallbackTimer = setTimeout(checkDone, 30000);
 	function checkDone() {
-		done++;
-		if (done >= 2) finish();
+		if (finished) return;
+		finished = true;
+		clearTimeout(fallbackTimer);
+		finish();
 	}
 	deployRustBinary(embDir, checkDone);
-	// Fallback timer: if download stalls, proceed without binary after 30s
-	setTimeout(checkDone, 30000);
 
 	function finish() {
 		// Thin Node.js wrapper

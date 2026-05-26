@@ -206,6 +206,139 @@ fn common_user_paths_smoke() {
 }
 
 #[test]
+fn task_add_handles_unicode_and_current_timestamps() {
+    let project = TestProject::new("unicode-task");
+
+    let expected_name = "测".repeat(31);
+    let summary = "测".repeat(31);
+    let output = run(&project, &["task", "add", &summary]);
+    let value: serde_json::Value = serde_json::from_str(&output).expect("task add json");
+    assert_eq!(value["status"], "ok", "task add output: {output}");
+    assert_eq!(value["task"]["name"], expected_name);
+
+    let task_json = fs::read_to_string(
+        project
+            .path()
+            .join(".emb-agent")
+            .join("tasks")
+            .join(&expected_name)
+            .join("task.json"),
+    )
+    .expect("read unicode task");
+    let task: serde_json::Value = serde_json::from_str(&task_json).expect("task json");
+    let created_at = task["createdAt"].as_str().expect("createdAt string");
+    assert_timestamp_year_is_current(created_at);
+}
+
+#[test]
+fn task_and_bug_add_reject_empty_slugs() {
+    let project = TestProject::new("bad-slug");
+
+    let task_output = run(&project, &["task", "add", "!!!"]);
+    let task_value: serde_json::Value = serde_json::from_str(&task_output).expect("task error json");
+    assert_eq!(task_value["status"], "error", "task output: {task_output}");
+    assert_eq!(task_value["error"]["code"], "bad-name");
+
+    let bug_output = run(&project, &["task", "bug", "add", "pwm-led", "!!!"]);
+    let bug_value: serde_json::Value = serde_json::from_str(&bug_output).expect("bug error json");
+    assert_eq!(bug_value["status"], "error", "bug output: {bug_output}");
+    assert_eq!(bug_value["error"]["code"], "bad-name");
+}
+
+#[test]
+fn host_scaffolds_have_no_unresolved_fill_markers() {
+    let root = repo_root();
+    let scaffold_root = root.join("runtime").join("scaffolds").join("shells");
+    let mut offenders = Vec::new();
+    collect_files_with(&scaffold_root, "<!-- FILL:", &mut offenders);
+    assert!(offenders.is_empty(), "unresolved scaffold markers: {offenders:?}");
+}
+
+#[test]
+fn pi_extension_uses_pi_runtime_and_valid_cli_commands() {
+    let root = repo_root();
+    let pi_extension = fs::read_to_string(
+        root.join("runtime")
+            .join("scaffolds")
+            .join("shells")
+            .join(".pi")
+            .join("extensions")
+            .join("emb-agent.ts"),
+    )
+    .expect("read pi extension");
+
+    assert!(
+        pi_extension.contains("join(cwd, \".pi\", \"emb-agent\", \"bin\", \"emb-agent.cjs\")"),
+        "Pi extension must resolve the .pi runtime directory"
+    );
+    assert!(
+        !pi_extension.contains("[\"external\", \"status\"]"),
+        "Pi extension must not reference the removed external status command"
+    );
+    assert!(
+        pi_extension.contains("[\"status\", \"--brief\"]"),
+        "Pi status command must route through status --brief"
+    );
+    assert!(
+        pi_extension.contains("npx emb-agent --target pi"),
+        "Pi init guidance must reference the pi target"
+    );
+}
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("repo root")
+        .to_path_buf()
+}
+
+fn collect_files_with(dir: &Path, needle: &str, offenders: &mut Vec<PathBuf>) {
+    for entry in fs::read_dir(dir).expect("read scaffold dir") {
+        let entry = entry.expect("scaffold entry");
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files_with(&path, needle, offenders);
+        } else if fs::read_to_string(&path)
+            .map(|content| content.contains(needle))
+            .unwrap_or(false)
+        {
+            offenders.push(path);
+        }
+    }
+}
+
+fn assert_timestamp_year_is_current(timestamp: &str) {
+    let observed_year: i64 = timestamp
+        .get(0..4)
+        .expect("timestamp year slice")
+        .parse()
+        .expect("timestamp year");
+    assert_eq!(observed_year, current_utc_year(), "timestamp: {timestamp}");
+}
+
+fn current_utc_year() -> i64 {
+    let mut remaining = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_secs()
+        / 86_400;
+    let mut year = 1970;
+    loop {
+        let days = if is_leap_year(year) { 366 } else { 365 };
+        if remaining < days {
+            return year;
+        }
+        remaining -= days;
+        year += 1;
+    }
+}
+
+fn is_leap_year(year: i64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+}
+
+#[test]
 fn knowledge_query_and_explain_accept_named_options_after_cwd() {
     let project = TestProject::new("knowledge");
 
@@ -227,11 +360,7 @@ fn knowledge_query_and_explain_accept_named_options_after_cwd() {
 
 #[test]
 fn command_docs_are_help_routable() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("repo root")
-        .to_path_buf();
+    let repo_root = repo_root();
     let commands_dir = repo_root.join("commands").join("emb");
     let bin = emb_agent_bin();
 

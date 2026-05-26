@@ -25,4 +25,4 @@
 - Structure may be templated, content may not.
 - Ask the anti-template question before adding defaults.
 - The template should remember harness infrastructure so the skill author can focus on project truth.
-- <!-- FILL: Codex local instruction that every real task must follow -->
+- Treat `agent_protocol.gate` fields from emb-agent JSON as authoritative; execute allowed host actions yourself and never ask the user to run emb-agent commands manually.

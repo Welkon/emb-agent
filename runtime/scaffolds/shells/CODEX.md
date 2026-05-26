@@ -26,4 +26,4 @@
 - Reuse the shared protocol blocks from `templates/protocol-blocks/`.
 - Do not add project-specific defaults here without passing the anti-template test.
 - The template should remember harness infrastructure so the skill author can focus on project truth.
-- <!-- FILL: Codex-specific workflow rule -->
+- Treat `agent_protocol.gate` fields from emb-agent JSON as authoritative; execute allowed host actions yourself and never ask the user to run emb-agent commands manually.

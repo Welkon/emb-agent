@@ -16,4 +16,4 @@
 
 ## Required Completion
 
-- <!-- FILL: exact closure rule -->
+- Before closure, verify the requested behavior end-to-end and record any durable workflow lesson in the project knowledge surface.

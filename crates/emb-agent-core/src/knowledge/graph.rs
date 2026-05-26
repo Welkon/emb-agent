@@ -342,11 +342,7 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                 nodes.push(GraphNode {
                     id,
                     node_type: "requirement".to_string(),
-                    label: if goal.len() > 40 {
-                        goal[..40].to_string()
-                    } else {
-                        goal.to_string()
-                    },
+                    label: goal.chars().take(40).collect::<String>(),
                     summary: goal.to_string(),
                     status: "active".to_string(),
                     category: String::new(),

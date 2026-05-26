@@ -34,24 +34,11 @@ pub fn task_add_with_deps(
     }
 
     // Generate a unique task name from summary
-    let name = summary
-        .to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string();
-    let name = if name.len() > 60 {
-        name[..60].to_string()
-    } else {
-        name
-    };
+    let name = slugify_task_name(summary);
+    if name.is_empty() {
+        return "{\"status\":\"error\",\"error\":{\"code\":\"bad-name\",\"message\":\"Task summary must contain at least one alphanumeric character\"}}".to_string();
+    }
+
 
     let task_dir = tasks_dir.join(&name);
     if task_dir.exists() {
@@ -63,11 +50,13 @@ pub fn task_add_with_deps(
     let _ = fs::create_dir_all(&task_dir);
 
     let now = chrono_now();
+    let task_id_suffix = truncate_chars(&name, 8);
     let task_id = format!(
         "{}-{}",
         now.split('T').next().unwrap_or("task"),
-        &name[..8.min(name.len())]
+        task_id_suffix
     );
+
 
     let task = json!({
         "id": task_id,
@@ -920,6 +909,26 @@ fn first_non_empty(values: &[String]) -> String {
         .unwrap_or_default()
 }
 
+fn slugify_task_name(name: &str) -> String {
+    let slug = name
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    truncate_chars(slug.trim_matches('-'), 60)
+}
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
+}
+
 fn safe_task_name(name: &str) -> String {
     let safe = name
         .trim()
@@ -943,34 +952,5 @@ fn safe_task_name(name: &str) -> String {
 }
 
 pub fn chrono_now() -> String {
-    // ISO 8601 without chrono dependency
-    let duration = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = duration.as_secs();
-    // Approximate: YYYY-MM-DDTHH:MM:SS.sssZ
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let mins = (time_secs % 3600) / 60;
-    let secs_rem = time_secs % 60;
-    // Simple date calculation from epoch (2026)
-    let total_days = days as i64 + 19719; // days from 1970-01-01 to 2026-01-01 approx
-    let year = 1970 + (total_days / 365);
-    let day_of_year = total_days % 365;
-    let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let mut month = 1;
-    let mut remaining = day_of_year;
-    for (i, &md) in month_days.iter().enumerate() {
-        if remaining < md as i64 {
-            month = i + 1;
-            break;
-        }
-        remaining -= md as i64;
-    }
-    let day = remaining + 1;
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.000Z",
-        year, month, day, hours, mins, secs_rem
-    )
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
