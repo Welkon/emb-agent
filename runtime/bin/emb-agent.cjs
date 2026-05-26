@@ -7,26 +7,26 @@ const fs = require("fs");
 const path = require("path");
 
 function findRustBinary() {
-	var exeName = process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs";
+	var names = process.platform === "win32"
+		? ["emb-agent-rs.exe", "emb-agent-rs"]
+		: ["emb-agent-rs", "emb-agent-rs.exe"];
 	// Prefer binary alongside this wrapper (host-specific install)
-	var candidates = [
-		path.join(__dirname, exeName),
-		path.join(process.cwd(), ".cursor", "emb-agent", "bin", exeName),
-		path.join(process.cwd(), ".omp", "emb-agent", "bin", exeName),
-		path.join(process.cwd(), ".claude", "emb-agent", "bin", exeName),
-		path.join(process.cwd(), ".codex", "emb-agent", "bin", exeName),
-		path.join(process.cwd(), ".pi", "emb-agent", "bin", exeName),
-		exeName,
+	var dirs = [
+		__dirname,
+		path.join(process.cwd(), ".cursor", "emb-agent", "bin"),
+		path.join(process.cwd(), ".omp", "emb-agent", "bin"),
+		path.join(process.cwd(), ".claude", "emb-agent", "bin"),
+		path.join(process.cwd(), ".codex", "emb-agent", "bin"),
+		path.join(process.cwd(), ".pi", "emb-agent", "bin"),
+		"",
 	];
-	return (
-		candidates.find(function (c) {
-			try {
-				return fs.existsSync(c);
-			} catch (_e) {
-				return false;
-			}
-		}) || ""
-	);
+	for (var di = 0; di < dirs.length; di++) {
+		for (var ni = 0; ni < names.length; ni++) {
+			var p = dirs[di] ? path.join(dirs[di], names[ni]) : names[ni];
+			try { if (fs.existsSync(p)) return p; } catch (_e) {}
+		}
+	}
+	return "";
 }
 
 async function main(argv) {
