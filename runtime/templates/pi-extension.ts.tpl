@@ -391,6 +391,27 @@ export default function embAgentPiExtension(pi) {
     }
     const status = compactStatusLine(runStatusLine(ctx.cwd));
     ctx.ui.setStatus("emb-agent", status || undefined);
+    updateTaskWidget(ctx, status);
+  }
+
+  function updateTaskWidget(ctx, statusLine) {
+    if (!ctx.hasUI || !ctx.cwd) return;
+    const parts = (statusLine || "").split("·").map(s => s.trim()).filter(Boolean);
+    if (parts.length === 0) {
+      ctx.ui.setWidget("emb-tasks", undefined);
+      return;
+    }
+    // Show compact: active task + task count + worktree hint
+    const widgetLines = [];
+    const taskPart = parts.find(p => p.startsWith("[") && p.includes("]"));
+    if (taskPart) widgetLines.push(`  ${taskPart}`);
+    const countPart = parts.find(p => p.match(/^[0-9]+ task/));
+    if (countPart && !taskPart) widgetLines.push(`  ${countPart}`);
+    if (widgetLines.length === 0) {
+      ctx.ui.setWidget("emb-tasks", undefined);
+    } else {
+      ctx.ui.setWidget("emb-tasks", widgetLines, { placement: "aboveEditor" });
+    }
   }
 
   function emitMonitorMessage(ctx) {

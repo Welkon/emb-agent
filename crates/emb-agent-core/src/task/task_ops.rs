@@ -7,9 +7,31 @@ use crate::json::json_quote;
 
 /// Create a new task
 pub fn task_add(ext_dir: &Path, summary: &str, _task_type: &str, priority: &str) -> String {
+    task_add_with_deps(ext_dir, summary, _task_type, priority, &[])
+}
+
+/// Create a new task with optional dependency list
+pub fn task_add_with_deps(
+    ext_dir: &Path,
+    summary: &str,
+    _task_type: &str,
+    priority: &str,
+    blocked_by: &[String],
+) -> String {
     let state_dir = crate::variant_ops::active_state_dir(ext_dir);
     let tasks_dir = state_dir.join("tasks");
     let _ = fs::create_dir_all(&tasks_dir);
+
+    // Validate dependencies before creating the task
+    if !blocked_by.is_empty() {
+        let (_, error) = crate::task::dep_graph::validate_blocked_by(&tasks_dir, "", blocked_by);
+        if let Some(err) = error {
+            return format!(
+                "{{\"status\":\"error\",\"error\":{{\"code\":\"blocked-by\",\"message\":{}}}}}",
+                json_quote(&err)
+            );
+        }
+    }
 
     // Generate a unique task name from summary
     let name = summary
@@ -64,6 +86,8 @@ pub fn task_add(ext_dir: &Path, summary: &str, _task_type: &str, priority: &str)
         "assignee": "",
         "createdAt": now,
         "completedAt": null,
+        "deletedAt": null,
+        "blockedBy": blocked_by.to_vec(),
         "branch": format!("task/{}", name),
         "base_branch": "",
         "worktree_path": null,
@@ -163,8 +187,31 @@ pub fn task_activate_with_options(ext_dir: &Path, name: &str, use_worktree: bool
     // Read task, update status
     let content = fs::read_to_string(&task_path).unwrap_or_default();
     let mut task: Value = serde_json::from_str(&content).unwrap_or(Value::Null);
+    let current_status = task.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if current_status == "deleted" {
+        return format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"deleted-tombstone\",\"message\":\"Task {} is deleted and cannot be activated\"}}}}",
+            name
+        );
+    }
+    if current_status == "in_progress" {
+        return format!(
+            "{{\"status\":\"ok\",\"activated\":false,\"already_active\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"next\":\"do\",\"next_instructions\":\"Task is already active. Trigger `/emb:do` to continue.\"}}",
+            json_quote(name)
+        );
+    }
+
     if let Some(obj) = task.as_object_mut() {
+        let previous_status = obj
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("pending")
+            .to_string();
         obj.insert("status".to_string(), json!("in_progress"));
+        if previous_status == "completed" {
+            obj.insert("reactivatedAt".to_string(), json!(chrono_now()));
+            obj.insert("resolution_note".to_string(), Value::Null);
+        }
         if let Some(Ok(worktree)) = &worktree_result {
             obj.insert("branch".to_string(), json!(worktree.branch));
             obj.insert("base_branch".to_string(), json!(worktree.base_branch));
@@ -205,6 +252,53 @@ pub fn task_activate_with_options(ext_dir: &Path, name: &str, use_worktree: bool
     )
 }
 
+/// Delete (tombstone) a task without removing its directory.
+/// Sets status to "deleted" and clears .current-task if active.
+pub fn task_delete(ext_dir: &Path, name: &str) -> String {
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let task_path = state_dir.join("tasks").join(name).join("task.json");
+    if !task_path.exists() {
+        return format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"not-found\",\"message\":\"Task not found: {}\"}}}}",
+            name
+        );
+    }
+
+    let content = fs::read_to_string(&task_path).unwrap_or_default();
+    let mut task: Value = serde_json::from_str(&content).unwrap_or(Value::Null);
+    let current_status = task.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if current_status == "deleted" {
+        return format!(
+            "{{\"status\":\"ok\",\"deleted\":false,\"already_deleted\":true,\"task\":{{\"name\":{},\"status\":\"deleted\"}}}}",
+            json_quote(name)
+        );
+    }
+
+    if let Some(obj) = task.as_object_mut() {
+        obj.insert("status".to_string(), json!("deleted"));
+        obj.insert("deletedAt".to_string(), json!(chrono_now()));
+    }
+    let _ = fs::write(
+        &task_path,
+        serde_json::to_string_pretty(&task).unwrap_or_default(),
+    );
+
+    // Clear current task if this was active
+    let current_task_file = state_dir.join(".current-task");
+    if fs::read_to_string(&current_task_file)
+        .unwrap_or_default()
+        .trim()
+        == name
+    {
+        let _ = fs::write(&current_task_file, "");
+    }
+
+    format!(
+        "{{\"status\":\"ok\",\"deleted\":true,\"task\":{{\"name\":{},\"status\":\"deleted\"}},\"tombstone\":true,\"next\":\"next\",\"next_instructions\":\"Task tombstoned. Directory and AAR preserved. Trigger `/emb:next` for routing.\"}}",
+        json_quote(name)
+    )
+}
+
 /// Resolve (complete) a task
 pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     let state_dir = crate::variant_ops::active_state_dir(ext_dir);
@@ -219,6 +313,12 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     let content = fs::read_to_string(&task_path).unwrap_or_default();
     let mut task: Value = serde_json::from_str(&content).unwrap_or(Value::Null);
     let current_status = task.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if current_status == "deleted" {
+        return format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"deleted-tombstone\",\"message\":\"Task {} is deleted and cannot be resolved\"}}}}",
+            name
+        );
+    }
     if matches!(current_status, "completed" | "done" | "resolved" | "closed") {
         return format!(
             "{{\"status\":\"ok\",\"resolved\":false,\"already_completed\":true,\"task\":{{\"name\":{},\"status\":{}}},\"next\":\"next\",\"next_instructions\":\"Task is already completed. Trigger `/emb:next` for the next action.\"}}",

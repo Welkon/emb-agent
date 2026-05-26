@@ -1,5 +1,5 @@
 use super::util::{current_dir_string, option_value};
-use emb_agent_core::{build_task_list_json, build_task_show_json, read_all_tasks, read_task};
+use emb_agent_core::{build_task_list_json, read_all_tasks, read_task};
 use std::path::Path;
 
 pub fn run(args: &[String]) -> Result<(), String> {
@@ -19,7 +19,22 @@ pub fn run(args: &[String]) -> Result<(), String> {
             let name = args.get(2).ok_or("task show requires <name>")?;
             match read_task(&ext_dir, name) {
                 Some(task) => {
-                    println!("{}", build_task_show_json(&task.to_string()));
+                    let tasks_dir = ext_dir.join("tasks");
+                    let blocked_info = emb_agent_core::blocked_by_summary(&tasks_dir, name);
+                    let mut value = task;
+                    if let Some(obj) = value.as_object_mut()
+                        && let Ok(info) = serde_json::from_str::<serde_json::Value>(&format!(
+                            "{{{blocked_info}}}"
+                        ))
+                    {
+                        for (k, v) in info.as_object().unwrap_or(&serde_json::Map::new()) {
+                            obj.insert(k.clone(), v.clone());
+                        }
+                    }
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&value).unwrap_or_default()
+                    );
                     Ok(())
                 }
                 None => Err(format!("task not found: {name}")),
@@ -29,9 +44,25 @@ pub fn run(args: &[String]) -> Result<(), String> {
             let summary = args.get(2).map(|s| s.as_str()).unwrap_or("New task");
             let task_type = option_value(args, "--type").unwrap_or_else(|| "implement".to_string());
             let priority = option_value(args, "--priority").unwrap_or_else(|| "P2".to_string());
+            let blocked_by_str = option_value(args, "--blocked-by").unwrap_or_default();
+            let blocked_by: Vec<String> = if blocked_by_str.is_empty() {
+                vec![]
+            } else {
+                blocked_by_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            };
             println!(
                 "{}",
-                emb_agent_core::task::task_ops::task_add(&ext_dir, summary, &task_type, &priority)
+                emb_agent_core::task::task_ops::task_add_with_deps(
+                    &ext_dir,
+                    summary,
+                    &task_type,
+                    &priority,
+                    &blocked_by,
+                )
             );
             Ok(())
         }
@@ -54,6 +85,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
             println!(
                 "{}",
                 emb_agent_core::task::task_ops::task_resolve(&ext_dir, name, note)
+            );
+            Ok(())
+        }
+        Some("delete") => {
+            let name = args.get(2).ok_or("task delete requires <name>")?;
+            println!(
+                "{}",
+                emb_agent_core::task::task_ops::task_delete(&ext_dir, name)
             );
             Ok(())
         }
@@ -205,18 +244,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
             _ => Err("task bug: expected add, list, or resolve".to_string()),
         },
         _ => Err(
-            "task: expected list, show, add, activate, resolve, aar, worktree, or bug".to_string(),
+            "task: expected list, show, add, activate, resolve, delete, aar, worktree, or bug"
+                .to_string(),
         ),
     }
 }
 
 fn print_help() {
     println!(
-        "emb-agent-rs task\n\nUSAGE:\n  task list\n  task show <name>\n  task add <summary> [--priority P1]\n  task activate <name> [--worktree]\n  task aar status <name>\n  task aar scan <name> --no-lessons|--lessons\n  task aar record <name> <note>\n  task resolve <name> [note]\n  task worktree list
-  task worktree status [name]
-  task worktree show <name>
-  task worktree create <name> [--branch <branch>] [--base <base>]
-  task worktree cleanup <name>
-  task bug add <parent-task> <summary>\n  task bug list [parent-task] [--variant <name>]\n  task bug resolve <bug-id> [note]\n\nGATES:\n  task resolve requires task aar scan. If scan uses --lessons, task aar record is required before resolve.\n"
+        "emb-agent-rs task\n\nUSAGE:\n  task list\n  task show <name>\n  task add <summary> [--priority P1]\n  task activate <name> [--worktree]\n  task delete <name>\n  task aar status <name>\n  task aar scan <name> --no-lessons|--lessons\n  task aar record <name> <note>\n  task resolve <name> [note]\n  task worktree list\n  task worktree status [name]\n  task worktree show <name>\n  task worktree create <name> [--branch <branch>] [--base <base>]\n  task worktree cleanup <name>\n  task bug add <parent-task> <summary>\n  task bug list [parent-task] [--variant <name>]\n  task bug resolve <bug-id> [note]\n\nSTATUS FLOW:\n  pending → in_progress → completed → deleted\n  pending ⇄ in_progress (reversible)\n  completed can be re-activated to in_progress\n\nGATES:\n  task resolve requires task aar scan. If scan uses --lessons, task aar record is required before resolve.\n"
     );
 }

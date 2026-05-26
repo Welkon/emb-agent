@@ -320,6 +320,9 @@ pub fn read_all_tasks(ext_dir: &Path) -> Vec<TaskSnapshot> {
         for entry in entries.flatten() {
             let task_json_path = entry.path().join("task.json");
             if let Ok(content) = fs::read_to_string(&task_json_path) {
+                if is_closed_task(&json_string_field(&content, "status")) {
+                    continue;
+                }
                 tasks.push(TaskSnapshot {
                     name: json_string_field(&content, "name"),
                     title: json_string_field(&content, "title"),
@@ -743,7 +746,14 @@ pub fn count_wiki_pages(ext: &Path) -> usize {
 pub fn is_closed_task(status: &str) -> bool {
     matches!(
         status.trim().to_ascii_lowercase().as_str(),
-        "completed" | "resolved" | "closed" | "rejected" | "archived" | "cancelled" | "canceled"
+        "completed"
+            | "resolved"
+            | "closed"
+            | "rejected"
+            | "archived"
+            | "cancelled"
+            | "canceled"
+            | "deleted"
     )
 }
 

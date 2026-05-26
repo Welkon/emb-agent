@@ -284,6 +284,61 @@ fn task_worktree_lifecycle_smoke() {
 }
 
 #[test]
+fn task_delete_tombstones_preserve_data() {
+    let project = TestProject::new("tombstone");
+
+    let delete_output = run(&project, &["task", "delete", "schematic-review"]);
+    assert!(
+        delete_output.contains("\"deleted\":true"),
+        "delete output: {delete_output}"
+    );
+    assert!(
+        delete_output.contains("\"tombstone\":true"),
+        "delete output: {delete_output}"
+    );
+
+    // deleted task hidden from list
+    let list = run(&project, &["task", "list"]);
+    assert!(
+        !list.contains("schematic-review"),
+        "should not list deleted: {list}"
+    );
+    assert!(list.contains("pwm-led"), "pwm-led still present: {list}");
+
+    // cannot activate deleted task
+    let activate_deleted = run(&project, &["task", "activate", "schematic-review"]);
+    assert!(
+        activate_deleted.contains("deleted-tombstone"),
+        "activate deleted: {activate_deleted}"
+    );
+}
+
+#[test]
+fn task_blocked_by_shows_dependencies() {
+    let project = TestProject::new("depgraph");
+
+    // Create dependent-task depending on pwm-led
+    let add_b = run(
+        &project,
+        &["task", "add", "dependent-task", "--blocked-by", "pwm-led"],
+    );
+    assert!(add_b.contains("\"created\":true"), "add dependent: {add_b}");
+
+    // Check task show includes dependency info
+    let show = run(&project, &["task", "show", "dependent-task"]);
+    assert!(show.contains("\"depends_on\""), "show deps: {show}");
+    assert!(show.contains("pwm-led"), "show deps: {show}");
+
+    // Check pwm-led now has "blocks" reference
+    let show_pwm = run(&project, &["task", "show", "pwm-led"]);
+    assert!(show_pwm.contains("\"blocks\""), "show blocks: {show_pwm}");
+    assert!(
+        show_pwm.contains("dependent-task"),
+        "show blocks: {show_pwm}"
+    );
+}
+
+#[test]
 fn task_activate_requires_worktree_when_other_main_session_active() {
     let project = TestProject::new("worktree-policy");
     project.init_git_repo();

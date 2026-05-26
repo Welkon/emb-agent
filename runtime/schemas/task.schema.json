@@ -47,7 +47,7 @@
     },
     "status": {
       "type": "string",
-      "enum": ["planning", "in_progress", "review", "completed", "rejected"]
+      "enum": ["pending", "in_progress", "completed", "deleted"]
     },
     "dev_type": {
       "type": "string",
@@ -83,6 +83,15 @@
     "completedAt": {
       "type": ["string", "null"],
       "format": "date-time"
+    },
+    "deletedAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "blockedBy": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Task names this task depends on"
     },
     "branch": {
       "type": "string"
