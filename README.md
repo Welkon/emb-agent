@@ -35,69 +35,29 @@ The AI assistant reads that memory at the start of each session, so you can talk
 
 ---
 
-## System architecture
+## Architecture
 
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│                              User                                    │
-│                                                                      │
-│  "Bring up PWM dimming"                                              │
-│  "Check the schematic"                                               │
-│  "What should we do next?"                                           │
-└───────────────────────────────┬──────────────────────────────────────┘
-                                │
-                                ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                         AI Coding Assistant                          │
-│                                                                      │
-│  Pi · Codex · Claude Code · Cursor                                   │
-│                                                                      │
-│  The assistant receives project context automatically:                │
-│  • hardware truth                                                     │
-│  • active tasks                                                       │
-│  • schematic summary                                                  │
-│  • knowledge graph hints                                              │
-│  • recommended next step                                              │
-└───────────────────────────────┬──────────────────────────────────────┘
-                                │
-                                │  host integration
-                                ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                         emb-agent runtime                            │
-│                                                                      │
-│  Pi extension        Codex hooks        Claude/Cursor commands        │
-│       │                  │                       │                    │
-│       └──────────────────┴───────────────────────┘                    │
-│                                │                                     │
-│                        thin wrapper                                  │
-│                                │                                     │
-│                                ▼                                     │
-│                         emb-agent-rs                                 │
-│                           Pure Rust                                  │
-│                                                                      │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────────┐    │
-│  │  Session   │ │    Task    │ │ Schematic  │ │   Knowledge    │    │
-│  │  startup   │ │ lifecycle  │ │  analysis  │ │ graph / memory │    │
-│  └────────────┘ └────────────┘ └────────────┘ └────────────────┘    │
-│                                                                      │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────────┐    │
-│  │ Hardware   │ │  Lookup    │ │ Workflow   │ │ Diagnostics    │    │
-│  │ chip/board │ │ docs/parts │ │ route/next │ │ hooks/status   │    │
-│  └────────────┘ └────────────┘ └────────────┘ └────────────────┘    │
-└───────────────────────────────┬──────────────────────────────────────┘
-                                │
-                                ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                            .emb-agent/                               │
-│                                                                      │
-│  hw.yaml        hardware truth: MCU, pins, signals, peripherals      │
-│  req.yaml       product goals, constraints, acceptance rules          │
-│  tasks/         active work, decisions, After Action Reviews          │
-│  graph/         project knowledge graph                              │
-│  wiki/          long-term project notes                              │
-│  cache/         parsed schematics, board files, document facts        │
-└──────────────────────────────────────────────────────────────────────┘
-```
+emb-agent sits between the AI assistant and your repository. It does not replace the assistant; it gives the assistant reliable embedded project memory.
+
+| Layer | What it does | Examples |
+|---|---|---|
+| **User** | Describes product-level intent | “Bring up PWM dimming”, “Check the schematic”, “Continue the active task” |
+| **AI assistant** | Converses, writes code, asks for clarification | Pi, Codex, Claude Code, Cursor |
+| **Host integration** | Starts emb-agent automatically and exposes project-aware actions | Pi extension, Codex hooks, Claude/Cursor command docs |
+| **Rust runtime** | Reads project state, routes workflow, analyzes hardware artifacts | session, task, schematic, knowledge, diagnostics |
+| **Project memory** | Stores the facts that should survive across sessions | `.emb-agent/hw.yaml`, `req.yaml`, `tasks/`, `graph/`, `wiki/`, `cache/` |
+
+### Runtime modules
+
+| Module | Purpose |
+|---|---|
+| **Session** | Detect project state and recommend the next step |
+| **Task** | Track active work, decisions, reviews, and closure |
+| **Schematic** | Parse and summarize schematic / board artifacts |
+| **Hardware** | Keep chip, board, pin, and peripheral context aligned |
+| **Knowledge** | Build project memory through graph and wiki records |
+| **Workflow** | Guide work through scan, plan, implement, review, and verify |
+| **Diagnostics** | Report hook, project, and state-path health |
 
 ---
 
@@ -128,13 +88,13 @@ You do not need to think in tool commands.
 
 Say things like:
 
-> "Bring up the LED driver."
+> “Bring up the LED driver.”
 >
-> "Check whether the schematic has obvious risks."
+> “Check whether the schematic has obvious risks.”
 >
-> "Continue the active task."
+> “Continue the active task.”
 >
-> "What should we do next?"
+> “What should we do next?”
 
 emb-agent supplies the context and routing information the AI needs behind the scenes.
 
@@ -142,9 +102,12 @@ emb-agent supplies the context and routing information the AI needs behind the s
 
 Typical embedded work follows the same shape:
 
-```text
-scan → plan → implement → review → verify → record lessons
-```
+1. understand the current state
+2. plan the change
+3. implement the work
+4. review the result
+5. verify against hardware and requirements
+6. record what was learned
 
 The user sees a normal AI conversation. emb-agent keeps the task state, evidence, and review trail organized in the project.
 
@@ -162,7 +125,7 @@ Almost nothing.
 
 Open the AI assistant in the project and ask for work. If you ever need a manual nudge, ask:
 
-> "What should we do next?"
+> “What should we do next?”
 
 The assistant will route that through emb-agent and continue from the current project state.
 
