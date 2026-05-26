@@ -1,7 +1,7 @@
 use super::util::{current_dir_string, option_value};
 use emb_agent_core::{
-    build_health_json, build_next_json, build_session_context, build_start_json, build_status_json,
-    build_statusline, snapshot_from_cwd,
+    build_health_json, build_next_json_with_tasks, build_session_context, build_start_json,
+    build_status_json, build_statusline, read_all_tasks, snapshot_from_cwd,
 };
 use std::path::Path;
 
@@ -23,7 +23,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         "next" => {
             if args.iter().any(|a| a == "--json" || a == "--brief") {
-                println!("{}", build_next_json(&snapshot));
+                let ext_dir = Path::new(&cwd).join(".emb-agent");
+                let tasks = read_all_tasks(&ext_dir);
+                println!("{}", build_next_json_with_tasks(&snapshot, &tasks));
             } else {
                 println!("{}", build_session_context(&snapshot));
             }

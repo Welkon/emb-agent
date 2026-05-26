@@ -1,5 +1,5 @@
 use super::util::{current_dir_string, option_value};
-use emb_agent_core::{build_schematic_json, query_schematic, SchematicQueryOptions};
+use emb_agent_core::{SchematicQueryOptions, build_schematic_json, query_schematic};
 use std::path::Path;
 
 pub fn run(args: &[String]) -> Result<(), String> {

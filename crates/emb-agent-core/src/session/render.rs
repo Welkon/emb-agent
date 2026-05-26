@@ -1,4 +1,4 @@
-use crate::hardware::project::ProjectSnapshot;
+use crate::hardware::project::{ProjectSnapshot, TaskSnapshot};
 use crate::json::json_quote;
 
 pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
@@ -158,7 +158,7 @@ pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
         "\n接下来你可以：".to_string(),
         "1. **直接说出需求**（比如「帮我检查原理图」）— 我会自动分配任务".to_string(),
         "2. 输入 `/emb:next` — 查看推荐工作流".to_string(),
-        "3. 输入 `/emb:task list` — 浏览任务列表".to_string(),
+        "3. 问我「下一步该做什么」— 我会展示可选任务并等待你选择".to_string(),
         "4. 输入 `/emb:status` — 查看项目状态".to_string(),
     ]);
 
@@ -218,7 +218,10 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
             "Active task exists. Run `/emb:do` to continue implementation.".to_string(),
         )
     } else if snapshot.open_tasks > 0 {
-        ("activate".to_string(), "Tasks exist but none active. Run `/emb:task list` to see tasks, then `/emb:task activate <name>` to start working.".to_string())
+        (
+            "activate".to_string(),
+            "Tasks exist but none active. Present the task candidates from `/emb:next --brief` and ask the user which one to activate. Do not ask the user to run a list command.".to_string(),
+        )
     } else if snapshot.bootstrap_status != "ready" {
         (
             "bootstrap".to_string(),
@@ -233,21 +236,25 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
 }
 
 pub fn build_next_json(snapshot: &ProjectSnapshot) -> String {
+    build_next_json_with_tasks(snapshot, &[])
+}
+
+pub fn build_next_json_with_tasks(snapshot: &ProjectSnapshot, tasks: &[TaskSnapshot]) -> String {
     let task_json = build_task_json(snapshot);
     let (action, instructions) = if snapshot.current_task.is_some() {
         (
             "do",
-            "Active task exists. Run `/emb:do` to continue implementation.",
+            "Active task exists. Trigger `/emb:do` to continue implementation.",
         )
     } else if snapshot.open_tasks > 0 {
         (
             "activate",
-            "Tasks exist but none active. Run `/emb:task list` to see tasks, then `/emb:task activate <name>` to activate the one you want to work on.",
+            "Open tasks exist but none is active. Do not ask the user to run a list command. Present `task_candidates` and ask which task to activate; after explicit choice, trigger `/emb:task activate <name>`.",
         )
     } else if snapshot.bootstrap_status != "ready" {
         (
             "bootstrap",
-            "Project needs bootstrap. Run `/emb:bootstrap status`.",
+            "Project needs bootstrap. Trigger `/emb:bootstrap status`.",
         )
     } else {
         (
@@ -255,8 +262,10 @@ pub fn build_next_json(snapshot: &ProjectSnapshot) -> String {
             snapshot.task_intake_summary.as_str(),
         )
     };
+    let task_candidates = build_task_candidates_json(tasks);
+    let agent_protocol = build_next_agent_protocol(snapshot, action);
     format!(
-        "{{\"status\":\"ok\",\"variant\":{},\"action\":{},\"reason\":{},\"workflow_state\":{},\"bootstrap_status\":{},\"active_task\":{},\"open_tasks\":{},\"instructions\":{}}}",
+        "{{\"status\":\"ok\",\"variant\":{},\"action\":{},\"reason\":{},\"workflow_state\":{},\"bootstrap_status\":{},\"active_task\":{},\"open_tasks\":{},\"task_candidates\":{},\"instructions\":{},\"agent_protocol\":{}}}",
         json_quote(&snapshot.active_variant),
         json_quote(action),
         json_quote(&snapshot.recommended_reason),
@@ -264,8 +273,37 @@ pub fn build_next_json(snapshot: &ProjectSnapshot) -> String {
         json_quote(&snapshot.bootstrap_status),
         task_json,
         snapshot.open_tasks,
-        json_quote(instructions)
+        task_candidates,
+        json_quote(instructions),
+        agent_protocol
     )
+}
+
+fn build_task_candidates_json(tasks: &[TaskSnapshot]) -> String {
+    let items: Vec<String> = tasks
+        .iter()
+        .filter(|task| {
+            task.status != "closed" && task.status != "done" && task.status != "resolved"
+        })
+        .map(|task| {
+            format!(
+                "{{\"name\":{},\"title\":{},\"status\":{},\"priority\":{},\"package\":{}}}",
+                json_quote(&task.name),
+                json_quote(&task.title),
+                json_quote(&task.status),
+                json_quote(&task.priority),
+                json_quote(&task.package)
+            )
+        })
+        .collect();
+    format!("[{}]", items.join(","))
+}
+
+fn build_next_agent_protocol(snapshot: &ProjectSnapshot, action: &str) -> String {
+    if action == "activate" && snapshot.open_tasks > 0 {
+        return "{\"gate\":{\"kind\":\"task-selection\",\"blocking\":true,\"allowed_actions\":[\"present_task_candidates\",\"ask_user_to_choose_task\",\"trigger_task_activate_after_explicit_choice\"],\"forbidden_actions\":[\"ask_user_to_run_task_list\",\"ask_user_to_run_task_activate\",\"invent_task_name\",\"run_shell_command_for_emb_slash_command\"]}}".to_string();
+    }
+    "{\"gate\":{\"kind\":\"none\",\"blocking\":false}}".to_string()
 }
 
 pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {

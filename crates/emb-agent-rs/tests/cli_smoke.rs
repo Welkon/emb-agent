@@ -31,6 +31,7 @@ impl TestProject {
         fs::create_dir_all(&root).expect("create test root");
         let project = Self { root };
         project.init();
+        project.write_task_fixtures();
         project.write_schematic_fixture();
         project
     }
@@ -48,6 +49,23 @@ impl TestProject {
                 .output()
                 .expect("run init"),
         );
+    }
+
+    fn write_task_fixtures(&self) {
+        for (name, title, priority) in [
+            ("pwm-led", "Implement PWM dimming", "P1"),
+            ("schematic-review", "Review schematic risks", "P2"),
+        ] {
+            let dir = self.root.join(".emb-agent").join("tasks").join(name);
+            fs::create_dir_all(&dir).expect("create task fixture");
+            fs::write(
+                dir.join("task.json"),
+                format!(
+                    r#"{{"name":"{name}","title":"{title}","status":"pending","priority":"{priority}","package":""}}"#
+                ),
+            )
+            .expect("write task fixture");
+        }
     }
 
     fn write_schematic_fixture(&self) {
@@ -126,6 +144,13 @@ fn common_user_paths_smoke() {
 
     let next = run(&project, &["next", "--json"]);
     assert!(next.contains("\"status\""), "next output: {next}");
+    assert!(next.contains("task_candidates"), "next output: {next}");
+    assert!(next.contains("pwm-led"), "next output: {next}");
+    assert!(
+        next.contains("Do not ask the user to run a list command"),
+        "next output: {next}"
+    );
+    assert!(!next.contains("/emb:task list"), "next output: {next}");
 
     let tasks = run(&project, &["task", "list"]);
     assert!(tasks.contains("tasks"), "task list output: {tasks}");
