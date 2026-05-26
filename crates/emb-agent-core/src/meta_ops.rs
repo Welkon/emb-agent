@@ -31,7 +31,11 @@ pub fn bootstrap_status(ext_dir: &Path) -> String {
 
     format!(
         "{{\"status\":\"ok\",\"bootstrap\":{{\"initialized\":{},\"has_hw\":{},\"has_req\":{},\"mcu\":{},\"needs\":{}}}}}",
-        initialized, has_hw, has_req, json_quote(&mcu), json_quote(needs)
+        initialized,
+        has_hw,
+        has_req,
+        json_quote(&mcu),
+        json_quote(needs)
     )
 }
 
@@ -171,11 +175,12 @@ pub fn knowledge_status(ext_dir: &Path) -> String {
     let mut edges = 0;
     if graph_exists
         && let Ok(content) = fs::read_to_string(&graph_path)
-            && let Ok(graph) = serde_json::from_str::<serde_json::Value>(&content)
-                && let Some(stats) = graph.get("stats") {
-                    nodes = stats.get("nodes").and_then(|n| n.as_u64()).unwrap_or(0) as usize;
-                    edges = stats.get("edges").and_then(|e| e.as_u64()).unwrap_or(0) as usize;
-                }
+        && let Ok(graph) = serde_json::from_str::<serde_json::Value>(&content)
+        && let Some(stats) = graph.get("stats")
+    {
+        nodes = stats.get("nodes").and_then(|n| n.as_u64()).unwrap_or(0) as usize;
+        edges = stats.get("edges").and_then(|e| e.as_u64()).unwrap_or(0) as usize;
+    }
     format!(
         "{{\"status\":\"ok\",\"graph\":{{\"exists\":{},\"nodes\":{},\"edges\":{}}}}}",
         graph_exists, nodes, edges
@@ -245,7 +250,8 @@ pub fn config_show(ext_dir: &Path) -> String {
         Ok(content) => serde_json::to_string_pretty(&serde_json::json!({
             "status": "ok",
             "config": serde_json::from_str::<serde_json::Value>(&content).unwrap_or_default()
-        })).unwrap_or_default(),
+        }))
+        .unwrap_or_default(),
         Err(_) => r#"{"status":"error","message":"project.json not found"}"#.to_string(),
     }
 }

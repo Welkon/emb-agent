@@ -15,11 +15,11 @@ bin/emb-agent-rs.exe
 .pi-lens/
 **/.pi-lens/
 
-# Old state dirs (cleaned up)
-src/
-state/
-memory/
-examples/
-runtime/lib/
-runtime/scripts/
-scripts/
+# Old top-level state dirs (cleaned up)
+/src/
+/state/
+/memory/
+/examples/
+/runtime/lib/
+/runtime/scripts/
+/scripts/

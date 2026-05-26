@@ -1,0 +1,15 @@
+pub mod adapter;
+pub mod board_cli;
+pub mod chip;
+pub mod component;
+pub mod doc;
+pub mod hooks_cli;
+pub mod ingest;
+pub mod knowledge;
+pub mod memory;
+pub mod misc;
+pub mod schematic;
+pub mod session;
+pub mod task;
+pub mod util;
+pub mod variant;

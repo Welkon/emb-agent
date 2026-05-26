@@ -46,6 +46,16 @@ pub fn init_project(cwd: &Path) -> String {
     r#"{"status":"ok","initialized":true}"#.to_string()
 }
 
+/// Migration status. The current Rust runtime does not require a separate project migration step.
+pub fn migrate_status(_ext_dir: &Path) -> String {
+    r#"{"status":"ok","migration_required":false,"runtime":"rust"}"#.to_string()
+}
+
+/// Skills status. Legacy skill scaffolding is host-owned; runtime skills are command docs and agents.
+pub fn skills_status(_ext_dir: &Path) -> String {
+    r#"{"status":"ok","skills_runtime":"host","note":"Skills are provided by installed host command docs and agents"}"#.to_string()
+}
+
 /// Update check (simple version check)
 pub fn update_check(ext_dir: &Path) -> String {
     let version_path = ext_dir
@@ -241,13 +251,19 @@ pub fn capability_run(_ext_dir: &Path, name: &str) -> String {
             name
         )
     } else {
-        format!("{{\"status\":\"error\",\"error\":{{\"code\":\"unknown-capability\",\"message\":\"Unknown capability: {}\"}}}}", name)
+        format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"unknown-capability\",\"message\":\"Unknown capability: {}\"}}}}",
+            name
+        )
     }
 }
 
 /// Executor run
 pub fn executor_run(_ext_dir: &Path, name: &str) -> String {
-    format!("{{\"status\":\"ok\",\"executor\":{},\"note\":\"Executor framework not yet migrated to Rust\"}}", json_quote(name))
+    format!(
+        "{{\"status\":\"ok\",\"executor\":{},\"note\":\"Executor framework not yet migrated to Rust\"}}",
+        json_quote(name)
+    )
 }
 
 /// Ingest doc (registers PDF in cache index)

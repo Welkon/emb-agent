@@ -15,12 +15,13 @@ pub fn prd_status(ext_dir: &Path) -> String {
     let mut task_prd_count = 0;
     let tasks_dir = project_root.join("docs").join("prd").join("tasks");
     if tasks_dir.exists()
-        && let Ok(entries) = fs::read_dir(&tasks_dir) {
-            task_prd_count = entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
-                .count();
-        }
+        && let Ok(entries) = fs::read_dir(&tasks_dir)
+    {
+        task_prd_count = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+            .count();
+    }
 
     format!(
         "{{\"status\":\"ok\",\"prd\":{{\"system_prd\":{},\"req_yaml\":{},\"task_prds\":{},\"system_prd_path\":{},\"req_yaml_path\":{}}}}}",

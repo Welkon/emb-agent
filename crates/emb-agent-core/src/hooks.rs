@@ -1,8 +1,8 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use crate::json::json_quote;
 use crate::hardware::project::HookConfig;
+use crate::json::json_quote;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HookPlan {

@@ -10,8 +10,7 @@
     "commands",
     "command-docs",
     "agents",
-    "runtime",
-    "scripts"
+    "runtime"
   ],
   "keywords": [
     "embedded",
@@ -30,9 +29,8 @@
     "url": "https://github.com/Welkon/emb-agent"
   },
   "scripts": {
-    "postinstall": "node scripts/postinstall.cjs",
     "test": "cargo test --workspace",
     "build": "cargo build --release",
-    "release:check": "cargo build --release && cargo test --workspace"
+    "release:check": "cargo build --release && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings"
   }
 }

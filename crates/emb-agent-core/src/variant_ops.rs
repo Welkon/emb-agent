@@ -1,5 +1,5 @@
-use crate::json::json_quote;
 use crate::hardware::project::HardwareTruth;
+use crate::json::json_quote;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -135,7 +135,11 @@ pub fn variant_adopt(ext_dir: &Path, name: &str, src: &str, clean_root: bool) ->
     }
 
     let hw = read_hw(&dir);
-    let src = if src.is_empty() { format!("firmware/{}", name) } else { src.to_string() };
+    let src = if src.is_empty() {
+        format!("firmware/{}", name)
+    } else {
+        src.to_string()
+    };
     seed_variant_files(ext_dir, &dir, &name, &hw.model, &hw.package, &src);
     let _ = fs::write(ext_dir.join(ACTIVE_VARIANT_FILE), &name);
 
@@ -215,8 +219,16 @@ pub fn variant_fork(
     let _ = copy_dir_filtered(&source_dir, &to_dir);
     create_variant_dirs(&to_dir);
     let hw = read_hw(&source_dir);
-    let final_mcu = if mcu.is_empty() { hw.model } else { mcu.to_string() };
-    let final_pkg = if package.is_empty() { hw.package } else { package.to_string() };
+    let final_mcu = if mcu.is_empty() {
+        hw.model
+    } else {
+        mcu.to_string()
+    };
+    let final_pkg = if package.is_empty() {
+        hw.package
+    } else {
+        package.to_string()
+    };
     let final_src = if src.is_empty() {
         read_src(&source_dir)
     } else {
@@ -263,7 +275,13 @@ pub fn safe_name(name: &str) -> String {
     name.trim()
         .to_ascii_lowercase()
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string()
@@ -333,7 +351,10 @@ fn seed_variant_files(ext_dir: &Path, dir: &Path, name: &str, mcu: &str, package
                 "variant": name,
                 "source_root": src,
             });
-            let _ = fs::write(dir.join("project.json"), serde_json::to_string_pretty(&project).unwrap_or_default());
+            let _ = fs::write(
+                dir.join("project.json"),
+                serde_json::to_string_pretty(&project).unwrap_or_default(),
+            );
         }
     }
     // Always add/update a variant sidecar to avoid lossy JSON mutation.
@@ -343,7 +364,10 @@ fn seed_variant_files(ext_dir: &Path, dir: &Path, name: &str, mcu: &str, package
         "mcu": mcu,
         "package": package,
     });
-    let _ = fs::write(dir.join("variant.json"), serde_json::to_string_pretty(&variant_json).unwrap_or_default());
+    let _ = fs::write(
+        dir.join("variant.json"),
+        serde_json::to_string_pretty(&variant_json).unwrap_or_default(),
+    );
 
     if !dir.join("req.yaml").exists() && ext_dir.join("req.yaml").exists() {
         let _ = fs::copy(ext_dir.join("req.yaml"), dir.join("req.yaml"));
@@ -362,9 +386,10 @@ fn read_hw(dir: &Path) -> HardwareTruth {
 fn read_src(dir: &Path) -> String {
     if let Ok(content) = fs::read_to_string(dir.join("variant.json"))
         && let Ok(value) = serde_json::from_str::<serde_json::Value>(&content)
-            && let Some(src) = value.get("source_root").and_then(|v| v.as_str()) {
-                return src.to_string();
-            }
+        && let Some(src) = value.get("source_root").and_then(|v| v.as_str())
+    {
+        return src.to_string();
+    }
     let hw = fs::read_to_string(dir.join("hw.yaml")).unwrap_or_default();
     yaml_nested_string(&hw, "firmware", "src")
 }
@@ -383,23 +408,32 @@ fn yaml_nested_string(source: &str, parent: &str, key: &str) -> String {
         if !line.starts_with(' ') && in_parent {
             break;
         }
-        if in_parent
-            && let Some(rest) = trimmed.strip_prefix(&format!("{}:", key)) {
-                return rest.trim().trim_matches('"').trim_matches('\'').to_string();
-            }
+        if in_parent && let Some(rest) = trimmed.strip_prefix(&format!("{}:", key)) {
+            return rest.trim().trim_matches('"').trim_matches('\'').to_string();
+        }
     }
     String::new()
 }
 
 fn count_task_dirs(dir: &Path) -> usize {
     fs::read_dir(dir.join("tasks"))
-        .map(|entries| entries.flatten().filter(|entry| entry.path().is_dir()).count())
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.path().is_dir())
+                .count()
+        })
         .unwrap_or(0)
 }
 
 fn count_wiki_pages(dir: &Path) -> usize {
     fs::read_dir(dir.join("wiki"))
-        .map(|entries| entries.flatten().filter(|entry| entry.path().is_file()).count())
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.path().is_file())
+                .count()
+        })
         .unwrap_or(0)
 }
 
@@ -410,7 +444,10 @@ fn copy_dir_filtered(from: &Path, to: &Path) -> std::io::Result<()> {
         let src = entry.path();
         let dst = to.join(entry.file_name());
         let name = entry.file_name().to_string_lossy().to_string();
-        if matches!(name.as_str(), "variants" | "bugs" | "cache" | "docs" | "migrations") {
+        if matches!(
+            name.as_str(),
+            "variants" | "bugs" | "cache" | "docs" | "migrations"
+        ) {
             continue;
         }
         if src.is_dir() {

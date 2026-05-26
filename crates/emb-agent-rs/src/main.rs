@@ -12,7 +12,12 @@ fn main() {
 
 fn run(args: &[String]) -> Result<(), String> {
     let command = args.first().map(String::as_str).unwrap_or("help");
-    if matches!(command, "help" | "--help" | "-h") {
+    if matches!(command, "help" | "--help" | "-h")
+        || args
+            .iter()
+            .skip(1)
+            .any(|arg| arg == "--help" || arg == "-h")
+    {
         print_help();
         return Ok(());
     }
@@ -55,9 +60,10 @@ fn run(args: &[String]) -> Result<(), String> {
             cli::misc::run(args)
         }
         // Extended operations (stubs)
-        "init" | "update" | "settings" | "decision" | "commands" | "note" | "capability"
-        | "executor" | "dispatch" | "scaffold" | "transcript" | "prefs" | "tool" | "snippet"
-        | "workflow" | "orchestrate" | "insight" | "trace" => cli::misc::run_ext_ops(args),
+        "init" | "init-project" | "migrate" | "skills" | "update" | "settings" | "decision"
+        | "commands" | "note" | "capability" | "executor" | "dispatch" | "scaffold"
+        | "transcript" | "prefs" | "tool" | "snippet" | "workflow" | "orchestrate" | "insight"
+        | "trace" => cli::misc::run_ext_ops(args),
         other => Err(format!("unknown command: {other}")),
     }
 }
