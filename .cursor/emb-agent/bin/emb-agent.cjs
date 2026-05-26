@@ -2,42 +2,46 @@
 
 "use strict";
 
-const childProcess = require("child_process");
-const fs = require("fs");
-const path = require("path");
+var childProcess = require("child_process");
+var fs = require("fs");
+var path = require("path");
 
 function findRustBinary() {
-	const exeName =
-		process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs";
-	const candidates = [
-		path.join(process.cwd(), ".pi", "emb-agent", "bin", exeName),
-		path.join(__dirname, exeName),
-		exeName,
+	var names = process.platform === "win32"
+		? ["emb-agent-rs.exe", "emb-agent-rs"]
+		: ["emb-agent-rs", "emb-agent-rs.exe"];
+	var dirs = [
+		__dirname,
+		path.join(process.cwd(), ".cursor", "emb-agent", "bin"),
+		path.join(process.cwd(), ".omp", "emb-agent", "bin"),
+		path.join(process.cwd(), ".claude", "emb-agent", "bin"),
+		path.join(process.cwd(), ".codex", "emb-agent", "bin"),
+		path.join(process.cwd(), ".pi", "emb-agent", "bin"),
+		"",
 	];
-	return (
-		candidates.find((c) => {
-			try {
-				return fs.existsSync(c);
-			} catch {
-				return false;
-			}
-		}) || ""
-	);
+	for (var di = 0; di < dirs.length; di++) {
+		for (var ni = 0; ni < names.length; ni++) {
+			var p = dirs[di] ? path.join(dirs[di], names[ni]) : names[ni];
+			try { if (fs.existsSync(p)) return p; } catch (_e) {}
+		}
+	}
+	return "";
 }
 
-async function main(argv) {
-	const args = Array.isArray(argv) ? argv : process.argv.slice(2);
-	const rustBin = findRustBinary();
+function main(argv) {
+	var args = Array.isArray(argv) ? argv : process.argv.slice(2);
+	var rustBin = findRustBinary();
 
 	if (!rustBin) {
 		process.stderr.write("emb-agent: Rust binary (emb-agent-rs) not found.\n");
-		process.stderr.write(
-			"Build it with: cd emb-agent && cargo build --release\n",
-		);
+		process.stderr.write("Build it with: cd emb-agent && cargo build --release\n");
+		if (process.platform === "win32") {
+			process.stderr.write("On Windows, also try: cargo build --release --target x86_64-pc-windows-msvc\n");
+		}
 		process.exit(1);
 	}
 
-	const result = childProcess.spawnSync(rustBin, args, {
+	var result = childProcess.spawnSync(rustBin, args, {
 		encoding: "utf8",
 		maxBuffer: 1024 * 1024,
 		timeout: 120000,
@@ -52,8 +56,6 @@ async function main(argv) {
 module.exports = { main };
 
 if (require.main === module) {
-	main(process.argv.slice(2)).catch((error) => {
-		process.stderr.write(`emb-agent error: ${error.message}\n`);
-		process.exit(1);
-	});
+	try { main(process.argv.slice(2)); }
+	catch (error) { process.stderr.write("emb-agent error: " + error.message + "\n"); process.exit(1); }
 }
