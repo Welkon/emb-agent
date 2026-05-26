@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node .cursor/emb-agent/bin/emb-agent.cjs hook session-start",
+        "timeout": 15
+      }
+    ],
+    "postToolUse": [
+      {
+        "matcher": "bash|edit|write",
+        "command": "node .cursor/emb-agent/bin/emb-agent.cjs hook context-monitor",
+        "timeout": 10
+      }
+    ]
+  }
+}

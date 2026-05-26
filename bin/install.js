@@ -22,6 +22,7 @@ const SUPPORTED_HOSTS = [
 	{ name: "cursor", dir: ".cursor", profile: "core" },
 	{ name: "claude", dir: ".claude", profile: "core" },
 	{ name: "pi", dir: ".pi", profile: "core" },
+	{ name: "omp", dir: ".omp", profile: "core" },
 	{ name: "windsurf", dir: ".windsurf", profile: "core" },
 ];
 
@@ -33,6 +34,7 @@ function usage() {
 			"Usage:",
 			"  npx emb-agent                            # Interactive install",
 			"  npx emb-agent --target pi                # Install for pi",
+			"  npx emb-agent --target omp                # Install for Oh My Pi",
 			"  npx emb-agent --target codex             # Install for Codex",
 			"  npx emb-agent --target all               # Install for all hosts",
 			"  npx emb-agent --help                     # Show this help",
@@ -153,50 +155,42 @@ function installForHost(projectRoot, host) {
 		) + "\n",
 	);
 
-	// Codex-specific hooks config
-	if (host.name === "codex") {
-		const rustPath = path
-			.join(hostDir, "emb-agent", "bin", "emb-agent-rs")
-			.replace(/\\/g, "/");
-		fs.writeFileSync(
-			path.join(hostDir, "hooks.json"),
-			JSON.stringify(
-				{
-					hooks: {
-						SessionStart: [
-							{
-								hooks: [
-									{
-										type: "command",
-										command: `${rustPath} hook session-start`,
-										timeout: 15,
-										statusMessage: "Loading emb-agent context...",
-									},
-								],
-							},
-						],
-						PostToolUse: [
-							{
-								matcher: "Bash|Edit|Write|MultiEdit|Agent|Task",
-								hooks: [
-									{
-										type: "command",
-										command: `${rustPath} hook context-monitor`,
-										timeout: 10,
-									},
-								],
-							},
-						],
-					},
-				},
-				null,
-				2,
-			) + "\n",
-		);
-		console.log("    Codex hooks.json created");
+	// Deploy host-specific extension (if scaffold exists)
+	const extScaffoldDir = path.join(
+		RUNTIME_SRC, "scaffolds", "shells", host.dir, "extensions",
+	);
+	if (fs.existsSync(extScaffoldDir)) {
+		const extDir = path.join(hostDir, "extensions");
+		ensureDir(extDir);
+		const extSrc = path.join(extScaffoldDir, "emb-agent.ts");
+		if (fs.existsSync(extSrc)) {
+			fs.copyFileSync(extSrc, path.join(extDir, "emb-agent.ts"));
+			console.log(`    Extension deployed to ${host.dir}/extensions/`);
+		}
 	}
 
-	console.log(`    ✅ ${host.name} ready`);
+	// Deploy shared skill
+	const skillScaffoldDir = path.join(RUNTIME_SRC, "scaffolds", "skills", "emb-agent");
+	if (fs.existsSync(skillScaffoldDir)) {
+		const skillDir = path.join(hostDir, "skills", "emb-agent");
+		ensureDir(skillDir);
+		const skillSrc = path.join(skillScaffoldDir, "SKILL.md");
+		if (fs.existsSync(skillSrc)) {
+			fs.copyFileSync(skillSrc, path.join(skillDir, "SKILL.md"));
+			console.log(`    Skill deployed to ${host.dir}/skills/emb-agent/`);
+		}
+	}
+
+	// Deploy host-specific config files (hooks.json, settings.json)
+	const hostShellDir = path.join(RUNTIME_SRC, "scaffolds", "shells", host.dir);
+	const configFiles = ["hooks.json", "settings.json"];
+	for (const cfg of configFiles) {
+		const cfgSrc = path.join(hostShellDir, cfg);
+		if (fs.existsSync(cfgSrc)) {
+			fs.copyFileSync(cfgSrc, path.join(hostDir, cfg));
+			console.log(`    ${cfg} deployed to ${host.dir}/`);
+		}
+	}
 }
 
 function main(argv) {

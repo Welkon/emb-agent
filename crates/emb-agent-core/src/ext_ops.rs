@@ -45,6 +45,48 @@ pub fn init_project(cwd: &Path) -> String {
     let _ = fs::write(ext_dir.join("req.yaml"), "# Requirements\n");
     ensure_gitignore_entry(cwd, ".emb-agent/sessions/");
 
+    // Create and auto-complete bootstrap task
+    let bootstrap_dir = ext_dir.join("tasks").join("00-bootstrap-project");
+    let _ = fs::create_dir_all(&bootstrap_dir);
+    let now = crate::task::task_ops::chrono_now();
+    let bootstrap_task = serde_json::json!({
+        "id": format!("{}-00-bootstrap-project", now.split('T').next().unwrap_or("init")),
+        "name": "00-bootstrap-project",
+        "title": "Bootstrap project notes",
+        "description": "Review project truth files and set up project infrastructure",
+        "status": "completed",
+        "dev_type": "embedded",
+        "scope": "init",
+        "package": "",
+        "priority": "P1",
+        "creator": "",
+        "assignee": "",
+        "createdAt": &now,
+        "completedAt": &now,
+        "deletedAt": null,
+        "branch": "",
+        "base_branch": "",
+        "worktree_path": null,
+        "current_phase": 0,
+        "next_action": [],
+        "commit": "",
+        "pr_url": "",
+        "pr": {"status": ""},
+        "artifacts": {
+            "prd": "docs/prd/system.md"
+        },
+        "context": {
+            "implement": [],
+            "check": [],
+            "debug": []
+        },
+        "injected_specs": []
+    });
+    let _ = fs::write(
+        bootstrap_dir.join("task.json"),
+        serde_json::to_string_pretty(&bootstrap_task).unwrap_or_default(),
+    );
+
     r#"{"status":"ok","initialized":true}"#.to_string()
 }
 

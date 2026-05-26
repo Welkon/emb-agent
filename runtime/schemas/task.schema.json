@@ -47,7 +47,7 @@
     },
     "status": {
       "type": "string",
-      "enum": ["pending", "in_progress", "completed", "deleted"]
+      "enum": ["planning", "in_progress", "review", "completed", "rejected"]
     },
     "dev_type": {
       "type": "string",

@@ -942,7 +942,7 @@ fn safe_task_name(name: &str) -> String {
     }
 }
 
-fn chrono_now() -> String {
+pub fn chrono_now() -> String {
     // ISO 8601 without chrono dependency
     let duration = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
