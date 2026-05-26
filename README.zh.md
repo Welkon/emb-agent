@@ -2,128 +2,109 @@
 
 <p align="center">
   <strong>AI 驱动的嵌入式固件开发工作流</strong><br>
-  <sub>把芯片规格、引脚分配、硬件约束写进仓库 — AI 自动读取，不再反复解释硬件。</sub>
+  <sub>把芯片规格、引脚分配、硬件约束写进 .emb-agent/ — AI 自动读取。<br>不再每次会话都重新解释你的板子。</sub>
 </p>
 
 <p align="center">
-  <a href="./README.zh.md">中文</a>
+  <a href="./README.md">English</a>
 </p>
 
 ---
 
-## 系统架构
+## 工作原理
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     AI 编码助手                           │
-│         Pi · Codex · Claude Code · Cursor               │
-└──────┬──────┬──────┬──────┬──────┬──────┬──────────────┘
-       │      │      │      │      │      │
-       │  /emb:next  /emb:task  /emb:schematic  ...
-       │      │      │      │      │      │
-┌──────┴──────┴──────┴──────┴──────┴──────┴──────────────┐
-│                  宿主集成层                               │
-│  Pi: .pi/extensions/emb-agent.ts  ← 原生扩展             │
-│  Codex: .codex/hooks.json          ← 生命周期 hook        │
-│  Cursor/Claude: commands/emb/*.md  ← 命令文档             │
-└──────────────────────┬──────────────────────────────────┘
-                       │  node emb-agent.cjs
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│              emb-agent.cjs (59 行)                        │
-│              瘦转发层 → 委托 Rust 二进制                   │
-└──────────────────────┬──────────────────────────────────┘
-                       │  spawnSync
-                       ▼
-┌─────────────────────────────────────────────────────────┐
+你只需要写一次硬件信息：
+
+  .emb-agent/hw.yaml   →  MCU: CA51M550, 封装: SOP8
+                          引脚: LED-W→P0.2, TOUCH→P0.3, PWM→P0.4
+  .emb-agent/req.yaml  →  双路LED调光, 触摸按键输入
+                          电池供电, 支持深度休眠
+
+AI 每次会话自动读取，不再问"你用的什么芯片？"
+```
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     AI 助手                                │
+│          Pi · Codex · Claude Code · Cursor               │
+│                                                          │
+│    你说: "帮我实现PWM调光"  →  AI 已经知道:                  │
+│    • 芯片是 CA51M550 SOP8                                  │
+│    • PWM 输出在 P0.2                                       │
+│    • LED 通过 NMOS Q1 驱动                                  │
+│    • 3 个待处理任务, pwm-led 是 P0 优先级                    │
+└──────┬───────────────────────────────────────────────────┘
+       │
+       │  /emb:next  /emb:task  /emb:schematic
+       ▼
+┌──────────────────────────────────────────────────────────┐
 │              emb-agent-rs (纯 Rust)                       │
 │                                                          │
-│  ┌──────────┐ ┌──────────┐ ┌────────────┐ ┌──────────┐ │
-│  │ session  │ │  task    │ │ schematic  │ │ hardware │ │
-│  │          │ │          │ │            │ │          │ │
-│  │ next     │ │ activate │ │ summary    │ │ chip     │ │
-│  │ status   │ │ resolve  │ │ components │ │ board    │ │
-│  │ health   │ │ aar      │ │ nets/bom   │ │ project  │ │
-│  └──────────┘ └──────────┘ └────────────┘ └──────────┘ │
+│  读取 .emb-agent/  →  注入上下文  →  路由任务              │
 │                                                          │
-│  ┌──────────┐ ┌──────────┐ ┌────────────┐ ┌──────────┐ │
-│  │knowledge │ │  lookup  │ │  workflow  │ │  hooks   │ │
-│  │          │ │          │ │            │ │          │ │
-│  │ graph    │ │ doc      │ │ scan/plan  │ │ session  │ │
-│  │ wiki     │ │ component│ │ do/review  │ │ status   │ │
-│  │ memory   │ │ board    │ │ verify     │ │ diag     │ │
-│  └──────────┘ └──────────┘ └────────────┘ └──────────┘ │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│                   项目文件                                │
-│                                                          │
-│  .emb-agent/hw.yaml       芯片、引脚、外设                 │
-│  .emb-agent/req.yaml      目标、接口、约束                 │
-│  .emb-agent/tasks/        任务跟踪                        │
-│  .emb-agent/graph/        知识图谱                        │
-│  .emb-agent/wiki/         长期知识                        │
-│  .emb-agent/cache/        解析缓存 (原理图/数据手册)         │
-└─────────────────────────────────────────────────────────┘
+│  session  │  task  │  schematic  │  knowledge  │  hooks  │
+└──────────────────────────────────────────────────────────┘
 ```
 
-## 常用命令
+## 使用流程
 
-```bash
-# 会话开始 — AI 自动获取项目状态
-emb-agent-rs next
+### 1. 项目开始 — AI 自动发现你有的东西
 
-# 查看项目状态
-emb-agent-rs status
+在 Pi/Codex/Claude/Cursor 中打开新会话。emb-agent 扫描仓库，发现硬件文档、原理图、已有代码，然后告诉你：
 
-# 任务管理
-emb-agent-rs task list               # 列出所有任务
-emb-agent-rs task activate pwm-led   # 激活一个任务
-emb-agent-rs task add "实现触摸按键"   # 创建新任务
+> *"找到了 CA51M550 数据手册和 SchDoc 原理图。需要我录入并确认 MCU 型号吗？"*
 
-# 原理图分析
-emb-agent-rs schematic summary       # 原理图总览
-emb-agent-rs schematic bom           # BOM 表
-emb-agent-rs ingest schematic --file board.SchDoc
+### 2. 硬件信息确认后自动锁定
 
-# 知识管理
-emb-agent-rs knowledge graph refresh # 刷新知识图谱
-emb-agent-rs knowledge wiki          # 查看 Wiki
+MCU、引脚、外设确认后写入 `.emb-agent/hw.yaml`。此后每次会话 AI 都自动知道你的板子配置。
 
-# 工作流
-emb-agent-rs scan                    # 分析当前任务
-emb-agent-rs plan                    # 制定计划
-emb-agent-rs do                      # 执行实现
+### 3. 你说需求 — AI 自动路由到正确的任务
+
+```
+你: "帮我写PWM调光驱动"
+AI:  激活任务 pwm-led, 扫描原理图, 确认 P0.2/PWM0 引脚,
+     查阅 CA51M550 数据手册的 PWM 寄存器, 然后写驱动代码。
 ```
 
-**完整命令参考**: [commands/emb/help.md](commands/emb/help.md)
+```
+你: "检查下原理图有没有问题"
+AI:  读取已缓存的原理图分析, 展示 31 个元件、20 个网络、
+     18 条建议 — 特别标注 LED 极性需确认。
+```
+
+### 4. 知识持续积累
+
+每次原理图分析、数据手册查询、调试经验自动沉淀到知识图谱。Wiki 页面随项目演进自动增长。AI 对你的项目理解越来越深。
+
+### 5. 任务闭环，有据可查
+
+每个任务经过 `scan → plan → do → review → verify`，并通过 After Action Review 记录经验教训。不只是"编译过了就行"——真正的嵌入式验证流程。
+
+---
 
 ## 安装
 
 ```bash
-git clone <repo>
-cd emb-agent
+git clone <repo> && cd emb-agent
 cargo build --release
+cp target/release/emb-agent-rs your-project/.<host>/emb-agent/bin/
+cp runtime/bin/emb-agent.cjs      your-project/.<host>/emb-agent/bin/
 ```
 
-部署到项目：
-```bash
-cp target/release/emb-agent-rs your-project/.pi/emb-agent/bin/
-cp runtime/bin/emb-agent.cjs      your-project/.pi/emb-agent/bin/
-```
+支持 Pi、Codex、Claude Code、Cursor。
+
+---
 
 ## 文档
 
 | 文档 | 说明 |
 |------|------|
-| [ai-host-contract.md](docs/ai-host-contract.md) | AI 宿主集成协议 |
+| [scenarios.md](docs/scenarios.md) | 真实使用场景 |
 | [task-model.md](docs/task-model.md) | 任务生命周期 |
 | [chip-support-model.md](docs/chip-support-model.md) | 芯片支持模型 |
-| [scenarios.md](docs/scenarios.md) | 使用场景 |
-| [product-boundaries.md](docs/product-boundaries.md) | 产品边界 |
-| [automation-contract.md](docs/automation-contract.md) | 自动化输出格式 |
-| [workflow-layering.md](docs/workflow-layering.md) | 工作流分层 |
+| [ai-host-contract.md](docs/ai-host-contract.md) | 宿主集成协议 |
+| [commands/emb/help.md](commands/emb/help.md) | 完整命令参考 |
 
 ## License
 
