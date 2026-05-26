@@ -21,8 +21,9 @@ grounded.
 ## CLI entry
 
 ```
-node .omp/emb-agent/bin/emb-agent.cjs <command>
+node <project>/.<host>/emb-agent/bin/emb-agent.cjs <command>
 ```
+Common host dirs: .omp (Oh My Pi), .cursor (Cursor), .codex (Codex), .claude (Claude), .pi (Pi).
 
 ## Quick Routing
 
