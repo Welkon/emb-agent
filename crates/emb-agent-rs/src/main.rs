@@ -95,6 +95,10 @@ fn run_variant(args: &[String]) -> Result<(), String> {
 
 fn run(args: Vec<String>) -> Result<(), String> {
     let command = args.first().map(String::as_str).unwrap_or("help");
+    if matches!(command, "help" | "--help" | "-h") {
+        print_help();
+        return Ok(());
+    }
 
     match command {
         "statusline" => {
@@ -166,7 +170,12 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         "variant" | "workspace" => run_variant(&args),
-        "task" => match args.get(1).map(String::as_str) {
+        "task" => {
+            if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+                print_task_help();
+                return Ok(());
+            }
+            match args.get(1).map(String::as_str) {
             Some("list") => {
                 let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
                 let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
@@ -221,6 +230,38 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 );
                 Ok(())
             }
+            Some("aar") => match args.get(2).map(String::as_str) {
+                Some("status") => {
+                    let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                    let name = args.get(3).ok_or("task aar status requires <name>")?;
+                    let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                    println!("{}", emb_agent_core::task_ops::task_aar_status(&ext_dir, name));
+                    Ok(())
+                }
+                Some("scan") => {
+                    let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                    let name = args.get(3).ok_or("task aar scan requires <name>")?;
+                    let lessons = if args.iter().any(|arg| arg == "--lessons") {
+                        Some(true)
+                    } else if args.iter().any(|arg| arg == "--no-lessons") {
+                        Some(false)
+                    } else {
+                        None
+                    };
+                    let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                    println!("{}", emb_agent_core::task_ops::task_aar_scan(&ext_dir, name, lessons));
+                    Ok(())
+                }
+                Some("record") => {
+                    let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
+                    let name = args.get(3).ok_or("task aar record requires <name> <note>")?;
+                    let note = args.get(4).map(|s| s.as_str()).unwrap_or("");
+                    let ext_dir = std::path::Path::new(&cwd).join(".emb-agent");
+                    println!("{}", emb_agent_core::task_ops::task_aar_record(&ext_dir, name, note));
+                    Ok(())
+                }
+                _ => Err("task aar: expected status, scan, or record".to_string()),
+            },
             Some("bug") => match args.get(2).map(String::as_str) {
                 Some("add") => {
                     let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
@@ -266,7 +307,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
                 }
                 _ => Err("task bug: expected add, list, or resolve".to_string()),
             },
-            _ => Err("task: expected list, show, add, activate, resolve, or bug".to_string()),
+            _ => Err("task: expected list, show, add, activate, resolve, aar, or bug".to_string()),
+            }
         },
         "health" => {
             let cwd = option_value(&args, "--cwd").unwrap_or_else(current_dir_string);
@@ -681,6 +723,12 @@ fn run_hook(args: &[String]) -> Result<(), String> {
 fn print_help() {
     println!(
         "emb-agent-rs\n\nUSAGE:\n  Session:    start, next, status, health, pause [note], resume\n  Tasks:      task list, task show <name>, task add <summary>, task activate <name>, task resolve <name> [note], resolve <name>\n  Chips:      chip diff --from X --to Y, chip swap --from X --to Y [--confirm]\n  Variants:   variant list|status|adopt|create|use|fork|diff (workspace alias)\n  Actions:    scan, plan, do, review, verify, debug [--cwd DIR]\n  Truth:      prd status, doc list, knowledge status, session show, context show\n  Hardware:   declare hardware --mcu <name> [--package <name>], bootstrap status\n  Hooks:      hook session-start|statusline|context-monitor, statusline\n  Diag:       diagnostics hooks|project|state-paths --json\n  Options:    --cwd DIR, --brief, --json\n"
+    );
+}
+
+fn print_task_help() {
+    println!(
+        "emb-agent-rs task\n\nUSAGE:\n  task list\n  task show <name>\n  task add <summary> [--priority P1]\n  task activate <name>\n  task aar status <name>\n  task aar scan <name> --no-lessons|--lessons\n  task aar record <name> <note>\n  task resolve <name> [note]\n  task bug add <parent-task> <summary>\n  task bug list [parent-task] [--variant <name>]\n  task bug resolve <bug-id> [note]\n\nGATES:\n  task resolve requires task aar scan. If scan uses --lessons, task aar record is required before resolve.\n"
     );
 }
 
