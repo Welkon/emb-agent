@@ -1,7 +1,8 @@
 use super::util::{current_dir_string, option_value};
 use emb_agent_core::{
-    build_health_json, build_next_json_with_tasks, build_session_context, build_start_json,
-    build_status_json, build_statusline, read_all_tasks, snapshot_from_cwd,
+    build_health_json, build_next_json_with_tasks_and_policy, build_session_context,
+    build_start_json, build_status_json, build_statusline, evaluate_worktree_policy,
+    read_all_tasks, snapshot_from_cwd,
 };
 use std::path::Path;
 
@@ -25,7 +26,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
             if args.iter().any(|a| a == "--json" || a == "--brief") {
                 let ext_dir = Path::new(&cwd).join(".emb-agent");
                 let tasks = read_all_tasks(&ext_dir);
-                println!("{}", build_next_json_with_tasks(&snapshot, &tasks));
+                let target_task = snapshot
+                    .current_task
+                    .as_ref()
+                    .map(|task| task.name.as_str());
+                let policy = evaluate_worktree_policy(&ext_dir, Path::new(&cwd), target_task);
+                println!(
+                    "{}",
+                    build_next_json_with_tasks_and_policy(&snapshot, &tasks, Some(&policy))
+                );
             } else {
                 println!("{}", build_session_context(&snapshot));
             }
@@ -65,27 +74,69 @@ pub fn run_actions(args: &[String]) -> Result<(), String> {
     let snapshot = snapshot_from_cwd(&cwd);
     match args.first().map(String::as_str).unwrap_or("") {
         "scan" => {
-            println!("{}", emb_agent_core::build_scan_output_json(&snapshot));
+            println!(
+                "{}",
+                with_worktree_policy(
+                    emb_agent_core::build_scan_output_json(&snapshot),
+                    &snapshot,
+                    &cwd
+                )
+            );
             Ok(())
         }
         "plan" => {
-            println!("{}", emb_agent_core::build_plan_output_json(&snapshot));
+            println!(
+                "{}",
+                with_worktree_policy(
+                    emb_agent_core::build_plan_output_json(&snapshot),
+                    &snapshot,
+                    &cwd
+                )
+            );
             Ok(())
         }
         "do" => {
-            println!("{}", emb_agent_core::build_do_output_json(&snapshot));
+            println!(
+                "{}",
+                with_worktree_policy(
+                    emb_agent_core::build_do_output_json(&snapshot),
+                    &snapshot,
+                    &cwd
+                )
+            );
             Ok(())
         }
         "review" => {
-            println!("{}", emb_agent_core::build_review_output_json(&snapshot));
+            println!(
+                "{}",
+                with_worktree_policy(
+                    emb_agent_core::build_review_output_json(&snapshot),
+                    &snapshot,
+                    &cwd
+                )
+            );
             Ok(())
         }
         "verify" => {
-            println!("{}", emb_agent_core::build_verify_output_json(&snapshot));
+            println!(
+                "{}",
+                with_worktree_policy(
+                    emb_agent_core::build_verify_output_json(&snapshot),
+                    &snapshot,
+                    &cwd
+                )
+            );
             Ok(())
         }
         "debug" => {
-            println!("{}", emb_agent_core::build_debug_output_json(&snapshot));
+            println!(
+                "{}",
+                with_worktree_policy(
+                    emb_agent_core::build_debug_output_json(&snapshot),
+                    &snapshot,
+                    &cwd
+                )
+            );
             Ok(())
         }
         _ => Err(format!(
@@ -93,4 +144,49 @@ pub fn run_actions(args: &[String]) -> Result<(), String> {
             args.first().unwrap_or(&String::new())
         )),
     }
+}
+
+fn with_worktree_policy(
+    json_text: String,
+    snapshot: &emb_agent_core::ProjectSnapshot,
+    cwd: &str,
+) -> String {
+    let Some(task) = &snapshot.current_task else {
+        return json_text;
+    };
+    let ext_dir = Path::new(cwd).join(".emb-agent");
+    let policy = evaluate_worktree_policy(&ext_dir, Path::new(cwd), Some(&task.name));
+    if policy.decision == "not-needed" {
+        return json_text;
+    }
+    let mut value: serde_json::Value = serde_json::from_str(&json_text).unwrap_or_default();
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
+            "worktree_policy".to_string(),
+            emb_agent_core::worktree_policy_json(&policy),
+        );
+        if policy.decision == "required" {
+            obj.insert(
+                "agent_protocol".to_string(),
+                serde_json::json!({
+                    "gate": {
+                        "kind": "worktree-required",
+                        "blocking": true,
+                        "reason": policy.reason,
+                        "allowed_actions": ["present_worktree_reason", "trigger_task_activate_with_worktree"],
+                        "forbidden_actions": ["continue_in_main_workspace", "ask_user_to_run_task_activate", "run_shell_command_for_emb_slash_command"],
+                        "recommended_command": policy.recommended_command
+                    }
+                }),
+            );
+            obj.insert(
+                "next_instructions".to_string(),
+                serde_json::Value::String(format!(
+                    "Worktree isolation is required before execution. Trigger `/emb:task activate {} --worktree`; do not ask the user to run the command.",
+                    task.name
+                )),
+            );
+        }
+    }
+    serde_json::to_string_pretty(&value).unwrap_or(json_text)
 }

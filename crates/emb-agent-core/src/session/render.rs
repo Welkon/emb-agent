@@ -1,5 +1,7 @@
 use crate::hardware::project::{ProjectSnapshot, TaskSnapshot};
 use crate::json::json_quote;
+use crate::task::{WorktreePolicy, worktree_policy_json};
+use serde_json::{Value, json};
 
 pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
     if !snapshot.initialized && snapshot.project_root.is_empty() {
@@ -241,7 +243,14 @@ pub fn build_next_json(snapshot: &ProjectSnapshot) -> String {
 }
 
 pub fn build_next_json_with_tasks(snapshot: &ProjectSnapshot, tasks: &[TaskSnapshot]) -> String {
-    let task_json = build_task_json(snapshot);
+    build_next_json_with_tasks_and_policy(snapshot, tasks, None)
+}
+
+pub fn build_next_json_with_tasks_and_policy(
+    snapshot: &ProjectSnapshot,
+    tasks: &[TaskSnapshot],
+    worktree_policy: Option<&WorktreePolicy>,
+) -> String {
     let (action, instructions) = if snapshot.current_task.is_some() {
         (
             "do",
@@ -263,21 +272,33 @@ pub fn build_next_json_with_tasks(snapshot: &ProjectSnapshot, tasks: &[TaskSnaps
             snapshot.task_intake_summary.as_str(),
         )
     };
-    let task_candidates = build_task_candidates_json(tasks);
-    let agent_protocol = build_next_agent_protocol(snapshot, action);
-    format!(
-        "{{\"status\":\"ok\",\"variant\":{},\"action\":{},\"reason\":{},\"workflow_state\":{},\"bootstrap_status\":{},\"active_task\":{},\"open_tasks\":{},\"task_candidates\":{},\"instructions\":{},\"agent_protocol\":{}}}",
-        json_quote(&snapshot.active_variant),
-        json_quote(action),
-        json_quote(&snapshot.recommended_reason),
-        json_quote(&snapshot.workflow_state),
-        json_quote(&snapshot.bootstrap_status),
-        task_json,
-        snapshot.open_tasks,
-        task_candidates,
-        json_quote(instructions),
-        agent_protocol
-    )
+
+    let active_task = json_value_or_null(&build_task_json(snapshot));
+    let task_candidates = json_value_or_null(&build_task_candidates_json(tasks));
+    let agent_protocol = json_value_or_null(&build_next_agent_protocol_with_policy(
+        snapshot,
+        action,
+        worktree_policy,
+    ));
+    let mut payload = json!({
+        "status": "ok",
+        "variant": snapshot.active_variant,
+        "action": action,
+        "reason": snapshot.recommended_reason,
+        "workflow_state": snapshot.workflow_state,
+        "bootstrap_status": snapshot.bootstrap_status,
+        "active_task": active_task,
+        "open_tasks": snapshot.open_tasks,
+        "task_candidates": task_candidates,
+        "instructions": instructions,
+        "agent_protocol": agent_protocol
+    });
+    if let Some(policy) = worktree_policy
+        && let Some(obj) = payload.as_object_mut()
+    {
+        obj.insert("worktree_policy".to_string(), worktree_policy_json(policy));
+    }
+    serde_json::to_string(&payload).unwrap_or_default()
 }
 
 fn build_task_candidates_json(tasks: &[TaskSnapshot]) -> String {
@@ -300,11 +321,35 @@ fn build_task_candidates_json(tasks: &[TaskSnapshot]) -> String {
     format!("[{}]", items.join(","))
 }
 
-fn build_next_agent_protocol(snapshot: &ProjectSnapshot, action: &str) -> String {
+fn build_next_agent_protocol_with_policy(
+    snapshot: &ProjectSnapshot,
+    action: &str,
+    worktree_policy: Option<&WorktreePolicy>,
+) -> String {
+    if let Some(policy) = worktree_policy
+        && policy.decision == "required"
+        && !policy.target_task.is_empty()
+    {
+        return json!({
+            "gate": {
+                "kind": "worktree-required",
+                "blocking": true,
+                "reason": policy.reason,
+                "allowed_actions": ["present_worktree_reason", "trigger_task_activate_with_worktree"],
+                "forbidden_actions": ["continue_in_main_workspace", "ask_user_to_run_task_activate", "run_shell_command_for_emb_slash_command"],
+                "recommended_command": policy.recommended_command
+            }
+        })
+        .to_string();
+    }
     if action == "activate" && snapshot.open_tasks > 0 {
         return "{\"gate\":{\"kind\":\"task-selection\",\"blocking\":true,\"allowed_actions\":[\"present_task_candidates\",\"ask_user_to_choose_task\",\"trigger_task_activate_after_explicit_choice\"],\"forbidden_actions\":[\"ask_user_to_run_task_list\",\"ask_user_to_run_task_activate\",\"invent_task_name\",\"run_shell_command_for_emb_slash_command\"]}}".to_string();
     }
     "{\"gate\":{\"kind\":\"none\",\"blocking\":false}}".to_string()
+}
+
+fn json_value_or_null(source: &str) -> Value {
+    serde_json::from_str(source).unwrap_or(Value::Null)
 }
 
 pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {

@@ -21,6 +21,7 @@ const DEFAULT_PUBLIC_COMMANDS = [
 ];
 const PUBLIC_COMMANDS = Array.from(new Set([...(Array.isArray(TEMPLATE_PUBLIC_COMMANDS) ? TEMPLATE_PUBLIC_COMMANDS : []), ...DEFAULT_PUBLIC_COMMANDS]));
 const ACTION_ALIASES = ["scan", "plan", "do", "debug", "review", "verify"];
+const EMB_SESSION_ID = `${os.hostname()}-${process.pid}-${Date.now().toString(36)}`;
 
 // Derive Rust binary path from HOOK_RUNTIME
 const RUST_BINARY = (() => {
@@ -43,7 +44,8 @@ function runNodeHook(filePath, payload, timeoutMs = 120000) {
       timeout: timeoutMs,
       env: {
         ...process.env,
-        EMB_AGENT_WORKSPACE_TRUST: "1"
+        EMB_AGENT_WORKSPACE_TRUST: "1",
+        EMB_AGENT_SESSION_ID: process.env.EMB_AGENT_SESSION_ID || EMB_SESSION_ID
       }
     });
 
@@ -72,7 +74,8 @@ function runCommandString(commandText, payload, timeoutMs = 120000) {
       timeout: timeoutMs,
       env: {
         ...process.env,
-        EMB_AGENT_WORKSPACE_TRUST: "1"
+        EMB_AGENT_WORKSPACE_TRUST: "1",
+        EMB_AGENT_SESSION_ID: process.env.EMB_AGENT_SESSION_ID || EMB_SESSION_ID
       }
     });
 
@@ -269,7 +272,8 @@ function runEmbAgent(argv, cwd) {
     timeout: 120000,
     env: {
       ...process.env,
-      EMB_AGENT_WORKSPACE_TRUST: "1"
+      EMB_AGENT_WORKSPACE_TRUST: "1",
+      EMB_AGENT_SESSION_ID: process.env.EMB_AGENT_SESSION_ID || EMB_SESSION_ID
     }
   });
 

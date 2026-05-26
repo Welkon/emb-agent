@@ -127,6 +127,27 @@ pub fn task_activate_with_options(ext_dir: &Path, name: &str, use_worktree: bool
         );
     }
 
+    let project_root = project_root_from_ext_dir(ext_dir);
+    let policy =
+        crate::task::worktree_policy::evaluate_worktree_policy(ext_dir, &project_root, Some(name));
+    if !use_worktree && policy.decision == "required" {
+        return json!({
+            "status": "blocked",
+            "activated": false,
+            "gate": {
+                "kind": "worktree-required",
+                "blocking": true,
+                "reason": policy.reason,
+                "allowed_actions": ["trigger_task_activate_with_worktree"],
+                "forbidden_actions": ["continue_in_main_workspace", "ask_user_to_run_task_activate", "run_shell_command_for_emb_slash_command"],
+                "recommended_command": policy.recommended_command
+            },
+            "worktree_policy": crate::task::worktree_policy::worktree_policy_json(&policy),
+            "next_instructions": format!("Worktree isolation is required. Trigger `/emb:task activate {} --worktree`; do not ask the user to run the command.", name)
+        })
+        .to_string();
+    }
+
     let worktree_result: Option<Result<TaskWorktree, String>> = if use_worktree {
         Some(ensure_task_worktree(ext_dir, name, None, None))
     } else {
@@ -744,6 +765,9 @@ fn copy_dir_merge(src: &Path, dest: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dest)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
+        if entry.file_name().to_string_lossy() == "sessions" {
+            continue;
+        }
         let src_path = entry.path();
         let dest_path = dest.join(entry.file_name());
         if entry.file_type()?.is_dir() {
@@ -766,7 +790,13 @@ fn is_worktree_dirty(path: &Path) -> bool {
         .args(["status", "--porcelain"])
         .current_dir(path)
         .output()
-        .map(|output| !String::from_utf8_lossy(&output.stdout).trim().is_empty())
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .any(|line| !line.contains(".emb-agent/sessions/"))
+        })
         .unwrap_or(false)
 }
 

@@ -85,6 +85,23 @@ impl TestProject {
         }
     }
 
+    fn write_session_heartbeat(&self, session_id: &str, task: &str) {
+        let sessions = self.root.join(".emb-agent").join("sessions");
+        fs::create_dir_all(&sessions).expect("create sessions dir");
+        let updated_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_millis();
+        fs::write(
+            sessions.join(format!("{session_id}.json")),
+            format!(
+                r#"{{"session_id":"{session_id}","host":"pi","cwd":"{cwd}","repo_root":"{cwd}","workspace_kind":"main","branch":"master","task":"{task}","pid":999999,"updated_at_ms":{updated_at_ms}}}"#,
+                cwd = self.root.to_string_lossy()
+            ),
+        )
+        .expect("write session heartbeat");
+    }
+
     fn write_schematic_fixture(&self) {
         let cache = self
             .root
@@ -264,6 +281,44 @@ fn task_worktree_lifecycle_smoke() {
         cleanup.contains("\"removed\":true"),
         "cleanup output: {cleanup}"
     );
+}
+
+#[test]
+fn task_activate_requires_worktree_when_other_main_session_active() {
+    let project = TestProject::new("worktree-policy");
+    project.init_git_repo();
+    project.write_session_heartbeat("other-session", "schematic-review");
+
+    let status = run(&project, &["task", "worktree", "status", "pwm-led"]);
+    assert!(
+        status.contains("worktree_policy"),
+        "status output: {status}"
+    );
+    assert!(
+        status.contains("another active AI session"),
+        "status output: {status}"
+    );
+
+    let blocked = run(&project, &["task", "activate", "pwm-led"]);
+    assert!(
+        blocked.contains("\"status\":\"blocked\""),
+        "activate output: {blocked}"
+    );
+    assert!(
+        blocked.contains("worktree-required"),
+        "activate output: {blocked}"
+    );
+    assert!(
+        blocked.contains("/emb:task activate pwm-led --worktree"),
+        "activate output: {blocked}"
+    );
+
+    let activate = run(&project, &["task", "activate", "pwm-led", "--worktree"]);
+    assert!(
+        activate.contains("\"activated\":true"),
+        "activate output: {activate}"
+    );
+    let _ = run(&project, &["task", "worktree", "cleanup", "pwm-led"]);
 }
 
 #[test]

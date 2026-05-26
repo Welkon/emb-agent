@@ -104,14 +104,32 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
             Some("status") => {
                 if let Some(name) = args.get(3).filter(|s| !s.starts_with("--")) {
+                    let worktree = serde_json::from_str::<serde_json::Value>(
+                        &emb_agent_core::task::task_ops::task_worktree_show(&ext_dir, name),
+                    )
+                    .unwrap_or_default();
+                    let policy = emb_agent_core::evaluate_worktree_policy(
+                        &ext_dir,
+                        Path::new(&cwd),
+                        Some(name),
+                    );
                     println!(
                         "{}",
-                        emb_agent_core::task::task_ops::task_worktree_show(&ext_dir, name)
+                        serde_json::json!({
+                            "status": "ok",
+                            "worktree_status": worktree,
+                            "worktree_policy": emb_agent_core::worktree_policy_json(&policy)
+                        })
                     );
                 } else {
+                    let policy =
+                        emb_agent_core::evaluate_worktree_policy(&ext_dir, Path::new(&cwd), None);
                     println!(
                         "{}",
-                        emb_agent_core::task::task_ops::task_worktree_list(&ext_dir)
+                        serde_json::json!({
+                            "status": "ok",
+                            "worktree_policy": emb_agent_core::worktree_policy_json(&policy)
+                        })
                     );
                 }
                 Ok(())

@@ -17,6 +17,7 @@ pub fn init_project(cwd: &Path) -> String {
     let _ = fs::create_dir_all(ext_dir.join("graph"));
     let _ = fs::create_dir_all(ext_dir.join("wiki"));
     let _ = fs::create_dir_all(ext_dir.join("state"));
+    let _ = fs::create_dir_all(ext_dir.join("sessions"));
     let _ = fs::create_dir_all(ext_dir.join("extensions").join("chips").join("profiles"));
 
     // Write minimal project.json
@@ -42,8 +43,24 @@ pub fn init_project(cwd: &Path) -> String {
         "# Hardware truth\nmodel: \"\"\npackage: \"\"\n",
     );
     let _ = fs::write(ext_dir.join("req.yaml"), "# Requirements\n");
+    ensure_gitignore_entry(cwd, ".emb-agent/sessions/");
 
     r#"{"status":"ok","initialized":true}"#.to_string()
+}
+
+fn ensure_gitignore_entry(project_root: &Path, entry: &str) {
+    let path = project_root.join(".gitignore");
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    if existing.lines().any(|line| line.trim() == entry) {
+        return;
+    }
+    let mut updated = existing.trim_end().to_string();
+    if !updated.is_empty() {
+        updated.push('\n');
+    }
+    updated.push_str(entry);
+    updated.push('\n');
+    let _ = fs::write(path, updated);
 }
 
 /// Migration status. The current Rust runtime does not require a separate project migration step.
