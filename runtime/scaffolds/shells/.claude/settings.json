@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/emb-agent/bin/emb-agent.cjs hook session-start",
+            "command": "node .claude/emb-agent/bin/emb-agent.cjs hook session-start --host claude",
             "timeout": 15
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/emb-agent/bin/emb-agent.cjs hook context-monitor",
+            "command": "node .claude/emb-agent/bin/emb-agent.cjs hook context-monitor --host claude",
             "timeout": 10
           }
         ]

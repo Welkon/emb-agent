@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .codex/emb-agent/bin/emb-agent.cjs hook session-start",
+            "command": "node .codex/emb-agent/bin/emb-agent.cjs hook session-start --host codex",
             "timeout": 15,
             "statusMessage": "Loading emb-agent context..."
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .codex/emb-agent/bin/emb-agent.cjs hook context-monitor",
+            "command": "node .codex/emb-agent/bin/emb-agent.cjs hook context-monitor --host codex",
             "timeout": 10
           }
         ]
