@@ -238,3 +238,14 @@ pub fn context_show(ext_dir: &Path) -> String {
         json_quote(&summary)
     )
 }
+
+pub fn config_show(ext_dir: &Path) -> String {
+    let config_path = ext_dir.join("project.json");
+    match std::fs::read_to_string(&config_path) {
+        Ok(content) => serde_json::to_string_pretty(&serde_json::json!({
+            "status": "ok",
+            "config": serde_json::from_str::<serde_json::Value>(&content).unwrap_or_default()
+        })).unwrap_or_default(),
+        Err(_) => r#"{"status":"error","message":"project.json not found"}"#.to_string(),
+    }
+}

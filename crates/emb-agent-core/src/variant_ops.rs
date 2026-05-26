@@ -1,5 +1,5 @@
 use crate::json::json_quote;
-use crate::project::HardwareTruth;
+use crate::hardware::project::HardwareTruth;
 use std::fs;
 use std::path::{Path, PathBuf};
 

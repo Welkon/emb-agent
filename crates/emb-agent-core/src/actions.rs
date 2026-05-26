@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::project::ProjectSnapshot;
+use crate::hardware::project::ProjectSnapshot;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PlanOutput {
@@ -344,7 +344,7 @@ fn dedup(values: Vec<String>) -> Vec<String> {
 
 pub fn build_plan_output_json(snapshot: &ProjectSnapshot) -> String {
     let output = build_plan_output(snapshot);
-    let (next, next_instructions) = crate::render::build_next_routing(snapshot);
+    let (next, next_instructions) = crate::session::render::build_next_routing(snapshot);
     let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
     if let Some(obj) = json.as_object_mut() {
         obj.insert("next".to_string(), serde_json::Value::String(next));
@@ -358,7 +358,7 @@ pub fn build_plan_output_json(snapshot: &ProjectSnapshot) -> String {
 
 pub fn build_review_output_json(snapshot: &ProjectSnapshot) -> String {
     let output = build_review_output(snapshot);
-    let (next, next_instructions) = crate::render::build_next_routing(snapshot);
+    let (next, next_instructions) = crate::session::render::build_next_routing(snapshot);
     let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
     if let Some(obj) = json.as_object_mut() {
         obj.insert("next".to_string(), serde_json::Value::String(next));
@@ -372,7 +372,7 @@ pub fn build_review_output_json(snapshot: &ProjectSnapshot) -> String {
 
 pub fn build_verify_output_json(snapshot: &ProjectSnapshot) -> String {
     let output = build_verify_output(snapshot);
-    let (next, next_instructions) = crate::render::build_next_routing(snapshot);
+    let (next, next_instructions) = crate::session::render::build_next_routing(snapshot);
     let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
     if let Some(obj) = json.as_object_mut() {
         obj.insert("next".to_string(), serde_json::Value::String(next));
@@ -386,7 +386,7 @@ pub fn build_verify_output_json(snapshot: &ProjectSnapshot) -> String {
 
 pub fn build_debug_output_json(snapshot: &ProjectSnapshot) -> String {
     let output = build_debug_output(snapshot);
-    let (next, next_instructions) = crate::render::build_next_routing(snapshot);
+    let (next, next_instructions) = crate::session::render::build_next_routing(snapshot);
     let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
     if let Some(obj) = json.as_object_mut() {
         obj.insert("next".to_string(), serde_json::Value::String(next));
@@ -451,7 +451,7 @@ pub fn build_do_output(snapshot: &ProjectSnapshot) -> DoOutput {
 
 pub fn build_do_output_json(snapshot: &ProjectSnapshot) -> String {
     let output = build_do_output(snapshot);
-    let (next, next_instructions) = crate::render::build_next_routing(snapshot);
+    let (next, next_instructions) = crate::session::render::build_next_routing(snapshot);
     let mut json: serde_json::Value = serde_json::to_value(&output).unwrap_or_default();
     if let Some(obj) = json.as_object_mut() {
         obj.insert("next".to_string(), serde_json::Value::String(next));
