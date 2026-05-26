@@ -191,6 +191,17 @@ function installForHost(projectRoot, host) {
 			console.log(`    ${cfg} deployed to ${host.dir}/`);
 		}
 	}
+
+	// Deploy Cursor custom commands (only for cursor host)
+	if (host.dir === ".cursor") {
+		const cmdScaffoldDir = path.join(hostShellDir, "commands");
+		if (fs.existsSync(cmdScaffoldDir)) {
+			const cmdDir = path.join(hostDir, "commands");
+			ensureDir(cmdDir);
+			copyDir(cmdScaffoldDir, cmdDir);
+			console.log("    Commands deployed to .cursor/commands/");
+		}
+	}
 }
 
 function main(argv) {
