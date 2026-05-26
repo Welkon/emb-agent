@@ -108,14 +108,15 @@ pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
         "<ready>".to_string(),
         "HARD GATE — your first action in this session:".to_string(),
         format!(
-            "Run `/emb:{}` NOW and follow its output exactly. Do NOT manually explore files or decide next steps on your own until you have its recommendation.",
+            "Trigger the Pi slash command `/emb:{}` NOW and follow its output exactly. Do NOT run this through bash, Node, pi dist/index.js, or emb-agent-rs directly. Do NOT manually explore files or decide next steps on your own until you have its recommendation.",
             snapshot.recommended_command
         ),
         String::new(),
         "Rules:".to_string(),
         "- Do NOT re-run `start` on subsequent turns.".to_string(),
-        "- The Recommended command IS a CLI command — execute it, don't treat it as a conversational hint.".to_string(),
-        "- After running the recommended command, follow its output.".to_string(),
+        "- `/emb:*` is a Pi slash command handled by the extension UI, not a shell command.".to_string(),
+        "- Never execute `/emb:*` via bash or by invoking pi-coding-agent dist/index.js.".to_string(),
+        "- After the slash command returns, follow its output.".to_string(),
         "</ready>".to_string(),
     ]);
 
@@ -436,5 +437,14 @@ mod tests {
         assert!(json.contains("\"runtime\":\"/emb:agent\""));
         assert!(json.contains("\"active_task\""));
         assert!(json.contains("Implement ADC"));
+    }
+
+    #[test]
+    fn session_context_treats_emb_as_slash_command_not_shell_cli() {
+        let context = build_session_context(&sample_snapshot());
+        assert!(context.contains("Trigger the Pi slash command `/emb:do` NOW"));
+        assert!(context.contains("not a shell command"));
+        assert!(context.contains("Never execute `/emb:*` via bash"));
+        assert!(!context.contains("Recommended command IS a CLI command"));
     }
 }

@@ -306,9 +306,9 @@ function buildAiProtocolMessage(result) {
   };
   return [
     "emb-agent machine protocol follows.",
-    "CRITICAL: Do NOT run emb-agent-rs or emb-agent.cjs as bash commands.",
-    "ALWAYS use /emb: prefix slash commands instead (e.g., /emb:next, /emb:task, /emb:schematic).",
-    "The /emb: commands auto-route through the correct binary path.",
+    "CRITICAL: Do NOT run emb-agent-rs, emb-agent.cjs, /emb:*, or pi-coding-agent dist/index.js as bash commands.",
+    "ALWAYS trigger /emb: prefix commands through the Pi slash-command channel instead (e.g., /emb:next, /emb:task, /emb:schematic).",
+    "The /emb: commands auto-route through the extension and the correct binary path; they are not shell commands.",
     "Reply to the human in concise Chinese with the state, the blocking gate if any, and the next confirmation/input needed.",
     "Respect agent_protocol.gate.allowed_actions and agent_protocol.gate.forbidden_actions when present.",
     "If agent_protocol.gate.kind is alignment, stop after PRD/task creation, ask about unclear items, update PRD/task truth, and repeat until explicit agreement before activation/planning/implementation.",
@@ -399,7 +399,7 @@ export default function embAgentPiExtension(pi) {
   }
 
   pi.registerCommand("emb", {
-    description: "Run an emb-agent CLI command, for example /emb next or /emb task add <summary>",
+    description: "Run an emb-agent slash command, for example /emb next or /emb task add <summary>",
     handler: async (args, ctx) => {
       runCommandAndReport(pi, ctx, String(args || "").trim() || "help");
       updateStatus(ctx);
