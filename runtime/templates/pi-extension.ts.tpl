@@ -13,7 +13,13 @@ const SESSION_START_HOOK = {{SESSION_START_HOOK_JSON}};
 const CONTEXT_MONITOR_HOOK = {{CONTEXT_MONITOR_HOOK_JSON}};
 const STATUSLINE_HOOK = {{STATUSLINE_HOOK_JSON}};
 const HOOK_RUNTIME = {{HOOK_RUNTIME_JSON}};
-const PUBLIC_COMMANDS = {{PUBLIC_COMMANDS_JSON}};
+const TEMPLATE_PUBLIC_COMMANDS = {{PUBLIC_COMMANDS_JSON}};
+const DEFAULT_PUBLIC_COMMANDS = [
+  "adapter", "board", "bootstrap", "capability", "chip", "component", "config", "decision",
+  "doc", "help", "ingest", "knowledge", "memory", "migrate", "next", "pause", "prd",
+  "resume", "schematic", "skills", "start", "support", "task", "variant"
+];
+const PUBLIC_COMMANDS = Array.from(new Set([...(Array.isArray(TEMPLATE_PUBLIC_COMMANDS) ? TEMPLATE_PUBLIC_COMMANDS : []), ...DEFAULT_PUBLIC_COMMANDS]));
 const ACTION_ALIASES = ["scan", "plan", "do", "debug", "review", "verify"];
 
 // Derive Rust binary path from HOOK_RUNTIME
