@@ -68,6 +68,23 @@ impl TestProject {
         }
     }
 
+    fn init_git_repo(&self) {
+        for args in [
+            vec!["init"],
+            vec!["config", "user.email", "emb-agent@example.invalid"],
+            vec!["config", "user.name", "emb-agent test"],
+            vec!["add", "."],
+            vec!["commit", "-m", "initial"],
+        ] {
+            let output = Command::new("git")
+                .args(args)
+                .current_dir(&self.root)
+                .output()
+                .expect("run git");
+            assert_success(output);
+        }
+    }
+
     fn write_schematic_fixture(&self) {
         let cache = self
             .root
@@ -215,6 +232,38 @@ fn command_docs_are_help_routable() {
             .expect("run command help");
         assert_success(output);
     }
+}
+
+#[test]
+fn task_worktree_lifecycle_smoke() {
+    let project = TestProject::new("worktree");
+    project.init_git_repo();
+
+    let create = run(&project, &["task", "worktree", "create", "pwm-led"]);
+    assert!(
+        create.contains("\"created\":true"),
+        "create output: {create}"
+    );
+    assert!(create.contains("pwm-led"), "create output: {create}");
+
+    let status = run(&project, &["task", "worktree", "status", "pwm-led"]);
+    assert!(
+        status.contains("\"status\": \"ok\"") || status.contains("\"status\":\"ok\""),
+        "status output: {status}"
+    );
+    assert!(status.contains("task/pwm-led"), "status output: {status}");
+
+    let activate = run(&project, &["task", "activate", "pwm-led", "--worktree"]);
+    assert!(
+        activate.contains("\"worktree\""),
+        "activate output: {activate}"
+    );
+
+    let cleanup = run(&project, &["task", "worktree", "cleanup", "pwm-led"]);
+    assert!(
+        cleanup.contains("\"removed\":true"),
+        "cleanup output: {cleanup}"
+    );
 }
 
 #[test]

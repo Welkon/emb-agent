@@ -311,6 +311,7 @@ function buildAiProtocolMessage(result) {
     "The /emb: commands auto-route through the extension and the correct binary path; they are not shell commands.",
     "Reply to the human in concise Chinese with the state, the blocking gate if any, and the next confirmation/input needed.",
     "Do NOT ask the human to run emb-agent commands. Present options or ask for missing input; when a command is needed, trigger the proper /emb: slash command yourself after any required user confirmation.",
+    "If the user asks to extract/parse/ingest a schematic or board file, trigger /emb:ingest schematic|board first. Do NOT read/head/xxd binary SchDoc/PcbDoc files manually.",
     "Respect agent_protocol.gate.allowed_actions and agent_protocol.gate.forbidden_actions when present.",
     "If agent_protocol.gate.kind is alignment, stop after PRD/task creation, ask about unclear items, update PRD/task truth, and repeat until explicit agreement before activation/planning/implementation.",
     "If agent_protocol.gate.kind is execution, treat this as an execution brief: perform the requested repository change, then verify after implementation evidence exists.",

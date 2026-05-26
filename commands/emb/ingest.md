@@ -20,7 +20,8 @@ allowed-tools:
 
 ## Usage
 
-- Run `$emb-ingest` when this command matches the current problem.
+- Trigger `/emb:ingest ...` when the user asks to import, extract, parse, or normalize external hardware evidence.
+- Do not manually read/head/xxd binary `.SchDoc` or `.PcbDoc` files first; emb-agent has dedicated parsers for these containers.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
 - For PDFs and manuals, prefer:
   `ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
@@ -30,11 +31,11 @@ allowed-tools:
 - To extract datasheet links from LCEDA/EasyEDA search results, use:
   `doc lookup --keyword <part-or-lcsc-id> --provider lceda`
 - For schematics or schematic exports, prefer:
-  `ingest schematic --file <path>`
+  `/emb:ingest schematic --file <path>`
 - For multi-page schematics exported as separate sheets, pass each sheet in order:
-  `ingest schematic --file <sheet-1> --file <sheet-2>`
+  `/emb:ingest schematic --file <sheet-1> --file <sheet-2>`
 - For Altium PCB layout files, use:
-  `ingest board --file <board.PcbDoc>`
+  `/emb:ingest board --file <board.PcbDoc>`
 - `declare hardware` / `ingest hardware` return `write_mode: truth-write` because they update truth files directly.
 - `ingest doc` returns `write_mode: staged-truth` when it has a target truth file; review `apply_ready` and then use `ingest apply doc ...` to write the selected fields.
 - `ingest schematic` returns `write_mode: analysis-only`, `truth_write.direct: false`, and `apply_ready: null`; it only prepares artifacts for agent analysis.

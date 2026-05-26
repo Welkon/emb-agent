@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::json::json_quote;
 
@@ -112,6 +113,11 @@ pub fn task_add(ext_dir: &Path, summary: &str, _task_type: &str, priority: &str)
 
 /// Activate a task (set as current)
 pub fn task_activate(ext_dir: &Path, name: &str) -> String {
+    task_activate_with_options(ext_dir, name, false)
+}
+
+/// Activate a task, optionally binding it to an isolated git worktree first.
+pub fn task_activate_with_options(ext_dir: &Path, name: &str, use_worktree: bool) -> String {
     let state_dir = crate::variant_ops::active_state_dir(ext_dir);
     let task_path = state_dir.join("tasks").join(name).join("task.json");
     if !task_path.exists() {
@@ -121,11 +127,40 @@ pub fn task_activate(ext_dir: &Path, name: &str) -> String {
         );
     }
 
+    let worktree_result: Option<Result<TaskWorktree, String>> = if use_worktree {
+        Some(ensure_task_worktree(ext_dir, name, None, None))
+    } else {
+        None
+    };
+    if let Some(Err(err)) = &worktree_result {
+        return format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"worktree-error\",\"message\":{}}}}}",
+            json_quote(err)
+        );
+    }
+
     // Read task, update status
     let content = fs::read_to_string(&task_path).unwrap_or_default();
     let mut task: Value = serde_json::from_str(&content).unwrap_or(Value::Null);
     if let Some(obj) = task.as_object_mut() {
         obj.insert("status".to_string(), json!("in_progress"));
+        if let Some(Ok(worktree)) = &worktree_result {
+            obj.insert("branch".to_string(), json!(worktree.branch));
+            obj.insert("base_branch".to_string(), json!(worktree.base_branch));
+            obj.insert("worktree_path".to_string(), json!(worktree.path));
+            obj.insert(
+                "worktree".to_string(),
+                json!({
+                    "enabled": true,
+                    "path": worktree.path,
+                    "branch": worktree.branch,
+                    "base_branch": worktree.base_branch,
+                    "status": worktree.status,
+                    "dirty": worktree.dirty,
+                    "reason": "local-isolation"
+                }),
+            );
+        }
     }
     let _ = fs::write(
         &task_path,
@@ -136,9 +171,16 @@ pub fn task_activate(ext_dir: &Path, name: &str) -> String {
     let current_task_file = state_dir.join(".current-task");
     let _ = fs::write(&current_task_file, name);
 
+    let worktree_json = worktree_result
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .map(worktree_to_json)
+        .unwrap_or_else(|| "null".to_string());
+
     format!(
-        "{{\"status\":\"ok\",\"activated\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"next\":\"do\",\"next_instructions\":\"Task activated. Trigger `/emb:do` to start implementation.\"}}",
-        json_quote(name)
+        "{{\"status\":\"ok\",\"activated\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"worktree\":{},\"next\":\"do\",\"next_instructions\":\"Task activated. Trigger `/emb:do` to start implementation.\"}}",
+        json_quote(name),
+        worktree_json
     )
 }
 
@@ -396,6 +438,377 @@ fn aar_gate(task: &Value) -> AarGate {
         message: "AAR gate satisfied".to_string(),
         next: "task resolve".to_string(),
         instructions: "AAR gate is clear.".to_string(),
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TaskWorktree {
+    pub task: String,
+    pub path: String,
+    pub branch: String,
+    pub base_branch: String,
+    pub status: String,
+    pub dirty: bool,
+}
+
+pub fn task_worktree_list(ext_dir: &Path) -> String {
+    let tasks = crate::hardware::project::read_all_tasks(ext_dir);
+    let items: Vec<String> = tasks
+        .iter()
+        .filter_map(|task| task_worktree_status(ext_dir, &task.name).ok())
+        .map(|worktree| worktree_to_json(&worktree))
+        .collect();
+    format!(
+        "{{\"status\":\"ok\",\"worktrees\":[{}],\"count\":{}}}",
+        items.join(","),
+        items.len()
+    )
+}
+
+pub fn task_worktree_show(ext_dir: &Path, name: &str) -> String {
+    match task_worktree_status(ext_dir, name) {
+        Ok(worktree) => format!(
+            "{{\"status\":\"ok\",\"worktree\":{}}}",
+            worktree_to_json(&worktree)
+        ),
+        Err(err) => format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"worktree-status\",\"message\":{}}}}}",
+            json_quote(&err)
+        ),
+    }
+}
+
+pub fn task_worktree_create(
+    ext_dir: &Path,
+    name: &str,
+    branch_arg: Option<&str>,
+    base_arg: Option<&str>,
+) -> String {
+    match ensure_task_worktree(ext_dir, name, branch_arg, base_arg) {
+        Ok(worktree) => format!(
+            "{{\"status\":\"ok\",\"created\":true,\"worktree\":{},\"next\":\"task activate\",\"next_instructions\":\"Worktree is ready. Ask whether to activate this task in the isolated directory now.\"}}",
+            worktree_to_json(&worktree)
+        ),
+        Err(err) => format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"worktree-create\",\"message\":{}}}}}",
+            json_quote(&err)
+        ),
+    }
+}
+
+pub fn task_worktree_cleanup(ext_dir: &Path, name: &str) -> String {
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let task_path = state_dir.join("tasks").join(name).join("task.json");
+    let content = fs::read_to_string(&task_path).unwrap_or_default();
+    if content.is_empty() {
+        return format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"not-found\",\"message\":\"Task not found: {}\"}}}}",
+            name
+        );
+    }
+    let mut task: Value = serde_json::from_str(&content).unwrap_or(Value::Null);
+    let worktree_path = task
+        .get("worktree_path")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            task.get("worktree")
+                .and_then(|w| w.get("path"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("")
+        .to_string();
+
+    if worktree_path.is_empty() {
+        return format!(
+            "{{\"status\":\"ok\",\"removed\":false,\"task\":{{\"name\":{}}},\"reason\":\"no worktree recorded\"}}",
+            json_quote(name)
+        );
+    }
+
+    let project_root = project_root_from_ext_dir(ext_dir);
+    let remove = Command::new("git")
+        .args(["worktree", "remove", "--force", &worktree_path])
+        .current_dir(&project_root)
+        .output();
+    if let Ok(output) = remove
+        && !output.status.success()
+        && Path::new(&worktree_path).exists()
+    {
+        return format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"git-worktree-remove\",\"message\":{}}}}}",
+            json_quote(&String::from_utf8_lossy(&output.stderr))
+        );
+    }
+
+    if let Some(obj) = task.as_object_mut() {
+        obj.insert("worktree_path".to_string(), Value::Null);
+        obj.insert("worktree".to_string(), Value::Null);
+    }
+    let _ = fs::write(
+        &task_path,
+        serde_json::to_string_pretty(&task).unwrap_or_default(),
+    );
+
+    format!(
+        "{{\"status\":\"ok\",\"removed\":true,\"task\":{{\"name\":{}}},\"path\":{}}}",
+        json_quote(name),
+        json_quote(&worktree_path)
+    )
+}
+
+fn ensure_task_worktree(
+    ext_dir: &Path,
+    name: &str,
+    branch_arg: Option<&str>,
+    base_arg: Option<&str>,
+) -> Result<TaskWorktree, String> {
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let task_path = state_dir.join("tasks").join(name).join("task.json");
+    let content = fs::read_to_string(&task_path).map_err(|_| format!("Task not found: {name}"))?;
+    let mut task: Value =
+        serde_json::from_str(&content).map_err(|e| format!("Invalid task.json: {e}"))?;
+    let project_root = project_root_from_ext_dir(ext_dir);
+    let repo_root = git_repo_root(&project_root)?;
+
+    let branch = first_non_empty(&[
+        branch_arg.unwrap_or("").to_string(),
+        task.get("branch")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        format!("task/{name}"),
+    ]);
+    let base_branch = first_non_empty(&[
+        base_arg.unwrap_or("").to_string(),
+        task.get("base_branch")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        current_branch(&repo_root).unwrap_or_else(|| "HEAD".to_string()),
+    ]);
+    let worktree_path = task_worktree_path(&repo_root, name);
+    let worktree_path_str = worktree_path.to_string_lossy().to_string();
+
+    if !worktree_path.exists() {
+        if let Some(parent) = worktree_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("mkdir worktree parent: {e}"))?;
+        }
+        let output = Command::new("git")
+            .args([
+                "worktree",
+                "add",
+                "-B",
+                &branch,
+                &worktree_path_str,
+                &base_branch,
+            ])
+            .current_dir(&repo_root)
+            .output()
+            .map_err(|e| format!("git worktree add failed: {e}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "git worktree add failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+    }
+
+    let worktree_ext_dir = worktree_path.join(".emb-agent");
+    copy_dir_merge(ext_dir, &worktree_ext_dir)
+        .map_err(|e| format!("sync .emb-agent into worktree failed: {e}"))?;
+    let _ = fs::write(worktree_ext_dir.join(".current-task"), name);
+
+    let dirty = is_worktree_dirty(&worktree_path);
+    let worktree = TaskWorktree {
+        task: name.to_string(),
+        path: worktree_path_str,
+        branch: branch.clone(),
+        base_branch: base_branch.clone(),
+        status: "ready".to_string(),
+        dirty,
+    };
+
+    if let Some(obj) = task.as_object_mut() {
+        obj.insert("branch".to_string(), json!(branch));
+        obj.insert("base_branch".to_string(), json!(base_branch));
+        obj.insert("worktree_path".to_string(), json!(worktree.path));
+        obj.insert(
+            "worktree".to_string(),
+            json!({
+                "enabled": true,
+                "path": worktree.path,
+                "branch": worktree.branch,
+                "base_branch": worktree.base_branch,
+                "status": worktree.status,
+                "dirty": worktree.dirty,
+                "reason": "local-isolation"
+            }),
+        );
+    }
+    let _ = fs::write(
+        &task_path,
+        serde_json::to_string_pretty(&task).unwrap_or_default(),
+    );
+
+    Ok(worktree)
+}
+
+fn task_worktree_status(ext_dir: &Path, name: &str) -> Result<TaskWorktree, String> {
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let task_path = state_dir.join("tasks").join(name).join("task.json");
+    let content = fs::read_to_string(&task_path).map_err(|_| format!("Task not found: {name}"))?;
+    let task: Value =
+        serde_json::from_str(&content).map_err(|e| format!("Invalid task.json: {e}"))?;
+    let path = task
+        .get("worktree_path")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            task.get("worktree")
+                .and_then(|w| w.get("path"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("");
+    if path.is_empty() {
+        return Err("No worktree recorded for this task".to_string());
+    }
+    Ok(TaskWorktree {
+        task: name.to_string(),
+        path: path.to_string(),
+        branch: task
+            .get("branch")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        base_branch: task
+            .get("base_branch")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        status: if Path::new(path).exists() {
+            "ready"
+        } else {
+            "missing"
+        }
+        .to_string(),
+        dirty: is_worktree_dirty(Path::new(path)),
+    })
+}
+
+fn task_worktree_path(repo_root: &Path, name: &str) -> PathBuf {
+    let repo_name = repo_root
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("repo");
+    let parent = repo_root.parent().unwrap_or(repo_root);
+    parent
+        .join(format!("{repo_name}.worktrees"))
+        .join(safe_task_name(name))
+}
+
+fn project_root_from_ext_dir(ext_dir: &Path) -> PathBuf {
+    ext_dir.parent().unwrap_or(ext_dir).to_path_buf()
+}
+
+fn git_repo_root(project_root: &Path) -> Result<PathBuf, String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .current_dir(project_root)
+        .output()
+        .map_err(|e| format!("git rev-parse failed: {e}"))?;
+    if !output.status.success() {
+        return Err("not inside a git repository".to_string());
+    }
+    Ok(PathBuf::from(
+        String::from_utf8_lossy(&output.stdout).trim(),
+    ))
+}
+
+fn current_branch(repo_root: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() {
+        None
+    } else {
+        Some(branch)
+    }
+}
+
+fn copy_dir_merge(src: &Path, dest: &Path) -> std::io::Result<()> {
+    if !src.exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_merge(&src_path, &dest_path)?;
+        } else {
+            if let Some(parent) = dest_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&src_path, &dest_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn is_worktree_dirty(path: &Path) -> bool {
+    if !path.exists() {
+        return false;
+    }
+    Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(path)
+        .output()
+        .map(|output| !String::from_utf8_lossy(&output.stdout).trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn worktree_to_json(worktree: &TaskWorktree) -> String {
+    format!(
+        "{{\"task\":{},\"path\":{},\"branch\":{},\"base_branch\":{},\"status\":{},\"dirty\":{}}}",
+        json_quote(&worktree.task),
+        json_quote(&worktree.path),
+        json_quote(&worktree.branch),
+        json_quote(&worktree.base_branch),
+        json_quote(&worktree.status),
+        worktree.dirty
+    )
+}
+
+fn first_non_empty(values: &[String]) -> String {
+    values
+        .iter()
+        .find(|value| !value.trim().is_empty())
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn safe_task_name(name: &str) -> String {
+    let safe = name
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if safe.is_empty() {
+        "task".to_string()
+    } else {
+        safe
     }
 }
 

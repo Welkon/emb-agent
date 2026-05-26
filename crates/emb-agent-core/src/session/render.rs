@@ -116,6 +116,7 @@ pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
         "- Do NOT re-run `start` on subsequent turns.".to_string(),
         "- `/emb:*` is a Pi slash command handled by the extension UI, not a shell command.".to_string(),
         "- Never execute `/emb:*` via bash or by invoking pi-coding-agent dist/index.js.".to_string(),
+        "- If the user asks to extract/parse/ingest a schematic or board file, trigger `/emb:ingest schematic --file <path>` or `/emb:ingest board --file <path>` first; do not read/head/xxd binary SchDoc/PcbDoc files manually.".to_string(),
         "- After the slash command returns, follow its output.".to_string(),
         "</ready>".to_string(),
     ]);

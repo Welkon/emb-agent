@@ -37,9 +37,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         Some("activate") => {
             let name = args.get(2).ok_or("task activate requires <name>")?;
+            let use_worktree = args.iter().any(|a| a == "--worktree");
             println!(
                 "{}",
-                emb_agent_core::task::task_ops::task_activate(&ext_dir, name)
+                emb_agent_core::task::task_ops::task_activate_with_options(
+                    &ext_dir,
+                    name,
+                    use_worktree,
+                )
             );
             Ok(())
         }
@@ -89,6 +94,59 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
             _ => Err("task aar: expected status, scan, or record".to_string()),
         },
+        Some("worktree") => match args.get(2).map(String::as_str) {
+            Some("list") => {
+                println!(
+                    "{}",
+                    emb_agent_core::task::task_ops::task_worktree_list(&ext_dir)
+                );
+                Ok(())
+            }
+            Some("status") => {
+                if let Some(name) = args.get(3).filter(|s| !s.starts_with("--")) {
+                    println!(
+                        "{}",
+                        emb_agent_core::task::task_ops::task_worktree_show(&ext_dir, name)
+                    );
+                } else {
+                    println!(
+                        "{}",
+                        emb_agent_core::task::task_ops::task_worktree_list(&ext_dir)
+                    );
+                }
+                Ok(())
+            }
+            Some("show") => {
+                let name = args.get(3).ok_or("task worktree show requires <name>")?;
+                println!(
+                    "{}",
+                    emb_agent_core::task::task_ops::task_worktree_show(&ext_dir, name)
+                );
+                Ok(())
+            }
+            Some("create") => {
+                let name = args.get(3).ok_or("task worktree create requires <name>")?;
+                println!(
+                    "{}",
+                    emb_agent_core::task::task_ops::task_worktree_create(
+                        &ext_dir,
+                        name,
+                        option_value(args, "--branch").as_deref(),
+                        option_value(args, "--base").as_deref(),
+                    )
+                );
+                Ok(())
+            }
+            Some("cleanup") => {
+                let name = args.get(3).ok_or("task worktree cleanup requires <name>")?;
+                println!(
+                    "{}",
+                    emb_agent_core::task::task_ops::task_worktree_cleanup(&ext_dir, name)
+                );
+                Ok(())
+            }
+            _ => Err("task worktree: expected list, show/status, create, or cleanup".to_string()),
+        },
         Some("bug") => match args.get(2).map(String::as_str) {
             Some("add") => {
                 let parent = args
@@ -128,12 +186,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
             _ => Err("task bug: expected add, list, or resolve".to_string()),
         },
-        _ => Err("task: expected list, show, add, activate, resolve, aar, or bug".to_string()),
+        _ => Err(
+            "task: expected list, show, add, activate, resolve, aar, worktree, or bug".to_string(),
+        ),
     }
 }
 
 fn print_help() {
     println!(
-        "emb-agent-rs task\n\nUSAGE:\n  task list\n  task show <name>\n  task add <summary> [--priority P1]\n  task activate <name>\n  task aar status <name>\n  task aar scan <name> --no-lessons|--lessons\n  task aar record <name> <note>\n  task resolve <name> [note]\n  task bug add <parent-task> <summary>\n  task bug list [parent-task] [--variant <name>]\n  task bug resolve <bug-id> [note]\n\nGATES:\n  task resolve requires task aar scan. If scan uses --lessons, task aar record is required before resolve.\n"
+        "emb-agent-rs task\n\nUSAGE:\n  task list\n  task show <name>\n  task add <summary> [--priority P1]\n  task activate <name> [--worktree]\n  task aar status <name>\n  task aar scan <name> --no-lessons|--lessons\n  task aar record <name> <note>\n  task resolve <name> [note]\n  task worktree list
+  task worktree status [name]
+  task worktree show <name>
+  task worktree create <name> [--branch <branch>] [--base <base>]
+  task worktree cleanup <name>
+  task bug add <parent-task> <summary>\n  task bug list [parent-task] [--variant <name>]\n  task bug resolve <bug-id> [note]\n\nGATES:\n  task resolve requires task aar scan. If scan uses --lessons, task aar record is required before resolve.\n"
     );
 }
