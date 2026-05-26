@@ -1,62 +1,124 @@
 # emb-agent
 
-**嵌入式固件 AI 编码助手工作流引擎。**
+<p align="center">
+  <strong>AI-driven embedded firmware workflow</strong><br>
+  <sub>Put chip specs, pins, and hardware constraints into .emb-agent/ — AI reads them automatically.</sub>
+</p>
 
-把芯片规格、引脚分配、硬件约束写入 `.emb-agent/` —— AI 每次会话自动读取。不再需要在聊天中反复解释你的板子。
-
-支持 **Pi**（原生扩展）、**Codex**、**Claude Code**、**Cursor**。
+<p align="center">
+  <a href="./README.zh.md">中文</a>
+</p>
 
 ---
 
-## 架构
+## Architecture
 
 ```
-emb-agent-rs (Rust)         ← 全部逻辑
-    ↑
-emb-agent.cjs (59行)        ← 瘦 Node.js 转发层
-    ↑
-宿主扩展/hooks               ← Pi 扩展, Codex hooks.json, Cursor 命令
-    ↑
-AI 助手                     ← /emb:next, /emb:task, /emb:schematic...
+┌─────────────────────────────────────────────────────────┐
+│                   AI Coding Assistant                    │
+│         Pi · Codex · Claude Code · Cursor               │
+└──────┬──────┬──────┬──────┬──────┬──────┬──────────────┘
+       │      │      │      │      │      │
+       │  /emb:next  /emb:task  /emb:schematic  ...
+       │      │      │      │      │      │
+┌──────┴──────┴──────┴──────┴──────┴──────┴──────────────┐
+│                  Host Integration                        │
+│  Pi: .pi/extensions/emb-agent.ts  ← Native extension    │
+│  Codex: .codex/hooks.json          ← Lifecycle hooks     │
+│  Cursor/Claude: commands/emb/*.md  ← Command docs        │
+└──────────────────────┬──────────────────────────────────┘
+                       │  node emb-agent.cjs
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│              emb-agent.cjs (59 lines)                    │
+│              Thin pass-through → Rust binary             │
+└──────────────────────┬──────────────────────────────────┘
+                       │  spawnSync
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│              emb-agent-rs (pure Rust)                    │
+│                                                          │
+│  ┌──────────┐ ┌──────────┐ ┌────────────┐ ┌──────────┐ │
+│  │ session  │ │  task    │ │ schematic  │ │ hardware │ │
+│  │ next     │ │ activate │ │ summary    │ │ chip     │ │
+│  │ status   │ │ resolve  │ │ components │ │ board    │ │
+│  └──────────┘ └──────────┘ └────────────┘ └──────────┘ │
+│                                                          │
+│  ┌──────────┐ ┌──────────┐ ┌────────────┐ ┌──────────┐ │
+│  │knowledge │ │  lookup  │ │  workflow  │ │  hooks   │ │
+│  │ graph    │ │ doc      │ │ scan/plan  │ │ session  │ │
+│  │ wiki     │ │ component│ │ do/review  │ │ status   │ │
+│  └──────────┘ └──────────┘ └────────────┘ └──────────┘ │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│                   Project Files                          │
+│  .emb-agent/hw.yaml       Chip, pins, peripherals       │
+│  .emb-agent/req.yaml      Goals, interfaces, constraints│
+│  .emb-agent/tasks/        Task tracking                 │
+│  .emb-agent/graph/        Knowledge graph               │
+│  .emb-agent/wiki/         Long-term knowledge           │
+│  .emb-agent/cache/        Parsed cache (schematic/docs) │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## 命令
+## Common Commands
 
 ```bash
-# 会话
-emb-agent-rs start next status health pause resume
+# Session — AI auto-loads project state
+emb-agent-rs next
 
-# 任务
-emb-agent-rs task list/show/add/activate/resolve
-emb-agent-rs task aar scan/record
+# Status
+emb-agent-rs status
 
-# 原理图分析
-emb-agent-rs schematic summary/components/nets/bom/advice/preview/raw
+# Tasks
+emb-agent-rs task list               # List all tasks
+emb-agent-rs task activate pwm-led   # Activate a task
+emb-agent-rs task add "Implement touch key"
+
+# Schematic
+emb-agent-rs schematic summary       # Overview
+emb-agent-rs schematic bom           # BOM table
 emb-agent-rs ingest schematic --file board.SchDoc
-emb-agent-rs ingest board --file board.PcbDoc
 
-# 知识图谱
-emb-agent-rs knowledge graph refresh/report/query/explain
-emb-agent-rs knowledge wiki
-emb-agent-rs memory list/remember
+# Knowledge
+emb-agent-rs knowledge graph refresh # Refresh graph
+emb-agent-rs knowledge wiki          # List wiki pages
 
-# 查找
-emb-agent-rs doc lookup --chip CA51M550
-emb-agent-rs component lookup
-
-# 工作流
-emb-agent-rs scan plan do review verify debug
-emb-agent-rs chip diff --from X --to Y
+# Workflow
+emb-agent-rs scan                    # Analyze current task
+emb-agent-rs plan                    # Create plan
+emb-agent-rs do                      # Implement
 ```
 
-## 安装
+**Full reference**: [commands/emb/help.md](commands/emb/help.md)
+
+## Install
 
 ```bash
+git clone <repo>
 cd emb-agent
 cargo build --release
-cp target/release/emb-agent-rs .<host>/emb-agent/bin/
-cp runtime/bin/emb-agent.cjs .<host>/emb-agent/bin/
 ```
+
+Deploy to project:
+```bash
+cp target/release/emb-agent-rs your-project/.pi/emb-agent/bin/
+cp runtime/bin/emb-agent.cjs      your-project/.pi/emb-agent/bin/
+```
+
+## Docs
+
+| Doc | Topic |
+|-----|-------|
+| [ai-host-contract.md](docs/ai-host-contract.md) | Host integration protocol |
+| [task-model.md](docs/task-model.md) | Task lifecycle |
+| [chip-support-model.md](docs/chip-support-model.md) | Chip support model |
+| [scenarios.md](docs/scenarios.md) | Usage scenarios |
+| [product-boundaries.md](docs/product-boundaries.md) | Product boundaries |
+| [automation-contract.md](docs/automation-contract.md) | Automation output format |
+| [workflow-layering.md](docs/workflow-layering.md) | Workflow layering |
 
 ## License
 
