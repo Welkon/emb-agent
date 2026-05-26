@@ -163,7 +163,7 @@ pub fn build_scan_output(snapshot: &ProjectSnapshot) -> ScanOutput {
             "Hardware truth, constraints, and change surface are explicit enough to enter plan or do"
                 .to_string()
         },
-        primary_command: "capability run scan".to_string(),
+        primary_command: "/emb:scan".to_string(),
         stage: "scan".to_string(),
         action: if is_blank {
             "Continue with plan".to_string()

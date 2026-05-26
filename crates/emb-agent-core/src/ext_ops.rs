@@ -246,9 +246,9 @@ pub fn capability_run(_ext_dir: &Path, name: &str) -> String {
     let valid = ["scan", "plan", "do", "review", "verify", "debug"];
     if valid.contains(&name) {
         format!(
-            "{{\"status\":\"ok\",\"capability\":{},\"note\":\"Run `emb-agent-rs {}` directly\"}}",
+            "{{\"status\":\"ok\",\"capability\":{},\"next\":{},\"next_instructions\":\"Trigger the slash command for this capability; do not run emb-agent-rs through bash.\"}}",
             json_quote(name),
-            name
+            json_quote(&format!("/emb:{name}"))
         )
     } else {
         format!(

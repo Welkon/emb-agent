@@ -54,7 +54,9 @@ pub fn load_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
         .join("graph")
         .join("graph.json");
     if !path.exists() {
-        return Err("graph.json not found. Run knowledge graph refresh first.".to_string());
+        return Err(
+            "graph.json not found. Trigger `/emb:knowledge graph refresh` first.".to_string(),
+        );
     }
     let content = fs::read_to_string(&path).map_err(|e| format!("read error: {e}"))?;
     serde_json::from_str(&content).map_err(|e| format!("parse error: {e}"))

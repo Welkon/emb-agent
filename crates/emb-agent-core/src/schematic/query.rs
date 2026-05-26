@@ -342,7 +342,7 @@ pub fn resolve_parsed_path(
         return Ok((parsed_path.clone(), format!("{}", parsed_path.display())));
     }
 
-    Err("No parsed.json found. Run 'ingest schematic --file <path>' first.".to_string())
+    Err("No parsed.json found. Trigger `/emb:ingest schematic --file <path>` first.".to_string())
 }
 
 pub struct SchematicQueryOptions<'a> {

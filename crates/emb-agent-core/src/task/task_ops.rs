@@ -102,7 +102,7 @@ pub fn task_add(ext_dir: &Path, summary: &str, _task_type: &str, priority: &str)
     }
 
     format!(
-        "{{\"status\":\"ok\",\"created\":true,\"task\":{{\"name\":{},\"title\":{},\"status\":\"pending\",\"priority\":{}}},\"next_step\":\"task activate {}\"}}",
+        "{{\"status\":\"ok\",\"created\":true,\"task\":{{\"name\":{},\"title\":{},\"status\":\"pending\",\"priority\":{}}},\"next\":\"task activate\",\"next_instructions\":\"Task created. Present the created task to the user and ask whether to activate it now. Do not ask the user to run a command.\",\"activation_command\":\"/emb:task activate {}\"}}",
         json_quote(&name),
         json_quote(summary),
         json_quote(priority),
@@ -137,7 +137,7 @@ pub fn task_activate(ext_dir: &Path, name: &str) -> String {
     let _ = fs::write(&current_task_file, name);
 
     format!(
-        "{{\"status\":\"ok\",\"activated\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"next\":\"do\",\"next_instructions\":\"Task activated. Run `/emb:do` to start implementation.\"}}",
+        "{{\"status\":\"ok\",\"activated\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"next\":\"do\",\"next_instructions\":\"Task activated. Trigger `/emb:do` to start implementation.\"}}",
         json_quote(name)
     )
 }
@@ -158,7 +158,7 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     let current_status = task.get("status").and_then(|v| v.as_str()).unwrap_or("");
     if matches!(current_status, "completed" | "done" | "resolved" | "closed") {
         return format!(
-            "{{\"status\":\"ok\",\"resolved\":false,\"already_completed\":true,\"task\":{{\"name\":{},\"status\":{}}},\"next\":\"next\",\"next_instructions\":\"Task is already completed. Run `/emb:next` for the next action.\"}}",
+            "{{\"status\":\"ok\",\"resolved\":false,\"already_completed\":true,\"task\":{{\"name\":{},\"status\":{}}},\"next\":\"next\",\"next_instructions\":\"Task is already completed. Trigger `/emb:next` for the next action.\"}}",
             json_quote(name),
             json_quote(current_status)
         );
@@ -201,7 +201,7 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     }
 
     format!(
-        "{{\"status\":\"ok\",\"resolved\":true,\"task\":{{\"name\":{},\"status\":\"completed\"}},\"next\":\"next\",\"next_instructions\":\"Task completed. Run `/emb:next` to find the next task or action.\"}}",
+        "{{\"status\":\"ok\",\"resolved\":true,\"task\":{{\"name\":{},\"status\":\"completed\"}},\"next\":\"next\",\"next_instructions\":\"Task completed. Trigger `/emb:next` to find the next task or action.\"}}",
         json_quote(name)
     )
 }
@@ -241,7 +241,7 @@ pub fn task_aar_scan(ext_dir: &Path, name: &str, lessons: Option<bool>) -> Strin
     }
     if lessons.is_none() {
         return format!(
-            "{{\"status\":\"needs-answer\",\"task\":{{\"name\":{}}},\"questions\":[\"Did this task reveal a new hardware invariant?\",\"Did it reveal a reusable firmware pattern?\",\"Did it reveal a debugging pitfall or tool gotcha?\",\"Did it change project-local workflow rules?\"],\"next\":\"task aar scan\",\"next_instructions\":\"Answer the AAR scan: run `/emb:task aar scan {} --no-lessons` if all answers are no, or `/emb:task aar scan {} --lessons` if any answer is yes.\"}}",
+            "{{\"status\":\"needs-answer\",\"task\":{{\"name\":{}}},\"questions\":[\"Did this task reveal a new hardware invariant?\",\"Did it reveal a reusable firmware pattern?\",\"Did it reveal a debugging pitfall or tool gotcha?\",\"Did it change project-local workflow rules?\"],\"next\":\"task aar scan\",\"next_instructions\":\"Ask the user these AAR questions. After the answers are clear, trigger `/emb:task aar scan {} --no-lessons` if all answers are no, or `/emb:task aar scan {} --lessons` if any answer is yes. Do not ask the user to run the command.\"}}",
             json_quote(name),
             name,
             name
@@ -290,9 +290,9 @@ pub fn task_aar_scan(ext_dir: &Path, name: &str, lessons: Option<bool>) -> Strin
             "task resolve"
         }),
         json_quote(if record_required {
-            "Record the lesson: `/emb:task aar record <task> <note>` before resolve."
+            "Ask the user for the lesson note, then trigger `/emb:task aar record <task> <note>` before resolve. Do not ask the user to run the command."
         } else {
-            "AAR gate is clear. You may run `/emb:task resolve <task>`."
+            "AAR gate is clear. Trigger `/emb:task resolve <task>` when the user confirms closure."
         })
     )
 }
@@ -335,7 +335,7 @@ pub fn task_aar_record(ext_dir: &Path, name: &str, note: &str) -> String {
     );
     let _ = fs::write(&aar_path, updated);
     format!(
-        "{{\"status\":\"ok\",\"recorded\":true,\"task\":{{\"name\":{}}},\"next\":\"task resolve\",\"next_instructions\":\"AAR recorded. You may now run `/emb:task resolve {}`.\"}}",
+        "{{\"status\":\"ok\",\"recorded\":true,\"task\":{{\"name\":{}}},\"next\":\"task resolve\",\"next_instructions\":\"AAR recorded. Trigger `/emb:task resolve {}` when the user confirms closure.\"}}",
         json_quote(name),
         name
     )
@@ -373,7 +373,7 @@ fn aar_gate(task: &Value) -> AarGate {
             record_completed,
             message: "AAR scan is required before task resolve".to_string(),
             next: "task aar scan".to_string(),
-            instructions: "Run `/emb:task aar scan <task> --no-lessons` or `--lessons`."
+            instructions: "Ask the AAR questions, then trigger `/emb:task aar scan <task> --no-lessons` or `--lessons`. Do not ask the user to run the command."
                 .to_string(),
         };
     }
@@ -385,7 +385,7 @@ fn aar_gate(task: &Value) -> AarGate {
             record_completed,
             message: "AAR record is required because scan found lessons".to_string(),
             next: "task aar record".to_string(),
-            instructions: "Run `/emb:task aar record <task> <note>` before resolve.".to_string(),
+            instructions: "Ask for the lesson note, then trigger `/emb:task aar record <task> <note>` before resolve. Do not ask the user to run the command.".to_string(),
         };
     }
     AarGate {

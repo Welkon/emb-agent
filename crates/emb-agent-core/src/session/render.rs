@@ -38,7 +38,7 @@ pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
 
 pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
     if !snapshot.initialized && snapshot.project_root.is_empty() {
-        return "<emb-agent-session-context>\nNo emb-agent project found. Run emb-agent init/bootstrap from the project root.\n</emb-agent-session-context>".to_string();
+        return "<emb-agent-session-context>\nNo emb-agent project found. Ask the user to open a project root, then initialize emb-agent through the host slash command flow.\n</emb-agent-session-context>".to_string();
     }
 
     let welcome = build_welcome_message(snapshot);
@@ -215,7 +215,7 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
     if snapshot.current_task.is_some() {
         (
             "do".to_string(),
-            "Active task exists. Run `/emb:do` to continue implementation.".to_string(),
+            "Active task exists. Trigger `/emb:do` to continue implementation.".to_string(),
         )
     } else if snapshot.open_tasks > 0 {
         (
@@ -225,12 +225,12 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
     } else if snapshot.bootstrap_status != "ready" {
         (
             "bootstrap".to_string(),
-            "Project needs bootstrap. Run `/emb:bootstrap status`.".to_string(),
+            "Project needs bootstrap. Trigger `/emb:bootstrap status`.".to_string(),
         )
     } else {
         (
             "task add".to_string(),
-            "No tasks exist. Create one with `/emb:task add <summary>`.".to_string(),
+            "No tasks exist. Ask the user what work to start, then trigger `/emb:task add <summary>` after the task scope is clear.".to_string(),
         )
     }
 }

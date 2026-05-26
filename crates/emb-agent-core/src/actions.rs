@@ -321,7 +321,7 @@ fn stage(name: &str, why: &str) -> WorkflowStage {
         name: name.to_string(),
         why: why.to_string(),
         exit_criteria: format!("{} is complete enough to move to the next stage", name),
-        primary_command: format!("capability run {}", name),
+        primary_command: format!("/emb:{}", name),
         stage: name.to_string(),
         action: format!("Continue with {}", name),
     }
@@ -429,14 +429,14 @@ pub fn build_do_output(snapshot: &ProjectSnapshot) -> DoOutput {
             "Active task exists. Proceed with implementation:\n\
 1. Read the task PRD (.emb-agent/tasks/<task>/task.json)\n\
 2. Write firmware code in src/\n\
-3. Compile and verify with `emb-agent-rs verify`\n\
-4. After passing, run `emb-agent-rs review`"
+3. Compile and verify through the normal project checks\n\
+4. After implementation evidence exists, trigger `/emb:review`"
                 .to_string(),
         )
     } else {
         (
             "No active task",
-            "No active task. Run `emb-agent-rs next` to get routing recommendation.".to_string(),
+            "No active task. Trigger `/emb:next` to get routing recommendation.".to_string(),
         )
     };
 

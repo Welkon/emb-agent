@@ -310,6 +310,7 @@ function buildAiProtocolMessage(result) {
     "ALWAYS trigger /emb: prefix commands through the Pi slash-command channel instead (e.g., /emb:next, /emb:task, /emb:schematic).",
     "The /emb: commands auto-route through the extension and the correct binary path; they are not shell commands.",
     "Reply to the human in concise Chinese with the state, the blocking gate if any, and the next confirmation/input needed.",
+    "Do NOT ask the human to run emb-agent commands. Present options or ask for missing input; when a command is needed, trigger the proper /emb: slash command yourself after any required user confirmation.",
     "Respect agent_protocol.gate.allowed_actions and agent_protocol.gate.forbidden_actions when present.",
     "If agent_protocol.gate.kind is alignment, stop after PRD/task creation, ask about unclear items, update PRD/task truth, and repeat until explicit agreement before activation/planning/implementation.",
     "If agent_protocol.gate.kind is execution, treat this as an execution brief: perform the requested repository change, then verify after implementation evidence exists.",
@@ -324,7 +325,7 @@ function translateEmbAgentRsPaths(text) {
     /Run `emb-agent-rs (task|next|start|status|health|schematic|ingest|chip|variant|scan|plan|do|review|verify|debug|bootstrap|declare|capability|decision|help) ?([^`]*)`/g,
     (_, cmd, args) => {
       const argsStr = args.trim();
-      return `Run \`/emb:${cmd}${argsStr ? ' ' + argsStr : ''}\``;
+      return `Trigger \`/emb:${cmd}${argsStr ? ' ' + argsStr : ''}\``;
     }
   );
 }
@@ -399,7 +400,7 @@ export default function embAgentPiExtension(pi) {
   }
 
   pi.registerCommand("emb", {
-    description: "Run an emb-agent slash command, for example /emb next or /emb task add <summary>",
+    description: "Trigger an emb-agent slash command, for example /emb next or /emb task add <summary>",
     handler: async (args, ctx) => {
       runCommandAndReport(pi, ctx, String(args || "").trim() || "help");
       updateStatus(ctx);
@@ -408,7 +409,7 @@ export default function embAgentPiExtension(pi) {
 
   for (const commandName of [...PUBLIC_COMMANDS, ...ACTION_ALIASES]) {
     pi.registerCommand(`emb:${commandName}`, {
-      description: `Run emb-agent ${commandName}`,
+      description: `Trigger emb-agent ${commandName}`,
       handler: async (args, ctx) => {
         const suffix = String(args || "").trim();
         runCommandAndReport(pi, ctx, suffix ? `${commandName} ${suffix}` : commandName);
@@ -492,8 +493,8 @@ export default function embAgentPiExtension(pi) {
       "- Answer concisely and directly. Do not start broader exploration or refactoring.",
       langHint,
       "- Use emb-agent context below to understand the project.",
-      `- Run \`${RUNTIME_CLI} start\` first if you need to load project state.`,
-      `- Run \`${RUNTIME_CLI} next\` to get the recommended next step for emb-agent workflow.`,
+      `- The side quest may use \`${RUNTIME_CLI} start\` internally if it needs to load project state.`,
+      `- The side quest may use \`${RUNTIME_CLI} next\` internally to get the recommended next step for emb-agent workflow.`,
       "- Use read/bash/grep/find to explore files and datasheets.",
       "- Do NOT modify any files unless explicitly asked.",
       "- Return a self-contained answer. The main session will receive only your final response.",
@@ -631,7 +632,7 @@ export default function embAgentPiExtension(pi) {
         };
       }
 
-      // No emb-agent context yet — run emb-agent start first, then the query
+      // No emb-agent context yet — load emb-agent context first, then the query
       const freshContext = runSessionStart(cwd);
       const result = await spawnSideQuest(params.query, cwd, freshContext, signal);
       if (result.status === "failed") {
@@ -650,7 +651,7 @@ export default function embAgentPiExtension(pi) {
 
   // Register /emb:sidequest command — user can trigger manually
   pi.registerCommand("emb:sidequest", {
-    description: "Run an isolated side quest without polluting the main session context",
+    description: "Start an isolated side quest without polluting the main session context",
     handler: async (args, ctx) => {
       const query = String(args || "").trim();
       if (!query) {

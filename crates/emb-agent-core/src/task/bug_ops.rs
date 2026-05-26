@@ -60,7 +60,7 @@ pub fn bug_add(ext_dir: &Path, parent_task: &str, summary: &str) -> String {
         json_quote(&variant),
         json_quote(&hw),
         json_quote(&format!(
-            "Bug recorded. Fix the code, then run `/emb:task bug resolve {} 'fix note'`.",
+            "Bug recorded. Fix the code, then trigger `/emb:task bug resolve {} 'fix note'` after evidence exists.",
             final_id
         ))
     )
@@ -175,7 +175,7 @@ pub fn bug_resolve(ext_dir: &Path, bug_id: &str, note: &str) -> String {
         .unwrap_or("?");
 
     format!(
-        "{{\"status\":\"ok\",\"resolved\":true,\"bug\":{{\"id\":{},\"parent_task\":{},\"resolved_at\":{}}},\"next\":\"do\",\"next_instructions\":\"Bug resolved. Continue implementation: run `/emb:do`.\"}}",
+        "{{\"status\":\"ok\",\"resolved\":true,\"bug\":{{\"id\":{},\"parent_task\":{},\"resolved_at\":{}}},\"next\":\"do\",\"next_instructions\":\"Bug resolved. Continue implementation by triggering `/emb:do`.\"}}",
         json_quote(bug_id),
         json_quote(pt),
         json_quote(&now)

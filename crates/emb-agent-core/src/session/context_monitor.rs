@@ -143,17 +143,17 @@ pub fn build_metrics_message(metrics: &ContextMetrics, context_hygiene: Option<&
     let pause_cli = context_hygiene
         .and_then(|value| string_member(value, "pause_cli"))
         .or_else(|| context_hygiene.and_then(|value| string_member(value, "pauseCli")))
-        .unwrap_or_else(|| "emb-agent pause".to_string());
+        .unwrap_or_else(|| "/emb:pause".to_string());
     let fresh_context_instruction = build_fresh_context_instruction(context_hygiene);
     let reasons = reason_suffix(context_hygiene, " Signals");
     let session_report_cli = context_hygiene
         .and_then(|value| string_member(value, "session_report_cli"))
         .or_else(|| context_hygiene.and_then(|value| string_member(value, "sessionReportCli")))
-        .unwrap_or_else(|| "emb-agent session-report".to_string());
+        .unwrap_or_else(|| "/emb:session".to_string());
 
     if is_critical {
         return format!(
-            "{prefix} Context window remaining={}%. Stop expanding scope. Run {pause_cli} then {session_report_cli} to save checkpoint. Next step: {fresh_context_instruction}.{reasons}",
+            "{prefix} Context window remaining={}%. Stop expanding scope. Trigger {pause_cli} then {session_report_cli} to save checkpoint. Next step: {fresh_context_instruction}.{reasons}",
             metrics.remaining.round() as i64
         );
     }
@@ -195,21 +195,23 @@ pub fn build_fresh_context_instruction(context_hygiene: Option<&Value>) -> Strin
     let pause_cli = context_hygiene
         .and_then(|value| string_member(value, "pause_cli"))
         .or_else(|| context_hygiene.and_then(|value| string_member(value, "pauseCli")))
-        .unwrap_or_else(|| "emb-agent pause".to_string());
+        .unwrap_or_else(|| "/emb:pause".to_string());
     let resume_cli = context_hygiene
         .and_then(|value| string_member(value, "resume_cli"))
         .or_else(|| context_hygiene.and_then(|value| string_member(value, "resumeCli")))
-        .unwrap_or_else(|| "emb-agent resume".to_string());
+        .unwrap_or_else(|| "/emb:resume".to_string());
 
     if context_hygiene
         .and_then(|value| bool_member(value, "handoff_ready"))
         .or_else(|| context_hygiene.and_then(|value| bool_member(value, "handoffReady")))
         .unwrap_or(false)
     {
-        return format!("Use the host clear/new-context control, then run {resume_cli}");
+        return format!("Use the host clear/new-context control, then trigger {resume_cli}");
     }
 
-    format!("Run {pause_cli}, then use the host clear/new-context control and run {resume_cli}")
+    format!(
+        "Trigger {pause_cli}, then use the host clear/new-context control and trigger {resume_cli}"
+    )
 }
 
 pub fn should_emit(project_root: &str, level: &str, signature: &str) -> bool {
