@@ -7,22 +7,18 @@ const fs = require("fs");
 const path = require("path");
 
 function findRustBinary() {
-	var exeName = process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs";
-	// Prefer binary alongside this wrapper (host-specific install)
-	var candidates = [
-		path.join(__dirname, exeName),
-		path.join(process.cwd(), ".cursor", "emb-agent", "bin", exeName),
-		path.join(process.cwd(), ".omp", "emb-agent", "bin", exeName),
-		path.join(process.cwd(), ".claude", "emb-agent", "bin", exeName),
-		path.join(process.cwd(), ".codex", "emb-agent", "bin", exeName),
+	const exeName =
+		process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs";
+	const candidates = [
 		path.join(process.cwd(), ".pi", "emb-agent", "bin", exeName),
+		path.join(__dirname, exeName),
 		exeName,
 	];
 	return (
-		candidates.find(function (c) {
+		candidates.find((c) => {
 			try {
 				return fs.existsSync(c);
-			} catch (_e) {
+			} catch {
 				return false;
 			}
 		}) || ""

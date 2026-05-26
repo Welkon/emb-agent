@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .omp/emb-agent/bin/emb-agent.cjs hook session-start --host omp",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .omp/emb-agent/bin/emb-agent.cjs hook context-monitor --host omp",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

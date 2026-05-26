@@ -1,0 +1,25 @@
+---
+description: Workflow shell for {{NAME}}
+alwaysApply: false
+---
+
+# Workflow Shell
+
+## Quick Routing
+
+{{INCLUDE:_partials/quick-routing-table.md}}
+
+## Auto Triggers
+
+{{INCLUDE:_partials/auto-trigger-closure.md}}
+- If context was compressed, re-read the required files from the table before continuing.
+
+## Red Flags - STOP
+
+{{INCLUDE:_partials/red-flags-stop.md}}
+
+## Cursor Notes
+
+- Skill: {{NAME}}
+- Summary: {{SUMMARY}}
+- <!-- FILL: exact workflow routing rule -->

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://emb-agent.dev/schemas/hw.schema.json",
+  "title": "emb-agent hardware configuration",
+  "description": "Schema for hw.yaml hardware truth file. Declares MCU, package, clock, datasheets, and peripherals.",
+  "type": "object",
+  "required": ["chip", "family"],
+  "properties": {
+    "chip": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Chip model identifier (e.g. esp32-c3, pms150g)"
+    },
+    "family": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Chip family name (e.g. espressif, padauk)"
+    },
+    "package": {
+      "type": "string",
+      "description": "Package variant (e.g. QFN32, SOP8)"
+    },
+    "vendor": {
+      "type": "string",
+      "description": "Chip vendor name"
+    },
+    "board": {
+      "type": "string",
+      "description": "Board or module name"
+    },
+    "clock_hz": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "System clock frequency in Hz"
+    },
+    "datasheets": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of datasheet URLs or file paths"
+    },
+    "peripherals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "description": "Peripheral name (e.g. uart, spi, i2c)" },
+          "instance": { "type": "string", "description": "Peripheral instance identifier (e.g. UART0, SPI1)" },
+          "pins": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Assigned pins for this peripheral"
+          }
+        }
+      },
+      "description": "Declared peripherals with optional pin assignments"
+    },
+    "pins": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Flat list of claimed GPIO pins (e.g. GPIO0, PA1)"
+    }
+  }
+}

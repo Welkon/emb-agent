@@ -1,0 +1,3 @@
+- "I will skip AAR just this once"
+- "Task is too small to scan"
+- "I will batch them at session end"
