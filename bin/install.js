@@ -99,12 +99,18 @@ function installForHost(projectRoot, host) {
 	ensureDir(path.join(embDir, "agents"));
 
 	// Rust binary
+	var srcExe = fs.existsSync(RUST_BINARY_SRC + ".exe");
 	if (fs.existsSync(RUST_BINARY_SRC)) {
 		fs.copyFileSync(RUST_BINARY_SRC, path.join(embDir, "bin", "emb-agent-rs"));
-		console.log("    Rust binary deployed");
+	}
+	if (srcExe) {
+		fs.copyFileSync(RUST_BINARY_SRC + ".exe", path.join(embDir, "bin", "emb-agent-rs.exe"));
+	}
+	if (fs.existsSync(RUST_BINARY_SRC) || srcExe) {
+		console.log("    Rust binary" + (srcExe ? "s" : "") + " deployed");
 	} else {
 		console.log(
-			"    ⚠ Rust binary not found (build with: cargo build --release)",
+			"    \u26A0 Rust binary not found (build with: cargo build --release)",
 		);
 		console.log(
 			"    Download from: https://github.com/Welkon/emb-agent/releases",
