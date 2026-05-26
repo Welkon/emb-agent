@@ -1,5 +1,5 @@
 // emb-agent Pi extension
-// emb-hook-version: 0.4.0
+// emb-hook-version: {{EMB_VERSION}}
 
 import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -12,8 +12,8 @@ const RUNTIME_CLI_PATH = {{RUNTIME_CLI_PATH_JSON}};
 const SESSION_START_HOOK = {{SESSION_START_HOOK_JSON}};
 const CONTEXT_MONITOR_HOOK = {{CONTEXT_MONITOR_HOOK_JSON}};
 const STATUSLINE_HOOK = {{STATUSLINE_HOOK_JSON}};
-const HOOK_RUNTIME = {};
-const PUBLIC_COMMANDS = ["capability","decision","help","ingest","migrate","next","pause","resume","start","task"];
+const HOOK_RUNTIME = {{HOOK_RUNTIME_JSON}};
+const PUBLIC_COMMANDS = {{PUBLIC_COMMANDS_JSON}};
 const ACTION_ALIASES = ["scan", "plan", "do", "debug", "review", "verify"];
 
 // Derive Rust binary path from HOOK_RUNTIME
