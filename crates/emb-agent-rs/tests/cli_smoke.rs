@@ -406,6 +406,10 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn occurrences(haystack: &str, needle: &str) -> usize {
+    haystack.match_indices(needle).count()
+}
+
 fn collect_files_with(dir: &Path, needle: &str, offenders: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).expect("read scaffold dir") {
         let entry = entry.expect("scaffold entry");
@@ -491,6 +495,128 @@ fn command_docs_are_help_routable() {
             .expect("run command help");
         assert_success(output);
     }
+}
+
+#[test]
+fn installer_exposes_same_two_shell_commands_per_host() {
+    let repo_root = repo_root();
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("emb-agent-shell-commands-{nonce}"));
+    fs::create_dir_all(&root).expect("create install root");
+
+    for host in [".codex", ".cursor", ".claude", ".windsurf", ".pi", ".omp"] {
+        let commands_dir = root.join(host).join("commands");
+        fs::create_dir_all(&commands_dir).expect("create stale command dir");
+        for stale in [
+            "next.md",
+            "onboard.md",
+            "emb-status.md",
+            "emb-scan.md",
+            "emb-init.md",
+        ] {
+            fs::write(commands_dir.join(stale), "stale").expect("write stale command");
+        }
+        if host == ".pi" || host == ".omp" {
+            fs::write(commands_dir.join("emb-next.md"), "stale").expect("write stale emb-next");
+            fs::write(commands_dir.join("emb-onboard.md"), "stale")
+                .expect("write stale emb-onboard");
+        }
+    }
+
+    let output = Command::new("node")
+        .arg(repo_root.join("bin").join("install.js"))
+        .arg("--target")
+        .arg("all")
+        .arg("--local")
+        .arg("--developer")
+        .arg("tester")
+        .arg("--lang")
+        .arg("zh")
+        .current_dir(&root)
+        .output()
+        .expect("run installer");
+    assert_success(output);
+
+    for host in [".codex", ".cursor", ".claude", ".windsurf"] {
+        let commands_dir = root.join(host).join("commands");
+        let next = commands_dir.join("emb-next.md");
+        let onboard = commands_dir.join("emb-onboard.md");
+        assert!(next.exists(), "missing {next:?}");
+        assert!(onboard.exists(), "missing {onboard:?}");
+        assert!(
+            !commands_dir.join("next.md").exists(),
+            "legacy next command leaked for {host}"
+        );
+        assert!(
+            !commands_dir.join("onboard.md").exists(),
+            "legacy onboard command leaked for {host}"
+        );
+
+        let mut exposed = 0;
+        for entry in fs::read_dir(&commands_dir).expect("read command shims") {
+            let entry = entry.expect("command shim entry");
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("emb-") && name.ends_with(".md") {
+                exposed += 1;
+            }
+        }
+        assert_eq!(exposed, 2, "unexpected command shim count for {host}");
+
+        let next_body = fs::read_to_string(next).expect("read next shim");
+        assert!(
+            next_body.contains("next --brief"),
+            "next shim body: {next_body}"
+        );
+        assert!(
+            next_body.contains("Simplified Chinese"),
+            "next shim body: {next_body}"
+        );
+    }
+
+    for host in [".pi", ".omp"] {
+        let commands_dir = root.join(host).join("commands");
+        assert!(
+            !commands_dir.join("emb-next.md").exists(),
+            "extension host must not duplicate emb-next file for {host}"
+        );
+        assert!(
+            !commands_dir.join("emb-onboard.md").exists(),
+            "extension host must not duplicate emb-onboard file for {host}"
+        );
+        if commands_dir.exists() {
+            for entry in fs::read_dir(&commands_dir).expect("read extension command dir") {
+                let entry = entry.expect("extension command entry");
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                assert!(
+                    !name.ends_with(".md"),
+                    "extension host must not expose native command file {name} for {host}"
+                );
+            }
+        }
+
+        let extension = fs::read_to_string(root.join(host).join("extensions").join("emb-agent.ts"))
+            .expect("read installed extension");
+        assert_eq!(
+            occurrences(&extension, "registerCommand("),
+            2,
+            "extension command count for {host}"
+        );
+        assert!(
+            extension.contains("registerCommand(\"emb-next\""),
+            "missing emb-next registration for {host}"
+        );
+        assert!(
+            extension.contains("registerCommand(\"emb-onboard\""),
+            "missing emb-onboard registration for {host}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

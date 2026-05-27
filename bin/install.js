@@ -21,6 +21,23 @@ var COMMAND_DOCS_SRC = path.join(REPO_ROOT, "command-docs", "emb");
 var AGENTS_SRC = path.join(REPO_ROOT, "agents");
 var PARTIALS_DIR = path.join(RUNTIME_SRC, "scaffolds", "shells", "_partials");
 var REFERENCE_SRC = path.join(RUNTIME_SRC, "reference");
+var CANONICAL_SHELL_COMMANDS = [
+	{
+		name: "emb-next",
+		file: "emb-next.md",
+		args: "next --brief",
+		description: "Show task candidates or the recommended next emb-agent action.",
+		summary: "Run emb-agent next, then continue from its machine-readable recommendation."
+	},
+	{
+		name: "emb-onboard",
+		file: "emb-onboard.md",
+		args: "onboard",
+		description: "Run the emb-agent onboarding handoff.",
+		summary: "Run emb-agent onboarding when project truth is missing, incomplete, or scattered."
+	},
+];
+
 
 var SUPPORTED_HOSTS = [
 	{ name: "codex", dir: ".codex", profile: "core" },
@@ -680,14 +697,62 @@ function selectOne(title, items, callback, options) {
 		selectOneFallback(title, items, callback, options || {});
 	}
 }
+function hostUsesExtensionCommands(host) {
+	return host.name === "omp" || host.name === "pi";
+}
+
 function cleanupManagedHostCommands(projectRoot, host) {
-	if (host.name !== "omp") return;
 	var commandsDir = path.join(hostDirFor(projectRoot, host), "commands");
-	var managed = ["emb-next.md", "emb-onboard.md", "next.md", "onboard.md", "emb-status.md", "emb-scan.md", "emb-init.md"];
-	for (var i = 0; i < managed.length; i++) {
-		var file = path.join(commandsDir, managed[i]);
-		try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch (_) {}
+	var stale = ["next.md", "onboard.md", "emb-status.md", "emb-scan.md", "emb-init.md"];
+	for (var i = 0; i < stale.length; i++) removePath(path.join(commandsDir, stale[i]));
+	if (!hostUsesExtensionCommands(host)) return;
+	for (var j = 0; j < CANONICAL_SHELL_COMMANDS.length; j++) removePath(path.join(commandsDir, CANONICAL_SHELL_COMMANDS[j].file));
+}
+
+function commandRuntimePath(projectRoot, host) {
+	if (hostInstallScope(host) === "local") return path.join(host.dir, "emb-agent", "bin", "emb-agent.cjs").replace(/\\/g, "/");
+	return path.join(hostDirFor(projectRoot, host), "emb-agent", "bin", "emb-agent.cjs");
+}
+
+function renderShellCommandShim(projectRoot, host, command) {
+	var runtimePath = commandRuntimePath(projectRoot, host);
+	var language = languageInstruction(readLanguagePreference(projectRoot));
+	var lines = [
+		"---",
+		"description: " + command.description,
+		"allowed-tools:",
+		"  - Bash",
+		"  - Read",
+		"  - Task",
+		"---",
+		"",
+		"# /" + command.name,
+		"",
+		command.summary,
+		"",
+		"Run from the project root:",
+		"",
+		"```sh",
+		"node " + JSON.stringify(runtimePath) + " " + command.args,
+		"```",
+		"",
+		"- Treat stdout as AI routing context, not as user-facing transcript.",
+		"- Follow `agent_protocol.gate` allowed and forbidden actions exactly.",
+		"- Do not ask the user to run emb-agent manually when this command can run it.",
+	];
+	if (language) lines.push("- " + language);
+	return lines.join("\n") + "\n";
+}
+
+function deployCanonicalShellCommands(projectRoot, host) {
+	if (hostUsesExtensionCommands(host)) return;
+	var commandsDir = path.join(hostDirFor(projectRoot, host), "commands");
+	ensureDir(commandsDir);
+	for (var i = 0; i < CANONICAL_SHELL_COMMANDS.length; i++) {
+		var command = CANONICAL_SHELL_COMMANDS[i];
+		fs.writeFileSync(path.join(commandsDir, command.file), renderShellCommandShim(projectRoot, host, command));
 	}
+	console.log("    Slash command shims deployed to " + host.dir + "/commands/");
 }
 
 
@@ -726,6 +791,7 @@ function installForHost(projectRoot, host, callback) {
 		copyDir(COMMANDS_SRC, path.join(embDir, "commands", "emb"));
 		copyDir(COMMAND_DOCS_SRC, path.join(embDir, "command-docs", "emb"));
 		copyDir(AGENTS_SRC, path.join(embDir, "agents"));
+		deployCanonicalShellCommands(projectRoot, host);
 
 
 		fs.writeFileSync(path.join(embDir, "VERSION"), VERSION + "\n");
