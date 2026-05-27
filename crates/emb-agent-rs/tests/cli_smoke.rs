@@ -206,6 +206,73 @@ fn common_user_paths_smoke() {
 }
 
 #[test]
+fn task_list_uses_top_level_manifest_fields_only() {
+    let project = TestProject::new("nested-task-fields");
+    let task_dir = project
+        .path()
+        .join(".emb-agent")
+        .join("tasks")
+        .join("real-task");
+    fs::create_dir_all(&task_dir).expect("create real task");
+    fs::write(
+        task_dir.join("task.json"),
+        r#"{
+  "bindings": {"identity": {"name": "ghost-task", "title": "Ghost title", "status": ""}},
+  "name": "real-task",
+  "title": "Real task title",
+  "status": "pending",
+  "priority": "P1",
+  "package": ""
+}"#,
+    )
+    .expect("write nested manifest");
+
+    let list = run(&project, &["task", "list"]);
+    let value: serde_json::Value = serde_json::from_str(&list).expect("task list json");
+    let tasks = value["tasks"].as_array().expect("tasks array");
+    let real = tasks
+        .iter()
+        .find(|task| task["name"] == "real-task")
+        .expect("real task listed");
+    assert_eq!(real["title"], "Real task title", "task list output: {list}");
+    assert!(
+        !tasks.iter().any(|task| task["name"] == "ghost-task"),
+        "nested name must not become a task candidate: {list}"
+    );
+
+    let next = run(&project, &["next", "--brief"]);
+    let next_value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    let candidates = next_value["task_candidates"].as_array().expect("candidate array");
+    assert!(
+        candidates.iter().any(|task| task["name"] == "real-task"),
+        "real task candidate missing: {next}"
+    );
+    assert!(
+        !candidates.iter().any(|task| task["name"] == "ghost-task"),
+        "ghost task candidate leaked: {next}"
+    );
+}
+
+#[test]
+fn deleted_tasks_do_not_route_as_candidates() {
+    let project = TestProject::new("deleted-routing");
+
+    let delete_output = run(&project, &["task", "delete", "pwm-led"]);
+    assert!(delete_output.contains("\"deleted\":true"), "delete output: {delete_output}");
+
+    let list = run(&project, &["task", "list"]);
+    assert!(!list.contains("pwm-led"), "deleted task listed: {list}");
+
+    let next = run(&project, &["next", "--brief"]);
+    let next_value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    let candidates = next_value["task_candidates"].as_array().expect("candidate array");
+    assert!(
+        !candidates.iter().any(|task| task["name"] == "pwm-led"),
+        "deleted task routed: {next}"
+    );
+}
+
+#[test]
 fn task_add_handles_unicode_and_current_timestamps() {
     let project = TestProject::new("unicode-task");
 
@@ -282,6 +349,29 @@ fn pi_extension_uses_pi_runtime_and_valid_cli_commands() {
     assert!(
         pi_extension.contains("npx emb-agent --target pi"),
         "Pi init guidance must reference the pi target"
+    );
+    assert!(
+        pi_extension.contains("active_variant") && pi_extension.contains("var:${r.project.active_variant}"),
+        "Pi widget status must show the active variant"
+    );
+}
+
+#[test]
+fn omp_extension_widget_shows_active_variant() {
+    let root = repo_root();
+    let omp_extension = fs::read_to_string(
+        root.join("runtime")
+            .join("scaffolds")
+            .join("shells")
+            .join(".omp")
+            .join("extensions")
+            .join("emb-agent.ts"),
+    )
+    .expect("read omp extension");
+
+    assert!(
+        omp_extension.contains("active_variant") && omp_extension.contains("var:"),
+        "OMP widget status must show the active variant"
     );
 }
 

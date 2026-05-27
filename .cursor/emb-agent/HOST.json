@@ -1,8 +1,0 @@
-{
-  "name": "cursor",
-  "label": "Cursor",
-  "install_profile": "core",
-  "install_scope": "local",
-  "target_dir": "/mnt/d/Proj/extrap/emb/emb-agent/.cursor",
-  "runtime_dir_name": "emb-agent"
-}

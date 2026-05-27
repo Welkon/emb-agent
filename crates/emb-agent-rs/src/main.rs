@@ -59,9 +59,11 @@ fn run(args: &[String]) -> Result<(), String> {
         "config" | "prd" | "session" | "context" | "bootstrap" | "declare" | "resolve" => {
             cli::misc::run(args)
         }
+        // Compound knowledge
+        "compound" | "attention" | "note" | "arch" => cli::compound::run(args),
         // Extended operations (stubs)
         "init" | "init-project" | "migrate" | "skills" | "update" | "settings" | "decision"
-        | "commands" | "note" | "capability" | "executor" | "dispatch" | "scaffold"
+        | "commands" | "capability" | "executor" | "dispatch" | "scaffold"
         | "transcript" | "prefs" | "tool" | "snippet" | "workflow" | "orchestrate" | "insight"
         | "trace" => cli::misc::run_ext_ops(args),
         other => Err(format!("unknown command: {other}")),
@@ -70,6 +72,6 @@ fn run(args: &[String]) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "emb-agent-rs\n\nUSAGE:\n  Session:    start, next, status, health, pause [note], resume\n  Tasks:      task list/show/add/activate/resolve/delete, task worktree list/status/show/create/cleanup\n  Chips:      chip diff --from X --to Y, chip swap --from X --to Y [--confirm]\n  Variants:   variant list|status|adopt|create|use|fork|diff (workspace alias)\n  Actions:    scan, plan, do, review, verify, debug [--cwd DIR]\n  Ingest:     ingest schematic --file <path> [--format altium-raw|altium-json|bom-csv|netlist]\n              ingest board --file <path>\n  Schematic:  schematic summary|components|nets|bom|advice|preview|raw [--parsed <path>]\n  Docs:       doc lookup [--chip <name>] [--keyword <text>], doc fetch --path <path>\n  Components: component lookup [--ref <designator>] [--parsed <path>]\n  Board:      board summary|advice [--layout <path>]\n  Adapter:    adapter derive --family <slug> --device <slug>\n  Support:    support status\n  Hooks:      hook session-start|statusline|context-monitor, statusline\n  Diag:       diagnostics hooks|project|state-paths --json\n  Options:    --cwd DIR, --brief, --json\n"
+        "emb-agent-rs\n\nUSAGE:\n  Session:    start, next, status, health, pause [note], resume\n  Tasks:      task list/show/add/activate/resolve/delete, task worktree list/status/show/create/cleanup\n  Chips:      chip diff --from X --to Y, chip swap --from X --to Y [--confirm]\n  Variants:   variant list|status|adopt|create|use|fork|diff (workspace alias)\n  Actions:    scan, plan, do, review, verify, debug [--cwd DIR]\n  Compound:   compound add --type learn|decide|trap|explore|trick --slug X --summary \"...\" [--chip X]\n              compound search [--type X] [--query \"...\"] [--chip X], compound list\n  Attention:  attention show, attention note --text \"...\" [--section X]\n  Note:       note --text \"...\" [--section X]     (shortcut for attention note)\n  Arch:       arch status, arch check\n  Ingest:     ingest schematic --file <path> [--format altium-raw|altium-json|bom-csv|netlist]\n              ingest board --file <path>\n  Schematic:  schematic summary|components|nets|bom|advice|preview|raw [--parsed <path>]\n  Docs:       doc lookup [--chip <name>] [--keyword <text>], doc fetch --path <path>\n  Components: component lookup [--ref <designator>] [--parsed <path>]\n  Board:      board summary|advice [--layout <path>]\n  Adapter:    adapter derive --family <slug> --device <slug>\n  Support:    support status\n  Hooks:      hook session-start|statusline|context-monitor, statusline\n  Diag:       diagnostics hooks|project|state-paths --json\n  Options:    --cwd DIR, --brief, --json\n"
     );
 }

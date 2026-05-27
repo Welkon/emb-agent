@@ -25,7 +25,7 @@ interface EmbAgentResult {
   open_tasks?: number;
   task_candidates?: Array<{ name: string }>;
   // From status --brief
-  project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string };
+  project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string; active_variant?: string };
   tasks?: { open?: number; wiki_pages?: number; active?: string | null };
 }
 
@@ -54,6 +54,7 @@ async function runEmbAgent(
 
 function formatEmbStatus(r: EmbAgentResult): string {
   const parts: string[] = [];
+  if (r.project?.active_variant) parts.push(`var:${r.project.active_variant}`);
 
   // Chip info (from status --brief)
   if (r.project?.mcu) {

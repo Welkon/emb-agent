@@ -14,6 +14,7 @@ pub mod knowledge;
 pub mod lookup;
 pub mod schematic;
 pub mod session;
+pub mod compound;
 pub mod task;
 
 pub mod actions;
@@ -23,6 +24,7 @@ pub mod json;
 pub mod meta_ops;
 pub mod prd_ops;
 pub mod variant_ops;
+pub use compound::*;
 
 // Re-exports for backward compatibility
 pub use actions::*;

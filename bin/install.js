@@ -2,6 +2,7 @@
 // emb-agent installer v0.5.0
 // Deploys Rust binary + runtime templates to target AI host directories.
 
+var childProcess = require("child_process");
 var fs = require("fs");
 var path = require("path");
 var https = require("https");
@@ -18,6 +19,7 @@ var COMMANDS_SRC = path.join(REPO_ROOT, "commands", "emb");
 var COMMAND_DOCS_SRC = path.join(REPO_ROOT, "command-docs", "emb");
 var AGENTS_SRC = path.join(REPO_ROOT, "agents");
 var PARTIALS_DIR = path.join(RUNTIME_SRC, "scaffolds", "shells", "_partials");
+var REFERENCE_SRC = path.join(RUNTIME_SRC, "reference");
 
 var SUPPORTED_HOSTS = [
 	{ name: "codex", dir: ".codex", profile: "core" },
@@ -240,8 +242,8 @@ function injectSpecsIntoAgents(embDir) {
 	var specs = (registry.specs || []).filter(function (s) { return s.auto_inject && s.path; });
 	if (specs.length === 0) return;
 
-	// Read and prepare spec blocks
-	var specBlocks = [];
+	// Read and prepare spec blocks with enforcement scopes
+	var specEntries = [];
 	for (var si = 0; si < specs.length; si++) {
 		var spec = specs[si];
 		var specPath = path.join(RUNTIME_SRC, spec.path);
@@ -254,35 +256,64 @@ function injectSpecsIntoAgents(embDir) {
 		var fmText = fmMatch[1];
 		var body = fmMatch[2];
 		var title = (fmText.match(/^title:\s*(.+)$/m) || [])[1] || spec.title || spec.name;
+		var scopes = spec.enforcement_scopes || [];
+		// Parse agent names from enforcement_scopes (strip "code-writing" pseudo-scope)
+		var agentNames = [];
+		for (var sci = 0; sci < scopes.length; sci++) {
+			var s = scopes[sci].trim();
+			if (s.startsWith("emb-")) agentNames.push(s);
+		}
 
-		specBlocks.push({ name: spec.name, title: title, body: body });
+		specEntries.push({
+			name: spec.name, title: title, body: body,
+			agentNames: agentNames, scopes: scopes
+		});
 	}
-	if (specBlocks.length === 0) return;
+	if (specEntries.length === 0) return;
 
 	// Inject into each agent .md file
 	var agentsDir = path.join(embDir, "agents");
 	if (!fs.existsSync(agentsDir)) return;
 
 	var agentFiles = fs.readdirSync(agentsDir).filter(function (f) { return f.endsWith(".md"); });
+	var injectedCount = 0;
 	for (var ai = 0; ai < agentFiles.length; ai++) {
-		var agentPath = path.join(agentsDir, agentFiles[ai]);
+		var agentFile = agentFiles[ai];
+		var agentPath = path.join(agentsDir, agentFile);
+		var agentName = agentFile.replace(/\.md$/, "");
 		var content = fs.readFileSync(agentPath, "utf8");
 
 		// Remove any previously injected spec blocks (idempotent re-install)
 		content = content.replace(/\n<!-- INJECTED_SPECS_START -->[\s\S]*?<!-- INJECTED_SPECS_END -->\n?/g, "");
 
+		// Determine which specs apply to this agent:
+		// If any spec has no agent-level enforcement_scopes, it applies to all agents.
+		// Otherwise, only specs that explicitly list this agent.
+		var applicable = [];
+		for (var si2 = 0; si2 < specEntries.length; si2++) {
+			var se = specEntries[si2];
+			if (se.agentNames.length === 0) {
+				applicable.push(se); // no agent scoping → all agents
+			} else if (se.agentNames.indexOf(agentName) !== -1) {
+				applicable.push(se);
+			}
+		}
+
+		if (applicable.length === 0) continue;
+
 		// Build injection block
 		var injection = "\n<!-- INJECTED_SPECS_START -->\n";
-		for (var si2 = 0; si2 < specBlocks.length; si2++) {
-			var sb = specBlocks[si2];
+		for (var si3 = 0; si3 < applicable.length; si3++) {
+			var sb = applicable[si3];
 			injection += "\n## Spec: " + sb.title + "\n\n" + sb.body + "\n";
 		}
 		injection += "<!-- INJECTED_SPECS_END -->\n";
 
 		fs.writeFileSync(agentPath, content + injection);
+		injectedCount++;
 	}
 
-	console.log("    Spec rules injected into " + agentFiles.length + " agents");
+	console.log("    Spec rules injected into " + injectedCount + " agents (enforcement-scoped)");
 }
 
 // ── Install per host ──────────────────────────────────────────────
@@ -336,6 +367,47 @@ function installForHost(projectRoot, host) {
 
 		// Inject spec rules into agent prompts
 		injectSpecsIntoAgents(embDir);
+
+		// ── Knowledge infrastructure ────────────────────────────────
+		// Create knowledge directories
+		var knowledgeDirs = ["compound", "architecture", "reference", "issues", "refactors", "roadmap", "audits"];
+		for (var kdi = 0; kdi < knowledgeDirs.length; kdi++) {
+			ensureDir(path.join(embDir, knowledgeDirs[kdi]));
+		}
+
+		// Deploy shared-conventions.md
+		var conventionsSrc = path.join(REFERENCE_SRC, "shared-conventions.md");
+		if (fs.existsSync(conventionsSrc)) {
+			fs.copyFileSync(conventionsSrc, path.join(embDir, "reference", "shared-conventions.md"));
+			console.log("    shared-conventions.md deployed");
+		}
+
+		// Deploy attention.md template (only if not exists)
+		var attentionTpl = path.join(RUNTIME_SRC, "templates", "attention.md.tpl");
+		var attentionDest = path.join(embDir, "attention.md");
+		if (fs.existsSync(attentionTpl) && !fs.existsSync(attentionDest)) {
+			fs.copyFileSync(attentionTpl, attentionDest);
+			console.log("    attention.md deployed");
+		}
+
+		// Deploy ARCHITECTURE.md template (only if not exists)
+		var archTpl = path.join(RUNTIME_SRC, "templates", "ARCHITECTURE.md.tpl");
+		var archDest = path.join(embDir, "architecture", "ARCHITECTURE.md");
+		if (fs.existsSync(archTpl) && !fs.existsSync(archDest)) {
+			fs.copyFileSync(archTpl, archDest);
+			console.log("    architecture/ARCHITECTURE.md deployed");
+		}
+
+		// Deploy compound templates
+		var compoundTpls = [
+			"compound-learn.md.tpl", "compound-decision.md.tpl", "compound-trap.md.tpl",
+			"compound-explore.md.tpl", "compound-trick.md.tpl"
+		];
+		for (var cti = 0; cti < compoundTpls.length; cti++) {
+			var ctSrc = path.join(RUNTIME_SRC, "templates", compoundTpls[cti]);
+			var ctDest = path.join(embDir, "templates", compoundTpls[cti]);
+			if (fs.existsSync(ctSrc)) fs.copyFileSync(ctSrc, ctDest);
+		}
 
 		// Host metadata
 		fs.writeFileSync(path.join(embDir, "VERSION"), VERSION + "\n");
@@ -441,6 +513,21 @@ function installForHost(projectRoot, host) {
 			}
 		}
 
+
+		// ── Project workspace init ──────────────────────────────────
+		var binName = "emb-agent-rs" + (process.platform === "win32" ? ".exe" : "");
+		var binPath = path.join(embDir, "bin", binName);
+		if (fs.existsSync(binPath)) {
+			try {
+				var r = childProcess.spawnSync(binPath, ["init"], {
+					cwd: projectRoot, encoding: "utf8", timeout: 15000
+				});
+				if (r.status === 0 && r.stdout) {
+					var j = JSON.parse(r.stdout.trim());
+					if (j.initialized) console.log("    Project workspace initialized (.emb-agent/)");
+				}
+			} catch (_) {}
+		}
 		console.log("");
 		console.log("Done. emb-agent is now installed for your AI runtime.");
 		if (process.env._EMB_INSTALL_DONE) process.exit(0);

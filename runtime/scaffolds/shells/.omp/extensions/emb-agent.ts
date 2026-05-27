@@ -294,7 +294,7 @@ interface EmbAgentResult {
     priority?: string;
     status?: string;
   }>;
-  project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string };
+  project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string; active_variant?: string };
   tasks?: { open?: number; wiki_pages?: number; active?: string | null };
 }
 
@@ -321,6 +321,7 @@ async function runEmbAgent(
 
 function formatEmbStatus(r: EmbAgentResult): string {
   const parts: string[] = [];
+  if (r.project?.active_variant) parts.push("var:" + r.project.active_variant);
   if (r.project?.mcu) {
     const pkg = r.project.package ? "/" + r.project.package : "";
     parts.push(r.project.mcu + pkg);

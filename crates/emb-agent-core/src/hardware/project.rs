@@ -6,7 +6,6 @@ use std::process::Command;
 
 use serde_json::Value;
 
-use crate::json::json_string_field;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TaskSnapshot {
@@ -240,7 +239,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         return ProjectSnapshot {
             initialized: false,
             recommended_command: "init".to_string(),
-            recommended_reason: "No .emb-agent directory found".to_string(),
+            recommended_reason: "Project not yet initialized. Run /emb:bootstrap status to begin.".to_string(),
             ..ProjectSnapshot::default()
         };
     }
@@ -319,18 +318,22 @@ pub fn read_all_tasks(ext_dir: &Path) -> Vec<TaskSnapshot> {
     if let Ok(entries) = fs::read_dir(&tasks_dir) {
         for entry in entries.flatten() {
             let task_json_path = entry.path().join("task.json");
-            if let Ok(content) = fs::read_to_string(&task_json_path) {
-                if is_closed_task(&json_string_field(&content, "status")) {
+            if let Some(task) = read_task_ref(
+                &entry.file_name().to_string_lossy(),
+                &task_json_path,
+            ) {
+                if is_closed_task(&task.status) {
                     continue;
                 }
                 tasks.push(TaskSnapshot {
-                    name: json_string_field(&content, "name"),
-                    title: json_string_field(&content, "title"),
-                    status: json_string_field(&content, "status"),
-                    priority: json_string_field(&content, "priority"),
-                    package: json_string_field(&content, "package"),
+                    name: task.name,
+                    title: task.title,
+                    status: task.status,
+                    priority: task.priority,
+                    package: task.package,
                 });
             }
+
         }
     }
     tasks
@@ -681,22 +684,26 @@ pub fn read_task_ref(task_name: &str, task_path: &Path) -> Option<TaskRef> {
     if task_json.is_empty() {
         return None;
     }
-
-    let status = json_string_field(&task_json, "status");
+    let value = serde_json::from_str::<Value>(&task_json).ok()?;
+    let status = value_string_field(&value, "status");
     Some(TaskRef {
-        name: first_non_empty(&[json_string_field(&task_json, "name"), task_name.to_string()]),
+        name: first_non_empty(&[value_string_field(&value, "name"), task_name.to_string()]),
         title: first_non_empty(&[
-            json_string_field(&task_json, "title"),
-            json_string_field(&task_json, "name"),
+            value_string_field(&value, "title"),
+            value_string_field(&value, "name"),
             task_name.to_string(),
         ]),
         status,
-        priority: first_non_empty(&[json_string_field(&task_json, "priority"), "P2".to_string()]),
-        package: json_string_field(&task_json, "package"),
+        priority: first_non_empty(&[value_string_field(&value, "priority"), "P2".to_string()]),
+        package: value_string_field(&value, "package"),
         path: task_path.to_string_lossy().to_string(),
     })
+
 }
 
+fn value_string_field(value: &Value, key: &str) -> String {
+    value.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+}
 pub fn count_open_tasks(ext: &Path) -> usize {
     let tasks_dir = ext.join("tasks");
     let Ok(entries) = fs::read_dir(tasks_dir) else {

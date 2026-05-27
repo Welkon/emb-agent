@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod board_cli;
 pub mod chip;
+pub mod compound;
 pub mod component;
 pub mod doc;
 pub mod hooks_cli;

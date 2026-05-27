@@ -28,6 +28,12 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
             let ext_dir = Path::new(&cwd).join(".emb-agent");
             let _ = emb_agent_core::record_session_heartbeat(&ext_dir, Path::new(&cwd), &host);
             let snapshot = snapshot_from_cwd(&cwd);
+            // For uninitialized projects, skip session context injection.
+            // The statusline (shown in the sidebar) alone handles the bootstrap prompt.
+            if !snapshot.initialized && snapshot.project_root.is_empty() {
+                println!("{{\"suppressOutput\":true}}");
+                return Ok(());
+            }
             let context = build_session_context(&snapshot);
             let welcome = build_welcome_message(&snapshot);
             println!(

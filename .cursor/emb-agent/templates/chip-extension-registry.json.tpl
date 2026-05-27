@@ -1,5 +1,0 @@
-{
-  "devices": [
-    "{{CHIP_NAME}}"
-  ]
-}

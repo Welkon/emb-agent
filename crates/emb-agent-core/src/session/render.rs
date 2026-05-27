@@ -10,8 +10,9 @@ pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
 
     let mut parts = vec!["emb".to_string()];
     if !snapshot.active_variant.is_empty() {
-        parts.push(format!("variant: {}", snapshot.active_variant));
+        parts.push(format!("var: {}", snapshot.active_variant));
     }
+
     if !snapshot.mcu_model.is_empty() {
         let chip = if snapshot.mcu_package.is_empty() {
             snapshot.mcu_model.clone()
@@ -40,7 +41,24 @@ pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
 
 pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
     if !snapshot.initialized && snapshot.project_root.is_empty() {
-        return "<emb-agent-session-context>\nNo emb-agent project found. Ask the user to open a project root, then initialize emb-agent through the host slash command flow.\n</emb-agent-session-context>".to_string();
+        return "\
+<emb-agent-session-context>
+emb-agent workspace not yet initialized for this project.
+
+You are the user's embedded development assistant. Guide them through first-time setup:
+
+1. Briefly introduce emb-agent (manages hardware info, task tracking, knowledge capture).
+2. Ask the user: \"Would you like to initialize the project now?\"
+3. If the user agrees:
+   a. Ask for the MCU model (e.g., STM8S003F3, SC8F072, Padauk PMS150C).
+   b. Ask for the package (e.g., TSSOP20, QFN32, SOP8) — optional.
+   c. Run `/emb:declare --mcu <model> [--package <package>]`.
+   d. Run `/emb:bootstrap status` to confirm.
+   e. Tell the user the project is ready and they can describe what they want to build.
+4. If the user declines, do not push. Wait for their next request.
+5. Do NOT manually create .emb-agent files — use the slash commands above.
+6. Match your response language to the user's language.
+</emb-agent-session-context>".to_string();
     }
 
     let welcome = build_welcome_message(snapshot);
@@ -134,7 +152,7 @@ pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
     let mut lines = vec!["# Hi\n".to_string()];
 
     if !snapshot.active_variant.is_empty() {
-        lines.push(format!("**当前变体**: {}\n", snapshot.active_variant));
+        lines.push(format!("**Active variant**: {}\n", snapshot.active_variant));
     }
 
     if !snapshot.mcu_model.is_empty() {
@@ -143,26 +161,26 @@ pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
         } else {
             format!("{} ({})", snapshot.mcu_model, snapshot.mcu_package)
         };
-        lines.push(format!("**当前芯片**: {}\n", chip));
+        lines.push(format!("**Current chip**: {}\n", chip));
     }
 
     if snapshot.open_tasks > 0 {
-        lines.push(format!("**待处理任务**: {} 个\n", snapshot.open_tasks));
+        lines.push(format!("**Open tasks**: {}\n", snapshot.open_tasks));
     }
 
     if let Some(task) = &snapshot.current_task {
         lines.push(format!(
-            "**当前任务**: `{}` — {} [{}]\n",
+            "**Active task**: `{}` — {} [{}]\n",
             task.name, task.title, task.priority
         ));
     }
 
     lines.extend([
-        "\n接下来你可以：".to_string(),
-        "1. **直接说出需求**（比如「帮我检查原理图」）— 我会自动分配任务".to_string(),
-        "2. 输入 `/emb:next` — 查看推荐工作流".to_string(),
-        "3. 问我「下一步该做什么」— 我会展示可选任务并等待你选择".to_string(),
-        "4. 输入 `/emb:status` — 查看项目状态".to_string(),
+        "\nWhat you can do next:".to_string(),
+        "1. **Describe your goal** (e.g., \"review the schematic\") — I will route it to the right task.".to_string(),
+        "2. Run `/emb:next` — see the recommended workflow step.".to_string(),
+        "3. Ask me \"what should I do next?\" — I will show available tasks and wait for your selection.".to_string(),
+        "4. Run `/emb:status` — view project state.".to_string(),
     ]);
 
     lines.join("\n")
@@ -511,6 +529,7 @@ mod tests {
         assert!(line.contains("emb"));
         assert!(line.contains("ESP32-C3 QFN32"));
         assert!(line.contains("1 task(s)"));
+        assert!(line.contains("var: esp32-c3"));
         assert!(line.contains("[P1] Implement ADC"));
     }
 

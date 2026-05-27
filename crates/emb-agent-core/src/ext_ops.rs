@@ -18,6 +18,13 @@ pub fn init_project(cwd: &Path) -> String {
     let _ = fs::create_dir_all(ext_dir.join("wiki"));
     let _ = fs::create_dir_all(ext_dir.join("state"));
     let _ = fs::create_dir_all(ext_dir.join("sessions"));
+    let _ = fs::create_dir_all(ext_dir.join("compound"));
+    let _ = fs::create_dir_all(ext_dir.join("architecture"));
+    let _ = fs::create_dir_all(ext_dir.join("reference"));
+    let _ = fs::create_dir_all(ext_dir.join("issues"));
+    let _ = fs::create_dir_all(ext_dir.join("refactors"));
+    let _ = fs::create_dir_all(ext_dir.join("roadmap"));
+    let _ = fs::create_dir_all(ext_dir.join("audits"));
     let _ = fs::create_dir_all(ext_dir.join("extensions").join("chips").join("profiles"));
 
     // Write minimal project.json
@@ -43,6 +50,54 @@ pub fn init_project(cwd: &Path) -> String {
         "# Hardware truth\nmodel: \"\"\npackage: \"\"\n",
     );
     let _ = fs::write(ext_dir.join("req.yaml"), "# Requirements\n");
+
+    // Write attention.md skeleton
+    let attention_md = "\
+# Project Attention
+
+> emb-agent agents read this file at session start. Add entries with `emb note --text \"...\" [--section X]`.
+
+## Hardware Traps & Quirks
+
+## Build & Compile
+
+## Test & Verify
+
+## Paths & Directories
+
+## Environment & Credentials
+
+## Current Priorities
+
+## Known Traps
+";
+    let _ = fs::write(ext_dir.join("attention.md"), attention_md);
+
+    // Write ARCHITECTURE.md skeleton
+    let arch_md = "\
+# Architecture
+
+> System architecture map — current state, not future plans. Update after feature acceptance.
+
+## Module Map
+| Module | Responsibility | Owns (Peripherals) | Depends On |
+|--------|---------------|---------------------|------------|
+
+## Data Flow
+
+## Interrupt Routing
+| ISR | Vector | Priority | Handler Module | Shared State |
+|-----|--------|----------|----------------|--------------|
+
+## Peripheral Ownership
+| Peripheral | Instance | Owner Module | Rationale |
+|------------|----------|-------------|-----------|
+
+## Key Architecture Decisions
+| Decision | Date | Rationale | Alternatives Considered |
+|----------|------|-----------|------------------------|
+";
+    let _ = fs::write(ext_dir.join("architecture").join("ARCHITECTURE.md"), arch_md);
     ensure_gitignore_entry(cwd, ".emb-agent/sessions/");
 
     // Create and auto-complete bootstrap task
