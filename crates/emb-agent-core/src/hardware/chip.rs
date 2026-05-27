@@ -18,12 +18,58 @@ pub struct ChipProfile {
     pub related_tools: Vec<String>,
     pub compatible_with: Vec<String>,
     pub notes: Vec<String>,
+    #[serde(default)]
+    pub peripherals: BTreeMap<String, PeripheralDef>,
+    #[serde(default)]
+    pub interrupts: Vec<InterruptDef>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct ChipPin {
     pub functions: Vec<String>,
     pub peripherals: Vec<String>,
+}
+
+/// Peripheral definition with register map
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PeripheralDef {
+    pub description: String,
+    #[serde(default)]
+    pub base_address: String,
+    #[serde(default)]
+    pub instances: Vec<PeripheralInstance>,
+    #[serde(default)]
+    pub registers: BTreeMap<String, RegisterDef>,
+}
+
+/// Physical instance of a peripheral (e.g. PWM1 on PA3)
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PeripheralInstance {
+    pub name: String,
+    #[serde(default)]
+    pub pins: Vec<String>,
+}
+
+/// Register within a peripheral
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct RegisterDef {
+    pub offset: String,
+    pub description: String,
+    #[serde(default)]
+    pub access: String,
+    #[serde(default)]
+    pub reset_value: String,
+}
+
+/// Interrupt vector entry
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct InterruptDef {
+    pub vector: u32,
+    pub source: String,
+    pub flag: String,
+    pub enable: String,
+    #[serde(default)]
+    pub priority: Option<String>,
 }
 
 /// Single pin comparison result
@@ -275,9 +321,149 @@ fn load_chip_profile_file(path: &Path) -> Option<ChipProfile> {
                     .collect()
             })
             .unwrap_or_default(),
+        peripherals: parse_peripherals(&value),
+        interrupts: parse_interrupts(&value),
     })
 }
 
+fn parse_peripherals(value: &serde_json::Value) -> BTreeMap<String, PeripheralDef> {
+    value
+        .get("peripherals")
+        .and_then(|v| v.as_object())
+        .map(|obj| {
+            obj.iter()
+                .map(|(name, details)| {
+                    let description = details
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let base_address = details
+                        .get("base_address")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let instances: Vec<PeripheralInstance> = details
+                        .get("instances")
+                        .and_then(|v| v.as_array())
+                        .map(|a| {
+                            a.iter()
+                                .map(|inst| {
+                                    let inst_name = inst
+                                        .get("name")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let pins: Vec<String> = inst
+                                        .get("pins")
+                                        .and_then(|v| v.as_array())
+                                        .map(|a| {
+                                            a.iter()
+                                                .filter_map(|v| v.as_str().map(String::from))
+                                                .collect()
+                                        })
+                                        .unwrap_or_default();
+                                    PeripheralInstance {
+                                        name: inst_name,
+                                        pins,
+                                    }
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let registers: BTreeMap<String, RegisterDef> = details
+                        .get("registers")
+                        .and_then(|v| v.as_object())
+                        .map(|obj| {
+                            obj.iter()
+                                .map(|(reg_name, reg)| {
+                                    let offset = reg
+                                        .get("offset")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let desc = reg
+                                        .get("description")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let access = reg
+                                        .get("access")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let reset = reg
+                                        .get("reset_value")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    (
+                                        reg_name.clone(),
+                                        RegisterDef {
+                                            offset,
+                                            description: desc,
+                                            access,
+                                            reset_value: reset,
+                                        },
+                                    )
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    (
+                        name.clone(),
+                        PeripheralDef {
+                            description,
+                            base_address,
+                            instances,
+                            registers,
+                        },
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn parse_interrupts(value: &serde_json::Value) -> Vec<InterruptDef> {
+    value
+        .get("interrupts")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|entry| {
+                    let vector = entry.get("vector").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                    let source = entry
+                        .get("source")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let flag = entry
+                        .get("flag")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let enable = entry
+                        .get("enable")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let priority = entry
+                        .get("priority")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    Some(InterruptDef {
+                        vector,
+                        source,
+                        flag,
+                        enable,
+                        priority,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
 fn diff_pin(pin_num: &str, old_pin: Option<&ChipPin>, new_pin: Option<&ChipPin>) -> PinDiff {
     let old_funcs = old_pin.map(|p| p.functions.clone()).unwrap_or_default();
     let new_funcs = new_pin.map(|p| p.functions.clone()).unwrap_or_default();
@@ -751,4 +937,59 @@ pub fn build_chip_swap_confirm_json(ext_dir: &Path, hw_yaml: &str, from: &str, t
         );
     }
     serde_json::to_string_pretty(&result).unwrap_or_default()
+}
+
+/// Query chip registers, optionally filtered by peripheral name
+pub fn query_chip_registers(ext_dir: &Path, chip_name: &str, peripheral_filter: &str) -> String {
+    let profile = load_chip_profile(ext_dir, chip_name).unwrap_or_default();
+
+    if profile.name.is_empty() {
+        return format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"chip-not-found\",\"message\":\"Chip '{}' not found in extensions\"}}}}",
+            chip_name
+        );
+    }
+
+    let filtered_peripherals: BTreeMap<String, serde_json::Value> = if peripheral_filter.is_empty() {
+        profile.peripherals.iter().map(|(name, p)| {
+            (name.clone(), serde_json::json!({
+                "description": p.description,
+                "base_address": p.base_address,
+                "instances": p.instances,
+                "registers": p.registers,
+            }))
+        }).collect()
+    } else {
+        profile.peripherals.iter()
+            .filter(|(name, _)| name.to_lowercase().contains(&peripheral_filter.to_lowercase()))
+            .map(|(name, p)| {
+                (name.clone(), serde_json::json!({
+                    "description": p.description,
+                    "base_address": p.base_address,
+                    "instances": p.instances,
+                    "registers": p.registers,
+                }))
+            })
+            .collect()
+    };
+
+    let interrupts: Vec<serde_json::Value> = profile.interrupts.iter().map(|i| {
+        serde_json::json!({
+            "vector": i.vector,
+            "source": i.source,
+            "flag": i.flag,
+            "enable": i.enable,
+            "priority": i.priority,
+        })
+    }).collect();
+
+    serde_json::to_string_pretty(&serde_json::json!({
+        "status": "ok",
+        "chip": profile.name,
+        "architecture": profile.architecture,
+        "peripheral_count": filtered_peripherals.len(),
+        "interrupt_count": interrupts.len(),
+        "peripherals": filtered_peripherals,
+        "interrupts": interrupts,
+    })).unwrap_or_default()
 }

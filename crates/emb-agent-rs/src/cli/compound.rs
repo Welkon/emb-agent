@@ -22,6 +22,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     let title = option_value(args, "--title").unwrap_or_default();
                     let summary = option_value(args, "--summary").unwrap_or_default();
                     let chip = option_value(args, "--chip").unwrap_or_default();
+                    let peripheral = option_value(args, "--peripheral").unwrap_or_default();
                     let vendor = option_value(args, "--vendor").unwrap_or_default();
                     let severity = option_value(args, "--severity").unwrap_or_default();
                     let category = option_value(args, "--category").unwrap_or_default();
@@ -53,6 +54,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                             if title.is_empty() { &slug } else { &title },
                             &summary,
                             &chip,
+                            &peripheral,
                             &extra
                         )
                     );

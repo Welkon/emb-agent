@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use crate::compound::extract_yaml_field;
 
 /// Knowledge graph node
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -299,6 +300,79 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                 category: String::new(),
             });
             *by_type.entry("wiki_page".to_string()).or_default() += 1;
+        }
+    }
+
+    // Scan compound entries and link to chip peripherals
+    let compound_dir = ext_dir.join("compound");
+    if compound_dir.exists() {
+        for entry in walk_files(&compound_dir) {
+            if !entry.ends_with(".md") {
+                continue;
+            }
+            let path = compound_dir.join(&entry);
+            let content = fs::read_to_string(&path).unwrap_or_default();
+            let slug = extract_yaml_field(&content, "slug");
+            let summary = extract_yaml_field(&content, "summary");
+            let doc_type = extract_yaml_field(&content, "doc_type");
+            let chip = extract_yaml_field(&content, "chip");
+            let peripheral = extract_yaml_field(&content, "peripheral");
+
+            let id = format!("compound:{slug}");
+            nodes.push(GraphNode {
+                id: id.clone(),
+                node_type: format!("compound_{}", doc_type),
+                label: slug.clone(),
+                summary,
+                status: "active".to_string(),
+                category: String::new(),
+            });
+            *by_type.entry("compound".to_string()).or_default() += 1;
+
+            // Edge: compound → chip
+            if !chip.is_empty() {
+                let chip_id = format!("chip:{}", chip.to_lowercase());
+                edges.push(GraphEdge {
+                    from: id.clone(),
+                    to: chip_id.clone(),
+                    edge_type: "relates_to".to_string(),
+                    label: "chip".to_string(),
+                });
+                // Add chip node if not already present
+                if !nodes.iter().any(|n| n.id == chip_id) {
+                    nodes.push(GraphNode {
+                        id: chip_id.clone(),
+                        node_type: "chip".to_string(),
+                        label: chip.clone(),
+                        summary: format!("Chip referenced by compound: {slug}"),
+                        status: "active".to_string(),
+                        category: String::new(),
+                    });
+                    *by_type.entry("chip".to_string()).or_default() += 1;
+                }
+            }
+
+            // Edge: compound → peripheral (via chip)
+            if !peripheral.is_empty() && !chip.is_empty() {
+                let chip_id = format!("chip:{}", chip.to_lowercase());
+                let periph_id = format!("{}:peripheral:{}", chip_id, peripheral.to_lowercase());
+                edges.push(GraphEdge {
+                    from: id.clone(),
+                    to: periph_id.clone(),
+                    edge_type: "uses".to_string(),
+                    label: format!("peripheral:{peripheral}"),
+                });
+                // Add peripheral node
+                nodes.push(GraphNode {
+                    id: periph_id,
+                    node_type: "peripheral".to_string(),
+                    label: format!("{}::{}", chip, peripheral),
+                    summary: format!("Peripheral {} on {}", peripheral, chip),
+                    status: "active".to_string(),
+                    category: String::new(),
+                });
+                *by_type.entry("peripheral".to_string()).or_default() += 1;
+            }
         }
     }
 

@@ -1,5 +1,5 @@
 use super::util::{current_dir_string, option_value};
-use emb_agent_core::{build_chip_diff_json, build_chip_swap_confirm_json, build_chip_swap_json};
+use emb_agent_core::{build_chip_diff_json, build_chip_swap_confirm_json, build_chip_swap_json, query_chip_registers};
 use std::path::Path;
 
 pub fn run(args: &[String]) -> Result<(), String> {
@@ -27,6 +27,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
             Ok(())
         }
-        _ => Err("chip: expected diff or swap".to_string()),
+        Some("registers") => {
+            let chip = option_value(args, "--chip").ok_or("missing --chip")?;
+            let peripheral = option_value(args, "--peripheral").unwrap_or_default();
+            println!("{}", query_chip_registers(&ext_dir, &chip, &peripheral));
+            Ok(())
+        }
+        _ => Err("chip: expected diff, swap, or registers".to_string()),
     }
 }

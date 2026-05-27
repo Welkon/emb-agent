@@ -13,6 +13,7 @@ pub fn compound_add(
     title: &str,
     summary: &str,
     chip: &str,
+    peripheral: &str,
     extra: &[(&str, &str)],
 ) -> String {
     let compound_dir = ext_dir.join("compound");
@@ -37,6 +38,9 @@ pub fn compound_add(
     frontmatter.push_str(&format!("summary: {}\n", summary));
     if !chip.is_empty() {
         frontmatter.push_str(&format!("chip: {}\n", chip));
+    }
+    if !peripheral.is_empty() {
+        frontmatter.push_str(&format!("peripheral: {}\n", peripheral));
     }
     frontmatter.push_str(&format!("date: {}\n", now));
     for (k, v) in extra {
@@ -232,7 +236,7 @@ pub fn attention_note(ext_dir: &Path, text: &str, section: &str) -> String {
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-fn extract_yaml_field(raw: &str, field: &str) -> String {
+pub(crate) fn extract_yaml_field(raw: &str, field: &str) -> String {
     let prefix = format!("{}:", field);
     for line in raw.lines() {
         let trimmed = line.trim();
