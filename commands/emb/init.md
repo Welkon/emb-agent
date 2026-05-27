@@ -16,6 +16,8 @@ allowed-tools:
 - Initialize the current project with emb-agent defaults and truth layers.
 - Create the minimum shared files that let the session work from repository truth instead of ad-hoc chat state.
 
+`init` is not the user-facing default entry for existing firmware repos. Use `onboard` first when the repository may already contain datasheets, schematics, pin maps, or hardware notes; onboard decides whether to run init, repair partial state, or migrate existing truth.
+
 ## Usage
 
 - Run `$emb-init` when this command matches the current problem.

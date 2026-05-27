@@ -88,7 +88,8 @@ pub fn compound_search(
                     };
 
                     let chip_ok = if !chip_lower.is_empty() {
-                        raw.to_lowercase().contains(&format!("chip: {}", chip_lower))
+                        raw.to_lowercase()
+                            .contains(&format!("chip: {}", chip_lower))
                             || raw.to_lowercase().contains(&format!("chip:{}", chip_lower))
                     } else {
                         true
@@ -244,9 +245,7 @@ fn extract_yaml_field(raw: &str, field: &str) -> String {
 
 fn chrono_now_simple() -> String {
     // Returns YYYY-MM-DD
-    if let Ok(duration) = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-    {
+    if let Ok(duration) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         let secs = duration.as_secs();
         // Simple gregorian approximation
         let days = secs / 86400;
@@ -255,7 +254,9 @@ fn chrono_now_simple() -> String {
         let mut d = days as i64;
         loop {
             let days_in_year = if is_leap(y) { 366 } else { 365 };
-            if d < days_in_year { break; }
+            if d < days_in_year {
+                break;
+            }
             d -= days_in_year;
             y += 1;
         }
@@ -266,9 +267,14 @@ fn chrono_now_simple() -> String {
         };
         let mut m = 0usize;
         for (i, days_in_month) in months.iter().enumerate() {
-            if d < *days_in_month { m = i; break; }
+            if d < *days_in_month {
+                m = i;
+                break;
+            }
             d -= *days_in_month;
-            if i == 11 { m = 11; }
+            if i == 11 {
+                m = 11;
+            }
         }
         format!("{:04}-{:02}-{:02}", y, m + 1, d + 1)
     } else {
@@ -292,8 +298,16 @@ pub fn arch_status(ext_dir: &Path) -> String {
     let has_interrupt = content.contains("## Interrupt Routing");
     let has_peripheral = content.contains("## Peripheral Ownership");
     let has_decisions = content.contains("## Key Architecture Decisions");
-    let sections_filled = [has_module_map, has_data_flow, has_interrupt, has_peripheral, has_decisions]
-        .iter().filter(|&&x| x).count();
+    let sections_filled = [
+        has_module_map,
+        has_data_flow,
+        has_interrupt,
+        has_peripheral,
+        has_decisions,
+    ]
+    .iter()
+    .filter(|&&x| x)
+    .count();
     format!(
         "{{\"status\":\"ok\",\"architecture\":{{\"exists\":true,\"sections_filled\":{},\"sections_total\":5}}}}",
         sections_filled

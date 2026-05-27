@@ -375,11 +375,16 @@ function installForHost(projectRoot, host) {
 			ensureDir(path.join(embDir, knowledgeDirs[kdi]));
 		}
 
-		// Deploy shared-conventions.md
+		// Deploy shared references
 		var conventionsSrc = path.join(REFERENCE_SRC, "shared-conventions.md");
 		if (fs.existsSync(conventionsSrc)) {
 			fs.copyFileSync(conventionsSrc, path.join(embDir, "reference", "shared-conventions.md"));
 			console.log("    shared-conventions.md deployed");
+		}
+		var knowledgeEvolutionSrc = path.join(RUNTIME_SRC, "scaffolds", "protocol-blocks", "knowledge-evolution.md");
+		if (fs.existsSync(knowledgeEvolutionSrc)) {
+			fs.copyFileSync(knowledgeEvolutionSrc, path.join(embDir, "reference", "knowledge-evolution.md"));
+			console.log("    knowledge-evolution.md deployed");
 		}
 
 		// Deploy attention.md template (only if not exists)

@@ -6,7 +6,6 @@ use std::process::Command;
 
 use serde_json::Value;
 
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TaskSnapshot {
     pub name: String,
@@ -238,8 +237,8 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     if !state.initialized && state.project_root.is_empty() {
         return ProjectSnapshot {
             initialized: false,
-            recommended_command: "init".to_string(),
-            recommended_reason: "Project not yet initialized. Run /emb:bootstrap status to begin.".to_string(),
+            recommended_command: "onboard".to_string(),
+            recommended_reason: "Project not yet initialized. Run emb-onboard to scaffold .emb-agent/ or migrate existing hardware documents.".to_string(),
             ..ProjectSnapshot::default()
         };
     }
@@ -264,15 +263,15 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     } else if has_hardware {
         "Create a task via `task add` before implementation.".to_string()
     } else {
-        "After bootstrap and the system PRD are ready, create a task and PRD first.".to_string()
+        "Run emb-onboard first: confirm whether hardware truth is known, scattered in docs, or still unknown. Do not jump directly into implementation.".to_string()
     };
 
     let (recommended_command, recommended_reason) = if state.current_task.is_some() {
         ("do".to_string(), "Active task is selected".to_string())
     } else if !has_hardware {
         (
-            "declare hardware".to_string(),
-            "MCU model is not declared".to_string(),
+            "onboard".to_string(),
+            "Hardware truth is not declared. Use emb-onboard to choose the lightest path: declare known hardware, ingest evidence, or keep MCU unknown for concept-stage work.".to_string(),
         )
     } else {
         (
@@ -318,10 +317,8 @@ pub fn read_all_tasks(ext_dir: &Path) -> Vec<TaskSnapshot> {
     if let Ok(entries) = fs::read_dir(&tasks_dir) {
         for entry in entries.flatten() {
             let task_json_path = entry.path().join("task.json");
-            if let Some(task) = read_task_ref(
-                &entry.file_name().to_string_lossy(),
-                &task_json_path,
-            ) {
+            if let Some(task) = read_task_ref(&entry.file_name().to_string_lossy(), &task_json_path)
+            {
                 if is_closed_task(&task.status) {
                     continue;
                 }
@@ -333,7 +330,6 @@ pub fn read_all_tasks(ext_dir: &Path) -> Vec<TaskSnapshot> {
                     package: task.package,
                 });
             }
-
         }
     }
     tasks
@@ -698,11 +694,14 @@ pub fn read_task_ref(task_name: &str, task_path: &Path) -> Option<TaskRef> {
         package: value_string_field(&value, "package"),
         path: task_path.to_string_lossy().to_string(),
     })
-
 }
 
 fn value_string_field(value: &Value, key: &str) -> String {
-    value.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 pub fn count_open_tasks(ext: &Path) -> usize {
     let tasks_dir = ext.join("tasks");

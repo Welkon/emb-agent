@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
     if !snapshot.initialized && snapshot.project_root.is_empty() {
-        return String::new();
+        return "emb · onboard".to_string();
     }
 
     let mut parts = vec!["emb".to_string()];
@@ -45,18 +45,13 @@ pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
 <emb-agent-session-context>
 emb-agent workspace not yet initialized for this project.
 
-You are the user's embedded development assistant. Guide them through first-time setup:
+You are the user's embedded development assistant. Start with onboarding, not implementation:
 
-1. Briefly introduce emb-agent (manages hardware info, task tracking, knowledge capture).
-2. Ask the user: \"Would you like to initialize the project now?\"
-3. If the user agrees:
-   a. Ask for the MCU model (e.g., STM8S003F3, SC8F072, Padauk PMS150C).
-   b. Ask for the package (e.g., TSSOP20, QFN32, SOP8) — optional.
-   c. Run `/emb:declare --mcu <model> [--package <package>]`.
-   d. Run `/emb:bootstrap status` to confirm.
-   e. Tell the user the project is ready and they can describe what they want to build.
-4. If the user declines, do not push. Wait for their next request.
-5. Do NOT manually create .emb-agent files — use the slash commands above.
+1. Invoke `emb-onboard` or run `/emb:onboard` if the host exposes slash commands.
+2. emb-onboard must inspect whether this is an empty repo, a partial `.emb-agent/`, or an existing firmware repo with scattered datasheets, schematics, pin maps, build files, and notes.
+3. If the user already knows MCU/package/pins, record them through the onboard flow or `declare hardware` after explicit confirmation.
+4. If truth lives in docs, use onboard's migration audit first; do not guess hardware facts from filenames or README prose.
+5. After onboarding completes, run `/emb:next --brief` and follow its recommendation.
 6. Match your response language to the user's language.
 </emb-agent-session-context>".to_string();
     }
@@ -233,6 +228,12 @@ pub fn build_start_json(snapshot: &ProjectSnapshot) -> String {
 }
 
 pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
+    if snapshot.recommended_command == "onboard" {
+        return (
+            "onboard".to_string(),
+            "Project needs onboarding. Invoke emb-onboard to scaffold .emb-agent/ or migrate existing hardware truth before implementation.".to_string(),
+        );
+    }
     if snapshot.current_task.is_some() {
         (
             "do".to_string(),
@@ -269,7 +270,12 @@ pub fn build_next_json_with_tasks_and_policy(
     tasks: &[TaskSnapshot],
     worktree_policy: Option<&WorktreePolicy>,
 ) -> String {
-    let (action, instructions) = if snapshot.current_task.is_some() {
+    let (action, instructions) = if snapshot.recommended_command == "onboard" {
+        (
+            "onboard",
+            "Project needs onboarding. Invoke emb-onboard or trigger `/emb:onboard`; audit existing hardware docs before declaring hardware or implementing.",
+        )
+    } else if snapshot.current_task.is_some() {
         (
             "do",
             "Active task exists. Trigger `/emb:do` to continue implementation.",
@@ -356,6 +362,19 @@ fn build_next_agent_protocol_with_policy(
                 "allowed_actions": ["present_worktree_reason", "trigger_task_activate_with_worktree"],
                 "forbidden_actions": ["continue_in_main_workspace", "ask_user_to_run_task_activate", "run_shell_command_for_emb_slash_command"],
                 "recommended_command": policy.recommended_command
+            }
+        })
+        .to_string();
+    }
+    if action == "onboard" {
+        return json!({
+            "gate": {
+                "kind": "onboarding",
+                "blocking": true,
+                "allowed_actions": ["invoke_emb_onboard_agent", "trigger_emb_onboard_command", "audit_existing_hardware_docs"],
+                "forbidden_actions": ["start_implementation", "guess_hardware_truth", "declare_hardware_without_confirmation"],
+                "recommended_agent": "emb-onboard",
+                "recommended_command": "/emb:onboard"
             }
         })
         .to_string();

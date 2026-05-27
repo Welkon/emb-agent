@@ -67,7 +67,11 @@ emb-agent sits between the AI assistant and your repository. It does not replace
 
 Start Pi, Codex, Claude Code, or Cursor inside your firmware repository.
 
-If the project has not been initialized yet, emb-agent detects that and guides the assistant to initialize the `.emb-agent/` workspace automatically.
+If the project has not been initialized yet, or if existing hardware truth is scattered across datasheets, schematics, pin maps, build files, and notes, emb-agent routes the assistant through **onboard** first. Onboard chooses the lightest safe path:
+
+1. empty repo scaffold
+2. partial `.emb-agent/` repair
+3. migration audit for existing firmware repos
 
 ### 2. Confirm the hardware truth
 
@@ -81,7 +85,6 @@ The assistant helps collect the facts that should not be guessed:
 - product requirements
 
 Once confirmed, those facts become project memory.
-
 ### 3. Ask for product-level work
 
 You do not need to think in tool commands.

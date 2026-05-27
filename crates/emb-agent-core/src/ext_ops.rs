@@ -16,11 +16,16 @@ pub fn init_project(cwd: &Path) -> String {
     let _ = fs::create_dir_all(ext_dir.join("cache").join("docs"));
     let _ = fs::create_dir_all(ext_dir.join("graph"));
     let _ = fs::create_dir_all(ext_dir.join("wiki"));
+    let _ = fs::create_dir_all(ext_dir.join("memory"));
     let _ = fs::create_dir_all(ext_dir.join("state"));
     let _ = fs::create_dir_all(ext_dir.join("sessions"));
     let _ = fs::create_dir_all(ext_dir.join("compound"));
     let _ = fs::create_dir_all(ext_dir.join("architecture"));
     let _ = fs::create_dir_all(ext_dir.join("reference"));
+    let _ = fs::create_dir_all(ext_dir.join("profiles"));
+    let _ = fs::create_dir_all(ext_dir.join("templates"));
+    let _ = fs::create_dir_all(ext_dir.join("registry"));
+    let _ = fs::create_dir_all(ext_dir.join("chips"));
     let _ = fs::create_dir_all(ext_dir.join("issues"));
     let _ = fs::create_dir_all(ext_dir.join("refactors"));
     let _ = fs::create_dir_all(ext_dir.join("roadmap"));
@@ -97,7 +102,59 @@ pub fn init_project(cwd: &Path) -> String {
 | Decision | Date | Rationale | Alternatives Considered |
 |----------|------|-----------|------------------------|
 ";
-    let _ = fs::write(ext_dir.join("architecture").join("ARCHITECTURE.md"), arch_md);
+    let _ = fs::write(
+        ext_dir.join("architecture").join("ARCHITECTURE.md"),
+        arch_md,
+    );
+
+    let shared_conventions = "\
+# emb-agent Shared Conventions
+
+## Truth Placement Map
+
+| Information | Primary location |
+|---|---|
+| Boot-time traps, active priorities, environment blockers | `.emb-agent/attention.md` |
+| MCU/package/pins/peripherals/clock/board facts | `.emb-agent/hw.yaml` |
+| Product behavior, constraints, acceptance, unknowns | `.emb-agent/req.yaml` and `docs/prd/` |
+| Reusable traps/tricks/decisions/learnings/explorations | `.emb-agent/compound/` |
+| Current module map, data flow, ISR routing, peripheral ownership | `.emb-agent/architecture/` |
+| Long-form source synthesis and human-readable notes | `.emb-agent/wiki/` |
+| Machine query index | `.emb-agent/graph/` |
+| Session-local continuity | `.emb-agent/memory/` and `.emb-agent/sessions/` |
+
+## Stage Gates
+
+- Onboard → Work: user confirms empty/partial/migration path and any migrated facts.
+- Issue Report → Analyze: user confirms report accuracy.
+- Issue Analyze → Fix: user confirms root cause and fix approach.
+- Issue Fix → Close: user confirms fix verification.
+- Knowledge capture: user confirms compound entries before writing.
+
+## Terminology Discipline
+
+Before introducing a new term, check code, `.emb-agent/architecture/`, and `.emb-agent/compound/` for conflicts.
+";
+    let _ = fs::write(
+        ext_dir.join("reference").join("shared-conventions.md"),
+        shared_conventions,
+    );
+    let knowledge_evolution = "\
+# Knowledge Evolution
+
+Promote a lesson only if it is repeatable AND (expensive OR not-visible-in-code).
+
+Record to:
+- `.emb-agent/compound/` for learn/trick/decision/trap/explore entries.
+- `.emb-agent/attention.md` only for boot-time blockers and traps.
+- `.emb-agent/architecture/` for current module/peripheral/ISR ownership.
+
+Do not record generic programming knowledge or facts obvious from code and datasheets.
+";
+    let _ = fs::write(
+        ext_dir.join("reference").join("knowledge-evolution.md"),
+        knowledge_evolution,
+    );
     ensure_gitignore_entry(cwd, ".emb-agent/sessions/");
 
     // Create and auto-complete bootstrap task
@@ -165,6 +222,31 @@ pub fn migrate_status(_ext_dir: &Path) -> String {
     r#"{"status":"ok","migration_required":false,"runtime":"rust"}"#.to_string()
 }
 
+/// Onboard handoff. The runtime keeps this intentionally small: emb-onboard owns
+/// repo audit, user confirmation, and fact extraction.
+pub fn onboard_status(cwd: &Path) -> String {
+    let ext_dir = cwd.join(".emb-agent");
+    let initialized = ext_dir.join("project.json").exists();
+    let has_hw = ext_dir.join("hw.yaml").exists();
+    let has_req = ext_dir.join("req.yaml").exists();
+    let has_attention = ext_dir.join("attention.md").exists();
+    let path = if !initialized {
+        "empty-or-migration"
+    } else if !has_hw || !has_req || !has_attention {
+        "partial"
+    } else {
+        "review-existing"
+    };
+    format!(
+        "{{\"status\":\"ok\",\"action\":\"onboard\",\"recommended_agent\":\"emb-onboard\",\"path\":{},\"initialized\":{},\"has_hw\":{},\"has_req\":{},\"has_attention\":{},\"instructions\":\"Invoke emb-onboard. It must audit existing hardware docs, choose empty/partial/migration path, ask before moving user files, then stop and route back to next --brief.\",\"next\":{{\"command\":\"next --brief\"}}}}",
+        json_quote(path),
+        initialized,
+        has_hw,
+        has_req,
+        has_attention
+    )
+}
+
 /// Skills status. Legacy skill scaffolding is host-owned; runtime skills are command docs and agents.
 pub fn skills_status(_ext_dir: &Path) -> String {
     r#"{"status":"ok","skills_runtime":"host","note":"Skills are provided by installed host command docs and agents"}"#.to_string()
@@ -218,7 +300,7 @@ pub fn decision_status(ext_dir: &Path) -> String {
 /// List available commands
 pub fn commands_list() -> String {
     let commands = [
-        "start next status health pause resume",
+        "start next status health pause resume onboard",
         "task list show add activate resolve aar scan/record/status bug add/list/resolve",
         "variant list status adopt create use fork diff",
         "workspace list status create use fork diff (alias)",

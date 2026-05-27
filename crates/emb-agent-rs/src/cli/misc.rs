@@ -62,6 +62,13 @@ pub fn run_ext_ops(args: &[String]) -> Result<(), String> {
             println!("{}", emb_agent_core::ext_ops::init_project(Path::new(&cwd)));
             Ok(())
         }
+        "onboard" => {
+            println!(
+                "{}",
+                emb_agent_core::ext_ops::onboard_status(Path::new(&cwd))
+            );
+            Ok(())
+        }
         "migrate" => {
             println!("{}", emb_agent_core::ext_ops::migrate_status(&ext_dir));
             Ok(())

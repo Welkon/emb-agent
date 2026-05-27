@@ -13,6 +13,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 "add" | "learn" | "decide" | "trap" | "explore" | "trick" => {
                     let doc_type = if sub == "add" {
                         option_value(args, "--type").unwrap_or_else(|| "learn".to_string())
+                    } else if sub == "decide" {
+                        "decision".to_string()
                     } else {
                         sub.to_string()
                     };
@@ -25,9 +27,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     let category = option_value(args, "--category").unwrap_or_default();
 
                     let mut extra: Vec<(&str, &str)> = Vec::new();
-                    if !vendor.is_empty() { extra.push(("vendor", vendor.as_str())); }
-                    if !severity.is_empty() { extra.push(("severity", severity.as_str())); }
-                    if !category.is_empty() { extra.push(("category", category.as_str())); }
+                    if !vendor.is_empty() {
+                        extra.push(("vendor", vendor.as_str()));
+                    }
+                    if !severity.is_empty() {
+                        extra.push(("severity", severity.as_str()));
+                    }
+                    if !category.is_empty() {
+                        extra.push(("category", category.as_str()));
+                    }
 
                     if slug.is_empty() {
                         return Err("compound add requires --slug".to_string());
@@ -39,9 +47,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     println!(
                         "{}",
                         emb_agent_core::compound::compound_add(
-                            &ext_dir, &doc_type, &slug,
+                            &ext_dir,
+                            &doc_type,
+                            &slug,
                             if title.is_empty() { &slug } else { &title },
-                            &summary, &chip, &extra
+                            &summary,
+                            &chip,
+                            &extra
                         )
                     );
                     Ok(())
@@ -52,7 +64,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     let chip = option_value(args, "--chip").unwrap_or_default();
                     println!(
                         "{}",
-                        emb_agent_core::compound::compound_search(&ext_dir, &doc_type, &query, &chip)
+                        emb_agent_core::compound::compound_search(
+                            &ext_dir, &doc_type, &query, &chip
+                        )
                     );
                     Ok(())
                 }
@@ -72,7 +86,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 }
                 "note" => {
                     let text = option_value(args, "--text").unwrap_or_default();
-                    let section = option_value(args, "--section").unwrap_or_else(|| "Notes".to_string());
+                    let section =
+                        option_value(args, "--section").unwrap_or_else(|| "Notes".to_string());
                     if text.is_empty() {
                         return Err("attention note requires --text".to_string());
                     }
@@ -87,9 +102,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         "note" => {
             // Shortcut: emb note --text "..." [--section "..."]
-            let text = option_value(args, "--text").unwrap_or_else(|| {
-                args.get(1).cloned().unwrap_or_default()
-            });
+            let text = option_value(args, "--text")
+                .unwrap_or_else(|| args.get(1).cloned().unwrap_or_default());
             let section = option_value(args, "--section").unwrap_or_else(|| "Notes".to_string());
             if text.is_empty() {
                 return Err("note requires text (--text or positional)".to_string());

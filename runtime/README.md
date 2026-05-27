@@ -172,11 +172,14 @@ Typical external-driver shape:
 Initialize or attach a project:
 
 ```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs onboard
 node <runtime-home>/emb-agent/bin/emb-agent.cjs init
 node <runtime-home>/emb-agent/bin/emb-agent.cjs health
 node <runtime-home>/emb-agent/bin/emb-agent.cjs next
 node <runtime-home>/emb-agent/bin/emb-agent.cjs dispatch next
 ```
+
+Prefer `onboard` as the human-facing first step. It decides whether to scaffold an empty repo, repair a partial `.emb-agent/`, or invoke the migration audit for existing hardware documents. `init` is the low-level scaffold substep.
 
 For peripheral-formula, pin, or register-location problems, check whether `next` / `dispatch next` already provides `tool_recommendation` or `tool_execution`.
 

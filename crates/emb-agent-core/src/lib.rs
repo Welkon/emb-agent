@@ -9,12 +9,12 @@
 //   lookup/     - doc lookup, component lookup, fetch, board query
 //   (root)      - actions, hooks, json, ext_ops, meta_ops, prd_ops, variant_ops
 
+pub mod compound;
 pub mod hardware;
 pub mod knowledge;
 pub mod lookup;
 pub mod schematic;
 pub mod session;
-pub mod compound;
 pub mod task;
 
 pub mod actions;
@@ -30,9 +30,9 @@ pub use compound::*;
 pub use actions::*;
 pub use ext_ops::{
     capability_run, commands_list, decision_status, dispatch_orchestrate, executor_run, ingest_doc,
-    init_project, insight_show, migrate_status, note_add, note_show, orchestrate_status,
-    prefs_show, scaffold_generate, settings_set, settings_show, skills_status, snippet_draft,
-    support_status, tool_run, trace_show, transcript_show, update_check, workflow_status,
+    init_project, insight_show, migrate_status, note_add, note_show, onboard_status,
+    orchestrate_status, prefs_show, scaffold_generate, settings_set, settings_show, skills_status,
+    snippet_draft, support_status, tool_run, trace_show, update_check, workflow_status,
 };
 pub use hardware::*;
 pub use hooks::*;

@@ -39,7 +39,6 @@ pub fn task_add_with_deps(
         return "{\"status\":\"error\",\"error\":{\"code\":\"bad-name\",\"message\":\"Task summary must contain at least one alphanumeric character\"}}".to_string();
     }
 
-
     let task_dir = tasks_dir.join(&name);
     if task_dir.exists() {
         return format!(
@@ -56,7 +55,6 @@ pub fn task_add_with_deps(
         now.split('T').next().unwrap_or("task"),
         task_id_suffix
     );
-
 
     let task = json!({
         "id": task_id,

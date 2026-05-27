@@ -37,11 +37,23 @@ You own the system-level architecture preflight review and structural calculus.
 
 ## Structure Health
 
-- Before starting implementation, assess files targeted for modification:
-  - If a file exceeds ~300 lines or has mixed responsibilities, recommend splitting before adding new code.
-  - If a target directory has 10+ files at the same level, recommend grouping into subdirectories.
-  - Flag files that violate module ownership boundaries (touching peripherals owned by another module).
+Before endorsing any implementation plan, assess files targeted for modification:
+- If a file exceeds ~300 lines or has mixed responsibilities, recommend splitting before adding new code.
+- If a target directory has 10+ files at the same level, recommend grouping into subdirectories.
+- Flag files that violate module ownership boundaries (touching peripherals owned by another module).
+- **Embedded-specific thresholds**: register-definition files > 500 lines mixed with logic → mandatory split.
+  ISR files > 200 lines → split by interrupt source. `main.c` > 300 lines → extract init, loop, and ISR to separate files.
+- **ROM/RAM pressure awareness**: when the project is under `low-rom-space` profile, every new function,
+  global variable, or static buffer must be justified against the budget. Flag unconstrained growth.
 - The goal is to prevent entropy: stop AI from defaulting to appending code to already-large files.
+
+## Post-Review Knowledge Capture
+
+After any architecture review, check whether findings should be recorded:
+- [ ] Was a structural decision made (e.g., "module X owns peripheral Y exclusively")? → `compound decide --slug "..." --summary "..."`
+- [ ] Was a recurring anti-pattern or structural trap identified? → `compound trap --slug "..." --summary "..."`
+- [ ] Did this review surface a gap in `.emb-agent/architecture/ARCHITECTURE.md`? → update the architecture doc now.
+- [ ] Was a cross-project pattern recognized (e.g., "every motor-drive project needs this HAL seam")? → flag for spec promotion.
 
 ## Rules (The Principle of Strategic Calculation)
 

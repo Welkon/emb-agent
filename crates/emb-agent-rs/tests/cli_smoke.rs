@@ -175,6 +175,17 @@ fn run(project: &TestProject, args: &[&str]) -> String {
 #[test]
 fn common_user_paths_smoke() {
     let project = TestProject::new("common");
+    let _ = run(
+        &project,
+        &[
+            "declare",
+            "hardware",
+            "--mcu",
+            "ESP32-C3",
+            "--package",
+            "QFN32",
+        ],
+    );
 
     let next = run(&project, &["next", "--json"]);
     assert!(next.contains("\"status\""), "next output: {next}");
@@ -242,7 +253,9 @@ fn task_list_uses_top_level_manifest_fields_only() {
 
     let next = run(&project, &["next", "--brief"]);
     let next_value: serde_json::Value = serde_json::from_str(&next).expect("next json");
-    let candidates = next_value["task_candidates"].as_array().expect("candidate array");
+    let candidates = next_value["task_candidates"]
+        .as_array()
+        .expect("candidate array");
     assert!(
         candidates.iter().any(|task| task["name"] == "real-task"),
         "real task candidate missing: {next}"
@@ -258,14 +271,19 @@ fn deleted_tasks_do_not_route_as_candidates() {
     let project = TestProject::new("deleted-routing");
 
     let delete_output = run(&project, &["task", "delete", "pwm-led"]);
-    assert!(delete_output.contains("\"deleted\":true"), "delete output: {delete_output}");
+    assert!(
+        delete_output.contains("\"deleted\":true"),
+        "delete output: {delete_output}"
+    );
 
     let list = run(&project, &["task", "list"]);
     assert!(!list.contains("pwm-led"), "deleted task listed: {list}");
 
     let next = run(&project, &["next", "--brief"]);
     let next_value: serde_json::Value = serde_json::from_str(&next).expect("next json");
-    let candidates = next_value["task_candidates"].as_array().expect("candidate array");
+    let candidates = next_value["task_candidates"]
+        .as_array()
+        .expect("candidate array");
     assert!(
         !candidates.iter().any(|task| task["name"] == "pwm-led"),
         "deleted task routed: {next}"
@@ -302,7 +320,8 @@ fn task_and_bug_add_reject_empty_slugs() {
     let project = TestProject::new("bad-slug");
 
     let task_output = run(&project, &["task", "add", "!!!"]);
-    let task_value: serde_json::Value = serde_json::from_str(&task_output).expect("task error json");
+    let task_value: serde_json::Value =
+        serde_json::from_str(&task_output).expect("task error json");
     assert_eq!(task_value["status"], "error", "task output: {task_output}");
     assert_eq!(task_value["error"]["code"], "bad-name");
 
@@ -318,7 +337,10 @@ fn host_scaffolds_have_no_unresolved_fill_markers() {
     let scaffold_root = root.join("runtime").join("scaffolds").join("shells");
     let mut offenders = Vec::new();
     collect_files_with(&scaffold_root, "<!-- FILL:", &mut offenders);
-    assert!(offenders.is_empty(), "unresolved scaffold markers: {offenders:?}");
+    assert!(
+        offenders.is_empty(),
+        "unresolved scaffold markers: {offenders:?}"
+    );
 }
 
 #[test]
@@ -351,7 +373,8 @@ fn pi_extension_uses_pi_runtime_and_valid_cli_commands() {
         "Pi init guidance must reference the pi target"
     );
     assert!(
-        pi_extension.contains("active_variant") && pi_extension.contains("var:${r.project.active_variant}"),
+        pi_extension.contains("active_variant")
+            && pi_extension.contains("var:${r.project.active_variant}"),
         "Pi widget status must show the active variant"
     );
 }
@@ -603,4 +626,94 @@ fn legacy_doc_commands_are_dispatchable() {
         let output = run(&project, &[command]);
         assert!(output.contains("\"status\""), "{command} output: {output}");
     }
+}
+
+#[test]
+fn uninitialized_project_routes_to_onboard() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("emb-agent-uninit-{nonce}"));
+    fs::create_dir_all(&root).expect("create uninitialized root");
+
+    let run_raw = |args: &[&str]| -> String {
+        let output = Command::new(emb_agent_bin())
+            .args(args)
+            .arg("--cwd")
+            .arg(&root)
+            .output()
+            .expect("run emb-agent-rs");
+        assert_success(output)
+    };
+
+    let next = run_raw(&["next", "--brief"]);
+    let next_value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    assert_eq!(next_value["action"], "onboard", "next output: {next}");
+    assert_eq!(
+        next_value["agent_protocol"]["gate"]["kind"], "onboarding",
+        "next output: {next}"
+    );
+
+    let start = run_raw(&["start"]);
+    assert!(
+        start.contains("Start with onboarding"),
+        "start output: {start}"
+    );
+    assert!(start.contains("emb-onboard"), "start output: {start}");
+
+    let statusline = run_raw(&["statusline"]);
+    assert_eq!(statusline.trim(), "emb · onboard");
+
+    let onboard = run_raw(&["onboard"]);
+    let onboard_value: serde_json::Value = serde_json::from_str(&onboard).expect("onboard json");
+    assert_eq!(
+        onboard_value["action"], "onboard",
+        "onboard output: {onboard}"
+    );
+    assert_eq!(
+        onboard_value["path"], "empty-or-migration",
+        "onboard output: {onboard}"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn initialized_project_without_hardware_still_routes_to_onboard() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("emb-agent-init-no-hw-{nonce}"));
+    fs::create_dir_all(&root).expect("create root");
+
+    let output = Command::new(emb_agent_bin())
+        .arg("init")
+        .arg("--cwd")
+        .arg(&root)
+        .output()
+        .expect("run init");
+    assert_success(output);
+
+    let output = Command::new(emb_agent_bin())
+        .args(["next", "--brief"])
+        .arg("--cwd")
+        .arg(&root)
+        .output()
+        .expect("run next");
+    let next = assert_success(output);
+    let next_value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    assert_eq!(next_value["action"], "onboard", "next output: {next}");
+    assert_eq!(
+        next_value["agent_protocol"]["gate"]["kind"], "onboarding",
+        "next output: {next}"
+    );
+
+    let shared = root.join(".emb-agent/reference/shared-conventions.md");
+    let knowledge = root.join(".emb-agent/reference/knowledge-evolution.md");
+    assert!(shared.exists(), "shared conventions missing");
+    assert!(knowledge.exists(), "knowledge evolution missing");
+
+    let _ = fs::remove_dir_all(root);
 }

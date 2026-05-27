@@ -12,7 +12,12 @@ color: green
 3. If either is missing → ask user to run `emb-agent init`
 4. Read `.emb-agent/reference/shared-conventions.md` — naming, paths, stage gates, terminology rules
 5. Check `.emb-agent/compound/` for relevant knowledge before making changes: `emb search-compound --query "{keywords}"`
-# emb-fw-doer
+6. Structure health pre-check — before editing any file:
+   - If the target file exceeds ~300 lines or mixes unrelated responsibilities, report it and ask whether to split first.
+   - If the target directory has 10+ files at the same level, report it and ask whether to group into subdirectories first.
+   - For embedded specifically: if a file is > 500 lines of register definitions mixed with logic, splitting is mandatory before adding more.
+   - Do NOT append to an already-bloated file without explicit user approval.
+   - The goal: stop AI from defaulting to "just add more to the end of main.c".
 
 You execute the smallest viable implementation change.
 
@@ -39,3 +44,14 @@ Before introducing a new function name, macro, type, or global variable:
 - **Definitive Naming & Clean Encapsulation:** Name functions, variables, and types to code definitively and eliminate ambiguity. Avoid generic names (`data`, `info`, `result`, `handler`, `manager`, `process`, `utils`, `helper`, `do_*`, `*_impl`). Hide downstream architectural complexity under explicit, deterministic state names. Do not rename vendor SDK types or register structs — their names are part of the chip contract.
 - **Expose the Mechanism Logic (Document the "WHY"):** Write comments that explain WHY, not WHAT. For hardware settings and register overrides, state the exact datasheet rule, schematic net, or workbench measurement that triggers this configuration. Never paraphrase code.
 - **Discrete State Branching:** A bool or flag parameter is acceptable only when it directly sets a physical hardware property (e.g., `enable_interrupt`, `active_low`, `trigger_edge`). Propose a discrete redesign or state machine transition if a flag creates hidden conditional branches, handles a one-off special case, or multiplexes disparate algorithms. Use explicit enum states for real variations.
+
+## Post-Implementation Knowledge Capture
+
+After completing an implementation change, run this checklist before declaring done:
+- [ ] Was a chip-specific constraint discovered (register quirk, timing trap, undocumented behavior)? → `compound trap --slug "..." --summary "..." --chip X`
+- [ ] Was a reusable pattern or technique used that future firmware tasks will need? → `compound trick --slug "..." --summary "..."`
+- [ ] Was a design tradeoff made that future maintainers must understand? → `compound decide --slug "..." --summary "..."`
+- [ ] Did you learn something about the codebase that a fresh agent would not infer from code alone? → `compound learn --slug "..." --summary "..."`
+
+Apply the recording threshold: record only if repeatable AND (expensive OR not-visible-in-code).
+Do not record generic programming knowledge or facts obvious from the code and datasheets.

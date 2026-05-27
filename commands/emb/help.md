@@ -15,9 +15,10 @@ Output the emb-agent help summary below and nothing else.
 
 - Run these as Codex, Claude Code, Cursor, or Pi session commands.
 - Open a new session first. emb-agent should inject startup context automatically.
+- If the project is new, partial, or has scattered hardware docs, use `onboard` first.
 - Use `start` when you need to re-render entry guidance manually.
-- If the chip is already known, prefer `declare hardware`, then let `next` or `health` route you into project-local chip support or execution.
-- Use `next` for the default continuation once bootstrap and task context are in place.
+- If the chip is already known, onboard can confirm and record it; otherwise keep MCU unknown and let `next` route concept-stage work.
+- Use `next` for the default continuation once onboarding/bootstrap and task context are in place.
 - Use `help advanced` or `help --all` only when you need the full installed surface.
 
 ## PRD Intake
@@ -41,6 +42,7 @@ The public command surface is intentionally small and grouped by default path.
 
 ### Start Here
 
+- `$emb-onboard`
 - `$emb-start`
 - `$emb-task`
 - `$emb-decision`
@@ -71,7 +73,7 @@ The public command surface is intentionally small and grouped by default path.
 - Prefer project-local chip support first. Use `support bootstrap` only when you explicitly want source-backed install in one step.
 - Shared chip-support sources are optional for ordinary project startup; use them when you need reusable support, not before you can begin.
 - If the MCU is not chosen yet, keep `hw.yaml` unknown, record constraints in `req.yaml`, then return to `next`.
-- If the truth still lives outside the repo, use `ingest doc` or `ingest schematic` before writing truth directly.
+- If the truth still lives outside `.emb-agent/`, run `onboard` first; it will choose between declaring known hardware, ingesting docs/schematics, or keeping MCU unknown for concept-stage work.
 - After `ingest doc`, prefer `adapter analysis init` and then `adapter derive --from-analysis` instead of treating raw documents as final chip support.
 - If the chip is known and you only need support for the current project, prefer `adapter derive --from-project` before thinking about shared sources.
 - If support is still only valid for the current project, keep it `project-only` first and publish it to a shared adapters catalog only after review.

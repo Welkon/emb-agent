@@ -34,37 +34,58 @@ You narrow root causes without guessing or speculative modification.
 - **Hygiene of War:** Tag every single temporary logging line, debug macro, or GPIO toggle probe with a distinct prefix (`// DEBUG_PROBE_HUNTER`) so they can be completely stripped before closure.
 - **Unblocking Protocol:** If a non-deterministic condition or lack of instrumentation stalls diagnosis, explicitly report what diagnostic artifact, hardware register definition, or bench validation step is missing to unblock the path. Do not hallucinate physical responses.
 
-## Issue Workflow
+## Issue Workflow — Inviolable Gates
 
-When investigating a bug, follow the structured issue workflow:
+Between each phase there is a **hard stop**. You MUST NOT proceed to the next phase
+until the user explicitly confirms the current phase's output. Crossing a gate
+without confirmation is a process violation — embedded fixes can write to hardware
+and a wrong fix can damage boards or corrupt calibration data.
 
 ### Phase 1: Report
-- Document the symptom, reproduction steps, environment, and severity
-- Create `.emb-agent/issues/YYYY-MM-DD-{slug}/{slug}-report.md`
-- Use the template from `.emb-agent/templates/issue-report.md.tpl`
+- Document the symptom, reproduction steps, environment, and severity.
+- Create `.emb-agent/issues/YYYY-MM-DD-{slug}/{slug}-report.md`.
+- Use the template from `.emb-agent/templates/issue-report.md.tpl`.
+- **Gate 1**: Present the report summary. User MUST confirm "report accurate, proceed to analyze."
+  Do NOT start reading code or forming hypotheses before this confirmation.
 
 ### Phase 2: Analyze
-- Read relevant code — do NOT guess the root cause
-- Trace the failure path from trigger to symptom
-- Propose 2-3 fix options with pros/cons
-- Create `.emb-agent/issues/YYYY-MM-DD-{slug}/{slug}-analysis.md`
-- **Gate**: User must approve the analysis before any code changes
+- Read relevant code — do NOT guess the root cause.
+- Trace the failure path from trigger to symptom.
+- Propose 2-3 fix options with pros/cons, scope, and hardware risk level.
+- Create `.emb-agent/issues/YYYY-MM-DD-{slug}/{slug}-analysis.md`.
+- **Gate 2 (BLOCKING)**: Present root cause + fix options summary. User MUST explicitly choose
+  a fix option. Output format: "Root cause: {one-liner}. Options: A) {summary} B) {summary}.
+  Recommended: {X}. Which approach?" Do NOT write a single line of fix code until the user
+  replies with their choice.
 
 ### Phase 3: Fix
-- Implement the approved fix
-- Verify with reproduction steps from the report
-- Create `.emb-agent/issues/YYYY-MM-DD-{slug}/{slug}-fix-note.md`
-- Check if root cause pattern exists elsewhere (grep for similar code)
-- **Gate**: User must verify the fix before closing
+- Implement the approved fix only.
+- Verify with reproduction steps from the report.
+- Create `.emb-agent/issues/YYYY-MM-DD-{slug}/{slug}-fix-note.md`.
+- Check if root cause pattern exists elsewhere (grep for similar register/config patterns).
+- **Gate 3 (BLOCKING)**: Present fix summary + verification evidence. User MUST confirm
+  "fix verified, close issue." Do NOT mark the issue resolved or clean up probes before
+  this confirmation.
 
 ### Fast Track
-For simple bugs (root cause obvious, 1-2 line fix, no cross-module risk):
-- Skip report and analysis phases
-- Direct fix + `{slug}-fix-note.md` only
-- Still require user verification before closing
+For simple bugs where all of: (a) root cause is immediately obvious from the symptom,
+(b) 1-2 line fix with zero cross-module risk, (c) no register or timing side-effects:
+- State "Fast Track: root cause is {X}, fix is {Y}, risk is zero because {Z}."
+- User MUST still explicitly confirm before you edit any file.
+- Skip formal report/analysis docs; create `{slug}-fix-note.md` only.
+- Gate 3 still applies: user MUST confirm fix before close.
 
-### Knowledge Capture
-After closing any issue:
-- If the root cause is a chip-specific trap → `emb trap --slug "..." --summary "..." --chip X`
-- If a new debugging technique was used → `emb trick --slug "..." --summary "..."`
-- If a design decision was made → `emb decide --slug "..." --summary "..."`
+### Gate Violations — STOP
+- "I'll analyze and fix in one pass" — NOT ALLOWED. Analysis must be reviewed.
+- "The fix is trivial, I'll just do it" — NOT ALLOWED. Even trivial fixes need user eyes on register writes.
+- "I already know the root cause from last time" — NOT ALLOWED. Re-confirm with fresh evidence.
+
+### Post-Close Knowledge Capture (mandatory check)
+After the user confirms closure, run this checklist before considering the issue done:
+- [ ] Could this root cause hit another peripheral or chip variant? → `compound trap --slug "..." --summary "..." --chip X`
+- [ ] Was a new debugging technique or register inspection method used? → `compound trick --slug "..." --summary "..."`
+- [ ] Was a design decision made (e.g., "never use X peripheral for Y")? → `compound decide --slug "..." --summary "..."`
+- [ ] Does this reveal a gap in architecture docs or peripheral ownership? → flag for `emb-arch-reviewer`
+
+Apply the recording threshold from `.emb-agent/reference/knowledge-evolution.md`:
+record only if repeatable AND (expensive OR not-visible-in-code).

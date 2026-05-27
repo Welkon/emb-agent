@@ -55,6 +55,21 @@ Shared conventions for all emb-agent agents. Deployed by the installer to `.emb-
         └── {slug}-apply-notes.md
 ```
 
+## 0.1 Truth Placement Map
+
+| Information | Primary location |
+|---|---|
+| Boot-time traps, active priorities, environment blockers | `.emb-agent/attention.md` |
+| MCU/package/pins/peripherals/clock/board facts | `.emb-agent/hw.yaml` |
+| Product behavior, constraints, acceptance, unknowns | `.emb-agent/req.yaml` and `docs/prd/` |
+| Reusable traps/tricks/decisions/learnings/explorations | `.emb-agent/compound/` |
+| Current module map, data flow, ISR routing, peripheral ownership | `.emb-agent/architecture/` |
+| Long-form source synthesis and human-readable notes | `.emb-agent/wiki/` |
+| Machine query index | `.emb-agent/graph/` |
+| Session-local continuity | `.emb-agent/memory/` and `.emb-agent/sessions/` |
+
+If a fact fits two locations, write it to the primary truth file and link or summarize elsewhere. Do not leave durable hardware facts in chat only.
+
 ## 1. Naming Conventions
 
 ### Task slugs
@@ -106,6 +121,12 @@ Between workflow stages, agents MUST stop and ask for user confirmation:
 - Implementation → Acceptance: user confirms implementation complete
 - Acceptance → Close: user confirms acceptance criteria met
 - Knowledge capture: user confirms compound entries before writing
+- Issue Report → Analyze: user confirms report accuracy (see emb-bug-hunter Gate 1)
+- Issue Analyze → Fix: user confirms root cause and fix approach (see emb-bug-hunter Gate 2)
+- Issue Fix → Close: user confirms fix verification (see emb-bug-hunter Gate 3)
+
+Recording threshold for compound entries: see `.emb-agent/reference/knowledge-evolution.md`.
+Core rule: record only if repeatable AND (expensive OR not-visible-in-code).
 
 ## 6. Terminology Discipline
 
