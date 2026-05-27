@@ -42,7 +42,7 @@ emb-agent sits between the AI assistant and your repository. It does not replace
 | Layer | What it does | Examples |
 |---|---|---|
 | **User** | Describes product-level intent | “Bring up PWM dimming”, “Check the schematic”, “Continue the active task” |
-| **AI assistant** | Converses, writes code, asks for clarification | Pi, Codex, Claude Code, Cursor |
+| **AI assistant** | Converses, writes code, asks for clarification | Codex, Claude Code, Cursor, Pi, OMP, Windsurf |
 | **Host integration** | Starts emb-agent automatically and exposes project-aware actions | Pi extension, Codex hooks, Claude/Cursor command docs |
 | **Rust runtime** | Reads project state, routes workflow, analyzes hardware artifacts | session, task, schematic, knowledge, diagnostics |
 | **Project memory** | Stores the facts that should survive across sessions | `.emb-agent/hw.yaml`, `req.yaml`, `tasks/`, `graph/`, `wiki/`, `cache/` |
@@ -59,13 +59,27 @@ emb-agent sits between the AI assistant and your repository. It does not replace
 | **Workflow** | Guide work through scan, plan, implement, review, and verify |
 | **Diagnostics** | Report hook, project, and state-path health |
 
+### Specialized agents
+
+emb-agent ships a set of workflow-specific sub-agents that the AI assistant can delegate to. Each agent has a narrow scope and clear acceptance criteria.
+
+| Agent | Role |
+|---|---|
+| **emb-onboard** | Project initialization and migration — scaffolds `.emb-agent/` for empty repos, or audits and maps existing hardware docs |
+| **emb-hw-scout** | Hardware truth investigation — locates datasheets, schematics, pin maps, and register-level facts |
+| **emb-fw-doer** | Minimal code and documentation changes with structure health pre-checks |
+| **emb-arch-reviewer** | Architecture review against embedded constraints (ROM/RAM budgets, ISR latency, power domains) |
+| **emb-bug-hunter** | Root-cause analysis of hardware-software bugs with register-level tracing |
+| **emb-sys-reviewer** | System-level review across firmware, schematic, and requirements |
+| **emb-release-checker** | Pre-release validation of build, tests, and release artifacts |
+
 ---
 
 ## User flow
 
 ### 1. Open an AI session
 
-Start Pi, Codex, Claude Code, or Cursor inside your firmware repository.
+Start Codex, Claude Code, Cursor, Pi, OMP, or Windsurf inside your firmware repository.
 
 If the project has not been initialized yet, or if existing hardware truth is scattered across datasheets, schematics, pin maps, build files, and notes, emb-agent routes the assistant through **onboard** first. Onboard chooses the lightest safe path:
 
@@ -139,8 +153,10 @@ The assistant will route that through emb-agent and continue from the current pr
 From npm:
 
 ```bash
-npx emb-agent --target pi
+npx emb-agent --target <host>
 ```
+
+Where `<host>` is one of: `codex`, `claude`, `cursor`, `pi`, `omp`, `windsurf`.
 
 Or build from source:
 
@@ -150,7 +166,7 @@ cd emb-agent
 cargo build --release
 ```
 
-Supported hosts: **Pi**, **Codex**, **Claude Code**, **Cursor**.
+Supported hosts: **Codex**, **Claude Code**, **Cursor**, **Pi**, **OMP**, **Windsurf**.
 
 ---
 
@@ -158,6 +174,8 @@ Supported hosts: **Pi**, **Codex**, **Claude Code**, **Cursor**.
 
 | Document | Purpose |
 |---|---|
+| [Product Boundaries](docs/product-boundaries.md) | What emb-agent is and is not — product scope and layer boundaries |
+| [Command Docs](command-docs/emb/) | Human-readable command reference (chip, etc.) |
 | [Scenarios](docs/scenarios.md) | How emb-agent fits common project situations |
 | [Task Model](docs/task-model.md) | How work is tracked and closed |
 | [Chip Support Model](docs/chip-support-model.md) | How reusable chip knowledge is structured |
