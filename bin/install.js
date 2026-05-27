@@ -624,8 +624,38 @@ function main(argv) {
 		installForHost(projectRoot, host);
 	} else if (process.stdin.isTTY) {
 		var C = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m" };
-		var state = { host: null, developer: "developer", isLocal: true, lang: "en", registry: "", skillSource: "" };
 		var readline = require("readline");
+		// Scan for emb-support
+		var supportDir = null;
+		var candidates = [path.join(projectRoot, "..", "emb-support"), path.join(os.homedir(), "Projects", "emb-support"), path.join(os.homedir(), "emb-support")];
+		for (var ci = 0; ci < candidates.length; ci++) { if (fs.existsSync(candidates[ci])) { supportDir = candidates[ci]; break; } }
+		var extSpecs = [], extSkills = [];
+		if (supportDir) {
+			var specsDir = path.join(supportDir, "specs");
+			if (fs.existsSync(specsDir)) {
+				var sf = fs.readdirSync(specsDir).filter(function(f) { return f.endsWith(".md") && f !== "README.md"; });
+				for (var si = 0; si < sf.length; si++) {
+					var raw = fs.readFileSync(path.join(specsDir, sf[si]), "utf8");
+					var m = raw.match(/^---\n([\s\S]*?)\n---/); if (!m) continue;
+					var fm = {}, lines = m[1].split("\n");
+					for (var li = 0; li < lines.length; li++) { var kv = lines[li].split(":"); if (kv.length >= 2) fm[kv[0].trim()] = kv.slice(1).join(":").trim(); }
+					extSpecs.push({ file: sf[si], name: fm.name || sf[si].replace(".md",""), title: fm.title || "", summary: fm.summary || "" });
+				}
+			}
+			var skillsDir = path.join(supportDir, "skills");
+			if (fs.existsSync(skillsDir)) {
+				var df = fs.readdirSync(skillsDir, { withFileTypes: true }).filter(function(d) { return d.isDirectory(); });
+				for (var di = 0; di < df.length; di++) {
+					var sk = path.join(skillsDir, df[di].name, "SKILL.md");
+					if (!fs.existsSync(sk)) continue;
+					var raw = fs.readFileSync(sk, "utf8");
+					var m = raw.match(/^---\n([\s\S]*?)\n---/); if (!m) continue;
+					var fm = {}, lines = m[1].split("\n");
+					for (var li = 0; li < lines.length; li++) { var kv = lines[li].split(":"); if (kv.length >= 2) fm[kv[0].trim()] = kv.slice(1).join(":").trim(); }
+					extSkills.push({ dir: df[di].name, name: (fm.name || df[di].name).replace(/"/g,""), desc: fm.description || "" });
+				}
+			}
+		var state = { host: null, developer: "developer", isLocal: true, lang: "en", specs: [], skills: [] };
 		var steps = [
 			function askHost(next) {
 				console.log(C.cyan + C.bold + "  emb-agent installer" + C.reset);
@@ -657,28 +687,38 @@ function main(argv) {
 				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 				rl.question(C.yellow + "Choice [1] > " + C.reset, function(a) { rl.close(); state.lang = a.trim() === "2" ? "zh" : "en"; next(); });
 			},
-			function askRegistry(next) {
+			function askSpecs(next) {
+				if (extSpecs.length === 0) { console.log(C.dim + "\n  No emb-support detected. Skipping external specs." + C.reset); next(); return; }
+				console.log("");
 				console.log(C.blue + "\u25B6 External Specs" + C.reset + C.dim + " (optional)" + C.reset);
-				console.log(C.dim + "  Import coding specs from emb-support or another registry." + C.reset);
-				console.log(C.dim + "  Built-in specs (embedded-space, low-rom-space) are auto-enabled." + C.reset);
-				console.log(C.dim + "  Available: emb-support/specs/ (scmcu-space, padauk-space)" + C.reset);
+				console.log(C.dim + "  Source: " + supportDir + C.reset);
+				for (var ei = 0; ei < extSpecs.length; ei++) {
+					var desc = (extSpecs[ei].title || extSpecs[ei].summary || "").substring(0, 72);
+					console.log("  " + C.cyan + "[" + (ei + 1) + "]" + C.reset + " " + extSpecs[ei].name + C.dim + " \u2014 " + desc + C.reset);
+				}
+				console.log("");
 				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-				rl.question(C.yellow + "Git URL or path (Enter to skip) > " + C.reset, function(a) { rl.close(); state.registry = a.trim(); next(); });
+				rl.question(C.yellow + "Select specs (e.g. 1,2 or Enter to skip) > " + C.reset, function(a) { rl.close(); var sel = a.trim(); if (sel) { var nums = sel.split(/[,\s]+/); for (var ni = 0; ni < nums.length; ni++) { var n = parseInt(nums[ni], 10); if (n >= 1 && n <= extSpecs.length) state.specs.push(extSpecs[n-1].name); } } console.log(C.green + "  \u2714 Specs: " + (state.specs.length > 0 ? state.specs.join(", ") : "none") + C.reset); next(); });
 			},
-			function askSkill(next) {
-				console.log(C.blue + "\u25B6 Skill Source" + C.reset + C.dim + " (optional)" + C.reset);
-				console.log(C.dim + "  Available: emb-support/skills/ (altium-pcb, xc8-build, tektronix-scope)" + C.reset);
+			function askSkills(next) {
+				if (extSkills.length === 0) { console.log(C.dim + "  No emb-support skills detected." + C.reset); next(); return; }
+				console.log("");
+				console.log(C.blue + "\u25B6 External Skills" + C.reset + C.dim + " (optional)" + C.reset);
+				for (var ei = 0; ei < extSkills.length; ei++) {
+					console.log("  " + C.cyan + "[" + (ei + 1) + "]" + C.reset + " " + extSkills[ei].name + C.dim + " \u2014 " + (extSkills[ei].desc || "").substring(0, 60) + C.reset);
+				}
+				console.log("");
 				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-				rl.question(C.yellow + "Source URL > " + C.reset, function(a) { rl.close(); state.skillSource = a.trim(); next(); });
+				rl.question(C.yellow + "Select skills (e.g. 1,3 or Enter to skip) > " + C.reset, function(a) { rl.close(); var sel = a.trim(); if (sel) { var nums = sel.split(/[,\s]+/); for (var ni = 0; ni < nums.length; ni++) { var n = parseInt(nums[ni], 10); if (n >= 1 && n <= extSkills.length) state.skills.push(extSkills[n-1].name); } } console.log(C.green + "  \u2714 Skills: " + (state.skills.length > 0 ? state.skills.join(", ") : "none") + C.reset); next(); });
 			},
 			function finish() {
 				var devFile = path.join(projectRoot, ".emb-agent", ".developer");
 				try { fs.mkdirSync(path.join(projectRoot, ".emb-agent"), { recursive: true }); } catch (_) {}
 				fs.writeFileSync(devFile, state.developer + "\n");
 				fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".language"), state.lang + "\n");
-				if (state.registry) fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".registry"), state.registry + "\n");
+				if (state.specs.length > 0) fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".specs"), state.specs.join(",") + "\n");
+				if (state.skills.length > 0) fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".skills"), state.skills.join(",") + "\n");
 
-				if (state.skillSource) fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".skill-source"), state.skillSource + "\n");
 				console.log(C.green + "  \u2714 Installing for " + state.host.name + " as " + state.developer + C.reset);
 				console.log("");
 				installForHost(projectRoot, state.host);
@@ -687,6 +727,7 @@ function main(argv) {
 		var stepIdx = 0;
 		function next() { if (stepIdx < steps.length) { var s = steps[stepIdx]; stepIdx++; s(next); } }
 		next();
+	}
 	} else {
 		console.log("No --target specified and no TTY. Use --target <host>.");
 		console.log("Supported: " + SUPPORTED_HOSTS.map(function (h) { return h.name; }).join(", ") + ", all");
