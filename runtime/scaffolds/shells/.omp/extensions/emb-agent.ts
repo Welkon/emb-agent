@@ -323,10 +323,10 @@ async function runEmbAgent(
 function formatRecommendedCommand(r: EmbAgentResult): string {
   const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
   const command = String(raw || "").trim();
-  if (command.startsWith("/emb:")) return "/" + command.slice("/emb:".length);
+  if (command.startsWith("/emb:")) return "/emb-" + command.slice("/emb:".length);
   if (command.startsWith("/")) return command;
   const normalized = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").replace(/\s+--brief$/, "").trim();
-  return normalized ? "/" + normalized : "";
+  return normalized ? "/emb-" + normalized : "";
 }
 
 function formatRecommendedReason(r: EmbAgentResult): string {
@@ -421,7 +421,7 @@ export default function (pi: ExtensionAPI) {
     const tasks = result.task_candidates;
     if (!tasks?.length) {
       const lines = renderNextLines(result);
-      pi.sendUserMessage("[/next]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
+      pi.sendUserMessage("[/emb-next]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
       return;
     }
 
@@ -465,10 +465,6 @@ export default function (pi: ExtensionAPI) {
     description: "Show task candidates or the recommended next command",
     handler: handleNextCommand,
   });
-  pi.registerCommand("next", {
-    description: "Show task candidates or the recommended next command",
-    handler: handleNextCommand,
-  });
 
   async function handleOnboardCommand(_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void } }) {
     const result = await runEmbAgent(["onboard"], ctx.cwd);
@@ -477,14 +473,10 @@ export default function (pi: ExtensionAPI) {
       return;
     }
     const lines = renderNextLines(result);
-    pi.sendUserMessage("[/onboard]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
+    pi.sendUserMessage("[/emb-onboard]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
   }
 
   pi.registerCommand("emb-onboard", {
-    description: "Run emb-agent onboarding handoff",
-    handler: handleOnboardCommand,
-  });
-  pi.registerCommand("onboard", {
     description: "Run emb-agent onboarding handoff",
     handler: handleOnboardCommand,
   });
