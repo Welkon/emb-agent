@@ -287,6 +287,7 @@ interface EmbAgentResult {
   summary?: string;
   instructions?: string;
   next?: { command?: string; reason?: string; cli?: string };
+  agent_protocol?: { gate?: { recommended_command?: string; recommended_agent?: string } };
   open_tasks?: number;
   task_candidates?: Array<{
     name: string;
@@ -319,6 +320,19 @@ async function runEmbAgent(
   }
 }
 
+function formatRecommendedCommand(r: EmbAgentResult): string {
+  const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
+  const command = String(raw || "").trim();
+  if (!command) return "";
+  if (command.startsWith("/")) return command;
+  const normalized = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").trim();
+  return normalized ? "/emb:" + normalized : "";
+}
+
+function formatRecommendedReason(r: EmbAgentResult): string {
+  return String(r.next?.reason || r.reason || "").trim();
+}
+
 function formatEmbStatus(r: EmbAgentResult): string {
   const parts: string[] = [];
   if (r.project?.active_variant) parts.push("var:" + r.project.active_variant);
@@ -328,10 +342,10 @@ function formatEmbStatus(r: EmbAgentResult): string {
   }
   if (r.tasks?.wiki_pages) parts.push("wiki:" + r.tasks.wiki_pages);
   if (r.tasks?.open) parts.push("tasks:" + r.tasks.open);
-  if (r.tasks?.active) parts.push("\u25B8" + r.tasks.active);
-  if (r.next?.command) parts.push(r.next.command);
-  else if (r.action) parts.push(r.action);
-  return parts.length > 0 ? "emb: " + parts.join(" \u00B7 ") : "";
+  if (r.tasks?.active) parts.push("▸" + r.tasks.active);
+  const command = formatRecommendedCommand(r);
+  if (command) parts.push(command);
+  return parts.length > 0 ? "emb: " + parts.join(" · ") : "";
 }
 
 // ---------------------------------------------------------------------------
@@ -354,9 +368,14 @@ export default function (pi: ExtensionAPI) {
     if (!nextResult) return;
     const lines: string[] = [];
     if (nextResult.summary) lines.push("Project: " + nextResult.summary);
-    if (nextResult.next?.command) {
-      lines.push("Next: emb-agent " + nextResult.next.command);
-      if (nextResult.next.reason) lines.push("  " + nextResult.next.reason);
+    const command = formatRecommendedCommand(nextResult);
+    if (command) {
+      lines.push("Next command: " + command);
+      const reason = formatRecommendedReason(nextResult);
+      if (reason) lines.push("  " + reason);
+    }
+    if (nextResult.agent_protocol?.gate?.recommended_agent) {
+      lines.push("Recommended agent: " + nextResult.agent_protocol.gate.recommended_agent);
     }
     if (nextResult.reason) lines.push("State: " + nextResult.reason);
     if (nextResult.action) lines.push("Action: " + nextResult.action);
