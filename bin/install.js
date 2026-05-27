@@ -603,10 +603,31 @@ function main(argv) {
 			process.exit(1);
 		}
 		installForHost(projectRoot, host);
+	} else if (process.stdin.isTTY) {
+		console.log("\nSelect AI host to install for:\n");
+		for (var k = 0; k < SUPPORTED_HOSTS.length; k++) {
+			console.log("  [" + (k + 1) + "] " + SUPPORTED_HOSTS[k].name);
+		}
+		console.log("  [" + (SUPPORTED_HOSTS.length + 1) + "] all\n");
+		var readline = require("readline");
+		var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+		rl.question("Enter number (default: 4 = pi): ", function (answer) {
+			rl.close();
+			var choice = parseInt(answer.trim(), 10) || 4;
+			if (choice < 1 || choice > SUPPORTED_HOSTS.length + 1) choice = 4;
+			if (choice === SUPPORTED_HOSTS.length + 1) {
+				for (var m = 0; m < SUPPORTED_HOSTS.length; m++) {
+					installForHost(projectRoot, SUPPORTED_HOSTS[m]);
+				}
+			} else {
+				installForHost(projectRoot, SUPPORTED_HOSTS[choice - 1]);
+			}
+		});
+		return;
 	} else {
-		console.log("No --target specified, defaulting to pi\n");
-		var host2 = SUPPORTED_HOSTS.find(function (h) { return h.name === "pi"; });
-		installForHost(projectRoot, host2);
+		console.log("No --target specified and no TTY. Use --target <host>.");
+		console.log("Supported: " + SUPPORTED_HOSTS.map(function (h) { return h.name; }).join(", ") + ", all");
+		process.exit(1);
 	}
 }
 
