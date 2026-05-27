@@ -262,9 +262,11 @@ function deployAgentsMd(srcPath, destPath, vars) {
 		return true;
 	}
 
-	// File exists but has no EMB-AGENT block: user-managed, do not touch
-	console.log("    AGENTS.md is user-managed (no EMB-AGENT block); skipped");
-	return false;
+	// File exists but has no EMB-AGENT block: append managed block
+	var updated = existing + "\n" + templateBlock[0];
+	fs.writeFileSync(destPath, updated);
+	console.log("    " + path.basename(destPath) + " EMB-AGENT block appended");
+	return true;
 }
 
 
@@ -530,7 +532,7 @@ function installForHost(projectRoot, host) {
 		var hostRootFiles = { claude: "CLAUDE.md", codex: "CODEX.md" };
 		var rootFile = hostRootFiles[host.name];
 		if (rootFile) {
-			if (resolveAndDeploy(
+		if (deployAgentsMd(
 				path.join(RUNTIME_SRC, "scaffolds", "shells", rootFile),
 				path.join(projectRoot, rootFile),
 				templateVars
