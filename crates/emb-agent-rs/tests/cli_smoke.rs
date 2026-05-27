@@ -410,6 +410,56 @@ fn occurrences(haystack: &str, needle: &str) -> usize {
     haystack.match_indices(needle).count()
 }
 
+fn assert_no_markdown_files(dir: PathBuf) {
+    if !dir.exists() {
+        return;
+    }
+    for entry in fs::read_dir(&dir).expect("read command dir") {
+        let entry = entry.expect("command entry");
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        assert!(
+            !name.ends_with(".md"),
+            "unexpected command file {name} in {dir:?}"
+        );
+    }
+}
+
+fn assert_two_command_files(dir: PathBuf, host: &str) {
+    let next = dir.join("emb-next.md");
+    let onboard = dir.join("emb-onboard.md");
+    assert!(next.exists(), "missing {next:?}");
+    assert!(onboard.exists(), "missing {onboard:?}");
+    assert!(
+        !dir.join("next.md").exists(),
+        "legacy next command leaked for {host}"
+    );
+    assert!(
+        !dir.join("onboard.md").exists(),
+        "legacy onboard command leaked for {host}"
+    );
+
+    let mut exposed = 0;
+    for entry in fs::read_dir(&dir).expect("read command shims") {
+        let entry = entry.expect("command shim entry");
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("emb-") && name.ends_with(".md") {
+            exposed += 1;
+        }
+    }
+    assert_eq!(exposed, 2, "unexpected command shim count for {host}");
+
+    let next_body = fs::read_to_string(next).expect("read next shim");
+    assert!(
+        next_body.contains("next --brief"),
+        "next shim body: {next_body}"
+    );
+    assert!(
+        next_body.contains("Simplified Chinese"),
+        "next shim body: {next_body}"
+    );
+}
 fn collect_files_with(dir: &Path, needle: &str, offenders: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).expect("read scaffold dir") {
         let entry = entry.expect("scaffold entry");
@@ -513,17 +563,24 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         for stale in [
             "next.md",
             "onboard.md",
+            "emb-next.md",
+            "emb-onboard.md",
             "emb-status.md",
             "emb-scan.md",
             "emb-init.md",
         ] {
             fs::write(commands_dir.join(stale), "stale").expect("write stale command");
         }
-        if host == ".pi" || host == ".omp" {
-            fs::write(commands_dir.join("emb-next.md"), "stale").expect("write stale emb-next");
-            fs::write(commands_dir.join("emb-onboard.md"), "stale")
-                .expect("write stale emb-onboard");
-        }
+    }
+    let windsurf_workflows = root.join(".windsurf").join("workflows");
+    fs::create_dir_all(&windsurf_workflows).expect("create stale workflow dir");
+    for stale in ["next.md", "onboard.md", "emb-next.md", "emb-onboard.md"] {
+        fs::write(windsurf_workflows.join(stale), "stale").expect("write stale workflow");
+    }
+    for skill in ["emb-next", "emb-onboard"] {
+        let skill_dir = root.join(".agents").join("skills").join(skill);
+        fs::create_dir_all(&skill_dir).expect("create stale codex skill");
+        fs::write(skill_dir.join("SKILL.md"), "stale").expect("write stale codex skill");
     }
 
     let output = Command::new("node")
@@ -540,42 +597,32 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         .expect("run installer");
     assert_success(output);
 
-    for host in [".codex", ".cursor", ".claude", ".windsurf"] {
-        let commands_dir = root.join(host).join("commands");
-        let next = commands_dir.join("emb-next.md");
-        let onboard = commands_dir.join("emb-onboard.md");
-        assert!(next.exists(), "missing {next:?}");
-        assert!(onboard.exists(), "missing {onboard:?}");
-        assert!(
-            !commands_dir.join("next.md").exists(),
-            "legacy next command leaked for {host}"
-        );
-        assert!(
-            !commands_dir.join("onboard.md").exists(),
-            "legacy onboard command leaked for {host}"
-        );
-
-        let mut exposed = 0;
-        for entry in fs::read_dir(&commands_dir).expect("read command shims") {
-            let entry = entry.expect("command shim entry");
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with("emb-") && name.ends_with(".md") {
-                exposed += 1;
-            }
-        }
-        assert_eq!(exposed, 2, "unexpected command shim count for {host}");
-
-        let next_body = fs::read_to_string(next).expect("read next shim");
-        assert!(
-            next_body.contains("next --brief"),
-            "next shim body: {next_body}"
-        );
-        assert!(
-            next_body.contains("Simplified Chinese"),
-            "next shim body: {next_body}"
-        );
+    for skill in ["emb-next", "emb-onboard"] {
+        let skill_path = root
+            .join(".agents")
+            .join("skills")
+            .join(skill)
+            .join("SKILL.md");
+        assert!(skill_path.exists(), "missing Codex skill {skill_path:?}");
     }
+    let codex_next = fs::read_to_string(root.join(".agents/skills/emb-next/SKILL.md"))
+        .expect("read Codex next skill");
+    assert!(
+        codex_next.contains("next --brief"),
+        "Codex next skill body: {codex_next}"
+    );
+    assert!(
+        codex_next.contains("Simplified Chinese"),
+        "Codex next skill body: {codex_next}"
+    );
+    assert_no_markdown_files(root.join(".codex").join("commands"));
+
+    for host in [".cursor", ".claude"] {
+        assert_two_command_files(root.join(host).join("commands"), host);
+    }
+
+    assert_two_command_files(root.join(".windsurf").join("workflows"), ".windsurf");
+    assert_no_markdown_files(root.join(".windsurf").join("commands"));
 
     for host in [".pi", ".omp"] {
         let commands_dir = root.join(host).join("commands");

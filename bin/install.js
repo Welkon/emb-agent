@@ -697,16 +697,32 @@ function selectOne(title, items, callback, options) {
 		selectOneFallback(title, items, callback, options || {});
 	}
 }
-function hostUsesExtensionCommands(host) {
-	return host.name === "omp" || host.name === "pi";
+
+function commandFileNames() {
+	return CANONICAL_SHELL_COMMANDS.map(function (command) { return command.file; });
+}
+
+function staleCommandFileNames() {
+	return commandFileNames().concat(["next.md", "onboard.md", "emb-status.md", "emb-scan.md", "emb-init.md"]);
 }
 
 function cleanupManagedHostCommands(projectRoot, host) {
-	var commandsDir = path.join(hostDirFor(projectRoot, host), "commands");
-	var stale = ["next.md", "onboard.md", "emb-status.md", "emb-scan.md", "emb-init.md"];
-	for (var i = 0; i < stale.length; i++) removePath(path.join(commandsDir, stale[i]));
-	if (!hostUsesExtensionCommands(host)) return;
-	for (var j = 0; j < CANONICAL_SHELL_COMMANDS.length; j++) removePath(path.join(commandsDir, CANONICAL_SHELL_COMMANDS[j].file));
+	var stale = staleCommandFileNames();
+	var hostDir = hostDirFor(projectRoot, host);
+	var dirs = [
+		path.join(hostDir, "commands"),
+		path.join(hostDir, "workflows"),
+		path.join(hostDir, "plugins", "emb-agent", "commands"),
+	];
+	for (var d = 0; d < dirs.length; d++) {
+		for (var i = 0; i < stale.length; i++) removePath(path.join(dirs[d], stale[i]));
+	}
+	if (host.name === "codex") {
+		for (var j = 0; j < CANONICAL_SHELL_COMMANDS.length; j++) {
+			removePath(path.join(projectRoot, ".agents", "skills", CANONICAL_SHELL_COMMANDS[j].name));
+			removePath(path.join(os.homedir(), ".agents", "skills", CANONICAL_SHELL_COMMANDS[j].name));
+		}
+	}
 }
 
 function commandRuntimePath(projectRoot, host) {
@@ -717,8 +733,10 @@ function commandRuntimePath(projectRoot, host) {
 function renderShellCommandShim(projectRoot, host, command) {
 	var runtimePath = commandRuntimePath(projectRoot, host);
 	var language = languageInstruction(readLanguagePreference(projectRoot));
+	var title = host.name === "windsurf" ? "# /" + command.name + " workflow" : "# /" + command.name;
 	var lines = [
 		"---",
+		"name: " + command.name,
 		"description: " + command.description,
 		"allowed-tools:",
 		"  - Bash",
@@ -726,7 +744,7 @@ function renderShellCommandShim(projectRoot, host, command) {
 		"  - Task",
 		"---",
 		"",
-		"# /" + command.name,
+		title,
 		"",
 		command.summary,
 		"",
@@ -744,15 +762,63 @@ function renderShellCommandShim(projectRoot, host, command) {
 	return lines.join("\n") + "\n";
 }
 
+function renderCodexSkillShim(projectRoot, host, command) {
+	var runtimePath = commandRuntimePath(projectRoot, host);
+	var language = languageInstruction(readLanguagePreference(projectRoot));
+	var lines = [
+		"---",
+		"name: " + command.name,
+		"description: " + command.description,
+		"---",
+		"",
+		"# " + command.name,
+		"",
+		command.summary,
+		"",
+		"Run from the project root:",
+		"",
+		"```sh",
+		"node " + JSON.stringify(runtimePath) + " " + command.args,
+		"```",
+		"",
+		"Treat stdout as AI routing context and follow `agent_protocol.gate` exactly.",
+	];
+	if (language) lines.push(language);
+	return lines.join("\n") + "\n";
+}
+
+function canonicalSurfaceDir(projectRoot, host) {
+	if (host.name === "claude") return path.join(hostDirFor(projectRoot, host), "commands");
+	if (host.name === "cursor") return path.join(hostDirFor(projectRoot, host), "commands");
+	if (host.name === "windsurf") {
+		if (hostInstallScope(host) === "global") return path.join(os.homedir(), ".codeium", "windsurf", "global_workflows");
+		return path.join(hostDirFor(projectRoot, host), "workflows");
+	}
+	return "";
+}
+
 function deployCanonicalShellCommands(projectRoot, host) {
-	if (hostUsesExtensionCommands(host)) return;
-	var commandsDir = path.join(hostDirFor(projectRoot, host), "commands");
+	if (host.name === "omp" || host.name === "pi") return;
+	if (host.name === "codex") {
+		var skillRoot = hostInstallScope(host) === "global" ? path.join(os.homedir(), ".agents", "skills") : path.join(projectRoot, ".agents", "skills");
+		for (var c = 0; c < CANONICAL_SHELL_COMMANDS.length; c++) {
+			var skillCommand = CANONICAL_SHELL_COMMANDS[c];
+			var skillDir = path.join(skillRoot, skillCommand.name);
+			ensureDir(skillDir);
+			fs.writeFileSync(path.join(skillDir, "SKILL.md"), renderCodexSkillShim(projectRoot, host, skillCommand));
+		}
+		console.log("    Codex command skills deployed to " + path.relative(projectRoot, skillRoot).replace(/\\/g, "/"));
+		return;
+	}
+	var commandsDir = canonicalSurfaceDir(projectRoot, host);
+	if (!commandsDir) return;
 	ensureDir(commandsDir);
 	for (var i = 0; i < CANONICAL_SHELL_COMMANDS.length; i++) {
 		var command = CANONICAL_SHELL_COMMANDS[i];
 		fs.writeFileSync(path.join(commandsDir, command.file), renderShellCommandShim(projectRoot, host, command));
 	}
-	console.log("    Slash command shims deployed to " + host.dir + "/commands/");
+	var label = host.name === "windsurf" ? "workflow shims" : "command shims";
+	console.log("    " + label + " deployed to " + path.relative(projectRoot, commandsDir).replace(/\\/g, "/"));
 }
 
 
