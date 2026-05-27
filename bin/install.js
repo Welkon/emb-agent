@@ -17,6 +17,7 @@ var RUST_BIN_DIR = path.join(REPO_ROOT, "bin");
 var COMMANDS_SRC = path.join(REPO_ROOT, "commands", "emb");
 var COMMAND_DOCS_SRC = path.join(REPO_ROOT, "command-docs", "emb");
 var AGENTS_SRC = path.join(REPO_ROOT, "agents");
+var PARTIALS_DIR = path.join(RUNTIME_SRC, "scaffolds", "shells", "_partials");
 
 var SUPPORTED_HOSTS = [
 	{ name: "codex", dir: ".codex", profile: "core" },
@@ -151,6 +152,7 @@ function usage() {
 			"  - Thin Node.js wrapper (emb-agent.cjs)",
 			"  - Runtime templates (profiles, schemas, scaffolds)",
 			"  - Command documentation and agent prompts",
+			"  - AI host rules (AGENTS.md, .<host>/rules/, .<host>/instructions.md)",
 		].join("\n"),
 	);
 }
@@ -188,6 +190,99 @@ function copyIf(src, dest) {
 		return true;
 	}
 	return false;
+}
+
+// ── Template resolution ──────────────────────────────────────────
+
+function resolveTemplate(content, partialsDir, vars) {
+	vars = vars || {};
+	partialsDir = partialsDir || PARTIALS_DIR;
+
+	// Resolve {{INCLUDE:_partials/<file>}} recursively
+	content = content.replace(/\{\{INCLUDE:_partials\/([^}]+)\}\}/g, function (match, filename) {
+		var partialPath = path.join(partialsDir, filename.trim());
+		if (fs.existsSync(partialPath)) {
+			return resolveTemplate(fs.readFileSync(partialPath, "utf8"), partialsDir, vars);
+		}
+		console.warn("    Warning: partial not found: " + filename);
+		return match;
+	});
+
+	// Replace variable placeholders
+	for (var key in vars) {
+		if (vars.hasOwnProperty(key)) {
+			content = content.split("{{" + key + "}}").join(vars[key]);
+		}
+	}
+
+	return content;
+}
+
+function resolveAndDeploy(srcPath, destPath, vars) {
+	if (!fs.existsSync(srcPath)) return false;
+
+	var content = fs.readFileSync(srcPath, "utf8");
+	content = resolveTemplate(content, PARTIALS_DIR, vars);
+
+	ensureDir(path.dirname(destPath));
+	fs.writeFileSync(destPath, content);
+	return true;
+}
+
+
+// ── Agent spec injection ─────────────────────────────────────────
+
+function injectSpecsIntoAgents(embDir) {
+	var registryPath = path.join(RUNTIME_SRC, "registry", "workflow.json");
+	if (!fs.existsSync(registryPath)) return;
+
+	var registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+	var specs = (registry.specs || []).filter(function (s) { return s.auto_inject && s.path; });
+	if (specs.length === 0) return;
+
+	// Read and prepare spec blocks
+	var specBlocks = [];
+	for (var si = 0; si < specs.length; si++) {
+		var spec = specs[si];
+		var specPath = path.join(RUNTIME_SRC, spec.path);
+		if (!fs.existsSync(specPath)) continue;
+
+		var raw = fs.readFileSync(specPath, "utf8");
+		var fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+		if (!fmMatch) continue;
+
+		var fmText = fmMatch[1];
+		var body = fmMatch[2];
+		var title = (fmText.match(/^title:\s*(.+)$/m) || [])[1] || spec.title || spec.name;
+
+		specBlocks.push({ name: spec.name, title: title, body: body });
+	}
+	if (specBlocks.length === 0) return;
+
+	// Inject into each agent .md file
+	var agentsDir = path.join(embDir, "agents");
+	if (!fs.existsSync(agentsDir)) return;
+
+	var agentFiles = fs.readdirSync(agentsDir).filter(function (f) { return f.endsWith(".md"); });
+	for (var ai = 0; ai < agentFiles.length; ai++) {
+		var agentPath = path.join(agentsDir, agentFiles[ai]);
+		var content = fs.readFileSync(agentPath, "utf8");
+
+		// Remove any previously injected spec blocks (idempotent re-install)
+		content = content.replace(/\n<!-- INJECTED_SPECS_START -->[\s\S]*?<!-- INJECTED_SPECS_END -->\n?/g, "");
+
+		// Build injection block
+		var injection = "\n<!-- INJECTED_SPECS_START -->\n";
+		for (var si2 = 0; si2 < specBlocks.length; si2++) {
+			var sb = specBlocks[si2];
+			injection += "\n## Spec: " + sb.title + "\n\n" + sb.body + "\n";
+		}
+		injection += "<!-- INJECTED_SPECS_END -->\n";
+
+		fs.writeFileSync(agentPath, content + injection);
+	}
+
+	console.log("    Spec rules injected into " + agentFiles.length + " agents");
 }
 
 // ── Install per host ──────────────────────────────────────────────
@@ -238,6 +333,9 @@ function installForHost(projectRoot, host) {
 
 		// Agent prompts
 		copyDir(AGENTS_SRC, path.join(embDir, "agents"));
+
+		// Inject spec rules into agent prompts
+		injectSpecsIntoAgents(embDir);
 
 		// Host metadata
 		fs.writeFileSync(path.join(embDir, "VERSION"), VERSION + "\n");
@@ -297,6 +395,49 @@ function installForHost(projectRoot, host) {
 				ensureDir(cmdDir);
 				copyDir(cmdScaffoldDir, cmdDir);
 				console.log("    Commands deployed to .cursor/commands/");
+			}
+		}
+
+		// ── Rule injection ──────────────────────────────────────────
+		var templateVars = {
+			NAME: "emb-agent",
+			SUMMARY: "Embedded firmware workflow — project truth, task tracking, knowledge wiki, schematic analysis, chip support"
+		};
+
+		// AGENTS.md at project root (always deployed)
+		if (resolveAndDeploy(
+			path.join(RUNTIME_SRC, "scaffolds", "shells", "AGENTS.md"),
+			path.join(projectRoot, "AGENTS.md"),
+			templateVars
+		)) {
+			console.log("    AGENTS.md deployed to project root");
+		}
+
+		// Host-specific root instruction files
+		var hostRootFiles = { claude: "CLAUDE.md", codex: "CODEX.md" };
+		var rootFile = hostRootFiles[host.name];
+		if (rootFile) {
+			if (resolveAndDeploy(
+				path.join(RUNTIME_SRC, "scaffolds", "shells", rootFile),
+				path.join(projectRoot, rootFile),
+				templateVars
+			)) {
+				console.log("    " + rootFile + " deployed to project root");
+			}
+		}
+
+		// Host-specific rules/instructions
+		var hostRuleMappings = {
+			codex:   { src: ".codex/instructions.md",             dest: "instructions.md" },
+			cursor:  { src: ".cursor/rules/workflow.mdc",         dest: "rules/emb-agent-workflow.mdc" },
+			windsurf:{ src: ".windsurf/rules/workflow.md",        dest: "rules/emb-agent-workflow.md" }
+		};
+		var ruleMapping = hostRuleMappings[host.name];
+		if (ruleMapping) {
+			var ruleSrc = path.join(RUNTIME_SRC, "scaffolds", "shells", ruleMapping.src);
+			var ruleDest = path.join(hostDir, ruleMapping.dest);
+			if (resolveAndDeploy(ruleSrc, ruleDest, templateVars)) {
+				console.log("    " + ruleMapping.dest + " deployed to " + host.dir + "/");
 			}
 		}
 
