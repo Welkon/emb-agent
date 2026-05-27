@@ -818,6 +818,161 @@ function updateProjectActiveSpecs(projectRoot, selectedSpecs) {
 	writeJsonFile(projectJson, project);
 }
 
+
+function parseMarkdownDocument(raw) {
+	var doc = { meta: {}, body: String(raw || "") };
+	var match = doc.body.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+	if (!match) return doc;
+	var meta = {};
+	var lines = match[1].split("\n");
+	for (var i = 0; i < lines.length; i++) {
+		var idx = lines[i].indexOf(":");
+		if (idx <= 0) continue;
+		var key = lines[i].slice(0, idx).trim();
+		var value = lines[i].slice(idx + 1).trim().replace(/^"/, "").replace(/"$/, "");
+		if (key) meta[key] = value;
+	}
+	doc.meta = meta;
+	doc.body = match[2] || "";
+	return doc;
+}
+
+function uniqueNames(names) {
+	var result = [];
+	var seen = {};
+	for (var i = 0; i < names.length; i++) {
+		var name = String(names[i] || "").trim();
+		if (name && !seen[name]) { seen[name] = true; result.push(name); }
+	}
+	return result;
+}
+
+function stateNames(state, key, itemKey) {
+	if (Array.isArray(state[key])) return uniqueNames(state[key]);
+	var items = Array.isArray(state[itemKey]) ? state[itemKey] : [];
+	return uniqueNames(items.map(function (item) { return item.name; }));
+}
+
+function readSpecDoc(projectRoot, name) {
+	var filePath = path.join(projectRoot, ".emb-agent", "specs", name + ".md");
+	if (!fs.existsSync(filePath)) return null;
+	var parsed = parseMarkdownDocument(fs.readFileSync(filePath, "utf8"));
+	return {
+		name: name,
+		path: ".emb-agent/specs/" + name + ".md",
+		title: parsed.meta.title || parsed.meta.name || name,
+		summary: parsed.meta.summary || "",
+		body: parsed.body.trim()
+	};
+}
+
+function readSkillDoc(projectRoot, name) {
+	var candidates = [
+		path.join(projectRoot, ".agents", "skills", name, "SKILL.md"),
+		path.join(projectRoot, ".emb-agent", "plugins", name, "SKILL.md")
+	];
+	for (var i = 0; i < candidates.length; i++) {
+		if (!fs.existsSync(candidates[i])) continue;
+		var parsed = parseMarkdownDocument(fs.readFileSync(candidates[i], "utf8"));
+		return {
+			name: name,
+			path: candidates[i].slice(projectRoot.length + 1).replace(/\\/g, "/"),
+			description: parsed.meta.description || parsed.meta.summary || ""
+		};
+	}
+	return { name: name, path: ".agents/skills/" + name + "/SKILL.md", description: "" };
+}
+
+function buildSelectedSupportBlock(projectRoot, state) {
+	var specNames = stateNames(state || {}, "specs", "specItems");
+	var skillNames = stateNames(state || {}, "skills", "skillItems");
+	var specDocs = specNames.map(function (name) { return readSpecDoc(projectRoot, name); }).filter(Boolean);
+	var skillDocs = skillNames.map(function (name) { return readSkillDoc(projectRoot, name); }).filter(Boolean);
+	if (specDocs.length === 0 && skillDocs.length === 0) return "";
+	var block = "## Active External Specs and Skills\n\n";
+	block += "These entries were selected during emb-agent install and are part of this project's AI contract.\n\n";
+	if (specDocs.length > 0) {
+		block += "### Active External Specs\n\n";
+		block += "Follow these specs for all matching firmware work; they are not optional references.\n\n";
+		for (var i = 0; i < specDocs.length; i++) {
+			var spec = specDocs[i];
+			block += "#### " + spec.title + " (`" + spec.name + "`)\n\n";
+			if (spec.summary) block += spec.summary + "\n\n";
+			block += "Source: `" + spec.path + "`\n\n";
+			if (spec.body) block += spec.body + "\n\n";
+		}
+	}
+	if (skillDocs.length > 0) {
+		block += "### Installed External Skills\n\n";
+		block += "Before doing work that matches one of these skill descriptions, read the named `SKILL.md` and follow it.\n\n";
+		for (var j = 0; j < skillDocs.length; j++) {
+			var skill = skillDocs[j];
+			block += "- `" + skill.name + "`";
+			if (skill.description) block += " — " + skill.description;
+			block += "\n  - Required read: `" + skill.path + "`\n";
+		}
+		block += "\n";
+	}
+	return block.trim();
+}
+
+function injectMarkdownBlock(filePath, startMarker, endMarker, block) {
+	if (!fs.existsSync(filePath)) return false;
+	var content = fs.readFileSync(filePath, "utf8");
+	var re = new RegExp("\\n?" + startMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "[\\s\\S]*?" + endMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\n?", "g");
+	var managed = block ? "\n" + startMarker + "\n" + block.trim() + "\n" + endMarker + "\n" : "";
+	if (re.test(content)) content = content.replace(re, managed ? managed + "\n" : "");
+	else if (managed && content.indexOf("<!-- EMB-AGENT:END -->") >= 0) content = content.replace("<!-- EMB-AGENT:END -->", managed + "\n<!-- EMB-AGENT:END -->");
+	else if (managed) content = content.replace(/\s*$/, "\n\n" + managed);
+	fs.writeFileSync(filePath, content);
+	return true;
+}
+
+function injectSelectedSupportIntoRoot(projectRoot, state) {
+	var block = buildSelectedSupportBlock(projectRoot, state);
+	var files = ["AGENTS.md", "CODEX.md", "CLAUDE.md"];
+	var count = 0;
+	for (var i = 0; i < files.length; i++) {
+		if (injectMarkdownBlock(
+			path.join(projectRoot, files[i]),
+			"<!-- EMB-AGENT:SELECTED-SUPPORT:START -->",
+			"<!-- EMB-AGENT:SELECTED-SUPPORT:END -->",
+			block
+		)) count++;
+	}
+	if (count > 0 && block) console.log("    External support injected into root AI instructions");
+}
+
+function injectExternalSpecsIntoRuntimeAgents(projectRoot, host, state) {
+	var specNames = stateNames(state || {}, "specs", "specItems");
+	var specDocs = specNames.map(function (name) { return readSpecDoc(projectRoot, name); }).filter(Boolean);
+	if (specDocs.length === 0) return;
+	var block = "## Active External Specs\n\n";
+	block += "Follow these project-selected external specs for matching firmware work.\n\n";
+	for (var i = 0; i < specDocs.length; i++) {
+		block += "### " + specDocs[i].title + " (`" + specDocs[i].name + "`)\n\n";
+		if (specDocs[i].summary) block += specDocs[i].summary + "\n\n";
+		block += "Source: `" + specDocs[i].path + "`\n\n";
+		if (specDocs[i].body) block += specDocs[i].body + "\n\n";
+	}
+	var agentsDir = path.join(projectRoot, host.dir, "emb-agent", "agents");
+	if (!fs.existsSync(agentsDir)) return;
+	var files = fs.readdirSync(agentsDir).filter(function (f) { return f.endsWith(".md"); });
+	for (var j = 0; j < files.length; j++) {
+		injectMarkdownBlock(
+			path.join(agentsDir, files[j]),
+			"<!-- EMB-AGENT:EXTERNAL-SPECS:START -->",
+			"<!-- EMB-AGENT:EXTERNAL-SPECS:END -->",
+			block
+		);
+	}
+	if (files.length > 0) console.log("    External specs injected into " + files.length + " runtime agents");
+}
+
+function injectSelectedSupport(projectRoot, host, state) {
+	injectSelectedSupportIntoRoot(projectRoot, state || {});
+	injectExternalSpecsIntoRuntimeAgents(projectRoot, host, state || {});
+}
 function materializeSelectedSpec(projectRoot, item, callback) {
 	var destDir = path.join(projectRoot, ".emb-agent", "specs");
 	ensureDir(destDir);
@@ -989,7 +1144,12 @@ function main(argv) {
 		var host = SUPPORTED_HOSTS.find(function (h) { return h.name === args.target; });
 		if (!host) { console.error("Unknown host: " + args.target); process.exit(1); }
 		installForHost(projectRoot, host, function (done) {
-			materializeSelectedSupport(projectRoot, host, { specItems: args.specs.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }), skillItems: args.skills.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }), specs: args.specs, skills: args.skills }, function () { updateProjectActiveSpecs(projectRoot, args.specs); done(); });
+			var selectedState = { specItems: args.specs.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }), skillItems: args.skills.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }), specs: args.specs, skills: args.skills };
+			materializeSelectedSupport(projectRoot, host, selectedState, function () {
+				updateProjectActiveSpecs(projectRoot, args.specs);
+				injectSelectedSupport(projectRoot, host, selectedState);
+				done();
+			});
 		});
 	} else if (process.stdin.isTTY) {
 		// Interactive install
@@ -1105,6 +1265,7 @@ function main(argv) {
 						installForHost(projectRoot, host, function (done) {
 							materializeSelectedSupport(projectRoot, host, state, function () {
 								updateProjectActiveSpecs(projectRoot, state.specs || []);
+								injectSelectedSupport(projectRoot, host, state);
 								if (state.specItems && state.specItems.length > 0) console.log("    External specs installed to .emb-agent/specs/");
 								if (state.skillItems && state.skillItems.length > 0) console.log("    External skills installed to .emb-agent/plugins/, " + host.dir + "/skills/, .agents/skills/");
 								done();
