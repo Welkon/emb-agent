@@ -323,10 +323,10 @@ async function runEmbAgent(
 function formatRecommendedCommand(r: EmbAgentResult): string {
   const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
   const command = String(raw || "").trim();
-  if (!command) return "";
+  if (command.startsWith("/emb:")) return "/" + command.slice("/emb:".length);
   if (command.startsWith("/")) return command;
-  const normalized = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").trim();
-  return normalized ? "/emb:" + normalized : "";
+  const normalized = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").replace(/\s+--brief$/, "").trim();
+  return normalized ? "/" + normalized : "";
 }
 
 function formatRecommendedReason(r: EmbAgentResult): string {
@@ -348,6 +348,31 @@ function formatEmbStatus(r: EmbAgentResult): string {
   return parts.length > 0 ? "emb: " + parts.join(" · ") : "";
 }
 
+function renderNextLines(result: EmbAgentResult): string[] {
+  const lines: string[] = [];
+  if (result.summary) lines.push("Project: " + result.summary);
+  const command = formatRecommendedCommand(result);
+  if (command) {
+    lines.push("Next command: " + command);
+    const reason = formatRecommendedReason(result);
+    if (reason) lines.push("  " + reason);
+  }
+  if (result.agent_protocol?.gate?.recommended_agent) {
+    lines.push("Recommended agent: " + result.agent_protocol.gate.recommended_agent);
+  }
+  if (result.reason) lines.push("State: " + result.reason);
+  if (result.action) lines.push("Action: " + result.action);
+  if (result.instructions) lines.push("\n" + result.instructions);
+  if (result.task_candidates?.length) {
+    lines.push("Tasks:");
+    for (const t of result.task_candidates) {
+      lines.push("  - " + t.name + " [" + (t.priority || "-") + "] " + (t.title || t.name) + " (" + (t.status || "-") + ")");
+    }
+  }
+  return lines;
+}
+
+
 // ---------------------------------------------------------------------------
 // Extension factory
 // ---------------------------------------------------------------------------
@@ -366,26 +391,7 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
     }
     if (!nextResult) return;
-    const lines: string[] = [];
-    if (nextResult.summary) lines.push("Project: " + nextResult.summary);
-    const command = formatRecommendedCommand(nextResult);
-    if (command) {
-      lines.push("Next command: " + command);
-      const reason = formatRecommendedReason(nextResult);
-      if (reason) lines.push("  " + reason);
-    }
-    if (nextResult.agent_protocol?.gate?.recommended_agent) {
-      lines.push("Recommended agent: " + nextResult.agent_protocol.gate.recommended_agent);
-    }
-    if (nextResult.reason) lines.push("State: " + nextResult.reason);
-    if (nextResult.action) lines.push("Action: " + nextResult.action);
-    if (nextResult.instructions) lines.push("\n" + nextResult.instructions);
-    if (nextResult.task_candidates?.length) {
-      lines.push("Tasks:");
-      for (const t of nextResult.task_candidates) {
-        lines.push("  - " + t.name + " [" + (t.priority || "-") + "] " + (t.title || t.name) + " (" + (t.status || "-") + ")");
-      }
-    }
+    const lines = renderNextLines(nextResult);
     if (lines.length > 0) {
       await pi.sendMessage(
         {
@@ -406,55 +412,81 @@ export default function (pi: ExtensionAPI) {
 
   // ── Slash commands ──────────────────────────────────────────────
 
+  async function handleNextCommand(_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void; custom: <T>(f: Function, o?: Record<string, unknown>) => Promise<T> } }) {
+    const result = await runEmbAgent(["next", "--brief"], ctx.cwd);
+    if (!result) {
+      ctx.ui.notify("emb-agent not found or not initialized", "warning");
+      return;
+    }
+    const tasks = result.task_candidates;
+    if (!tasks?.length) {
+      const lines = renderNextLines(result);
+      pi.sendUserMessage("[/next]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
+      return;
+    }
+
+    const taskName = await ctx.ui.custom<string | undefined>(
+      (_tui: unknown, _theme: unknown, keybindings: { matches: (d: string, n: string) => boolean }, done: (v: string | undefined) => void) => {
+        const picker = new TaskPicker(
+          tasks.map((t) => ({
+            name: t.name,
+            priority: t.priority,
+            title: t.title,
+            status: t.status,
+            bootstrap: t.name.startsWith("00-"),
+            prdPath: "docs/prd/tasks/" + t.name + ".md",
+          })),
+          (item) => done(item.name),
+          () => done(undefined),
+        );
+        return {
+          render: (w: number) => picker.render(w),
+          handleInput: (data: string) => {
+            if (data === "\x1b" || keybindings.matches(data, "interrupt") || keybindings.matches(data, "tui.select.cancel")) { done(undefined); return; }
+            picker.handleInput(data);
+          },
+          invalidate: () => picker.invalidate(),
+        };
+      },
+    );
+
+    if (!taskName) return;
+    const r = await runEmbAgent(["task", "activate", taskName], ctx.cwd);
+    const title = tasks.find((t) => t.name === taskName)?.title || taskName;
+    pi.sendUserMessage(
+      r
+        ? "Activated: " + taskName + " — " + title + ". Confirm and suggest next step."
+        : "Activation failed: " + taskName + ".",
+      { deliverAs: "steer" },
+    );
+  }
+
   pi.registerCommand("emb-next", {
-    description: "Show task candidates and pick one",
-    handler: async (_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void; custom: <T>(f: Function, o?: Record<string, unknown>) => Promise<T> } }) => {
-      const result = await runEmbAgent(["next", "--brief"], ctx.cwd);
-      if (!result) {
-        ctx.ui.notify("emb-agent not found or not initialized", "warning");
-        return;
-      }
-      const tasks = result.task_candidates;
-      if (!tasks?.length) {
-        pi.sendUserMessage("[/emb-next] no tasks available.", { deliverAs: "steer" });
-        return;
-      }
+    description: "Show task candidates or the recommended next command",
+    handler: handleNextCommand,
+  });
+  pi.registerCommand("next", {
+    description: "Show task candidates or the recommended next command",
+    handler: handleNextCommand,
+  });
 
-      const taskName = await ctx.ui.custom<string | undefined>(
-        (_tui: unknown, _theme: unknown, keybindings: { matches: (d: string, n: string) => boolean }, done: (v: string | undefined) => void) => {
-          const picker = new TaskPicker(
-            tasks.map((t) => ({
-              name: t.name,
-              priority: t.priority,
-              title: t.title,
-              status: t.status,
-              bootstrap: t.name.startsWith("00-"),
-              prdPath: "docs/prd/tasks/" + t.name + ".md",
-            })),
-            (item) => done(item.name),
-            () => done(undefined),
-          );
-          return {
-            render: (w: number) => picker.render(w),
-            handleInput: (data: string) => {
-              if (data === "\x1b" || keybindings.matches(data, "interrupt") || keybindings.matches(data, "tui.select.cancel")) { done(undefined); return; }
-              picker.handleInput(data);
-            },
-            invalidate: () => picker.invalidate(),
-          };
-        },
-      );
+  async function handleOnboardCommand(_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void } }) {
+    const result = await runEmbAgent(["onboard"], ctx.cwd);
+    if (!result) {
+      ctx.ui.notify("emb-agent onboard failed or not initialized", "warning");
+      return;
+    }
+    const lines = renderNextLines(result);
+    pi.sendUserMessage("[/onboard]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
+  }
 
-      if (!taskName) return;
-      const r = await runEmbAgent(["task", "activate", taskName], ctx.cwd);
-      const title = tasks.find((t) => t.name === taskName)?.title || taskName;
-      pi.sendUserMessage(
-        r
-          ? "Activated: " + taskName + " \u2014 " + title + ". Confirm and suggest next step."
-          : "Activation failed: " + taskName + ".",
-        { deliverAs: "steer" },
-      );
-    },
+  pi.registerCommand("emb-onboard", {
+    description: "Run emb-agent onboarding handoff",
+    handler: handleOnboardCommand,
+  });
+  pi.registerCommand("onboard", {
+    description: "Run emb-agent onboarding handoff",
+    handler: handleOnboardCommand,
   });
 
   pi.registerCommand("emb-status", {

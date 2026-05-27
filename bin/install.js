@@ -606,6 +606,8 @@ function installForHost(projectRoot, host, callback) {
 
 	console.log("\x1b[36m  Installing for " + host.name + " \u2192 " + hostDir + "\x1b[0m");
 
+	ensureDir(path.join(projectRoot, "docs"));
+	ensureDir(path.join(projectRoot, "docs", "prd"));
 	ensureDir(path.join(embDir, "bin"));
 	ensureDir(path.join(embDir, "commands", "emb"));
 	ensureDir(path.join(embDir, "command-docs", "emb"));
