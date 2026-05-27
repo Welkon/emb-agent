@@ -349,10 +349,16 @@ function summarizeListText(value, maxLength) {
 	return preferred.slice(0, Math.max(0, limit - 1)).trimEnd() + "…";
 }
 
-function selectListFallback(title, items, callback) {
+function selectListFallback(title, items, callback, options) {
+	var config = options || {};
 	console.log("\x1b[34m▶ " + title + "\x1b[0m");
+	if (config.allowSkip === false || config.requireSelection) {
+		console.log("\x1b[31m  Keyboard selection is required for this prompt.\x1b[0m");
+		process.exit(1);
+	}
 	console.log("\x1b[2m  Keyboard selection is unavailable in this terminal; skipping optional selection.\x1b[0m");
 	callback([]);
+	void items;
 }
 
 function renderSelectionScreen(title, items, state, options) {
@@ -366,25 +372,30 @@ function renderSelectionScreen(title, items, state, options) {
 		blue: "\x1b[34m",
 		white: "\x1b[37m"
 	};
+	var config = options || {};
+	var allowSkip = config.allowSkip !== false;
+	var contextLabel = config.contextLabel || "Source";
+	var contextValue = config.contextValue || "emb-support";
+	var skipLabel = config.skipLabel || "Skip";
+	var itemNoun = config.itemNoun || "entry";
+	var itemPlural = config.itemPlural || "entries";
 	var lines = [];
-	var contextLabel = options && options.contextLabel ? options.contextLabel : "Source";
-	var contextValue = options && options.contextValue ? options.contextValue : "emb-support";
-	var skipLabel = options && options.skipLabel ? options.skipLabel : "Skip";
-	var itemNoun = options && options.itemNoun ? options.itemNoun : "entry";
-	var itemPlural = options && options.itemPlural ? options.itemPlural : "entries";
 	lines.push(C.cyan + C.bold + "emb-agent installer" + C.reset);
 	lines.push(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
 	lines.push("");
 	lines.push(C.blue + "▶ " + title + C.reset);
 	lines.push(C.dim + "  " + contextLabel + ": " + contextValue + C.reset);
 	lines.push(C.dim + "  Use ↑/↓ to move and Space to toggle the highlighted " + itemNoun + "." + C.reset);
-	lines.push(C.dim + "  Press Enter to confirm; press `a` to toggle all; Esc/Ctrl+C cancels." + C.reset);
-	lines.push(C.dim + "  Press Enter with no selected " + itemPlural + " to skip." + C.reset);
+	lines.push(C.dim + "  Press Enter to confirm selected " + itemPlural + "; press `a` to toggle all; Esc/Ctrl+C cancels." + C.reset);
+	if (allowSkip) lines.push(C.dim + "  Highlight `skip` and press Enter, or press Enter with no selected " + itemPlural + ", to skip." + C.reset);
+	else lines.push(C.dim + "  Nothing is selected until you press Space." + C.reset);
 	lines.push("");
-	var skipActive = state.cursorIndex === 0;
-	lines.push("  " + (skipActive ? C.cyan + "›" + C.reset : " ") + " " + C.cyan + "skip" + C.reset + " " + (skipActive ? C.bold + C.white : C.white) + skipLabel + C.reset);
+	if (allowSkip) {
+		var skipActive = state.cursorIndex === 0;
+		lines.push("  " + (skipActive ? C.cyan + "›" + C.reset : " ") + " " + C.cyan + "skip" + C.reset + " " + (skipActive ? C.bold + C.white : C.white) + skipLabel + C.reset);
+	}
 	for (var i = 0; i < items.length; i++) {
-		var entryIndex = i + 1;
+		var entryIndex = allowSkip ? i + 1 : i;
 		var active = state.cursorIndex === entryIndex;
 		var selected = state.selected[entryIndex] === true;
 		var marker = selected ? C.green + "●" + C.reset : C.dim + "○" + C.reset;
@@ -392,22 +403,25 @@ function renderSelectionScreen(title, items, state, options) {
 		var name = active ? C.bold + C.white + items[i].label + C.reset : C.white + items[i].label + C.reset;
 		lines.push("  " + (active ? C.cyan + "›" + C.reset : " ") + " " + marker + " " + name + (detail ? C.dim + " - " + detail + C.reset : ""));
 	}
+	if (state.warning) lines.push(C.yellow + "  " + state.warning + C.reset);
 	lines.push("");
 	lines.push(C.yellow + "↑/↓=move  Space=toggle  a=all  Enter=confirm" + C.reset);
 	return lines.join("\n");
 }
 
 function selectList(title, items, callback, options) {
+	var config = options || {};
 	if (!supportsKeyboardSelection()) {
-		selectListFallback(title, items, callback);
+		selectListFallback(title, items, callback, config);
 		return;
 	}
 
 	var stdin = process.stdin;
 	var stdout = process.stdout;
 	var previousRawMode = Boolean(stdin.isRaw);
-	var state = { cursorIndex: items.length > 0 ? 1 : 0, selected: {} };
-	var totalChoices = items.length + 1;
+	var allowSkip = config.allowSkip !== false;
+	var state = { cursorIndex: allowSkip ? (items.length > 0 ? 1 : 0) : 0, selected: {}, warning: "" };
+	var totalChoices = items.length + (allowSkip ? 1 : 0);
 	var settled = false;
 
 	function removeDataListener() {
@@ -427,7 +441,8 @@ function selectList(title, items, callback, options) {
 	function selectedValues() {
 		var result = [];
 		for (var i = 0; i < items.length; i++) {
-			if (state.selected[i + 1]) result.push(items[i].value);
+			var key = allowSkip ? i + 1 : i;
+			if (state.selected[key]) result.push(items[i].value);
 		}
 		return result;
 	}
@@ -450,19 +465,23 @@ function selectList(title, items, callback, options) {
 
 	function render() {
 		stdout.write("\x1b[2J\x1b[H");
-		stdout.write(renderSelectionScreen(title, items, state, options || {}) + "\n");
+		stdout.write(renderSelectionScreen(title, items, state, config) + "\n");
 	}
 
 	function toggleCurrent() {
-		if (state.cursorIndex === 0) return;
+		if (allowSkip && state.cursorIndex === 0) return;
 		state.selected[state.cursorIndex] = !state.selected[state.cursorIndex];
+		state.warning = "";
 	}
 
 	function toggleAll() {
 		var selectedCount = 0;
-		for (var i = 1; i <= items.length; i++) if (state.selected[i]) selectedCount++;
+		var start = allowSkip ? 1 : 0;
+		var end = allowSkip ? items.length : items.length - 1;
+		for (var i = start; i <= end; i++) if (state.selected[i]) selectedCount++;
 		var next = selectedCount !== items.length;
-		for (var j = 1; j <= items.length; j++) state.selected[j] = next;
+		for (var j = start; j <= end; j++) state.selected[j] = next;
+		state.warning = "";
 	}
 
 	function handleInput(chunk) {
@@ -480,8 +499,14 @@ function selectList(title, items, callback, options) {
 		if (input === " ") { toggleCurrent(); render(); return; }
 		if (input === "a" || input === "A") { toggleAll(); render(); return; }
 		if (input === "\r" || input === "\n") {
-			if (state.cursorIndex === 0) finish([]);
-			else finish(selectedValues());
+			if (allowSkip && state.cursorIndex === 0) { finish([]); return; }
+			var values = selectedValues();
+			if (values.length === 0 && config.requireSelection) {
+				state.warning = "Press Space to select at least one " + (config.itemNoun || "entry") + " first.";
+				render();
+				return;
+			}
+			finish(values);
 			return;
 		}
 		if (input === "\u0003" || input === "\u0004" || input === "\u001b" || input === "q" || input === "Q") cancel();
@@ -497,7 +522,7 @@ function selectList(title, items, callback, options) {
 	} catch (error) {
 		cleanup();
 		console.log("\x1b[33m  Keyboard selection unavailable: " + error.message + "\x1b[0m");
-		selectListFallback(title, items, callback);
+		selectListFallback(title, items, callback, config);
 	}
 }
 function selectOneFallback(title, items, callback, options) {
@@ -1016,15 +1041,10 @@ function main(argv) {
 					var items = SUPPORTED_HOSTS.map(function (host) {
 						return { label: host.name, desc: host.dir, value: host };
 					});
-					items.push({ label: "all", desc: "Install every supported runtime", value: "all" });
-					selectOne("Select Runtime", items, function (selected) {
-						if (selected === "all") {
-							for (var m = 0; m < SUPPORTED_HOSTS.length; m++) installForHost(projectRoot, SUPPORTED_HOSTS[m]);
-							return;
-						}
-						state.host = selected;
+					selectList("Select Runtime", items, function (selected) {
+						state.hosts = selected;
 						next();
-					}, { description: "Choose the host runtime that emb-agent should integrate with." });
+					}, { contextLabel: "Runtime", contextValue: "available hosts", allowSkip: false, requireSelection: true, itemNoun: "runtime", itemPlural: "runtimes" });
 				},
 				function askLocation(next) {
 					selectOne("Install Location", [
@@ -1075,15 +1095,24 @@ function main(argv) {
 					fs.writeFileSync(path.join(_devDir, ".language"), state.lang + "\n");
 					if (state.specs && state.specs.length > 0) fs.writeFileSync(path.join(_devDir, ".specs"), state.specs.join(",") + "\n");
 					if (state.skills && state.skills.length > 0) fs.writeFileSync(path.join(_devDir, ".skills"), state.skills.join(",") + "\n");
-					console.log(C.green + "  \u2714 Installing for " + state.host.name + " as " + state.developer + C.reset + "\n");
-					installForHost(projectRoot, state.host, function (done) {
-						materializeSelectedSupport(projectRoot, state.host, state, function () {
-							updateProjectActiveSpecs(projectRoot, state.specs || []);
-							if (state.specItems && state.specItems.length > 0) console.log("    External specs installed to .emb-agent/specs/");
-							if (state.skillItems && state.skillItems.length > 0) console.log("    External skills installed to .emb-agent/plugins/, " + state.host.dir + "/skills/, .agents/skills/");
-							done();
+					var hosts = state.hosts || [];
+					var hostNames = hosts.map(function (host) { return host.name; }).join(", ");
+					console.log(C.green + "  \u2714 Installing for " + hostNames + " as " + state.developer + C.reset + "\n");
+					var hostIndex = 0;
+					function installNextHost() {
+						if (hostIndex >= hosts.length) return;
+						var host = hosts[hostIndex++];
+						installForHost(projectRoot, host, function (done) {
+							materializeSelectedSupport(projectRoot, host, state, function () {
+								updateProjectActiveSpecs(projectRoot, state.specs || []);
+								if (state.specItems && state.specItems.length > 0) console.log("    External specs installed to .emb-agent/specs/");
+								if (state.skillItems && state.skillItems.length > 0) console.log("    External skills installed to .emb-agent/plugins/, " + host.dir + "/skills/, .agents/skills/");
+								done();
+								installNextHost();
+							});
 						});
-					});
+					}
+					installNextHost();
 				}
 			];
 			var stepIdx = 0;
