@@ -501,11 +501,12 @@ function selectList(title, items, callback, options) {
 	}
 }
 function selectOneFallback(title, items, callback, options) {
-	var defaultIndex = options && typeof options.defaultIndex === "number" ? options.defaultIndex : 0;
-	var result = items[defaultIndex] ? items[defaultIndex].value : items[0].value;
 	console.log("\x1b[34m▶ " + title + "\x1b[0m");
-	console.log("\x1b[2m  Non-interactive fallback selected: " + (items[defaultIndex] ? items[defaultIndex].label : items[0].label) + "\x1b[0m");
-	callback(result);
+	console.log("\x1b[31m  Keyboard selection is required for interactive install.\x1b[0m");
+	process.exit(1);
+	callback(null);
+	void items;
+	void options;
 }
 
 function renderSingleSelectionScreen(title, items, state, options) {
@@ -517,12 +518,11 @@ function renderSingleSelectionScreen(title, items, state, options) {
 	lines.push(C.blue + "▶ " + title + C.reset);
 	if (options && options.description) lines.push(C.dim + "  " + options.description + C.reset);
 	lines.push(C.dim + "  Use ↑/↓ to move; Enter or Space selects the highlighted option." + C.reset);
-	lines.push(C.dim + "  Esc/Ctrl+C cancels." + C.reset);
+	lines.push(C.dim + "  Nothing is selected until you confirm an option. Esc/Ctrl+C cancels." + C.reset);
 	lines.push("");
 	for (var i = 0; i < items.length; i++) {
 		var active = state.cursorIndex === i;
-		var selected = state.selectedIndex === i;
-		var marker = selected ? C.green + "●" + C.reset : C.dim + "○" + C.reset;
+		var marker = C.dim + "○" + C.reset;
 		var detail = summarizeListText(items[i].desc, 100);
 		var name = active ? C.bold + C.white + items[i].label + C.reset : C.white + items[i].label + C.reset;
 		lines.push("  " + (active ? C.cyan + "›" + C.reset : " ") + " " + marker + " " + name + (detail ? C.dim + " - " + detail + C.reset : ""));
@@ -541,14 +541,12 @@ function selectOne(title, items, callback, options) {
 	var stdin = process.stdin;
 	var stdout = process.stdout;
 	var previousRawMode = Boolean(stdin.isRaw);
-	var defaultIndex = options && typeof options.defaultIndex === "number" ? options.defaultIndex : 0;
-	if (defaultIndex < 0 || defaultIndex >= items.length) defaultIndex = 0;
-	var state = { cursorIndex: defaultIndex, selectedIndex: defaultIndex };
+	var state = { cursorIndex: 0 };
 	var settled = false;
 	function removeDataListener() { if (typeof stdin.off === "function") stdin.off("data", handleInput); else stdin.removeListener("data", handleInput); }
 	function cleanup() { if (settled) return; settled = true; try { stdin.setRawMode(previousRawMode); } catch (_) {} try { removeDataListener(); } catch (_) {} if (typeof stdin.pause === "function") stdin.pause(); stdout.write("\x1b[?25h\x1b[?1049l"); }
 	function render() { stdout.write("\x1b[2J\x1b[H"); stdout.write(renderSingleSelectionScreen(title, items, state, options || {}) + "\n"); }
-	function finish() { var item = items[state.cursorIndex] || items[defaultIndex]; cleanup(); console.log("\x1b[32m  ✔ " + item.label + "\x1b[0m\n"); callback(item.value); }
+	function finish() { var item = items[state.cursorIndex]; cleanup(); console.log("\x1b[32m  ✔ " + item.label + "\x1b[0m\n"); callback(item.value); }
 	function cancel() { cleanup(); console.log("\x1b[31mInteractive install cancelled.\x1b[0m"); process.exit(130); }
 	function handleInput(chunk) {
 		var input = String(chunk || "");
@@ -1023,7 +1021,7 @@ function main(argv) {
 						}
 						state.host = selected;
 						next();
-					}, { defaultIndex: 3, description: "Choose the host runtime that emb-agent should integrate with." });
+					}, { description: "Choose the host runtime that emb-agent should integrate with." });
 				},
 				function askLocation(next) {
 					selectOne("Install Location", [
@@ -1032,7 +1030,7 @@ function main(argv) {
 					], function (selected) {
 						state.location = selected;
 						next();
-					}, { defaultIndex: 1, description: "Project-scoped installs are easier to test and keep isolated." });
+					}, { description: "Project-scoped installs are easier to test and keep isolated." });
 				},
 				function askSpecs(next) {
 					if (extSpecs.length === 0) { console.log(C.dim + "\n  No external specs available.\n" + C.reset); next(); return; }
@@ -1062,7 +1060,7 @@ function main(argv) {
 					], function (selected) {
 						state.lang = selected;
 						next();
-					}, { defaultIndex: 0, description: "Choose the language AI assistants should use in this project." });
+					}, { description: "Choose the language AI assistants should use in this project." });
 				},
 				function askDeveloper(next) {
 					console.log(C.blue + "\u25B6 Developer Identity" + C.reset);
