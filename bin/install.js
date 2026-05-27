@@ -907,22 +907,11 @@ function main(argv) {
 					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 					rl.question(C.yellow + "Choice [4] > " + C.reset, function(a) { rl.close(); var c = parseInt(a.trim(), 10) || 4; if (c < 1 || c > SUPPORTED_HOSTS.length + 1) c = 4; if (c === SUPPORTED_HOSTS.length + 1) { for (var m = 0; m < SUPPORTED_HOSTS.length; m++) installForHost(projectRoot, SUPPORTED_HOSTS[m]); return; } state.host = SUPPORTED_HOSTS[c - 1]; next(); });
 				},
-				function askDeveloper(next) {
-					console.log(C.blue + "\u25B6 Developer Identity" + C.reset);
-					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-					rl.question(C.yellow + "Developer name > " + C.reset, function(a) { rl.close(); state.developer = a.trim() || "developer"; next(); });
-				},
 				function askLocation(next) {
 					console.log(C.blue + "\u25B6 Install Location" + C.reset);
 					console.log("  " + C.cyan + "[1]" + C.reset + " Global  " + C.cyan + "[2]" + C.reset + " Local " + C.green + "(recommended)" + C.reset);
 					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 					rl.question(C.yellow + "Choice [2] > " + C.reset, function(a) { rl.close(); next(); });
-				},
-				function askLanguage(next) {
-					console.log(C.blue + "\u25B6 Reply Language" + C.reset);
-					console.log("  " + C.cyan + "[1]" + C.reset + " English  " + C.cyan + "[2]" + C.reset + " \u4e2d\u6587");
-					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-					rl.question(C.yellow + "Choice [1] > " + C.reset, function(a) { rl.close(); state.lang = a.trim() === "2" ? "zh" : "en"; next(); });
 				},
 				function askSpecs(next) {
 					if (extSpecs.length === 0) { console.log(C.dim + "\n  No external specs available.\n" + C.reset); next(); return; }
@@ -968,6 +957,17 @@ function main(argv) {
 							if (pending === 0) next();
 						} else { next(); }
 					}, { contextLabel: "Plugin", contextValue: externalSourceLabel(), skipLabel: "Skip initial skill installation", itemNoun: "skill", itemPlural: "skills" });
+				},
+				function askLanguage(next) {
+					console.log(C.blue + "\u25B6 Reply Language" + C.reset);
+					console.log("  " + C.cyan + "[1]" + C.reset + " English  " + C.cyan + "[2]" + C.reset + " \u4e2d\u6587");
+					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+					rl.question(C.yellow + "Choice [1] > " + C.reset, function(a) { rl.close(); state.lang = a.trim() === "2" ? "zh" : "en"; next(); });
+				},
+				function askDeveloper(next) {
+					console.log(C.blue + "\u25B6 Developer Identity" + C.reset);
+					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+					rl.question(C.yellow + "Developer name > " + C.reset, function(a) { rl.close(); state.developer = a.trim() || "developer"; next(); });
 				},
 				function finish() {
 					fs.writeFileSync(path.join(_devDir, ".developer"), state.developer + "\n");
