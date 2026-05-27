@@ -159,9 +159,8 @@ function usage() {
 		].join("\n"),
 	);
 }
-
 function parseArgs(argv) {
-	var args = { target: "", developer: "", local: false, global: false, profile: "core", lang: "", help: false, force: false };
+	var args = { target: "", developer: "", local: false, global: false, profile: "core", lang: "", specs: [], registry: "", skillSource: "", help: false, force: false };
 	for (var i = 0; i < argv.length; i++) {
 		var t = argv[i];
 		if (t === "--help" || t === "-h") args.help = true;
@@ -172,6 +171,9 @@ function parseArgs(argv) {
 		else if (t === "--global" || t === "-g") args.global = true;
 		else if (t === "--profile") args.profile = argv[++i] || "core";
 		else if (t === "--lang") args.lang = argv[++i] || "";
+		else if (t === "--spec") { var s = argv[++i]; if (s) args.specs.push(s); }
+		else if (t === "--skill-source") args.skillSource = argv[++i] || "";
+		else if (t === "--registry" || t === "-r") args.registry = argv[++i] || "";
 	}
 	return args;
 }
@@ -603,6 +605,11 @@ function main(argv) {
 		try { fs.mkdirSync(devDir, { recursive: true }); } catch (_) {}
 		fs.writeFileSync(path.join(devDir, ".developer"), args.developer + "\n");
 	}
+	var _devDir = path.join(projectRoot, ".emb-agent");
+	try { fs.mkdirSync(_devDir, { recursive: true }); } catch (_) {}
+	if (args.lang) fs.writeFileSync(path.join(_devDir, ".language"), args.lang + "\n");
+	if (args.registry) fs.writeFileSync(path.join(_devDir, ".registry"), args.registry + "\n");
+	if (args.skillSource) fs.writeFileSync(path.join(_devDir, ".skill-source"), args.skillSource + "\n");
 	if (args.target === "all") {
 		for (var i = 0; i < SUPPORTED_HOSTS.length; i++) {
 			installForHost(projectRoot, SUPPORTED_HOSTS[i]);
@@ -616,83 +623,70 @@ function main(argv) {
 		}
 		installForHost(projectRoot, host);
 	} else if (process.stdin.isTTY) {
-		var C = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m", red: "\x1b[31m" };
-		console.log(C.cyan + C.bold + "  emb-agent installer" + C.reset);
-		console.log(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
-		console.log("");
-		console.log(C.blue + "\u25B6 Select Runtime" + C.reset);
-		console.log(C.dim + "  Choose the host runtime that emb-agent should integrate with." + C.reset);
-		console.log("");
-		for (var k = 0; k < SUPPORTED_HOSTS.length; k++) {
-			console.log("  " + C.cyan + "[" + (k + 1) + "]" + C.reset + " " + SUPPORTED_HOSTS[k].name);
-		}
-		console.log("  " + C.cyan + "[" + (SUPPORTED_HOSTS.length + 1) + "]" + C.reset + " all");
-		console.log("");
+		var C = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m" };
+		var state = { host: null, developer: "developer", isLocal: true, lang: "en", registry: "", skillSource: "" };
 		var readline = require("readline");
-		var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-		rl.question(C.yellow + "Choice [4] > " + C.reset, function (hostAnswer) {
-			var choice = parseInt(hostAnswer.trim(), 10) || 4;
-			if (choice < 1 || choice > SUPPORTED_HOSTS.length + 1) choice = 4;
-			if (choice === SUPPORTED_HOSTS.length + 1) {
-				rl.close();
-				for (var m = 0; m < SUPPORTED_HOSTS.length; m++) {
-					installForHost(projectRoot, SUPPORTED_HOSTS[m]);
+		var steps = [
+			function askHost(next) {
+				console.log(C.cyan + C.bold + "  emb-agent installer" + C.reset);
+				console.log(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
+				console.log("");
+				console.log(C.blue + "\u25B6 Select Runtime" + C.reset);
+				for (var k = 0; k < SUPPORTED_HOSTS.length; k++) {
+					console.log("  " + C.cyan + "[" + (k + 1) + "]" + C.reset + " " + SUPPORTED_HOSTS[k].name);
 				}
-				return;
-			}
-			var selectedHost = SUPPORTED_HOSTS[choice - 1];
-			// Developer name prompt
-			console.log("");
-			console.log(C.blue + "\u25B6 Developer Identity" + C.reset);
-			console.log(C.dim + "  Enter the developer name used to seed new emb-agent projects." + C.reset);
-			console.log(C.dim + "  Tip: use your git username." + C.reset);
-			console.log("");
-			rl.question(C.yellow + "Developer name > " + C.reset, function (devName) {
-				rl.close();
-				var developer = devName.trim() || "developer";
-				// Write .developer file
+				console.log("  " + C.cyan + "[" + (SUPPORTED_HOSTS.length + 1) + "]" + C.reset + " all");
+				console.log("");
+				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+				rl.question(C.yellow + "Choice [4] > " + C.reset, function(a) { rl.close(); var c = parseInt(a.trim(), 10) || 4; if (c < 1 || c > SUPPORTED_HOSTS.length + 1) c = 4; if (c === SUPPORTED_HOSTS.length + 1) { for (var m = 0; m < SUPPORTED_HOSTS.length; m++) installForHost(projectRoot, SUPPORTED_HOSTS[m]); return; } state.host = SUPPORTED_HOSTS[c - 1]; next(); });
+			},
+			function askDeveloper(next) {
+				console.log(C.blue + "\u25B6 Developer Identity" + C.reset);
+				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+				rl.question(C.yellow + "Developer name > " + C.reset, function(a) { rl.close(); state.developer = a.trim() || "developer"; next(); });
+			},
+			function askLocation(next) {
+				console.log(C.blue + "\u25B6 Install Location" + C.reset);
+				console.log("  " + C.cyan + "[1]" + C.reset + " Global  " + C.cyan + "[2]" + C.reset + " Local " + C.green + "(recommended)" + C.reset);
+				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+				rl.question(C.yellow + "Choice [2] > " + C.reset, function(a) { rl.close(); state.isLocal = a.trim() !== "1"; next(); });
+			},
+			function askLanguage(next) {
+				console.log(C.blue + "\u25B6 Reply Language" + C.reset);
+				console.log("  " + C.cyan + "[1]" + C.reset + " English  " + C.cyan + "[2]" + C.reset + " \u4e2d\u6587");
+				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+				rl.question(C.yellow + "Choice [1] > " + C.reset, function(a) { rl.close(); state.lang = a.trim() === "2" ? "zh" : "en"; next(); });
+			},
+			function askRegistry(next) {
+				console.log(C.blue + "\u25B6 External Specs" + C.reset + C.dim + " (optional)" + C.reset);
+				console.log(C.dim + "  Import coding specs from emb-support or another registry." + C.reset);
+				console.log(C.dim + "  Built-in specs (embedded-space, low-rom-space) are auto-enabled." + C.reset);
+				console.log(C.dim + "  Available: emb-support/specs/ (scmcu-space, padauk-space)" + C.reset);
+				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+				rl.question(C.yellow + "Git URL or path (Enter to skip) > " + C.reset, function(a) { rl.close(); state.registry = a.trim(); next(); });
+			},
+			function askSkill(next) {
+				console.log(C.blue + "\u25B6 Skill Source" + C.reset + C.dim + " (optional)" + C.reset);
+				console.log(C.dim + "  Available: emb-support/skills/ (altium-pcb, xc8-build, tektronix-scope)" + C.reset);
+				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+				rl.question(C.yellow + "Source URL > " + C.reset, function(a) { rl.close(); state.skillSource = a.trim(); next(); });
+			},
+			function finish() {
 				var devFile = path.join(projectRoot, ".emb-agent", ".developer");
 				try { fs.mkdirSync(path.join(projectRoot, ".emb-agent"), { recursive: true }); } catch (_) {}
-				fs.writeFileSync(devFile, developer + "\n");
-				// Location prompt
-				console.log("");
-				console.log(C.blue + "\u25B6 Install Location" + C.reset);
-				console.log(C.dim + "  Project-scoped installs keep each repo isolated." + C.reset);
-				console.log("");
-				console.log("  " + C.cyan + "[1]" + C.reset + " Global " + C.dim + "(~/.pi/agent/ or ~/.codex/)" + C.reset);
-				console.log("  " + C.cyan + "[2]" + C.reset + " Local  " + C.dim + "(./.pi/ or ./.codex/)" + C.reset + C.green + "  Recommended" + C.reset);
-				console.log("");
-				var rl2 = readline.createInterface({ input: process.stdin, output: process.stdout });
-				rl2.question(C.yellow + "Choice [2] > " + C.reset, function (locAnswer) {
-					rl2.close();
-					var isLocal = (locAnswer.trim() !== "1");
-					var installDir = isLocal ? path.join(projectRoot, selectedHost.dir) : path.join(os.homedir(), selectedHost.dir);
-					console.log(C.green + "  \u2714 " + (isLocal ? "Local" : "Global") + ": " + installDir + C.reset);
+				fs.writeFileSync(devFile, state.developer + "\n");
+				fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".language"), state.lang + "\n");
+				if (state.registry) fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".registry"), state.registry + "\n");
 
-				// Language prompt
+				if (state.skillSource) fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".skill-source"), state.skillSource + "\n");
+				console.log(C.green + "  \u2714 Installing for " + state.host.name + " as " + state.developer + C.reset);
 				console.log("");
-				console.log(C.blue + "\u25B6 Reply Language" + C.reset);
-				console.log(C.dim + "  Choose the language AI assistants should use in this project." + C.reset);
-				console.log("");
-				console.log("  " + C.cyan + "[1]" + C.reset + " English " + C.dim + "(default)" + C.reset);
-				console.log("  " + C.cyan + "[2]" + C.reset + " \u4e2d\u6587 (Chinese)");
-				console.log("");
-				var rl3 = readline.createInterface({ input: process.stdin, output: process.stdout });
-				rl3.question(C.yellow + "Choice [1] > " + C.reset, function (langAnswer) {
-					rl3.close();
-					var lang = langAnswer.trim() === "2" ? "zh" : "en";
-					var langFile = path.join(projectRoot, ".emb-agent", ".language");
-					fs.writeFileSync(langFile, lang + "\n");
-					console.log(C.green + "  \u2714 " + (lang === "zh" ? "\u4e2d\u6587" : "English") + C.reset);
-					console.log("");
-					console.log(C.green + "  \u2714 Installing for " + selectedHost.name + " as " + developer + C.reset);
-					console.log("");
-					installForHost(projectRoot, selectedHost);
-				});
-				});
-		});
-		return;
-	});
+				installForHost(projectRoot, state.host);
+			}
+		];
+		var stepIdx = 0;
+		function next() { if (stepIdx < steps.length) { var s = steps[stepIdx]; stepIdx++; s(next); } }
+		next();
 	} else {
 		console.log("No --target specified and no TTY. Use --target <host>.");
 		console.log("Supported: " + SUPPORTED_HOSTS.map(function (h) { return h.name; }).join(", ") + ", all");
