@@ -24,3 +24,4 @@ bin/emb-agent-rs.exe
 /runtime/scripts/
 /scripts/
 .emb-agent/sessions/
+.pi-lens/
