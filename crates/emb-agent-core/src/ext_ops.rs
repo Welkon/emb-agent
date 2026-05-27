@@ -214,6 +214,103 @@ fn ensure_gitignore_entry(project_root: &Path, entry: &str) {
     let _ = fs::write(path, updated);
 }
 
+pub fn install_doctor(cwd: &Path, host: &str) -> String {
+    let host = host.trim();
+    let hosts: Vec<&str> = if host.is_empty() || host == "all" {
+        vec!["codex", "cursor", "claude", "pi", "omp", "windsurf"]
+    } else {
+        vec![host]
+    };
+    let mut checks = Vec::new();
+    let language = fs::read_to_string(cwd.join(".emb-agent").join(".language"))
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    for item in hosts {
+        let dir = match item {
+            "codex" => ".codex",
+            "cursor" => ".cursor",
+            "claude" => ".claude",
+            "pi" => ".pi",
+            "omp" => ".omp",
+            "windsurf" => ".windsurf",
+            other => other,
+        };
+        let host_dir = cwd.join(dir);
+        let runtime_dir = host_dir.join("emb-agent");
+        let bin_name = if cfg!(windows) {
+            "emb-agent-rs.exe"
+        } else {
+            "emb-agent-rs"
+        };
+        let runtime_ok = runtime_dir.join("bin").join("emb-agent.cjs").exists()
+            && runtime_dir.join("bin").join(bin_name).exists();
+        let (surface, commands_ok) = match item {
+            "omp" | "pi" => (
+                "extension",
+                host_dir.join("extensions").join("emb-agent.ts").exists(),
+            ),
+            "codex" => (
+                "codex-skills",
+                cwd.join(".agents")
+                    .join("skills")
+                    .join("emb-next")
+                    .join("SKILL.md")
+                    .exists()
+                    && cwd
+                        .join(".agents")
+                        .join("skills")
+                        .join("emb-onboard")
+                        .join("SKILL.md")
+                        .exists(),
+            ),
+            "windsurf" => (
+                "windsurf-workflows",
+                host_dir.join("workflows").join("emb-next.md").exists()
+                    && host_dir.join("workflows").join("emb-onboard.md").exists(),
+            ),
+            _ => (
+                "command-files",
+                host_dir.join("commands").join("emb-next.md").exists()
+                    && host_dir.join("commands").join("emb-onboard.md").exists(),
+            ),
+        };
+        let stale_candidates = [
+            host_dir.join("commands").join("next.md"),
+            host_dir.join("commands").join("onboard.md"),
+            host_dir.join("commands").join("emb-status.md"),
+            host_dir.join("commands").join("emb-scan.md"),
+            host_dir.join("commands").join("emb-init.md"),
+        ];
+        let stale: Vec<String> = stale_candidates
+            .iter()
+            .filter(|path| path.exists())
+            .map(|path| path.to_string_lossy().to_string())
+            .collect();
+        let ok = runtime_ok && commands_ok && stale.is_empty();
+        checks.push(serde_json::json!({
+            "host": item,
+            "status": if ok { "ok" } else { "warn" },
+            "runtime_dir": runtime_dir.to_string_lossy(),
+            "runtime_ok": runtime_ok,
+            "surface": surface,
+            "commands": ["emb-next", "emb-onboard"],
+            "commands_ok": commands_ok,
+            "stale_files": stale,
+        }));
+    }
+    let ok = checks.iter().all(|check| check["status"] == "ok");
+    serde_json::to_string_pretty(&serde_json::json!({
+        "status": if ok { "ok" } else { "warn" },
+        "version": env!("CARGO_PKG_VERSION"),
+        "project_root": cwd.to_string_lossy(),
+        "language": language,
+        "hosts": checks,
+        "next": "Use emb-next for initialized projects or emb-onboard for new/migrated projects."
+    }))
+    .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
+}
+
 /// Migration status. The current Rust runtime does not require a separate project migration step.
 pub fn migrate_status(_ext_dir: &Path) -> String {
     r#"{"status":"ok","migration_required":false,"runtime":"rust"}"#.to_string()
@@ -234,14 +331,25 @@ pub fn onboard_status(cwd: &Path) -> String {
     } else {
         "review-existing"
     };
-    format!(
-        "{{\"status\":\"ok\",\"action\":\"onboard\",\"recommended_agent\":\"emb-onboard\",\"path\":{},\"initialized\":{},\"has_hw\":{},\"has_req\":{},\"has_attention\":{},\"instructions\":\"Invoke emb-onboard. It must audit existing hardware docs, choose empty/partial/migration path, ask before moving user files, then stop and route back to next --brief.\",\"next\":{{\"command\":\"next --brief\"}}}}",
-        json_quote(path),
-        initialized,
-        has_hw,
-        has_req,
-        has_attention
-    )
+    serde_json::to_string_pretty(&serde_json::json!({
+        "status": "ok",
+        "action": "onboard",
+        "recommended_agent": "emb-onboard",
+        "path": path,
+        "initialized": initialized,
+        "has_hw": has_hw,
+        "has_req": has_req,
+        "has_attention": has_attention,
+        "questions": [
+            "Is this an empty project, an existing firmware project, or a migration from scattered notes?",
+            "Is the MCU/package already confirmed? If not, keep it unknown and record constraints first.",
+            "Where are schematics, datasheets, pin maps, build files, and product requirements located?",
+            "May emb-agent write .emb-agent/hw.yaml, .emb-agent/req.yaml, and docs/prd/system.md after confirmation?"
+        ],
+        "instructions": "Invoke emb-onboard. Audit existing hardware/product evidence, choose empty/partial/migration path, ask the listed questions, never move user files without confirmation, then stop and route back to next --brief.",
+        "next": { "command": "next --brief" }
+    }))
+    .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
 }
 
 /// Skills status. Legacy skill scaffolding is host-owned; runtime skills are command docs and agents.

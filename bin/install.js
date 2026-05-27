@@ -170,6 +170,9 @@ function usage() {
 		"  --registry <url>   External spec registry URL",
 		"  --skill-source <url> External skill source URL",
 		"  --force            Overwrite existing files",
+		"  --dry-run          Print install plan without writing files",
+		"  uninstall          Remove managed host integration files",
+		"  repair             Rebuild managed host integration files",
 		"  --help, -h         Show this help",
 		"",
 		"Examples:",
@@ -185,12 +188,14 @@ function usage() {
 }
 
 function parseArgs(argv) {
-	var args = { target: "", developer: "", local: false, global: false, profile: "core", lang: "", specs: [], skills: [], registry: "", skillSource: "", help: false, force: false };
+	var args = { mode: "install", target: "", developer: "", local: false, global: false, profile: "core", lang: "", specs: [], skills: [], registry: "", skillSource: "", help: false, force: false, dryRun: false };
 	for (var i = 0; i < argv.length; i++) {
 		var t = argv[i];
+		if (t === "uninstall" || t === "repair") { args.mode = t; continue; }
 		if (t === "--help" || t === "-h") args.help = true;
 		else if (t === "--target") args.target = argv[++i] || "";
 		else if (t === "--force") args.force = true;
+		else if (t === "--dry-run") args.dryRun = true;
 		else if (t === "--developer") args.developer = argv[++i] || "";
 		else if (t === "--local" || t === "-l") args.local = true;
 		else if (t === "--global" || t === "-g") args.global = true;
@@ -296,6 +301,18 @@ function writeDeveloperPreference(projectRoot, name) {
 	fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".developer"), JSON.stringify({ name: trimmed }) + "\n");
 }
 
+function backupManagedFile(projectRoot, filePath) {
+	try {
+		if (!fs.existsSync(filePath)) return;
+		var rel = path.relative(projectRoot, filePath);
+		if (!rel || rel.startsWith("..")) return;
+		var stamp = new Date().toISOString().replace(/[:.]/g, "-");
+		var backupPath = path.join(projectRoot, ".emb-agent", "backups", "install-" + stamp, rel);
+		ensureDir(path.dirname(backupPath));
+		fs.copyFileSync(filePath, backupPath);
+	} catch (_) {}
+}
+
 // ── AGENTS.md deployment ──────────────────────────────────────────
 
 function resolveIncludes(content, vars) {
@@ -315,7 +332,8 @@ function applyTemplate(content, vars) {
 	});
 }
 
-function resolveAndDeploy(srcPath, destPath, vars) {
+function resolveAndDeploy(projectRoot, srcPath, destPath, vars) {
+	backupManagedFile(projectRoot, destPath);
 	if (!fs.existsSync(srcPath)) return false;
 	var raw = fs.readFileSync(srcPath, "utf8");
 	var resolved = resolveIncludes(raw, vars);
@@ -698,6 +716,17 @@ function selectOne(title, items, callback, options) {
 	}
 }
 
+function confirmTextPrompt(title, body, callback) {
+	console.log("\n\x1b[34m▶ " + title + "\x1b[0m");
+	console.log(body + "\n");
+	var rl = require("readline").createInterface({ input: process.stdin, output: process.stdout });
+	rl.question("Press Enter to continue, or type q to cancel > ", function (answer) {
+		rl.close();
+		if (String(answer || "").trim().toLowerCase() === "q") { console.log("Interactive install cancelled."); process.exit(130); }
+		callback();
+	});
+}
+
 function commandFileNames() {
 	return CANONICAL_SHELL_COMMANDS.map(function (command) { return command.file; });
 }
@@ -822,6 +851,139 @@ function deployCanonicalShellCommands(projectRoot, host) {
 }
 
 
+function hostSurfaceSummary(projectRoot, host) {
+	if (host.name === "omp" || host.name === "pi") return { kind: "extension", dir: path.join(hostDirFor(projectRoot, host), "extensions"), commands: ["/emb-next", "/emb-onboard"], reload: "Start a new " + host.name + " session after install." };
+	if (host.name === "codex") {
+		var root = hostInstallScope(host) === "global" ? path.join(os.homedir(), ".agents", "skills") : path.join(projectRoot, ".agents", "skills");
+		return { kind: "codex-skills", dir: root, commands: ["$emb-next", "$emb-onboard"], reload: "Restart Codex or run /skills if the new skills are not visible." };
+	}
+	if (host.name === "windsurf") return { kind: "windsurf-workflows", dir: canonicalSurfaceDir(projectRoot, host), commands: ["/emb-next", "/emb-onboard"], reload: "Refresh Cascade or open a new Windsurf session." };
+	return { kind: "command-files", dir: canonicalSurfaceDir(projectRoot, host), commands: ["/emb-next", "/emb-onboard"], reload: host.name === "cursor" ? "Reload Cursor window if commands are not visible." : "Start a new Claude Code session if commands are not visible." };
+}
+
+function selectedHostList(args, state) {
+	if (state && Array.isArray(state.hosts)) return state.hosts;
+	if (args.target === "all") return SUPPORTED_HOSTS.slice();
+	if (args.target) {
+		var host = SUPPORTED_HOSTS.find(function (h) { return h.name === args.target; });
+		return host ? [host] : [];
+	}
+	return [];
+}
+
+function scopedHosts(hosts, scope) {
+	return hosts.map(function (host) { return hostForScope(host, scope); });
+}
+
+function planEntries(projectRoot, hosts) {
+	var entries = [path.join(projectRoot, ".emb-agent"), path.join(projectRoot, "AGENTS.md"), path.join(projectRoot, "docs", "prd")];
+	for (var i = 0; i < hosts.length; i++) {
+		var host = hosts[i];
+		var hostDir = hostDirFor(projectRoot, host);
+		entries.push(path.join(hostDir, "emb-agent"));
+		entries.push(path.join(hostDir, "skills", "emb-agent"));
+		var surface = hostSurfaceSummary(projectRoot, host);
+		if (surface.dir) entries.push(surface.dir);
+		if (host.name === "codex") entries.push(path.join(hostDir, "instructions.md"));
+		if (host.name === "cursor") entries.push(path.join(hostDir, "rules", "emb-agent-workflow.mdc"));
+		if (host.name === "windsurf") entries.push(path.join(hostDir, "rules", "emb-agent-workflow.md"));
+	}
+	var seen = {};
+	return entries.filter(function (entry) { if (seen[entry]) return false; seen[entry] = true; return true; });
+}
+
+function renderInstallPlan(projectRoot, hosts, options) {
+	var lines = [];
+	var scope = options.scope || "local";
+	var language = normalizeLanguage(options.lang || readLanguagePreference(projectRoot)) || "not set";
+	lines.push("Install plan");
+	lines.push("  mode: " + (options.mode || "install"));
+	lines.push("  scope: " + scope);
+	lines.push("  language: " + language);
+	lines.push("  developer: " + (options.developer || "developer"));
+	lines.push("  hosts: " + hosts.map(function (h) { return h.name; }).join(", "));
+	if (options.specs && options.specs.length) lines.push("  external specs: " + options.specs.join(", "));
+	if (options.skills && options.skills.length) lines.push("  external skills: " + options.skills.join(", "));
+	lines.push("");
+	lines.push("Host command surfaces:");
+	for (var i = 0; i < hosts.length; i++) {
+		var surface = hostSurfaceSummary(projectRoot, hosts[i]);
+		lines.push("  - " + hosts[i].name + ": " + surface.kind + " -> " + surface.commands.join(", "));
+		lines.push("    path: " + surface.dir);
+	}
+	lines.push("");
+	lines.push("Managed paths:");
+	var entries = planEntries(projectRoot, hosts);
+	for (var j = 0; j < entries.length; j++) lines.push("  - " + entries[j]);
+	return lines.join("\n");
+}
+
+function writeInstallHistory(projectRoot, hosts, options) {
+	var historyDir = path.join(projectRoot, ".emb-agent");
+	ensureDir(historyDir);
+	var record = { time: new Date().toISOString(), version: VERSION, mode: options.mode || "install", scope: options.scope || "local", language: normalizeLanguage(options.lang || readLanguagePreference(projectRoot)), hosts: hosts.map(function (h) { return h.name; }), commands: ["emb-next", "emb-onboard"] };
+	fs.appendFileSync(path.join(historyDir, "install-history.jsonl"), JSON.stringify(record) + "\n");
+}
+
+function writeInstallResult(projectRoot, hosts, options) {
+	var lines = ["# emb-agent Install Result", "", "- Version: " + VERSION, "- Date: " + new Date().toISOString(), "- Scope: " + (options.scope || "local"), "- Language: " + (normalizeLanguage(options.lang || readLanguagePreference(projectRoot)) || "not set"), "", "## Commands"];
+	for (var i = 0; i < hosts.length; i++) {
+		var surface = hostSurfaceSummary(projectRoot, hosts[i]);
+		lines.push("", "### " + hosts[i].name, "", "- Surface: " + surface.kind, "- Path: " + surface.dir, "- Entries: " + surface.commands.join(", "), "- Reload: " + surface.reload);
+	}
+	lines.push("", "## Next", "", "- New or migrated project: run `/emb-onboard` or the host-equivalent entry shown above.", "- Initialized project: run `/emb-next` or the host-equivalent entry shown above.", "- Diagnose runtime state: `node .<host>/emb-agent/bin/emb-agent.cjs doctor --host <host> --brief`.");
+	ensureDir(path.join(projectRoot, ".emb-agent"));
+	fs.writeFileSync(path.join(projectRoot, ".emb-agent", "INSTALL_RESULT.md"), lines.join("\n") + "\n");
+}
+
+function runInstallChecks(projectRoot, hosts) {
+	console.log("\nInstall check");
+	for (var i = 0; i < hosts.length; i++) {
+		var host = hosts[i];
+		var embDir = path.join(hostDirFor(projectRoot, host), "emb-agent");
+		var wrapper = path.join(embDir, "bin", "emb-agent.cjs");
+		var binName = "emb-agent-rs" + (process.platform === "win32" ? ".exe" : "");
+		var binPath = path.join(embDir, "bin", binName);
+		var surface = hostSurfaceSummary(projectRoot, host);
+		var ok = fs.existsSync(wrapper) && fs.existsSync(binPath);
+		var surfaceOk = true;
+		if (host.name === "omp" || host.name === "pi") surfaceOk = fs.existsSync(path.join(hostDirFor(projectRoot, host), "extensions", "emb-agent.ts"));
+		else if (host.name === "codex") surfaceOk = fs.existsSync(path.join(surface.dir, "emb-next", "SKILL.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard", "SKILL.md"));
+		else surfaceOk = fs.existsSync(path.join(surface.dir, "emb-next.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard.md"));
+		console.log("  " + (ok && surfaceOk ? "✓" : "!") + " " + host.name + " runtime=" + (ok ? "ok" : "missing") + " surface=" + (surfaceOk ? "ok" : "missing"));
+		try {
+			var r = childProcess.spawnSync("node", [wrapper, "doctor", "--host", host.name, "--brief"], { cwd: projectRoot, encoding: "utf8", timeout: 10000 });
+			if (r.status === 0 && r.stdout) console.log("    doctor: " + r.stdout.trim());
+		} catch (_) {}
+		console.log("    next: " + surface.commands.join(" / ") + " | " + surface.reload);
+	}
+}
+
+function uninstallHost(projectRoot, host) {
+	cleanupManagedHostCommands(projectRoot, host);
+	var hostDir = hostDirFor(projectRoot, host);
+	removePath(path.join(hostDir, "emb-agent"));
+	removePath(path.join(hostDir, "skills", "emb-agent"));
+	removePath(path.join(hostDir, "extensions", "emb-agent.ts"));
+	removePath(path.join(hostDir, "rules", "emb-agent-workflow.mdc"));
+	removePath(path.join(hostDir, "rules", "emb-agent-workflow.md"));
+	removePath(path.join(hostDir, "instructions.md"));
+	if (host.name === "codex") for (var i = 0; i < CANONICAL_SHELL_COMMANDS.length; i++) removePath(path.join(projectRoot, ".agents", "skills", CANONICAL_SHELL_COMMANDS[i].name));
+	console.log("  Removed managed " + host.name + " integration from " + hostDir);
+}
+
+function completeInstallBatch(projectRoot, hosts, options) {
+	writeInstallHistory(projectRoot, hosts, options || {});
+	writeInstallResult(projectRoot, hosts, options || {});
+	runInstallChecks(projectRoot, hosts);
+	console.log("\nNext steps");
+	for (var i = 0; i < hosts.length; i++) {
+		var surface = hostSurfaceSummary(projectRoot, hosts[i]);
+		console.log("  " + hosts[i].name + ": " + surface.commands.join(" or ") + " — " + surface.reload);
+	}
+	console.log("  Details: .emb-agent/INSTALL_RESULT.md");
+}
+
 
 
 // ── Install per host ──────────────────────────────────────────────
@@ -900,7 +1062,7 @@ function installForHost(projectRoot, host, callback) {
 		}
 
 		var templateVars = { PROJECT_NAME: path.basename(projectRoot), INSTALL_DATE: new Date().toISOString().split("T")[0], LANGUAGE: readLanguagePreference(projectRoot) };
-		if (resolveAndDeploy(
+		if (resolveAndDeploy(projectRoot,
 			path.join(RUNTIME_SRC, "scaffolds", "shells", "AGENTS.md"),
 			path.join(projectRoot, "AGENTS.md"),
 			templateVars
@@ -911,7 +1073,7 @@ function installForHost(projectRoot, host, callback) {
 		var hostRootFiles = { claude: "CLAUDE.md", codex: "CODEX.md" };
 		var rootFile = hostRootFiles[host.name];
 		if (rootFile) {
-			if (resolveAndDeploy(
+			if (resolveAndDeploy(projectRoot,
 				path.join(RUNTIME_SRC, "scaffolds", "shells", rootFile),
 				path.join(projectRoot, rootFile),
 				templateVars
@@ -929,7 +1091,7 @@ function installForHost(projectRoot, host, callback) {
 		if (ruleMapping) {
 			var ruleSrc = path.join(RUNTIME_SRC, "scaffolds", "shells", ruleMapping.src);
 			var ruleDest = path.join(hostDir, ruleMapping.dest);
-			if (resolveAndDeploy(ruleSrc, ruleDest, templateVars)) {
+			if (resolveAndDeploy(projectRoot, ruleSrc, ruleDest, templateVars)) {
 				console.log("    " + ruleMapping.dest + " deployed to " + host.dir + "/");
 			}
 		}
@@ -1313,21 +1475,36 @@ function main(argv) {
 	console.log("Project: " + projectRoot + "\n");
 
 	var _devDir = path.join(projectRoot, ".emb-agent");
-	try { fs.mkdirSync(_devDir, { recursive: true }); } catch (_) {}
-	if (args.developer) writeDeveloperPreference(projectRoot, args.developer);
-	if (args.lang) writeLanguagePreference(projectRoot, args.lang);
-	if (args.registry) fs.writeFileSync(path.join(_devDir, ".registry"), args.registry + "\n");
-	if (args.skillSource) fs.writeFileSync(path.join(_devDir, ".skill-source"), args.skillSource + "\n");
-	if (args.specs.length > 0) fs.writeFileSync(path.join(_devDir, ".specs"), args.specs.join(",") + "\n");
-	if (args.skills.length > 0) fs.writeFileSync(path.join(_devDir, ".skills"), args.skills.join(",") + "\n");
+	if (!args.dryRun && args.mode !== "uninstall") {
+		try { fs.mkdirSync(_devDir, { recursive: true }); } catch (_) {}
+		if (args.developer) writeDeveloperPreference(projectRoot, args.developer);
+		if (args.lang) writeLanguagePreference(projectRoot, args.lang);
+		if (args.registry) fs.writeFileSync(path.join(_devDir, ".registry"), args.registry + "\n");
+		if (args.skillSource) fs.writeFileSync(path.join(_devDir, ".skill-source"), args.skillSource + "\n");
+		if (args.specs.length > 0) fs.writeFileSync(path.join(_devDir, ".specs"), args.specs.join(",") + "\n");
+		if (args.skills.length > 0) fs.writeFileSync(path.join(_devDir, ".skills"), args.skills.join(",") + "\n");
+	}
 
 	var cliScope = args.global ? "global" : "local";
+	var requestedHosts = selectedHostList(args);
+	if (args.mode === "uninstall") {
+		if (requestedHosts.length === 0) { console.error("uninstall requires --target <host|all>"); process.exit(1); }
+		var uninstallHosts = scopedHosts(requestedHosts, cliScope);
+		console.log(renderInstallPlan(projectRoot, uninstallHosts, { mode: "uninstall", scope: cliScope, lang: args.lang, developer: args.developer, specs: args.specs, skills: args.skills }));
+		if (args.dryRun) return;
+		for (var ui = 0; ui < uninstallHosts.length; ui++) uninstallHost(projectRoot, uninstallHosts[ui]);
+		writeInstallHistory(projectRoot, uninstallHosts, { mode: "uninstall", scope: cliScope, lang: args.lang, developer: args.developer });
+		return;
+	}
 	if (args.target === "all") {
 		var selectedStateAll = { specItems: args.specs.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }), skillItems: args.skills.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }), specs: args.specs, skills: args.skills };
+		var allHosts = scopedHosts(SUPPORTED_HOSTS, cliScope);
+		console.log(renderInstallPlan(projectRoot, allHosts, { mode: args.mode, scope: cliScope, lang: args.lang, developer: args.developer, specs: args.specs, skills: args.skills }));
+		if (args.dryRun) return;
 		var cliIndex = 0;
 		function installNextCliHost() {
-			if (cliIndex >= SUPPORTED_HOSTS.length) return;
-			var nextHost = hostForScope(SUPPORTED_HOSTS[cliIndex++], cliScope);
+			if (cliIndex >= allHosts.length) { completeInstallBatch(projectRoot, allHosts, { mode: args.mode, scope: cliScope, lang: args.lang, developer: args.developer, specs: args.specs, skills: args.skills }); return; }
+			var nextHost = allHosts[cliIndex++];
 			installForHost(projectRoot, nextHost, function (done) {
 				materializeSelectedSupport(projectRoot, nextHost, selectedStateAll, function () {
 					updateProjectActiveSpecs(projectRoot, args.specs);
@@ -1342,12 +1519,16 @@ function main(argv) {
 		var host = SUPPORTED_HOSTS.find(function (h) { return h.name === args.target; });
 		if (!host) { console.error("Unknown host: " + args.target); process.exit(1); }
 		host = hostForScope(host, cliScope);
+		var oneHosts = [host];
+		console.log(renderInstallPlan(projectRoot, oneHosts, { mode: args.mode, scope: cliScope, lang: args.lang, developer: args.developer, specs: args.specs, skills: args.skills }));
+		if (args.dryRun) return;
 		installForHost(projectRoot, host, function (done) {
 			var selectedState = { specItems: args.specs.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }), skillItems: args.skills.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }), specs: args.specs, skills: args.skills };
 			materializeSelectedSupport(projectRoot, host, selectedState, function () {
 				updateProjectActiveSpecs(projectRoot, args.specs);
 				injectSelectedSupport(projectRoot, host, selectedState);
 				done();
+				completeInstallBatch(projectRoot, oneHosts, { mode: args.mode, scope: cliScope, lang: args.lang, developer: args.developer, specs: args.specs, skills: args.skills });
 			});
 		});
 	} else if (process.stdin.isTTY) {
@@ -1397,82 +1578,64 @@ function main(argv) {
 		function startInstallFlow() {
 			var steps = [
 				function askHost(next) {
-					var items = SUPPORTED_HOSTS.map(function (host) {
-						return { label: host.name, desc: host.dir, value: host };
-					});
-					selectList("Select Runtime", items, function (selected) {
-						state.hosts = selected;
-						next();
-					}, { contextLabel: "Runtime", contextValue: "available hosts", allowSkip: false, requireSelection: true, itemNoun: "runtime", itemPlural: "runtimes" });
+					var items = SUPPORTED_HOSTS.map(function (host) { return { label: host.name, desc: host.dir, value: host }; });
+					selectList("Select Runtime", items, function (selected) { state.hosts = selected; next(); }, { contextLabel: "Runtime", contextValue: "available hosts", allowSkip: false, requireSelection: true, itemNoun: "runtime", itemPlural: "runtimes" });
 				},
 				function askLocation(next) {
 					selectOne("Install Location", [
 						{ label: "Global", desc: "Install to the user config directory", value: "global" },
 						{ label: "Local", desc: "Install into this project (recommended)", value: "local" }
-					], function (selected) {
-						state.location = selected;
-						next();
-					}, { description: "Project-scoped installs are easier to test and keep isolated." });
+					], function (selected) { state.location = selected; next(); }, { description: "Project-scoped installs are easier to test and keep isolated." });
 				},
 				function askSpecs(next) {
 					if (extSpecs.length === 0) { console.log(C.dim + "\n  No external specs available.\n" + C.reset); next(); return; }
-					console.log("");
 					var items = [];
 					for (var ei = 0; ei < extSpecs.length; ei++) items.push({ label: extSpecs[ei].name, desc: extSpecs[ei].desc || "", value: extSpecs[ei] });
-					selectList("Spec Selection", items, function (selected) {
-						state.specItems = selected;
-						state.specs = selected.map(function (item) { return item.name; });
-						next();
-					}, { contextLabel: "Source", contextValue: externalSourceLabel(), skipLabel: "Skip external spec import", itemNoun: "spec", itemPlural: "specs" });
+					selectList("Spec Selection", items, function (selected) { state.specItems = selected; state.specs = selected.map(function (item) { return item.name; }); next(); }, { contextLabel: "Source", contextValue: externalSourceLabel(), skipLabel: "Skip external spec import", itemNoun: "spec", itemPlural: "specs" });
 				},
 				function askSkills(next) {
 					if (extSkills.length === 0) { console.log(C.dim + "  No external skills available.\n" + C.reset); next(); return; }
 					var items = [];
 					for (var ei = 0; ei < extSkills.length; ei++) items.push({ label: extSkills[ei].name, desc: extSkills[ei].desc || "", value: extSkills[ei] });
-					selectList("Skill Selection", items, function (selected) {
-						state.skillItems = selected;
-						state.skills = selected.map(function (item) { return item.name; });
-						next();
-					}, { contextLabel: "Plugin", contextValue: externalSourceLabel(), skipLabel: "Skip initial skill installation", itemNoun: "skill", itemPlural: "skills" });
+					selectList("Skill Selection", items, function (selected) { state.skillItems = selected; state.skills = selected.map(function (item) { return item.name; }); next(); }, { contextLabel: "Plugin", contextValue: externalSourceLabel(), skipLabel: "Skip initial skill installation", itemNoun: "skill", itemPlural: "skills" });
 				},
 				function askLanguage(next) {
 					selectOne("Reply Language", [
 						{ label: "English", desc: "Use English replies", value: "en" },
 						{ label: "中文", desc: "Use Chinese (Simplified) replies", value: "zh" }
-					], function (selected) {
-						state.lang = selected;
-						next();
-					}, { description: "Choose the language AI assistants should use in this project." });
+					], function (selected) { state.lang = selected; next(); }, { description: "Choose the language AI assistants should use in this project." });
 				},
 				function askDeveloper(next) {
-					console.log(C.blue + "\u25B6 Developer Identity" + C.reset);
+					console.log(C.blue + "▶ Developer Identity" + C.reset);
 					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 					rl.question(C.yellow + "Developer name > " + C.reset, function(a) { rl.close(); state.developer = a.trim() || "developer"; next(); });
 				},
-				function finish() {
+				function confirmAndInstall() {
 					writeDeveloperPreference(projectRoot, state.developer);
 					writeLanguagePreference(projectRoot, state.lang);
 					if (state.specs && state.specs.length > 0) fs.writeFileSync(path.join(_devDir, ".specs"), state.specs.join(",") + "\n");
 					if (state.skills && state.skills.length > 0) fs.writeFileSync(path.join(_devDir, ".skills"), state.skills.join(",") + "\n");
-					var hosts = state.hosts || [];
-					var hostNames = hosts.map(function (host) { return host.name; }).join(", ");
-					console.log(C.green + "  \u2714 Installing for " + hostNames + " as " + state.developer + C.reset + "\n");
-					var hostIndex = 0;
-					function installNextHost() {
-						if (hostIndex >= hosts.length) return;
-						var host = hostForScope(hosts[hostIndex++], state.location);
-						installForHost(projectRoot, host, function (done) {
-							materializeSelectedSupport(projectRoot, host, state, function () {
-								updateProjectActiveSpecs(projectRoot, state.specs || []);
-								injectSelectedSupport(projectRoot, host, state);
-								if (state.specItems && state.specItems.length > 0) console.log("    External specs installed to .emb-agent/specs/");
-								if (state.skillItems && state.skillItems.length > 0) console.log("    External skills installed to .emb-agent/plugins/, " + host.dir + "/skills/, .agents/skills/");
-								done();
-								installNextHost();
+					var scoped = scopedHosts(state.hosts || [], state.location);
+					confirmTextPrompt("Ready to install", renderInstallPlan(projectRoot, scoped, { mode: "install", scope: state.location, lang: state.lang, developer: state.developer, specs: state.specs || [], skills: state.skills || [] }), function () {
+						var hostNames = scoped.map(function (host) { return host.name; }).join(", ");
+						console.log(C.green + "  ✔ Installing for " + hostNames + " as " + state.developer + C.reset + "\n");
+						var hostIndex = 0;
+						function installNextHost() {
+							if (hostIndex >= scoped.length) { completeInstallBatch(projectRoot, scoped, { mode: "install", scope: state.location, lang: state.lang, developer: state.developer, specs: state.specs || [], skills: state.skills || [] }); return; }
+							var host = scoped[hostIndex++];
+							installForHost(projectRoot, host, function (done) {
+								materializeSelectedSupport(projectRoot, host, state, function () {
+									updateProjectActiveSpecs(projectRoot, state.specs || []);
+									injectSelectedSupport(projectRoot, host, state);
+									if (state.specItems && state.specItems.length > 0) console.log("    External specs installed to .emb-agent/specs/");
+									if (state.skillItems && state.skillItems.length > 0) console.log("    External skills installed to .emb-agent/plugins/, " + host.dir + "/skills/, .agents/skills/");
+									done();
+									installNextHost();
+								});
 							});
-						});
-					}
-					installNextHost();
+						}
+						installNextHost();
+					});
 				}
 			];
 			var stepIdx = 0;

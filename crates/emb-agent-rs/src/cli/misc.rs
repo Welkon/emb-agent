@@ -69,6 +69,14 @@ pub fn run_ext_ops(args: &[String]) -> Result<(), String> {
             );
             Ok(())
         }
+        "doctor" => {
+            let host = option_value(args, "--host").unwrap_or_else(|| "all".to_string());
+            println!(
+                "{}",
+                emb_agent_core::ext_ops::install_doctor(Path::new(&cwd), &host)
+            );
+            Ok(())
+        }
         "migrate" => {
             println!("{}", emb_agent_core::ext_ops::migrate_status(&ext_dir));
             Ok(())

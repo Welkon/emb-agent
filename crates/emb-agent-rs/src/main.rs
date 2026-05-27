@@ -62,10 +62,10 @@ fn run(args: &[String]) -> Result<(), String> {
         // Compound knowledge
         "compound" | "attention" | "note" | "arch" => cli::compound::run(args),
         // Extended operations (stubs)
-        "init" | "init-project" | "onboard" | "migrate" | "skills" | "update" | "settings"
-        | "decision" | "commands" | "capability" | "executor" | "dispatch" | "scaffold"
-        | "transcript" | "prefs" | "tool" | "snippet" | "workflow" | "orchestrate" | "insight"
-        | "trace" => cli::misc::run_ext_ops(args),
+        "init" | "init-project" | "onboard" | "migrate" | "doctor" | "skills" | "update"
+        | "settings" | "decision" | "commands" | "capability" | "executor" | "dispatch"
+        | "scaffold" | "transcript" | "prefs" | "tool" | "snippet" | "workflow" | "orchestrate"
+        | "insight" | "trace" => cli::misc::run_ext_ops(args),
         other => Err(format!("unknown command: {other}")),
     }
 }

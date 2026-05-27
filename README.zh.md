@@ -147,13 +147,48 @@ AI 会通过 emb-agent 读取当前状态并继续推进。
 
 ## 安装
 
-通过 npm：
+推荐使用交互式安装：
 
 ```bash
-npx emb-agent --target <host>
+npx emb-agent
 ```
 
-其中 `<host>` 可选：`codex`、`claude`、`cursor`、`pi`、`omp`、`windsurf`。
+直接安装示例：
+
+```bash
+npx emb-agent --target omp --local --lang zh
+npx emb-agent --target all --local --lang zh
+npx emb-agent --target all --local --dry-run
+```
+
+其中 `<host>` 可选：`codex`、`claude`、`cursor`、`pi`、`omp`、`windsurf`、`all`。
+
+### Local / Global
+
+- `--local` 写入当前项目，适合项目级配置和团队共享。
+- `--global` 写入用户级 host 配置目录，适合个人跨项目默认配置。
+- `--dry-run` 只打印安装计划，不写文件。
+- `repair --target <host|all>` 重建 host 集成，不重置 `.emb-agent` 项目事实。
+- `uninstall --target <host|all>` 移除托管的 host 集成，保留 `.emb-agent` 项目事实。
+
+### Host 命令入口
+
+所有支持的 host 都暴露同一组 emb-agent 入口，只是使用各自原生机制：
+
+| Host | 暴露方式 | 入口 |
+|---|---|---|
+| OMP | extension commands | `/emb-next`, `/emb-onboard` |
+| Pi | extension commands | `/emb-next`, `/emb-onboard` |
+| Claude Code | `.claude/commands/*.md` | `/emb-next`, `/emb-onboard` |
+| Cursor | command files | `/emb-next`, `/emb-onboard` |
+| Windsurf | `.windsurf/workflows/*.md` | `/emb-next`, `/emb-onboard` |
+| Codex | `.agents/skills/<name>/SKILL.md` | `$emb-next`, `$emb-onboard` |
+
+安装后会写入 `.emb-agent/INSTALL_RESULT.md`，自动运行安装检查，并打印每个 host 的 reload 提示。后续诊断可运行：
+
+```bash
+node .omp/emb-agent/bin/emb-agent.cjs doctor --host omp --brief
+```
 
 或从源码构建：
 
@@ -162,7 +197,6 @@ git clone <repo>
 cd emb-agent
 cargo build --release
 ```
-支持宿主：**Codex**、**Claude Code**、**Cursor**、**Pi**、**OMP**、**Windsurf**。
 
 ---
 

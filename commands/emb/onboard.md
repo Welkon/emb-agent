@@ -19,9 +19,18 @@ Use `$emb-onboard` as the default first step when `.emb-agent/` is missing, inco
   1. empty repo scaffold
   2. partial `.emb-agent/` repair
   3. existing firmware repo migration audit
+- Ask the user which path applies before writing hardware or requirement truth.
+- Locate schematics, datasheets, pin maps, build files, and product requirements; mark inferred facts separately from confirmed facts.
 - Invoke the `emb-onboard` agent for repo audit, user confirmation, and fact extraction.
 - Stop after onboarding and return to `next --brief`.
 
+
+## Required first questions
+
+1. Is this an empty project, an existing firmware project, or a migration from scattered notes?
+2. Is the MCU/package already confirmed?
+3. Where are schematics, datasheets, pin maps, build files, and product requirements located?
+4. May emb-agent write `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, and `docs/prd/system.md` after confirmation?
 ## Rules
 
 - Do not guess MCU, package, pins, clock, or peripheral ownership.

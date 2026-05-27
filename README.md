@@ -150,13 +150,48 @@ The assistant will route that through emb-agent and continue from the current pr
 
 ## Install
 
-From npm:
+Recommended interactive install:
 
 ```bash
-npx emb-agent --target <host>
+npx emb-agent
 ```
 
-Where `<host>` is one of: `codex`, `claude`, `cursor`, `pi`, `omp`, `windsurf`.
+Direct install examples:
+
+```bash
+npx emb-agent --target omp --local --lang zh
+npx emb-agent --target all --local --lang zh
+npx emb-agent --target all --local --dry-run
+```
+
+Where `<host>` is one of: `codex`, `claude`, `cursor`, `pi`, `omp`, `windsurf`, or `all`.
+
+### Local vs global
+
+- `--local` writes host integration into this project. Use it for project-specific setup and team-visible behavior.
+- `--global` writes into the host's user config directory. Use it for personal defaults across projects.
+- `--dry-run` prints the install plan without writing files.
+- `repair --target <host|all>` rebuilds managed host integrations without resetting project truth.
+- `uninstall --target <host|all>` removes managed host integrations and preserves `.emb-agent` project truth.
+
+### Host command surface
+
+Every supported host exposes the same two emb-agent entrypoints through its native mechanism:
+
+| Host | Surface | Entries |
+|---|---|---|
+| OMP | extension commands | `/emb-next`, `/emb-onboard` |
+| Pi | extension commands | `/emb-next`, `/emb-onboard` |
+| Claude Code | `.claude/commands/*.md` | `/emb-next`, `/emb-onboard` |
+| Cursor | command files | `/emb-next`, `/emb-onboard` |
+| Windsurf | `.windsurf/workflows/*.md` | `/emb-next`, `/emb-onboard` |
+| Codex | `.agents/skills/<name>/SKILL.md` | `$emb-next`, `$emb-onboard` |
+
+After install, emb-agent writes `.emb-agent/INSTALL_RESULT.md`, runs an install check, and prints host-specific reload instructions. To diagnose later:
+
+```bash
+node .omp/emb-agent/bin/emb-agent.cjs doctor --host omp --brief
+```
 
 Or build from source:
 
@@ -165,8 +200,6 @@ git clone <repo>
 cd emb-agent
 cargo build --release
 ```
-
-Supported hosts: **Codex**, **Claude Code**, **Cursor**, **Pi**, **OMP**, **Windsurf**.
 
 ---
 
