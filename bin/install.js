@@ -350,34 +350,9 @@ function summarizeListText(value, maxLength) {
 }
 
 function selectListFallback(title, items, callback) {
-	var readline = require("readline");
-	var C = { reset: "\x1b[0m", dim: "\x1b[2m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m", white: "\x1b[37m" };
-	console.log(C.blue + "▶ " + title + C.reset);
-	console.log(C.dim + "  Type numbers separated by spaces or commas. Press Enter to skip." + C.reset);
-	for (var i = 0; i < items.length; i++) {
-		console.log("  " + C.cyan + (i + 1) + "." + C.reset + " " + C.white + items[i].label + C.reset + (items[i].desc ? C.dim + " - " + summarizeListText(items[i].desc) + C.reset : ""));
-	}
-	var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-	rl.question(C.yellow + "Choice [skip] > " + C.reset, function (answer) {
-		rl.close();
-		var tokens = String(answer || "").trim().split(/[\s,]+/).filter(Boolean);
-		var seen = {};
-		var result = [];
-		for (var ti = 0; ti < tokens.length; ti++) {
-			var token = tokens[ti].toLowerCase();
-			if (token === "skip") break;
-			if (token === "all" || token === "a") {
-				result = items.map(function (item) { return item.value; });
-				break;
-			}
-			var index = parseInt(token, 10);
-			if (Number.isFinite(index) && index >= 1 && index <= items.length && !seen[index]) {
-				seen[index] = true;
-				result.push(items[index - 1].value);
-			}
-		}
-		callback(result);
-	});
+	console.log("\x1b[34m▶ " + title + "\x1b[0m");
+	console.log("\x1b[2m  Keyboard selection is unavailable in this terminal; skipping optional selection.\x1b[0m");
+	callback([]);
 }
 
 function renderSelectionScreen(title, items, state, options) {
@@ -525,6 +500,77 @@ function selectList(title, items, callback, options) {
 		selectListFallback(title, items, callback);
 	}
 }
+function selectOneFallback(title, items, callback, options) {
+	var defaultIndex = options && typeof options.defaultIndex === "number" ? options.defaultIndex : 0;
+	var result = items[defaultIndex] ? items[defaultIndex].value : items[0].value;
+	console.log("\x1b[34m▶ " + title + "\x1b[0m");
+	console.log("\x1b[2m  Non-interactive fallback selected: " + (items[defaultIndex] ? items[defaultIndex].label : items[0].label) + "\x1b[0m");
+	callback(result);
+}
+
+function renderSingleSelectionScreen(title, items, state, options) {
+	var C = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m", white: "\x1b[37m" };
+	var lines = [];
+	lines.push(C.cyan + C.bold + "emb-agent installer" + C.reset);
+	lines.push(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
+	lines.push("");
+	lines.push(C.blue + "▶ " + title + C.reset);
+	if (options && options.description) lines.push(C.dim + "  " + options.description + C.reset);
+	lines.push(C.dim + "  Use ↑/↓ to move; Enter or Space selects the highlighted option." + C.reset);
+	lines.push(C.dim + "  Esc/Ctrl+C cancels." + C.reset);
+	lines.push("");
+	for (var i = 0; i < items.length; i++) {
+		var active = state.cursorIndex === i;
+		var selected = state.selectedIndex === i;
+		var marker = selected ? C.green + "●" + C.reset : C.dim + "○" + C.reset;
+		var detail = summarizeListText(items[i].desc, 100);
+		var name = active ? C.bold + C.white + items[i].label + C.reset : C.white + items[i].label + C.reset;
+		lines.push("  " + (active ? C.cyan + "›" + C.reset : " ") + " " + marker + " " + name + (detail ? C.dim + " - " + detail + C.reset : ""));
+	}
+	lines.push("");
+	lines.push(C.yellow + "↑/↓=move  Enter/Space=select" + C.reset);
+	return lines.join("\n");
+}
+
+function selectOne(title, items, callback, options) {
+	if (!items || items.length === 0) throw new Error("selectOne requires at least one item");
+	if (!supportsKeyboardSelection()) {
+		selectOneFallback(title, items, callback, options || {});
+		return;
+	}
+	var stdin = process.stdin;
+	var stdout = process.stdout;
+	var previousRawMode = Boolean(stdin.isRaw);
+	var defaultIndex = options && typeof options.defaultIndex === "number" ? options.defaultIndex : 0;
+	if (defaultIndex < 0 || defaultIndex >= items.length) defaultIndex = 0;
+	var state = { cursorIndex: defaultIndex, selectedIndex: defaultIndex };
+	var settled = false;
+	function removeDataListener() { if (typeof stdin.off === "function") stdin.off("data", handleInput); else stdin.removeListener("data", handleInput); }
+	function cleanup() { if (settled) return; settled = true; try { stdin.setRawMode(previousRawMode); } catch (_) {} try { removeDataListener(); } catch (_) {} if (typeof stdin.pause === "function") stdin.pause(); stdout.write("\x1b[?25h\x1b[?1049l"); }
+	function render() { stdout.write("\x1b[2J\x1b[H"); stdout.write(renderSingleSelectionScreen(title, items, state, options || {}) + "\n"); }
+	function finish() { var item = items[state.cursorIndex] || items[defaultIndex]; cleanup(); console.log("\x1b[32m  ✔ " + item.label + "\x1b[0m\n"); callback(item.value); }
+	function cancel() { cleanup(); console.log("\x1b[31mInteractive install cancelled.\x1b[0m"); process.exit(130); }
+	function handleInput(chunk) {
+		var input = String(chunk || "");
+		if (input === "\u001b[A" || input === "\u001bOA") { state.cursorIndex = (state.cursorIndex - 1 + items.length) % items.length; render(); return; }
+		if (input === "\u001b[B" || input === "\u001bOB") { state.cursorIndex = (state.cursorIndex + 1) % items.length; render(); return; }
+		if (input === " " || input === "\r" || input === "\n") { finish(); return; }
+		if (input === "\u0003" || input === "\u0004" || input === "\u001b" || input === "q" || input === "Q") cancel();
+	}
+	try {
+		stdout.write("\x1b[?1049h\x1b[?25l");
+		if (typeof stdin.setEncoding === "function") stdin.setEncoding("utf8");
+		stdin.setRawMode(true);
+		if (typeof stdin.resume === "function") stdin.resume();
+		stdin.on("data", handleInput);
+		render();
+	} catch (error) {
+		cleanup();
+		console.log("\x1b[33m  Keyboard selection unavailable: " + error.message + "\x1b[0m");
+		selectOneFallback(title, items, callback, options || {});
+	}
+}
+
 
 // ── Install per host ──────────────────────────────────────────────
 
@@ -966,23 +1012,27 @@ function main(argv) {
 		function startInstallFlow() {
 			var steps = [
 				function askHost(next) {
-					console.log(C.cyan + C.bold + "  emb-agent installer" + C.reset);
-					console.log(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
-					console.log("");
-					console.log(C.blue + "\u25B6 Select Runtime" + C.reset);
-					for (var k = 0; k < SUPPORTED_HOSTS.length; k++) {
-						console.log("  " + C.cyan + "[" + (k + 1) + "]" + C.reset + " " + SUPPORTED_HOSTS[k].name);
-					}
-					console.log("  " + C.cyan + "[" + (SUPPORTED_HOSTS.length + 1) + "]" + C.reset + " all");
-					console.log("");
-					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-					rl.question(C.yellow + "Choice [4] > " + C.reset, function(a) { rl.close(); var c = parseInt(a.trim(), 10) || 4; if (c < 1 || c > SUPPORTED_HOSTS.length + 1) c = 4; if (c === SUPPORTED_HOSTS.length + 1) { for (var m = 0; m < SUPPORTED_HOSTS.length; m++) installForHost(projectRoot, SUPPORTED_HOSTS[m]); return; } state.host = SUPPORTED_HOSTS[c - 1]; next(); });
+					var items = SUPPORTED_HOSTS.map(function (host) {
+						return { label: host.name, desc: host.dir, value: host };
+					});
+					items.push({ label: "all", desc: "Install every supported runtime", value: "all" });
+					selectOne("Select Runtime", items, function (selected) {
+						if (selected === "all") {
+							for (var m = 0; m < SUPPORTED_HOSTS.length; m++) installForHost(projectRoot, SUPPORTED_HOSTS[m]);
+							return;
+						}
+						state.host = selected;
+						next();
+					}, { defaultIndex: 3, description: "Choose the host runtime that emb-agent should integrate with." });
 				},
 				function askLocation(next) {
-					console.log(C.blue + "\u25B6 Install Location" + C.reset);
-					console.log("  " + C.cyan + "[1]" + C.reset + " Global  " + C.cyan + "[2]" + C.reset + " Local " + C.green + "(recommended)" + C.reset);
-					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-					rl.question(C.yellow + "Choice [2] > " + C.reset, function(a) { rl.close(); next(); });
+					selectOne("Install Location", [
+						{ label: "Global", desc: "Install to the user config directory", value: "global" },
+						{ label: "Local", desc: "Install into this project (recommended)", value: "local" }
+					], function (selected) {
+						state.location = selected;
+						next();
+					}, { defaultIndex: 1, description: "Project-scoped installs are easier to test and keep isolated." });
 				},
 				function askSpecs(next) {
 					if (extSpecs.length === 0) { console.log(C.dim + "\n  No external specs available.\n" + C.reset); next(); return; }
@@ -1006,10 +1056,13 @@ function main(argv) {
 					}, { contextLabel: "Plugin", contextValue: externalSourceLabel(), skipLabel: "Skip initial skill installation", itemNoun: "skill", itemPlural: "skills" });
 				},
 				function askLanguage(next) {
-					console.log(C.blue + "\u25B6 Reply Language" + C.reset);
-					console.log("  " + C.cyan + "[1]" + C.reset + " English  " + C.cyan + "[2]" + C.reset + " \u4e2d\u6587");
-					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-					rl.question(C.yellow + "Choice [1] > " + C.reset, function(a) { rl.close(); state.lang = a.trim() === "2" ? "zh" : "en"; next(); });
+					selectOne("Reply Language", [
+						{ label: "English", desc: "Use English replies", value: "en" },
+						{ label: "中文", desc: "Use Chinese (Simplified) replies", value: "zh" }
+					], function (selected) {
+						state.lang = selected;
+						next();
+					}, { defaultIndex: 0, description: "Choose the language AI assistants should use in this project." });
 				},
 				function askDeveloper(next) {
 					console.log(C.blue + "\u25B6 Developer Identity" + C.reset);
