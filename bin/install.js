@@ -31,6 +31,15 @@ var SUPPORTED_HOSTS = [
 	{ name: "windsurf", dir: ".windsurf", profile: "core" },
 ];
 
+var GLOBAL_HOST_DIRS = {
+	codex: { env: "CODEX_HOME", parts: [".codex"] },
+	cursor: { env: "CURSOR_CONFIG_DIR", parts: [".cursor"] },
+	claude: { env: "CLAUDE_CONFIG_DIR", parts: [".claude"] },
+	pi: { env: "PI_CODING_AGENT_DIR", parts: [".pi", "agent"] },
+	omp: { env: "OMP_CONFIG_DIR", parts: [".omp"] },
+	windsurf: { env: "WINDSURF_CONFIG_DIR", parts: [".windsurf"] },
+};
+
 // ── Platform detection ────────────────────────────────────────────
 
 function platformKey() {
@@ -195,6 +204,29 @@ function copyDir(src, dest) {
 	}
 }
 
+function hostInstallScope(host) {
+	return host && host.scope ? host.scope : "local";
+}
+
+function hostDirFor(projectRoot, host) {
+	if (host && host.targetDir) return host.targetDir;
+	return path.join(projectRoot, host.dir);
+}
+
+function hostForScope(host, scope) {
+	var h = Object.assign({}, host);
+	h.scope = scope === "global" ? "global" : "local";
+	if (h.scope === "global") {
+		var def = GLOBAL_HOST_DIRS[h.name] || { parts: [h.dir] };
+		var envName = def.env;
+		var fromEnv = envName && process.env[envName];
+		h.targetDir = fromEnv ? path.resolve(fromEnv) : path.join(os.homedir(), ...(def.parts || [h.dir]));
+	} else {
+		delete h.targetDir;
+	}
+	return h;
+}
+
 function copyIf(src, dest) {
 	if (fs.existsSync(src)) fs.copyFileSync(src, dest);
 }
@@ -230,6 +262,7 @@ function deployAgentsMd(templatePath, destPath, templateContent) {
 		templateContent = resolveIncludes(templateContent);
 	}
 
+	ensureDir(path.dirname(destPath));
 	if (!fs.existsSync(destPath)) {
 		fs.writeFileSync(destPath, templateContent);
 		return true;
@@ -596,53 +629,23 @@ function selectOne(title, items, callback, options) {
 		selectOneFallback(title, items, callback, options || {});
 	}
 }
-
-
-function deployOmpNativeCommands(projectRoot, host) {
+function cleanupManagedHostCommands(projectRoot, host) {
 	if (host.name !== "omp") return;
-	var commandsDir = path.join(projectRoot, host.dir, "commands");
-	ensureDir(commandsDir);
-	fs.writeFileSync(path.join(commandsDir, "emb-next.md"), [
-		"---",
-		"name: emb-next",
-		"description: Show emb-agent recommended next step.",
-		"allowed-tools:",
-		"  - Bash",
-		"  - Read",
-		"  - SlashCommand",
-		"---",
-		"",
-		"# emb-next",
-		"",
-		"Run `node .omp/emb-agent/bin/emb-agent.cjs next --brief` from the project root.",
-		"Use the returned `agent_protocol.gate.recommended_command`, `recommended_agent`, `reason`, and `instructions` as authoritative.",
-		"Do not report that there are no tasks when the returned action is onboarding; show the recommended command and follow its gate.",
-		""
-	].join("\n"));
-	fs.writeFileSync(path.join(commandsDir, "emb-onboard.md"), [
-		"---",
-		"name: emb-onboard",
-		"description: Start emb-agent onboarding handoff.",
-		"allowed-tools:",
-		"  - Bash",
-		"  - Read",
-		"  - SlashCommand",
-		"---",
-		"",
-		"# emb-onboard",
-		"",
-		"Run `node .omp/emb-agent/bin/emb-agent.cjs onboard` from the project root.",
-		"Invoke or emulate the `emb-onboard` handoff: audit whether hardware truth is known, scattered in docs, or still unknown.",
-		"Do not start firmware implementation before onboarding resolves the hardware-truth gate.",
-		""
-	].join("\n"));
-	console.log("    OMP native slash commands deployed to .omp/commands/");
+	var commandsDir = path.join(hostDirFor(projectRoot, host), "commands");
+	var managed = ["emb-next.md", "emb-onboard.md", "next.md", "onboard.md", "emb-status.md", "emb-scan.md", "emb-init.md"];
+	for (var i = 0; i < managed.length; i++) {
+		var file = path.join(commandsDir, managed[i]);
+		try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch (_) {}
+	}
 }
+
+
+
 
 // ── Install per host ──────────────────────────────────────────────
 
 function installForHost(projectRoot, host, callback) {
-	var hostDir = path.join(projectRoot, host.dir);
+	var hostDir = hostDirFor(projectRoot, host);
 	var embDir = path.join(hostDir, "emb-agent");
 
 	console.log("\x1b[36m  Installing for " + host.name + " \u2192 " + hostDir + "\x1b[0m");
@@ -654,6 +657,7 @@ function installForHost(projectRoot, host, callback) {
 	ensureDir(path.join(embDir, "command-docs", "emb"));
 	ensureDir(path.join(embDir, "agents"));
 
+	cleanupManagedHostCommands(projectRoot, host);
 	var finished = false;
 	var fallbackTimer = setTimeout(checkDone, 30000);
 	function checkDone() {
@@ -679,7 +683,6 @@ function installForHost(projectRoot, host, callback) {
 		copyDir(COMMAND_DOCS_SRC, path.join(embDir, "command-docs", "emb"));
 		copyDir(AGENTS_SRC, path.join(embDir, "agents"));
 
-		deployOmpNativeCommands(projectRoot, host);
 		injectSpecsIntoAgents(embDir);
 
 		var knowledgeDirs = ["compound", "architecture", "reference", "issues", "refactors", "roadmap", "audits"];
@@ -722,7 +725,7 @@ function installForHost(projectRoot, host, callback) {
 		fs.writeFileSync(path.join(embDir, "VERSION"), VERSION + "\n");
 		fs.writeFileSync(path.join(embDir, "HOST.json"), JSON.stringify({
 			name: host.name, label: host.name.charAt(0).toUpperCase() + host.name.slice(1),
-			install_profile: host.profile, install_scope: "local", target_dir: hostDir, runtime_dir_name: "emb-agent",
+			install_profile: host.profile, install_scope: hostInstallScope(host), target_dir: hostDir, runtime_dir_name: "emb-agent",
 		}, null, 2) + "\n");
 
 		var extScaffoldDir = path.join(RUNTIME_SRC, "scaffolds", "shells", host.dir, "extensions");
@@ -999,7 +1002,7 @@ function injectExternalSpecsIntoRuntimeAgents(projectRoot, host, state) {
 		block += "Source: `" + specDocs[i].path + "`\n\n";
 		if (specDocs[i].body) block += specDocs[i].body + "\n\n";
 	}
-	var agentsDir = path.join(projectRoot, host.dir, "emb-agent", "agents");
+	var agentsDir = path.join(hostDirFor(projectRoot, host), "emb-agent", "agents");
 	if (!fs.existsSync(agentsDir)) return;
 	var files = fs.readdirSync(agentsDir).filter(function (f) { return f.endsWith(".md"); });
 	for (var j = 0; j < files.length; j++) {
@@ -1031,7 +1034,7 @@ function materializeSelectedSpec(projectRoot, item, callback) {
 
 function materializeSelectedSkill(projectRoot, host, item, callback) {
 	var projectSkillRoot = path.join(projectRoot, ".emb-agent", "plugins", item.name);
-	var hostSkillRoot = path.join(projectRoot, host.dir, "skills", item.name);
+	var hostSkillRoot = path.join(hostDirFor(projectRoot, host), "skills", item.name);
 	var sharedSkillRoot = path.join(projectRoot, ".agents", "skills", item.name);
 	ensureDir(path.dirname(projectSkillRoot));
 	ensureDir(path.dirname(hostSkillRoot));
@@ -1180,13 +1183,27 @@ function main(argv) {
 	if (args.specs.length > 0) fs.writeFileSync(path.join(_devDir, ".specs"), args.specs.join(",") + "\n");
 	if (args.skills.length > 0) fs.writeFileSync(path.join(_devDir, ".skills"), args.skills.join(",") + "\n");
 
+	var cliScope = args.global ? "global" : "local";
 	if (args.target === "all") {
-		for (var i = 0; i < SUPPORTED_HOSTS.length; i++) {
-			installForHost(projectRoot, SUPPORTED_HOSTS[i]);
+		var selectedStateAll = { specItems: args.specs.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }), skillItems: args.skills.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }), specs: args.specs, skills: args.skills };
+		var cliIndex = 0;
+		function installNextCliHost() {
+			if (cliIndex >= SUPPORTED_HOSTS.length) return;
+			var nextHost = hostForScope(SUPPORTED_HOSTS[cliIndex++], cliScope);
+			installForHost(projectRoot, nextHost, function (done) {
+				materializeSelectedSupport(projectRoot, nextHost, selectedStateAll, function () {
+					updateProjectActiveSpecs(projectRoot, args.specs);
+					injectSelectedSupport(projectRoot, nextHost, selectedStateAll);
+					done();
+					installNextCliHost();
+				});
+			});
 		}
+		installNextCliHost();
 	} else if (args.target) {
 		var host = SUPPORTED_HOSTS.find(function (h) { return h.name === args.target; });
 		if (!host) { console.error("Unknown host: " + args.target); process.exit(1); }
+		host = hostForScope(host, cliScope);
 		installForHost(projectRoot, host, function (done) {
 			var selectedState = { specItems: args.specs.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }), skillItems: args.skills.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }), specs: args.specs, skills: args.skills };
 			materializeSelectedSupport(projectRoot, host, selectedState, function () {
@@ -1305,7 +1322,7 @@ function main(argv) {
 					var hostIndex = 0;
 					function installNextHost() {
 						if (hostIndex >= hosts.length) return;
-						var host = hosts[hostIndex++];
+						var host = hostForScope(hosts[hostIndex++], state.location);
 						installForHost(projectRoot, host, function (done) {
 							materializeSelectedSupport(projectRoot, host, state, function () {
 								updateProjectActiveSpecs(projectRoot, state.specs || []);

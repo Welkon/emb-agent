@@ -23,6 +23,7 @@ interface EmbAgentResult {
   instructions?: string;
   next?: { command?: string; reason?: string; cli?: string };
   open_tasks?: number;
+  agent_protocol?: { gate?: { recommended_command?: string; recommended_agent?: string } };
   task_candidates?: Array<{ name: string }>;
   // From status --brief
   project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string; active_variant?: string };
@@ -52,6 +53,41 @@ async function runEmbAgent(
   }
 }
 
+function formatRecommendedCommand(r: EmbAgentResult): string {
+  const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
+  const command = String(raw || "").trim();
+  if (!command) return "";
+  if (command.startsWith("/emb:")) return "/emb-" + command.slice("/emb:".length);
+  if (command.startsWith("/")) return command;
+  const normalized = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").replace(/\s+--brief$/, "").trim();
+  return normalized ? "/emb-" + normalized : "";
+}
+
+function formatRecommendedReason(r: EmbAgentResult): string {
+  return String(r.next?.reason || r.reason || "").trim();
+}
+
+function renderNextLines(result: EmbAgentResult): string[] {
+  const lines: string[] = [];
+  if (result.summary) lines.push(`Project: ${result.summary}`);
+  const command = formatRecommendedCommand(result);
+  if (command) {
+    lines.push(`Next command: ${command}`);
+    const reason = formatRecommendedReason(result);
+    if (reason) lines.push(`  ${reason}`);
+  }
+  if (result.agent_protocol?.gate?.recommended_agent) {
+    lines.push(`Recommended agent: ${result.agent_protocol.gate.recommended_agent}`);
+  }
+  if (result.reason) lines.push(`State: ${result.reason}`);
+  if (result.action) lines.push(`Action: ${result.action}`);
+  if (result.instructions) lines.push(`\n${result.instructions}`);
+  if (result.task_candidates?.length) {
+    lines.push(`Tasks: ${result.task_candidates.map((t) => t.name).join(", ")}`);
+  }
+  return lines;
+}
+
 function formatEmbStatus(r: EmbAgentResult): string {
   const parts: string[] = [];
   if (r.project?.active_variant) parts.push(`var:${r.project.active_variant}`);
@@ -68,8 +104,8 @@ function formatEmbStatus(r: EmbAgentResult): string {
   if (r.tasks?.active) parts.push(`▸${r.tasks.active}`);
 
   // Workflow stage
-  if (r.next?.command) parts.push(r.next.command);
-  else if (r.action) parts.push(r.action);
+  const command = formatRecommendedCommand(r);
+  if (command) parts.push(command);
 
   return parts.length > 0 ? `emb: ${parts.join(" · ")}` : "";
 }
@@ -100,18 +136,7 @@ export default function (pi: ExtensionAPI) {
     // Context injection from next --brief
     if (!nextResult) return;
 
-    const lines: string[] = [];
-    if (nextResult.summary) lines.push(`Project: ${nextResult.summary}`);
-    if (nextResult.next?.command) {
-      lines.push(`Next: emb-agent ${nextResult.next.command}`);
-      if (nextResult.next.reason) lines.push(`  ${nextResult.next.reason}`);
-    }
-    if (nextResult.reason) lines.push(`State: ${nextResult.reason}`);
-    if (nextResult.action) lines.push(`Action: ${nextResult.action}`);
-    if (nextResult.instructions) lines.push(`\n${nextResult.instructions}`);
-    if (nextResult.task_candidates?.length) {
-      lines.push(`Tasks: ${nextResult.task_candidates.map((t) => t.name).join(", ")}`);
-    }
+    const lines = renderNextLines(nextResult);
     if (lines.length > 0) {
       await pi.sendMessage(
         {
@@ -152,7 +177,6 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("emb-agent not found or not initialized", "warning");
         return;
       }
-      // Inject via sendUserMessage — works reliably from slash commands
       await pi.sendUserMessage(
         `[/emb-next]\n${JSON.stringify(result, null, 2)}`,
         { deliverAs: "steer" },
@@ -160,48 +184,18 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("emb-status", {
-    description: "Show emb-agent project status",
+  pi.registerCommand("emb-onboard", {
+    description: "Run emb-agent onboarding handoff",
     handler: async (_args, ctx) => {
-      const result = await runEmbAgent(["status", "--brief"], ctx.cwd);
+      const result = await runEmbAgent(["onboard"], ctx.cwd);
       if (!result) {
-        ctx.ui.notify("emb-agent not found or not initialized", "warning");
+        ctx.ui.notify("emb-agent onboard failed or not initialized", "warning");
         return;
       }
       await pi.sendUserMessage(
-        `[/emb-status]\n${JSON.stringify(result, null, 2)}`,
+        `[/emb-onboard]\n${JSON.stringify(result, null, 2)}`,
         { deliverAs: "steer" },
       );
-    },
-  });
-
-  pi.registerCommand("emb-scan", {
-    description: "Run emb-agent scan",
-    handler: async (_args, ctx) => {
-      const result = await runEmbAgent(["capability", "run", "scan"], ctx.cwd);
-      if (!result) {
-        ctx.ui.notify("emb-agent scan failed or not initialized", "warning");
-        return;
-      }
-      await pi.sendUserMessage(
-        `[/emb-scan]\n${JSON.stringify(result, null, 2)}`,
-        { deliverAs: "steer" },
-      );
-    },
-  });
-
-  pi.registerCommand("emb-init", {
-    description: "Initialize emb-agent for the current project",
-    handler: async (_args, ctx) => {
-      const result = await runEmbAgent(["init"], ctx.cwd);
-      if (!result) {
-        ctx.ui.notify(
-          "Failed to init emb-agent. Run: npx emb-agent --target pi",
-          "warning",
-        );
-        return;
-      }
-      ctx.ui.notify("emb-agent initialized", "info");
     },
   });
 }

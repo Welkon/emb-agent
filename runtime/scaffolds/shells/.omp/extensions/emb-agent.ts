@@ -403,6 +403,17 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+
+  async function promptAgent(text: string) {
+    await pi.sendMessage(
+      {
+        role: "user",
+        content: [{ type: "text", text }],
+      },
+      { deliverAs: "steer", triggerTurn: true },
+    );
+  }
+
   pi.on("session_start", async (_event: unknown, ctx: { cwd: string; ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void } }) => {
     await onSessionEnter(ctx);
   });
@@ -421,7 +432,7 @@ export default function (pi: ExtensionAPI) {
     const tasks = result.task_candidates;
     if (!tasks?.length) {
       const lines = renderNextLines(result);
-      await pi.sendUserMessage("[/emb-next]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
+      await promptAgent("[/emb-next]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) + "\n\nAct on the above.");
       return;
     }
 
@@ -453,11 +464,10 @@ export default function (pi: ExtensionAPI) {
     if (!taskName) return;
     const r = await runEmbAgent(["task", "activate", taskName], ctx.cwd);
     const title = tasks.find((t) => t.name === taskName)?.title || taskName;
-    await pi.sendUserMessage(
-      r
+    await promptAgent(
+      (r
         ? "Activated: " + taskName + " — " + title + ". Confirm and suggest next step."
-        : "Activation failed: " + taskName + ".",
-      { deliverAs: "steer" },
+        : "Activation failed: " + taskName + ".")
     );
   }
 
@@ -473,53 +483,12 @@ export default function (pi: ExtensionAPI) {
       return;
     }
     const lines = renderNextLines(result);
-    await pi.sendUserMessage("[/emb-onboard]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
+    await promptAgent("[/emb-onboard]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) + "\n\nAct on the above.");
   }
 
   pi.registerCommand("emb-onboard", {
     description: "Run emb-agent onboarding handoff",
     handler: handleOnboardCommand,
-  });
-
-  pi.registerCommand("emb-status", {
-    description: "Show emb-agent project status",
-    handler: async (_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void } }) => {
-      const result = await runEmbAgent(["status", "--brief"], ctx.cwd);
-      if (!result) {
-        ctx.ui.notify("emb-agent not found or not initialized", "warning");
-        return;
-      }
-      pi.appendEntry("emb-agent", { status: result });
-      await pi.sendUserMessage(
-        "Project: " + (result.project?.mcu || "?") + ", " + (result.tasks?.open ?? 0) + " tasks, " + (result.tasks?.wiki_pages ?? 0) + " wiki. Summarize.",
-        { deliverAs: "steer" },
-      );
-    },
-  });
-
-  pi.registerCommand("emb-scan", {
-    description: "Run emb-agent scan",
-    handler: async (_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void } }) => {
-      const result = await runEmbAgent(["capability", "run", "scan"], ctx.cwd);
-      if (!result) {
-        ctx.ui.notify("emb-agent scan failed or not initialized", "warning");
-        return;
-      }
-      pi.appendEntry("emb-agent", { scan: result });
-      await pi.sendUserMessage("[/emb-scan] done. Summarize findings.", { deliverAs: "steer" });
-    },
-  });
-
-  pi.registerCommand("emb-init", {
-    description: "Initialize emb-agent for the current project",
-    handler: async (_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void } }) => {
-      const result = await runEmbAgent(["init"], ctx.cwd);
-      if (!result) {
-        ctx.ui.notify("Failed to init emb-agent. Run: npx emb-agent --target omp", "warning");
-        return;
-      }
-      ctx.ui.notify("emb-agent initialized", "info");
-    },
   });
 
   // ── Tool: ask_user_question ────────────────────────────────────
