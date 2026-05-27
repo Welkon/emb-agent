@@ -1,6 +1,6 @@
 ---
 name: emb-arch-reviewer
-description: Architecture review agent for selection, system pressure, and pre-mortem analysis.
+description: Review firmware architecture for ROM/RAM budgets, ISR latency, power domains.
 tools: Read, Bash, Grep, Glob
 color: orange
 ---

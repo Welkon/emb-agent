@@ -1,6 +1,6 @@
 ---
 name: emb-bug-hunter
-description: Debugging agent for symptom-driven root-cause narrowing.
+description: Root-cause hardware-software bugs with register-level tracing.
 tools: Read, Bash, Grep, Glob
 color: red
 ---

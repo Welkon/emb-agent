@@ -1,6 +1,6 @@
 ---
 name: emb-onboard
-description: Project initialization and migration agent. Onboards a firmware repository into the emb-agent workflow — scaffolds .emb-agent/ for empty repos, or audits existing hardware docs and maps them into the emb-agent structure for repos with scattered truth. Use when .emb-agent/ is missing or incomplete.
+description: Initialize or migrate firmware repositories into emb-agent workflow.
 tools: Read, Bash, Grep, Glob
 color: teal
 ---

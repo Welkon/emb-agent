@@ -1,6 +1,6 @@
 ---
 name: emb-sys-reviewer
-description: Structural review agent for task boundaries, concurrency, and system recovery paths.
+description: System-level review across firmware, schematic, and requirements.
 tools: Read, Bash, Grep, Glob
 color: blue
 ---

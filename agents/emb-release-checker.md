@@ -1,6 +1,6 @@
 ---
 name: emb-release-checker
-description: Release-focused agent for upgrade, rollback, offline defaults, and recovery paths.
+description: Pre-release validation of build, tests, and release artifacts.
 tools: Read, Bash, Grep, Glob
 color: purple
 ---

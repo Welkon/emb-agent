@@ -1,6 +1,6 @@
 ---
 name: emb-hw-scout
-description: Embedded hardware scout agent for hardware truth, timing, registers, and board constraints.
+description: Find hardware facts: datasheets, schematics, pin maps, registers, board constraints.
 tools: Read, Bash, Grep, Glob
 color: cyan
 ---

@@ -1,6 +1,6 @@
 ---
 name: emb-fw-doer
-description: Execution agent for minimal code or documentation changes.
+description: Implement firmware code or docs changes; structure health pre-check required.
 tools: Read, Bash, Grep, Glob
 color: green
 ---
