@@ -598,6 +598,47 @@ function selectOne(title, items, callback, options) {
 }
 
 
+function deployOmpNativeCommands(projectRoot, host) {
+	if (host.name !== "omp") return;
+	var commandsDir = path.join(projectRoot, host.dir, "commands");
+	ensureDir(commandsDir);
+	fs.writeFileSync(path.join(commandsDir, "emb-next.md"), [
+		"---",
+		"name: emb-next",
+		"description: Show emb-agent recommended next step.",
+		"allowed-tools:",
+		"  - Bash",
+		"  - Read",
+		"  - SlashCommand",
+		"---",
+		"",
+		"# emb-next",
+		"",
+		"Run `node .omp/emb-agent/bin/emb-agent.cjs next --brief` from the project root.",
+		"Use the returned `agent_protocol.gate.recommended_command`, `recommended_agent`, `reason`, and `instructions` as authoritative.",
+		"Do not report that there are no tasks when the returned action is onboarding; show the recommended command and follow its gate.",
+		""
+	].join("\n"));
+	fs.writeFileSync(path.join(commandsDir, "emb-onboard.md"), [
+		"---",
+		"name: emb-onboard",
+		"description: Start emb-agent onboarding handoff.",
+		"allowed-tools:",
+		"  - Bash",
+		"  - Read",
+		"  - SlashCommand",
+		"---",
+		"",
+		"# emb-onboard",
+		"",
+		"Run `node .omp/emb-agent/bin/emb-agent.cjs onboard` from the project root.",
+		"Invoke or emulate the `emb-onboard` handoff: audit whether hardware truth is known, scattered in docs, or still unknown.",
+		"Do not start firmware implementation before onboarding resolves the hardware-truth gate.",
+		""
+	].join("\n"));
+	console.log("    OMP native slash commands deployed to .omp/commands/");
+}
+
 // ── Install per host ──────────────────────────────────────────────
 
 function installForHost(projectRoot, host, callback) {
@@ -638,6 +679,7 @@ function installForHost(projectRoot, host, callback) {
 		copyDir(COMMAND_DOCS_SRC, path.join(embDir, "command-docs", "emb"));
 		copyDir(AGENTS_SRC, path.join(embDir, "agents"));
 
+		deployOmpNativeCommands(projectRoot, host);
 		injectSpecsIntoAgents(embDir);
 
 		var knowledgeDirs = ["compound", "architecture", "reference", "issues", "refactors", "roadmap", "audits"];

@@ -421,7 +421,7 @@ export default function (pi: ExtensionAPI) {
     const tasks = result.task_candidates;
     if (!tasks?.length) {
       const lines = renderNextLines(result);
-      pi.sendUserMessage("[/emb-next]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
+      await pi.sendUserMessage("[/emb-next]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
       return;
     }
 
@@ -453,7 +453,7 @@ export default function (pi: ExtensionAPI) {
     if (!taskName) return;
     const r = await runEmbAgent(["task", "activate", taskName], ctx.cwd);
     const title = tasks.find((t) => t.name === taskName)?.title || taskName;
-    pi.sendUserMessage(
+    await pi.sendUserMessage(
       r
         ? "Activated: " + taskName + " — " + title + ". Confirm and suggest next step."
         : "Activation failed: " + taskName + ".",
@@ -473,7 +473,7 @@ export default function (pi: ExtensionAPI) {
       return;
     }
     const lines = renderNextLines(result);
-    pi.sendUserMessage("[/emb-onboard]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
+    await pi.sendUserMessage("[/emb-onboard]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)), { deliverAs: "steer" });
   }
 
   pi.registerCommand("emb-onboard", {
@@ -490,7 +490,7 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       pi.appendEntry("emb-agent", { status: result });
-      pi.sendUserMessage(
+      await pi.sendUserMessage(
         "Project: " + (result.project?.mcu || "?") + ", " + (result.tasks?.open ?? 0) + " tasks, " + (result.tasks?.wiki_pages ?? 0) + " wiki. Summarize.",
         { deliverAs: "steer" },
       );
@@ -506,7 +506,7 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       pi.appendEntry("emb-agent", { scan: result });
-      pi.sendUserMessage("[/emb-scan] done. Summarize findings.", { deliverAs: "steer" });
+      await pi.sendUserMessage("[/emb-scan] done. Summarize findings.", { deliverAs: "steer" });
     },
   });
 
