@@ -87,17 +87,13 @@ function downloadBinary(dest, callback) {
 			file.on("finish", function () { finishFile(file); });
 		});
 		req.on("error", function () { file.close(function () { done(false); }); });
-		file.on("error", function () { done(false); });
+		req.setTimeout(30000, function () { req.destroy(); file.close(function () { done(false); }); });
 	}
-	var url = "https://github.com/Welkon/emb-agent/releases/download/v" + VERSION + "/" + binaryName();
-	console.log("    Downloading " + binaryName() + " from GitHub Releases...");
-	fetch(url, 3);
+	fetch("https://github.com/Welkon/emb-agent/releases/latest/download/" + binaryName(), 3);
 }
 
 function deployRustBinary(embDir, callback) {
-	var destName = "emb-agent-rs" + (process.platform === "win32" ? ".exe" : "");
-	var dest = path.join(embDir, "bin", destName);
-
+	var dest = path.join(embDir, "bin", "emb-agent-rs" + (process.platform === "win32" ? ".exe" : ""));
 	// 1. Try local build artifact
 	var src = binarySrc();
 	if (fs.existsSync(src)) {
@@ -106,11 +102,8 @@ function deployRustBinary(embDir, callback) {
 		callback();
 		return;
 	}
-
-	// 2. Fallback: check for generic names in bin/
-	var genericNames = process.platform === "win32"
-		? ["emb-agent-rs.exe", "emb-agent-rs"]
-		: ["emb-agent-rs", "emb-agent-rs.exe"];
+	// 2. Try generic fallback names
+	var genericNames = ["emb-agent-rs-linux-x86_64", "emb-agent-rs-macos-x86_64", "emb-agent-rs-windows-x86_64.exe"];
 	for (var i = 0; i < genericNames.length; i++) {
 		var p = path.join(RUST_BIN_DIR, genericNames[i]);
 		if (fs.existsSync(p)) {
@@ -120,47 +113,53 @@ function deployRustBinary(embDir, callback) {
 			return;
 		}
 	}
-
-	// 3. Download from GitHub Releases
-	downloadBinary(dest, function (success) {
-		if (success) {
-			console.log("    Rust binary downloaded (" + binaryName() + ")");
-			callback();
-			return;
-		}
-		console.log("    \u26A0 Rust binary not found for " + platformKey());
-		console.log("    Build with: cargo build --release");
-		console.log("    Or download: https://github.com/Welkon/emb-agent/releases");
+	// 3. Download from GitHub
+	downloadBinary(dest, function (ok) {
+		if (ok) console.log("\x1b[2m    Rust binary deployed (downloaded)\x1b[0m");
+		else console.log("\x1b[33m    Warning: binary not found, skipping\x1b[0m");
 		callback();
 	});
 }
 
-// ── Utilities ─────────────────────────────────────────────────────
+// ── Parse CLI args ────────────────────────────────────────────────
 
 function usage() {
-	console.log(
-		[
-			"emb-agent v" + VERSION + " installer",
-			"",
-			"Usage:",
-			"  npx emb-agent                            # Interactive install",
-			"  npx emb-agent --target pi                # Install for pi",
-			"  npx emb-agent --target omp               # Install for Oh My Pi",
-			"  npx emb-agent --target codex             # Install for Codex",
-			"  npx emb-agent --target all               # Install for all hosts",
-			"  npx emb-agent --help                     # Show this help",
-			"",
-			"The installer deploys:",
-			"  - Rust binary to .<host>/emb-agent/bin/",
-			"  - Thin Node.js wrapper (emb-agent.cjs)",
-			"  - Runtime templates (profiles, schemas, scaffolds)",
-			"  - Command documentation and agent prompts",
-			"  - AI host rules (AGENTS.md, .<host>/rules/, .<host>/instructions.md)",
-		].join("\n"),
-	);
+	console.log([
+		"emb-agent v" + VERSION,
+		"",
+		"Usage:",
+		"  npx emb-agent                            # Interactive install",
+		"  npx emb-agent --target pi                # Install for pi",
+		"  npx emb-agent --target all               # Install for all hosts",
+		"",
+		"Options:",
+		"  --target <name>   Host: codex, cursor, claude, pi, omp, windsurf, all",
+		"  --developer <name> Developer identity",
+		"  --local, -l        Install to project directory (recommended)",
+		"  --global, -g       Install to global config",
+		"  --profile <name>   Install profile (default: core)",
+		"  --lang <en|zh>     Reply language",
+		"  --spec <name>      Enable external spec (repeatable)",
+		"  --skill <name>     Enable external skill (repeatable)",
+		"  --registry <url>   External spec registry URL",
+		"  --skill-source <url> External skill source URL",
+		"  --force            Overwrite existing files",
+		"  --help, -h         Show this help",
+		"",
+		"Examples:",
+		"  npx emb-agent                                                    # Interactive",
+		"  npx emb-agent --target omp --developer felix --spec scmcu-space  # Direct",
+		"",
+		"Installs to:",
+		"  - Rust binary (cached/downloaded)",
+		"  - Runtime scaffolds, templates, agents, specs",
+		"  - Host-specific config (settings.json, hooks.json, AGENTS.md)",
+		"  - AI host rules (AGENTS.md, .<host>/rules/, .<host>/instructions.md)",
+	].join("\n"));
 }
+
 function parseArgs(argv) {
-	var args = { target: "", developer: "", local: false, global: false, profile: "core", lang: "", specs: [], registry: "", skillSource: "", help: false, force: false };
+	var args = { target: "", developer: "", local: false, global: false, profile: "core", lang: "", specs: [], skills: [], registry: "", skillSource: "", help: false, force: false };
 	for (var i = 0; i < argv.length; i++) {
 		var t = argv[i];
 		if (t === "--help" || t === "-h") args.help = true;
@@ -172,11 +171,14 @@ function parseArgs(argv) {
 		else if (t === "--profile") args.profile = argv[++i] || "core";
 		else if (t === "--lang") args.lang = argv[++i] || "";
 		else if (t === "--spec") { var s = argv[++i]; if (s) args.specs.push(s); }
-		else if (t === "--skill-source") args.skillSource = argv[++i] || "";
+		else if (t === "--skill") { var sk = argv[++i]; if (sk) args.skills.push(sk); }
 		else if (t === "--registry" || t === "-r") args.registry = argv[++i] || "";
+		else if (t === "--skill-source") args.skillSource = argv[++i] || "";
 	}
 	return args;
 }
+
+// ── Helpers ───────────────────────────────────────────────────────
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 
@@ -188,94 +190,69 @@ function copyDir(src, dest) {
 		var e = entries[i];
 		var s = path.join(src, e.name);
 		var d = path.join(dest, e.name);
-		if (e.isDirectory()) copyDir(s, d);
-		else fs.copyFileSync(s, d);
+		if (e.isDirectory()) { copyDir(s, d); }
+		else { fs.copyFileSync(s, d); }
 	}
 }
 
 function copyIf(src, dest) {
-	if (fs.existsSync(src)) {
-		ensureDir(path.dirname(dest));
-		fs.copyFileSync(src, dest);
-		return true;
-	}
-	return false;
+	if (fs.existsSync(src)) fs.copyFileSync(src, dest);
 }
 
-// ── Template resolution ──────────────────────────────────────────
+// ── AGENTS.md deployment ──────────────────────────────────────────
 
-function resolveTemplate(content, partialsDir, vars) {
-	vars = vars || {};
-	partialsDir = partialsDir || PARTIALS_DIR;
-
-	// Resolve {{INCLUDE:_partials/<file>}} recursively
-	content = content.replace(/\{\{INCLUDE:_partials\/([^}]+)\}\}/g, function (match, filename) {
-		var partialPath = path.join(partialsDir, filename.trim());
-		if (fs.existsSync(partialPath)) {
-			return resolveTemplate(fs.readFileSync(partialPath, "utf8"), partialsDir, vars);
-		}
-		console.warn("    Warning: partial not found: " + filename);
-		return match;
+function resolveIncludes(content) {
+	return content.replace(/\{\{INCLUDE:_partials\/([^}]+)\}\}/g, function (_, name) {
+		var incPath = path.join(PARTIALS_DIR, name);
+		if (fs.existsSync(incPath)) return fs.readFileSync(incPath, "utf8").trim();
+		return "<!-- missing: " + name + " -->";
 	});
+}
 
-	// Replace variable placeholders
-	for (var key in vars) {
-		if (vars.hasOwnProperty(key)) {
-			content = content.split("{{" + key + "}}").join(vars[key]);
-		}
-	}
-
-	return content;
+function applyTemplate(content, vars) {
+	return content.replace(/\{\{([A-Z_]+)\}\}/g, function (_, key) {
+		return vars[key] !== undefined ? vars[key] : "{{" + key + "}}";
+	});
 }
 
 function resolveAndDeploy(srcPath, destPath, vars) {
 	if (!fs.existsSync(srcPath)) return false;
-
-	var content = fs.readFileSync(srcPath, "utf8");
-	content = resolveTemplate(content, PARTIALS_DIR, vars);
-
-	ensureDir(path.dirname(destPath));
-	fs.writeFileSync(destPath, content);
-	return true;
+	var raw = fs.readFileSync(srcPath, "utf8");
+	var resolved = resolveIncludes(raw);
+	var rendered = applyTemplate(resolved, vars);
+	return deployAgentsMd(srcPath, destPath, rendered);
 }
 
-function deployAgentsMd(srcPath, destPath, vars) {
-	if (!fs.existsSync(srcPath)) return false;
-
-	var templateContent = fs.readFileSync(srcPath, "utf8");
-	templateContent = resolveTemplate(templateContent, PARTIALS_DIR, vars);
-
-	ensureDir(path.dirname(destPath));
+function deployAgentsMd(templatePath, destPath, templateContent) {
+	if (!templateContent) {
+		if (!fs.existsSync(templatePath)) return false;
+		templateContent = fs.readFileSync(templatePath, "utf8");
+		templateContent = resolveIncludes(templateContent);
+	}
 
 	if (!fs.existsSync(destPath)) {
-		// Fresh deploy: write full template
 		fs.writeFileSync(destPath, templateContent);
 		return true;
 	}
 
-	// Existing file: only update the managed EMB-AGENT block
 	var existing = fs.readFileSync(destPath, "utf8");
 	var blockRe = /<!-- EMB-AGENT:START -->[\s\S]*?<!-- EMB-AGENT:END -->/;
 	var templateBlock = templateContent.match(blockRe);
 	if (!templateBlock) {
-		// Template has no EMB-AGENT block — write fresh
 		fs.writeFileSync(destPath, templateContent);
 		return true;
 	}
 
 	if (blockRe.test(existing)) {
-		// Replace existing EMB-AGENT block with template version
 		var updated = existing.replace(blockRe, templateBlock[0]);
 		fs.writeFileSync(destPath, updated);
 		return true;
 	}
 
-	// File exists but has no EMB-AGENT block: overwrite with managed template
 	fs.writeFileSync(destPath, templateContent);
 	console.log("    " + path.basename(destPath) + " overwritten with managed template");
 	return true;
 }
-
 
 // ── Agent spec injection ─────────────────────────────────────────
 
@@ -287,7 +264,6 @@ function injectSpecsIntoAgents(embDir) {
 	var specs = (registry.specs || []).filter(function (s) { return s.auto_inject && s.path; });
 	if (specs.length === 0) return;
 
-	// Read and prepare spec blocks with enforcement scopes
 	var specEntries = [];
 	for (var si = 0; si < specs.length; si++) {
 		var spec = specs[si];
@@ -302,21 +278,16 @@ function injectSpecsIntoAgents(embDir) {
 		var body = fmMatch[2];
 		var title = (fmText.match(/^title:\s*(.+)$/m) || [])[1] || spec.title || spec.name;
 		var scopes = spec.enforcement_scopes || [];
-		// Parse agent names from enforcement_scopes (strip "code-writing" pseudo-scope)
 		var agentNames = [];
 		for (var sci = 0; sci < scopes.length; sci++) {
 			var s = scopes[sci].trim();
 			if (s.startsWith("emb-")) agentNames.push(s);
 		}
 
-		specEntries.push({
-			name: spec.name, title: title, body: body,
-			agentNames: agentNames, scopes: scopes
-		});
+		specEntries.push({ name: spec.name, title: title, body: body, agentNames: agentNames, scopes: scopes });
 	}
 	if (specEntries.length === 0) return;
 
-	// Inject into each agent .md file
 	var agentsDir = path.join(embDir, "agents");
 	if (!fs.existsSync(agentsDir)) return;
 
@@ -328,37 +299,74 @@ function injectSpecsIntoAgents(embDir) {
 		var agentName = agentFile.replace(/\.md$/, "");
 		var content = fs.readFileSync(agentPath, "utf8");
 
-		// Remove any previously injected spec blocks (idempotent re-install)
 		content = content.replace(/\n<!-- INJECTED_SPECS_START -->[\s\S]*?<!-- INJECTED_SPECS_END -->\n?/g, "");
 
-		// Determine which specs apply to this agent:
-		// If any spec has no agent-level enforcement_scopes, it applies to all agents.
-		// Otherwise, only specs that explicitly list this agent.
 		var applicable = [];
 		for (var si2 = 0; si2 < specEntries.length; si2++) {
 			var se = specEntries[si2];
-			if (se.agentNames.length === 0) {
-				applicable.push(se); // no agent scoping → all agents
-			} else if (se.agentNames.indexOf(agentName) !== -1) {
-				applicable.push(se);
-			}
+			if (se.agentNames.length === 0) { applicable.push(se); }
+			else if (se.agentNames.indexOf(agentName) >= 0) { applicable.push(se); }
 		}
-
 		if (applicable.length === 0) continue;
 
-		// Build injection block
-		var injection = "\n<!-- INJECTED_SPECS_START -->\n";
-		for (var si3 = 0; si3 < applicable.length; si3++) {
-			var sb = applicable[si3];
-			injection += "\n## Spec: " + sb.title + "\n\n" + sb.body + "\n";
+		var block = "\n<!-- INJECTED_SPECS_START -->\n";
+		block += "<!-- Auto-generated by emb-agent installer. Do not edit manually. -->\n\n";
+		for (var ai2 = 0; ai2 < applicable.length; ai2++) {
+			block += "## " + applicable[ai2].title + "\n\n";
+			block += applicable[ai2].body.trim() + "\n\n---\n";
 		}
-		injection += "<!-- INJECTED_SPECS_END -->\n";
+		block += "<!-- INJECTED_SPECS_END -->\n";
 
-		fs.writeFileSync(agentPath, content + injection);
+		content = content.replace(/\n?<!-- INJECTED_SPECS_END -->\s*$/, "");
+		content += block;
+		fs.writeFileSync(agentPath, content);
 		injectedCount++;
 	}
+	if (injectedCount > 0) console.log("    Spec rules injected into " + injectedCount + " agents (enforcement-scoped)");
+}
 
-	console.log("    Spec rules injected into " + injectedCount + " agents (enforcement-scoped)");
+// ── Keypress list selection ───────────────────────────────────────
+
+function selectList(title, items, callback) {
+	var readline = require("readline");
+	var cursor = 0;
+	var selected = [];
+	for (var i = 0; i < items.length; i++) selected.push(false);
+
+	readline.emitKeypressEvents(process.stdin);
+	if (process.stdin.isTTY) process.stdin.setRawMode(true);
+
+	function render() {
+		// Move cursor up to re-render
+		if (render.lines) process.stdout.write("\x1b[" + render.lines + "A");
+		var lines = 0;
+		process.stdout.write("\x1b[2K\r\x1b[36m\x1b[1m  " + title + "\x1b[0m\n"); lines++;
+		process.stdout.write("\x1b[2K\r\x1b[2m  \u2191\u2193 move  space toggle  enter confirm\x1b[0m\n"); lines++;
+		for (var i = 0; i < items.length; i++) {
+			var prefix = i === cursor ? "\x1b[33m\u25B6\x1b[0m " : "  ";
+			var check = selected[i] ? "\x1b[32m\u2714\x1b[0m" : "\x1b[2m\u25CB\x1b[0m";
+			process.stdout.write("\x1b[2K\r" + prefix + check + " " + items[i].label + "\x1b[2m \u2014 " + (items[i].desc || "").substring(0, 65) + "\x1b[0m\n");
+			lines++;
+		}
+		render.lines = lines;
+	}
+
+	function onKeypress(str, key) {
+		if (key.name === "up") { cursor = (cursor - 1 + items.length) % items.length; render(); }
+		else if (key.name === "down") { cursor = (cursor + 1) % items.length; render(); }
+		else if (key.name === "space") { selected[cursor] = !selected[cursor]; render(); }
+		else if (key.name === "return") {
+			process.stdin.removeListener("keypress", onKeypress);
+			if (process.stdin.isTTY) process.stdin.setRawMode(false);
+			var result = [];
+			for (var i = 0; i < items.length; i++) { if (selected[i]) result.push(items[i].value); }
+			process.stdout.write("\x1b[32m  \u2714 " + (result.length > 0 ? result.join(", ") : "none") + "\x1b[0m\n\n");
+			callback(result);
+		}
+	}
+
+	process.stdin.on("keypress", onKeypress);
+	render();
 }
 
 // ── Install per host ──────────────────────────────────────────────
@@ -367,16 +375,13 @@ function installForHost(projectRoot, host) {
 	var hostDir = path.join(projectRoot, host.dir);
 	var embDir = path.join(hostDir, "emb-agent");
 
-	var C = { reset: "\x1b[0m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m" };
-	console.log(C.cyan + "  Installing for " + host.name + " \u2192 " + hostDir + C.reset);
+	console.log("\x1b[36m  Installing for " + host.name + " \u2192 " + hostDir + "\x1b[0m");
 
-	// Core directories
 	ensureDir(path.join(embDir, "bin"));
 	ensureDir(path.join(embDir, "commands", "emb"));
 	ensureDir(path.join(embDir, "command-docs", "emb"));
 	ensureDir(path.join(embDir, "agents"));
 
-	// Rust binary (async download)
 	var finished = false;
 	var fallbackTimer = setTimeout(checkDone, 30000);
 	function checkDone() {
@@ -388,40 +393,27 @@ function installForHost(projectRoot, host) {
 	deployRustBinary(embDir, checkDone);
 
 	function finish() {
-		// Thin Node.js wrapper
 		var wrapperPath = path.join(RUNTIME_SRC, "bin", "emb-agent.cjs");
 		copyIf(wrapperPath, path.join(embDir, "bin", "emb-agent.cjs"));
 
-		// Runtime templates
 		copyDir(path.join(RUNTIME_SRC, "profiles"), path.join(embDir, "profiles"));
-		copyDir(path.join(RUNTIME_SRC, "schemas"), path.join(embDir, "schemas"));
 		copyDir(path.join(RUNTIME_SRC, "scaffolds"), path.join(embDir, "scaffolds"));
 		copyDir(path.join(RUNTIME_SRC, "templates"), path.join(embDir, "templates"));
 		copyDir(path.join(RUNTIME_SRC, "registry"), path.join(embDir, "registry"));
 		copyDir(path.join(RUNTIME_SRC, "specs"), path.join(embDir, "specs"));
-		copyDir(path.join(RUNTIME_SRC, "chips"), path.join(embDir, "chips"));
 
-		// Config
 		copyIf(path.join(RUNTIME_SRC, "config.json"), path.join(embDir, "config.json"));
-
-		// Commands documentation
 		copyDir(COMMANDS_SRC, path.join(embDir, "commands", "emb"));
 		copyDir(COMMAND_DOCS_SRC, path.join(embDir, "command-docs", "emb"));
-
-		// Agent prompts
 		copyDir(AGENTS_SRC, path.join(embDir, "agents"));
 
-		// Inject spec rules into agent prompts
 		injectSpecsIntoAgents(embDir);
 
-		// ── Knowledge infrastructure ────────────────────────────────
-		// Create knowledge directories
 		var knowledgeDirs = ["compound", "architecture", "reference", "issues", "refactors", "roadmap", "audits"];
 		for (var kdi = 0; kdi < knowledgeDirs.length; kdi++) {
 			ensureDir(path.join(embDir, knowledgeDirs[kdi]));
 		}
 
-		// Deploy shared references
 		var conventionsSrc = path.join(REFERENCE_SRC, "shared-conventions.md");
 		if (fs.existsSync(conventionsSrc)) {
 			fs.copyFileSync(conventionsSrc, path.join(embDir, "reference", "shared-conventions.md"));
@@ -433,7 +425,6 @@ function installForHost(projectRoot, host) {
 			console.log("    knowledge-evolution.md deployed");
 		}
 
-		// Deploy attention.md template (only if not exists)
 		var attentionTpl = path.join(RUNTIME_SRC, "templates", "attention.md.tpl");
 		var attentionDest = path.join(embDir, "attention.md");
 		if (fs.existsSync(attentionTpl) && !fs.existsSync(attentionDest)) {
@@ -441,7 +432,6 @@ function installForHost(projectRoot, host) {
 			console.log("    attention.md deployed");
 		}
 
-		// Deploy ARCHITECTURE.md template (only if not exists)
 		var archTpl = path.join(RUNTIME_SRC, "templates", "ARCHITECTURE.md.tpl");
 		var archDest = path.join(embDir, "architecture", "ARCHITECTURE.md");
 		if (fs.existsSync(archTpl) && !fs.existsSync(archDest)) {
@@ -449,32 +439,19 @@ function installForHost(projectRoot, host) {
 			console.log("    architecture/ARCHITECTURE.md deployed");
 		}
 
-		// Deploy compound templates
-		var compoundTpls = [
-			"compound-learn.md.tpl", "compound-decision.md.tpl", "compound-trap.md.tpl",
-			"compound-explore.md.tpl", "compound-trick.md.tpl"
-		];
+		var compoundTpls = ["compound-learn.md.tpl", "compound-decision.md.tpl", "compound-trap.md.tpl", "compound-explore.md.tpl", "compound-trick.md.tpl"];
 		for (var cti = 0; cti < compoundTpls.length; cti++) {
 			var ctSrc = path.join(RUNTIME_SRC, "templates", compoundTpls[cti]);
 			var ctDest = path.join(embDir, "templates", compoundTpls[cti]);
 			if (fs.existsSync(ctSrc)) fs.copyFileSync(ctSrc, ctDest);
 		}
 
-		// Host metadata
 		fs.writeFileSync(path.join(embDir, "VERSION"), VERSION + "\n");
-		fs.writeFileSync(
-			path.join(embDir, "HOST.json"),
-			JSON.stringify({
-				name: host.name,
-				label: host.name.charAt(0).toUpperCase() + host.name.slice(1),
-				install_profile: host.profile,
-				install_scope: "local",
-				target_dir: hostDir,
-				runtime_dir_name: "emb-agent",
-			}, null, 2) + "\n",
-		);
+		fs.writeFileSync(path.join(embDir, "HOST.json"), JSON.stringify({
+			name: host.name, label: host.name.charAt(0).toUpperCase() + host.name.slice(1),
+			install_profile: host.profile, install_scope: "local", target_dir: hostDir, runtime_dir_name: "emb-agent",
+		}, null, 2) + "\n");
 
-		// Deploy host-specific extension
 		var extScaffoldDir = path.join(RUNTIME_SRC, "scaffolds", "shells", host.dir, "extensions");
 		if (fs.existsSync(extScaffoldDir)) {
 			var extDir = path.join(hostDir, "extensions");
@@ -486,7 +463,6 @@ function installForHost(projectRoot, host) {
 			}
 		}
 
-		// Deploy shared skill
 		var skillScaffoldDir = path.join(RUNTIME_SRC, "scaffolds", "skills", "emb-agent");
 		if (fs.existsSync(skillScaffoldDir)) {
 			var skillDir = path.join(hostDir, "skills", "emb-agent");
@@ -498,7 +474,6 @@ function installForHost(projectRoot, host) {
 			}
 		}
 
-		// Deploy host-specific config files
 		var hostShellDir = path.join(RUNTIME_SRC, "scaffolds", "shells", host.dir);
 		var configFiles = ["hooks.json", "settings.json"];
 		for (var ci = 0; ci < configFiles.length; ci++) {
@@ -510,25 +485,8 @@ function installForHost(projectRoot, host) {
 			}
 		}
 
-		// Cursor custom commands
-		if (host.dir === ".cursor") {
-			var cmdScaffoldDir = path.join(hostShellDir, "commands");
-			if (fs.existsSync(cmdScaffoldDir)) {
-				var cmdDir = path.join(hostDir, "commands");
-				ensureDir(cmdDir);
-				copyDir(cmdScaffoldDir, cmdDir);
-				console.log("    Commands deployed to .cursor/commands/");
-			}
-		}
-
-		// ── Rule injection ──────────────────────────────────────────
-		var templateVars = {
-			NAME: "emb-agent",
-			SUMMARY: "Embedded firmware workflow — project truth, task tracking, knowledge wiki, schematic analysis, chip support"
-		};
-
-		// AGENTS.md at project root (always deployed)
-		if (deployAgentsMd(
+		var templateVars = { PROJECT_NAME: path.basename(projectRoot), INSTALL_DATE: new Date().toISOString().split("T")[0] };
+		if (resolveAndDeploy(
 			path.join(RUNTIME_SRC, "scaffolds", "shells", "AGENTS.md"),
 			path.join(projectRoot, "AGENTS.md"),
 			templateVars
@@ -536,11 +494,10 @@ function installForHost(projectRoot, host) {
 			console.log("    AGENTS.md deployed to project root");
 		}
 
-		// Host-specific root instruction files
 		var hostRootFiles = { claude: "CLAUDE.md", codex: "CODEX.md" };
 		var rootFile = hostRootFiles[host.name];
 		if (rootFile) {
-		if (deployAgentsMd(
+			if (resolveAndDeploy(
 				path.join(RUNTIME_SRC, "scaffolds", "shells", rootFile),
 				path.join(projectRoot, rootFile),
 				templateVars
@@ -549,7 +506,6 @@ function installForHost(projectRoot, host) {
 			}
 		}
 
-		// Host-specific rules/instructions
 		var hostRuleMappings = {
 			codex:   { src: ".codex/instructions.md",             dest: "instructions.md" },
 			cursor:  { src: ".cursor/rules/workflow.mdc",         dest: "rules/emb-agent-workflow.mdc" },
@@ -564,23 +520,145 @@ function installForHost(projectRoot, host) {
 			}
 		}
 
-
-		// ── Project workspace init ──────────────────────────────────
 		var binName = "emb-agent-rs" + (process.platform === "win32" ? ".exe" : "");
 		var binPath = path.join(embDir, "bin", binName);
 		if (fs.existsSync(binPath)) {
 			try {
-				var r = childProcess.spawnSync(binPath, ["init"], {
-					cwd: projectRoot, encoding: "utf8", timeout: 15000
-				});
+				var r = childProcess.spawnSync(binPath, ["init"], { cwd: projectRoot, encoding: "utf8", timeout: 15000 });
 				if (r.status === 0 && r.stdout) {
 					var j = JSON.parse(r.stdout.trim());
 					if (j.initialized) console.log("    Project workspace initialized (.emb-agent/)");
 				}
 			} catch (_) {}
 		}
-	console.log(C.green + "Done. emb-agent is now installed for your AI runtime." + C.reset);
+		console.log("\x1b[32mDone. emb-agent is now installed for your AI runtime.\x1b[0m");
 		if (process.env._EMB_INSTALL_DONE) process.exit(0);
+	}
+}
+
+// ── GitHub API helpers ────────────────────────────────────────────
+
+function ghApiList(url, callback) {
+	var opts = { hostname: "api.github.com", path: url, method: "GET", headers: { "User-Agent": "emb-agent-installer", "Accept": "application/vnd.github.v3+json" } };
+	var req = https.request(opts, function (res) {
+		var body = "";
+		res.on("data", function (d) { body += d; });
+		res.on("end", function () {
+			try { callback(JSON.parse(body)); } catch (_) { callback([]); }
+		});
+	});
+	req.on("error", function () { callback([]); });
+	req.setTimeout(10000, function () { req.destroy(); callback([]); });
+	req.end();
+}
+
+function downloadRawFile(url, dest, callback) {
+	var file = fs.createWriteStream(dest);
+	https.get(url, function (res) {
+		if (res.statusCode === 302 && res.headers.location) {
+			file.close(function () { downloadRawFile(res.headers.location, dest, callback); });
+			return;
+		}
+		if (res.statusCode !== 200) { file.close(function () { callback(false); }); return; }
+		res.pipe(file);
+		file.on("finish", function () { callback(true); });
+	}).on("error", function () { file.close(function () { callback(false); }); });
+}
+
+function fetchSpecListFromGitHub(callback) {
+	ghApiList("/repos/Welkon/emb-support/contents/specs", function (files) {
+		var specs = [];
+		if (Array.isArray(files)) {
+			for (var i = 0; i < files.length; i++) {
+				if (files[i].name.endsWith(".md") && files[i].name !== "README.md") {
+					specs.push({ name: files[i].name.replace(".md", ""), url: files[i].download_url, desc: "Spec from emb-support" });
+				}
+			}
+		}
+		// Fetch frontmatter for each spec to get title
+		var pending = specs.length;
+		if (pending === 0) { callback(specs); return; }
+		for (var j = 0; j < specs.length; j++) {
+			(function (idx) {
+				https.get(specs[idx].url, function (res) {
+					var body = "";
+					res.on("data", function (d) { body += d; });
+					res.on("end", function () {
+						var m = body.match(/^---\n([\s\S]*?)\n---/);
+						if (m) {
+							var lines = m[1].split("\n");
+							for (var li = 0; li < lines.length; li++) {
+								var kv = lines[li].split(":");
+								if (kv.length >= 2 && kv[0].trim() === "title") { specs[idx].title = kv.slice(1).join(":").trim(); }
+								if (kv.length >= 2 && kv[0].trim() === "summary") { specs[idx].summary = kv.slice(1).join(":").trim(); }
+							}
+						}
+						specs[idx].desc = specs[idx].title || specs[idx].summary || specs[idx].desc;
+						pending--;
+						if (pending === 0) callback(specs);
+					});
+				}).on("error", function () { pending--; if (pending === 0) callback(specs); });
+			})(j);
+		}
+	});
+}
+
+function fetchSkillListFromGitHub(callback) {
+	ghApiList("/repos/Welkon/emb-support/contents/skills", function (dirs) {
+		var skills = [];
+		if (Array.isArray(dirs)) {
+			var skillDirs = dirs.filter(function (d) { return d.type === "dir"; });
+			var pending = skillDirs.length;
+			if (pending === 0) { callback(skills); return; }
+			for (var i = 0; i < skillDirs.length; i++) {
+				(function (idx) {
+					ghApiList("/repos/Welkon/emb-support/contents/skills/" + skillDirs[idx].name, function (files) {
+						var skillMd = null;
+						if (Array.isArray(files)) {
+							for (var j = 0; j < files.length; j++) {
+								if (files[j].name === "SKILL.md") { skillMd = files[j]; break; }
+							}
+						}
+						if (skillMd) {
+							https.get(skillMd.download_url, function (res) {
+								var body = "";
+								res.on("data", function (d) { body += d; });
+								res.on("end", function () {
+									var m = body.match(/^---\n([\s\S]*?)\n---/);
+									var desc = "";
+									if (m) {
+										var lines = m[1].split("\n");
+										for (var li = 0; li < lines.length; li++) {
+											var kv = lines[li].split(":");
+											if (kv.length >= 2 && kv[0].trim() === "description") { desc = kv.slice(1).join(":").trim().replace(/^"/,"").replace(/"$/,""); }
+										}
+									}
+									skills.push({ name: skillDirs[idx].name, url: skillMd.download_url, desc: desc });
+									pending--;
+									if (pending === 0) callback(skills);
+								});
+							}).on("error", function () { pending--; if (pending === 0) callback(skills); });
+						} else { pending--; if (pending === 0) callback(skills); }
+					});
+				})(i);
+			}
+		} else { callback(skills); }
+	});
+}
+
+function downloadSelected(items, destDir, callback) {
+	var pending = items.length;
+	if (pending === 0) { callback(); return; }
+	ensureDir(destDir);
+	for (var i = 0; i < items.length; i++) {
+		(function (item) {
+			var ext = item.url.match(/specs\//) ? ".md" : "";
+			var dest = path.join(destDir, item.name + ext);
+			downloadRawFile(item.url, dest, function (ok) {
+				pending--;
+				if (pending === 0) callback();
+			});
+		})(items[i]);
 	}
 }
 
@@ -589,145 +667,174 @@ function installForHost(projectRoot, host) {
 function main(argv) {
 	var args = parseArgs(argv);
 
-	if (args.help) {
-		usage();
-		return;
-	}
+	if (args.help) { usage(); return; }
 
 	var projectRoot = process.cwd();
 	console.log("emb-agent v" + VERSION);
 	console.log("Platform: " + platformKey());
 	console.log("Project: " + projectRoot + "\n");
 
-	// Write developer identity if given
-	if (args.developer) {
-		var devDir = path.join(projectRoot, ".emb-agent");
-		try { fs.mkdirSync(devDir, { recursive: true }); } catch (_) {}
-		fs.writeFileSync(path.join(devDir, ".developer"), args.developer + "\n");
-	}
 	var _devDir = path.join(projectRoot, ".emb-agent");
 	try { fs.mkdirSync(_devDir, { recursive: true }); } catch (_) {}
+	if (args.developer) fs.writeFileSync(path.join(_devDir, ".developer"), args.developer + "\n");
 	if (args.lang) fs.writeFileSync(path.join(_devDir, ".language"), args.lang + "\n");
 	if (args.registry) fs.writeFileSync(path.join(_devDir, ".registry"), args.registry + "\n");
 	if (args.skillSource) fs.writeFileSync(path.join(_devDir, ".skill-source"), args.skillSource + "\n");
+	if (args.specs.length > 0) fs.writeFileSync(path.join(_devDir, ".specs"), args.specs.join(",") + "\n");
+	if (args.skills.length > 0) fs.writeFileSync(path.join(_devDir, ".skills"), args.skills.join(",") + "\n");
+
 	if (args.target === "all") {
 		for (var i = 0; i < SUPPORTED_HOSTS.length; i++) {
 			installForHost(projectRoot, SUPPORTED_HOSTS[i]);
 		}
 	} else if (args.target) {
 		var host = SUPPORTED_HOSTS.find(function (h) { return h.name === args.target; });
-		if (!host) {
-			console.error("Unknown host: " + args.target);
-			console.error("Supported: " + SUPPORTED_HOSTS.map(function (h) { return h.name; }).join(", ") + ", all");
-			process.exit(1);
-		}
+		if (!host) { console.error("Unknown host: " + args.target); process.exit(1); }
 		installForHost(projectRoot, host);
 	} else if (process.stdin.isTTY) {
-		var C = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m" };
+		// Interactive install
+		var C = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m", red: "\x1b[31m" };
 		var readline = require("readline");
-		// Scan for emb-support
+		var state = { host: null, developer: "developer", lang: "en" };
+
+		// Scan local emb-support or fetch from GitHub
 		var supportDir = null;
 		var candidates = [path.join(projectRoot, "..", "emb-support"), path.join(os.homedir(), "Projects", "emb-support"), path.join(os.homedir(), "emb-support")];
 		for (var ci = 0; ci < candidates.length; ci++) { if (fs.existsSync(candidates[ci])) { supportDir = candidates[ci]; break; } }
+
 		var extSpecs = [], extSkills = [];
-		if (supportDir) {
-			var specsDir = path.join(supportDir, "specs");
-			if (fs.existsSync(specsDir)) {
-				var sf = fs.readdirSync(specsDir).filter(function(f) { return f.endsWith(".md") && f !== "README.md"; });
+		function scanLocal() {
+			if (!supportDir) return;
+			var sd = path.join(supportDir, "specs");
+			if (fs.existsSync(sd)) {
+				var sf = fs.readdirSync(sd).filter(function(f) { return f.endsWith(".md") && f !== "README.md"; });
 				for (var si = 0; si < sf.length; si++) {
-					var raw = fs.readFileSync(path.join(specsDir, sf[si]), "utf8");
+					var raw = fs.readFileSync(path.join(sd, sf[si]), "utf8");
 					var m = raw.match(/^---\n([\s\S]*?)\n---/); if (!m) continue;
 					var fm = {}, lines = m[1].split("\n");
 					for (var li = 0; li < lines.length; li++) { var kv = lines[li].split(":"); if (kv.length >= 2) fm[kv[0].trim()] = kv.slice(1).join(":").trim(); }
-					extSpecs.push({ file: sf[si], name: fm.name || sf[si].replace(".md",""), title: fm.title || "", summary: fm.summary || "" });
+					extSpecs.push({ name: fm.name || sf[si].replace(".md",""), desc: fm.title || fm.summary || "", url: path.join(sd, sf[si]) });
 				}
 			}
-			var skillsDir = path.join(supportDir, "skills");
-			if (fs.existsSync(skillsDir)) {
-				var df = fs.readdirSync(skillsDir, { withFileTypes: true }).filter(function(d) { return d.isDirectory(); });
+			var kd = path.join(supportDir, "skills");
+			if (fs.existsSync(kd)) {
+				var df = fs.readdirSync(kd, { withFileTypes: true }).filter(function(d) { return d.isDirectory(); });
 				for (var di = 0; di < df.length; di++) {
-					var sk = path.join(skillsDir, df[di].name, "SKILL.md");
+					var sk = path.join(kd, df[di].name, "SKILL.md");
 					if (!fs.existsSync(sk)) continue;
 					var raw = fs.readFileSync(sk, "utf8");
 					var m = raw.match(/^---\n([\s\S]*?)\n---/); if (!m) continue;
 					var fm = {}, lines = m[1].split("\n");
 					for (var li = 0; li < lines.length; li++) { var kv = lines[li].split(":"); if (kv.length >= 2) fm[kv[0].trim()] = kv.slice(1).join(":").trim(); }
-					extSkills.push({ dir: df[di].name, name: (fm.name || df[di].name).replace(/"/g,""), desc: fm.description || "" });
+					extSkills.push({ name: df[di].name, desc: (fm.description || "").replace(/^"/,"").replace(/"$/,""), url: sk });
 				}
 			}
-		var state = { host: null, developer: "developer", isLocal: true, lang: "en", specs: [], skills: [] };
-		var steps = [
-			function askHost(next) {
-				console.log(C.cyan + C.bold + "  emb-agent installer" + C.reset);
-				console.log(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
-				console.log("");
-				console.log(C.blue + "\u25B6 Select Runtime" + C.reset);
-				for (var k = 0; k < SUPPORTED_HOSTS.length; k++) {
-					console.log("  " + C.cyan + "[" + (k + 1) + "]" + C.reset + " " + SUPPORTED_HOSTS[k].name);
-				}
-				console.log("  " + C.cyan + "[" + (SUPPORTED_HOSTS.length + 1) + "]" + C.reset + " all");
-				console.log("");
-				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-				rl.question(C.yellow + "Choice [4] > " + C.reset, function(a) { rl.close(); var c = parseInt(a.trim(), 10) || 4; if (c < 1 || c > SUPPORTED_HOSTS.length + 1) c = 4; if (c === SUPPORTED_HOSTS.length + 1) { for (var m = 0; m < SUPPORTED_HOSTS.length; m++) installForHost(projectRoot, SUPPORTED_HOSTS[m]); return; } state.host = SUPPORTED_HOSTS[c - 1]; next(); });
-			},
-			function askDeveloper(next) {
-				console.log(C.blue + "\u25B6 Developer Identity" + C.reset);
-				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-				rl.question(C.yellow + "Developer name > " + C.reset, function(a) { rl.close(); state.developer = a.trim() || "developer"; next(); });
-			},
-			function askLocation(next) {
-				console.log(C.blue + "\u25B6 Install Location" + C.reset);
-				console.log("  " + C.cyan + "[1]" + C.reset + " Global  " + C.cyan + "[2]" + C.reset + " Local " + C.green + "(recommended)" + C.reset);
-				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-				rl.question(C.yellow + "Choice [2] > " + C.reset, function(a) { rl.close(); state.isLocal = a.trim() !== "1"; next(); });
-			},
-			function askLanguage(next) {
-				console.log(C.blue + "\u25B6 Reply Language" + C.reset);
-				console.log("  " + C.cyan + "[1]" + C.reset + " English  " + C.cyan + "[2]" + C.reset + " \u4e2d\u6587");
-				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-				rl.question(C.yellow + "Choice [1] > " + C.reset, function(a) { rl.close(); state.lang = a.trim() === "2" ? "zh" : "en"; next(); });
-			},
-			function askSpecs(next) {
-				if (extSpecs.length === 0) { console.log(C.dim + "\n  No emb-support detected. Skipping external specs." + C.reset); next(); return; }
-				console.log("");
-				console.log(C.blue + "\u25B6 External Specs" + C.reset + C.dim + " (optional)" + C.reset);
-				console.log(C.dim + "  Source: " + supportDir + C.reset);
-				for (var ei = 0; ei < extSpecs.length; ei++) {
-					var desc = (extSpecs[ei].title || extSpecs[ei].summary || "").substring(0, 72);
-					console.log("  " + C.cyan + "[" + (ei + 1) + "]" + C.reset + " " + extSpecs[ei].name + C.dim + " \u2014 " + desc + C.reset);
-				}
-				console.log("");
-				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-				rl.question(C.yellow + "Select specs (e.g. 1,2 or Enter to skip) > " + C.reset, function(a) { rl.close(); var sel = a.trim(); if (sel) { var nums = sel.split(/[,\s]+/); for (var ni = 0; ni < nums.length; ni++) { var n = parseInt(nums[ni], 10); if (n >= 1 && n <= extSpecs.length) state.specs.push(extSpecs[n-1].name); } } console.log(C.green + "  \u2714 Specs: " + (state.specs.length > 0 ? state.specs.join(", ") : "none") + C.reset); next(); });
-			},
-			function askSkills(next) {
-				if (extSkills.length === 0) { console.log(C.dim + "  No emb-support skills detected." + C.reset); next(); return; }
-				console.log("");
-				console.log(C.blue + "\u25B6 External Skills" + C.reset + C.dim + " (optional)" + C.reset);
-				for (var ei = 0; ei < extSkills.length; ei++) {
-					console.log("  " + C.cyan + "[" + (ei + 1) + "]" + C.reset + " " + extSkills[ei].name + C.dim + " \u2014 " + (extSkills[ei].desc || "").substring(0, 60) + C.reset);
-				}
-				console.log("");
-				var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-				rl.question(C.yellow + "Select skills (e.g. 1,3 or Enter to skip) > " + C.reset, function(a) { rl.close(); var sel = a.trim(); if (sel) { var nums = sel.split(/[,\s]+/); for (var ni = 0; ni < nums.length; ni++) { var n = parseInt(nums[ni], 10); if (n >= 1 && n <= extSkills.length) state.skills.push(extSkills[n-1].name); } } console.log(C.green + "  \u2714 Skills: " + (state.skills.length > 0 ? state.skills.join(", ") : "none") + C.reset); next(); });
-			},
-			function finish() {
-				var devFile = path.join(projectRoot, ".emb-agent", ".developer");
-				try { fs.mkdirSync(path.join(projectRoot, ".emb-agent"), { recursive: true }); } catch (_) {}
-				fs.writeFileSync(devFile, state.developer + "\n");
-				fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".language"), state.lang + "\n");
-				if (state.specs.length > 0) fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".specs"), state.specs.join(",") + "\n");
-				if (state.skills.length > 0) fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".skills"), state.skills.join(",") + "\n");
+		}
 
-				console.log(C.green + "  \u2714 Installing for " + state.host.name + " as " + state.developer + C.reset);
-				console.log("");
-				installForHost(projectRoot, state.host);
+		function startInstallFlow() {
+			var steps = [
+				function askHost(next) {
+					console.log(C.cyan + C.bold + "  emb-agent installer" + C.reset);
+					console.log(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
+					console.log("");
+					console.log(C.blue + "\u25B6 Select Runtime" + C.reset);
+					for (var k = 0; k < SUPPORTED_HOSTS.length; k++) {
+						console.log("  " + C.cyan + "[" + (k + 1) + "]" + C.reset + " " + SUPPORTED_HOSTS[k].name);
+					}
+					console.log("  " + C.cyan + "[" + (SUPPORTED_HOSTS.length + 1) + "]" + C.reset + " all");
+					console.log("");
+					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+					rl.question(C.yellow + "Choice [4] > " + C.reset, function(a) { rl.close(); var c = parseInt(a.trim(), 10) || 4; if (c < 1 || c > SUPPORTED_HOSTS.length + 1) c = 4; if (c === SUPPORTED_HOSTS.length + 1) { for (var m = 0; m < SUPPORTED_HOSTS.length; m++) installForHost(projectRoot, SUPPORTED_HOSTS[m]); return; } state.host = SUPPORTED_HOSTS[c - 1]; next(); });
+				},
+				function askDeveloper(next) {
+					console.log(C.blue + "\u25B6 Developer Identity" + C.reset);
+					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+					rl.question(C.yellow + "Developer name > " + C.reset, function(a) { rl.close(); state.developer = a.trim() || "developer"; next(); });
+				},
+				function askLocation(next) {
+					console.log(C.blue + "\u25B6 Install Location" + C.reset);
+					console.log("  " + C.cyan + "[1]" + C.reset + " Global  " + C.cyan + "[2]" + C.reset + " Local " + C.green + "(recommended)" + C.reset);
+					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+					rl.question(C.yellow + "Choice [2] > " + C.reset, function(a) { rl.close(); next(); });
+				},
+				function askLanguage(next) {
+					console.log(C.blue + "\u25B6 Reply Language" + C.reset);
+					console.log("  " + C.cyan + "[1]" + C.reset + " English  " + C.cyan + "[2]" + C.reset + " \u4e2d\u6587");
+					var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+					rl.question(C.yellow + "Choice [1] > " + C.reset, function(a) { rl.close(); state.lang = a.trim() === "2" ? "zh" : "en"; next(); });
+				},
+				function askSpecs(next) {
+					if (extSpecs.length === 0) { console.log(C.dim + "\n  No external specs available.\n" + C.reset); next(); return; }
+					console.log("");
+					var items = [];
+					for (var ei = 0; ei < extSpecs.length; ei++) items.push({ label: extSpecs[ei].name, desc: extSpecs[ei].desc || "", value: extSpecs[ei] });
+					selectList("\u25B6 External Specs", items, function (selected) {
+						var specsToDownload = [];
+						for (var si = 0; si < selected.length; si++) {
+							state.specs = state.specs || [];
+							state.specs.push(selected[si].name);
+							if (!supportDir) specsToDownload.push(selected[si]);
+						}
+						if (specsToDownload.length > 0) {
+							console.log(C.dim + "  Downloading selected specs..." + C.reset);
+							downloadSelected(specsToDownload, path.join(_devDir, "specs"), function () { next(); });
+						} else { next(); }
+					});
+				},
+				function askSkills(next) {
+					if (extSkills.length === 0) { console.log(C.dim + "  No external skills available.\n" + C.reset); next(); return; }
+					var items = [];
+					for (var ei = 0; ei < extSkills.length; ei++) items.push({ label: extSkills[ei].name, desc: extSkills[ei].desc || "", value: extSkills[ei] });
+					selectList("\u25B6 External Skills", items, function (selected) {
+						var skillsToDownload = [];
+						for (var si = 0; si < selected.length; si++) {
+							state.skills = state.skills || [];
+							state.skills.push(selected[si].name);
+							if (!supportDir) skillsToDownload.push(selected[si]);
+						}
+						if (skillsToDownload.length > 0) {
+							console.log(C.dim + "  Downloading selected skills..." + C.reset);
+							var destDir = path.join(_devDir, "skills");
+							ensureDir(destDir);
+							var pending = skillsToDownload.length;
+							for (var di = 0; di < skillsToDownload.length; di++) {
+								(function (item) {
+									var d = path.join(destDir, item.name);
+									ensureDir(d);
+									downloadRawFile(item.url, path.join(d, "SKILL.md"), function () { pending--; if (pending === 0) next(); });
+								})(skillsToDownload[di]);
+							}
+							if (pending === 0) next();
+						} else { next(); }
+					});
+				},
+				function finish() {
+					fs.writeFileSync(path.join(_devDir, ".developer"), state.developer + "\n");
+					fs.writeFileSync(path.join(_devDir, ".language"), state.lang + "\n");
+					if (state.specs && state.specs.length > 0) fs.writeFileSync(path.join(_devDir, ".specs"), state.specs.join(",") + "\n");
+					if (state.skills && state.skills.length > 0) fs.writeFileSync(path.join(_devDir, ".skills"), state.skills.join(",") + "\n");
+					console.log(C.green + "  \u2714 Installing for " + state.host.name + " as " + state.developer + C.reset + "\n");
+					installForHost(projectRoot, state.host);
+				}
+			];
+			var stepIdx = 0;
+			function next() { if (stepIdx < steps.length) { var s = steps[stepIdx]; stepIdx++; s(next); } }
+			next();
+		}
+
+		if (supportDir) {
+			scanLocal();
+			if (extSpecs.length === 0 && extSkills.length === 0) {
+				// Try GitHub as fallback
+				console.log(C.dim + "  Local emb-support found but empty. Trying GitHub..." + C.reset);
+				fetchSpecListFromGitHub(function (s) { extSpecs = s; fetchSkillListFromGitHub(function (sk) { extSkills = sk; startInstallFlow(); }); });
+			} else {
+				startInstallFlow();
 			}
-		];
-		var stepIdx = 0;
-		function next() { if (stepIdx < steps.length) { var s = steps[stepIdx]; stepIdx++; s(next); } }
-		next();
-	}
+		} else {
+			console.log(C.dim + "  Fetching available specs and skills from GitHub..." + C.reset);
+			fetchSpecListFromGitHub(function (s) { extSpecs = s; fetchSkillListFromGitHub(function (sk) { extSkills = sk; startInstallFlow(); }); });
+		}
 	} else {
 		console.log("No --target specified and no TTY. Use --target <host>.");
 		console.log("Supported: " + SUPPORTED_HOSTS.map(function (h) { return h.name; }).join(", ") + ", all");
