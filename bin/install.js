@@ -327,46 +327,203 @@ function injectSpecsIntoAgents(embDir) {
 
 // ── Keypress list selection ───────────────────────────────────────
 
-function selectList(title, items, callback) {
-	var readline = require("readline");
-	var cursor = 0;
-	var selected = [];
-	for (var i = 0; i < items.length; i++) selected.push(false);
+function supportsKeyboardSelection() {
+	return Boolean(
+		process.stdin &&
+		process.stdin.isTTY &&
+		process.stdout &&
+		process.stdout.isTTY &&
+		typeof process.stdin.setRawMode === "function" &&
+		typeof process.stdin.on === "function" &&
+		(typeof process.stdin.off === "function" || typeof process.stdin.removeListener === "function")
+	);
+}
 
-	readline.emitKeypressEvents(process.stdin);
-	if (process.stdin.isTTY) process.stdin.setRawMode(true);
+function summarizeListText(value, maxLength) {
+	var normalized = String(value || "").replace(/\s+/g, " ").trim();
+	if (!normalized) return "";
+	var limit = maxLength || 120;
+	var sentence = normalized.match(/^(.+?[.?!。！？])(?:\s|$)/);
+	var preferred = sentence && sentence[1] && sentence[1].length <= limit ? sentence[1] : normalized;
+	if (preferred.length <= limit) return preferred;
+	return preferred.slice(0, Math.max(0, limit - 1)).trimEnd() + "…";
+}
+
+function selectListFallback(title, items, callback) {
+	var readline = require("readline");
+	var C = { reset: "\x1b[0m", dim: "\x1b[2m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m", white: "\x1b[37m" };
+	console.log(C.blue + "▶ " + title + C.reset);
+	console.log(C.dim + "  Type numbers separated by spaces or commas. Press Enter to skip." + C.reset);
+	for (var i = 0; i < items.length; i++) {
+		console.log("  " + C.cyan + (i + 1) + "." + C.reset + " " + C.white + items[i].label + C.reset + (items[i].desc ? C.dim + " - " + summarizeListText(items[i].desc) + C.reset : ""));
+	}
+	var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+	rl.question(C.yellow + "Choice [skip] > " + C.reset, function (answer) {
+		rl.close();
+		var tokens = String(answer || "").trim().split(/[\s,]+/).filter(Boolean);
+		var seen = {};
+		var result = [];
+		for (var ti = 0; ti < tokens.length; ti++) {
+			var token = tokens[ti].toLowerCase();
+			if (token === "skip") break;
+			if (token === "all" || token === "a") {
+				result = items.map(function (item) { return item.value; });
+				break;
+			}
+			var index = parseInt(token, 10);
+			if (Number.isFinite(index) && index >= 1 && index <= items.length && !seen[index]) {
+				seen[index] = true;
+				result.push(items[index - 1].value);
+			}
+		}
+		callback(result);
+	});
+}
+
+function renderSelectionScreen(title, items, state, options) {
+	var C = {
+		reset: "\x1b[0m",
+		bold: "\x1b[1m",
+		dim: "\x1b[2m",
+		green: "\x1b[32m",
+		cyan: "\x1b[36m",
+		yellow: "\x1b[33m",
+		blue: "\x1b[34m",
+		white: "\x1b[37m"
+	};
+	var lines = [];
+	var contextLabel = options && options.contextLabel ? options.contextLabel : "Source";
+	var contextValue = options && options.contextValue ? options.contextValue : "emb-support";
+	var skipLabel = options && options.skipLabel ? options.skipLabel : "Skip";
+	var itemNoun = options && options.itemNoun ? options.itemNoun : "entry";
+	var itemPlural = options && options.itemPlural ? options.itemPlural : "entries";
+	lines.push(C.cyan + C.bold + "emb-agent installer" + C.reset);
+	lines.push(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
+	lines.push("");
+	lines.push(C.blue + "▶ " + title + C.reset);
+	lines.push(C.dim + "  " + contextLabel + ": " + contextValue + C.reset);
+	lines.push(C.dim + "  Use ↑/↓ to move and Space to toggle the highlighted " + itemNoun + "." + C.reset);
+	lines.push(C.dim + "  Press Enter to confirm; press `a` to toggle all; Esc/Ctrl+C cancels." + C.reset);
+	lines.push(C.dim + "  Press Enter with no selected " + itemPlural + " to skip." + C.reset);
+	lines.push("");
+	var skipActive = state.cursorIndex === 0;
+	lines.push("  " + (skipActive ? C.cyan + "›" + C.reset : " ") + " " + C.cyan + "skip" + C.reset + " " + (skipActive ? C.bold + C.white : C.white) + skipLabel + C.reset);
+	for (var i = 0; i < items.length; i++) {
+		var entryIndex = i + 1;
+		var active = state.cursorIndex === entryIndex;
+		var selected = state.selected[entryIndex] === true;
+		var marker = selected ? C.green + "●" + C.reset : C.dim + "○" + C.reset;
+		var detail = summarizeListText(items[i].desc, 120);
+		var name = active ? C.bold + C.white + items[i].label + C.reset : C.white + items[i].label + C.reset;
+		lines.push("  " + (active ? C.cyan + "›" + C.reset : " ") + " " + marker + " " + name + (detail ? C.dim + " - " + detail + C.reset : ""));
+	}
+	lines.push("");
+	lines.push(C.yellow + "↑/↓=move  Space=toggle  a=all  Enter=confirm" + C.reset);
+	return lines.join("\n");
+}
+
+function selectList(title, items, callback, options) {
+	if (!supportsKeyboardSelection()) {
+		selectListFallback(title, items, callback);
+		return;
+	}
+
+	var stdin = process.stdin;
+	var stdout = process.stdout;
+	var previousRawMode = Boolean(stdin.isRaw);
+	var state = { cursorIndex: items.length > 0 ? 1 : 0, selected: {} };
+	var totalChoices = items.length + 1;
+	var settled = false;
+
+	function removeDataListener() {
+		if (typeof stdin.off === "function") stdin.off("data", handleInput);
+		else stdin.removeListener("data", handleInput);
+	}
+
+	function cleanup() {
+		if (settled) return;
+		settled = true;
+		try { stdin.setRawMode(previousRawMode); } catch (_) {}
+		try { removeDataListener(); } catch (_) {}
+		if (typeof stdin.pause === "function") stdin.pause();
+		stdout.write("\x1b[?25h\x1b[?1049l");
+	}
+
+	function selectedValues() {
+		var result = [];
+		for (var i = 0; i < items.length; i++) {
+			if (state.selected[i + 1]) result.push(items[i].value);
+		}
+		return result;
+	}
+
+	function selectedNames(values) {
+		return values.map(function (item) { return item && item.name ? item.name : String(item); });
+	}
+
+	function finish(values) {
+		cleanup();
+		console.log("\x1b[32m  ✔ " + (values.length > 0 ? selectedNames(values).join(", ") : "skip") + "\x1b[0m\n");
+		callback(values);
+	}
+
+	function cancel() {
+		cleanup();
+		console.log("\x1b[31mInteractive install cancelled.\x1b[0m");
+		process.exit(130);
+	}
 
 	function render() {
-		// Move cursor up to re-render
-		if (render.lines) process.stdout.write("\x1b[" + render.lines + "A");
-		var lines = 0;
-		process.stdout.write("\x1b[2K\r\x1b[36m\x1b[1m  " + title + "\x1b[0m\n"); lines++;
-		process.stdout.write("\x1b[2K\r\x1b[2m  \u2191\u2193 move  space toggle  enter confirm\x1b[0m\n"); lines++;
-		for (var i = 0; i < items.length; i++) {
-			var prefix = i === cursor ? "\x1b[33m\u25B6\x1b[0m " : "  ";
-			var check = selected[i] ? "\x1b[32m\u2714\x1b[0m" : "\x1b[2m\u25CB\x1b[0m";
-			process.stdout.write("\x1b[2K\r" + prefix + check + " " + items[i].label + "\x1b[2m \u2014 " + (items[i].desc || "").substring(0, 65) + "\x1b[0m\n");
-			lines++;
-		}
-		render.lines = lines;
+		stdout.write("\x1b[2J\x1b[H");
+		stdout.write(renderSelectionScreen(title, items, state, options || {}) + "\n");
 	}
 
-	function onKeypress(str, key) {
-		if (key.name === "up") { cursor = (cursor - 1 + items.length) % items.length; render(); }
-		else if (key.name === "down") { cursor = (cursor + 1) % items.length; render(); }
-		else if (key.name === "space") { selected[cursor] = !selected[cursor]; render(); }
-		else if (key.name === "return") {
-			process.stdin.removeListener("keypress", onKeypress);
-			if (process.stdin.isTTY) process.stdin.setRawMode(false);
-			var result = [];
-			for (var i = 0; i < items.length; i++) { if (selected[i]) result.push(items[i].value); }
-			process.stdout.write("\x1b[32m  \u2714 " + (result.length > 0 ? result.join(", ") : "none") + "\x1b[0m\n\n");
-			callback(result);
-		}
+	function toggleCurrent() {
+		if (state.cursorIndex === 0) return;
+		state.selected[state.cursorIndex] = !state.selected[state.cursorIndex];
 	}
 
-	process.stdin.on("keypress", onKeypress);
-	render();
+	function toggleAll() {
+		var selectedCount = 0;
+		for (var i = 1; i <= items.length; i++) if (state.selected[i]) selectedCount++;
+		var next = selectedCount !== items.length;
+		for (var j = 1; j <= items.length; j++) state.selected[j] = next;
+	}
+
+	function handleInput(chunk) {
+		var input = String(chunk || "");
+		if (input === "\u001b[A" || input === "\u001bOA") {
+			state.cursorIndex = (state.cursorIndex - 1 + totalChoices) % totalChoices;
+			render();
+			return;
+		}
+		if (input === "\u001b[B" || input === "\u001bOB") {
+			state.cursorIndex = (state.cursorIndex + 1) % totalChoices;
+			render();
+			return;
+		}
+		if (input === " ") { toggleCurrent(); render(); return; }
+		if (input === "a" || input === "A") { toggleAll(); render(); return; }
+		if (input === "\r" || input === "\n") {
+			if (state.cursorIndex === 0) finish([]);
+			else finish(selectedValues());
+			return;
+		}
+		if (input === "\u0003" || input === "\u0004" || input === "\u001b" || input === "q" || input === "Q") cancel();
+	}
+
+	try {
+		stdout.write("\x1b[?1049h\x1b[?25l");
+		if (typeof stdin.setEncoding === "function") stdin.setEncoding("utf8");
+		stdin.setRawMode(true);
+		if (typeof stdin.resume === "function") stdin.resume();
+		stdin.on("data", handleInput);
+		render();
+	} catch (error) {
+		cleanup();
+		console.log("\x1b[33m  Keyboard selection unavailable: " + error.message + "\x1b[0m");
+		selectListFallback(title, items, callback);
+	}
 }
 
 // ── Install per host ──────────────────────────────────────────────
@@ -731,6 +888,10 @@ function main(argv) {
 			}
 		}
 
+		function externalSourceLabel() {
+			return supportDir || "GitHub: Welkon/emb-support";
+		}
+
 		function startInstallFlow() {
 			var steps = [
 				function askHost(next) {
@@ -768,7 +929,7 @@ function main(argv) {
 					console.log("");
 					var items = [];
 					for (var ei = 0; ei < extSpecs.length; ei++) items.push({ label: extSpecs[ei].name, desc: extSpecs[ei].desc || "", value: extSpecs[ei] });
-					selectList("\u25B6 External Specs", items, function (selected) {
+					selectList("Spec Selection", items, function (selected) {
 						var specsToDownload = [];
 						for (var si = 0; si < selected.length; si++) {
 							state.specs = state.specs || [];
@@ -779,13 +940,13 @@ function main(argv) {
 							console.log(C.dim + "  Downloading selected specs..." + C.reset);
 							downloadSelected(specsToDownload, path.join(_devDir, "specs"), function () { next(); });
 						} else { next(); }
-					});
+					}, { contextLabel: "Source", contextValue: externalSourceLabel(), skipLabel: "Skip external spec import", itemNoun: "spec", itemPlural: "specs" });
 				},
 				function askSkills(next) {
 					if (extSkills.length === 0) { console.log(C.dim + "  No external skills available.\n" + C.reset); next(); return; }
 					var items = [];
 					for (var ei = 0; ei < extSkills.length; ei++) items.push({ label: extSkills[ei].name, desc: extSkills[ei].desc || "", value: extSkills[ei] });
-					selectList("\u25B6 External Skills", items, function (selected) {
+					selectList("Skill Selection", items, function (selected) {
 						var skillsToDownload = [];
 						for (var si = 0; si < selected.length; si++) {
 							state.skills = state.skills || [];
@@ -806,7 +967,7 @@ function main(argv) {
 							}
 							if (pending === 0) next();
 						} else { next(); }
-					});
+					}, { contextLabel: "Plugin", contextValue: externalSourceLabel(), skipLabel: "Skip initial skill installation", itemNoun: "skill", itemPlural: "skills" });
 				},
 				function finish() {
 					fs.writeFileSync(path.join(_devDir, ".developer"), state.developer + "\n");
