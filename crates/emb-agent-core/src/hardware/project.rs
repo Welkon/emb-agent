@@ -22,6 +22,7 @@ pub struct ProjectSnapshot {
     pub active_variant: String,
     pub variant_dir: String,
     pub developer: String,
+    pub language: String,
     pub mcu_model: String,
     pub mcu_package: String,
     pub default_package: String,
@@ -53,6 +54,7 @@ pub struct ProjectState {
     pub open_tasks: usize,
     pub wiki_pages: usize,
     pub git_branch: String,
+    pub language: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -286,6 +288,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         active_variant: state.active_variant,
         variant_dir: state.state_dir,
         developer: state.developer.name,
+        language: state.language,
         mcu_model: state.hardware.model,
         mcu_package: state.hardware.package,
         default_package: state.config.default_package,
@@ -361,6 +364,7 @@ pub fn read_project_state(project_root: &Path) -> ProjectState {
     let hw_yaml = read_text(&state_dir.join("hw.yaml"));
     let req_yaml = read_text(&state_dir.join("req.yaml"));
     let developer_json = read_text(&ext.join(".developer"));
+    let language = read_text(&ext.join(".language"));
     let current_task = read_current_task_ref(&state_dir);
 
     ProjectState {
@@ -371,6 +375,7 @@ pub fn read_project_state(project_root: &Path) -> ProjectState {
         active_variant,
         config: ProjectConfig::from_json(&project_json),
         developer: DeveloperInfo::from_json(&developer_json),
+        language,
         hardware: HardwareTruth::from_yaml(&hw_yaml),
         requirements: RequirementsTruth::from_yaml(&req_yaml),
         open_tasks: count_open_tasks(&state_dir),
@@ -582,6 +587,7 @@ pub fn build_project_state_json(state: &ProjectState) -> String {
                 },
             },
         },
+        "language": state.language,
         "developer": {
             "name": state.developer.name,
             "runtime": state.developer.runtime,
@@ -1061,6 +1067,7 @@ mod tests {
             "{\"name\":\"Felix\",\"runtime\":\"pi\"}",
         )
         .unwrap();
+        fs::write(root.join(".emb-agent/.language"), "zh\n").unwrap();
         fs::write(root.join(".emb-agent/.current-task"), "task-1\n").unwrap();
         fs::write(
             root.join(".emb-agent/tasks/task-1/task.json"),
@@ -1088,6 +1095,7 @@ mod tests {
         assert_eq!(snapshot.mcu_model, "ESP32-C3");
         assert_eq!(snapshot.mcu_package, "QFN32");
         assert_eq!(snapshot.developer, "Felix");
+        assert_eq!(snapshot.language, "zh");
         assert_eq!(snapshot.open_tasks, 1);
         assert_eq!(snapshot.wiki_pages, 1);
         assert_eq!(snapshot.recommended_command, "do");
@@ -1115,6 +1123,7 @@ mod tests {
         assert_eq!(state.config.preferences.verification_mode, "strict");
         assert_eq!(state.config.preferences.plan_mode, "auto");
         assert_eq!(state.developer.name, "Felix");
+        assert_eq!(state.language, "zh");
         assert_eq!(state.hardware.vendor, "Espressif");
         assert_eq!(state.hardware.model, "ESP32-C3");
         assert_eq!(state.hardware.package, "QFN32");

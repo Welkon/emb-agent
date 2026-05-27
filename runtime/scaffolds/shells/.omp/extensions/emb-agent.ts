@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 
 // ---------------------------------------------------------------------------
 // Minimal ANSI helpers (no pi-tui dependency)
@@ -288,6 +289,7 @@ interface EmbAgentResult {
   instructions?: string;
   next?: { command?: string; reason?: string; cli?: string };
   agent_protocol?: { gate?: { recommended_command?: string; recommended_agent?: string } };
+  language?: string;
   open_tasks?: number;
   task_candidates?: Array<{
     name: string;
@@ -318,6 +320,26 @@ async function runEmbAgent(
   } catch {
     return null;
   }
+}
+
+function normalizeLanguage(value: unknown): string {
+  const lang = String(value || "").trim().toLowerCase();
+  if (!lang) return "";
+  if (["zh", "zh-cn", "zh_hans", "cn", "chinese", "中文", "简体中文"].includes(lang)) return "zh";
+  if (["en", "english", "英文"].includes(lang)) return "en";
+  return lang;
+}
+
+function languageDirective(language: unknown): string {
+  const lang = normalizeLanguage(language);
+  if (lang === "zh") return "Respond to the user in Simplified Chinese (中文), unless the user explicitly asks for another language.";
+  if (lang === "en") return "Respond to the user in English, unless the user explicitly asks for another language.";
+  return "";
+}
+
+async function readProjectLanguage(cwd: string): Promise<string> {
+  try { return normalizeLanguage(await readFile(join(cwd, ".emb-agent", ".language"), "utf8")); }
+  catch { return ""; }
 }
 
 function formatRecommendedCommand(r: EmbAgentResult): string {
@@ -389,9 +411,13 @@ export default function (pi: ExtensionAPI) {
     if (statusResult) {
       const text = formatEmbStatus(statusResult);
       ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
+      const directive = languageDirective(statusResult.language);
+      if (directive) ctx.ui.setWidget("emb-agent-language", ["emb: " + directive], { placement: "belowEditor" });
     }
     if (!nextResult) return;
     const lines = renderNextLines(nextResult);
+    const directive = languageDirective(nextResult.language || await readProjectLanguage(ctx.cwd));
+    if (directive) lines.unshift("Response language: " + directive);
     if (lines.length > 0) {
       await pi.sendMessage(
         {
@@ -404,11 +430,12 @@ export default function (pi: ExtensionAPI) {
   }
 
 
-  async function promptAgent(text: string) {
+  async function promptAgent(text: string, cwd?: string) {
+    const directive = cwd ? languageDirective(await readProjectLanguage(cwd)) : "";
     await pi.sendMessage(
       {
         role: "user",
-        content: [{ type: "text", text }],
+        content: [{ type: "text", text: directive ? text + "\n\n" + directive : text }],
       },
       { deliverAs: "steer", triggerTurn: true },
     );
@@ -432,7 +459,7 @@ export default function (pi: ExtensionAPI) {
     const tasks = result.task_candidates;
     if (!tasks?.length) {
       const lines = renderNextLines(result);
-      await promptAgent("[/emb-next]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) + "\n\nAct on the above.");
+      await promptAgent("[/emb-next]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) + "\n\nAct on the above.", ctx.cwd);
       return;
     }
 
@@ -467,7 +494,8 @@ export default function (pi: ExtensionAPI) {
     await promptAgent(
       (r
         ? "Activated: " + taskName + " — " + title + ". Confirm and suggest next step."
-        : "Activation failed: " + taskName + ".")
+        : "Activation failed: " + taskName + "."),
+      ctx.cwd,
     );
   }
 
@@ -483,7 +511,7 @@ export default function (pi: ExtensionAPI) {
       return;
     }
     const lines = renderNextLines(result);
-    await promptAgent("[/emb-onboard]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) + "\n\nAct on the above.");
+    await promptAgent("[/emb-onboard]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) + "\n\nAct on the above.", ctx.cwd);
   }
 
   pi.registerCommand("emb-onboard", {

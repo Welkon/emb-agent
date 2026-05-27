@@ -231,26 +231,77 @@ function copyIf(src, dest) {
 	if (fs.existsSync(src)) fs.copyFileSync(src, dest);
 }
 
+function removePath(target) {
+	try { fs.rmSync(target, { recursive: true, force: true }); } catch (_) {}
+}
+
+function cleanupLeanHostRuntime(embDir) {
+	var managed = ["profiles", "scaffolds", "templates", "registry", "specs", "architecture", "compound", "reference", "issues", "refactors", "roadmap", "audits", "attention.md"];
+	for (var i = 0; i < managed.length; i++) removePath(path.join(embDir, managed[i]));
+}
+
+function normalizeLanguage(value) {
+	var lang = String(value || "").trim().toLowerCase();
+	if (!lang) return "";
+	if (lang === "zh" || lang === "zh-cn" || lang === "zh_hans" || lang === "cn" || lang === "chinese" || lang === "中文" || lang === "简体中文") return "zh";
+	if (lang === "en" || lang === "english" || lang === "英文") return "en";
+	return lang;
+}
+
+function languageInstruction(lang) {
+	var normalized = normalizeLanguage(lang);
+	if (normalized === "zh") return "Respond to the user in Simplified Chinese (中文), unless the user explicitly asks for another language.";
+	if (normalized === "en") return "Respond to the user in English, unless the user explicitly asks for another language.";
+	return "";
+}
+
+function languageBlock(lang) {
+	var instruction = languageInstruction(lang);
+	return instruction ? "## Response Language\n\n- " + instruction + "\n" : "";
+}
+
+function readLanguagePreference(projectRoot) {
+	try { return normalizeLanguage(fs.readFileSync(path.join(projectRoot, ".emb-agent", ".language"), "utf8")); }
+	catch (_) { return ""; }
+}
+
+function writeLanguagePreference(projectRoot, lang) {
+	var normalized = normalizeLanguage(lang);
+	if (!normalized) return;
+	ensureDir(path.join(projectRoot, ".emb-agent"));
+	fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".language"), normalized + "\n");
+}
+
+function writeDeveloperPreference(projectRoot, name) {
+	var trimmed = String(name || "").trim();
+	if (!trimmed) return;
+	ensureDir(path.join(projectRoot, ".emb-agent"));
+	fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".developer"), JSON.stringify({ name: trimmed }) + "\n");
+}
+
 // ── AGENTS.md deployment ──────────────────────────────────────────
 
-function resolveIncludes(content) {
-	return content.replace(/\{\{INCLUDE:_partials\/([^}]+)\}\}/g, function (_, name) {
+function resolveIncludes(content, vars) {
+	var values = vars || {};
+	var resolved = content.replace(/\{\{INCLUDE:_partials\/([^}]+)\}\}/g, function (_, name) {
 		var incPath = path.join(PARTIALS_DIR, name);
 		if (fs.existsSync(incPath)) return fs.readFileSync(incPath, "utf8").trim();
 		return "<!-- missing: " + name + " -->";
 	});
+	return resolved.replace(/\{\{LANGUAGE_INSTRUCTION\}\}/g, languageBlock(values.LANGUAGE));
 }
 
 function applyTemplate(content, vars) {
+	var values = vars || {};
 	return content.replace(/\{\{([A-Z_]+)\}\}/g, function (_, key) {
-		return vars[key] !== undefined ? vars[key] : "{{" + key + "}}";
+		return values[key] !== undefined ? values[key] : "{{" + key + "}}";
 	});
 }
 
 function resolveAndDeploy(srcPath, destPath, vars) {
 	if (!fs.existsSync(srcPath)) return false;
 	var raw = fs.readFileSync(srcPath, "utf8");
-	var resolved = resolveIncludes(raw);
+	var resolved = resolveIncludes(raw, vars);
 	var rendered = applyTemplate(resolved, vars);
 	return deployAgentsMd(srcPath, destPath, rendered);
 }
@@ -653,11 +704,10 @@ function installForHost(projectRoot, host, callback) {
 	ensureDir(path.join(projectRoot, "docs"));
 	ensureDir(path.join(projectRoot, "docs", "prd"));
 	ensureDir(path.join(embDir, "bin"));
-	ensureDir(path.join(embDir, "commands", "emb"));
-	ensureDir(path.join(embDir, "command-docs", "emb"));
 	ensureDir(path.join(embDir, "agents"));
 
 	cleanupManagedHostCommands(projectRoot, host);
+	cleanupLeanHostRuntime(embDir);
 	var finished = false;
 	var fallbackTimer = setTimeout(checkDone, 30000);
 	function checkDone() {
@@ -672,55 +722,11 @@ function installForHost(projectRoot, host, callback) {
 		var wrapperPath = path.join(RUNTIME_SRC, "bin", "emb-agent.cjs");
 		copyIf(wrapperPath, path.join(embDir, "bin", "emb-agent.cjs"));
 
-		copyDir(path.join(RUNTIME_SRC, "profiles"), path.join(embDir, "profiles"));
-		copyDir(path.join(RUNTIME_SRC, "scaffolds"), path.join(embDir, "scaffolds"));
-		copyDir(path.join(RUNTIME_SRC, "templates"), path.join(embDir, "templates"));
-		copyDir(path.join(RUNTIME_SRC, "registry"), path.join(embDir, "registry"));
-		copyDir(path.join(RUNTIME_SRC, "specs"), path.join(embDir, "specs"));
-
 		copyIf(path.join(RUNTIME_SRC, "config.json"), path.join(embDir, "config.json"));
 		copyDir(COMMANDS_SRC, path.join(embDir, "commands", "emb"));
 		copyDir(COMMAND_DOCS_SRC, path.join(embDir, "command-docs", "emb"));
 		copyDir(AGENTS_SRC, path.join(embDir, "agents"));
 
-		injectSpecsIntoAgents(embDir);
-
-		var knowledgeDirs = ["compound", "architecture", "reference", "issues", "refactors", "roadmap", "audits"];
-		for (var kdi = 0; kdi < knowledgeDirs.length; kdi++) {
-			ensureDir(path.join(embDir, knowledgeDirs[kdi]));
-		}
-
-		var conventionsSrc = path.join(REFERENCE_SRC, "shared-conventions.md");
-		if (fs.existsSync(conventionsSrc)) {
-			fs.copyFileSync(conventionsSrc, path.join(embDir, "reference", "shared-conventions.md"));
-			console.log("    shared-conventions.md deployed");
-		}
-		var knowledgeEvolutionSrc = path.join(RUNTIME_SRC, "scaffolds", "protocol-blocks", "knowledge-evolution.md");
-		if (fs.existsSync(knowledgeEvolutionSrc)) {
-			fs.copyFileSync(knowledgeEvolutionSrc, path.join(embDir, "reference", "knowledge-evolution.md"));
-			console.log("    knowledge-evolution.md deployed");
-		}
-
-		var attentionTpl = path.join(RUNTIME_SRC, "templates", "attention.md.tpl");
-		var attentionDest = path.join(embDir, "attention.md");
-		if (fs.existsSync(attentionTpl) && !fs.existsSync(attentionDest)) {
-			fs.copyFileSync(attentionTpl, attentionDest);
-			console.log("    attention.md deployed");
-		}
-
-		var archTpl = path.join(RUNTIME_SRC, "templates", "ARCHITECTURE.md.tpl");
-		var archDest = path.join(embDir, "architecture", "ARCHITECTURE.md");
-		if (fs.existsSync(archTpl) && !fs.existsSync(archDest)) {
-			fs.copyFileSync(archTpl, archDest);
-			console.log("    architecture/ARCHITECTURE.md deployed");
-		}
-
-		var compoundTpls = ["compound-learn.md.tpl", "compound-decision.md.tpl", "compound-trap.md.tpl", "compound-explore.md.tpl", "compound-trick.md.tpl"];
-		for (var cti = 0; cti < compoundTpls.length; cti++) {
-			var ctSrc = path.join(RUNTIME_SRC, "templates", compoundTpls[cti]);
-			var ctDest = path.join(embDir, "templates", compoundTpls[cti]);
-			if (fs.existsSync(ctSrc)) fs.copyFileSync(ctSrc, ctDest);
-		}
 
 		fs.writeFileSync(path.join(embDir, "VERSION"), VERSION + "\n");
 		fs.writeFileSync(path.join(embDir, "HOST.json"), JSON.stringify({
@@ -761,7 +767,7 @@ function installForHost(projectRoot, host, callback) {
 			}
 		}
 
-		var templateVars = { PROJECT_NAME: path.basename(projectRoot), INSTALL_DATE: new Date().toISOString().split("T")[0] };
+		var templateVars = { PROJECT_NAME: path.basename(projectRoot), INSTALL_DATE: new Date().toISOString().split("T")[0], LANGUAGE: readLanguagePreference(projectRoot) };
 		if (resolveAndDeploy(
 			path.join(RUNTIME_SRC, "scaffolds", "shells", "AGENTS.md"),
 			path.join(projectRoot, "AGENTS.md"),
@@ -1176,8 +1182,8 @@ function main(argv) {
 
 	var _devDir = path.join(projectRoot, ".emb-agent");
 	try { fs.mkdirSync(_devDir, { recursive: true }); } catch (_) {}
-	if (args.developer) fs.writeFileSync(path.join(_devDir, ".developer"), args.developer + "\n");
-	if (args.lang) fs.writeFileSync(path.join(_devDir, ".language"), args.lang + "\n");
+	if (args.developer) writeDeveloperPreference(projectRoot, args.developer);
+	if (args.lang) writeLanguagePreference(projectRoot, args.lang);
 	if (args.registry) fs.writeFileSync(path.join(_devDir, ".registry"), args.registry + "\n");
 	if (args.skillSource) fs.writeFileSync(path.join(_devDir, ".skill-source"), args.skillSource + "\n");
 	if (args.specs.length > 0) fs.writeFileSync(path.join(_devDir, ".specs"), args.specs.join(",") + "\n");
@@ -1312,8 +1318,8 @@ function main(argv) {
 					rl.question(C.yellow + "Developer name > " + C.reset, function(a) { rl.close(); state.developer = a.trim() || "developer"; next(); });
 				},
 				function finish() {
-					fs.writeFileSync(path.join(_devDir, ".developer"), state.developer + "\n");
-					fs.writeFileSync(path.join(_devDir, ".language"), state.lang + "\n");
+					writeDeveloperPreference(projectRoot, state.developer);
+					writeLanguagePreference(projectRoot, state.lang);
 					if (state.specs && state.specs.length > 0) fs.writeFileSync(path.join(_devDir, ".specs"), state.specs.join(",") + "\n");
 					if (state.skills && state.skills.length > 0) fs.writeFileSync(path.join(_devDir, ".skills"), state.skills.join(",") + "\n");
 					var hosts = state.hosts || [];

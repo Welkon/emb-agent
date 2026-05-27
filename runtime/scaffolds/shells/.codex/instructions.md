@@ -20,6 +20,8 @@
 - Treat skills, hooks, and wrappers as integration surfaces; they must not override emb-agent runtime gates.
 - Avoid generic AI or project-management wording when a concrete board action, artifact, or truth file is known.
 
+{{LANGUAGE_INSTRUCTION}}
+
 ## Local Codex Rules
 
 - Structure may be templated, content may not.

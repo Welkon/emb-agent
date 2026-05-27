@@ -22,9 +22,6 @@ pub fn init_project(cwd: &Path) -> String {
     let _ = fs::create_dir_all(ext_dir.join("compound"));
     let _ = fs::create_dir_all(ext_dir.join("architecture"));
     let _ = fs::create_dir_all(ext_dir.join("reference"));
-    let _ = fs::create_dir_all(ext_dir.join("profiles"));
-    let _ = fs::create_dir_all(ext_dir.join("templates"));
-    let _ = fs::create_dir_all(ext_dir.join("registry"));
     let _ = fs::create_dir_all(ext_dir.join("chips"));
     let _ = fs::create_dir_all(ext_dir.join("issues"));
     let _ = fs::create_dir_all(ext_dir.join("refactors"));

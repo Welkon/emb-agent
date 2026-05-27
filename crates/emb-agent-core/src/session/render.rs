@@ -3,6 +3,19 @@ use crate::json::json_quote;
 use crate::task::{WorktreePolicy, worktree_policy_json};
 use serde_json::{Value, json};
 
+fn response_language_instruction(language: &str) -> &'static str {
+    match language.trim().to_ascii_lowercase().as_str() {
+        "zh" | "zh-cn" | "zh_cn" | "zh-hans" | "zh_hans" | "cn" | "chinese" | "中文"
+        | "简体中文" => {
+            "Respond to the user in Simplified Chinese (中文), unless the user explicitly asks for another language."
+        }
+        "en" | "english" | "英文" => {
+            "Respond to the user in English, unless the user explicitly asks for another language."
+        }
+        _ => "",
+    }
+}
+
 pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
     if !snapshot.initialized && snapshot.project_root.is_empty() {
         return "emb · onboard".to_string();
@@ -87,6 +100,11 @@ You are the user's embedded development assistant. Start with onboarding, not im
     if !snapshot.developer.is_empty() {
         lines.push(format!("Developer: {}", snapshot.developer));
     }
+    let language_instruction = response_language_instruction(&snapshot.language);
+    if !language_instruction.is_empty() {
+        lines.push(format!("Response language: {}", language_instruction));
+    }
+
     if !snapshot.mcu_model.is_empty() {
         lines.push(format!("MCU: {}", snapshot.mcu_model));
     }
@@ -298,6 +316,7 @@ pub fn build_next_json_with_tasks_and_policy(
     };
 
     let active_task = json_value_or_null(&build_task_json(snapshot));
+    let language_instruction = response_language_instruction(&snapshot.language);
     let task_candidates = json_value_or_null(&build_task_candidates_json(tasks));
     let agent_protocol = json_value_or_null(&build_next_agent_protocol_with_policy(
         snapshot,
@@ -307,6 +326,8 @@ pub fn build_next_json_with_tasks_and_policy(
     let mut payload = json!({
         "status": "ok",
         "variant": snapshot.active_variant,
+        "language": snapshot.language,
+        "language_instruction": language_instruction,
         "action": action,
         "reason": snapshot.recommended_reason,
         "workflow_state": snapshot.workflow_state,
@@ -392,7 +413,9 @@ fn json_value_or_null(source: &str) -> Value {
 pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
     let task_json = build_task_json(snapshot);
     format!(
-        "{{\"status\":\"ok\",\"project\":{{\"root\":{},\"initialized\":{},\"active_variant\":{},\"variant_dir\":{},\"mcu\":{},\"package\":{},\"developer\":{},\"branch\":{},\"bootstrap\":{},\"workflow\":{}}},\"tasks\":{{\"open\":{},\"wiki_pages\":{},\"active\":{}}},\"next\":{{\"command\":{},\"reason\":{},\"task_intake\":{}}}}}",
+        "{{\"status\":\"ok\",\"language\":{},\"language_instruction\":{},\"project\":{{\"root\":{},\"initialized\":{},\"active_variant\":{},\"variant_dir\":{},\"mcu\":{},\"package\":{},\"developer\":{},\"branch\":{},\"bootstrap\":{},\"workflow\":{}}},\"tasks\":{{\"open\":{},\"wiki_pages\":{},\"active\":{}}},\"next\":{{\"command\":{},\"reason\":{},\"task_intake\":{}}}}}",
+        json_quote(&snapshot.language),
+        json_quote(&response_language_instruction(&snapshot.language)),
         json_quote(&snapshot.project_root),
         snapshot.initialized,
         json_quote(&snapshot.active_variant),
@@ -509,6 +532,7 @@ mod tests {
             active_variant: "esp32-c3".to_string(),
             variant_dir: "/tmp/demo/.emb-agent/variants/esp32-c3".to_string(),
             developer: "Felix".to_string(),
+            language: "zh".to_string(),
             mcu_model: "ESP32-C3".to_string(),
             mcu_package: "QFN32".to_string(),
             default_package: "core".to_string(),
@@ -559,6 +583,25 @@ mod tests {
         assert!(json.contains("\"runtime\":\"/emb:agent\""));
         assert!(json.contains("\"active_task\""));
         assert!(json.contains("Implement ADC"));
+    }
+
+    #[test]
+    fn json_and_context_include_response_language_instruction() {
+        let status: serde_json::Value =
+            serde_json::from_str(&build_status_json(&sample_snapshot())).unwrap();
+        assert_eq!(status["language"], "zh");
+        assert_eq!(
+            status["language_instruction"],
+            "Respond to the user in Simplified Chinese (中文), unless the user explicitly asks for another language."
+        );
+
+        let next: serde_json::Value =
+            serde_json::from_str(&build_next_json(&sample_snapshot())).unwrap();
+        assert_eq!(next["language"], "zh");
+        assert_eq!(next["language_instruction"], status["language_instruction"]);
+
+        let context = build_session_context(&sample_snapshot());
+        assert!(context.contains("Response language: Respond to the user in Simplified Chinese"));
     }
 
     #[test]

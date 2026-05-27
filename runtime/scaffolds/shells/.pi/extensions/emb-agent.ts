@@ -10,6 +10,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -24,6 +25,7 @@ interface EmbAgentResult {
   next?: { command?: string; reason?: string; cli?: string };
   open_tasks?: number;
   agent_protocol?: { gate?: { recommended_command?: string; recommended_agent?: string } };
+  language?: string;
   task_candidates?: Array<{ name: string }>;
   // From status --brief
   project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string; active_variant?: string };
@@ -51,6 +53,26 @@ async function runEmbAgent(
   } catch {
     return null;
   }
+}
+
+function normalizeLanguage(value: unknown): string {
+  const lang = String(value || "").trim().toLowerCase();
+  if (!lang) return "";
+  if (["zh", "zh-cn", "zh_hans", "cn", "chinese", "中文", "简体中文"].includes(lang)) return "zh";
+  if (["en", "english", "英文"].includes(lang)) return "en";
+  return lang;
+}
+
+function languageDirective(language: unknown): string {
+  const lang = normalizeLanguage(language);
+  if (lang === "zh") return "Respond to the user in Simplified Chinese (中文), unless the user explicitly asks for another language.";
+  if (lang === "en") return "Respond to the user in English, unless the user explicitly asks for another language.";
+  return "";
+}
+
+async function readProjectLanguage(cwd: string): Promise<string> {
+  try { return normalizeLanguage(await readFile(join(cwd, ".emb-agent", ".language"), "utf8")); }
+  catch { return ""; }
 }
 
 function formatRecommendedCommand(r: EmbAgentResult): string {
@@ -131,12 +153,16 @@ export default function (pi: ExtensionAPI) {
     if (statusResult) {
       const text = formatEmbStatus(statusResult);
       ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
+      const directive = languageDirective(statusResult.language);
+      if (directive) ctx.ui.setWidget("emb-agent-language", ["emb: " + directive], { placement: "belowEditor" });
     }
 
     // Context injection from next --brief
     if (!nextResult) return;
 
     const lines = renderNextLines(nextResult);
+    const directive = languageDirective(nextResult.language || await readProjectLanguage(ctx.cwd));
+    if (directive) lines.unshift("Response language: " + directive);
     if (lines.length > 0) {
       await pi.sendMessage(
         {
@@ -154,6 +180,11 @@ export default function (pi: ExtensionAPI) {
       );
     }
   }
+  async function sendSteer(text: string, cwd: string) {
+    const directive = languageDirective(await readProjectLanguage(cwd));
+    await pi.sendUserMessage(directive ? text + "\n\n" + directive : text, { deliverAs: "steer" });
+  }
+
 
   pi.on("session_start", async (_event, ctx) => {
     await onSessionEnter(ctx);
@@ -177,9 +208,9 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("emb-agent not found or not initialized", "warning");
         return;
       }
-      await pi.sendUserMessage(
+      await sendSteer(
         `[/emb-next]\n${JSON.stringify(result, null, 2)}`,
-        { deliverAs: "steer" },
+        ctx.cwd,
       );
     },
   });
@@ -192,9 +223,9 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("emb-agent onboard failed or not initialized", "warning");
         return;
       }
-      await pi.sendUserMessage(
+      await sendSteer(
         `[/emb-onboard]\n${JSON.stringify(result, null, 2)}`,
-        { deliverAs: "steer" },
+        ctx.cwd,
       );
     },
   });

@@ -1,5 +1,5 @@
 ---
-description: Workflow shell for {{NAME}}
+description: emb-agent embedded firmware workflow
 alwaysApply: false
 ---
 
@@ -20,6 +20,8 @@ alwaysApply: false
 
 ## Cursor Notes
 
-- Skill: {{NAME}}
-- Summary: {{SUMMARY}}
+- Skill: emb-agent
+- Summary: Embedded firmware workflow, project truth, task routing, and knowledge capture.
 - Treat `agent_protocol.gate` fields from emb-agent JSON as authoritative; execute allowed host actions yourself and never ask the user to run emb-agent commands manually.
+
+{{LANGUAGE_INSTRUCTION}}

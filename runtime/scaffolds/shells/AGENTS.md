@@ -23,6 +23,8 @@
 - Treat skills, hooks, extensions, and wrappers as integration surfaces; they must not override emb-agent runtime gates.
 - Avoid generic AI or project-management wording when a concrete board action, artifact, or truth file is known.
 
+{{LANGUAGE_INSTRUCTION}}
+
 ## Local Rules
 
 - **High-SNR Input Filtering (Blind & Deaf Focus):** Aggressively strip emotional descriptions, conversational pleasantries, and non-technical noise from incoming logs or user inputs. Isolate only the exact state transitions, hardware registers, and pin symptoms.
