@@ -1,5 +1,6 @@
 # AGENTS.md
 
+<!-- EMB-AGENT:START -->
 ## Quick Routing
 
 {{INCLUDE:_partials/quick-routing-table.md}}
@@ -29,8 +30,7 @@
 - **Discrete Symbol Mapping:** Complex multi-branch behaviors must be mapped directly into discrete state space models (such as StateSmith code tables or compact bitmasks) rather than compound, deeply nested `if-else` branching systems.
 - **Hidden Execution Architecture:** Hide raw conversational intermediate steps or reasoning chatters in final operational interfaces. Converge responses rapidly and directly into deterministic tool execution blocks, structural JSON payloads, or explicit Git diffs.
 
-<!-- EMB-AGENT:START -->
-# emb-agent Instructions
+## emb-agent Instructions
 
 These instructions are for AI assistants working in this project.
 
@@ -39,13 +39,11 @@ Use emb-agent commands to:
 - Understand current project truth
 - Get the shortest next step
 
-## Quick Routing
-
 Use `onboard` first when `.emb-agent/` is missing or hardware truth is undeclared.
 Use `next` for the default continuation once the project is ready.
 Use `help` to see the full command surface.
 
-## Project Truth
+### Project Truth
 
 - Hardware truth: `.emb-agent/hw.yaml`
 - Requirements: `.emb-agent/req.yaml` and `docs/prd/`
@@ -53,18 +51,17 @@ Use `help` to see the full command surface.
 - Architecture: `.emb-agent/architecture/`
 - Active tasks: `.emb-agent/tasks/`
 
-## Session Flow
+### Session Flow
 
 1. On session start, the host auto-injects emb-agent context.
 2. If `.emb-agent/` is missing or incomplete, route to `onboard`.
 3. Follow the recommended next step (`next --brief`).
 4. After every non-trivial workflow exit, run the post-flow knowledge capture checklist.
 
-## Rules
+### Rules
 
 - Never guess hardware facts. Read `.emb-agent/hw.yaml` and `.emb-agent/req.yaml`.
 - Run `next --brief` after significant state changes.
 - Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
 
-Keep this managed block so future emb-agent updates can refresh the instructions.
 <!-- EMB-AGENT:END -->

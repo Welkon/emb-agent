@@ -262,10 +262,9 @@ function deployAgentsMd(srcPath, destPath, vars) {
 		return true;
 	}
 
-	// File exists but has no EMB-AGENT block: append managed block
-	var updated = existing + "\n" + templateBlock[0];
-	fs.writeFileSync(destPath, updated);
-	console.log("    " + path.basename(destPath) + " EMB-AGENT block appended");
+	// File exists but has no EMB-AGENT block: overwrite with managed template
+	fs.writeFileSync(destPath, templateContent);
+	console.log("    " + path.basename(destPath) + " overwritten with managed template");
 	return true;
 }
 
