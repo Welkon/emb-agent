@@ -231,6 +231,42 @@ function resolveAndDeploy(srcPath, destPath, vars) {
 	return true;
 }
 
+function deployAgentsMd(srcPath, destPath, vars) {
+	if (!fs.existsSync(srcPath)) return false;
+
+	var templateContent = fs.readFileSync(srcPath, "utf8");
+	templateContent = resolveTemplate(templateContent, PARTIALS_DIR, vars);
+
+	ensureDir(path.dirname(destPath));
+
+	if (!fs.existsSync(destPath)) {
+		// Fresh deploy: write full template
+		fs.writeFileSync(destPath, templateContent);
+		return true;
+	}
+
+	// Existing file: only update the managed EMB-AGENT block
+	var existing = fs.readFileSync(destPath, "utf8");
+	var blockRe = /<!-- EMB-AGENT:START -->[\s\S]*?<!-- EMB-AGENT:END -->/;
+	var templateBlock = templateContent.match(blockRe);
+	if (!templateBlock) {
+		// Template has no EMB-AGENT block — write fresh
+		fs.writeFileSync(destPath, templateContent);
+		return true;
+	}
+
+	if (blockRe.test(existing)) {
+		// Replace existing EMB-AGENT block with template version
+		var updated = existing.replace(blockRe, templateBlock[0]);
+		fs.writeFileSync(destPath, updated);
+		return true;
+	}
+
+	// File exists but has no EMB-AGENT block: user-managed, do not touch
+	console.log("    AGENTS.md is user-managed (no EMB-AGENT block); skipped");
+	return false;
+}
+
 
 // ── Agent spec injection ─────────────────────────────────────────
 
@@ -482,7 +518,7 @@ function installForHost(projectRoot, host) {
 		};
 
 		// AGENTS.md at project root (always deployed)
-		if (resolveAndDeploy(
+		if (deployAgentsMd(
 			path.join(RUNTIME_SRC, "scaffolds", "shells", "AGENTS.md"),
 			path.join(projectRoot, "AGENTS.md"),
 			templateVars
