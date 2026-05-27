@@ -163,15 +163,27 @@ function stColor(s: string | undefined): string {
 // Questionnaire — structured ask-user-questions TUI
 // ---------------------------------------------------------------------------
 
+interface QuestionOption {
+  label: string;
+  description?: string;
+}
+
 interface QuestionDef {
   question: string;
   header?: string;
   multiSelect?: boolean;
-  options: { label: string; description?: string }[];
+  allowCustom?: boolean;
+  options: QuestionOption[];
+}
+
+interface QuestionnaireAnswer {
+  question: string;
+  selected: string[];
+  custom?: string[];
 }
 
 interface QuestionnaireResult {
-  answers: { question: string; selected: string[] }[];
+  answers: QuestionnaireAnswer[];
   cancelled: boolean;
 }
 
@@ -180,6 +192,9 @@ class Questionnaire {
   qIndex = 0;
   selected = 0;
   answers: Map<number, number[]> = new Map();
+  customAnswers: Map<number, string> = new Map();
+  inputMode = false;
+  inputBuffer = "";
   done: (r: QuestionnaireResult) => void;
 
   constructor(questions: QuestionDef[], done: (r: QuestionnaireResult) => void) {
@@ -193,31 +208,45 @@ class Questionnaire {
     const q = this.questions[this.qIndex];
     if (!q) return lines;
 
-    const idx = "[" + (this.qIndex + 1) + "/" + this.questions.length + "]";
+    const title = " Question " + (this.qIndex + 1) + "/" + this.questions.length + " ";
     const header = q.header || q.question;
-
-    const title = " " + idx + " Question ";
     lines.push(c("accent", "\u256D\u2500\u2500") + c("accent", title) + c("muted", "\u2500".repeat(Math.max(1, w - visibleLen(title) - 6))));
-    lines.push(c("accent", "\u2502 ") + header);
-    lines.push(c("muted", "\u2502 ") + c("muted", "\u2500".repeat(Math.max(0, w - 4))));
+    const tabLines = this.renderTabs(w);
+    for (const line of tabLines) lines.push(line);
 
+    lines.push(c("muted", "\u2502 ") + c("muted", "\u2500".repeat(Math.max(0, w - 4))));
+    lines.push(c("accent", "\u2502 ") + header);
+    if (q.question !== header) lines.push(c("muted", "\u2502 ") + clip(q.question, w - 4));
+    lines.push(c("muted", "\u2502 ") + c("muted", "\u2500".repeat(Math.max(0, w - 4))));
     const currentAnswers = this.answers.get(this.qIndex) || [];
     const multi = q.multiSelect || false;
-    for (let i = 0; i < q.options.length; i++) {
+    const count = this.optionCount(q);
+    for (let i = 0; i < count; i++) {
       const opt = q.options[i];
       const isSel = i === this.selected;
       const isChecked = currentAnswers.includes(i);
       const marker = multi
         ? (isChecked ? c("success", "[x]") : c("muted", "[ ]"))
-        : (isSel ? c("accent", "\u25B6") : " ");
+        : (isChecked ? c("success", "\u25CF") : (isSel ? c("accent", "\u25CB") : c("muted", "\u25CB")));
       const prefix = marker + " ";
       const label = isSel ? c("accent", opt.label) : opt.label;
       const desc = opt.description ? c("muted", " \u2014 " + opt.description) : "";
       lines.push(c("muted", "\u2502 ") + prefix + label + desc);
     }
 
+    if (this.customAllowed(q)) {
+      const customIndex = q.options.length;
+      const customChecked = currentAnswers.includes(customIndex);
+      const marker = multi
+        ? (customChecked ? c("success", "[x]") : c("muted", "[ ]"))
+        : (customChecked ? c("success", "\u25CF") : c("muted", "\u25CB"));
+      const rawText = this.inputMode ? this.inputBuffer : (this.customAnswers.get(this.qIndex) || "");
+      const value = rawText ? rawText + (this.inputMode ? "_" : "") : c("dim", "type your answer if none fit");
+      lines.push(c("muted", "\u2502 ") + marker + " " + c("accent", "Your answer: ") + clip(value, Math.max(10, w - 22)));
+    }
+
     lines.push(c("muted", "\u2502 " + "\u2500".repeat(Math.max(0, w - 4))));
-    const hint = multi ? "Space=toggle  Tab=next  Esc=cancel" : "Enter=select  Tab=skip  Esc=cancel";
+    const hint = multi ? "Type below if needed  Space/Enter=toggle  Tab/→=next  Backspace/←=back  Esc=cancel" : "Type below if needed  Space=mark  Enter=confirm  Tab/→=skip  Backspace/←=back  Esc=cancel";
     lines.push(c("muted", "\u2502 ") + c("dim", hint));
     lines.push(c("muted", "\u2570" + "\u2500".repeat(w - 2)));
 
@@ -227,25 +256,159 @@ class Questionnaire {
   handleInput(data: string): void {
     const q = this.questions[this.qIndex];
     if (!q) return;
+    if (this.inputMode) {
+      this.handleCustomInput(data);
+      return;
+    }
+
     const multi = q.multiSelect || false;
+    if (this.customAllowed(q) && this.beginCustomInputFrom(data)) return;
+    const count = this.optionCount(q);
 
     if (data === "\x1b[A") {
-      this.selected = this.selected === 0 ? q.options.length - 1 : this.selected - 1;
+      if (count > 0) this.selected = this.selected === 0 ? count - 1 : this.selected - 1;
     } else if (data === "\x1b[B") {
-      this.selected = this.selected === q.options.length - 1 ? 0 : this.selected + 1;
+      if (count > 0) this.selected = this.selected === count - 1 ? 0 : this.selected + 1;
+    } else if (data === "\x1b[D") {
+      this.previousQuestion();
+    } else if (data === "\x1b[C") {
+      this.nextQuestion();
     } else if (data === "\r" || data === "\n") {
-      if (multi) {
+      if (count === 0) {
+        if ((this.answers.get(this.qIndex) || []).includes(q.options.length)) this.nextOrFinish();
+      } else if (multi) {
         this.toggleOption(this.qIndex, this.selected);
       } else {
-        this.answers.set(this.qIndex, [this.selected]);
-        this.nextOrFinish();
+        if (this.answers.get(this.qIndex)?.includes(this.selected)) this.nextOrFinish();
       }
     } else if (data === " ") {
-      if (multi) this.toggleOption(this.qIndex, this.selected);
+      if (count > 0) {
+        if (multi) this.toggleOption(this.qIndex, this.selected);
+        else this.answers.set(this.qIndex, [this.selected]);
+      }
+    } else if (data === "\x7f" || data === "\b" || data === "\x08") {
+      this.previousQuestion();
     } else if (data === "\t") {
-      this.answers.delete(this.qIndex);
+      if (!multi) this.answers.delete(this.qIndex);
       this.nextOrFinish();
     }
+  }
+
+  private renderTabs(width: number): string[] {
+    const lines: string[] = [];
+    const left = c("accent", "\u2502 ");
+    const max = Math.min(this.questions.length, 6);
+    const tabs: string[] = [];
+    for (let i = 0; i < max; i++) {
+      const q = this.questions[i];
+      const answered = (this.answers.get(i) || []).length > 0;
+      const label = String(i + 1) + ":" + clip(q.header || q.question, 18);
+      if (i === this.qIndex) tabs.push(c("accent", "[" + label + "]"));
+      else if (answered) tabs.push(c("success", " " + label + " "));
+      else tabs.push(c("muted", " " + label + " "));
+    }
+    if (this.questions.length > max) tabs.push(c("muted", " +" + (this.questions.length - max) + " more"));
+    lines.push(left + clip(tabs.join(" "), Math.max(10, width - 4)));
+    return lines;
+  }
+
+  private customAllowed(q: QuestionDef): boolean {
+    return q.allowCustom !== false;
+  }
+
+  private optionCount(q: QuestionDef): number {
+    return q.options.length;
+  }
+
+  private isCustomOption(q: QuestionDef, optIdx: number): boolean {
+    return this.customAllowed(q) && optIdx === q.options.length;
+  }
+
+  private beginCustomInputFrom(data: string): boolean {
+    if (data === " " || data === "\r" || data === "\n" || data === "\t") return false;
+    if (data === "\x7f" || data === "\b" || data === "\x08" || data.startsWith("\x1b")) return false;
+    let text = "";
+    for (const ch of data) {
+      if (ch >= " " && ch !== "\x7f") text += ch;
+    }
+    if (!text) return false;
+    this.inputMode = true;
+    this.inputBuffer = (this.customAnswers.get(this.qIndex) || "") + text;
+    return true;
+  }
+
+  private handleCustomInput(data: string): void {
+    if (data === "\x1b") {
+      this.inputMode = false;
+      this.inputBuffer = this.customAnswers.get(this.qIndex) || "";
+      return;
+    }
+    if (data.startsWith("\x1b[")) return;
+    if (data === "\r" || data === "\n") {
+      this.finishCustomInput();
+      return;
+    }
+    if (data === "\x7f" || data === "\b" || data === "\x08") {
+      if (this.inputBuffer.length > 0) this.inputBuffer = this.inputBuffer.slice(0, -1);
+      else this.previousQuestion();
+      return;
+    }
+    if (data === "\x15") {
+      this.inputBuffer = "";
+      return;
+    }
+    for (const ch of data) {
+      if (ch >= " " && ch !== "\x7f") this.inputBuffer += ch;
+    }
+  }
+
+  private finishCustomInput(): void {
+    const text = this.inputBuffer.trim();
+    const q = this.questions[this.qIndex];
+    if (!q) return;
+    const customIndex = q.options.length;
+    if (!text) {
+      this.customAnswers.delete(this.qIndex);
+      const kept = (this.answers.get(this.qIndex) || []).filter((idx) => idx !== customIndex);
+      if (kept.length) this.answers.set(this.qIndex, kept);
+      else this.answers.delete(this.qIndex);
+      this.inputMode = false;
+      this.inputBuffer = "";
+      return;
+    }
+    this.customAnswers.set(this.qIndex, text);
+    const current = this.answers.get(this.qIndex) || [];
+    if (!current.includes(customIndex)) current.push(customIndex);
+    this.answers.set(this.qIndex, q.multiSelect ? current : [customIndex]);
+    this.inputMode = false;
+    this.inputBuffer = "";
+    this.nextOrFinish();
+  }
+
+  private previousQuestion(): void {
+    this.inputMode = false;
+    this.inputBuffer = "";
+    if (this.qIndex > 0) {
+      this.qIndex--;
+      this.selected = this.firstSelectedOrZero(this.qIndex);
+    }
+  }
+
+  private nextQuestion(): void {
+    this.inputMode = false;
+    this.inputBuffer = "";
+    if (this.qIndex < this.questions.length - 1) {
+      this.qIndex++;
+      this.selected = this.firstSelectedOrZero(this.qIndex);
+    }
+  }
+
+  private firstSelectedOrZero(qIdx: number): number {
+    const q = this.questions[qIdx];
+    if (!q) return 0;
+    const first = this.answers.get(qIdx)?.[0] ?? 0;
+    const count = this.optionCount(q);
+    return first >= 0 && first < count ? first : 0;
   }
 
   private toggleOption(qIdx: number, optIdx: number): void {
@@ -257,18 +420,31 @@ class Questionnaire {
   }
 
   private nextOrFinish(): void {
+    this.inputMode = false;
+    this.inputBuffer = "";
     if (this.qIndex < this.questions.length - 1) {
-      this.qIndex++;
-      this.selected = 0;
+      this.nextQuestion();
     } else {
-      const ans: { question: string; selected: string[] }[] = [];
+      const ans: QuestionnaireAnswer[] = [];
       for (let i = 0; i < this.questions.length; i++) {
         const q = this.questions[i];
         const sel = this.answers.get(i) || [];
-        ans.push({
-          question: q.question,
-          selected: sel.map((j) => q.options[j].label),
-        });
+        const selected: string[] = [];
+        const custom: string[] = [];
+        for (const j of sel) {
+          if (this.isCustomOption(q, j)) {
+            const text = (this.customAnswers.get(i) || "").trim();
+            if (text) {
+              selected.push(text);
+              custom.push(text);
+            }
+          } else if (q.options[j]) {
+            selected.push(q.options[j].label);
+          }
+        }
+        const answer: QuestionnaireAnswer = { question: q.question, selected };
+        if (custom.length) answer.custom = custom;
+        ans.push(answer);
       }
       this.done({ answers: ans, cancelled: false });
     }
@@ -342,6 +518,11 @@ async function readProjectLanguage(cwd: string): Promise<string> {
   catch { return ""; }
 }
 
+function isDeclaredChip(value: unknown): boolean {
+  const text = String(value || "").trim();
+  return text.length > 0 && text.toLowerCase() !== "unknown";
+}
+
 function formatRecommendedCommand(r: EmbAgentResult): string {
   const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
   const command = String(raw || "").trim();
@@ -358,9 +539,9 @@ function formatRecommendedReason(r: EmbAgentResult): string {
 function formatEmbStatus(r: EmbAgentResult): string {
   const parts: string[] = [];
   if (r.project?.active_variant) parts.push("var:" + r.project.active_variant);
-  if (r.project?.mcu) {
-    const pkg = r.project.package ? "/" + r.project.package : "";
-    parts.push(r.project.mcu + pkg);
+  if (isDeclaredChip(r.project?.mcu)) {
+    const pkg = isDeclaredChip(r.project?.package) ? "/" + r.project!.package : "";
+    parts.push(String(r.project!.mcu) + pkg);
   }
   if (r.tasks?.wiki_pages) parts.push("wiki:" + r.tasks.wiki_pages);
   if (r.tasks?.open) parts.push("tasks:" + r.tasks.open);
@@ -411,13 +592,9 @@ export default function (pi: ExtensionAPI) {
     if (statusResult) {
       const text = formatEmbStatus(statusResult);
       ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
-      const directive = languageDirective(statusResult.language);
-      if (directive) ctx.ui.setWidget("emb-agent-language", ["emb: " + directive], { placement: "belowEditor" });
     }
     if (!nextResult) return;
     const lines = renderNextLines(nextResult);
-    const directive = languageDirective(nextResult.language || await readProjectLanguage(ctx.cwd));
-    if (directive) lines.unshift("Response language: " + directive);
     if (lines.length > 0) {
       await pi.sendMessage(
         {
@@ -519,12 +696,20 @@ export default function (pi: ExtensionAPI) {
     handler: handleOnboardCommand,
   });
 
+  function toolTextResult(text: string, details?: unknown) {
+    const payload: { content: { type: "text"; text: string }[]; details?: unknown } = {
+      content: [{ type: "text", text }],
+    };
+    if (details !== undefined) payload.details = details;
+    return payload;
+  }
+
   // ── Tool: ask_user_question ────────────────────────────────────
 
   pi.registerTool({
     name: "ask_user_question",
     label: "Ask User Question",
-    description: "Ask the user structured questions. Use when requirements are ambiguous and you need concrete decisions before proceeding. Each question has a label and options. Supports multi-select.",
+    description: "Ask the user structured questions. Use when requirements are ambiguous and you need concrete decisions before proceeding. Questions show the provided options plus an inline text input under them so users can type their own answer when no option fits. Supports multi-select.",
     parameters: {
       type: "object",
       properties: {
@@ -536,6 +721,7 @@ export default function (pi: ExtensionAPI) {
               question: { type: "string", description: "The question text" },
               header: { type: "string", description: "Optional short header" },
               multiSelect: { type: "boolean", description: "Allow multiple selection" },
+              allowCustom: { type: "boolean", description: "Show an inline text input under the provided options. Defaults to true." },
               options: {
                 type: "array",
                 items: {
@@ -561,9 +747,9 @@ export default function (pi: ExtensionAPI) {
       _onUpdate: unknown,
       ctx: { cwd: string; hasUI: boolean; ui: { notify: (m: string, t?: string) => void; custom: <T>(f: Function) => Promise<T> } },
     ) {
-      if (!ctx.hasUI) return "Error: UI not available";
+      if (!ctx.hasUI) return toolTextResult("Error: UI not available", { status: "error" });
       const questions = (params.questions as QuestionDef[]) || [];
-      if (!questions.length) return "Error: no questions provided";
+      if (!questions.length) return toolTextResult("Error: no questions provided", { status: "error" });
 
       const result = await ctx.ui.custom<QuestionnaireResult | undefined>(
         (_tui: unknown, _theme: unknown, keybindings: { matches: (d: string, n: string) => boolean }, done: (v: QuestionnaireResult | undefined) => void) => {
@@ -582,8 +768,8 @@ export default function (pi: ExtensionAPI) {
         },
       );
 
-      if (!result || result.cancelled) return "Cancelled by user";
-      return JSON.stringify(result);
+      if (!result || result.cancelled) return toolTextResult("Cancelled by user", { cancelled: true });
+      return toolTextResult(JSON.stringify(result), result);
     },
   });
 }

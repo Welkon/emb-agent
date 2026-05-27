@@ -212,7 +212,7 @@ cargo build --release
 | [AI 宿主协议](docs/ai-host-contract.md) | AI Runtime 的集成规则 |
 | [自动化协议](docs/automation-contract.md) | 稳定的机器可读输出 |
 | [工作流分层](docs/workflow-layering.md) | 核心能力与项目定制的边界 |
-| [命令参考](commands/emb/help.md) | 面向 AI/自动化作者的完整命令面 |
+| [命令参考](commands/emb/help.md) | 默认命令流 + 完整已安装命令文档；host 斜杠命令仍只暴露 `/emb-next` 和 `/emb-onboard` |
 
 ---
 

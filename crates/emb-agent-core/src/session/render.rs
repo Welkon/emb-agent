@@ -16,6 +16,11 @@ fn response_language_instruction(language: &str) -> &'static str {
     }
 }
 
+fn is_declared_chip(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("unknown")
+}
+
 pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
     if !snapshot.initialized && snapshot.project_root.is_empty() {
         return "emb · onboard".to_string();
@@ -26,11 +31,11 @@ pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
         parts.push(format!("var: {}", snapshot.active_variant));
     }
 
-    if !snapshot.mcu_model.is_empty() {
-        let chip = if snapshot.mcu_package.is_empty() {
-            snapshot.mcu_model.clone()
-        } else {
+    if is_declared_chip(&snapshot.mcu_model) {
+        let chip = if is_declared_chip(&snapshot.mcu_package) {
             format!("{} {}", snapshot.mcu_model, snapshot.mcu_package)
+        } else {
+            snapshot.mcu_model.clone()
         };
         parts.push(format!("chip: {chip}"));
     } else {
@@ -168,11 +173,11 @@ pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
         lines.push(format!("**Active variant**: {}\n", snapshot.active_variant));
     }
 
-    if !snapshot.mcu_model.is_empty() {
-        let chip = if snapshot.mcu_package.is_empty() {
-            snapshot.mcu_model.clone()
-        } else {
+    if is_declared_chip(&snapshot.mcu_model) {
+        let chip = if is_declared_chip(&snapshot.mcu_package) {
             format!("{} ({})", snapshot.mcu_model, snapshot.mcu_package)
+        } else {
+            snapshot.mcu_model.clone()
         };
         lines.push(format!("**Current chip**: {}\n", chip));
     }
@@ -574,6 +579,17 @@ mod tests {
         assert!(line.contains("1 task(s)"));
         assert!(line.contains("var: esp32-c3"));
         assert!(line.contains("[P1] Implement ADC"));
+    }
+
+    #[test]
+    fn statusline_treats_unknown_chip_as_undeclared() {
+        let mut snapshot = sample_snapshot();
+        snapshot.mcu_model = "unknown".to_string();
+        snapshot.mcu_package = "unknown".to_string();
+        let line = build_statusline(&snapshot);
+        assert!(line.contains("chip: undeclared"));
+        assert!(!line.contains("unknown/unknown"));
+        assert!(!line.contains("unknown unknown"));
     }
 
     #[test]

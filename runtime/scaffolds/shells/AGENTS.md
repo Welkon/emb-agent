@@ -43,7 +43,7 @@ Use emb-agent commands to:
 
 Use `onboard` first when `.emb-agent/` is missing or hardware truth is undeclared.
 Use `next` for the default continuation once the project is ready.
-Use `help` to see the full command surface.
+Use `help` for the default command flow. All installed command docs remain available under the host runtime (for example `.omp/emb-agent/commands/emb/` or `.pi/emb-agent/commands/emb/`); prefer `onboard` and `next`, but use specialized commands when runtime output or the user request calls for them.
 
 ### Project Truth
 

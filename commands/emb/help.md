@@ -13,13 +13,14 @@ Output the emb-agent help summary below and nothing else.
 
 ## Fast Path
 
-- Run these as Codex, Claude Code, Cursor, or Pi session commands.
-- Open a new session first. emb-agent should inject startup context automatically.
-- If the project is new, partial, or has scattered hardware docs, use `onboard` first.
-- Use `start` when you need to re-render entry guidance manually.
-- If the chip is already known, onboard can confirm and record it; otherwise keep MCU unknown and let `next` route concept-stage work.
-- Use `next` for the default continuation once onboarding/bootstrap and task context are in place.
-- Use `help advanced` or `help --all` only when you need the full installed surface.
+Use this order unless the runtime `next` output says otherwise:
+
+1. `onboard` — first run, partial setup, or existing docs need migration.
+2. `next --brief` — default continuation after onboarding.
+3. `task add|activate` — create or choose concrete work.
+4. `scan -> plan -> do -> review -> verify` — execute and close work.
+
+All installed commands remain available. `init`, `init-project`, `bootstrap`, and `board` are not the normal starting path; use them when `next --brief`, `health`, or the user request calls for that specific function.
 
 ## PRD Intake
 
@@ -36,33 +37,27 @@ Output the emb-agent help summary below and nothing else.
 - If the request assumes an unconfirmed technical choice, use `decision review` / `decision record` before implementation.
 - Capability shortcuts: `scan`, `plan`, `do`, `debug`, `review`, `verify` — equivalent to `capability run <name>`.
 
-## Public Commands
+## Command Guide
 
-The public command surface is intentionally small and grouped by default path.
+### Start / Continue
 
-### Start Here
+- `onboard` — audit or scaffold project truth.
+- `next --brief` — ask the runtime what to do now.
+- `start --brief` — re-render entry guidance when startup injection was missed.
+- `health` — diagnose why startup or `next` looks blocked.
 
-- `$emb-onboard`
-- `$emb-start`
-- `$emb-task`
-- `$emb-decision`
-- `$emb-ingest`
-- `$emb-next`
+### Work
 
-### Execute Current Work
+- `task` — create, inspect, activate, resolve, or close tasks.
+- `scan`, `plan`, `do`, `debug`, `review`, `verify` — capability shortcuts for active work.
+- `decision` — record explicit choices before implementation.
 
-- `$emb-scan`  (`emb-agent scan`)
-- `$emb-plan`  (`emb-agent plan`)
-- `$emb-do`    (`emb-agent do`)
-- `$emb-debug` (`emb-agent debug`)
+### Evidence / Memory
 
-### Close And Handoff
-
-- `$emb-review`  (`emb-agent review`)
-- `$emb-verify`  (`emb-agent verify`)
-- `$emb-pause`
-- `$emb-resume`
-
+- `ingest` — stage datasheets, schematics, or other source evidence.
+- `schematic` — query normalized schematic facts.
+- `knowledge` — save durable project memory.
+- `support` — install or derive chip/tool support only when needed.
 ## Notes
 
 - If the chip or pin map is already known, prefer `declare hardware` first.
@@ -79,7 +74,10 @@ The public command surface is intentionally small and grouped by default path.
 - If support is still only valid for the current project, keep it `project-only` first and publish it to a shared adapters catalog only after review.
 - When the user confirms real-board behavior (`this build is right`, current draw, wake works/fails), record it with `verify board --result <pass|fail|partial> <summary> --evidence <build/log/measurement> --truth <stable board fact>` instead of leaving it in chat only.
 
-## Advanced Help
+## Specialized Commands
 
-- Use `help advanced` or `help --all` to show the full command surface.
-- Use `commands list` or `commands list --all` when you explicitly want the installed command inventory.
+- `init` and `init-project` create low-level scaffold files. Prefer `onboard`; it decides whether initialization is safe.
+- `bootstrap` explains dependency ordering. Prefer `next --brief`; use `health` if `next` appears stuck.
+- `board` queries parsed PCB layout artifacts. Use it after `ingest board` when PCB layout evidence matters.
+- Other installed command docs in this directory are available for narrower runtime, support, or automation work; prefer the fast path unless the task needs them.
+- `commands list --all` prints the complete implementation/debugging inventory.

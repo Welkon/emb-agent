@@ -213,6 +213,7 @@ function parseArgs(argv) {
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 
+
 function copyDir(src, dest) {
 	if (!fs.existsSync(src)) return;
 	ensureDir(dest);
@@ -225,6 +226,7 @@ function copyDir(src, dest) {
 		else { fs.copyFileSync(s, d); }
 	}
 }
+
 
 function hostInstallScope(host) {
 	return host && host.scope ? host.scope : "local";

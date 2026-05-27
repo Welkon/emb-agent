@@ -47,6 +47,7 @@ Common host dirs: .omp (Oh My Pi), .cursor (Cursor), .codex (Codex), .claude (Cl
 | Analyze schematic | `schematic analyze <path>` |
 | Task AAR | `task aar scan` |
 | Board signoff | `verify board --result pass <summary>` |
+| Full command docs | `.<host>/emb-agent/commands/emb/<command>.md` for any installed command; prefer the fast path unless the task needs a specialized command |
 ## Session Flow
 
 1. On session start, emb-agent auto-injects project state via the OMP extension.
@@ -81,4 +82,5 @@ Skip: generic programming patterns, facts obvious from datasheets, vendor SDK co
 - Before confirming a PRD, interrogate missing constraints with the user.
 - Run `next --brief` after significant state changes.
 - Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
+- All installed command docs remain available under the host runtime (for example `.omp/emb-agent/commands/emb/` or `.pi/emb-agent/commands/emb/`). Prefer `onboard` and `next`, but use specialized commands when runtime output or the user request calls for them.
 - If `.emb-agent/` does not exist or is incomplete, route to `emb-onboard` agent first.

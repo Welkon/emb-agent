@@ -403,24 +403,37 @@ pub fn decision_status(ext_dir: &Path) -> String {
 }
 
 /// List available commands
-pub fn commands_list() -> String {
-    let commands = [
-        "start next status health pause resume onboard",
-        "task list show add activate resolve aar scan/record/status bug add/list/resolve",
-        "variant list status adopt create use fork diff",
-        "workspace list status create use fork diff (alias)",
-        "chip diff swap",
-        "scan plan do review verify debug",
-        "prd status doc list knowledge status session show context show",
-        "bootstrap status declare hardware",
-        "init update check settings show decision status commands list",
-        "note add show memory remember list",
-        "capability run executor run",
-        "hook session-start statusline context-monitor statusline",
-        "diagnostics hooks project state-paths",
-    ];
-    let list: Vec<String> = commands.iter().map(|s| format!("\"{}\"", s)).collect();
-    format!("{{\"status\":\"ok\",\"commands\":[{}]}}", list.join(","))
+pub fn commands_list(show_all: bool) -> String {
+    let commands: &[&str] = if show_all {
+        &[
+            "start next status health pause resume onboard",
+            "task list show add activate resolve aar scan/record/status bug add/list/resolve",
+            "variant list status adopt create use fork diff",
+            "workspace list status create use fork diff (alias)",
+            "chip diff swap",
+            "scan plan do review verify debug",
+            "prd status doc list knowledge status session show context show",
+            "bootstrap status declare hardware",
+            "init update check settings show decision status commands list",
+            "note add show memory remember list",
+            "capability run executor run",
+            "hook session-start statusline context-monitor statusline",
+            "diagnostics hooks project state-paths",
+        ]
+    } else {
+        &[
+            "start: onboard, next --brief, start --brief, health",
+            "work: task, scan, plan, do, debug, review, verify, decision",
+            "evidence: ingest, schematic, knowledge, support",
+            "advanced: init/init-project, bootstrap, board, commands list --all",
+        ]
+    };
+    serde_json::to_string_pretty(&serde_json::json!({
+        "status": "ok",
+        "commands": commands,
+        "note": if show_all { "Full implementation/debugging inventory." } else { "Guided summary only; installed host runtime command docs remain available under .<host>/emb-agent/commands/emb/. Use `commands list --all` for implementation/debugging inventory." }
+    }))
+    .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
 }
 
 /// Note add

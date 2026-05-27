@@ -215,7 +215,7 @@ cargo build --release
 | [AI Host Contract](docs/ai-host-contract.md) | Integration rules for AI runtimes |
 | [Automation Contract](docs/automation-contract.md) | Stable machine-readable outputs |
 | [Workflow Layering](docs/workflow-layering.md) | Core vs project-specific workflow boundaries |
-| [Command Reference](commands/emb/help.md) | Full command surface for AI/automation authors |
+| [Command Reference](commands/emb/help.md) | Default command flow plus full installed command docs; host slash surfaces still expose `/emb-next` and `/emb-onboard` |
 
 ---
 

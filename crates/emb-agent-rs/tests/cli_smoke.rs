@@ -529,8 +529,8 @@ fn knowledge_query_and_explain_accept_named_options_after_cwd() {
 fn command_docs_are_help_routable() {
     let repo_root = repo_root();
     let commands_dir = repo_root.join("commands").join("emb");
-    let bin = emb_agent_bin();
 
+    let bin = emb_agent_bin();
     for entry in fs::read_dir(commands_dir).expect("read command docs") {
         let entry = entry.expect("dir entry");
         let path = entry.path();
@@ -545,6 +545,31 @@ fn command_docs_are_help_routable() {
             .expect("run command help");
         assert_success(output);
     }
+}
+
+#[test]
+fn commands_list_guides_without_hiding_full_inventory() {
+    let project = TestProject::new("commands-list");
+
+    let guided = run(&project, &["commands", "list"]);
+    let guided_value: serde_json::Value = serde_json::from_str(&guided).expect("commands json");
+    let guided_commands = guided_value["commands"].as_array().expect("commands array");
+    assert!(
+        guided_commands.iter().any(|entry| entry.as_str().unwrap_or("").contains("start: onboard")),
+        "guided output: {guided}"
+    );
+    assert!(
+        !guided_commands.iter().any(|entry| entry.as_str().unwrap_or("").contains("variant list")),
+        "guided output should keep implementation inventory behind --all: {guided}"
+    );
+
+    let full = run(&project, &["commands", "list", "--all"]);
+    let full_value: serde_json::Value = serde_json::from_str(&full).expect("commands all json");
+    let full_commands = full_value["commands"].as_array().expect("commands all array");
+    assert!(
+        full_commands.iter().any(|entry| entry.as_str().unwrap_or("").contains("variant list")),
+        "full output: {full}"
+    );
 }
 
 #[test]
@@ -623,6 +648,13 @@ fn installer_exposes_same_two_shell_commands_per_host() {
 
     assert_two_command_files(root.join(".windsurf").join("workflows"), ".windsurf");
     assert_no_markdown_files(root.join(".windsurf").join("commands"));
+
+    let runtime_commands = root.join(".omp").join("emb-agent").join("commands").join("emb");
+    assert!(runtime_commands.join("next.md").exists(), "installed command docs must include next");
+    assert!(runtime_commands.join("onboard.md").exists(), "installed command docs must include onboard");
+    assert!(runtime_commands.join("init-project.md").exists(), "installed runtime must keep init-project available");
+    assert!(runtime_commands.join("bootstrap.md").exists(), "installed runtime must keep bootstrap available");
+    assert!(runtime_commands.join("board.md").exists(), "installed runtime must keep board available");
 
     for host in [".pi", ".omp"] {
         let commands_dir = root.join(host).join("commands");

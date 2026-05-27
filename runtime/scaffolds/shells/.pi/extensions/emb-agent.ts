@@ -75,6 +75,11 @@ async function readProjectLanguage(cwd: string): Promise<string> {
   catch { return ""; }
 }
 
+function isDeclaredChip(value: unknown): boolean {
+  const text = String(value || "").trim();
+  return text.length > 0 && text.toLowerCase() !== "unknown";
+}
+
 function formatRecommendedCommand(r: EmbAgentResult): string {
   const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
   const command = String(raw || "").trim();
@@ -115,9 +120,9 @@ function formatEmbStatus(r: EmbAgentResult): string {
   if (r.project?.active_variant) parts.push(`var:${r.project.active_variant}`);
 
   // Chip info (from status --brief)
-  if (r.project?.mcu) {
-    const pkg = r.project.package ? `/${r.project.package}` : "";
-    parts.push(`${r.project.mcu}${pkg}`);
+  if (isDeclaredChip(r.project?.mcu)) {
+    const pkg = isDeclaredChip(r.project?.package) ? `/${r.project!.package}` : "";
+    parts.push(`${r.project!.mcu}${pkg}`);
   }
 
   // Wiki + tasks
@@ -153,16 +158,12 @@ export default function (pi: ExtensionAPI) {
     if (statusResult) {
       const text = formatEmbStatus(statusResult);
       ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
-      const directive = languageDirective(statusResult.language);
-      if (directive) ctx.ui.setWidget("emb-agent-language", ["emb: " + directive], { placement: "belowEditor" });
     }
 
     // Context injection from next --brief
     if (!nextResult) return;
 
     const lines = renderNextLines(nextResult);
-    const directive = languageDirective(nextResult.language || await readProjectLanguage(ctx.cwd));
-    if (directive) lines.unshift("Response language: " + directive);
     if (lines.length > 0) {
       await pi.sendMessage(
         {

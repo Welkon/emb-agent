@@ -110,7 +110,8 @@ pub fn run_ext_ops(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "commands" => {
-            println!("{}", emb_agent_core::ext_ops::commands_list());
+            let show_all = args.iter().any(|arg| arg == "--all");
+            println!("{}", emb_agent_core::ext_ops::commands_list(show_all));
             Ok(())
         }
         "note" => match args.get(1).map(String::as_str) {
