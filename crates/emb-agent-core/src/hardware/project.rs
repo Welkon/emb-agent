@@ -37,6 +37,8 @@ pub struct ProjectSnapshot {
     pub workflow_state: String,
     pub has_hardware_truth: bool,
     pub task_intake_summary: String,
+    pub requirements_unknown_count: usize,
+    pub hardware_unknown_count: usize,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -233,6 +235,33 @@ pub struct TaskRef {
     pub package: String,
     pub path: String,
 }
+fn is_declared_hardware_model(model: &str) -> bool {
+    let trimmed = model.trim();
+    !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("unknown")
+}
+
+fn is_clarification_task(task: &TaskRef) -> bool {
+    let text = format!("{} {}", task.name, task.title).to_lowercase();
+    [
+        "clarify",
+        "confirm",
+        "decide",
+        "requirement",
+        "spec",
+        "brainstorm",
+        "explore",
+        "确认",
+        "澄清",
+        "需求",
+        "规格",
+        "硬件规格",
+        "交互方式",
+        "选型",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+}
+
 
 pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     let state = project_state_from_cwd(cwd);
@@ -245,35 +274,54 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         };
     }
 
-    let has_hardware = !state.hardware.model.is_empty();
+    let has_hardware = is_declared_hardware_model(&state.hardware.model);
+    let active_is_clarification = state
+        .current_task
+        .as_ref()
+        .map(is_clarification_task)
+        .unwrap_or(false);
+    let needs_clarification = !state.requirements.unknowns.is_empty()
+        || !state.hardware.unknowns.is_empty()
+        || active_is_clarification;
     let bootstrap_status = if !state.config.active_specs.is_empty() {
         "ready"
     } else if has_hardware {
         "bootstrap_ready"
+    } else if needs_clarification {
+        "concept"
     } else {
         "needs-hardware"
     };
-    let workflow_state = if state.current_task.is_some() {
+    let workflow_state = if active_is_clarification {
+        "clarifying"
+    } else if state.current_task.is_some() {
         "task_active"
     } else if has_hardware {
         "ready"
     } else {
-        "bootstrap"
+        "concept"
     };
-    let task_intake_summary = if state.current_task.is_some() {
+    let task_intake_summary = if active_is_clarification {
+        "Continue the active clarification/brainstorming task. Discuss requirements and hardware constraints with the user, update docs/prd/system.md and .emb-agent/req.yaml, and do not create another task or start implementation until the user confirms a concrete scope.".to_string()
+    } else if state.current_task.is_some() {
         String::new()
-    } else if has_hardware {
-        "Create a task via `task add` before implementation.".to_string()
+    } else if needs_clarification || !has_hardware {
+        "Continue requirement exploration/brainstorming. Clarify unknown behavior, interaction, power, LED, mechanical, and hardware constraints with the user; update docs/prd/system.md and .emb-agent/req.yaml. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string()
     } else {
-        "Run emb-onboard first: confirm whether hardware truth is known, scattered in docs, or still unknown. Do not jump directly into implementation.".to_string()
+        "Ask what work the user wants to start. Create a task only after the implementation or bug scope is clear.".to_string()
     };
 
-    let (recommended_command, recommended_reason) = if state.current_task.is_some() {
-        ("do".to_string(), "Active task is selected".to_string())
-    } else if !has_hardware {
+    let (recommended_command, recommended_reason) = if active_is_clarification {
         (
-            "onboard".to_string(),
-            "Hardware truth is not declared. Use emb-onboard to choose the lightest path: declare known hardware, ingest evidence, or keep MCU unknown for concept-stage work.".to_string(),
+            "clarify".to_string(),
+            "Active work is requirement/hardware clarification. Continue brainstorming and record confirmed decisions before creating implementation tasks.".to_string(),
+        )
+    } else if state.current_task.is_some() {
+        ("do".to_string(), "Active task is selected".to_string())
+    } else if needs_clarification || !has_hardware {
+        (
+            "clarify".to_string(),
+            "Project is still in concept/requirements exploration. Clarify unknowns and update PRD/req truth before task creation or implementation.".to_string(),
         )
     } else {
         (
@@ -309,6 +357,8 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         workflow_state: workflow_state.to_string(),
         has_hardware_truth: has_hardware,
         task_intake_summary,
+        requirements_unknown_count: state.requirements.unknowns.len(),
+        hardware_unknown_count: state.hardware.unknowns.len(),
     }
 }
 
@@ -1100,6 +1150,36 @@ mod tests {
         assert_eq!(snapshot.wiki_pages, 1);
         assert_eq!(snapshot.recommended_command, "do");
         assert_eq!(snapshot.current_task.unwrap().title, "Implement ADC");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn unknown_hardware_and_requirement_unknowns_route_to_clarification() {
+        let root = temp_project();
+        fs::write(
+            root.join(".emb-agent/hw.yaml"),
+            "vendor: unknown\nmodel: unknown\npackage: unknown\nunknowns:\n  - MCU not selected\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".emb-agent/req.yaml"),
+            "goals:\n  - Dimmable lamp\nunknowns:\n  - Touch or knob interaction\n",
+        )
+        .unwrap();
+        fs::write(root.join(".emb-agent/.current-task"), "确认调光台灯交互方式与硬件规格\n").unwrap();
+        fs::create_dir_all(root.join(".emb-agent/tasks/确认调光台灯交互方式与硬件规格")).unwrap();
+        fs::write(
+            root.join(".emb-agent/tasks/确认调光台灯交互方式与硬件规格/task.json"),
+            "{\"name\":\"确认调光台灯交互方式与硬件规格\",\"title\":\"确认调光台灯交互方式与硬件规格\",\"status\":\"in_progress\",\"priority\":\"P2\"}",
+        )
+        .unwrap();
+
+        let snapshot = snapshot_from_cwd(root.to_str().unwrap());
+        assert_eq!(snapshot.recommended_command, "clarify");
+        assert_eq!(snapshot.workflow_state, "clarifying");
+        assert!(!snapshot.has_hardware_truth);
+        assert_eq!(snapshot.requirements_unknown_count, 1);
+        assert!(snapshot.task_intake_summary.contains("do not create another task"));
         let _ = fs::remove_dir_all(root);
     }
 

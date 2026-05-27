@@ -473,8 +473,11 @@ interface EmbAgentResult {
     priority?: string;
     status?: string;
   }>;
+  activated?: boolean;
+  gate?: unknown;
+  next_instructions?: string;
   project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string; active_variant?: string };
-  tasks?: { open?: number; wiki_pages?: number; active?: string | null };
+  tasks?: { open?: number; wiki_pages?: number; active?: string | { name?: string; title?: string } | null };
 }
 
 async function runEmbAgent(
@@ -523,6 +526,18 @@ function isDeclaredChip(value: unknown): boolean {
   return text.length > 0 && text.toLowerCase() !== "unknown";
 }
 
+function formatActiveTask(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object") {
+    const item = value as { name?: unknown; title?: unknown };
+    const name = String(item.name || "").trim();
+    if (name) return name;
+    const title = String(item.title || "").trim();
+    if (title) return title;
+  }
+  return "";
+}
 function formatRecommendedCommand(r: EmbAgentResult): string {
   const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
   const command = String(raw || "").trim();
@@ -545,7 +560,8 @@ function formatEmbStatus(r: EmbAgentResult): string {
   }
   if (r.tasks?.wiki_pages) parts.push("wiki:" + r.tasks.wiki_pages);
   if (r.tasks?.open) parts.push("tasks:" + r.tasks.open);
-  if (r.tasks?.active) parts.push("▸" + r.tasks.active);
+  const activeTask = formatActiveTask(r.tasks?.active);
+  if (activeTask) parts.push("▸" + activeTask);
   const command = formatRecommendedCommand(r);
   if (command) parts.push(command);
   return parts.length > 0 ? "emb: " + parts.join(" · ") : "";
@@ -627,51 +643,17 @@ export default function (pi: ExtensionAPI) {
 
   // ── Slash commands ──────────────────────────────────────────────
 
-  async function handleNextCommand(_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void; custom: <T>(f: Function, o?: Record<string, unknown>) => Promise<T> } }) {
+  async function handleNextCommand(_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void } }) {
     const result = await runEmbAgent(["next", "--brief"], ctx.cwd);
     if (!result) {
       ctx.ui.notify("emb-agent not found or not initialized", "warning");
       return;
     }
-    const tasks = result.task_candidates;
-    if (!tasks?.length) {
-      const lines = renderNextLines(result);
-      await promptAgent("[/emb-next]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) + "\n\nAct on the above.", ctx.cwd);
-      return;
-    }
-
-    const taskName = await ctx.ui.custom<string | undefined>(
-      (_tui: unknown, _theme: unknown, keybindings: { matches: (d: string, n: string) => boolean }, done: (v: string | undefined) => void) => {
-        const picker = new TaskPicker(
-          tasks.map((t) => ({
-            name: t.name,
-            priority: t.priority,
-            title: t.title,
-            status: t.status,
-            bootstrap: t.name.startsWith("00-"),
-            prdPath: "docs/prd/tasks/" + t.name + ".md",
-          })),
-          (item) => done(item.name),
-          () => done(undefined),
-        );
-        return {
-          render: (w: number) => picker.render(w),
-          handleInput: (data: string) => {
-            if (data === "\x1b" || keybindings.matches(data, "interrupt") || keybindings.matches(data, "tui.select.cancel")) { done(undefined); return; }
-            picker.handleInput(data);
-          },
-          invalidate: () => picker.invalidate(),
-        };
-      },
-    );
-
-    if (!taskName) return;
-    const r = await runEmbAgent(["task", "activate", taskName], ctx.cwd);
-    const title = tasks.find((t) => t.name === taskName)?.title || taskName;
+    const lines = renderNextLines(result);
     await promptAgent(
-      (r
-        ? "Activated: " + taskName + " — " + title + ". Confirm and suggest next step."
-        : "Activation failed: " + taskName + "."),
+      "[/emb-next]\n" +
+      (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) +
+      "\n\nRespond to the user from the runtime recommendation above. If the gate is prd-exploration or action is clarify, brainstorm and ask clarifying questions; update PRD/req truth after confirmation, and do not create a task until the user confirms a concrete deliverable or bug. If open task candidates exist, present them as options only after checking whether the user wants to continue existing work or start something new. Do not auto-activate a task.",
       ctx.cwd,
     );
   }

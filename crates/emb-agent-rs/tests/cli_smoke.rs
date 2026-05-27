@@ -192,11 +192,10 @@ fn common_user_paths_smoke() {
     assert!(next.contains("task_candidates"), "next output: {next}");
     assert!(next.contains("pwm-led"), "next output: {next}");
     assert!(
-        next.contains("Do not ask the user to run a list command"),
+        next.contains("start a new task/bug") && next.contains("task_candidates"),
         "next output: {next}"
     );
     assert!(!next.contains("/emb:task list"), "next output: {next}");
-
     let tasks = run(&project, &["task", "list"]);
     assert!(tasks.contains("tasks"), "task list output: {tasks}");
 
@@ -213,6 +212,46 @@ fn common_user_paths_smoke() {
     assert!(
         diagnostics.contains("initialized"),
         "diagnostics output: {diagnostics}"
+    );
+}
+
+#[test]
+fn concept_stage_unknowns_route_to_clarification_not_task_creation() {
+    let project = TestProject::new("concept-clarify");
+    fs::write(
+        project.path().join(".emb-agent/hw.yaml"),
+        "vendor: unknown\nmodel: unknown\npackage: unknown\nunknowns:\n  - MCU not selected\n",
+    )
+    .expect("write hw unknowns");
+    fs::write(
+        project.path().join(".emb-agent/req.yaml"),
+        "goals:\n  - Dimmable lamp\nunknowns:\n  - Touch or knob interaction\n  - Power source\n",
+    )
+    .expect("write req unknowns");
+    let task_name = "确认调光台灯交互方式与硬件规格";
+    fs::write(project.path().join(".emb-agent/.current-task"), format!("{task_name}\n"))
+        .expect("write current task");
+    let task_dir = project.path().join(".emb-agent/tasks").join(task_name);
+    fs::create_dir_all(&task_dir).expect("create clarification task");
+    fs::write(
+        task_dir.join("task.json"),
+        format!(
+            r#"{{"name":"{task_name}","title":"{task_name}","status":"in_progress","priority":"P2"}}"#
+        ),
+    )
+    .expect("write clarification task");
+
+    let next = run(&project, &["next", "--brief"]);
+    let next_value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    assert_eq!(next_value["action"], "clarify", "next output: {next}");
+    assert_eq!(
+        next_value["agent_protocol"]["gate"]["kind"],
+        "prd-exploration",
+        "next output: {next}"
+    );
+    assert!(
+        next_value["instructions"].as_str().unwrap_or("").contains("do not create another task"),
+        "next output: {next}"
     );
 }
 
@@ -909,9 +948,14 @@ fn initialized_project_without_hardware_still_routes_to_onboard() {
         .expect("run next");
     let next = assert_success(output);
     let next_value: serde_json::Value = serde_json::from_str(&next).expect("next json");
-    assert_eq!(next_value["action"], "onboard", "next output: {next}");
+    assert_eq!(next_value["action"], "clarify", "next output: {next}");
     assert_eq!(
-        next_value["agent_protocol"]["gate"]["kind"], "onboarding",
+        next_value["agent_protocol"]["gate"]["kind"],
+        "prd-exploration",
+        "next output: {next}"
+    );
+    assert!(
+        next_value["instructions"].as_str().unwrap_or("").contains("brainstorming"),
         "next output: {next}"
     );
 

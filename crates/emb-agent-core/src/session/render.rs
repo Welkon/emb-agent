@@ -257,6 +257,9 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
             "Project needs onboarding. Invoke emb-onboard to scaffold .emb-agent/ or migrate existing hardware truth before implementation.".to_string(),
         );
     }
+    if snapshot.recommended_command == "clarify" {
+        return ("clarify".to_string(), snapshot.task_intake_summary.clone());
+    }
     if snapshot.current_task.is_some() {
         (
             "do".to_string(),
@@ -264,10 +267,10 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
         )
     } else if snapshot.open_tasks > 0 {
         (
-            "activate".to_string(),
-            "Tasks exist but none active. Present the task candidates from `/emb:next --brief` and ask the user which one to activate. Do not ask the user to run a list command.".to_string(),
+            "choose-work".to_string(),
+            "Open tasks exist but none is active. Present existing task candidates as one option, then ask whether the user wants to continue an existing task, start a new task/bug, or just inspect status. Activate a task only after explicit task selection.".to_string(),
         )
-    } else if snapshot.bootstrap_status != "ready" {
+    } else if snapshot.bootstrap_status != "ready" && snapshot.bootstrap_status != "concept" {
         (
             "bootstrap".to_string(),
             "Project needs bootstrap. Trigger `/emb:bootstrap status`.".to_string(),
@@ -298,6 +301,8 @@ pub fn build_next_json_with_tasks_and_policy(
             "onboard",
             "Project needs onboarding. Invoke emb-onboard or trigger `/emb:onboard`; audit existing hardware docs before declaring hardware or implementing.",
         )
+    } else if snapshot.recommended_command == "clarify" {
+        ("clarify", snapshot.task_intake_summary.as_str())
     } else if snapshot.current_task.is_some() {
         (
             "do",
@@ -305,10 +310,10 @@ pub fn build_next_json_with_tasks_and_policy(
         )
     } else if snapshot.open_tasks > 0 {
         (
-            "activate",
-            "Open tasks exist but none is active. Do not ask the user to run a list command. Present `task_candidates` and ask which task to activate; after explicit choice, trigger `/emb:task activate <name>`.",
+            "choose-work",
+            "Open tasks exist but none is active. Present `task_candidates` as existing-work options, but first clarify whether the user wants to continue existing work, start a new task/bug, or just inspect status. Trigger `/emb:task activate <name>` only after explicit task selection.",
         )
-    } else if snapshot.bootstrap_status != "ready" {
+    } else if snapshot.bootstrap_status != "ready" && snapshot.bootstrap_status != "concept" {
         (
             "bootstrap",
             "Project needs bootstrap. Trigger `/emb:bootstrap status`.",
@@ -341,7 +346,9 @@ pub fn build_next_json_with_tasks_and_policy(
         "open_tasks": snapshot.open_tasks,
         "task_candidates": task_candidates,
         "instructions": instructions,
-        "agent_protocol": agent_protocol
+        "agent_protocol": agent_protocol,
+        "requirements_unknown_count": snapshot.requirements_unknown_count,
+        "hardware_unknown_count": snapshot.hardware_unknown_count
     });
     if let Some(policy) = worktree_policy
         && let Some(obj) = payload.as_object_mut()
@@ -392,6 +399,19 @@ fn build_next_agent_protocol_with_policy(
         })
         .to_string();
     }
+    if action == "clarify" {
+        return json!({
+            "gate": {
+                "kind": "prd-exploration",
+                "blocking": true,
+                "allowed_actions": ["brainstorm_with_user", "ask_clarifying_questions", "update_prd_and_req_truth", "record_confirmed_decisions"],
+                "forbidden_actions": ["create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation"],
+                "recommended_command": "/emb:next"
+            }
+        })
+        .to_string();
+    }
+
     if action == "onboard" {
         return json!({
             "gate": {
@@ -405,8 +425,8 @@ fn build_next_agent_protocol_with_policy(
         })
         .to_string();
     }
-    if action == "activate" && snapshot.open_tasks > 0 {
-        return "{\"gate\":{\"kind\":\"task-selection\",\"blocking\":true,\"allowed_actions\":[\"present_task_candidates\",\"ask_user_to_choose_task\",\"trigger_task_activate_after_explicit_choice\"],\"forbidden_actions\":[\"ask_user_to_run_task_list\",\"ask_user_to_run_task_activate\",\"invent_task_name\",\"run_shell_command_for_emb_slash_command\"]}}".to_string();
+    if action == "choose-work" && snapshot.open_tasks > 0 {
+        return "{\"gate\":{\"kind\":\"work-selection\",\"blocking\":true,\"allowed_actions\":[\"present_existing_task_candidates\",\"offer_new_task_or_bug\",\"ask_user_to_choose_work_path\",\"trigger_task_activate_after_explicit_task_choice\",\"trigger_task_add_after_scope_clear\"],\"forbidden_actions\":[\"force_existing_task_activation\",\"ask_user_to_run_task_list\",\"ask_user_to_run_task_activate\",\"invent_task_name\",\"start_implementation_without_selected_or_created_task\",\"run_shell_command_for_emb_slash_command\"]}}".to_string();
     }
     "{\"gate\":{\"kind\":\"none\",\"blocking\":false}}".to_string()
 }
@@ -416,7 +436,11 @@ fn json_value_or_null(source: &str) -> Value {
 }
 
 pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
-    let task_json = build_task_json(snapshot);
+    let active_task_name = snapshot
+        .current_task
+        .as_ref()
+        .map(|task| task.name.as_str())
+        .unwrap_or("");
     format!(
         "{{\"status\":\"ok\",\"language\":{},\"language_instruction\":{},\"project\":{{\"root\":{},\"initialized\":{},\"active_variant\":{},\"variant_dir\":{},\"mcu\":{},\"package\":{},\"developer\":{},\"branch\":{},\"bootstrap\":{},\"workflow\":{}}},\"tasks\":{{\"open\":{},\"wiki_pages\":{},\"active\":{}}},\"next\":{{\"command\":{},\"reason\":{},\"task_intake\":{}}}}}",
         json_quote(&snapshot.language),
@@ -433,7 +457,7 @@ pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
         json_quote(&snapshot.workflow_state),
         snapshot.open_tasks,
         snapshot.wiki_pages,
-        task_json,
+        json_quote(active_task_name),
         json_quote(&snapshot.recommended_command),
         json_quote(&snapshot.recommended_reason),
         json_quote(&snapshot.task_intake_summary)
@@ -558,6 +582,8 @@ mod tests {
             workflow_state: "task_active".to_string(),
             has_hardware_truth: true,
             task_intake_summary: String::new(),
+            requirements_unknown_count: 0,
+            hardware_unknown_count: 0,
         }
     }
 
@@ -610,6 +636,7 @@ mod tests {
             status["language_instruction"],
             "Respond to the user in Simplified Chinese (中文), unless the user explicitly asks for another language."
         );
+        assert_eq!(status["tasks"]["active"], "task-1");
 
         let next: serde_json::Value =
             serde_json::from_str(&build_next_json(&sample_snapshot())).unwrap();

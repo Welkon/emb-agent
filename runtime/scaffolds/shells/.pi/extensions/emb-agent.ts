@@ -29,7 +29,7 @@ interface EmbAgentResult {
   task_candidates?: Array<{ name: string }>;
   // From status --brief
   project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string; active_variant?: string };
-  tasks?: { open?: number; wiki_pages?: number; active?: string | null };
+  tasks?: { open?: number; wiki_pages?: number; active?: string | { name?: string; title?: string } | null };
 }
 
 async function runEmbAgent(
@@ -80,6 +80,18 @@ function isDeclaredChip(value: unknown): boolean {
   return text.length > 0 && text.toLowerCase() !== "unknown";
 }
 
+function formatActiveTask(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object") {
+    const item = value as { name?: unknown; title?: unknown };
+    const name = String(item.name || "").trim();
+    if (name) return name;
+    const title = String(item.title || "").trim();
+    if (title) return title;
+  }
+  return "";
+}
 function formatRecommendedCommand(r: EmbAgentResult): string {
   const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
   const command = String(raw || "").trim();
@@ -128,7 +140,8 @@ function formatEmbStatus(r: EmbAgentResult): string {
   // Wiki + tasks
   if (r.tasks?.wiki_pages) parts.push(`wiki:${r.tasks.wiki_pages}`);
   if (r.tasks?.open) parts.push(`tasks:${r.tasks.open}`);
-  if (r.tasks?.active) parts.push(`▸${r.tasks.active}`);
+  const activeTask = formatActiveTask(r.tasks?.active);
+  if (activeTask) parts.push(`▸${activeTask}`);
 
   // Workflow stage
   const command = formatRecommendedCommand(r);
