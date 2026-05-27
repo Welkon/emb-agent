@@ -101,7 +101,7 @@ function deployRustBinary(embDir, callback) {
 	var src = binarySrc();
 	if (fs.existsSync(src)) {
 		fs.copyFileSync(src, dest);
-		console.log("    Rust binary deployed (" + binaryName() + ")");
+		console.log("\x1b[2m    Rust binary deployed (" + binaryName() + ")\x1b[0m");
 		callback();
 		return;
 	}
@@ -114,7 +114,7 @@ function deployRustBinary(embDir, callback) {
 		var p = path.join(RUST_BIN_DIR, genericNames[i]);
 		if (fs.existsSync(p)) {
 			fs.copyFileSync(p, dest);
-			console.log("    Rust binary deployed (generic fallback)");
+			console.log("\x1b[2m    Rust binary deployed (generic fallback)\x1b[0m");
 			callback();
 			return;
 		}
@@ -160,12 +160,13 @@ function usage() {
 }
 
 function parseArgs(argv) {
-	var args = { target: "", help: false, force: false };
+	var args = { target: "", developer: "", help: false, force: false };
 	for (var i = 0; i < argv.length; i++) {
 		var t = argv[i];
 		if (t === "--help" || t === "-h") args.help = true;
 		else if (t === "--target") args.target = argv[++i] || "";
 		else if (t === "--force") args.force = true;
+		else if (t === "--developer") args.developer = argv[++i] || "";
 	}
 	return args;
 }
@@ -359,7 +360,8 @@ function installForHost(projectRoot, host) {
 	var hostDir = path.join(projectRoot, host.dir);
 	var embDir = path.join(hostDir, "emb-agent");
 
-	console.log("  Installing for " + host.name + " \u2192 " + hostDir);
+	var C = { reset: "\x1b[0m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m" };
+	console.log(C.cyan + "  Installing for " + host.name + " \u2192 " + hostDir + C.reset);
 
 	// Core directories
 	ensureDir(path.join(embDir, "bin"));
@@ -570,8 +572,7 @@ function installForHost(projectRoot, host) {
 				}
 			} catch (_) {}
 		}
-		console.log("");
-		console.log("Done. emb-agent is now installed for your AI runtime.");
+	console.log(C.green + "Done. emb-agent is now installed for your AI runtime." + C.reset);
 		if (process.env._EMB_INSTALL_DONE) process.exit(0);
 	}
 }
@@ -591,6 +592,12 @@ function main(argv) {
 	console.log("Platform: " + platformKey());
 	console.log("Project: " + projectRoot + "\n");
 
+	// Write developer identity if given
+	if (args.developer) {
+		var devDir = path.join(projectRoot, ".emb-agent");
+		try { fs.mkdirSync(devDir, { recursive: true }); } catch (_) {}
+		fs.writeFileSync(path.join(devDir, ".developer"), args.developer + "\n");
+	}
 	if (args.target === "all") {
 		for (var i = 0; i < SUPPORTED_HOSTS.length; i++) {
 			installForHost(projectRoot, SUPPORTED_HOSTS[i]);
@@ -604,24 +611,49 @@ function main(argv) {
 		}
 		installForHost(projectRoot, host);
 	} else if (process.stdin.isTTY) {
-		console.log("\nSelect AI host to install for:\n");
+		var C = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m", red: "\x1b[31m" };
+		console.log(C.cyan + C.bold + "  emb-agent installer" + C.reset);
+		console.log(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
+		console.log("");
+		console.log(C.blue + "\u25B6 Select Runtime" + C.reset);
+		console.log(C.dim + "  Choose the host runtime that emb-agent should integrate with." + C.reset);
+		console.log("");
 		for (var k = 0; k < SUPPORTED_HOSTS.length; k++) {
-			console.log("  [" + (k + 1) + "] " + SUPPORTED_HOSTS[k].name);
+			console.log("  " + C.cyan + "[" + (k + 1) + "]" + C.reset + " " + SUPPORTED_HOSTS[k].name);
 		}
-		console.log("  [" + (SUPPORTED_HOSTS.length + 1) + "] all\n");
+		console.log("  " + C.cyan + "[" + (SUPPORTED_HOSTS.length + 1) + "]" + C.reset + " all");
+		console.log("");
 		var readline = require("readline");
 		var rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-		rl.question("Enter number (default: 4 = pi): ", function (answer) {
-			rl.close();
-			var choice = parseInt(answer.trim(), 10) || 4;
+		rl.question(C.yellow + "Choice [4] > " + C.reset, function (hostAnswer) {
+			var choice = parseInt(hostAnswer.trim(), 10) || 4;
 			if (choice < 1 || choice > SUPPORTED_HOSTS.length + 1) choice = 4;
 			if (choice === SUPPORTED_HOSTS.length + 1) {
+				rl.close();
 				for (var m = 0; m < SUPPORTED_HOSTS.length; m++) {
 					installForHost(projectRoot, SUPPORTED_HOSTS[m]);
 				}
-			} else {
-				installForHost(projectRoot, SUPPORTED_HOSTS[choice - 1]);
+				return;
 			}
+			var selectedHost = SUPPORTED_HOSTS[choice - 1];
+			// Developer name prompt
+			console.log("");
+			console.log(C.blue + "\u25B6 Developer Identity" + C.reset);
+			console.log(C.dim + "  Enter the developer name used to seed new emb-agent projects." + C.reset);
+			console.log(C.dim + "  Tip: use your git username." + C.reset);
+			console.log("");
+			rl.question(C.yellow + "Developer name > " + C.reset, function (devName) {
+				rl.close();
+				var developer = devName.trim() || "developer";
+				// Write .developer file
+				var devFile = path.join(projectRoot, ".emb-agent", ".developer");
+				try { fs.mkdirSync(path.join(projectRoot, ".emb-agent"), { recursive: true }); } catch (_) {}
+				fs.writeFileSync(devFile, developer + "\n");
+				console.log("");
+				console.log(C.green + "  \u2714 Installing for " + selectedHost.name + " as " + developer + C.reset);
+				console.log("");
+				installForHost(projectRoot, selectedHost);
+			});
 		});
 		return;
 	} else {
