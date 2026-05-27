@@ -3,6 +3,7 @@
 // Deploys Rust binary + runtime templates to target AI host directories.
 
 var childProcess = require("child_process");
+var os = require("os");
 var fs = require("fs");
 var path = require("path");
 var https = require("https");
@@ -160,13 +161,17 @@ function usage() {
 }
 
 function parseArgs(argv) {
-	var args = { target: "", developer: "", help: false, force: false };
+	var args = { target: "", developer: "", local: false, global: false, profile: "core", lang: "", help: false, force: false };
 	for (var i = 0; i < argv.length; i++) {
 		var t = argv[i];
 		if (t === "--help" || t === "-h") args.help = true;
 		else if (t === "--target") args.target = argv[++i] || "";
 		else if (t === "--force") args.force = true;
 		else if (t === "--developer") args.developer = argv[++i] || "";
+		else if (t === "--local" || t === "-l") args.local = true;
+		else if (t === "--global" || t === "-g") args.global = true;
+		else if (t === "--profile") args.profile = argv[++i] || "core";
+		else if (t === "--lang") args.lang = argv[++i] || "";
 	}
 	return args;
 }
@@ -649,13 +654,45 @@ function main(argv) {
 				var devFile = path.join(projectRoot, ".emb-agent", ".developer");
 				try { fs.mkdirSync(path.join(projectRoot, ".emb-agent"), { recursive: true }); } catch (_) {}
 				fs.writeFileSync(devFile, developer + "\n");
+				// Location prompt
 				console.log("");
-				console.log(C.green + "  \u2714 Installing for " + selectedHost.name + " as " + developer + C.reset);
+				console.log(C.blue + "\u25B6 Install Location" + C.reset);
+				console.log(C.dim + "  Project-scoped installs keep each repo isolated." + C.reset);
 				console.log("");
-				installForHost(projectRoot, selectedHost);
-			});
+				console.log("  " + C.cyan + "[1]" + C.reset + " Global " + C.dim + "(~/.pi/agent/ or ~/.codex/)" + C.reset);
+				console.log("  " + C.cyan + "[2]" + C.reset + " Local  " + C.dim + "(./.pi/ or ./.codex/)" + C.reset + C.green + "  Recommended" + C.reset);
+				console.log("");
+				var rl2 = readline.createInterface({ input: process.stdin, output: process.stdout });
+				rl2.question(C.yellow + "Choice [2] > " + C.reset, function (locAnswer) {
+					rl2.close();
+					var isLocal = (locAnswer.trim() !== "1");
+					var installDir = isLocal ? path.join(projectRoot, selectedHost.dir) : path.join(os.homedir(), selectedHost.dir);
+					console.log(C.green + "  \u2714 " + (isLocal ? "Local" : "Global") + ": " + installDir + C.reset);
+
+				// Language prompt
+				console.log("");
+				console.log(C.blue + "\u25B6 Reply Language" + C.reset);
+				console.log(C.dim + "  Choose the language AI assistants should use in this project." + C.reset);
+				console.log("");
+				console.log("  " + C.cyan + "[1]" + C.reset + " English " + C.dim + "(default)" + C.reset);
+				console.log("  " + C.cyan + "[2]" + C.reset + " \u4e2d\u6587 (Chinese)");
+				console.log("");
+				var rl3 = readline.createInterface({ input: process.stdin, output: process.stdout });
+				rl3.question(C.yellow + "Choice [1] > " + C.reset, function (langAnswer) {
+					rl3.close();
+					var lang = langAnswer.trim() === "2" ? "zh" : "en";
+					var langFile = path.join(projectRoot, ".emb-agent", ".language");
+					fs.writeFileSync(langFile, lang + "\n");
+					console.log(C.green + "  \u2714 " + (lang === "zh" ? "\u4e2d\u6587" : "English") + C.reset);
+					console.log("");
+					console.log(C.green + "  \u2714 Installing for " + selectedHost.name + " as " + developer + C.reset);
+					console.log("");
+					installForHost(projectRoot, selectedHost);
+				});
+				});
 		});
 		return;
+	});
 	} else {
 		console.log("No --target specified and no TTY. Use --target <host>.");
 		console.log("Supported: " + SUPPORTED_HOSTS.map(function (h) { return h.name; }).join(", ") + ", all");
