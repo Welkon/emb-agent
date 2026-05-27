@@ -517,18 +517,20 @@ function renderSingleSelectionScreen(title, items, state, options) {
 	lines.push("");
 	lines.push(C.blue + "▶ " + title + C.reset);
 	if (options && options.description) lines.push(C.dim + "  " + options.description + C.reset);
-	lines.push(C.dim + "  Use ↑/↓ to move; Enter or Space selects the highlighted option." + C.reset);
-	lines.push(C.dim + "  Nothing is selected until you confirm an option. Esc/Ctrl+C cancels." + C.reset);
+	lines.push(C.dim + "  Use ↑/↓ to move, Space to select, Enter to confirm the selected option." + C.reset);
+	lines.push(C.dim + "  Nothing is selected until you press Space. Esc/Ctrl+C cancels." + C.reset);
 	lines.push("");
 	for (var i = 0; i < items.length; i++) {
 		var active = state.cursorIndex === i;
-		var marker = C.dim + "○" + C.reset;
+		var selected = state.selectedIndex === i;
+		var marker = selected ? C.green + "●" + C.reset : C.dim + "○" + C.reset;
 		var detail = summarizeListText(items[i].desc, 100);
 		var name = active ? C.bold + C.white + items[i].label + C.reset : C.white + items[i].label + C.reset;
 		lines.push("  " + (active ? C.cyan + "›" + C.reset : " ") + " " + marker + " " + name + (detail ? C.dim + " - " + detail + C.reset : ""));
 	}
+	if (state.warning) lines.push(C.yellow + "  " + state.warning + C.reset);
 	lines.push("");
-	lines.push(C.yellow + "↑/↓=move  Enter/Space=select" + C.reset);
+	lines.push(C.yellow + "↑/↓=move  Space=select  Enter=confirm" + C.reset);
 	return lines.join("\n");
 }
 
@@ -541,18 +543,19 @@ function selectOne(title, items, callback, options) {
 	var stdin = process.stdin;
 	var stdout = process.stdout;
 	var previousRawMode = Boolean(stdin.isRaw);
-	var state = { cursorIndex: 0 };
+	var state = { cursorIndex: 0, selectedIndex: -1, warning: "" };
 	var settled = false;
 	function removeDataListener() { if (typeof stdin.off === "function") stdin.off("data", handleInput); else stdin.removeListener("data", handleInput); }
 	function cleanup() { if (settled) return; settled = true; try { stdin.setRawMode(previousRawMode); } catch (_) {} try { removeDataListener(); } catch (_) {} if (typeof stdin.pause === "function") stdin.pause(); stdout.write("\x1b[?25h\x1b[?1049l"); }
 	function render() { stdout.write("\x1b[2J\x1b[H"); stdout.write(renderSingleSelectionScreen(title, items, state, options || {}) + "\n"); }
-	function finish() { var item = items[state.cursorIndex]; cleanup(); console.log("\x1b[32m  ✔ " + item.label + "\x1b[0m\n"); callback(item.value); }
+	function finish() { var item = items[state.selectedIndex]; cleanup(); console.log("\x1b[32m  ✔ " + item.label + "\x1b[0m\n"); callback(item.value); }
 	function cancel() { cleanup(); console.log("\x1b[31mInteractive install cancelled.\x1b[0m"); process.exit(130); }
 	function handleInput(chunk) {
 		var input = String(chunk || "");
 		if (input === "\u001b[A" || input === "\u001bOA") { state.cursorIndex = (state.cursorIndex - 1 + items.length) % items.length; render(); return; }
 		if (input === "\u001b[B" || input === "\u001bOB") { state.cursorIndex = (state.cursorIndex + 1) % items.length; render(); return; }
-		if (input === " " || input === "\r" || input === "\n") { finish(); return; }
+		if (input === " ") { state.selectedIndex = state.cursorIndex; state.warning = ""; render(); return; }
+		if (input === "\r" || input === "\n") { if (state.selectedIndex >= 0) finish(); else { state.warning = "Press Space to select an option first."; render(); } return; }
 		if (input === "\u0003" || input === "\u0004" || input === "\u001b" || input === "q" || input === "Q") cancel();
 	}
 	try {
