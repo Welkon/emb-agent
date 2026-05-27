@@ -528,7 +528,7 @@ function selectList(title, items, callback, options) {
 
 // ── Install per host ──────────────────────────────────────────────
 
-function installForHost(projectRoot, host) {
+function installForHost(projectRoot, host, callback) {
 	var hostDir = path.join(projectRoot, host.dir);
 	var embDir = path.join(hostDir, "emb-agent");
 
@@ -688,8 +688,12 @@ function installForHost(projectRoot, host) {
 				}
 			} catch (_) {}
 		}
-		console.log("\x1b[32mDone. emb-agent is now installed for your AI runtime.\x1b[0m");
-		if (process.env._EMB_INSTALL_DONE) process.exit(0);
+		function finishDone() {
+			console.log("\x1b[32mDone. emb-agent is now installed for your AI runtime.\x1b[0m");
+			if (process.env._EMB_INSTALL_DONE) process.exit(0);
+		}
+		if (typeof callback === "function") callback(finishDone);
+		else finishDone();
 	}
 }
 
@@ -707,6 +711,86 @@ function ghApiList(url, callback) {
 	req.on("error", function () { callback([]); });
 	req.setTimeout(10000, function () { req.destroy(); callback([]); });
 	req.end();
+}
+
+function copyDirIfExists(src, dest) {
+	if (!fs.existsSync(src)) return false;
+	var stat = fs.statSync(src);
+	if (!stat.isDirectory()) return false;
+	copyDir(src, dest);
+	return true;
+}
+
+function writeJsonFile(filePath, value) {
+	fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + "\n");
+}
+
+function updateProjectActiveSpecs(projectRoot, selectedSpecs) {
+	var names = Array.isArray(selectedSpecs) ? selectedSpecs.filter(Boolean) : [];
+	if (names.length === 0) return;
+	var projectJson = path.join(projectRoot, ".emb-agent", "project.json");
+	var project = {};
+	try {
+		if (fs.existsSync(projectJson)) project = JSON.parse(fs.readFileSync(projectJson, "utf8"));
+	} catch (_) { project = {}; }
+	var current = Array.isArray(project.active_specs) ? project.active_specs : [];
+	var seen = {};
+	var active = [];
+	for (var i = 0; i < current.length; i++) {
+		if (current[i] && !seen[current[i]]) { seen[current[i]] = true; active.push(current[i]); }
+	}
+	for (var j = 0; j < names.length; j++) {
+		if (!seen[names[j]]) { seen[names[j]] = true; active.push(names[j]); }
+	}
+	project.active_specs = active;
+	writeJsonFile(projectJson, project);
+}
+
+function materializeSelectedSpec(projectRoot, item, callback) {
+	var destDir = path.join(projectRoot, ".emb-agent", "specs");
+	ensureDir(destDir);
+	var dest = path.join(destDir, item.name + ".md");
+	if (fs.existsSync(item.url)) {
+		fs.copyFileSync(item.url, dest);
+		callback(true);
+		return;
+	}
+	downloadRawFile(item.url, dest, callback);
+}
+
+function materializeSelectedSkill(projectRoot, host, item, callback) {
+	var projectSkillRoot = path.join(projectRoot, ".emb-agent", "plugins", item.name);
+	var hostSkillRoot = path.join(projectRoot, host.dir, "skills", item.name);
+	var sharedSkillRoot = path.join(projectRoot, ".agents", "skills", item.name);
+	ensureDir(path.dirname(projectSkillRoot));
+	ensureDir(path.dirname(hostSkillRoot));
+	ensureDir(path.dirname(sharedSkillRoot));
+	if (fs.existsSync(item.url)) {
+		var sourceDir = path.dirname(item.url);
+		copyDirIfExists(sourceDir, projectSkillRoot);
+		copyDirIfExists(sourceDir, hostSkillRoot);
+		copyDirIfExists(sourceDir, sharedSkillRoot);
+		callback(true);
+		return;
+	}
+	ensureDir(projectSkillRoot);
+	ensureDir(hostSkillRoot);
+	ensureDir(sharedSkillRoot);
+	var pending = 3;
+	function done() { pending--; if (pending === 0) callback(true); }
+	downloadRawFile(item.url, path.join(projectSkillRoot, "SKILL.md"), done);
+	downloadRawFile(item.url, path.join(hostSkillRoot, "SKILL.md"), done);
+	downloadRawFile(item.url, path.join(sharedSkillRoot, "SKILL.md"), done);
+}
+
+function materializeSelectedSupport(projectRoot, host, state, callback) {
+	var specs = Array.isArray(state.specItems) ? state.specItems : [];
+	var skills = Array.isArray(state.skillItems) ? state.skillItems : [];
+	var pending = specs.length + skills.length;
+	if (pending === 0) { callback(); return; }
+	function done() { pending--; if (pending === 0) callback(); }
+	for (var i = 0; i < specs.length; i++) materializeSelectedSpec(projectRoot, specs[i], done);
+	for (var j = 0; j < skills.length; j++) materializeSelectedSkill(projectRoot, host, skills[j], done);
 }
 
 function downloadRawFile(url, dest, callback) {
@@ -803,21 +887,6 @@ function fetchSkillListFromGitHub(callback) {
 	});
 }
 
-function downloadSelected(items, destDir, callback) {
-	var pending = items.length;
-	if (pending === 0) { callback(); return; }
-	ensureDir(destDir);
-	for (var i = 0; i < items.length; i++) {
-		(function (item) {
-			var ext = item.url.match(/specs\//) ? ".md" : "";
-			var dest = path.join(destDir, item.name + ext);
-			downloadRawFile(item.url, dest, function (ok) {
-				pending--;
-				if (pending === 0) callback();
-			});
-		})(items[i]);
-	}
-}
 
 // ── CLI ───────────────────────────────────────────────────────────
 
@@ -847,7 +916,9 @@ function main(argv) {
 	} else if (args.target) {
 		var host = SUPPORTED_HOSTS.find(function (h) { return h.name === args.target; });
 		if (!host) { console.error("Unknown host: " + args.target); process.exit(1); }
-		installForHost(projectRoot, host);
+		installForHost(projectRoot, host, function (done) {
+			materializeSelectedSupport(projectRoot, host, { specItems: args.specs.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }), skillItems: args.skills.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }), specs: args.specs, skills: args.skills }, function () { updateProjectActiveSpecs(projectRoot, args.specs); done(); });
+		});
 	} else if (process.stdin.isTTY) {
 		// Interactive install
 		var C = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m", red: "\x1b[31m" };
@@ -919,16 +990,9 @@ function main(argv) {
 					var items = [];
 					for (var ei = 0; ei < extSpecs.length; ei++) items.push({ label: extSpecs[ei].name, desc: extSpecs[ei].desc || "", value: extSpecs[ei] });
 					selectList("Spec Selection", items, function (selected) {
-						var specsToDownload = [];
-						for (var si = 0; si < selected.length; si++) {
-							state.specs = state.specs || [];
-							state.specs.push(selected[si].name);
-							if (!supportDir) specsToDownload.push(selected[si]);
-						}
-						if (specsToDownload.length > 0) {
-							console.log(C.dim + "  Downloading selected specs..." + C.reset);
-							downloadSelected(specsToDownload, path.join(_devDir, "specs"), function () { next(); });
-						} else { next(); }
+						state.specItems = selected;
+						state.specs = selected.map(function (item) { return item.name; });
+						next();
 					}, { contextLabel: "Source", contextValue: externalSourceLabel(), skipLabel: "Skip external spec import", itemNoun: "spec", itemPlural: "specs" });
 				},
 				function askSkills(next) {
@@ -936,26 +1000,9 @@ function main(argv) {
 					var items = [];
 					for (var ei = 0; ei < extSkills.length; ei++) items.push({ label: extSkills[ei].name, desc: extSkills[ei].desc || "", value: extSkills[ei] });
 					selectList("Skill Selection", items, function (selected) {
-						var skillsToDownload = [];
-						for (var si = 0; si < selected.length; si++) {
-							state.skills = state.skills || [];
-							state.skills.push(selected[si].name);
-							if (!supportDir) skillsToDownload.push(selected[si]);
-						}
-						if (skillsToDownload.length > 0) {
-							console.log(C.dim + "  Downloading selected skills..." + C.reset);
-							var destDir = path.join(_devDir, "skills");
-							ensureDir(destDir);
-							var pending = skillsToDownload.length;
-							for (var di = 0; di < skillsToDownload.length; di++) {
-								(function (item) {
-									var d = path.join(destDir, item.name);
-									ensureDir(d);
-									downloadRawFile(item.url, path.join(d, "SKILL.md"), function () { pending--; if (pending === 0) next(); });
-								})(skillsToDownload[di]);
-							}
-							if (pending === 0) next();
-						} else { next(); }
+						state.skillItems = selected;
+						state.skills = selected.map(function (item) { return item.name; });
+						next();
 					}, { contextLabel: "Plugin", contextValue: externalSourceLabel(), skipLabel: "Skip initial skill installation", itemNoun: "skill", itemPlural: "skills" });
 				},
 				function askLanguage(next) {
@@ -975,7 +1022,14 @@ function main(argv) {
 					if (state.specs && state.specs.length > 0) fs.writeFileSync(path.join(_devDir, ".specs"), state.specs.join(",") + "\n");
 					if (state.skills && state.skills.length > 0) fs.writeFileSync(path.join(_devDir, ".skills"), state.skills.join(",") + "\n");
 					console.log(C.green + "  \u2714 Installing for " + state.host.name + " as " + state.developer + C.reset + "\n");
-					installForHost(projectRoot, state.host);
+					installForHost(projectRoot, state.host, function (done) {
+						materializeSelectedSupport(projectRoot, state.host, state, function () {
+							updateProjectActiveSpecs(projectRoot, state.specs || []);
+							if (state.specItems && state.specItems.length > 0) console.log("    External specs installed to .emb-agent/specs/");
+							if (state.skillItems && state.skillItems.length > 0) console.log("    External skills installed to .emb-agent/plugins/, " + state.host.dir + "/skills/, .agents/skills/");
+							done();
+						});
+					});
 				}
 			];
 			var stepIdx = 0;
