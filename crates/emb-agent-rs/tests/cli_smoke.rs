@@ -331,6 +331,40 @@ fn work_selection_gate_exposes_triage_and_slicing_protocol() {
 }
 
 #[test]
+fn doctor_reports_stale_host_runtime_versions() {
+    let project = TestProject::new("stale-runtime");
+    fs::write(
+        project.path().join(".emb-agent/runtime-version.json"),
+        r#"{"version":"0.5.0","hosts":[{"name":"omp","version":"0.5.0"}]}"#,
+    )
+    .expect("write runtime version");
+    let omp_runtime = project.path().join(".omp/emb-agent");
+    fs::create_dir_all(omp_runtime.join("bin")).expect("create omp runtime bin");
+    fs::create_dir_all(project.path().join(".omp/extensions")).expect("create omp extension dir");
+    fs::write(omp_runtime.join("VERSION"), "0.4.0\n").expect("write old version");
+    fs::write(omp_runtime.join("bin/emb-agent.cjs"), "// wrapper\n").expect("write wrapper");
+    fs::write(omp_runtime.join("bin/emb-agent-rs"), "").expect("write rust bin marker");
+    fs::write(
+        project.path().join(".omp/extensions/emb-agent.ts"),
+        "// extension\n",
+    )
+    .expect("write extension");
+
+    let output = run(&project, &["doctor", "--host", "omp", "--brief"]);
+    let value: serde_json::Value = serde_json::from_str(&output).expect("doctor json");
+    assert_eq!(value["status"], "warn", "doctor output: {output}");
+    assert_eq!(
+        value["hosts"][0]["version_status"], "stale",
+        "doctor output: {output}"
+    );
+    assert_eq!(
+        value["hosts"][0]["manual_update_command"],
+        "npx emb-agent@latest update --target all --local",
+        "doctor output: {output}"
+    );
+}
+
+#[test]
 fn concept_stage_unknowns_route_to_clarification_not_task_creation() {
     let project = TestProject::new("concept-clarify");
     fs::write(

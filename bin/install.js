@@ -171,6 +171,7 @@ function usage() {
 		"  --skill-source <url> External skill source URL",
 		"  --force            Overwrite existing files",
 		"  --dry-run          Print install plan without writing files",
+		"  update             Update managed host runtime files using this installer package",
 		"  uninstall          Remove managed host integration files",
 		"  repair             Rebuild managed host integration files",
 		"  --help, -h         Show this help",
@@ -191,7 +192,7 @@ function parseArgs(argv) {
 	var args = { mode: "install", target: "", developer: "", local: false, global: false, profile: "core", lang: "", specs: [], skills: [], registry: "", skillSource: "", help: false, force: false, dryRun: false };
 	for (var i = 0; i < argv.length; i++) {
 		var t = argv[i];
-		if (t === "uninstall" || t === "repair") { args.mode = t; continue; }
+		if (t === "uninstall" || t === "repair" || t === "update") { args.mode = t; continue; }
 		if (t === "--help" || t === "-h") args.help = true;
 		else if (t === "--target") args.target = argv[++i] || "";
 		else if (t === "--force") args.force = true;
@@ -943,6 +944,20 @@ function writeInstallHistory(projectRoot, hosts, options) {
 	var record = { time: new Date().toISOString(), version: VERSION, mode: options.mode || "install", scope: options.scope || "local", language: normalizeLanguage(options.lang || readLanguagePreference(projectRoot)), hosts: hosts.map(function (h) { return h.name; }), commands: ["emb-next", "emb-onboard"] };
 	fs.appendFileSync(path.join(historyDir, "install-history.jsonl"), JSON.stringify(record) + "\n");
 }
+function writeRuntimeVersionState(projectRoot, hosts, options) {
+	var dir = path.join(projectRoot, ".emb-agent");
+	ensureDir(dir);
+	var state = {
+		version: VERSION,
+		updated_at: new Date().toISOString(),
+		mode: options.mode || "install",
+		scope: options.scope || "local",
+		hosts: hosts.map(function (host) { return { name: host.name, version: VERSION, runtime_dir: path.join(hostDirFor(projectRoot, host), "emb-agent") }; }),
+		manual_update_command: "npx emb-agent@latest update --target all --local"
+	};
+	fs.writeFileSync(path.join(dir, "runtime-version.json"), JSON.stringify(state, null, 2) + "\n");
+}
+
 
 function writeInstallResult(projectRoot, hosts, options) {
 	var lines = ["# emb-agent Install Result", "", "- Version: " + VERSION, "- Date: " + new Date().toISOString(), "- Scope: " + (options.scope || "local"), "- Language: " + (normalizeLanguage(options.lang || readLanguagePreference(projectRoot)) || "not set"), "", "## Commands"];
@@ -950,7 +965,7 @@ function writeInstallResult(projectRoot, hosts, options) {
 		var surface = hostSurfaceSummary(projectRoot, hosts[i]);
 		lines.push("", "### " + hosts[i].name, "", "- Surface: " + surface.kind, "- Path: " + surface.dir, "- Entries: " + surface.commands.join(", "), "- Reload: " + surface.reload);
 	}
-	lines.push("", "## Next", "", "- New or migrated project: run `/emb-onboard` or the host-equivalent entry shown above.", "- Initialized project: run `/emb-next` or the host-equivalent entry shown above.", "- Diagnose runtime state: `node .<host>/emb-agent/bin/emb-agent.cjs doctor --host <host> --brief`.");
+	lines.push("", "## Next", "", "- New or migrated project: run `/emb-onboard` or the host-equivalent entry shown above.", "- Initialized project: run `/emb-next` or the host-equivalent entry shown above.", "- Check/update runtime: `node .<host>/emb-agent/bin/emb-agent.cjs update` or `npx emb-agent@latest update --target all --local`.", "- Diagnose runtime state: `node .<host>/emb-agent/bin/emb-agent.cjs doctor --host <host> --brief`.");
 	ensureDir(path.join(projectRoot, ".emb-agent"));
 	fs.writeFileSync(path.join(projectRoot, ".emb-agent", "INSTALL_RESULT.md"), lines.join("\n") + "\n");
 }
@@ -995,6 +1010,7 @@ function uninstallHost(projectRoot, host) {
 }
 
 function completeInstallBatch(projectRoot, hosts, options) {
+	writeRuntimeVersionState(projectRoot, hosts, options || {});
 	writeInstallHistory(projectRoot, hosts, options || {});
 	writeInstallResult(projectRoot, hosts, options || {});
 	var checks = runInstallChecks(projectRoot, hosts);
@@ -1512,6 +1528,7 @@ function main(argv) {
 	}
 
 	var cliScope = args.global ? "global" : "local";
+	if (args.mode === "update" && !args.target) args.target = "all";
 	var requestedHosts = selectedHostList(args);
 	if (args.mode === "uninstall") {
 		if (requestedHosts.length === 0) { console.error("uninstall requires --target <host|all>"); process.exit(1); }

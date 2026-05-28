@@ -478,6 +478,11 @@ interface EmbAgentResult {
   next_instructions?: string;
   project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string; active_variant?: string };
   tasks?: { open?: number; wiki_pages?: number; active?: string | { name?: string; title?: string } | null };
+  update_available?: boolean;
+  installed_version?: string | null;
+  latest_version?: string | null;
+  manual_update_command?: string;
+  runtime_notice?: { kind?: string; installed?: string; available?: string; manual_update_command?: string };
 }
 
 async function runEmbAgent(
@@ -555,8 +560,24 @@ function formatRecommendedReason(r: EmbAgentResult): string {
   return String(r.next?.reason || r.reason || "").trim();
 }
 
-function formatEmbStatus(r: EmbAgentResult): string {
+function updateNotice(result: EmbAgentResult | null): { label: string; lines: string[] } {
+  if (!result?.update_available) return { label: "", lines: [] };
+  const installed = String(result.installed_version || "unknown");
+  const available = String(result.latest_version || "latest");
+  const command = String(result.manual_update_command || "npx emb-agent@latest update --target all --local");
+  return {
+    label: `update:${available}`,
+    lines: [
+      `Runtime update available: ${installed} → ${available}`,
+      `Manual update: ${command}`,
+    ],
+  };
+}
+
+function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): string {
   const parts: string[] = [];
+  const notice = updateNotice(update || null);
+  if (notice.label) parts.push(notice.label);
   if (r.project?.active_variant) parts.push("var:" + r.project.active_variant);
   if (isDeclaredChip(r.project?.mcu)) {
     const pkg = isDeclaredChip(r.project?.package) ? "/" + r.project!.package : "";
@@ -571,8 +592,9 @@ function formatEmbStatus(r: EmbAgentResult): string {
   return parts.length > 0 ? "emb: " + parts.join(" · ") : "";
 }
 
-function renderNextLines(result: EmbAgentResult): string[] {
+function renderNextLines(result: EmbAgentResult, update?: EmbAgentResult | null): string[] {
   const lines: string[] = [];
+  for (const line of updateNotice(update || null).lines) lines.push(line);
   if (result.summary) lines.push("Project: " + result.summary);
   const command = formatRecommendedCommand(result);
   if (command) {
@@ -606,17 +628,17 @@ export default function (pi: ExtensionAPI) {
   async function refreshStatus(ctx: {
     cwd: string;
     ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void };
-  }) {
+  }, updateResult: EmbAgentResult | null = null) {
     const statusResult = await runEmbAgent(["status", "--brief"], ctx.cwd);
     if (!statusResult) return;
-    const text = formatEmbStatus(statusResult);
+    const text = formatEmbStatus(statusResult, updateResult);
     ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
   }
 
-  async function injectNextContext(ctx: { cwd: string }, force = false) {
+  async function injectNextContext(ctx: { cwd: string }, force = false, updateResult: EmbAgentResult | null = null) {
     const nextResult = await runEmbAgent(["next", "--brief"], ctx.cwd);
     if (!nextResult) return;
-    const lines = renderNextLines(nextResult);
+    const lines = renderNextLines(nextResult, updateResult);
     if (!lines.length) return;
     const text =
       "[emb-agent]\n" +
@@ -637,8 +659,9 @@ export default function (pi: ExtensionAPI) {
     cwd: string;
     ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void };
   }) {
-    await refreshStatus(ctx);
-    await injectNextContext(ctx);
+    const updateResult = await runEmbAgent(["update", "--brief"], ctx.cwd);
+    await refreshStatus(ctx, updateResult);
+    await injectNextContext(ctx, false, updateResult);
   }
 
 

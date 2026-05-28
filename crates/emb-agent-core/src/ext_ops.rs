@@ -214,6 +214,32 @@ fn ensure_gitignore_entry(project_root: &Path, entry: &str) {
     updated.push('\n');
     let _ = fs::write(path, updated);
 }
+fn read_project_runtime_version(cwd: &Path) -> String {
+    let path = cwd.join(".emb-agent").join("runtime-version.json");
+    let Ok(raw) = fs::read_to_string(path) else {
+        return String::new();
+    };
+    serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("version")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+}
+
+fn read_host_runtime_version(runtime_dir: &Path) -> String {
+    fs::read_to_string(runtime_dir.join("VERSION"))
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn manual_update_command() -> &'static str {
+    "npx emb-agent@latest update --target all --local"
+}
 
 pub fn install_doctor(cwd: &Path, host: &str) -> String {
     let host = host.trim();
@@ -222,6 +248,8 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
     } else {
         vec![host]
     };
+    let expected_runtime_version = read_project_runtime_version(cwd);
+
     let truth_validation_errors = validate_truth_files(cwd);
 
     let mut checks = Vec::new();
@@ -290,31 +318,45 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             .filter(|path| path.exists())
             .map(|path| path.to_string_lossy().to_string())
             .collect();
-        let ok = runtime_ok && commands_ok && stale.is_empty();
+        let installed_version = read_host_runtime_version(&runtime_dir);
+        let version_status = if expected_runtime_version.is_empty() || installed_version.is_empty()
+        {
+            "unknown"
+        } else if installed_version == expected_runtime_version {
+            "ok"
+        } else {
+            "stale"
+        };
+        let ok = runtime_ok && commands_ok && stale.is_empty() && version_status != "stale";
         checks.push(serde_json::json!({
             "host": item,
             "status": if ok { "ok" } else { "warn" },
             "runtime_dir": runtime_dir.to_string_lossy(),
             "runtime_ok": runtime_ok,
+            "installed_version": installed_version,
+            "expected_version": if expected_runtime_version.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(expected_runtime_version.clone()) },
+            "version_status": version_status,
             "surface": surface,
             "commands": ["emb-next", "emb-onboard"],
             "commands_ok": commands_ok,
             "stale_files": stale,
+            "manual_update_command": manual_update_command()
         }));
     }
     let truth_ok = truth_validation_errors.is_empty();
     let ok = checks.iter().all(|check| check["status"] == "ok") && truth_ok;
     serde_json::to_string_pretty(&serde_json::json!({
         "status": if ok { "ok" } else { "warn" },
-        "version": env!("CARGO_PKG_VERSION"),
+        "version": if expected_runtime_version.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(expected_runtime_version) },
         "project_root": cwd.to_string_lossy(),
         "language": language,
+        "manual_update_command": manual_update_command(),
         "truth_validation": {
             "status": if truth_ok { "ok" } else { "error" },
             "errors": truth_validation_errors
         },
         "hosts": checks,
-        "next": "Use emb-next for initialized projects or emb-onboard for new/migrated projects."
+        "next": "Use emb-next for initialized projects or emb-onboard for new/migrated projects. Run the manual update command when any host reports version_status=stale."
     }))
     .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
 }
@@ -365,26 +407,45 @@ pub fn skills_status(_ext_dir: &Path) -> String {
     r#"{"status":"ok","skills_runtime":"host","note":"Skills are provided by installed host command docs and agents"}"#.to_string()
 }
 
-/// Update check (simple version check)
+/// Local update status. The host wrapper performs remote npm checks when invoked through node.
 pub fn update_check(ext_dir: &Path) -> String {
-    let version_path = ext_dir
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join(".pi")
-        .join("emb-agent")
-        .join("VERSION");
-    let version = if version_path.exists() {
-        fs::read_to_string(&version_path)
-            .unwrap_or_default()
-            .trim()
-            .to_string()
-    } else {
-        "unknown".to_string()
-    };
-    format!(
-        "{{\"status\":\"ok\",\"version\":{},\"update_available\":false}}",
-        json_quote(&version)
-    )
+    let project_root = ext_dir.parent().unwrap_or(Path::new("."));
+    let expected = read_project_runtime_version(project_root);
+    let hosts = ["codex", "cursor", "claude", "pi", "omp", "windsurf"];
+    let mut host_versions = Vec::new();
+    for host in hosts {
+        let dir = match host {
+            "codex" => ".codex",
+            "cursor" => ".cursor",
+            "claude" => ".claude",
+            "pi" => ".pi",
+            "omp" => ".omp",
+            "windsurf" => ".windsurf",
+            _ => host,
+        };
+        let runtime_dir = project_root.join(dir).join("emb-agent");
+        let installed = read_host_runtime_version(&runtime_dir);
+        let stale = !expected.is_empty() && !installed.is_empty() && installed != expected;
+        host_versions.push(serde_json::json!({
+            "host": host,
+            "installed_version": if installed.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(installed.clone()) },
+            "expected_version": if expected.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(expected.clone()) },
+            "version_status": if stale { "stale" } else if installed.is_empty() { "missing" } else if expected.is_empty() { "unknown" } else { "ok" }
+        }));
+    }
+    let update_available = host_versions
+        .iter()
+        .any(|host| host["version_status"] == "stale");
+    serde_json::to_string_pretty(&serde_json::json!({
+        "status": "ok",
+        "installed_version": if expected.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(expected) },
+        "update_available": update_available,
+        "latest_version": serde_json::Value::Null,
+        "latest_status": "not-checked-by-rust-runtime",
+        "hosts": host_versions,
+        "manual_update_command": manual_update_command(),
+        "note": "Run the manual update command from the project root to refresh managed host runtimes. The node wrapper checks npm for the latest package version."
+    })).unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
 }
 
 /// Settings show
