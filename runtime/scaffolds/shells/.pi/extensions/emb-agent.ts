@@ -94,12 +94,15 @@ function formatActiveTask(value: unknown): string {
 }
 function formatRecommendedCommand(r: EmbAgentResult): string {
   const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
-  const command = String(raw || "").trim();
+  let command = String(raw || "").trim();
   if (!command) return "";
-  if (command.startsWith("/emb:")) return "/emb-" + command.slice("/emb:".length);
-  if (command.startsWith("/")) return command;
-  const normalized = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").replace(/\s+--brief$/, "").trim();
-  return normalized ? "/emb-" + normalized : "";
+  if (command.startsWith("/emb:")) command = command.slice("/emb:".length);
+  else if (command.startsWith("/emb-")) command = command.slice("/emb-".length);
+  else if (command.startsWith("/")) return "";
+  command = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").replace(/\s+--brief$/, "").trim();
+  const name = command.split(/\s+/)[0] || "";
+  if (name === "onboard") return "/emb-onboard";
+  return name ? "/emb-next" : "";
 }
 
 function formatRecommendedReason(r: EmbAgentResult): string {
