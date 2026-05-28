@@ -36,8 +36,11 @@ pub struct VerifyOutput {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DebugOutput {
+    pub feedback_loop: Vec<String>,
+    pub diagnosis_phases: Vec<String>,
     pub hypotheses: Vec<String>,
     pub checks: Vec<String>,
+    pub instrumentation_rules: Vec<String>,
     pub next_step: String,
     pub chosen_agent: String,
     pub workflow_stage: WorkflowStage,
@@ -279,38 +282,65 @@ pub fn build_debug_output(snapshot: &ProjectSnapshot) -> DebugOutput {
     let blank = is_blank(snapshot);
 
     DebugOutput {
-        hypotheses: if blank {
+        feedback_loop: if blank {
             vec![
-                "System contract is underspecified".to_string(),
-                "Chip selection criteria are implicit or missing".to_string(),
+                "Validate docs/prd/system.md and .emb-agent/req.yaml completeness before treating behavior as a bug".to_string(),
+                "Build a minimal host-side fixture or state-machine replay for the unknown behavior".to_string(),
+                "Capture the missing hardware/requirement artifact instead of guessing".to_string(),
             ]
         } else {
             vec![
-                "Update order for ISR and main-loop shared state is incorrect".to_string(),
-                "Timing windows or register configuration do not satisfy current behavior"
-                    .to_string(),
-                "Pin mux or board-connection understanding is incorrect".to_string(),
+                "Create the tightest deterministic pass/fail loop before mutation: failing test, CLI/parser fixture, simulator run, captured trace replay, serial log script, GPIO pulse + logic analyzer, scope/current-meter measurement, or explicit HITL bench step".to_string(),
+                "Run the loop more than once; for flaky faults, raise reproduction rate with repeated runs, stress, or narrowed timing windows before hypothesizing".to_string(),
+                "Record the exact symptom and acceptance signal that proves the original fault is gone".to_string(),
+            ]
+        },
+        diagnosis_phases: vec![
+            "1. Build feedback loop".to_string(),
+            "2. Reproduce and capture the user-visible failure".to_string(),
+            "3. Minimise trigger and rank 3-5 falsifiable hypotheses".to_string(),
+            "4. Instrument one variable at a time".to_string(),
+            "5. Fix with a regression check at the correct seam".to_string(),
+            "6. Remove probes and record reusable traps/tricks/decisions".to_string(),
+        ],
+        hypotheses: if blank {
+            vec![
+                "If the system contract is underspecified, then PRD/req truth validation will expose missing behavior or acceptance fields".to_string(),
+                "If chip selection criteria are implicit, then hardware unknowns or conflicting constraints will block reproducible diagnosis".to_string(),
+            ]
+        } else {
+            vec![
+                "If ISR/main-loop shared state ordering is wrong, then instrumenting flag set/clear boundaries will show a missed or duplicated transition".to_string(),
+                "If timing windows or register configuration violate the behavior contract, then a trace around clock, timer, interrupt, or PWM registers will diverge at the symptom boundary".to_string(),
+                "If pin mux or board-connection understanding is wrong, then a direct pin/peripheral probe will contradict hw.yaml or schematic truth".to_string(),
             ]
         },
         checks: if blank {
             vec![
                 "Check system contract completeness in docs/prd/system.md".to_string(),
-                "Check req.yaml for explicit constraints".to_string(),
+                "Check req.yaml for explicit constraints and acceptance evidence".to_string(),
+                "Run emb-agent validate or health after truth edits".to_string(),
             ]
         } else {
             vec![
                 "Check ISR set/clear flag handling and main-loop consumption order".to_string(),
                 "Check critical registers, pin muxing, and timing requirements".to_string(),
+                "Turn the reproduced fault into a regression check or documented bench validation step before closing".to_string(),
             ]
         },
-        next_step: "Pin down the current symptom first".to_string(),
-        chosen_agent: "emb-hw-scout".to_string(),
+        instrumentation_rules: vec![
+            "Each probe must test one hypothesis prediction; change one variable per pass".to_string(),
+            "Tag temporary logs, GPIO toggles, and debug macros with DEBUG_PROBE_HUNTER so cleanup is mechanical".to_string(),
+            "Separate [VERIFIED_FACT] evidence from [PROBABILISTIC_HYPOTHESIS] interpretation".to_string(),
+        ],
+        next_step: "Build or identify the feedback loop before changing operational logic".to_string(),
+        chosen_agent: "emb-bug-hunter".to_string(),
         workflow_stage: stage(
             "debug",
             if blank {
                 "Narrow underspecified constraints before execution"
             } else {
-                "Narrow the root cause around open questions"
+                "Reproduce first, then test ranked hypotheses"
             },
         ),
     }

@@ -258,17 +258,20 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
         );
     }
     if snapshot.recommended_command == "clarify" {
-        return ("clarify".to_string(), snapshot.task_intake_summary.clone());
+        return (
+            "clarify".to_string(),
+            "Run PRD exploration as a doc-grounded grilling loop: ask one load-bearing question at a time, update PRD/req truth after confirmation, run health after truth edits, and stop before task creation until the state-machine checklist is explicit.".to_string(),
+        );
     }
     if snapshot.current_task.is_some() {
         (
             "do".to_string(),
-            "Active task exists. Trigger `/emb:do` to continue implementation.".to_string(),
+            "Active task exists. Ensure it has a durable agent brief and required verification before triggering `/emb:do`.".to_string(),
         )
     } else if snapshot.open_tasks > 0 {
         (
             "choose-work".to_string(),
-            "Open tasks exist but none is active. Present existing task candidates as one option, then ask whether the user wants to continue an existing task, start a new task/bug, or just inspect status. Activate a task only after explicit task selection.".to_string(),
+            "Open tasks exist but none is active. Present candidates as options, classify the work, fill a durable agent brief, split large work into vertical tracer-bullet slices, and activate only after explicit ready-task selection.".to_string(),
         )
     } else if snapshot.bootstrap_status != "ready" && snapshot.bootstrap_status != "concept" {
         (
@@ -278,7 +281,7 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
     } else {
         (
             "task add".to_string(),
-            "No tasks exist. Ask the user what work to start, then trigger `/emb:task add <summary>` after the task scope is clear.".to_string(),
+            "No tasks exist. Ask what work to start, classify it, then trigger `/emb:task add <summary>` only after the scope is clear enough to draft an agent brief and verification surface.".to_string(),
         )
     }
 }
@@ -309,16 +312,19 @@ pub fn build_next_json_with_tasks_and_policy(
             "Project needs onboarding. Invoke emb-onboard or trigger `/emb:onboard`; audit existing hardware docs before declaring hardware or implementing.",
         )
     } else if snapshot.recommended_command == "clarify" {
-        ("clarify", snapshot.task_intake_summary.as_str())
+        (
+            "clarify",
+            "Run PRD exploration as a doc-grounded grilling loop: challenge ambiguous terms against existing project truth, ask one load-bearing behavior/hardware/power/state-machine question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run emb-agent validate or health after truth edits, and stop before task creation until the compact state-machine checklist is explicit.",
+        )
     } else if snapshot.current_task.is_some() {
         (
             "do",
-            "Active task exists. Trigger `/emb:do` to continue implementation.",
+            "Active task exists. Before implementation, ensure the task has a durable agent brief: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification. Trigger `/emb:do` only after the active task is briefed enough to execute.",
         )
     } else if snapshot.open_tasks > 0 {
         (
             "choose-work",
-            "Open tasks exist but none is active. Present `task_candidates` as existing-work options, but first clarify whether the user wants to continue existing work, start a new task/bug, or just inspect status. Trigger `/emb:task activate <name>` only after explicit task selection.",
+            "Open tasks exist but none is active. Present `task_candidates` as existing-work options, and classify the desired path as bug, feature, board-bringup, power, timing, or toolchain. Existing or new work must have a durable agent brief and a vertical tracer-bullet slice before activation. Trigger `/emb:task activate <name>` only after explicit task selection and enough acceptance/verification detail.",
         )
     } else if snapshot.bootstrap_status != "ready" && snapshot.bootstrap_status != "concept" {
         (
@@ -425,8 +431,10 @@ fn build_next_agent_protocol_with_policy(
             "gate": {
                 "kind": "prd-exploration",
                 "blocking": true,
-                "allowed_actions": ["brainstorm_with_user", "ask_clarifying_questions", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits"],
-                "forbidden_actions": ["create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check"],
+                "method": "grill-with-docs",
+                "state_machine_checklist": ["boot_state", "first_input", "press_vs_release_trigger", "mode_cycle_including_off", "long_press_valid_states", "memory_semantics", "stop_entry", "wake_source", "low_voltage_behavior", "acceptance_evidence"],
+                "allowed_actions": ["brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits"],
+                "forbidden_actions": ["create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions"],
                 "recommended_command": "/emb:next"
             }
         })
@@ -447,7 +455,20 @@ fn build_next_agent_protocol_with_policy(
         .to_string();
     }
     if action == "choose-work" && snapshot.open_tasks > 0 {
-        return "{\"gate\":{\"kind\":\"work-selection\",\"blocking\":true,\"allowed_actions\":[\"present_existing_task_candidates\",\"offer_new_task_or_bug\",\"ask_user_to_choose_work_path\",\"trigger_task_activate_after_explicit_task_choice\",\"trigger_task_add_after_scope_clear\"],\"forbidden_actions\":[\"force_existing_task_activation\",\"ask_user_to_run_task_list\",\"ask_user_to_run_task_activate\",\"invent_task_name\",\"start_implementation_without_selected_or_created_task\",\"run_shell_command_for_emb_slash_command\"]}}".to_string();
+        return json!({
+            "gate": {
+                "kind": "work-selection",
+                "blocking": true,
+                "method": "triage-agent-brief-vertical-slice",
+                "categories": ["bug", "feature", "board-bringup", "power", "timing", "toolchain"],
+                "triage_states": ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"],
+                "required_brief_fields": ["current_behavior", "desired_behavior", "hardware_facts", "firmware_interfaces", "acceptance_criteria", "out_of_scope", "required_verification"],
+                "slice_rule": "Use vertical tracer-bullet slices: each slice must deliver one narrow but complete observable path across firmware, hardware truth, docs, and verification surfaces.",
+                "allowed_actions": ["present_existing_task_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear"],
+                "forbidden_actions": ["force_existing_task_activation", "ask_user_to_run_task_list", "ask_user_to_run_task_activate", "invent_task_name", "start_implementation_without_selected_or_created_ready_task", "run_shell_command_for_emb_slash_command", "create_horizontal_layer_tasks"],
+                "recommended_command": "/emb:next"
+            }
+        }).to_string();
     }
     "{\"gate\":{\"kind\":\"none\",\"blocking\":false}}".to_string()
 }

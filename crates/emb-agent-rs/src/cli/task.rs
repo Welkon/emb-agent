@@ -42,7 +42,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         Some("add") => {
             let summary = args.get(2).map(|s| s.as_str()).unwrap_or("New task");
-            let task_type = option_value(args, "--type").unwrap_or_else(|| "implement".to_string());
+            let task_type = option_value(args, "--category")
+                .or_else(|| option_value(args, "--type"))
+                .unwrap_or_else(|| "feature".to_string());
             let priority = option_value(args, "--priority").unwrap_or_else(|| "P2".to_string());
             let blocked_by_str = option_value(args, "--blocked-by").unwrap_or_default();
             let blocked_by: Vec<String> = if blocked_by_str.is_empty() {

@@ -14,7 +14,7 @@ pub fn task_add(ext_dir: &Path, summary: &str, _task_type: &str, priority: &str)
 pub fn task_add_with_deps(
     ext_dir: &Path,
     summary: &str,
-    _task_type: &str,
+    task_type: &str,
     priority: &str,
     blocked_by: &[String],
 ) -> String {
@@ -56,12 +56,38 @@ pub fn task_add_with_deps(
         task_id_suffix
     );
 
+    let category = normalize_task_category(task_type, summary);
+    let human_gated = task_needs_human_gate(&category, summary);
     let task = json!({
         "id": task_id,
         "name": name,
         "title": summary,
         "description": summary,
         "status": "pending",
+        "triage_state": "needs-triage",
+        "category": category.as_str(),
+        "readiness": {
+            "agent": "needs-agent-brief",
+            "human_gate": human_gated,
+            "reason": if human_gated { "Bench access, hardware judgment, part choice, schematic/layout acceptance, or external evidence may be required before AFK execution." } else { "Needs a durable agent brief with behavior, scope, acceptance, and verification before activation." }
+        },
+        "agent_brief": {
+            "summary": summary,
+            "current_behavior": "",
+            "desired_behavior": "",
+            "hardware_facts": [],
+            "firmware_interfaces": [],
+            "acceptance_criteria": [],
+            "out_of_scope": [],
+            "required_verification": [],
+            "notes": "Fill this with behavioral contracts, not line-number instructions. Avoid stale file paths unless they are durable project artifacts such as hw.yaml, req.yaml, or a PRD."
+        },
+        "slice": {
+            "strategy": "vertical-tracer-bullet",
+            "rule": "Each task or child slice should produce one narrow but complete observable path across firmware, hardware truth, docs, and verification surfaces.",
+            "blocked_by": blocked_by.to_vec(),
+            "classification": if human_gated { "HITL" } else { "AFK-candidate" }
+        },
         "dev_type": "embedded",
         "scope": format!("task-{}", std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -80,10 +106,11 @@ pub fn task_add_with_deps(
         "worktree_path": null,
         "current_phase": 1,
         "next_action": [
-            {"phase": 1, "action": "implement"},
-            {"phase": 2, "action": "check"},
-            {"phase": 3, "action": "finish"},
-            {"phase": 4, "action": "create-pr"}
+            {"phase": 1, "action": "triage-brief"},
+            {"phase": 2, "action": "implement"},
+            {"phase": 3, "action": "check"},
+            {"phase": 4, "action": "finish"},
+            {"phase": 5, "action": "create-pr"}
         ],
         "commit": "",
         "pr_url": "",
@@ -114,10 +141,12 @@ pub fn task_add_with_deps(
     }
 
     format!(
-        "{{\"status\":\"ok\",\"created\":true,\"task\":{{\"name\":{},\"title\":{},\"status\":\"pending\",\"priority\":{}}},\"next\":\"task activate\",\"next_instructions\":\"Task created. Present the created task to the user and ask whether to activate it now. Do not ask the user to run a command.\",\"activation_command\":\"/emb:task activate {}\"}}",
+        "{{\"status\":\"ok\",\"created\":true,\"task\":{{\"name\":{},\"title\":{},\"status\":\"pending\",\"priority\":{},\"category\":{},\"triage_state\":\"needs-triage\",\"human_gate\":{}}},\"next\":\"task brief\",\"next_instructions\":\"Task created in needs-triage. Present the agent brief fields and ask only for missing load-bearing behavior, hardware facts, acceptance, out-of-scope, and verification evidence. Activate only after the brief is concrete.\",\"activation_command\":\"/emb:task activate {}\"}}",
         json_quote(&name),
         json_quote(summary),
         json_quote(priority),
+        json_quote(&category),
+        human_gated,
         name
     )
 }
@@ -897,6 +926,113 @@ fn worktree_to_json(worktree: &TaskWorktree) -> String {
         json_quote(&worktree.status),
         worktree.dirty
     )
+}
+
+fn normalize_task_category(task_type: &str, summary: &str) -> String {
+    let combined = format!("{} {}", task_type, summary).to_lowercase();
+    if contains_any(
+        &combined,
+        &[
+            "bug",
+            "debug",
+            "regression",
+            "fault",
+            "fail",
+            "crash",
+            "故障",
+            "异常",
+            "失效",
+            "错误",
+        ],
+    ) {
+        "bug".to_string()
+    } else if contains_any(
+        &combined,
+        &[
+            "bringup", "bring-up", "board", "smoke", "上电", "板级", "调通",
+        ],
+    ) {
+        "board-bringup".to_string()
+    } else if contains_any(
+        &combined,
+        &[
+            "power",
+            "sleep",
+            "stop",
+            "standby",
+            "current",
+            "battery",
+            "lvd",
+            "低功耗",
+            "电源",
+            "电池",
+            "功耗",
+        ],
+    ) {
+        "power".to_string()
+    } else if contains_any(
+        &combined,
+        &[
+            "timing",
+            "pwm",
+            "timer",
+            "interrupt",
+            "isr",
+            "clock",
+            "时序",
+            "中断",
+            "定时",
+            "调光",
+        ],
+    ) {
+        "timing".to_string()
+    } else if contains_any(
+        &combined,
+        &[
+            "toolchain",
+            "build",
+            "compile",
+            "sdcc",
+            "link",
+            "hex",
+            "编译",
+            "构建",
+            "烧录",
+        ],
+    ) {
+        "toolchain".to_string()
+    } else {
+        "feature".to_string()
+    }
+}
+
+fn task_needs_human_gate(category: &str, summary: &str) -> bool {
+    let text = summary.to_lowercase();
+    category == "board-bringup"
+        || contains_any(
+            &text,
+            &[
+                "bench",
+                "scope",
+                "oscilloscope",
+                "logic analyzer",
+                "schematic",
+                "layout",
+                "part",
+                "hardware choice",
+                "示波器",
+                "逻辑分析仪",
+                "原理图",
+                "pcb",
+                "板级",
+                "选型",
+                "实测",
+            ],
+        )
+}
+
+fn contains_any(text: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| text.contains(needle))
 }
 
 fn first_non_empty(values: &[String]) -> String {

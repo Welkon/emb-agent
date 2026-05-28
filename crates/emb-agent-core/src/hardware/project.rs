@@ -411,13 +411,13 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
             state.truth_validation_errors.join("; ")
         )
     } else if active_is_clarification {
-        "Continue the active clarification/brainstorming task. Discuss requirements and hardware constraints with the user, update docs/prd/system.md and .emb-agent/req.yaml, run `emb-agent health` after truth edits, and do not create another task or start implementation until the user confirms a concrete scope.".to_string()
+        "Continue the active clarification/brainstorming task as a doc-grounded grilling loop. Ask one load-bearing question at a time, challenge ambiguous terms against project truth, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run emb-agent health after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string()
     } else if state.current_task.is_some() {
         String::new()
     } else if needs_clarification || !has_hardware {
-        "Continue requirement exploration/brainstorming. Clarify unknown behavior, interaction, power, LED, mechanical, and hardware constraints with the user; update docs/prd/system.md and .emb-agent/req.yaml; run `emb-agent health` after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string()
+        "Continue requirement exploration/brainstorming as a doc-grounded grilling loop. Clarify behavior, interaction, power, LED, mechanical, hardware constraints, and the state-machine checklist; update docs/prd/system.md and .emb-agent/req.yaml; run emb-agent health after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string()
     } else {
-        "Ask what work the user wants to start. Create a task only after the implementation or bug scope is clear.".to_string()
+        "Ask what work the user wants to start. Classify it as bug, feature, board-bringup, power, timing, or toolchain; draft a durable agent brief and split large work into vertical tracer-bullet slices before activation.".to_string()
     };
 
     let (recommended_command, recommended_reason) = if has_truth_errors {
@@ -431,14 +431,14 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     } else if active_is_clarification {
         (
             "clarify".to_string(),
-            "Active work is requirement/hardware clarification. Continue brainstorming and record confirmed decisions before creating implementation tasks.".to_string(),
+            "Active work is requirement/hardware clarification. Continue the doc-grounded grilling loop and record confirmed decisions before creating implementation tasks.".to_string(),
         )
     } else if state.current_task.is_some() {
         ("do".to_string(), "Active task is selected".to_string())
     } else if needs_clarification || !has_hardware {
         (
             "clarify".to_string(),
-            "Project is still in concept/requirements exploration. Clarify the listed blockers and update PRD/req truth before task creation or implementation.".to_string(),
+            "Project is still in concept/requirements exploration. Clarify the listed blockers, state-machine behavior, and acceptance evidence before task creation or implementation.".to_string(),
         )
     } else {
         (

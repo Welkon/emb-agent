@@ -192,7 +192,7 @@ fn common_user_paths_smoke() {
     assert!(next.contains("task_candidates"), "next output: {next}");
     assert!(next.contains("pwm-led"), "next output: {next}");
     assert!(
-        next.contains("start a new task/bug") && next.contains("task_candidates"),
+        next.contains("durable agent brief") && next.contains("task_candidates"),
         "next output: {next}"
     );
     assert!(!next.contains("/emb:task list"), "next output: {next}");
@@ -216,6 +216,121 @@ fn common_user_paths_smoke() {
 }
 
 #[test]
+fn debug_capability_requires_feedback_loop_protocol() {
+    let project = TestProject::new("debug-protocol");
+    let _ = run(
+        &project,
+        &[
+            "declare",
+            "hardware",
+            "--mcu",
+            "CA51M550",
+            "--package",
+            "SOP8",
+        ],
+    );
+
+    let output = run(&project, &["debug"]);
+    let value: serde_json::Value = serde_json::from_str(&output).expect("debug json");
+    assert_eq!(
+        value["chosen_agent"], "emb-bug-hunter",
+        "debug output: {output}"
+    );
+    assert!(
+        value["feedback_loop"]
+            .as_array()
+            .map(|items| items
+                .iter()
+                .any(|item| item.as_str().unwrap_or("").contains("logic analyzer")))
+            .unwrap_or(false),
+        "debug output: {output}"
+    );
+    assert!(
+        value["diagnosis_phases"]
+            .as_array()
+            .map(|items| items
+                .iter()
+                .any(|item| item.as_str().unwrap_or("").contains("Build feedback loop")))
+            .unwrap_or(false),
+        "debug output: {output}"
+    );
+}
+
+#[test]
+fn task_add_creates_triage_brief_and_vertical_slice_metadata() {
+    let project = TestProject::new("task-intake-protocol");
+    let output = run(
+        &project,
+        &[
+            "task",
+            "add",
+            "Fix PWM timing fault on bench",
+            "--category",
+            "bug",
+            "--priority",
+            "P0",
+        ],
+    );
+    let created: serde_json::Value = serde_json::from_str(&output).expect("task add json");
+    assert_eq!(
+        created["task"]["category"], "bug",
+        "task add output: {output}"
+    );
+    assert_eq!(
+        created["task"]["triage_state"], "needs-triage",
+        "task add output: {output}"
+    );
+    assert_eq!(created["next"], "task brief", "task add output: {output}");
+
+    let task_name = created["task"]["name"].as_str().expect("task name");
+    let shown = run(&project, &["task", "show", task_name]);
+    let task: serde_json::Value = serde_json::from_str(&shown).expect("task show json");
+    assert_eq!(
+        task["agent_brief"]["current_behavior"], "",
+        "task show output: {shown}"
+    );
+    assert_eq!(
+        task["slice"]["strategy"], "vertical-tracer-bullet",
+        "task show output: {shown}"
+    );
+    assert_eq!(
+        task["readiness"]["human_gate"], true,
+        "task show output: {shown}"
+    );
+}
+
+#[test]
+fn work_selection_gate_exposes_triage_and_slicing_protocol() {
+    let project = TestProject::new("work-selection-protocol");
+    let _ = run(
+        &project,
+        &[
+            "declare",
+            "hardware",
+            "--mcu",
+            "CA51M550",
+            "--package",
+            "SOP8",
+        ],
+    );
+
+    let next = run(&project, &["next", "--brief"]);
+    let value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    assert_eq!(value["action"], "choose-work", "next output: {next}");
+    assert_eq!(
+        value["agent_protocol"]["gate"]["method"], "triage-agent-brief-vertical-slice",
+        "next output: {next}"
+    );
+    assert!(
+        value["agent_protocol"]["gate"]["required_brief_fields"]
+            .as_array()
+            .map(|items| items.iter().any(|item| item == "acceptance_criteria"))
+            .unwrap_or(false),
+        "next output: {next}"
+    );
+}
+
+#[test]
 fn concept_stage_unknowns_route_to_clarification_not_task_creation() {
     let project = TestProject::new("concept-clarify");
     fs::write(
@@ -229,8 +344,11 @@ fn concept_stage_unknowns_route_to_clarification_not_task_creation() {
     )
     .expect("write req unknowns");
     let task_name = "确认调光台灯交互方式与硬件规格";
-    fs::write(project.path().join(".emb-agent/.current-task"), format!("{task_name}\n"))
-        .expect("write current task");
+    fs::write(
+        project.path().join(".emb-agent/.current-task"),
+        format!("{task_name}\n"),
+    )
+    .expect("write current task");
     let task_dir = project.path().join(".emb-agent/tasks").join(task_name);
     fs::create_dir_all(&task_dir).expect("create clarification task");
     fs::write(
@@ -245,12 +363,15 @@ fn concept_stage_unknowns_route_to_clarification_not_task_creation() {
     let next_value: serde_json::Value = serde_json::from_str(&next).expect("next json");
     assert_eq!(next_value["action"], "clarify", "next output: {next}");
     assert_eq!(
-        next_value["agent_protocol"]["gate"]["kind"],
-        "prd-exploration",
+        next_value["agent_protocol"]["gate"]["kind"], "prd-exploration",
         "next output: {next}"
     );
     assert!(
-        next_value["instructions"].as_str().unwrap_or("").contains("do not create another task"),
+        next_value["agent_protocol"]["gate"]["method"] == "grill-with-docs"
+            && next_value["instructions"]
+                .as_str()
+                .unwrap_or("")
+                .contains("state-machine checklist"),
         "next output: {next}"
     );
 }
@@ -594,19 +715,27 @@ fn commands_list_guides_without_hiding_full_inventory() {
     let guided_value: serde_json::Value = serde_json::from_str(&guided).expect("commands json");
     let guided_commands = guided_value["commands"].as_array().expect("commands array");
     assert!(
-        guided_commands.iter().any(|entry| entry.as_str().unwrap_or("").contains("start: onboard")),
+        guided_commands
+            .iter()
+            .any(|entry| entry.as_str().unwrap_or("").contains("start: onboard")),
         "guided output: {guided}"
     );
     assert!(
-        !guided_commands.iter().any(|entry| entry.as_str().unwrap_or("").contains("variant list")),
+        !guided_commands
+            .iter()
+            .any(|entry| entry.as_str().unwrap_or("").contains("variant list")),
         "guided output should keep implementation inventory behind --all: {guided}"
     );
 
     let full = run(&project, &["commands", "list", "--all"]);
     let full_value: serde_json::Value = serde_json::from_str(&full).expect("commands all json");
-    let full_commands = full_value["commands"].as_array().expect("commands all array");
+    let full_commands = full_value["commands"]
+        .as_array()
+        .expect("commands all array");
     assert!(
-        full_commands.iter().any(|entry| entry.as_str().unwrap_or("").contains("variant list")),
+        full_commands
+            .iter()
+            .any(|entry| entry.as_str().unwrap_or("").contains("variant list")),
         "full output: {full}"
     );
 }
@@ -688,12 +817,31 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     assert_two_command_files(root.join(".windsurf").join("workflows"), ".windsurf");
     assert_no_markdown_files(root.join(".windsurf").join("commands"));
 
-    let runtime_commands = root.join(".omp").join("emb-agent").join("commands").join("emb");
-    assert!(runtime_commands.join("next.md").exists(), "installed command docs must include next");
-    assert!(runtime_commands.join("onboard.md").exists(), "installed command docs must include onboard");
-    assert!(runtime_commands.join("init-project.md").exists(), "installed runtime must keep init-project available");
-    assert!(runtime_commands.join("bootstrap.md").exists(), "installed runtime must keep bootstrap available");
-    assert!(runtime_commands.join("board.md").exists(), "installed runtime must keep board available");
+    let runtime_commands = root
+        .join(".omp")
+        .join("emb-agent")
+        .join("commands")
+        .join("emb");
+    assert!(
+        runtime_commands.join("next.md").exists(),
+        "installed command docs must include next"
+    );
+    assert!(
+        runtime_commands.join("onboard.md").exists(),
+        "installed command docs must include onboard"
+    );
+    assert!(
+        runtime_commands.join("init-project.md").exists(),
+        "installed runtime must keep init-project available"
+    );
+    assert!(
+        runtime_commands.join("bootstrap.md").exists(),
+        "installed runtime must keep bootstrap available"
+    );
+    assert!(
+        runtime_commands.join("board.md").exists(),
+        "installed runtime must keep board available"
+    );
 
     for host in [".pi", ".omp"] {
         let commands_dir = root.join(host).join("commands");
@@ -950,12 +1098,15 @@ fn initialized_project_without_hardware_still_routes_to_onboard() {
     let next_value: serde_json::Value = serde_json::from_str(&next).expect("next json");
     assert_eq!(next_value["action"], "clarify", "next output: {next}");
     assert_eq!(
-        next_value["agent_protocol"]["gate"]["kind"],
-        "prd-exploration",
+        next_value["agent_protocol"]["gate"]["kind"], "prd-exploration",
         "next output: {next}"
     );
     assert!(
-        next_value["instructions"].as_str().unwrap_or("").contains("brainstorming"),
+        next_value["agent_protocol"]["gate"]["method"] == "grill-with-docs"
+            && next_value["instructions"]
+                .as_str()
+                .unwrap_or("")
+                .contains("doc-grounded grilling loop"),
         "next output: {next}"
     );
 

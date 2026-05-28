@@ -30,7 +30,7 @@ This is the primary capability-first surface for workflow work and generator-bac
 
 - `scan` should narrow unknowns and evidence gaps before implementation, especially when hardware truth, parser coverage, chip support, or task scope is still fuzzy.
 - `plan` should produce a small number of falsifiable steps and name the verification surface before `do`.
-- `do` should move one vertical slice at a time and keep changes tied to the task PRD or runtime recommendation.
-- `debug` should start from reproduction and ranked hypotheses, not broad code changes.
+- `do` should move one vertical tracer-bullet slice at a time and keep changes tied to the task PRD or runtime recommendation.
+- `debug` should start by building a feedback loop and ranking 3-5 falsifiable hypotheses, not broad code changes.
 - `review` should separate confirmed findings from advisory improvements, including schematic and PCB advice.
 - `verify` should prefer behavior evidence from public surfaces, generated artifacts, hardware documents, or bench steps over implementation-only checks.

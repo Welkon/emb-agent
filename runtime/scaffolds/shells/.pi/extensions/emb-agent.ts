@@ -236,7 +236,7 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       await sendSteer(
-        `[/emb-next]\n${JSON.stringify(result, null, 2)}`,
+        `[/emb-next]\n${JSON.stringify(result, null, 2)}\n\nRespond to the user from the runtime recommendation above. If the gate is prd-exploration or action is clarify, run a doc-grounded grilling loop: ask one load-bearing question at a time, challenge ambiguous terms against project truth, update PRD/req truth after confirmation, and run validate/health after truth edits. Do not create a task until the user confirms a concrete deliverable or bug and the state-machine checklist is explicit. If the gate is work-selection or open task candidates exist, classify the work, draft/fill a durable agent brief, split large work into vertical tracer-bullet slices, and present existing tasks as options only after checking whether the user wants existing work or new work. Do not auto-activate a task.`,
         ctx.cwd,
       );
     },

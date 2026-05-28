@@ -84,5 +84,8 @@ Skip: generic programming patterns, facts obvious from datasheets, vendor SDK co
 - Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
 - After editing `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, or `docs/prd/*.md`, run `emb-agent validate` or `emb-agent health` before saying PRD/truth is complete.
 - For PRD exploration, confirm a compact state-machine checklist before implementation: boot state, first input, press vs release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, and acceptance evidence.
+- For tasks, classify work as bug, feature, board-bringup, power, timing, or toolchain; require a durable agent brief before activation: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification.
+- Split large work into vertical tracer-bullet slices. Each slice must be independently verifiable across firmware, hardware truth, docs, and verification surfaces; avoid horizontal layer tasks.
+- For bugs, build a feedback loop before mutation: failing test, CLI/parser fixture, simulator replay, captured trace, serial log, GPIO pulse + logic analyzer, scope/current-meter measurement, or documented HITL bench step.
 - All installed command docs remain available under the host runtime (for example `.omp/emb-agent/commands/emb/` or `.pi/emb-agent/commands/emb/`). Prefer `onboard` and `next`, but use specialized commands when runtime output or the user request calls for them.
 - If `.emb-agent/` does not exist or is incomplete, route to `emb-onboard` agent first.
