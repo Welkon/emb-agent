@@ -296,7 +296,14 @@ pub fn build_next_json_with_tasks_and_policy(
     tasks: &[TaskSnapshot],
     worktree_policy: Option<&WorktreePolicy>,
 ) -> String {
-    let (action, instructions) = if snapshot.recommended_command == "onboard" {
+    let has_truth_errors = !snapshot.truth_validation_errors.is_empty();
+    let truth_errors_summary = snapshot.truth_validation_errors.join("; ");
+    let (action, instructions) = if has_truth_errors {
+        (
+            "repair-truth",
+            "Project truth validation failed. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml, then run `emb-agent health` before continuing. Do not start implementation while truth files are invalid.",
+        )
+    } else if snapshot.recommended_command == "onboard" {
         (
             "onboard",
             "Project needs onboarding. Invoke emb-onboard or trigger `/emb:onboard`; audit existing hardware docs before declaring hardware or implementing.",
@@ -348,7 +355,9 @@ pub fn build_next_json_with_tasks_and_policy(
         "instructions": instructions,
         "agent_protocol": agent_protocol,
         "requirements_unknown_count": snapshot.requirements_unknown_count,
-        "hardware_unknown_count": snapshot.hardware_unknown_count
+        "hardware_unknown_count": snapshot.hardware_unknown_count,
+        "truth_validation_errors": snapshot.truth_validation_errors,
+        "truth_validation_summary": truth_errors_summary
     });
     if let Some(policy) = worktree_policy
         && let Some(obj) = payload.as_object_mut()
@@ -399,13 +408,25 @@ fn build_next_agent_protocol_with_policy(
         })
         .to_string();
     }
+    if action == "repair-truth" {
+        return json!({
+            "gate": {
+                "kind": "truth-validation",
+                "blocking": true,
+                "allowed_actions": ["repair_truth_yaml", "run_health_after_repair", "explain_validation_errors"],
+                "forbidden_actions": ["start_implementation", "create_task", "activate_task", "ignore_truth_validation_errors"],
+                "recommended_command": "/emb:next"
+            }
+        })
+        .to_string();
+    }
     if action == "clarify" {
         return json!({
             "gate": {
                 "kind": "prd-exploration",
                 "blocking": true,
-                "allowed_actions": ["brainstorm_with_user", "ask_clarifying_questions", "update_prd_and_req_truth", "record_confirmed_decisions"],
-                "forbidden_actions": ["create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation"],
+                "allowed_actions": ["brainstorm_with_user", "ask_clarifying_questions", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits"],
+                "forbidden_actions": ["create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check"],
                 "recommended_command": "/emb:next"
             }
         })
@@ -442,7 +463,7 @@ pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
         .map(|task| task.name.as_str())
         .unwrap_or("");
     format!(
-        "{{\"status\":\"ok\",\"language\":{},\"language_instruction\":{},\"project\":{{\"root\":{},\"initialized\":{},\"active_variant\":{},\"variant_dir\":{},\"mcu\":{},\"package\":{},\"developer\":{},\"branch\":{},\"bootstrap\":{},\"workflow\":{}}},\"tasks\":{{\"open\":{},\"wiki_pages\":{},\"active\":{}}},\"next\":{{\"command\":{},\"reason\":{},\"task_intake\":{}}}}}",
+        "{{\"status\":\"ok\",\"language\":{},\"language_instruction\":{},\"project\":{{\"root\":{},\"initialized\":{},\"active_variant\":{},\"variant_dir\":{},\"mcu\":{},\"package\":{},\"developer\":{},\"branch\":{},\"bootstrap\":{},\"workflow\":{}}},\"tasks\":{{\"open\":{},\"wiki_pages\":{},\"active\":{}}},\"next\":{{\"command\":{},\"reason\":{},\"task_intake\":{}}},\"truth_validation_errors\":{}}}",
         json_quote(&snapshot.language),
         json_quote(&response_language_instruction(&snapshot.language)),
         json_quote(&snapshot.project_root),
@@ -460,7 +481,9 @@ pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
         json_quote(active_task_name),
         json_quote(&snapshot.recommended_command),
         json_quote(&snapshot.recommended_reason),
-        json_quote(&snapshot.task_intake_summary)
+        json_quote(&snapshot.task_intake_summary),
+        serde_json::to_string(&snapshot.truth_validation_errors)
+            .unwrap_or_else(|_| "[]".to_string())
     )
 }
 
@@ -505,18 +528,34 @@ pub fn build_task_show_json(task_json: &str) -> String {
 pub fn build_health_json(snapshot: &ProjectSnapshot) -> String {
     let initialized = snapshot.initialized;
     let has_mcu = !snapshot.mcu_model.is_empty();
-    let _has_task = snapshot.current_task.is_some();
+    let truth_valid = snapshot.truth_validation_errors.is_empty();
     let checks = [
         (
             "project_initialized",
             initialized,
-            "Project has .emb-agent directory",
+            "Project has .emb-agent directory".to_string(),
         ),
-        ("mcu_declared", has_mcu, "MCU model is declared in hw.yaml"),
+        (
+            "truth_yaml_valid",
+            truth_valid,
+            if truth_valid {
+                "hw.yaml and req.yaml passed structural validation".to_string()
+            } else {
+                format!(
+                    "Truth validation errors: {}",
+                    snapshot.truth_validation_errors.join("; ")
+                )
+            },
+        ),
+        (
+            "mcu_declared",
+            has_mcu,
+            "MCU model is declared in hw.yaml".to_string(),
+        ),
         (
             "bootstrap_ready",
             snapshot.bootstrap_status == "ready",
-            "Bootstrap is complete",
+            "Bootstrap is complete".to_string(),
         ),
     ];
     let pass_count = checks.iter().filter(|(_, ok, _)| *ok).count();
@@ -533,10 +572,12 @@ pub fn build_health_json(snapshot: &ProjectSnapshot) -> String {
         })
         .collect();
     format!(
-        "{{\"status\":{},\"pass\":{},\"fail\":{},\"warn\":0,\"checks\":[{}]}}",
+        "{{\"status\":{},\"pass\":{},\"fail\":{},\"warn\":0,\"truth_validation_errors\":{},\"checks\":[{}]}}",
         json_quote(if fail_count == 0 { "pass" } else { "fail" }),
         pass_count,
         fail_count,
+        serde_json::to_string(&snapshot.truth_validation_errors)
+            .unwrap_or_else(|_| "[]".to_string()),
         checks_json.join(",")
     )
 }
@@ -584,9 +625,9 @@ mod tests {
             task_intake_summary: String::new(),
             requirements_unknown_count: 0,
             hardware_unknown_count: 0,
+            truth_validation_errors: Vec::new(),
         }
     }
-
     #[test]
     fn builds_host_payloads() {
         let message = "hello\nworld";

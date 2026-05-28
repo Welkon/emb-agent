@@ -65,7 +65,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "init" | "init-project" | "onboard" | "migrate" | "doctor" | "skills" | "update"
         | "settings" | "decision" | "commands" | "capability" | "executor" | "dispatch"
         | "scaffold" | "transcript" | "prefs" | "tool" | "snippet" | "workflow" | "orchestrate"
-        | "insight" | "trace" => cli::misc::run_ext_ops(args),
+        | "insight" | "trace" | "validate" => cli::misc::run_ext_ops(args),
         other => Err(format!("unknown command: {other}")),
     }
 }

@@ -39,6 +39,7 @@ pub struct ProjectSnapshot {
     pub task_intake_summary: String,
     pub requirements_unknown_count: usize,
     pub hardware_unknown_count: usize,
+    pub truth_validation_errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -57,6 +58,7 @@ pub struct ProjectState {
     pub wiki_pages: usize,
     pub git_branch: String,
     pub language: String,
+    pub truth_validation_errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -262,6 +264,106 @@ fn is_clarification_task(task: &TaskRef) -> bool {
     .any(|needle| text.contains(needle))
 }
 
+pub fn validate_truth_files(project_root: &Path) -> Vec<String> {
+    let ext = project_root.join(".emb-agent");
+    let state_dir = crate::variant_ops::active_state_dir(&ext);
+    let mut errors = Vec::new();
+    validate_truth_yaml_file(
+        &state_dir.join("hw.yaml"),
+        "hw.yaml",
+        &["truths", "constraints", "unknowns"],
+        &["signals", "peripherals"],
+        &mut errors,
+    );
+    validate_truth_yaml_file(
+        &state_dir.join("req.yaml"),
+        "req.yaml",
+        &[
+            "goals",
+            "features",
+            "constraints",
+            "acceptance",
+            "failure_policy",
+            "unknowns",
+            "sources",
+        ],
+        &[],
+        &mut errors,
+    );
+    errors
+}
+
+fn validate_truth_yaml_file(
+    path: &Path,
+    label: &str,
+    list_keys: &[&str],
+    object_list_keys: &[&str],
+    errors: &mut Vec<String>,
+) {
+    let Ok(source) = fs::read_to_string(path) else {
+        errors.push(format!("{label}: missing or unreadable"));
+        return;
+    };
+    let source = source.trim();
+    if source.is_empty() {
+        errors.push(format!("{label}: empty truth file"));
+        return;
+    }
+    validate_yaml_structure(source, label, list_keys, object_list_keys, errors);
+}
+
+fn validate_yaml_structure(
+    source: &str,
+    label: &str,
+    list_keys: &[&str],
+    object_list_keys: &[&str],
+    errors: &mut Vec<String>,
+) {
+    let known_keys: Vec<&str> = list_keys
+        .iter()
+        .chain(object_list_keys.iter())
+        .copied()
+        .collect();
+    let mut current_sequence: Option<(&str, usize)> = None;
+    for (line_index, line) in source.lines().enumerate() {
+        let line_no = line_index + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = line.chars().take_while(|ch| *ch == ' ').count();
+        if indent == 0 {
+            if let Some(item) = trimmed.strip_prefix("- ") {
+                errors.push(format!(
+                    "{label}:{line_no}: top-level list item `{}` is not under a mapping key; keep `.emb-agent/*.yaml` list entries indented two spaces",
+                    item.trim()
+                ));
+                current_sequence = None;
+                continue;
+            }
+            current_sequence = trimmed.strip_suffix(':').and_then(|key| {
+                known_keys
+                    .iter()
+                    .copied()
+                    .find(|known| *known == key)
+                    .map(|known| (known, line_no))
+            });
+            continue;
+        }
+        if let Some((key, start_line)) = current_sequence {
+            if list_keys.contains(&key) && trimmed.starts_with("- ") && indent != 2 {
+                errors.push(format!(
+                    "{label}:{line_no}: `{key}` list item must use exactly two-space indentation from line {start_line}"
+                ));
+            }
+            if object_list_keys.contains(&key) && trimmed.starts_with("- ") && indent != 2 {
+                errors.push(format!(
+                    "{label}:{line_no}: `{key}` object item must use exactly two-space indentation from line {start_line}"
+                ));
+            }
+        }
+    }
+}
 
 pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     let state = project_state_from_cwd(cwd);
@@ -280,8 +382,10 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         .as_ref()
         .map(is_clarification_task)
         .unwrap_or(false);
-    let needs_clarification = !state.requirements.unknowns.is_empty()
-        || !state.hardware.unknowns.is_empty()
+    let has_truth_errors = !state.truth_validation_errors.is_empty();
+    let needs_clarification = has_truth_errors
+        || !state.requirements.unknowns.is_empty()
+        || (!has_hardware && !state.hardware.unknowns.is_empty())
         || active_is_clarification;
     let bootstrap_status = if !state.config.active_specs.is_empty() {
         "ready"
@@ -301,17 +405,30 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     } else {
         "concept"
     };
-    let task_intake_summary = if active_is_clarification {
-        "Continue the active clarification/brainstorming task. Discuss requirements and hardware constraints with the user, update docs/prd/system.md and .emb-agent/req.yaml, and do not create another task or start implementation until the user confirms a concrete scope.".to_string()
+    let task_intake_summary = if has_truth_errors {
+        format!(
+            "Project truth validation failed: {}. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml first; run `emb-agent doctor --host all --brief` or `emb-agent health` after editing. Do not proceed to implementation while truth files are invalid.",
+            state.truth_validation_errors.join("; ")
+        )
+    } else if active_is_clarification {
+        "Continue the active clarification/brainstorming task. Discuss requirements and hardware constraints with the user, update docs/prd/system.md and .emb-agent/req.yaml, run `emb-agent health` after truth edits, and do not create another task or start implementation until the user confirms a concrete scope.".to_string()
     } else if state.current_task.is_some() {
         String::new()
     } else if needs_clarification || !has_hardware {
-        "Continue requirement exploration/brainstorming. Clarify unknown behavior, interaction, power, LED, mechanical, and hardware constraints with the user; update docs/prd/system.md and .emb-agent/req.yaml. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string()
+        "Continue requirement exploration/brainstorming. Clarify unknown behavior, interaction, power, LED, mechanical, and hardware constraints with the user; update docs/prd/system.md and .emb-agent/req.yaml; run `emb-agent health` after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string()
     } else {
         "Ask what work the user wants to start. Create a task only after the implementation or bug scope is clear.".to_string()
     };
 
-    let (recommended_command, recommended_reason) = if active_is_clarification {
+    let (recommended_command, recommended_reason) = if has_truth_errors {
+        (
+            "clarify".to_string(),
+            format!(
+                "Project truth files are invalid: {}. Repair YAML before continuing.",
+                state.truth_validation_errors.join("; ")
+            ),
+        )
+    } else if active_is_clarification {
         (
             "clarify".to_string(),
             "Active work is requirement/hardware clarification. Continue brainstorming and record confirmed decisions before creating implementation tasks.".to_string(),
@@ -321,13 +438,19 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     } else if needs_clarification || !has_hardware {
         (
             "clarify".to_string(),
-            "Project is still in concept/requirements exploration. Clarify unknowns and update PRD/req truth before task creation or implementation.".to_string(),
+            "Project is still in concept/requirements exploration. Clarify the listed blockers and update PRD/req truth before task creation or implementation.".to_string(),
         )
     } else {
         (
             "next".to_string(),
             "Project has hardware context; continue workflow routing".to_string(),
         )
+    };
+
+    let hardware_unknown_count = if has_hardware {
+        0
+    } else {
+        state.hardware.unknowns.len()
     };
 
     ProjectSnapshot {
@@ -358,7 +481,8 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         has_hardware_truth: has_hardware,
         task_intake_summary,
         requirements_unknown_count: state.requirements.unknowns.len(),
-        hardware_unknown_count: state.hardware.unknowns.len(),
+        hardware_unknown_count,
+        truth_validation_errors: state.truth_validation_errors,
     }
 }
 
@@ -416,6 +540,7 @@ pub fn read_project_state(project_root: &Path) -> ProjectState {
     let developer_json = read_text(&ext.join(".developer"));
     let language = read_text(&ext.join(".language"));
     let current_task = read_current_task_ref(&state_dir);
+    let truth_validation_errors = validate_truth_files(&root);
 
     ProjectState {
         initialized: state_dir.join("project.json").exists() || ext.join("project.json").exists(),
@@ -432,6 +557,7 @@ pub fn read_project_state(project_root: &Path) -> ProjectState {
         wiki_pages: count_wiki_pages(&state_dir),
         git_branch: git_branch(&root),
         current_task,
+        truth_validation_errors,
     }
 }
 
@@ -1166,7 +1292,11 @@ mod tests {
             "goals:\n  - Dimmable lamp\nunknowns:\n  - Touch or knob interaction\n",
         )
         .unwrap();
-        fs::write(root.join(".emb-agent/.current-task"), "确认调光台灯交互方式与硬件规格\n").unwrap();
+        fs::write(
+            root.join(".emb-agent/.current-task"),
+            "确认调光台灯交互方式与硬件规格\n",
+        )
+        .unwrap();
         fs::create_dir_all(root.join(".emb-agent/tasks/确认调光台灯交互方式与硬件规格")).unwrap();
         fs::write(
             root.join(".emb-agent/tasks/确认调光台灯交互方式与硬件规格/task.json"),
@@ -1179,7 +1309,11 @@ mod tests {
         assert_eq!(snapshot.workflow_state, "clarifying");
         assert!(!snapshot.has_hardware_truth);
         assert_eq!(snapshot.requirements_unknown_count, 1);
-        assert!(snapshot.task_intake_summary.contains("do not create another task"));
+        assert!(
+            snapshot
+                .task_intake_summary
+                .contains("do not create another task")
+        );
         let _ = fs::remove_dir_all(root);
     }
 

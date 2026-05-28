@@ -29,3 +29,5 @@
 - Do not add project-specific defaults here without passing the anti-template test.
 - The template should remember harness infrastructure so the skill author can focus on project truth.
 - Treat `agent_protocol.gate` fields from emb-agent JSON as authoritative; execute allowed host actions yourself and never ask the user to run emb-agent commands manually.
+- After editing `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, or `docs/prd/*.md`, run `emb-agent validate` or `emb-agent health` before saying PRD/truth is complete.
+- For PRD exploration, confirm a compact state-machine checklist before implementation: boot state, first input, press vs release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, and acceptance evidence.

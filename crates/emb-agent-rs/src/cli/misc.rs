@@ -56,6 +56,7 @@ pub fn run_ext_ops(args: &[String]) -> Result<(), String> {
     let cmd = args.first().map(String::as_str).unwrap_or("");
     let cwd = option_value(args, "--cwd").unwrap_or_else(current_dir_string);
     let ext_dir = Path::new(&cwd).join(".emb-agent");
+    let project_root = Path::new(&cwd);
 
     match cmd {
         "init" | "init-project" => {
@@ -74,6 +75,19 @@ pub fn run_ext_ops(args: &[String]) -> Result<(), String> {
             println!(
                 "{}",
                 emb_agent_core::ext_ops::install_doctor(Path::new(&cwd), &host)
+            );
+            Ok(())
+        }
+        "validate" => {
+            let errors = emb_agent_core::validate_truth_files(project_root);
+            let ok = errors.is_empty();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "status": if ok { "ok" } else { "error" },
+                    "truth_validation_errors": errors
+                }))
+                .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
             );
             Ok(())
         }

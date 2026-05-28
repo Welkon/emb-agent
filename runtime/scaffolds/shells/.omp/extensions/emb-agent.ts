@@ -601,29 +601,44 @@ function renderNextLines(result: EmbAgentResult): string[] {
 // ---------------------------------------------------------------------------
 
 export default function (pi: ExtensionAPI) {
+  const lastInjectedContextByCwd = new Map<string, string>();
+
+  async function refreshStatus(ctx: {
+    cwd: string;
+    ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void };
+  }) {
+    const statusResult = await runEmbAgent(["status", "--brief"], ctx.cwd);
+    if (!statusResult) return;
+    const text = formatEmbStatus(statusResult);
+    ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
+  }
+
+  async function injectNextContext(ctx: { cwd: string }, force = false) {
+    const nextResult = await runEmbAgent(["next", "--brief"], ctx.cwd);
+    if (!nextResult) return;
+    const lines = renderNextLines(nextResult);
+    if (!lines.length) return;
+    const text =
+      "[emb-agent]\n" +
+      lines.join("\n") +
+      "\n\nRead skill://emb-agent for the full CLI surface and workflow rules. Act on the state above.";
+    if (!force && lastInjectedContextByCwd.get(ctx.cwd) === text) return;
+    lastInjectedContextByCwd.set(ctx.cwd, text);
+    await pi.sendMessage(
+      {
+        role: "user",
+        content: [{ type: "text", text }],
+      },
+      { deliverAs: "nextTurn" },
+    );
+  }
+
   async function onSessionEnter(ctx: {
     cwd: string;
     ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void };
   }) {
-    const [statusResult, nextResult] = await Promise.all([
-      runEmbAgent(["status", "--brief"], ctx.cwd),
-      runEmbAgent(["next", "--brief"], ctx.cwd),
-    ]);
-    if (statusResult) {
-      const text = formatEmbStatus(statusResult);
-      ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
-    }
-    if (!nextResult) return;
-    const lines = renderNextLines(nextResult);
-    if (lines.length > 0) {
-      await pi.sendMessage(
-        {
-          role: "user",
-          content: [{ type: "text", text: "[emb-agent]\n" + lines.join("\n") + "\n\nAct on the above." }],
-        },
-        { deliverAs: "nextTurn" },
-      );
-    }
+    await refreshStatus(ctx);
+    await injectNextContext(ctx);
   }
 
 
@@ -642,7 +657,7 @@ export default function (pi: ExtensionAPI) {
     await onSessionEnter(ctx);
   });
   pi.on("turn_end", async (_event: unknown, ctx: { cwd: string; ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void } }) => {
-    await onSessionEnter(ctx);
+    await refreshStatus(ctx);
   });
 
   // ── Slash commands ──────────────────────────────────────────────

@@ -1,3 +1,4 @@
+use crate::hardware::project::validate_truth_files;
 use crate::json::json_quote;
 use std::fs;
 use std::path::Path;
@@ -221,6 +222,8 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
     } else {
         vec![host]
     };
+    let truth_validation_errors = validate_truth_files(cwd);
+
     let mut checks = Vec::new();
     let language = fs::read_to_string(cwd.join(".emb-agent").join(".language"))
         .unwrap_or_default()
@@ -299,12 +302,17 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             "stale_files": stale,
         }));
     }
-    let ok = checks.iter().all(|check| check["status"] == "ok");
+    let truth_ok = truth_validation_errors.is_empty();
+    let ok = checks.iter().all(|check| check["status"] == "ok") && truth_ok;
     serde_json::to_string_pretty(&serde_json::json!({
         "status": if ok { "ok" } else { "warn" },
         "version": env!("CARGO_PKG_VERSION"),
         "project_root": cwd.to_string_lossy(),
         "language": language,
+        "truth_validation": {
+            "status": if truth_ok { "ok" } else { "error" },
+            "errors": truth_validation_errors
+        },
         "hosts": checks,
         "next": "Use emb-next for initialized projects or emb-onboard for new/migrated projects."
     }))

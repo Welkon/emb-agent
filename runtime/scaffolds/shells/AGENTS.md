@@ -65,5 +65,7 @@ Use `help` for the default command flow. All installed command docs remain avail
 - Never guess hardware facts. Read `.emb-agent/hw.yaml` and `.emb-agent/req.yaml`.
 - Run `next --brief` after significant state changes.
 - Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
+- After editing `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, or `docs/prd/*.md`, run `emb-agent validate` or `emb-agent health` before saying PRD/truth is complete.
+- For PRD exploration, confirm a compact state-machine checklist before implementation: boot state, first input, press vs release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, and acceptance evidence.
 
 <!-- EMB-AGENT:END -->
