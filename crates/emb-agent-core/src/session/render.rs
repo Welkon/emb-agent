@@ -206,29 +206,37 @@ pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
 
 pub fn build_host_session_start_payload(host: &str, message: &str, welcome: &str) -> String {
     let event_name = "SessionStart";
-    let welcome_json = if welcome.is_empty() {
-        "null".to_string()
-    } else {
-        json_quote(welcome)
-    };
     match host {
         "cursor" => format!("{{\"additional_context\":{}}}", json_quote(message)),
-        "codex" => format!(
-            "{{\"suppressOutput\":true,\"systemMessage\":{},\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{},\"welcome\":{}}}}}",
-            json_quote(&format!(
-                "emb-agent rust context injected ({} chars)",
-                message.len()
-            )),
-            json_quote(event_name),
-            json_quote(message),
-            welcome_json
-        ),
-        _ => format!(
-            "{{\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{},\"welcome\":{}}}}}",
-            json_quote(event_name),
-            json_quote(message),
-            welcome_json
-        ),
+        "codex" => {
+            let mut context = message.to_string();
+            if !welcome.is_empty() {
+                context.push_str("\n\n");
+                context.push_str(welcome);
+            }
+            format!(
+                "{{\"suppressOutput\":true,\"systemMessage\":{},\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{}}}}}",
+                json_quote(&format!(
+                    "emb-agent rust context injected ({} chars)",
+                    context.len()
+                )),
+                json_quote(event_name),
+                json_quote(&context)
+            )
+        }
+        _ => {
+            let welcome_json = if welcome.is_empty() {
+                "null".to_string()
+            } else {
+                json_quote(welcome)
+            };
+            format!(
+                "{{\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{},\"welcome\":{}}}}}",
+                json_quote(event_name),
+                json_quote(message),
+                welcome_json
+            )
+        }
     }
 }
 

@@ -848,8 +848,7 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         assert_two_command_files(root.join(host).join("commands"), host);
     }
 
-    assert_two_command_files(root.join(".windsurf").join("workflows"), ".windsurf");
-    assert_no_markdown_files(root.join(".windsurf").join("commands"));
+    // windsurf is disabled in shells.json; skip cleanup assertions
 
     let runtime_commands = root
         .join(".omp")
@@ -877,7 +876,8 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         "installed runtime must keep board available"
     );
 
-    for host in [".pi", ".omp"] {
+    // pi is disabled in shells.json; only check omp
+    for host in [".omp"] {
         let commands_dir = root.join(host).join("commands");
         assert!(
             !commands_dir.join("emb-next.md").exists(),
