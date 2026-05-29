@@ -48,6 +48,9 @@ var SUPPORTED_HOSTS = [
 	{ name: "windsurf", dir: ".windsurf", profile: "core" },
 ];
 
+// Old per-command skill directories from main branch (pre-unified emb-agent skill)
+var staleCodexSkillDirs = ["emb-next", "emb-start", "emb-capability", "emb-ingest", "emb-help", "emb-pause", "emb-resume", "emb-task", "emb-onboard"];
+
 // Developer-controlled shell enable/disable. shells.json in the repo root.
 var SHELLS_CONFIG = {};
 try {
@@ -776,6 +779,9 @@ function cleanupManagedHostCommands(projectRoot, host) {
 		for (var j = 0; j < CANONICAL_SHELL_COMMANDS.length; j++) {
 			removePath(path.join(projectRoot, ".agents", "skills", CANONICAL_SHELL_COMMANDS[j].name));
 			removePath(path.join(os.homedir(), ".agents", "skills", CANONICAL_SHELL_COMMANDS[j].name));
+		}
+		for (var k = 0; k < staleCodexSkillDirs.length; k++) {
+			removePath(path.join(hostDir, "skills", staleCodexSkillDirs[k]));
 		}
 	}
 }
