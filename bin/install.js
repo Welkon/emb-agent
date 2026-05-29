@@ -48,6 +48,14 @@ var SUPPORTED_HOSTS = [
 	{ name: "windsurf", dir: ".windsurf", profile: "core" },
 ];
 
+// Developer-controlled shell enable/disable. shells.json in the repo root.
+var SHELLS_CONFIG = {};
+try {
+	SHELLS_CONFIG = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "shells.json"), "utf8"));
+} catch (_) { /* missing or invalid → all hosts enabled */ }
+var DISABLED_HOSTS = Array.isArray(SHELLS_CONFIG.disabled) ? SHELLS_CONFIG.disabled : [];
+var ENABLED_HOSTS = SUPPORTED_HOSTS.filter(function (h) { return DISABLED_HOSTS.indexOf(h.name) === -1; });
+
 var GLOBAL_HOST_DIRS = {
 	codex: { env: "CODEX_HOME", parts: [".codex"] },
 	cursor: { env: "CURSOR_CONFIG_DIR", parts: [".cursor"] },
@@ -874,16 +882,20 @@ function hostSurfaceSummary(projectRoot, host) {
 	if (host.name === "codex") {
 		var root = hostInstallScope(host) === "global" ? path.join(os.homedir(), ".agents", "skills") : path.join(projectRoot, ".agents", "skills");
 		return { kind: "codex-skills", dir: root, commands: ["$emb-next", "$emb-onboard"], reload: "Restart Codex or run /skills if the new skills are not visible." };
-	}
+}
 	if (host.name === "windsurf") return { kind: "windsurf-workflows", dir: canonicalSurfaceDir(projectRoot, host), commands: ["/emb-next", "/emb-onboard"], reload: "Refresh Cascade or open a new Windsurf session." };
 	return { kind: "command-files", dir: canonicalSurfaceDir(projectRoot, host), commands: ["/emb-next", "/emb-onboard"], reload: host.name === "cursor" ? "Reload Cursor window if commands are not visible." : "Start a new Claude Code session if commands are not visible." };
 }
 
 function selectedHostList(args, state) {
 	if (state && Array.isArray(state.hosts)) return state.hosts;
-	if (args.target === "all") return SUPPORTED_HOSTS.slice();
+	if (args.target === "all") return ENABLED_HOSTS.slice();
 	if (args.target) {
-		var host = SUPPORTED_HOSTS.find(function (h) { return h.name === args.target; });
+		var host = ENABLED_HOSTS.find(function (h) { return h.name === args.target; });
+		if (!host) {
+			var disabledHost = SUPPORTED_HOSTS.find(function (h) { return h.name === args.target; });
+			if (disabledHost) { console.error("Host " + args.target + " is disabled by developer config (shells.json)."); process.exit(1); }
+		}
 		return host ? [host] : [];
 	}
 	return [];
@@ -921,6 +933,7 @@ function renderInstallPlan(projectRoot, hosts, options) {
 	lines.push("  language: " + language);
 	lines.push("  developer: " + (options.developer || "developer"));
 	lines.push("  hosts: " + hosts.map(function (h) { return h.name; }).join(", "));
+	if (DISABLED_HOSTS.length) lines.push("  disabled: " + DISABLED_HOSTS.join(", "));
 	if (options.specs && options.specs.length) lines.push("  external specs: " + options.specs.join(", "));
 	if (options.skills && options.skills.length) lines.push("  external skills: " + options.skills.join(", "));
 	lines.push("");
@@ -1541,7 +1554,7 @@ function main(argv) {
 	}
 	if (args.target === "all") {
 		var selectedStateAll = { specItems: args.specs.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }), skillItems: args.skills.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }), specs: args.specs, skills: args.skills };
-		var allHosts = scopedHosts(SUPPORTED_HOSTS, cliScope);
+		var allHosts = scopedHosts(requestedHosts, cliScope);
 		console.log(renderInstallPlan(projectRoot, allHosts, { mode: args.mode, scope: cliScope, lang: args.lang, developer: args.developer, specs: args.specs, skills: args.skills, compact: !args.dryRun }));
 		if (args.dryRun) return;
 		var cliIndex = 0;
@@ -1559,8 +1572,7 @@ function main(argv) {
 		}
 		installNextCliHost();
 	} else if (args.target) {
-		var host = SUPPORTED_HOSTS.find(function (h) { return h.name === args.target; });
-		if (!host) { console.error("Unknown host: " + args.target); process.exit(1); }
+		var host = requestedHosts[0];
 		host = hostForScope(host, cliScope);
 		var oneHosts = [host];
 		console.log(renderInstallPlan(projectRoot, oneHosts, { mode: args.mode, scope: cliScope, lang: args.lang, developer: args.developer, specs: args.specs, skills: args.skills, compact: !args.dryRun }));
@@ -1621,7 +1633,7 @@ function main(argv) {
 		function startInstallFlow() {
 			var steps = [
 				function askHost(next) {
-					var items = SUPPORTED_HOSTS.map(function (host) { return { label: host.name, desc: host.dir, value: host }; });
+					var items = ENABLED_HOSTS.map(function (host) { return { label: host.name, desc: host.dir, value: host }; });
 					selectList("Select Runtime", items, function (selected) { state.hosts = selected; next(); }, { contextLabel: "Runtime", contextValue: "available hosts", allowSkip: false, requireSelection: true, itemNoun: "runtime", itemPlural: "runtimes" });
 				},
 				function askLocation(next) {
@@ -1701,7 +1713,8 @@ function main(argv) {
 		}
 	} else {
 		console.log("No --target specified and no TTY. Use --target <host>.");
-		console.log("Supported: " + SUPPORTED_HOSTS.map(function (h) { return h.name; }).join(", ") + ", all");
+		var availableNames = ENABLED_HOSTS.map(function (h) { return h.name; });
+		console.log("Available: " + availableNames.join(", ") + ", all");
 		process.exit(1);
 	}
 }
