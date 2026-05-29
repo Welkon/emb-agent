@@ -266,7 +266,7 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
     if snapshot.current_task.is_some() {
         (
             "do".to_string(),
-            "Active task exists. Ensure it has a durable agent brief and required verification before triggering `/emb:do`.".to_string(),
+            "Active task exists. Limit reads to task PRD + hw.yaml + req.yaml + scoped source files. Use the task brief's exact waveform/measurement params directly without re-extraction. Trigger `/emb:do`.".to_string(),
         )
     } else if snapshot.open_tasks > 0 {
         (
@@ -319,7 +319,7 @@ pub fn build_next_json_with_tasks_and_policy(
     } else if snapshot.current_task.is_some() {
         (
             "do",
-            "Active task exists. Before implementation, ensure the task has a durable agent brief: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification. Trigger `/emb:do` only after the active task is briefed enough to execute.",
+            "Active task exists. Before implementation: 1) Limit initial file reads to the active task PRD, .emb-agent/hw.yaml, .emb-agent/req.yaml, and the source files directly under the task scope — do not scan unrelated project files, migration docs, or other projects. 2) If the task brief contains exact waveform/measurement params, use them directly; do not re-extract or re-measure. Trigger `/emb:do` only after the active task is briefed enough to execute.",
         )
     } else if snapshot.open_tasks > 0 {
         (
@@ -432,9 +432,9 @@ fn build_next_agent_protocol_with_policy(
                 "kind": "prd-exploration",
                 "blocking": true,
                 "method": "grill-with-docs",
-                "state_machine_checklist": ["boot_state", "first_input", "press_vs_release_trigger", "mode_cycle_including_off", "long_press_valid_states", "memory_semantics", "stop_entry", "wake_source", "low_voltage_behavior", "acceptance_evidence"],
-                "allowed_actions": ["brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits"],
-                "forbidden_actions": ["create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions"],
+                "state_machine_checklist": ["boot_state", "first_input", "press_vs_release_trigger", "mode_cycle_including_off", "long_press_valid_states", "memory_semantics", "stop_entry", "wake_source", "low_voltage_behavior", "acceptance_evidence", "extract_exact_waveform_or_measurement_params_from_captures"],
+                "allowed_actions": ["brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "extract_and_record_exact_timing_percent_times_from_captures"],
+                "forbidden_actions": ["create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params"],
                 "recommended_command": "/emb:next"
             }
         })

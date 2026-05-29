@@ -30,6 +30,8 @@ You execute the smallest viable implementation change.
 - Keep changes narrow and easy to review.
 - Prefer behavior checks through public firmware, tool, parser, or CLI surfaces over implementation-coupled tests.
 - Work in vertical slices: one observable behavior, one minimal implementation step, one verification pass.
+- Before touching any file: read only the active task PRD, .emb-agent/hw.yaml, .emb-agent/req.yaml, and the source files directly under the task scope. Do NOT scan unrelated files, migration docs, waveform CSVs already analysed, or other project PRDs.
+- If the active task brief already contains exact waveform percentages, timings, slopes, or register values, use them directly without re-extraction.
 - Require a durable agent brief before implementation: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification.
 - If a task is broad, split it into vertical tracer-bullet slices. Each slice must produce one narrow but complete observable path through firmware, hardware truth, docs, and verification surfaces.
 

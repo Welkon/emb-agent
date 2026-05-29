@@ -411,7 +411,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
             state.truth_validation_errors.join("; ")
         )
     } else if active_is_clarification {
-        "Continue the active clarification/brainstorming task as a doc-grounded grilling loop. Ask one load-bearing question at a time, challenge ambiguous terms against project truth, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run emb-agent health after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string()
+        "Continue the active clarification/brainstorming task as a doc-grounded grilling loop. Ask one load-bearing question at a time, challenge ambiguous terms against project truth, extract exact timing/percentage/slope values from any waveform or measurement captures before implementing, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run emb-agent health after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string()
     } else if state.current_task.is_some() {
         String::new()
     } else if needs_clarification || !has_hardware {

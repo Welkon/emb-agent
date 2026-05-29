@@ -30,7 +30,8 @@
 - The template should remember harness infrastructure so the skill author can focus on project truth.
 - Treat `agent_protocol.gate` fields from emb-agent JSON as authoritative; execute allowed host actions yourself and never ask the user to run emb-agent commands manually.
 - After editing `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, or `docs/prd/*.md`, run `emb-agent validate` or `emb-agent health` before saying PRD/truth is complete.
-- For PRD exploration, confirm a compact state-machine checklist before implementation: boot state, first input, press vs release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, and acceptance evidence.
+- For PRD exploration, confirm a compact state-machine checklist before implementation: boot state, first input, press vs release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, acceptance evidence, and if waveform or measurement captures exist, extract exact timings/percentages/slopes from them before declaring requirements complete.
+- When only dispatching tools with no conversational reply, do not emit a "." filler. Send tool calls as the turn's sole content.
 - For tasks, classify work as bug, feature, board-bringup, power, timing, or toolchain; require a durable agent brief before activation: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification.
 - Split large work into vertical tracer-bullet slices. Each slice must be independently verifiable across firmware, hardware truth, docs, and verification surfaces; avoid horizontal layer tasks.
 - For bugs, build a feedback loop before mutation: failing test, CLI/parser fixture, simulator replay, captured trace, serial log, GPIO pulse + logic analyzer, scope/current-meter measurement, or documented HITL bench step.
