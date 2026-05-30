@@ -166,21 +166,19 @@ function usage() {
 		"",
 		"Usage:",
 		"  npx emb-agent                            # Interactive install",
-		"  npx emb-agent --target pi                # Install for pi",
+		"  npx emb-agent --target pi                # Install for pi (experimental)",
 		"  npx emb-agent --target all               # Install for all hosts",
 		"",
 		"Options:",
-		"  --target <name>   Host: codex, cursor, claude, pi, omp, windsurf, all",
+		"  --target <name>   Host: codex, cursor, claude, omp, pi*, windsurf*, all (*experimental)",
 		"  --developer <name> Developer identity",
 		"  --local, -l        Install to project directory (recommended)",
 		"  --global, -g       Install to global config",
-		"  --profile <name>   Install profile (default: core)",
 		"  --lang <en|zh>     Reply language",
 		"  --spec <name>      Enable external spec (repeatable)",
 		"  --skill <name>     Enable external skill (repeatable)",
 		"  --registry <url>   External spec registry URL",
 		"  --skill-source <url> External skill source URL",
-		"  --force            Overwrite existing files",
 		"  --dry-run          Print install plan without writing files",
 		"  update             Update managed host runtime files using this installer package",
 		"  uninstall          Remove managed host integration files",
@@ -193,12 +191,10 @@ function usage() {
 		"",
 		"Installs to:",
 		"  - Rust binary (cached/downloaded)",
-		"  - Runtime scaffolds, templates, agents, specs",
 		"  - Host-specific config (settings.json, hooks.json, AGENTS.md)",
 		"  - AI host rules (AGENTS.md, .<host>/rules/, .<host>/instructions.md)",
 	].join("\n"));
 }
-
 function parseArgs(argv) {
 	var args = { mode: "install", target: "", developer: "", local: false, global: false, profile: "core", lang: "", specs: [], skills: [], registry: "", skillSource: "", help: false, force: false, dryRun: false };
 	for (var i = 0; i < argv.length; i++) {
@@ -206,12 +202,10 @@ function parseArgs(argv) {
 		if (t === "uninstall" || t === "repair" || t === "update") { args.mode = t; continue; }
 		if (t === "--help" || t === "-h") args.help = true;
 		else if (t === "--target") args.target = argv[++i] || "";
-		else if (t === "--force") args.force = true;
 		else if (t === "--dry-run") args.dryRun = true;
 		else if (t === "--developer") args.developer = argv[++i] || "";
 		else if (t === "--local" || t === "-l") args.local = true;
 		else if (t === "--global" || t === "-g") args.global = true;
-		else if (t === "--profile") args.profile = argv[++i] || "core";
 		else if (t === "--lang") args.lang = argv[++i] || "";
 		else if (t === "--spec") { var s = argv[++i]; if (s) args.specs.push(s); }
 		else if (t === "--skill") { var sk = argv[++i]; if (sk) args.skills.push(sk); }
@@ -220,8 +214,6 @@ function parseArgs(argv) {
 	}
 	return args;
 }
-
-// ── Helpers ───────────────────────────────────────────────────────
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 

@@ -18,6 +18,7 @@ function findRustBinary() {
 		path.join(process.cwd(), ".claude", "emb-agent", "bin"),
 		path.join(process.cwd(), ".codex", "emb-agent", "bin"),
 		path.join(process.cwd(), ".pi", "emb-agent", "bin"),
+		path.join(process.cwd(), ".pi", "agent", "emb-agent", "bin"),
 		"",
 	];
 	for (var di = 0; di < dirs.length; di++) {

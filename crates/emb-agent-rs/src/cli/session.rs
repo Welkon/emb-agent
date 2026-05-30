@@ -1,8 +1,10 @@
 use super::util::{current_dir_string, option_value};
 use emb_agent_core::{
-    build_health_json, build_next_json_with_tasks_and_policy, build_session_context,
-    build_start_json, build_status_json, build_statusline, evaluate_worktree_policy,
-    read_all_tasks, snapshot_from_cwd,
+    build_external_dispatch_next_json, build_external_health_json, build_external_next_json,
+    build_external_start_json, build_external_status_json, build_health_json,
+    build_next_json_with_tasks_and_policy, build_session_context, build_start_json,
+    build_status_json, build_statusline, evaluate_worktree_policy, read_all_tasks,
+    snapshot_from_cwd,
 };
 use std::path::Path;
 
@@ -66,6 +68,38 @@ pub fn run(args: &[String]) -> Result<(), String> {
             "unknown session command: {}",
             args.first().unwrap_or(&String::new())
         )),
+    }
+}
+
+pub fn run_external(args: &[String]) -> Result<(), String> {
+    let entrypoint = args.get(1).map(String::as_str).unwrap_or("next");
+    let cwd = option_value(args, "--cwd").unwrap_or_else(current_dir_string);
+    let snapshot = snapshot_from_cwd(&cwd);
+    let ext_dir = Path::new(&cwd).join(".emb-agent");
+    let tasks = read_all_tasks(&ext_dir);
+
+    match entrypoint {
+        "start" => {
+            println!("{}", build_external_start_json(&snapshot));
+            Ok(())
+        }
+        "next" => {
+            println!("{}", build_external_next_json(&snapshot, &tasks));
+            Ok(())
+        }
+        "status" => {
+            println!("{}", build_external_status_json(&snapshot));
+            Ok(())
+        }
+        "health" => {
+            println!("{}", build_external_health_json(&snapshot));
+            Ok(())
+        }
+        "dispatch-next" => {
+            println!("{}", build_external_dispatch_next_json(&snapshot, &tasks));
+            Ok(())
+        }
+        _ => Err(format!("unknown external entrypoint: {entrypoint}. Valid: start, next, status, health, dispatch-next")),
     }
 }
 

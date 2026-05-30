@@ -1,5 +1,5 @@
 # GEMINI.md
-
+<!-- EMB-AGENT:START -->
 ## Quick Routing
 
 {{INCLUDE:_partials/quick-routing-table.md}}
@@ -35,3 +35,4 @@
 - For tasks, classify work as bug, feature, board-bringup, power, timing, or toolchain; require a durable agent brief before activation: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification.
 - Split large work into vertical tracer-bullet slices. Each slice must be independently verifiable across firmware, hardware truth, docs, and verification surfaces; avoid horizontal layer tasks.
 - For bugs, build a feedback loop before mutation: failing test, CLI/parser fixture, simulator replay, captured trace, serial log, GPIO pulse + logic analyzer, scope/current-meter measurement, or documented HITL bench step.
+<!-- EMB-AGENT:END -->

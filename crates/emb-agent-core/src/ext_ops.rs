@@ -29,8 +29,6 @@ pub fn init_project(cwd: &Path) -> String {
     let _ = fs::create_dir_all(ext_dir.join("roadmap"));
     let _ = fs::create_dir_all(ext_dir.join("audits"));
     let _ = fs::create_dir_all(ext_dir.join("extensions").join("chips").join("profiles"));
-
-    // Write minimal project.json
     let project = serde_json::json!({
         "project_profile": "",
         "active_specs": ["embedded-space"],
@@ -46,14 +44,37 @@ pub fn init_project(cwd: &Path) -> String {
         &project_json,
         serde_json::to_string_pretty(&project).unwrap_or_default(),
     );
-
     // Write empty hw.yaml and req.yaml
     let _ = fs::write(
         ext_dir.join("hw.yaml"),
         "# Hardware truth\nmodel: \"\"\npackage: \"\"\n",
     );
     let _ = fs::write(ext_dir.join("req.yaml"), "# Requirements\n");
-
+    // Create docs/prd/system.md skeleton and tasks directory
+    let prd_dir = cwd.join("docs").join("prd");
+    let _ = fs::create_dir_all(&prd_dir);
+    let _ = fs::create_dir_all(prd_dir.join("tasks"));
+    let system_prd_path = prd_dir.join("system.md");
+    if !system_prd_path.exists() {
+        let system_prd = "\
+# System PRD\n\
+\n\
+> Fill this during requirement exploration. Unknown items should be explored with the user, not guessed.\n\
+\n\
+## Product Overview\n\
+\n\
+## Behaviors\n\
+\n\
+## Constraints\n\
+\n\
+## Acceptance Evidence\n\
+\n\
+## Failure / Power / Reset\n\
+\n\
+## Unknowns\n\
+";
+        let _ = fs::write(&system_prd_path, system_prd);
+    }
     // Write attention.md skeleton
     let attention_md = "\
 # Project Attention
@@ -243,10 +264,30 @@ fn manual_update_command() -> &'static str {
 
 pub fn install_doctor(cwd: &Path, host: &str) -> String {
     let host = host.trim();
-    let hosts: Vec<&str> = if host.is_empty() || host == "all" {
-        vec!["codex", "cursor", "claude", "pi", "omp", "windsurf"]
+    let hosts: Vec<String> = if host.is_empty() || host == "all" {
+        // Read installed-host list from runtime-version.json, falling back to all known hosts
+        let rv_path = cwd.join(".emb-agent").join("runtime-version.json");
+        let installed_hosts: Vec<String> = fs::read_to_string(&rv_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .and_then(|v| {
+                v.get("hosts")
+                    .and_then(|h| h.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|entry| entry.get("name").and_then(|n| n.as_str()).map(String::from))
+                            .collect()
+                    })
+            })
+            .unwrap_or_default();
+        if installed_hosts.is_empty() {
+            // Fall back to checking all known hosts when no install record exists
+            vec!["codex".into(), "cursor".into(), "claude".into(), "pi".into(), "omp".into(), "windsurf".into()]
+        } else {
+            installed_hosts
+        }
     } else {
-        vec![host]
+        vec![host.to_string()]
     };
     let expected_runtime_version = read_project_runtime_version(cwd);
 
@@ -257,8 +298,9 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
         .unwrap_or_default()
         .trim()
         .to_string();
-    for item in hosts {
-        let dir = match item {
+    for item in &hosts {
+        let item_str = item.as_str();
+        let dir = match item_str {
             "codex" => ".codex",
             "cursor" => ".cursor",
             "claude" => ".claude",
@@ -276,7 +318,7 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
         };
         let runtime_ok = runtime_dir.join("bin").join("emb-agent.cjs").exists()
             && runtime_dir.join("bin").join(bin_name).exists();
-        let (surface, commands_ok) = match item {
+        let (surface, commands_ok) = match item_str {
             "omp" | "pi" => (
                 "extension",
                 host_dir.join("extensions").join("emb-agent.ts").exists(),
@@ -288,8 +330,7 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
                     .join("emb-next")
                     .join("SKILL.md")
                     .exists()
-                    && cwd
-                        .join(".agents")
+                    && cwd.join(".agents")
                         .join("skills")
                         .join("emb-onboard")
                         .join("SKILL.md")
@@ -329,7 +370,7 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
         };
         let ok = runtime_ok && commands_ok && stale.is_empty() && version_status != "stale";
         checks.push(serde_json::json!({
-            "host": item,
+            "host": item_str,
             "status": if ok { "ok" } else { "warn" },
             "runtime_dir": runtime_dir.to_string_lossy(),
             "runtime_ok": runtime_ok,
@@ -629,9 +670,10 @@ pub fn capability_run(_ext_dir: &Path, name: &str) -> String {
     let valid = ["scan", "plan", "do", "review", "verify", "debug"];
     if valid.contains(&name) {
         format!(
-            "{{\"status\":\"ok\",\"capability\":{},\"next\":{},\"next_instructions\":\"Trigger the slash command for this capability; do not run emb-agent-rs through bash.\"}}",
+            "{{\"status\":\"ok\",\"capability\":{},\"next\":{},\"next_instructions\":\"Run `node .<host>/emb-agent/bin/emb-agent.cjs {}` to execute this capability.\"}}",
             json_quote(name),
-            json_quote(&format!("/emb:{name}"))
+            json_quote(name),
+            name
         )
     } else {
         format!(
@@ -640,37 +682,31 @@ pub fn capability_run(_ext_dir: &Path, name: &str) -> String {
         )
     }
 }
-
 /// Executor run
 pub fn executor_run(_ext_dir: &Path, name: &str) -> String {
     format!(
-        "{{\"status\":\"ok\",\"executor\":{},\"note\":\"Executor framework not yet migrated to Rust\"}}",
+        "{{\"status\":\"unsupported\",\"error\":{{\"code\":\"not-implemented\",\"message\":\"Executor framework not yet migrated to Rust\"}},\"executor\":{}}}",
         json_quote(name)
     )
 }
-
 /// Ingest doc (registers PDF in cache index)
 pub fn ingest_doc(ext_dir: &Path, file: &str, kind: &str) -> String {
     let cache_dir = ext_dir.join("cache").join("docs");
     let _ = fs::create_dir_all(&cache_dir);
     let index_path = cache_dir.join("index.json");
-
     let mut index: serde_json::Value = if index_path.exists() {
         let content = fs::read_to_string(&index_path).unwrap_or_default();
         serde_json::from_str(&content).unwrap_or_default()
     } else {
         serde_json::json!({"documents": []})
     };
-
     // Generate doc ID from file path hash
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     file.hash(&mut hasher);
     let doc_id = format!("{:016x}", hasher.finish());
-
     let doc_dir = cache_dir.join(&doc_id);
     let _ = fs::create_dir_all(&doc_dir);
-
     let entry = serde_json::json!({
         "doc_id": doc_id,
         "title": std::path::Path::new(file).file_name().unwrap_or_default().to_string_lossy(),
@@ -678,7 +714,6 @@ pub fn ingest_doc(ext_dir: &Path, file: &str, kind: &str) -> String {
         "kind": kind,
         "parsed": false
     });
-
     if let Some(docs) = index.get_mut("documents").and_then(|d| d.as_array_mut()) {
         docs.push(entry);
     }
@@ -686,35 +721,30 @@ pub fn ingest_doc(ext_dir: &Path, file: &str, kind: &str) -> String {
         &index_path,
         serde_json::to_string_pretty(&index).unwrap_or_default(),
     );
-
     format!(
-        "{{\"status\":\"ok\",\"ingested\":true,\"doc_id\":{},\"note\":\"MinerU parsing not yet in Rust. Use Node runtime for full ingestion.\"}}",
+        "{{\"status\":\"ok\",\"ingested\":true,\"doc_id\":{},\"note\":\"Document registered in cache index. Full MinerU parsing not yet in Rust.\"}}",
         json_quote(&doc_id)
     )
 }
-
 /// Support/adapter status
 pub fn support_status(_ext_dir: &Path) -> String {
-    r#"{"status":"ok","sources":[],"note":"Chip support source management not yet in Rust"}"#
+    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Chip support source management not yet implemented"},"sources":[]}"#
         .to_string()
 }
-
 /// Dispatch orchestrate
 pub fn dispatch_orchestrate(_ext_dir: &Path, _job: &str) -> String {
-    r#"{"status":"ok","note":"Dispatch orchestration not yet in Rust"}"#.to_string()
+    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Dispatch orchestration not yet implemented"}}"#.to_string()
 }
-
 /// Scaffold generate
 pub fn scaffold_generate(_ext_dir: &Path, _name: &str) -> String {
-    r#"{"status":"ok","note":"Scaffolding not yet in Rust"}"#.to_string()
+    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Scaffolding not yet implemented"}}"#.to_string()
 }
-
 /// Transcript show
 pub fn transcript_show(_ext_dir: &Path) -> String {
-    r#"{"status":"ok","note":"Transcript generation not yet in Rust"}"#.to_string()
+    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Transcript generation not yet implemented"}}"#.to_string()
 }
 
-/// Prefs show/set
+/// Prefs show
 pub fn prefs_show(ext_dir: &Path) -> String {
     let project_path = ext_dir.join("project.json");
     if !project_path.exists() {
@@ -734,31 +764,31 @@ pub fn prefs_show(ext_dir: &Path) -> String {
 
 /// Tool run
 pub fn tool_run(_ext_dir: &Path, _name: &str) -> String {
-    r#"{"status":"ok","note":"Tool execution not yet in Rust"}"#.to_string()
+    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Tool execution not yet implemented"}}"#.to_string()
 }
 
 /// Snippet draft
 pub fn snippet_draft(_ext_dir: &Path, _title: &str) -> String {
-    r#"{"status":"ok","note":"Snippet management not yet in Rust"}"#.to_string()
+    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Snippet management not yet implemented"}}"#.to_string()
 }
 
 /// Workflow status
 pub fn workflow_status(_ext_dir: &Path) -> String {
-    r#"{"status":"ok","workflow":"active","note":"Workflow management not yet in Rust"}"#
+    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Workflow management not yet implemented"}}"#
         .to_string()
 }
 
 /// Orchestrate status
 pub fn orchestrate_status(_ext_dir: &Path) -> String {
-    r#"{"status":"ok","note":"Orchestration not yet in Rust"}"#.to_string()
+    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Orchestration not yet implemented"}}"#.to_string()
 }
 
 /// Insight show
 pub fn insight_show(_ext_dir: &Path) -> String {
-    r#"{"status":"ok","note":"Insights not yet in Rust"}"#.to_string()
+    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Insights not yet implemented"}}"#.to_string()
 }
 
 /// Trace show
 pub fn trace_show(_ext_dir: &Path) -> String {
-    r#"{"status":"ok","note":"Tracing not yet in Rust"}"#.to_string()
+    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Tracing not yet implemented"}}"#.to_string()
 }

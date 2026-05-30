@@ -27,6 +27,8 @@ fn run(args: &[String]) -> Result<(), String> {
         "statusline" | "start" | "next" | "status" | "health" | "pause" | "resume" => {
             cli::session::run(args)
         }
+        // External protocol
+        "external" => cli::session::run_external(args),
         // Actions
         "scan" | "plan" | "do" | "review" | "verify" | "debug" => cli::session::run_actions(args),
         // Chip
@@ -61,7 +63,7 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         // Compound knowledge
         "compound" | "attention" | "note" | "arch" => cli::compound::run(args),
-        // Extended operations (stubs)
+        // Extended operations
         "init" | "init-project" | "onboard" | "migrate" | "doctor" | "skills" | "update"
         | "settings" | "decision" | "commands" | "capability" | "executor" | "dispatch"
         | "scaffold" | "transcript" | "prefs" | "tool" | "snippet" | "workflow" | "orchestrate"

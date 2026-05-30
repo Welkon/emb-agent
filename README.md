@@ -163,9 +163,9 @@ npx emb-agent --target omp --local --lang zh
 npx emb-agent --target all --local --lang zh
 npx emb-agent --target all --local --dry-run
 ```
-
 Where `<host>` is one of: `codex`, `claude`, `cursor`, `pi`, `omp`, `windsurf`, or `all`.
 
+> **Note:** `pi` and `windsurf` are experimental and disabled by default in development builds. To enable them, remove their entries from `shells.json.disabled`.
 ### Local vs global
 
 - `--local` writes host integration into this project. Use it for project-specific setup and team-visible behavior.
@@ -181,10 +181,10 @@ Every supported host exposes the same two emb-agent entrypoints through its nati
 | Host | Surface | Entries |
 |---|---|---|
 | OMP | extension commands | `/emb-next`, `/emb-onboard` |
-| Pi | extension commands | `/emb-next`, `/emb-onboard` |
+| Pi* | extension commands | `/emb-next`, `/emb-onboard` |
 | Claude Code | `.claude/commands/*.md` | `/emb-next`, `/emb-onboard` |
 | Cursor | command files | `/emb-next`, `/emb-onboard` |
-| Windsurf | `.windsurf/workflows/*.md` | `/emb-next`, `/emb-onboard` |
+| Windsurf* | `.windsurf/workflows/*.md` | `/emb-next`, `/emb-onboard` |
 | Codex | `.agents/skills/<name>/SKILL.md` | `$emb-next`, `$emb-onboard` |
 
 After install, emb-agent writes `.emb-agent/INSTALL_RESULT.md`, runs an install check, and prints host-specific reload instructions. To diagnose later:

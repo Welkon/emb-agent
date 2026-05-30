@@ -1032,7 +1032,19 @@ fn task_needs_human_gate(category: &str, summary: &str) -> bool {
 }
 
 fn contains_any(text: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|needle| text.contains(needle))
+    // Split into lowercase words on non-alphanumeric boundaries for word matching.
+    // Multi-word needles (containing spaces or hyphens) still use substring matching.
+    let words: Vec<&str> = text
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    needles.iter().any(|needle| {
+        if needle.contains(' ') || needle.contains('-') {
+            text.contains(needle)
+        } else {
+            words.iter().any(|w| *w == *needle)
+        }
+    })
 }
 
 fn first_non_empty(values: &[String]) -> String {

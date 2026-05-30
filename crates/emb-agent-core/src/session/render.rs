@@ -550,6 +550,168 @@ pub fn build_task_list_json(tasks: &[crate::hardware::project::TaskSnapshot]) ->
     )
 }
 
+// ── External protocol ──────────────────────────────────────────
+
+/// Build external protocol envelope for start
+pub fn build_external_start_json(snapshot: &ProjectSnapshot) -> String {
+    let (next_cmd, next_reason) = build_next_routing(snapshot);
+    let runtime_events = json!({
+        "status": if snapshot.bootstrap_status == "ready" { "ok" } else { "pending" },
+        "total": 1,
+        "blocked": 0,
+        "pending": if snapshot.bootstrap_status == "ready" { 0 } else { 1 },
+        "failed": 0
+    });
+    json!({
+        "protocol": "emb-agent.external/1",
+        "entrypoint": "start",
+        "runtime_cli": "node .<host>/emb-agent/bin/emb-agent.cjs",
+        "status": snapshot.workflow_state,
+        "summary": snapshot.recommended_reason,
+        "initialized": snapshot.initialized,
+        "mcu_model": snapshot.mcu_model,
+        "mcu_package": snapshot.mcu_package,
+        "open_tasks": snapshot.open_tasks,
+        "next": {
+            "command": next_cmd,
+            "reason": next_reason,
+            "cli": format!("node .<host>/emb-agent/bin/emb-agent.cjs {}", next_cmd)
+        },
+        "runtime_events": runtime_events
+    })
+    .to_string()
+}
+
+/// Build external protocol envelope for next
+pub fn build_external_next_json(
+    snapshot: &ProjectSnapshot,
+    tasks: &[TaskSnapshot],
+) -> String {
+    let (next_cmd, next_reason) = build_next_routing(snapshot);
+    let action = if snapshot.recommended_command == "onboard" {
+        "onboard"
+    } else if snapshot.current_task.is_some() {
+        "do"
+    } else {
+        "next"
+    };
+    let runtime_events = json!({
+        "status": if action == "do" { "ok" } else { "pending" },
+        "total": 1,
+        "blocked": 0,
+        "pending": if action == "do" { 0 } else { 1 },
+        "failed": 0
+    });
+    let task_candidates: Vec<Value> = tasks
+        .iter()
+        .filter(|t| t.status != "closed" && t.status != "done" && t.status != "resolved")
+        .map(|t| {
+            json!({
+                "name": t.name,
+                "title": t.title,
+                "status": t.status,
+                "priority": t.priority
+            })
+        })
+        .collect();
+    json!({
+        "protocol": "emb-agent.external/1",
+        "entrypoint": "next",
+        "runtime_cli": "node .<host>/emb-agent/bin/emb-agent.cjs",
+        "status": snapshot.workflow_state,
+        "summary": snapshot.recommended_reason,
+        "action": action,
+        "open_tasks": snapshot.open_tasks,
+        "task_candidates": task_candidates,
+        "next": {
+            "command": next_cmd,
+            "reason": next_reason,
+            "cli": format!("node .<host>/emb-agent/bin/emb-agent.cjs next")
+        },
+        "runtime_events": runtime_events
+    })
+    .to_string()
+}
+
+/// Build external protocol envelope for status
+pub fn build_external_status_json(snapshot: &ProjectSnapshot) -> String {
+    let runtime_events = json!({
+        "status": "ok",
+        "total": 0,
+        "blocked": 0,
+        "pending": 0,
+        "failed": 0
+    });
+    let active_task = snapshot.current_task.as_ref().map(|t| {
+        json!({
+            "name": t.name,
+            "title": t.title,
+            "status": t.status,
+            "priority": t.priority
+        })
+    });
+    json!({
+        "protocol": "emb-agent.external/1",
+        "entrypoint": "status",
+        "runtime_cli": "node .<host>/emb-agent/bin/emb-agent.cjs",
+        "status": snapshot.workflow_state,
+        "summary": format!("{} open tasks, {} wiki pages", snapshot.open_tasks, snapshot.wiki_pages),
+        "project": {
+            "initialized": snapshot.initialized,
+            "mcu": snapshot.mcu_model,
+            "package": snapshot.mcu_package,
+            "bootstrap": snapshot.bootstrap_status,
+            "workflow": snapshot.workflow_state,
+            "active_variant": snapshot.active_variant
+        },
+        "tasks": {
+            "open": snapshot.open_tasks,
+            "wiki_pages": snapshot.wiki_pages,
+            "active": active_task
+        },
+        "runtime_events": runtime_events
+    })
+    .to_string()
+}
+
+/// Build external protocol envelope for health
+pub fn build_external_health_json(snapshot: &ProjectSnapshot) -> String {
+    let has_mcu = !snapshot.mcu_model.is_empty();
+    let truth_valid = snapshot.truth_validation_errors.is_empty();
+    let all_ok = snapshot.initialized && truth_valid && has_mcu && snapshot.bootstrap_status == "ready";
+    let runtime_events = json!({
+        "status": if all_ok { "ok" } else { "blocked" },
+        "total": 4,
+        "blocked": if all_ok { 0 } else { 1 },
+        "pending": 0,
+        "failed": 0
+    });
+    json!({
+        "protocol": "emb-agent.external/1",
+        "entrypoint": "health",
+        "runtime_cli": "node .<host>/emb-agent/bin/emb-agent.cjs",
+        "status": if all_ok { "pass" } else { "fail" },
+        "summary": format!("Health: {} checks passed", if all_ok { "all" } else { "some" }),
+        "checks": {
+            "project_initialized": snapshot.initialized,
+            "truth_yaml_valid": truth_valid,
+            "mcu_declared": has_mcu,
+            "bootstrap_ready": snapshot.bootstrap_status == "ready"
+        },
+        "truth_validation_errors": snapshot.truth_validation_errors,
+        "runtime_events": runtime_events
+    })
+    .to_string()
+}
+
+/// Build external protocol envelope for dispatch-next
+pub fn build_external_dispatch_next_json(
+    snapshot: &ProjectSnapshot,
+    tasks: &[TaskSnapshot],
+) -> String {
+    build_external_next_json(snapshot, tasks)
+}
+
 pub fn build_task_show_json(task_json: &str) -> String {
     format!("{{\"status\":\"ok\",\"task\":{}}}", task_json)
 }

@@ -1,7 +1,7 @@
 # emb-agent runtime
 
 This directory contains the installed emb-agent runtime that lives under the host configuration directory.
-Officially supported host-integrated runtimes are `Codex`, `Claude Code`, `Cursor`, and `Pi`.
+Officially supported hosts are `Codex`, `Claude Code`, `Cursor`, and `OMP`. `Pi` and `Windsurf` are experimental.
 
 ## Host Conventions
 
@@ -17,6 +17,9 @@ Officially supported host-integrated runtimes are `Codex`, `Claude Code`, `Curso
 - `Pi`
   `runtime-home = ~/.pi/agent` globally or `./.pi` locally
   `host-integration = extensions/emb-agent.ts + skills/`
+- `OMP`
+  `runtime-home = ~/.omp`
+  `host-integration = extensions/emb-agent.ts`
 
 Unified runtime entry:
 
@@ -24,256 +27,86 @@ Unified runtime entry:
 node <runtime-home>/emb-agent/bin/emb-agent.cjs
 ```
 
-Unified script entry:
-
-```bash
-node <runtime-home>/emb-agent/scripts/init-project.cjs
-```
-
-Project state is stored by default at:
-
-```text
-<runtime-home>/state/emb-agent/projects/
-```
-
 ## Directory Roles
 
 - `bin/`
-  Main CLI entry.
-- `hooks/`
-  Host hook scripts such as `SessionStart` and context-hygiene reminders.
-- `lib/`
-  Internal runtime libraries, including session, handoff, scheduling, dispatch, and host/path resolution.
-- `scripts/`
-  Runtime helper scripts such as `init-project`, `attach-project`, `ingest-doc`, and `adapter-derive`.
+  Main CLI entry. Wraps the Rust binary (`emb-agent-rs`).
+- `commands/`
+  Command reference docs (`.md` files used by AI hosts as slash-command docs).
+- `agents/`
+  Specialized agent definitions (e.g., `emb-onboard`, `emb-fw-doer`).
 - `scaffolds/`
-  Fixed scaffold trees for skill, shell, hook, and protocol bootstrap. Structure may be prebuilt here; project content must still be filled explicitly.
+  Template trees for host integration (shell instructions, hooks, extensions, skills).
 - `templates/`
-  Fixed output templates.
+  Fixed output templates for compound docs, tasks, chip profiles, etc.
 - `profiles/`
-  Built-in project profiles.
+  Built-in project profiles (e.g., `baremetal-loop`).
 - `registry/`
-  Built-in catalog metadata for templates and workflow-registry merging.
+  Workflow/spec catalog metadata.
 - `specs/`
-  Built-in baseline specs such as `embedded-space` and auto-triggered resource-pressure specs such as `low-rom-space`.
+  Built-in baseline specs (e.g., `embedded-space`, `low-rom-space`).
 - `tools/`
   Core abstract tool specs.
-- `lib/chip-catalog.cjs`
-  Core chip catalog contract. Concrete chip profiles are loaded from extension registries created by chip-support sync or derive, not shipped in core.
-- package-root `memory/`
-  Built-in instruction-memory layers such as organization guidance that can be stacked with user, project, and local memory.
-- `extensions/`
-  Optional extension root. It is created only when `adapter sync`, `adapter derive`, or the first extension-registry write is executed.
-- `state/default-session.json`
-  Default session seed state.
 - `config.json`
   Runtime configuration.
 - `HOST.json`
-  Host metadata written during installation and used to resolve the real host/path layout.
+  Host metadata written during installation.
 - `VERSION`
   Installed runtime version.
-
-## Hook Contract
-
-Runtime hook helpers use one structured dispatch contract only.
-
-- `runtime/lib/hook-dispatch.cjs`
-  `runHookWithProjectContext(rawInput, handler)` returns a structured result with:
-  `trusted`, `status`, `event`, `cwd`, `project_root`, `output`, `runtime_events`
-- Hook scripts should compute their real host-facing payload inside `result.output`
-- Hook modules may return the full structured result; `runHookCli(entrypoint)` unwraps `result.output`
-- `runHookCli(entrypoint)` automatically unwraps `result.output` before writing to `stdout`
-- Untrusted workspaces do not execute hook handlers; they return `status = skipped` and empty `output`
-
-Practical pattern:
-
-```js
-function runHook(rawInput) {
-  return hookDispatch.runHookWithProjectContext(rawInput, ({ data, projectRoot }) => {
-    return JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: data.hook_event_name || data.event || 'PostToolUse',
-        additionalContext: `Project root: ${projectRoot}`
-      }
-    });
-  });
-}
-```
-
-For Codex and Cursor startup flows, `SessionStart` now injects startup context through the host hook payload instead of relying on a plain reminder string. That keeps first-run initialization and next-step routing in the host-visible session context automatically.
+- `scripts/`
+  Runtime helper scripts (currently: `init-project.cjs`). Note: these scripts are packaged for use by the Rust runtime's `init`/`onboard` flows; they are not independently maintained for direct user invocation.
+- `lib/`
+  Installer support libraries (`install-helpers.cjs`, `install-targets.cjs`, `runtime-host.cjs`, `terminal-ui.cjs`, `command-visibility.cjs`). These are used by the installer; the runtime itself is primarily in Rust.
 
 ## Automation Output
 
-emb-agent exposes two machine-oriented user surfaces on top of the regular JSON payloads.
+emb-agent exposes three machine-oriented user surfaces:
 
 - `--brief`
-  Compact JSON for action-oriented commands such as `start`, `next`, `status`, `health`, `bootstrap`, `dispatch`, `tool run`, and closure flows.
+  Compact JSON for action-oriented commands (`start`, `next`, `status`, `health`).
 - `external <start|status|next|health|dispatch-next>`
-  Stable protocol envelope for host runtimes, skills, and thin wrappers that do not want the full internal payload.
+  Stable protocol envelope (`emb-agent.external/1`) for host runtimes, skills, and external drivers.
+- `task worktree list|status|show|create|cleanup`
+  Task worktree lifecycle JSON.
 
-Both surfaces expose summarized `runtime_events` instead of the raw event array:
+Both `--brief` and `external` expose summarized `runtime_events`:
 
-- `clear`
-  no active runtime signal
-- `ok`
-  informational signal only
-- `pending`
-  follow-up is still recommended
-- `blocked`
-  execution should pause until the blocker is closed
-- `failed`
-  the runtime observed a failed step
+| Status   | Meaning |
+|----------|---------|
+| `clear`  | no active runtime signal |
+| `ok`     | informational signal only |
+| `pending`| follow-up is still recommended |
+| `blocked`| execution should pause until the blocker is closed |
+| `failed` | a failed step was observed |
 
-Practical examples:
+### Examples
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs next --brief
 node <runtime-home>/emb-agent/bin/emb-agent.cjs external next
-node <runtime-home>/emb-agent/bin/emb-agent.cjs task worktree status <name>
+node <runtime-home>/emb-agent/bin/emb-agent.cjs external start
+node <runtime-home>/emb-agent/bin/emb-agent.cjs external status
+node <runtime-home>/emb-agent/bin/emb-agent.cjs external health
+node <runtime-home>/emb-agent/bin/emb-agent.cjs external dispatch-next
 ```
 
-Typical `brief` shape:
-
-```json
-{
-  "output_mode": "brief",
-  "next": {
-    "command": "scan",
-    "cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs scan"
-  },
-  "runtime_events": {
-    "status": "pending",
-    "total": 1,
-    "types": ["workflow-next"]
-  }
-}
-```
-
-Typical external-driver shape:
-
-```json
-{
-  "protocol": "emb-agent.external/1",
-  "entrypoint": "next",
-  "status": "selection",
-  "summary": "Project is still in definition and chip-selection mode.",
-  "runtime_events": {
-    "status": "pending",
-    "total": 1
-  },
-  "next": {
-    "cli": "node ~/.codex/emb-agent/bin/emb-agent.cjs scan"
-  }
-}
-```
-
-## Minimum Maintenance Commands
-
-Initialize or attach a project:
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs onboard
-node <runtime-home>/emb-agent/bin/emb-agent.cjs init
-node <runtime-home>/emb-agent/bin/emb-agent.cjs health
-node <runtime-home>/emb-agent/bin/emb-agent.cjs next
-node <runtime-home>/emb-agent/bin/emb-agent.cjs dispatch next
-```
-
-Prefer `onboard` as the human-facing first step. It decides whether to scaffold an empty repo, repair a partial `.emb-agent/`, or invoke the migration audit for existing hardware documents. `init` is the low-level scaffold substep.
-
-For peripheral-formula, pin, or register-location problems, check whether `next` / `dispatch next` already provides `tool_recommendation` or `tool_execution`.
-
-If `health` / `next` / `support status` already exposes `chip_support_health` or `quality_overview`, read the reuse state first:
-
-- `reusable`: current chip support is ready to reuse across projects
-- `reusable-candidate`: current chip support looks shareable after review
-- `project-only`: keep the current chip support local for now
-
-Then use `recommended_action` and tool `trust` as the second layer before treating tool output as ground truth.
-
-Close down context:
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs pause
-node <runtime-home>/emb-agent/bin/emb-agent.cjs resume
-```
-
-Inspect installed skills and layered memory:
-
-```bash
-node <runtime-home>/emb-agent/bin/emb-agent.cjs skills list
-node <runtime-home>/emb-agent/bin/emb-agent.cjs skills show <name>
-node <runtime-home>/emb-agent/bin/emb-agent.cjs memory stack
-node <runtime-home>/emb-agent/bin/emb-agent.cjs memory audit
-```
-
-emb-agent core task discipline, worker contracts, and AAR closure rules are implemented in runtime code rather than shipped as built-in skill/spec documents.
-
-`pause` also performs one auto-memory extraction pass so reusable conclusions can be reviewed later instead of being lost in session-only state.
-
-If a host skill or external driver needs a fixed protocol, prefer:
-
-```bash
-node ./.emb-agent/runtime/bin/emb-agent.cjs external start
-node ./.emb-agent/runtime/bin/emb-agent.cjs external next
-node ./.emb-agent/runtime/bin/emb-agent.cjs external health
-node ./.emb-agent/runtime/bin/emb-agent.cjs external dispatch-next
-node ./.emb-agent/runtime/bin/emb-agent.cjs external status
-```
-
-If a local wrapper only needs the shortest next-step JSON instead of the full protocol, prefer:
+## Common Commands
 
 ```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs start --brief
 node <runtime-home>/emb-agent/bin/emb-agent.cjs next --brief
 node <runtime-home>/emb-agent/bin/emb-agent.cjs status --brief
-```
-
-Check runtime update state:
-
-```bash
+node <runtime-home>/emb-agent/bin/emb-agent.cjs health
+node <runtime-home>/emb-agent/bin/emb-agent.cjs doctor --host all --brief
+node <runtime-home>/emb-agent/bin/emb-agent.cjs onboard
+node <runtime-home>/emb-agent/bin/emb-agent.cjs init
 node <runtime-home>/emb-agent/bin/emb-agent.cjs update
-```
-
-Show runtime help:
-
-```bash
 node <runtime-home>/emb-agent/bin/emb-agent.cjs help
 ```
-
-## Host Sub-Agent Bridge
-
-`dispatch run` and `orchestrate run` now emit and persist a real delegation runtime under session diagnostics.
-
-Delegation pattern is selected from `preferences.orchestration_mode`:
-
-- `auto`
-  Conservative default. Resolves to `coordinator`.
-- `coordinator`
-  One primary worker integrates supporting outputs.
-- `fork`
-  Workers inherit the parent context snapshot and return directly for integration.
-- `swarm`
-  Flat peer roster with one `peer-lead` and supporting `peer` workers.
-
-Codex installs include a bundled stdio bridge at `runtime/bin/emb-codex-subagent-bridge.cjs` and write it into `HOST.json` automatically. Other hosts, or custom Codex deployments, can configure a bridge command that accepts a JSON payload on `stdin` and returns a JSON worker result on `stdout`:
-
-```bash
-export EMB_AGENT_SUBAGENT_BRIDGE_CMD='node /path/to/host-subagent-bridge.cjs'
-```
-
-Bridge contract:
-
-- Input: one JSON payload containing session summary, dispatch contract, worker envelope, and a self-contained worker prompt.
-- Output: one JSON payload containing `status` and `worker_result`.
-- Bundled Codex bridge: runs `codex exec` in read-only mode with approval policy `never`, asks the worker to return compact JSON, and preserves the normal emb-agent worker result envelope.
-- Runtime users can steer the pattern with `prefs set orchestration_mode <auto|coordinator|fork|swarm>`.
-- `skills run <name> --isolated` also uses the bridge when a skill declares isolated execution.
-- Fallback: if no bridge is configured, emb-agent keeps the launch request, marks synthesis as `manual-workers-required`, and continues the inline action path. The bridge is optional automation, not a runtime gate.
 
 ## Maintenance Boundaries
 
 - This is installed runtime state, not a project deliverable.
-- Project-specific mutable content should be written back into `./.emb-agent/` and `./docs/` inside the repository.
-- Host-specific differences should live in `HOST.json + runtime-host.cjs` instead of scattered hard-coded references to `~/.codex` or `~/.claude`.
-- User-facing workflow guidance belongs in the main [README](../README.md) and runtime help output, not in a duplicated runtime manual here.
+- Project-specific content lives in `./.emb-agent/` and `./docs/prd/`.
+- Host-specific differences live in `HOST.json` and the installed `.host` integration directory.
+- User-facing workflow guidance belongs in the main [README](../README.md) and the runtime help output.
