@@ -353,6 +353,17 @@ function applyTemplate(content, vars) {
 	});
 }
 
+function normalizeCursorHooksConfig(content) {
+	var requiredMatcher = "Shell|Bash|Write|Edit|MultiEdit|ApplyPatch|Task|Agent|Read|ReadFile|Glob|Search|rg|Grep|List|LS|EditNotebook|NotebookEdit|Delete|MultiToolUse";
+	try {
+		var parsed = JSON.parse(content);
+		if (parsed && parsed.hooks && Array.isArray(parsed.hooks.postToolUse) && parsed.hooks.postToolUse[0]) {
+			parsed.hooks.postToolUse[0].matcher = requiredMatcher;
+			return JSON.stringify(parsed, null, 2) + "\n";
+		}
+	} catch (_) {}
+	return content;
+}
 function resolveAndDeploy(projectRoot, srcPath, destPath, vars) {
 	backupManagedFile(projectRoot, destPath);
 	if (!fs.existsSync(srcPath)) return false;
@@ -783,6 +794,21 @@ function commandRuntimePath(projectRoot, host) {
 	return path.join(hostDirFor(projectRoot, host), "emb-agent", "bin", "emb-agent.cjs");
 }
 
+function commandArgInsideJsonString(value) {
+	var normalized = String(value || "").replace(/\\/g, "/");
+	if (/^[A-Za-z0-9_./:@+-]+$/.test(normalized)) return normalized;
+	return "\\\"" + normalized.replace(/"/g, "\\\"") + "\\\"";
+}
+
+function hostTemplateVars(projectRoot, host) {
+	return {
+		PROJECT_NAME: path.basename(projectRoot),
+		INSTALL_DATE: new Date().toISOString().split("T")[0],
+		LANGUAGE: readLanguagePreference(projectRoot),
+		RUNTIME_COMMAND_ARG: commandArgInsideJsonString(commandRuntimePath(projectRoot, host)),
+	};
+}
+
 function renderShellCommandShim(projectRoot, host, command) {
 	var runtimePath = commandRuntimePath(projectRoot, host);
 	var language = languageInstruction(readLanguagePreference(projectRoot));
@@ -913,7 +939,10 @@ function planEntries(projectRoot, hosts) {
 		var surface = hostSurfaceSummary(projectRoot, host);
 		if (surface.dir) entries.push(surface.dir);
 		if (host.name === "codex") entries.push(path.join(hostDir, "instructions.md"));
-		if (host.name === "cursor") entries.push(path.join(hostDir, "rules", "emb-agent-workflow.mdc"));
+		if (host.name === "cursor") {
+			entries.push(path.join(hostDir, "hooks.json"));
+			entries.push(path.join(hostDir, "rules", "emb-agent-workflow.mdc"));
+		}
 		if (host.name === "windsurf") entries.push(path.join(hostDir, "rules", "emb-agent-workflow.md"));
 	}
 	var seen = {};
@@ -981,6 +1010,24 @@ function writeInstallResult(projectRoot, hosts, options) {
 	fs.writeFileSync(path.join(projectRoot, ".emb-agent", "INSTALL_RESULT.md"), lines.join("\n") + "\n");
 }
 
+function cursorSurfaceOk(projectRoot, host, surface) {
+	var hostDir = hostDirFor(projectRoot, host);
+	var hooksPath = path.join(hostDir, "hooks.json");
+	var rulePath = path.join(hostDir, "rules", "emb-agent-workflow.mdc");
+	var skillPath = path.join(hostDir, "skills", "emb-agent", "SKILL.md");
+	var commandsOk = fs.existsSync(path.join(surface.dir, "emb-next.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard.md"));
+	if (!commandsOk || !fs.existsSync(hooksPath) || !fs.existsSync(rulePath) || !fs.existsSync(skillPath)) return false;
+	try {
+		var hooks = fs.readFileSync(hooksPath, "utf8");
+		return hooks.indexOf("{{") === -1
+			&& hooks.indexOf("hook session-start --host cursor") >= 0
+			&& hooks.indexOf("hook context-monitor --host cursor") >= 0
+			&& hooks.indexOf("ApplyPatch") >= 0;
+	} catch (_) {
+		return false;
+	}
+}
+
 function runInstallChecks(projectRoot, hosts) {
 	var results = [];
 	for (var i = 0; i < hosts.length; i++) {
@@ -994,6 +1041,7 @@ function runInstallChecks(projectRoot, hosts) {
 		var surfaceOk = true;
 		if (host.name === "omp" || host.name === "pi") surfaceOk = fs.existsSync(path.join(hostDirFor(projectRoot, host), "extensions", "emb-agent.ts"));
 		else if (host.name === "codex") surfaceOk = fs.existsSync(path.join(surface.dir, "emb-next", "SKILL.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard", "SKILL.md"));
+		else if (host.name === "cursor") surfaceOk = cursorSurfaceOk(projectRoot, host, surface);
 		else surfaceOk = fs.existsSync(path.join(surface.dir, "emb-next.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard.md"));
 		var doctor = "";
 		try {
@@ -1107,7 +1155,12 @@ function installForHost(projectRoot, host, callback) {
 			var cfg = configFiles[ci];
 			var cfgSrc = path.join(hostShellDir, cfg);
 			if (fs.existsSync(cfgSrc)) {
-				fs.copyFileSync(cfgSrc, path.join(hostDir, cfg));
+				var cfgDest = path.join(hostDir, cfg);
+				if (host.name === "cursor" && cfg === "hooks.json") {
+					fs.writeFileSync(cfgDest, normalizeCursorHooksConfig(fs.readFileSync(cfgSrc, "utf8")));
+				} else {
+					fs.copyFileSync(cfgSrc, cfgDest);
+				}
 				logDetail("    " + cfg + " deployed to " + host.dir + "/");
 			}
 		}

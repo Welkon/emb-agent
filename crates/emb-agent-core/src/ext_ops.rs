@@ -271,18 +271,25 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             .ok()
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
             .and_then(|v| {
-                v.get("hosts")
-                    .and_then(|h| h.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|entry| entry.get("name").and_then(|n| n.as_str()).map(String::from))
-                            .collect()
-                    })
+                v.get("hosts").and_then(|h| h.as_array()).map(|arr| {
+                    arr.iter()
+                        .filter_map(|entry| {
+                            entry.get("name").and_then(|n| n.as_str()).map(String::from)
+                        })
+                        .collect()
+                })
             })
             .unwrap_or_default();
         if installed_hosts.is_empty() {
             // Fall back to checking all known hosts when no install record exists
-            vec!["codex".into(), "cursor".into(), "claude".into(), "pi".into(), "omp".into(), "windsurf".into()]
+            vec![
+                "codex".into(),
+                "cursor".into(),
+                "claude".into(),
+                "pi".into(),
+                "omp".into(),
+                "windsurf".into(),
+            ]
         } else {
             installed_hosts
         }
@@ -318,10 +325,11 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
         };
         let runtime_ok = runtime_dir.join("bin").join("emb-agent.cjs").exists()
             && runtime_dir.join("bin").join(bin_name).exists();
-        let (surface, commands_ok) = match item_str {
+        let (surface, commands_ok, host_config_ok) = match item_str {
             "omp" | "pi" => (
                 "extension",
                 host_dir.join("extensions").join("emb-agent.ts").exists(),
+                true,
             ),
             "codex" => (
                 "codex-skills",
@@ -330,9 +338,26 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
                     .join("emb-next")
                     .join("SKILL.md")
                     .exists()
-                    && cwd.join(".agents")
+                    && cwd
+                        .join(".agents")
                         .join("skills")
                         .join("emb-onboard")
+                        .join("SKILL.md")
+                        .exists(),
+                true,
+            ),
+            "cursor" => (
+                "cursor-command-files",
+                host_dir.join("commands").join("emb-next.md").exists()
+                    && host_dir.join("commands").join("emb-onboard.md").exists(),
+                host_dir.join("hooks.json").exists()
+                    && host_dir
+                        .join("rules")
+                        .join("emb-agent-workflow.mdc")
+                        .exists()
+                    && host_dir
+                        .join("skills")
+                        .join("emb-agent")
                         .join("SKILL.md")
                         .exists(),
             ),
@@ -340,11 +365,13 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
                 "windsurf-workflows",
                 host_dir.join("workflows").join("emb-next.md").exists()
                     && host_dir.join("workflows").join("emb-onboard.md").exists(),
+                true,
             ),
             _ => (
                 "command-files",
                 host_dir.join("commands").join("emb-next.md").exists()
                     && host_dir.join("commands").join("emb-onboard.md").exists(),
+                true,
             ),
         };
         let stale_candidates = [
@@ -368,7 +395,11 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
         } else {
             "stale"
         };
-        let ok = runtime_ok && commands_ok && stale.is_empty() && version_status != "stale";
+        let ok = runtime_ok
+            && commands_ok
+            && host_config_ok
+            && stale.is_empty()
+            && version_status != "stale";
         checks.push(serde_json::json!({
             "host": item_str,
             "status": if ok { "ok" } else { "warn" },
@@ -380,6 +411,7 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             "surface": surface,
             "commands": ["emb-next", "emb-onboard"],
             "commands_ok": commands_ok,
+            "host_config_ok": host_config_ok,
             "stale_files": stale,
             "manual_update_command": manual_update_command()
         }));

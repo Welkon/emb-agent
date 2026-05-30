@@ -310,7 +310,7 @@ pub fn task_delete(ext_dir: &Path, name: &str) -> String {
     }
 
     format!(
-        "{{\"status\":\"ok\",\"deleted\":true,\"task\":{{\"name\":{},\"status\":\"deleted\"}},\"tombstone\":true,\"next\":\"next\",\"next_instructions\":\"Task tombstoned. Directory and AAR preserved. Trigger `/emb:next` for routing.\"}}",
+        "{{\"status\":\"ok\",\"deleted\":true,\"task\":{{\"name\":{},\"status\":\"deleted\"}},\"tombstone\":true,\"next\":\"next\",\"next_instructions\":\"Task tombstoned. Directory and AAR preserved. Trigger `/emb-next` for routing.\"}}",
         json_quote(name)
     )
 }
@@ -337,7 +337,7 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     }
     if matches!(current_status, "completed" | "done" | "resolved" | "closed") {
         return format!(
-            "{{\"status\":\"ok\",\"resolved\":false,\"already_completed\":true,\"task\":{{\"name\":{},\"status\":{}}},\"next\":\"next\",\"next_instructions\":\"Task is already completed. Trigger `/emb:next` for the next action.\"}}",
+            "{{\"status\":\"ok\",\"resolved\":false,\"already_completed\":true,\"task\":{{\"name\":{},\"status\":{}}},\"next\":\"next\",\"next_instructions\":\"Task is already completed. Trigger `/emb-next` for the next action.\"}}",
             json_quote(name),
             json_quote(current_status)
         );
@@ -380,7 +380,7 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     }
 
     format!(
-        "{{\"status\":\"ok\",\"resolved\":true,\"task\":{{\"name\":{},\"status\":\"completed\"}},\"next\":\"next\",\"next_instructions\":\"Task completed. Trigger `/emb:next` to find the next task or action.\"}}",
+        "{{\"status\":\"ok\",\"resolved\":true,\"task\":{{\"name\":{},\"status\":\"completed\"}},\"next\":\"next\",\"next_instructions\":\"Task completed. Trigger `/emb-next` to find the next task or action.\"}}",
         json_quote(name)
     )
 }

@@ -466,7 +466,7 @@ pub fn build_do_output(snapshot: &ProjectSnapshot) -> DoOutput {
     } else {
         (
             "No active task",
-            "No active task. Trigger `/emb:next` to get routing recommendation.".to_string(),
+            "No active task. Trigger `/emb-next` to get routing recommendation.".to_string(),
         )
     };
 

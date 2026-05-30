@@ -100,7 +100,7 @@ pub fn variant_use(ext_dir: &Path, name: &str) -> String {
     let _ = fs::write(ext_dir.join(ACTIVE_VARIANT_FILE), &name);
     let hw = read_hw(&dir);
     format!(
-        "{{\"status\":\"ok\",\"active\":{},\"mcu\":{},\"package\":{},\"next\":\"next\",\"next_instructions\":\"Variant switched. Trigger `/emb:next` to continue in this variant.\"}}",
+        "{{\"status\":\"ok\",\"active\":{},\"mcu\":{},\"package\":{},\"next\":\"next\",\"next_instructions\":\"Variant switched. Trigger `/emb-next` to continue in this variant.\"}}",
         json_quote(&name),
         json_quote(&hw.model),
         json_quote(&hw.package)
@@ -154,7 +154,7 @@ pub fn variant_adopt(ext_dir: &Path, name: &str, src: &str, clean_root: bool) ->
     }
 
     format!(
-        "{{\"status\":\"ok\",\"adopted\":true,\"active\":{},\"variant\":{{\"name\":{},\"mcu\":{},\"package\":{},\"src\":{}}},\"clean_root\":{},\"next\":\"next\",\"next_instructions\":\"Root state adopted as variant. Trigger `/emb:next` to continue.\"}}",
+        "{{\"status\":\"ok\",\"adopted\":true,\"active\":{},\"variant\":{{\"name\":{},\"mcu\":{},\"package\":{},\"src\":{}}},\"clean_root\":{},\"next\":\"next\",\"next_instructions\":\"Root state adopted as variant. Trigger `/emb-next` to continue.\"}}",
         json_quote(&name),
         json_quote(&name),
         json_quote(&hw.model),

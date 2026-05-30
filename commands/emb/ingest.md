@@ -55,4 +55,4 @@ allowed-tools:
 
 - If the engineer already knows the MCU, package, signals, or peripheral ownership, prefer `declare hardware` first.
 - If the answer still lives in a PDF or schematic, prefer `ingest`.
-- If a parsed result includes `apply_ready`, apply that truth before returning to `/emb:next`.
+- If a parsed result includes `apply_ready`, apply that truth before returning to `/emb-next`.

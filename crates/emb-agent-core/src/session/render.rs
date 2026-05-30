@@ -65,11 +65,11 @@ emb-agent workspace not yet initialized for this project.
 
 You are the user's embedded development assistant. Start with onboarding, not implementation:
 
-1. Invoke `emb-onboard` or run `/emb:onboard` if the host exposes slash commands.
+1. Invoke `emb-onboard` or run `/emb-onboard` if the host exposes slash commands.
 2. emb-onboard must inspect whether this is an empty repo, a partial `.emb-agent/`, or an existing firmware repo with scattered datasheets, schematics, pin maps, build files, and notes.
 3. If the user already knows MCU/package/pins, record them through the onboard flow or `declare hardware` after explicit confirmation.
 4. If truth lives in docs, use onboard's migration audit first; do not guess hardware facts from filenames or README prose.
-5. After onboarding completes, run `/emb:next --brief` and follow its recommendation.
+5. After onboarding completes, run `/emb-next` and follow its recommendation.
 6. Match your response language to the user's language.
 </emb-agent-session-context>".to_string();
     }
@@ -193,9 +193,9 @@ pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
     lines.extend([
         "\nWhat you can do next:".to_string(),
         "1. **Describe your goal** (e.g., \"review the schematic\") — I will route it to the right task.".to_string(),
-        "2. Run `/emb:next` — see the recommended workflow step.".to_string(),
+        "2. Run `/emb-next` — see the recommended workflow step.".to_string(),
         "3. Ask me \"what should I do next?\" — I will show available tasks and wait for your selection.".to_string(),
-        "4. Run `/emb:status` — view project state.".to_string(),
+        "4. Run `status --brief` through the emb-agent runtime — view project state.".to_string(),
     ]);
 
     lines.join("\n")
@@ -314,7 +314,7 @@ pub fn build_next_json_with_tasks_and_policy(
     } else if snapshot.recommended_command == "onboard" {
         (
             "onboard",
-            "Project needs onboarding. Invoke emb-onboard or trigger `/emb:onboard`; audit existing hardware docs before declaring hardware or implementing.",
+            "Project needs onboarding. Invoke emb-onboard or trigger `/emb-onboard`; audit existing hardware docs before declaring hardware or implementing.",
         )
     } else if snapshot.recommended_command == "clarify" {
         (
@@ -426,7 +426,7 @@ fn build_next_agent_protocol_with_policy(
                 "blocking": true,
                 "allowed_actions": ["repair_truth_yaml", "run_health_after_repair", "explain_validation_errors"],
                 "forbidden_actions": ["start_implementation", "create_task", "activate_task", "ignore_truth_validation_errors"],
-                "recommended_command": "/emb:next"
+                "recommended_command": "/emb-next"
             }
         })
         .to_string();
@@ -440,7 +440,7 @@ fn build_next_agent_protocol_with_policy(
                 "state_machine_checklist": ["boot_state", "first_input", "press_vs_release_trigger", "mode_cycle_including_off", "long_press_valid_states", "memory_semantics", "stop_entry", "wake_source", "low_voltage_behavior", "acceptance_evidence", "extract_exact_waveform_or_measurement_params_from_captures"],
                 "allowed_actions": ["brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "extract_and_record_exact_timing_percent_times_from_captures"],
                 "forbidden_actions": ["create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params"],
-                "recommended_command": "/emb:next"
+                "recommended_command": "/emb-next"
             }
         })
         .to_string();
@@ -454,7 +454,7 @@ fn build_next_agent_protocol_with_policy(
                 "allowed_actions": ["invoke_emb_onboard_agent", "trigger_emb_onboard_command", "audit_existing_hardware_docs"],
                 "forbidden_actions": ["start_implementation", "guess_hardware_truth", "declare_hardware_without_confirmation"],
                 "recommended_agent": "emb-onboard",
-                "recommended_command": "/emb:onboard"
+                "recommended_command": "/emb-onboard"
             }
         })
         .to_string();
@@ -471,7 +471,7 @@ fn build_next_agent_protocol_with_policy(
                 "slice_rule": "Use vertical tracer-bullet slices: each slice must deliver one narrow but complete observable path across firmware, hardware truth, docs, and verification surfaces.",
                 "allowed_actions": ["present_existing_task_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear"],
                 "forbidden_actions": ["force_existing_task_activation", "ask_user_to_run_task_list", "ask_user_to_run_task_activate", "invent_task_name", "start_implementation_without_selected_or_created_ready_task", "run_shell_command_for_emb_slash_command", "create_horizontal_layer_tasks"],
-                "recommended_command": "/emb:next"
+                "recommended_command": "/emb-next"
             }
         }).to_string();
     }

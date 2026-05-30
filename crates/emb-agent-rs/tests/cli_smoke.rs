@@ -211,6 +211,29 @@ fn hook_session_start_reads_multiline_stdin_cwd() {
 }
 
 #[test]
+fn cursor_session_start_reads_multiline_stdin_and_uses_cursor_shape() {
+    let project = TestProject::new("hook-session-cursor-stdin");
+    let payload = format!(
+        "{{\n  \"hook_event_name\": \"sessionStart\",\n  \"cwd\": \"{}\",\n  \"source\": \"startup\"\n}}\n",
+        project.path().to_string_lossy()
+    );
+
+    let output = run_with_stdin(&["hook", "session-start", "--host", "cursor"], &payload);
+    assert!(
+        output.contains("additional_context"),
+        "hook output: {output}"
+    );
+    assert!(
+        !output.contains("hookSpecificOutput"),
+        "hook output: {output}"
+    );
+    assert!(
+        output.contains(&project.path().to_string_lossy().to_string()),
+        "hook must use cwd from full JSON stdin: {output}"
+    );
+}
+
+#[test]
 fn context_monitor_reads_multiline_stdin_and_uses_cursor_shape() {
     let project = TestProject::new("hook-context-stdin");
     let payload = format!(
@@ -908,6 +931,48 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     for host in [".cursor", ".claude"] {
         assert_two_command_files(root.join(host).join("commands"), host);
     }
+
+    let cursor_hooks = fs::read_to_string(root.join(".cursor").join("hooks.json"))
+        .expect("read Cursor hooks config");
+    assert!(
+        cursor_hooks.contains("sessionStart")
+            && cursor_hooks.contains("postToolUse")
+            && cursor_hooks.contains("context-monitor --host cursor")
+            && cursor_hooks.contains("ApplyPatch")
+            && cursor_hooks.contains("MultiEdit")
+            && cursor_hooks.contains("ReadFile")
+            && cursor_hooks.contains("Glob"),
+        "Cursor hooks config: {cursor_hooks}"
+    );
+    assert!(
+        root.join(".cursor")
+            .join("rules")
+            .join("emb-agent-workflow.mdc")
+            .exists(),
+        "missing installed Cursor workflow rule"
+    );
+    assert!(
+        root.join(".cursor")
+            .join("skills")
+            .join("emb-agent")
+            .join("SKILL.md")
+            .exists(),
+        "missing installed Cursor emb-agent skill"
+    );
+
+    let cursor_doctor = Command::new(emb_agent_bin())
+        .arg("doctor")
+        .arg("--host")
+        .arg("cursor")
+        .arg("--cwd")
+        .arg(&root)
+        .output()
+        .expect("run cursor install doctor");
+    let cursor_doctor = assert_success(cursor_doctor);
+    assert!(
+        cursor_doctor.contains("\"host_config_ok\": true"),
+        "Cursor doctor output: {cursor_doctor}"
+    );
 
     // windsurf is disabled in shells.json; skip cleanup assertions
 
