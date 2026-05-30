@@ -1042,7 +1042,7 @@ fn contains_any(text: &str, needles: &[&str]) -> bool {
         if needle.contains(' ') || needle.contains('-') {
             text.contains(needle)
         } else {
-            words.iter().any(|w| *w == *needle)
+            words.contains(needle)
         }
     })
 }

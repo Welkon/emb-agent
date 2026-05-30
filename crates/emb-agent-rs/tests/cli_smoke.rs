@@ -1,6 +1,7 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn emb_agent_bin() -> PathBuf {
@@ -170,6 +171,66 @@ fn run(project: &TestProject, args: &[&str]) -> String {
         .output()
         .expect("run emb-agent-rs");
     assert_success(output)
+}
+
+fn run_with_stdin(args: &[&str], stdin: &str) -> String {
+    let mut child = Command::new(emb_agent_bin())
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn emb-agent-rs");
+    child
+        .stdin
+        .as_mut()
+        .expect("child stdin")
+        .write_all(stdin.as_bytes())
+        .expect("write hook stdin");
+    let output = child.wait_with_output().expect("wait emb-agent-rs");
+    assert_success(output)
+}
+
+#[test]
+fn hook_session_start_reads_multiline_stdin_cwd() {
+    let project = TestProject::new("hook-session-stdin");
+    let payload = format!(
+        "{{\n  \"hook_event_name\": \"SessionStart\",\n  \"cwd\": \"{}\",\n  \"source\": \"startup\"\n}}\n",
+        project.path().to_string_lossy()
+    );
+
+    let output = run_with_stdin(&["hook", "session-start", "--host", "codex"], &payload);
+    assert!(
+        output.contains("hookSpecificOutput"),
+        "hook output: {output}"
+    );
+    assert!(
+        output.contains(&project.path().to_string_lossy().to_string()),
+        "hook must use cwd from full JSON stdin: {output}"
+    );
+}
+
+#[test]
+fn context_monitor_reads_multiline_stdin_and_uses_cursor_shape() {
+    let project = TestProject::new("hook-context-stdin");
+    let payload = format!(
+        "{{\n  \"hook_event_name\": \"postToolUse\",\n  \"cwd\": \"{}\",\n  \"context_window\": {{ \"remaining_percentage\": 18 }}\n}}\n",
+        project.path().to_string_lossy()
+    );
+
+    let output = run_with_stdin(&["hook", "context-monitor", "--host", "cursor"], &payload);
+    assert!(
+        output.contains("additional_context"),
+        "hook output: {output}"
+    );
+    assert!(
+        !output.contains("hookSpecificOutput"),
+        "hook output: {output}"
+    );
+    assert!(
+        output.contains("EMB CONTEXT CRITICAL"),
+        "hook output: {output}"
+    );
 }
 
 #[test]

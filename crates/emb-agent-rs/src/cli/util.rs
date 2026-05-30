@@ -44,12 +44,16 @@ pub fn stdin_json_string_field(key: &str) -> Option<String> {
 }
 
 fn read_stdin_payload() -> Option<String> {
-    use std::io::BufRead;
+    use std::io::{IsTerminal, Read};
+
     let stdin = std::io::stdin();
-    let mut reader = stdin.lock();
-    let mut buf = Vec::new();
-    reader.read_until(b'\n', &mut buf).ok()?;
-    let trimmed = String::from_utf8_lossy(&buf).trim().to_string();
+    if stdin.is_terminal() {
+        return None;
+    }
+
+    let mut raw = String::new();
+    stdin.lock().read_to_string(&mut raw).ok()?;
+    let trimmed = raw.trim().to_string();
     if trimmed.is_empty() {
         None
     } else {
@@ -58,6 +62,14 @@ fn read_stdin_payload() -> Option<String> {
 }
 
 pub fn stdin_payload_or_cwd(args: &[String]) -> String {
-    option_value(args, "--cwd")
-        .unwrap_or_else(|| read_stdin_payload().unwrap_or_else(current_dir_string))
+    read_stdin_payload()
+        .or_else(|| {
+            option_value(args, "--cwd").map(|cwd| {
+                format!(
+                    "{{\"cwd\":{}}}",
+                    serde_json::to_string(&cwd).unwrap_or_else(|_| "\".\"".to_string())
+                )
+            })
+        })
+        .unwrap_or_else(current_dir_string)
 }

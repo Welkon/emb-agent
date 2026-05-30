@@ -431,7 +431,7 @@ fn parse_interrupts(value: &serde_json::Value) -> Vec<InterruptDef> {
         .and_then(|v| v.as_array())
         .map(|a| {
             a.iter()
-                .filter_map(|entry| {
+                .map(|entry| {
                     let vector = entry.get("vector").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
                     let source = entry
                         .get("source")
@@ -452,13 +452,13 @@ fn parse_interrupts(value: &serde_json::Value) -> Vec<InterruptDef> {
                         .get("priority")
                         .and_then(|v| v.as_str())
                         .map(String::from);
-                    Some(InterruptDef {
+                    InterruptDef {
                         vector,
                         source,
                         flag,
                         enable,
                         priority,
-                    })
+                    }
                 })
                 .collect()
         })
@@ -950,38 +950,58 @@ pub fn query_chip_registers(ext_dir: &Path, chip_name: &str, peripheral_filter: 
         );
     }
 
-    let filtered_peripherals: BTreeMap<String, serde_json::Value> = if peripheral_filter.is_empty() {
-        profile.peripherals.iter().map(|(name, p)| {
-            (name.clone(), serde_json::json!({
-                "description": p.description,
-                "base_address": p.base_address,
-                "instances": p.instances,
-                "registers": p.registers,
-            }))
-        }).collect()
-    } else {
-        profile.peripherals.iter()
-            .filter(|(name, _)| name.to_lowercase().contains(&peripheral_filter.to_lowercase()))
+    let filtered_peripherals: BTreeMap<String, serde_json::Value> = if peripheral_filter.is_empty()
+    {
+        profile
+            .peripherals
+            .iter()
             .map(|(name, p)| {
-                (name.clone(), serde_json::json!({
-                    "description": p.description,
-                    "base_address": p.base_address,
-                    "instances": p.instances,
-                    "registers": p.registers,
-                }))
+                (
+                    name.clone(),
+                    serde_json::json!({
+                        "description": p.description,
+                        "base_address": p.base_address,
+                        "instances": p.instances,
+                        "registers": p.registers,
+                    }),
+                )
+            })
+            .collect()
+    } else {
+        profile
+            .peripherals
+            .iter()
+            .filter(|(name, _)| {
+                name.to_lowercase()
+                    .contains(&peripheral_filter.to_lowercase())
+            })
+            .map(|(name, p)| {
+                (
+                    name.clone(),
+                    serde_json::json!({
+                        "description": p.description,
+                        "base_address": p.base_address,
+                        "instances": p.instances,
+                        "registers": p.registers,
+                    }),
+                )
             })
             .collect()
     };
 
-    let interrupts: Vec<serde_json::Value> = profile.interrupts.iter().map(|i| {
-        serde_json::json!({
-            "vector": i.vector,
-            "source": i.source,
-            "flag": i.flag,
-            "enable": i.enable,
-            "priority": i.priority,
+    let interrupts: Vec<serde_json::Value> = profile
+        .interrupts
+        .iter()
+        .map(|i| {
+            serde_json::json!({
+                "vector": i.vector,
+                "source": i.source,
+                "flag": i.flag,
+                "enable": i.enable,
+                "priority": i.priority,
+            })
         })
-    }).collect();
+        .collect();
 
     serde_json::to_string_pretty(&serde_json::json!({
         "status": "ok",
@@ -991,5 +1011,6 @@ pub fn query_chip_registers(ext_dir: &Path, chip_name: &str, peripheral_filter: 
         "interrupt_count": interrupts.len(),
         "peripherals": filtered_peripherals,
         "interrupts": interrupts,
-    })).unwrap_or_default()
+    }))
+    .unwrap_or_default()
 }

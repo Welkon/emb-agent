@@ -38,6 +38,16 @@ function readInstalledVersion() {
 	}
 }
 
+function readStdinPayload() {
+	if (process.stdin.isTTY) return undefined;
+	try {
+		var input = fs.readFileSync(0);
+		return input && input.length ? input : undefined;
+	} catch (_e) {
+		return undefined;
+	}
+}
+
 function compareSemver(a, b) {
 	var pa = String(a || "").split(".").map(function (x) { return parseInt(x, 10) || 0; });
 	var pb = String(b || "").split(".").map(function (x) { return parseInt(x, 10) || 0; });
@@ -49,22 +59,28 @@ function compareSemver(a, b) {
 }
 
 function fetchJson(url, timeoutMs, callback) {
+	var settled = false;
+	function done(value, status) {
+		if (settled) return;
+		settled = true;
+		callback(value, status);
+	}
 	var req = https.get(url, function (res) {
 		if (res.statusCode !== 200) {
 			res.resume();
-			callback(null, "http-" + res.statusCode);
+			done(null, "http-" + res.statusCode);
 			return;
 		}
 		var chunks = "";
 		res.setEncoding("utf8");
 		res.on("data", function (chunk) { chunks += chunk; });
 		res.on("end", function () {
-			try { callback(JSON.parse(chunks), "ok"); }
-			catch (_e) { callback(null, "bad-json"); }
+			try { done(JSON.parse(chunks), "ok"); }
+			catch (_e) { done(null, "bad-json"); }
 		});
 	});
-	req.on("error", function () { callback(null, "network-error"); });
-	req.setTimeout(timeoutMs, function () { req.destroy(); callback(null, "timeout"); });
+	req.on("error", function () { done(null, "network-error"); });
+	req.setTimeout(timeoutMs, function () { req.destroy(); done(null, "timeout"); });
 }
 
 function fetchLatestVersion(callback) {
@@ -120,14 +136,19 @@ function main(argv) {
 
 	var result = childProcess.spawnSync(rustBin, args, {
 		encoding: "utf8",
+		input: readStdinPayload(),
 		maxBuffer: 1024 * 1024,
 		timeout: 120000,
-		stdio: ["ignore", "pipe", "pipe"],
+		stdio: ["pipe", "pipe", "pipe"],
 	});
+	if (result.error) {
+		process.stderr.write("emb-agent spawn error: " + result.error.message + "\n");
+		process.exit(1);
+	}
 
 	if (result.stdout) process.stdout.write(result.stdout);
 	if (result.stderr) process.stderr.write(result.stderr);
-	process.exit(result.status || 0);
+	process.exit(typeof result.status === "number" ? result.status : 1);
 }
 
 module.exports = { main };

@@ -9,7 +9,7 @@
     ],
     "postToolUse": [
       {
-        "matcher": "bash|edit|write",
+        "matcher": "Shell|Write|Edit",
         "command": "node .cursor/emb-agent/bin/emb-agent.cjs hook context-monitor --host cursor",
         "timeout": 10
       }

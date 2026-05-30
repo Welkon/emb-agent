@@ -144,18 +144,15 @@ You are the user's embedded development assistant. Start with onboarding, not im
         "</current-state>".to_string(),
         String::new(),
         "<ready>".to_string(),
-        "HARD GATE — your first action in this session:".to_string(),
-        format!(
-            "Trigger the Pi slash command `/emb:{}` NOW and follow its output exactly. Do NOT run this through bash, Node, pi dist/index.js, or emb-agent-rs directly. Do NOT manually explore files or decide next steps on your own until you have its recommendation.",
-            snapshot.recommended_command
-        ),
+        "Routing gate — before implementation or broad file exploration:".to_string(),
+        "Run the current host's emb-next entry (for example `/emb-next`, `$emb-next`, or the installed runtime command `node .<host>/emb-agent/bin/emb-agent.cjs next --brief`) and follow `agent_protocol.gate` exactly.".to_string(),
+        "Do not manually explore files or decide next steps on your own until you have that routing recommendation.".to_string(),
         String::new(),
         "Rules:".to_string(),
         "- Do NOT re-run `start` on subsequent turns.".to_string(),
-        "- `/emb:*` is a Pi slash command handled by the extension UI, not a shell command.".to_string(),
-        "- Never execute `/emb:*` via bash or by invoking pi-coding-agent dist/index.js.".to_string(),
-        "- If the user asks to extract/parse/ingest a schematic or board file, trigger `/emb:ingest schematic --file <path>` or `/emb:ingest board --file <path>` first; do not read/head/xxd binary SchDoc/PcbDoc files manually.".to_string(),
-        "- After the slash command returns, follow its output.".to_string(),
+        "- `/emb:<command>` examples in command docs denote emb-agent runtime intent; use the equivalent host command surface or installed runtime command, not a bare shell literal.".to_string(),
+        "- If the user asks to extract/parse/ingest a schematic or board file, route through emb-agent ingest first; do not read/head/xxd binary SchDoc/PcbDoc files manually.".to_string(),
+        "- After the routing or ingest command returns, follow its output.".to_string(),
         "</ready>".to_string(),
     ]);
 
@@ -494,7 +491,7 @@ pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
     format!(
         "{{\"status\":\"ok\",\"language\":{},\"language_instruction\":{},\"project\":{{\"root\":{},\"initialized\":{},\"active_variant\":{},\"variant_dir\":{},\"mcu\":{},\"package\":{},\"developer\":{},\"branch\":{},\"bootstrap\":{},\"workflow\":{}}},\"tasks\":{{\"open\":{},\"wiki_pages\":{},\"active\":{}}},\"next\":{{\"command\":{},\"reason\":{},\"task_intake\":{}}},\"truth_validation_errors\":{}}}",
         json_quote(&snapshot.language),
-        json_quote(&response_language_instruction(&snapshot.language)),
+        json_quote(response_language_instruction(&snapshot.language)),
         json_quote(&snapshot.project_root),
         snapshot.initialized,
         json_quote(&snapshot.active_variant),
@@ -583,10 +580,7 @@ pub fn build_external_start_json(snapshot: &ProjectSnapshot) -> String {
 }
 
 /// Build external protocol envelope for next
-pub fn build_external_next_json(
-    snapshot: &ProjectSnapshot,
-    tasks: &[TaskSnapshot],
-) -> String {
+pub fn build_external_next_json(snapshot: &ProjectSnapshot, tasks: &[TaskSnapshot]) -> String {
     let (next_cmd, next_reason) = build_next_routing(snapshot);
     let action = if snapshot.recommended_command == "onboard" {
         "onboard"
@@ -678,7 +672,8 @@ pub fn build_external_status_json(snapshot: &ProjectSnapshot) -> String {
 pub fn build_external_health_json(snapshot: &ProjectSnapshot) -> String {
     let has_mcu = !snapshot.mcu_model.is_empty();
     let truth_valid = snapshot.truth_validation_errors.is_empty();
-    let all_ok = snapshot.initialized && truth_valid && has_mcu && snapshot.bootstrap_status == "ready";
+    let all_ok =
+        snapshot.initialized && truth_valid && has_mcu && snapshot.bootstrap_status == "ready";
     let runtime_events = json!({
         "status": if all_ok { "ok" } else { "blocked" },
         "total": 4,
@@ -880,11 +875,12 @@ mod tests {
     }
 
     #[test]
-    fn session_context_treats_emb_as_slash_command_not_shell_cli() {
+    fn session_context_uses_host_neutral_routing_not_pi_only_commands() {
         let context = build_session_context(&sample_snapshot());
-        assert!(context.contains("Trigger the Pi slash command `/emb:do` NOW"));
-        assert!(context.contains("not a shell command"));
-        assert!(context.contains("Never execute `/emb:*` via bash"));
-        assert!(!context.contains("Recommended command IS a CLI command"));
+        assert!(context.contains("current host's emb-next entry"));
+        assert!(context.contains("node .<host>/emb-agent/bin/emb-agent.cjs next --brief"));
+        assert!(context.contains("not a bare shell literal"));
+        assert!(!context.contains("Trigger the Pi slash command"));
+        assert!(!context.contains("pi-coding-agent dist/index.js"));
     }
 }

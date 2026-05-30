@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
+use crate::hardware::project::find_project_root;
 use crate::json::json_quote;
 
 const WARNING_REMAINING_PERCENT: f64 = 35.0;
@@ -23,7 +24,17 @@ pub fn build_context_monitor_output(raw_input: &str) -> String {
     build_context_monitor_output_from_value(&data)
 }
 
+pub fn build_context_monitor_output_for_host(raw_input: &str, host: &str) -> String {
+    let data: Value = serde_json::from_str(raw_input.trim()).unwrap_or_else(|_| json!({}));
+    build_context_monitor_output_from_value_for_host(&data, host)
+}
+
 pub fn build_context_monitor_output_from_value(data: &Value) -> String {
+    let host = string_member(data, "host").unwrap_or_default();
+    build_context_monitor_output_from_value_for_host(data, &host)
+}
+
+pub fn build_context_monitor_output_from_value_for_host(data: &Value, host: &str) -> String {
     if !is_workspace_trusted(data) {
         return String::new();
     }
@@ -81,10 +92,24 @@ pub fn build_context_monitor_output_from_value(data: &Value) -> String {
     let event_name = string_member(data, "hook_event_name")
         .or_else(|| string_member(data, "event"))
         .unwrap_or_else(|| "PostToolUse".to_string());
+    let payload_host = string_member(data, "host").unwrap_or_default();
+    let output_host = if host.trim().is_empty() {
+        payload_host.as_str()
+    } else {
+        host.trim()
+    };
+
+    build_context_monitor_payload(output_host, &event_name, message)
+}
+
+fn build_context_monitor_payload(host: &str, event_name: &str, message: &str) -> String {
+    if host.eq_ignore_ascii_case("cursor") {
+        return format!("{{\"additional_context\":{}}}", json_quote(message));
+    }
 
     format!(
         "{{\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{}}}}}",
-        json_quote(&event_name),
+        json_quote(event_name),
         json_quote(message)
     )
 }
@@ -280,7 +305,10 @@ fn is_workspace_trusted(data: &Value) -> bool {
         }
     }
 
-    false
+    // Project-local hooks are only executed by supported hosts after their
+    // workspace trust checks. Respect explicit false values, but do not require
+    // every host to duplicate that trust bit in every hook payload.
+    true
 }
 
 fn parse_boolean_value(value: &Value) -> Option<bool> {
@@ -314,6 +342,10 @@ fn project_root_from_payload(data: &Value) -> String {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path)
     };
+    if let Some(root) = find_project_root(&absolute) {
+        return root.to_string_lossy().to_string();
+    }
+
     absolute
         .canonicalize()
         .unwrap_or(absolute)

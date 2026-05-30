@@ -1,6 +1,8 @@
-use super::util::{current_dir_string, hook_cwd, option_value, stdin_payload_or_cwd};
+use super::util::{
+    current_dir_string, hook_cwd, option_value, positional_after, stdin_payload_or_cwd,
+};
 use emb_agent_core::{
-    StatePathConfig, build_context_monitor_output, build_hooks_diagnostics_json,
+    StatePathConfig, build_context_monitor_output_for_host, build_hooks_diagnostics_json,
     build_host_session_start_payload, build_project_state_json, build_project_state_paths_json,
     build_session_context, build_statusline, build_welcome_message, get_project_state_paths,
     project_state_from_cwd, snapshot_from_cwd,
@@ -11,14 +13,10 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
     match args.get(1).map(String::as_str).unwrap_or("") {
         "resolve" => {
             let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
+            let hook = positional_after(args, 2).unwrap_or_else(|| "session-start".to_string());
             let runtime_dir =
                 option_value(args, "--runtime-dir").unwrap_or_else(|| "runtime".to_string());
-            let plan = emb_agent_core::build_hook_plan(
-                &host,
-                "session-start",
-                Path::new(&runtime_dir),
-                None,
-            );
+            let plan = emb_agent_core::build_hook_plan(&host, &hook, Path::new(&runtime_dir), None);
             println!("{}", emb_agent_core::build_hook_plan_json(&plan));
             Ok(())
         }
@@ -38,13 +36,15 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
         }
         "statusline" => {
             let cwd = hook_cwd(args);
+            let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
             let ext_dir = Path::new(&cwd).join(".emb-agent");
-            let _ = emb_agent_core::record_session_heartbeat(&ext_dir, Path::new(&cwd), "pi");
+            let _ = emb_agent_core::record_session_heartbeat(&ext_dir, Path::new(&cwd), &host);
             let snapshot = snapshot_from_cwd(&cwd);
             println!("{}", build_statusline(&snapshot));
             Ok(())
         }
         "context-monitor" => {
+            let host_arg = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
             let raw_payload = stdin_payload_or_cwd(args);
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw_payload)
                 && let Some(cwd) = value.get("cwd").and_then(serde_json::Value::as_str)
@@ -52,11 +52,11 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
                 let host = value
                     .get("host")
                     .and_then(serde_json::Value::as_str)
-                    .unwrap_or("pi");
+                    .unwrap_or(&host_arg);
                 let ext_dir = Path::new(cwd).join(".emb-agent");
                 let _ = emb_agent_core::record_session_heartbeat(&ext_dir, Path::new(cwd), host);
             }
-            let output = build_context_monitor_output(&raw_payload);
+            let output = build_context_monitor_output_for_host(&raw_payload, &host_arg);
             if !output.is_empty() {
                 println!("{output}");
             }

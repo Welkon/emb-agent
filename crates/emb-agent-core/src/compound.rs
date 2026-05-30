@@ -5,22 +5,22 @@ use crate::json::json_quote;
 use std::fs;
 use std::path::Path;
 
+pub struct CompoundAdd<'a> {
+    pub doc_type: &'a str,
+    pub slug: &'a str,
+    pub title: &'a str,
+    pub summary: &'a str,
+    pub chip: &'a str,
+    pub peripheral: &'a str,
+    pub extra: &'a [(&'a str, &'a str)],
+}
 /// Create a compound knowledge document
-pub fn compound_add(
-    ext_dir: &Path,
-    doc_type: &str,
-    slug: &str,
-    title: &str,
-    summary: &str,
-    chip: &str,
-    peripheral: &str,
-    extra: &[(&str, &str)],
-) -> String {
+pub fn compound_add(ext_dir: &Path, input: CompoundAdd<'_>) -> String {
     let compound_dir = ext_dir.join("compound");
     let _ = fs::create_dir_all(&compound_dir);
 
     let now = chrono_now_simple();
-    let filename = format!("{}-{}-{}.md", now, doc_type, slug);
+    let filename = format!("{}-{}-{}.md", now, input.doc_type, input.slug);
     let path = compound_dir.join(&filename);
 
     if path.exists() {
@@ -32,25 +32,25 @@ pub fn compound_add(
 
     let mut frontmatter = String::new();
     frontmatter.push_str("---\n");
-    frontmatter.push_str(&format!("doc_type: {}\n", doc_type));
-    frontmatter.push_str(&format!("slug: {}\n", slug));
+    frontmatter.push_str(&format!("doc_type: {}\n", input.doc_type));
+    frontmatter.push_str(&format!("slug: {}\n", input.slug));
     frontmatter.push_str("status: active\n");
-    frontmatter.push_str(&format!("summary: {}\n", summary));
-    if !chip.is_empty() {
-        frontmatter.push_str(&format!("chip: {}\n", chip));
+    frontmatter.push_str(&format!("summary: {}\n", input.summary));
+    if !input.chip.is_empty() {
+        frontmatter.push_str(&format!("chip: {}\n", input.chip));
     }
-    if !peripheral.is_empty() {
-        frontmatter.push_str(&format!("peripheral: {}\n", peripheral));
+    if !input.peripheral.is_empty() {
+        frontmatter.push_str(&format!("peripheral: {}\n", input.peripheral));
     }
     frontmatter.push_str(&format!("date: {}\n", now));
-    for (k, v) in extra {
+    for (k, v) in input.extra {
         if !v.is_empty() {
             frontmatter.push_str(&format!("{}: {}\n", k, v));
         }
     }
     frontmatter.push_str("---\n\n");
 
-    let body = format!("# {}\n\n{}\n", title, summary);
+    let body = format!("# {}\n\n{}\n", input.title, input.summary);
     let content = format!("{}{}", frontmatter, body);
 
     let _ = fs::write(&path, &content);
@@ -58,7 +58,7 @@ pub fn compound_add(
     format!(
         "{{\"status\":\"ok\",\"created\":true,\"path\":{},\"type\":{}}}",
         json_quote(&format!("compound/{}", filename)),
-        json_quote(doc_type)
+        json_quote(input.doc_type)
     )
 }
 
@@ -82,50 +82,50 @@ pub fn compound_search(
     if let Ok(entries) = fs::read_dir(&compound_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "md") {
-                if let Ok(raw) = fs::read_to_string(&path) {
-                    let matches = if !type_lower.is_empty() {
-                        raw.contains(&format!("doc_type: {}", type_lower))
-                            || raw.contains(&format!("doc_type:{}", type_lower))
-                    } else {
-                        true
-                    };
+            if path.extension().is_some_and(|e| e == "md")
+                && let Ok(raw) = fs::read_to_string(&path)
+            {
+                let raw_lower = raw.to_lowercase();
+                let matches = if !type_lower.is_empty() {
+                    raw.contains(&format!("doc_type: {}", type_lower))
+                        || raw.contains(&format!("doc_type:{}", type_lower))
+                } else {
+                    true
+                };
 
-                    let chip_ok = if !chip_lower.is_empty() {
-                        raw.to_lowercase()
-                            .contains(&format!("chip: {}", chip_lower))
-                            || raw.to_lowercase().contains(&format!("chip:{}", chip_lower))
-                    } else {
-                        true
-                    };
+                let chip_ok = if !chip_lower.is_empty() {
+                    raw_lower.contains(&format!("chip: {}", chip_lower))
+                        || raw_lower.contains(&format!("chip:{}", chip_lower))
+                } else {
+                    true
+                };
 
-                    let query_ok = if !query_lower.is_empty() {
-                        raw.to_lowercase().contains(&query_lower)
-                    } else {
-                        true
-                    };
+                let query_ok = if !query_lower.is_empty() {
+                    raw_lower.contains(&query_lower)
+                } else {
+                    true
+                };
 
-                    if matches && chip_ok && query_ok {
-                        // Extract minimal frontmatter
-                        let slug = extract_yaml_field(&raw, "slug");
-                        let summary = extract_yaml_field(&raw, "summary");
-                        let dt = extract_yaml_field(&raw, "doc_type");
-                        let ch = extract_yaml_field(&raw, "chip");
-                        let st = extract_yaml_field(&raw, "status");
-                        let sev = extract_yaml_field(&raw, "severity");
+                if matches && chip_ok && query_ok {
+                    // Extract minimal frontmatter
+                    let slug = extract_yaml_field(&raw, "slug");
+                    let summary = extract_yaml_field(&raw, "summary");
+                    let dt = extract_yaml_field(&raw, "doc_type");
+                    let ch = extract_yaml_field(&raw, "chip");
+                    let st = extract_yaml_field(&raw, "status");
+                    let sev = extract_yaml_field(&raw, "severity");
 
-                        let fname = path.file_name().unwrap_or_default().to_string_lossy();
-                        results.push(serde_json::json!({
-                            "file": fname,
-                            "path": format!("compound/{}", fname),
-                            "doc_type": dt,
-                            "slug": slug,
-                            "summary": summary,
-                            "chip": ch,
-                            "status": st,
-                            "severity": sev
-                        }));
-                    }
+                    let fname = path.file_name().unwrap_or_default().to_string_lossy();
+                    results.push(serde_json::json!({
+                        "file": fname,
+                        "path": format!("compound/{}", fname),
+                        "doc_type": dt,
+                        "slug": slug,
+                        "summary": summary,
+                        "chip": ch,
+                        "status": st,
+                        "severity": sev
+                    }));
                 }
             }
         }
@@ -325,7 +325,5 @@ pub fn arch_check(ext_dir: &Path) -> String {
         return r#"{"status":"ok","check":{"arch_exists":false,"findings":[],"recommendation":"Run emb-agent init to create architecture skeleton."}}"#.to_string();
     }
     // Stub: real implementation would compare docs vs actual code structure
-    format!(
-        "{{\"status\":\"ok\",\"check\":{{\"arch_exists\":true,\"findings\":[],\"recommendation\":\"Architecture check not yet implemented in Rust. Review ARCHITECTURE.md manually.\"}}}}"
-    )
+    r#"{"status":"ok","check":{"arch_exists":true,"findings":[],"recommendation":"Architecture check not yet implemented in Rust. Review ARCHITECTURE.md manually."}}"#.to_string()
 }

@@ -27,7 +27,7 @@ pub fn build_hook_plan(
     } else {
         host.trim()
     });
-    let node_command = build_node_hook_command(runtime_dir, &normalized_hook);
+    let node_command = build_node_hook_command(runtime_dir, &normalized_host, &normalized_hook);
     let rust_supported = is_rust_hook_supported(&normalized_hook);
 
     let entry = hook_config.map(|cfg| cfg.hook_entry(&normalized_hook));
@@ -158,61 +158,75 @@ pub fn hook_file_name(hook: &str) -> &'static str {
     }
 }
 
-pub fn build_node_hook_command(runtime_dir: &Path, hook: &str) -> String {
-    format!(
-        "node {}",
-        shell_quote(&runtime_dir.join("hooks").join(hook_file_name(hook)))
-    )
+pub fn build_node_hook_command(runtime_dir: &Path, host: &str, hook: &str) -> String {
+    let wrapper = runtime_dir.join("bin").join("emb-agent.cjs");
+    let mut parts = vec![
+        "node".to_string(),
+        shell_quote(&wrapper),
+        "hook".to_string(),
+        hook.to_string(),
+    ];
+    parts.push("--host".to_string());
+    parts.push(host.to_string());
+    parts.join(" ")
 }
 
 pub fn build_rust_hook_command(runtime_dir: &Path, host: &str, hook: &str) -> String {
-    let source_root = runtime_dir.parent().unwrap_or_else(|| Path::new("."));
     let command_prefix = env::var("EMB_AGENT_RUST_HOOK_CMD")
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| {
-            let binary = rust_binary_path(source_root);
+            let binary = rust_binary_path(runtime_dir);
             if binary.exists() {
                 shell_quote(&binary)
             } else if is_source_runtime_layout(runtime_dir) {
-                // Source layout without built binary: suggest cargo build
+                // Source layout without built binary: suggest cargo build.
                 shell_quote(&binary)
             } else {
-                // Installed but binary missing: try PATH fallback
+                // Installed but binary missing: try PATH fallback.
                 "emb-agent-rs".to_string()
             }
         });
 
     let mut parts = vec![command_prefix, "hook".to_string(), hook.to_string()];
-    if hook == "session-start" {
-        parts.push("--host".to_string());
-        parts.push(host.to_string());
-    }
+    parts.push("--host".to_string());
+    parts.push(host.to_string());
     parts.join(" ")
 }
 
-pub fn rust_binary_path(source_root: &Path) -> PathBuf {
+pub fn rust_binary_path(runtime_or_root: &Path) -> PathBuf {
     let exe_name = if cfg!(windows) {
         "emb-agent-rs.exe"
     } else {
         "emb-agent-rs"
     };
 
-    // Source layout: target/debug/emb-agent-rs
-    let source_layout = source_root.join("target").join("debug").join(exe_name);
-    if source_layout.exists() {
+    if is_source_runtime_layout(runtime_or_root) {
+        let source_root = runtime_or_root.parent().unwrap_or_else(|| Path::new("."));
+        let source_layout = source_root.join("target").join("debug").join(exe_name);
+        if source_layout.exists() {
+            return source_layout;
+        }
         return source_layout;
     }
 
-    // Installed layout: bin/emb-agent-rs (placed by postinstall or installer)
-    let installed = source_root.join("bin").join(exe_name);
+    let installed = runtime_or_root.join("bin").join(exe_name);
     if installed.exists() {
         return installed;
     }
 
-    // Fallback: the source-layout path (caller checks existence again)
-    source_layout
+    let nested_installed = runtime_or_root.join("emb-agent").join("bin").join(exe_name);
+    if nested_installed.exists() {
+        return nested_installed;
+    }
+
+    let source_layout = runtime_or_root.join("target").join("debug").join(exe_name);
+    if source_layout.exists() {
+        return source_layout;
+    }
+
+    installed
 }
 
 pub fn is_source_runtime_layout(runtime_dir: &Path) -> bool {
@@ -252,8 +266,7 @@ pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
     let session_start = build_hook_plan(host, "session-start", runtime_dir, None);
     let statusline = build_hook_plan(host, "statusline", runtime_dir, None);
     let context_monitor = build_hook_plan(host, "context-monitor", runtime_dir, None);
-    let source_root = runtime_dir.parent().unwrap_or_else(|| Path::new("."));
-    let rust_binary = rust_binary_path(source_root);
+    let rust_binary = rust_binary_path(runtime_dir);
     format!(
         "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs\",\"host\":{},\"runtime_dir\":{},\"source_runtime\":{},\"rust_binary\":{},\"rust_binary_exists\":{},\"env\":{{\"EMB_AGENT_RUST_HOOKS\":{},\"EMB_AGENT_RUST_HOOK_CMD\":{}}},\"hooks\":{{\"session_start\":{},\"statusline\":{},\"context_monitor\":{}}}}}",
         json_quote(host),
@@ -298,7 +311,7 @@ mod tests {
         assert_eq!(plan.reason, "source-runtime-default");
         assert_eq!(
             plan.fallback,
-            build_node_hook_command(&runtime_dir, "session-start")
+            build_node_hook_command(&runtime_dir, "pi", "session-start")
         );
         assert!(plan.command.contains(" hook session-start --host pi"));
     }
@@ -309,10 +322,10 @@ mod tests {
         let plan = build_hook_plan("cursor", "context-monitor", &runtime_dir, None);
         assert_eq!(plan.runtime, "rust");
         assert_eq!(plan.reason, "source-runtime-default");
-        assert!(plan.command.contains(" hook context-monitor"));
+        assert!(plan.command.contains(" hook context-monitor --host cursor"));
         assert_eq!(
             plan.fallback,
-            build_node_hook_command(&runtime_dir, "context-monitor")
+            build_node_hook_command(&runtime_dir, "cursor", "context-monitor")
         );
     }
 

@@ -49,13 +49,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
                         "{}",
                         emb_agent_core::compound::compound_add(
                             &ext_dir,
-                            &doc_type,
-                            &slug,
-                            if title.is_empty() { &slug } else { &title },
-                            &summary,
-                            &chip,
-                            &peripheral,
-                            &extra
+                            emb_agent_core::compound::CompoundAdd {
+                                doc_type: &doc_type,
+                                slug: &slug,
+                                title: if title.is_empty() { &slug } else { &title },
+                                summary: &summary,
+                                chip: &chip,
+                                peripheral: &peripheral,
+                                extra: &extra,
+                            },
                         )
                     );
                     Ok(())
