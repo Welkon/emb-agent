@@ -257,6 +257,23 @@ fn context_monitor_reads_multiline_stdin_and_uses_cursor_shape() {
 }
 
 #[test]
+fn help_shows_default_user_flow() {
+    let output = Command::new(emb_agent_bin())
+        .arg("help")
+        .output()
+        .expect("run help");
+    let stdout = assert_success(output);
+
+    assert!(
+        stdout.contains("emb-agent default user flow"),
+        "help output: {stdout}"
+    );
+    assert!(stdout.contains("/emb onboard"), "help output: {stdout}");
+    assert!(stdout.contains("/emb ingest"), "help output: {stdout}");
+    assert!(stdout.contains("/emb next"), "help output: {stdout}");
+}
+
+#[test]
 fn common_user_paths_smoke() {
     let project = TestProject::new("common");
     let _ = run(

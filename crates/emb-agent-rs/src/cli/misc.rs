@@ -7,6 +7,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let ext_dir = Path::new(&cwd).join(".emb-agent");
 
     match cmd {
+        "" | "help" | "--help" | "-h" => {
+            print_default_user_flow();
+            Ok(())
+        }
         "config" => {
             println!("{}", emb_agent_core::meta_ops::config_show(&ext_dir));
             Ok(())
@@ -50,6 +54,26 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         _ => Err(format!("unknown misc command: {cmd}")),
     }
+}
+
+fn print_default_user_flow() {
+    println!(
+        "{}",
+        [
+            "emb-agent default user flow:",
+            "  1. /emb onboard    create or repair project context",
+            "  2. /emb ingest     import datasheets, schematics, SDK notes, and source truth",
+            "  3. /emb start      summarize known truth, task/session state, gaps, and workflow",
+            "  4. /emb next       choose exactly one most useful next action",
+            "  5. /emb task       create or continue focused work after context exists",
+            "  6. /emb session    review continuity; use /emb transcript for handoff details",
+            "",
+            "Recommended next step: /emb onboard",
+            "Existing emb-agent project: /emb start",
+            "If unsure: /emb help",
+        ]
+        .join("\n")
+    );
 }
 
 pub fn run_ext_ops(args: &[String]) -> Result<(), String> {

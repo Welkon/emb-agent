@@ -189,6 +189,11 @@ function usage() {
 		"  npx emb-agent                                                    # Interactive",
 		"  npx emb-agent --target omp --developer felix --spec scmcu-space  # Direct",
 		"",
+		"After install:",
+		"  /emb onboard    # Recommended next step for a new project",
+		"  /emb start      # Continue an existing emb-agent project",
+		"  /emb help       # Show the shortest user flow if unsure",
+		"",
 		"Installs to:",
 		"  - Rust binary (cached/downloaded)",
 		"  - Host-specific config (settings.json, hooks.json, AGENTS.md)",
@@ -1005,7 +1010,7 @@ function writeInstallResult(projectRoot, hosts, options) {
 		var surface = hostSurfaceSummary(projectRoot, hosts[i]);
 		lines.push("", "### " + hosts[i].name, "", "- Surface: " + surface.kind, "- Path: " + surface.dir, "- Entries: " + surface.commands.join(", "), "- Reload: " + surface.reload);
 	}
-	lines.push("", "## Next", "", "- New or migrated project: run `/emb-onboard` or the host-equivalent entry shown above.", "- Initialized project: run `/emb-next` or the host-equivalent entry shown above.", "- Check/update runtime: `node .<host>/emb-agent/bin/emb-agent.cjs update` or `npx emb-agent@latest update --target all --local`.", "- Diagnose runtime state: `node .<host>/emb-agent/bin/emb-agent.cjs doctor --host <host> --brief`.");
+	lines.push("", "## Next", "", "- New or migrated project: run `/emb onboard`.", "- Existing emb-agent project: run `/emb start`.", "- If unsure: run `/emb help` for the shortest user flow.", "- Then continue with `/emb ingest`, `/emb next`, `/emb task`, and `/emb session` or `/emb transcript` as recommended.", "- Check/update runtime: `node .<host>/emb-agent/bin/emb-agent.cjs update` or `npx emb-agent@latest update --target all --local`.", "- Diagnose runtime state: `node .<host>/emb-agent/bin/emb-agent.cjs doctor --host <host> --brief`.");
 	ensureDir(path.join(projectRoot, ".emb-agent"));
 	fs.writeFileSync(path.join(projectRoot, ".emb-agent", "INSTALL_RESULT.md"), lines.join("\n") + "\n");
 }
@@ -1055,6 +1060,18 @@ function runInstallChecks(projectRoot, hosts) {
 	return results;
 }
 
+function printPostInstallNextSteps() {
+	console.log("");
+	console.log("Recommended next step:");
+	console.log("  /emb onboard");
+	console.log("");
+	console.log("If this is an existing emb-agent project:");
+	console.log("  /emb start");
+	console.log("");
+	console.log("If unsure:");
+	console.log("  /emb help");
+}
+
 function uninstallHost(projectRoot, host) {
 	cleanupManagedHostCommands(projectRoot, host);
 	var hostDir = hostDirFor(projectRoot, host);
@@ -1081,6 +1098,7 @@ function completeInstallBatch(projectRoot, hosts, options) {
 	}
 	console.log("  Details: .emb-agent/INSTALL_RESULT.md");
 	console.log("  Log: .emb-agent/install.log");
+	if (!process.env.EMB_AGENT_SUPPRESS_NEXT_STEPS) printPostInstallNextSteps();
 }
 
 
