@@ -74,20 +74,15 @@ Recording threshold (from `.emb-agent/reference/knowledge-evolution.md`):
 record only if repeatable AND (expensive OR not-visible-in-code).
 Skip: generic programming patterns, facts obvious from datasheets, vendor SDK conventions.
 
-## Rules
+## Core Rules
 
 - Never guess hardware facts. Read `.emb-agent/hw.yaml` and `.emb-agent/req.yaml`.
-- Wiki pages go under `.emb-agent/wiki/`, not `docs/`.
-- `docs/prd/` is for PRDs; `.emb-agent/wiki/` is for project memory.
-- Before confirming a PRD, interrogate missing constraints with the user.
-- Run `next --brief` after significant state changes.
 - Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
-- After editing `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, or `docs/prd/*.md`, run the installed runtime's `validate` or `health` command before saying PRD/truth is complete.
-- For PRD exploration, confirm a compact state-machine checklist before implementation: boot state, first input, press vs release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, acceptance evidence, and if waveform or measurement captures exist, extract exact timings/percentages/slopes from them before declaring requirements complete.
-- For PRD breakdown, read `docs/prd/system.md`, present runtime `prd_task_candidates`, create vertical child execution PRDs under `docs/prd/tasks|features|modules|components|subsystems`, run `validate` or `health` after PRD edits, and wait for explicit agreement before `task add`, activation, scan, plan, or implementation.
-- When only dispatching tools with no conversational reply, do not emit a "." filler. Send tool calls as the turn's sole content.
-- For tasks, classify work as bug, feature, board-bringup, power, timing, or toolchain; require a durable agent brief before activation: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification.
-- Split large work into vertical tracer-bullet slices. Each slice must be independently verifiable across firmware, hardware truth, docs, and verification surfaces; avoid horizontal layer tasks.
-- For bugs, build a feedback loop before mutation: failing test, CLI/parser fixture, simulator replay, captured trace, serial log, GPIO pulse + logic analyzer, scope/current-meter measurement, or documented HITL bench step.
-- All installed command docs remain available under the host runtime (for example `.omp/emb-agent/commands/emb/` or `.pi/emb-agent/commands/emb/`). Prefer `onboard` and `next`, but use specialized commands when runtime output or the user request calls for them.
-- If `.emb-agent/` does not exist or is incomplete, route to `emb-onboard` agent first.
+- After editing truth files or PRDs, run `validate` or `health`.
+- Split work into vertical tracer-bullet slices.
+- If `.emb-agent/` is missing or incomplete, route to `emb-onboard` agent first.
+
+For detailed procedures, read command docs on demand:
+- PRD / tasks / bugs / knowledge → `.<host>/emb-agent/commands/emb/`
+- Post-flow knowledge capture → `.emb-agent/reference/knowledge-evolution.md`
+- Project truth files → `.emb-agent/`

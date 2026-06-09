@@ -16,10 +16,7 @@
 
 ## Human-Readable Defaults
 
-- Keep guidance hardware-first and name the real blocker.
-- Give the exact next command or file before adding extra structure.
-- Treat skills, hooks, extensions, and wrappers as integration surfaces; they must not override emb-agent runtime gates.
-- Avoid generic AI or project-management wording when a concrete board action, artifact, or truth file is known.
+{{INCLUDE:_partials/human-readable-defaults.md}}
 
 {{LANGUAGE_INSTRUCTION}}
 
@@ -29,10 +26,18 @@
 - Do not add project-specific defaults here without passing the anti-template test.
 - The template should remember harness infrastructure so the skill author can focus on project truth.
 - Treat `agent_protocol.gate` fields from emb-agent JSON as authoritative; execute allowed host actions yourself and never ask the user to run emb-agent commands manually.
-- After editing `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, or `docs/prd/*.md`, run the installed runtime's `validate` or `health` command before saying PRD/truth is complete.
-- For PRD exploration, confirm a compact state-machine checklist before implementation: boot state, first input, press vs release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, acceptance evidence, and if waveform or measurement captures exist, extract exact timings/percentages/slopes from them before declaring requirements complete.
-- When only dispatching tools with no conversational reply, do not emit a "." filler. Send tool calls as the turn's sole content.
-- For tasks, classify work as bug, feature, board-bringup, power, timing, or toolchain; require a durable agent brief before activation: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification.
-- Split large work into vertical tracer-bullet slices. Each slice must be independently verifiable across firmware, hardware truth, docs, and verification surfaces; avoid horizontal layer tasks.
-- For bugs, build a feedback loop before mutation: failing test, CLI/parser fixture, simulator replay, captured trace, serial log, GPIO pulse + logic analyzer, scope/current-meter measurement, or documented HITL bench step.
+
+## emb-agent
+
+Start: `.emb-agent/` missing → `onboard`. Otherwise → `next --brief`. Use `help` for full command list.
+
+Core rules:
+- Never guess hardware facts. Read `.emb-agent/hw.yaml` and `.emb-agent/req.yaml`.
+- Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
+- After editing truth files or PRDs, run `validate` or `health`.
+- Split work into vertical tracer-bullet slices.
+
+For detailed procedures, read command docs on demand:
+- PRD / tasks / bugs / knowledge → `.<host>/emb-agent/commands/emb/`
+- Project truth files → `.emb-agent/`
 <!-- EMB-AGENT:END -->

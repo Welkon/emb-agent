@@ -1530,26 +1530,22 @@ function buildSelectedSupportBlock(projectRoot, state) {
 	var skillDocs = skillNames.map(function (name) { return readSkillDoc(projectRoot, name); }).filter(Boolean);
 	if (specDocs.length === 0 && skillDocs.length === 0) return "";
 	var block = "## Active External Specs and Skills\n\n";
-	block += "These entries were selected during emb-agent install and are part of this project's AI contract.\n\n";
+	block += "When work matches one of these, read the referenced file before starting:\n\n";
 	if (specDocs.length > 0) {
-		block += "### Active External Specs\n\n";
-		block += "Follow these specs for all matching firmware work; they are not optional references.\n\n";
 		for (var i = 0; i < specDocs.length; i++) {
 			var spec = specDocs[i];
-			block += "#### " + spec.title + " (`" + spec.name + "`)\n\n";
-			if (spec.summary) block += spec.summary + "\n\n";
-			block += "Source: `" + spec.path + "`\n\n";
-			if (spec.body) block += spec.body + "\n\n";
+			block += "- `" + spec.name + "`";
+			if (spec.summary) block += " — " + spec.summary.replace(/\n/g, " ");
+			block += " → `" + spec.path + "`\n";
 		}
+		block += "\n";
 	}
 	if (skillDocs.length > 0) {
-		block += "### Installed External Skills\n\n";
-		block += "Before doing work that matches one of these skill descriptions, read the named `SKILL.md` and follow it.\n\n";
 		for (var j = 0; j < skillDocs.length; j++) {
 			var skill = skillDocs[j];
 			block += "- `" + skill.name + "`";
-			if (skill.description) block += " — " + skill.description;
-			block += "\n  - Required read: `" + skill.path + "`\n";
+			if (skill.description) block += " — " + skill.description.replace(/\n/g, " ");
+			block += " → `" + skill.path + "`\n";
 		}
 		block += "\n";
 	}
