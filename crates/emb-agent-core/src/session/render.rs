@@ -374,20 +374,15 @@ fn build_env_status(snapshot: &ProjectSnapshot) -> Value {
     let root = Path::new(&snapshot.project_root);
     let env_path = root.join(".env");
     let content = std::fs::read_to_string(&env_path).unwrap_or_default();
-    let has_key = |name: &str| -> bool {
-        content
-            .lines()
-            .any(|l| l.starts_with(name) && l.contains('=') && l.split('=').nth(1).map_or(false, |v| !v.trim().is_empty()))
+    let has_non_empty = |names: &[&str]| -> bool {
+        names.iter().any(|&name| {
+            content.lines().any(|l| l.starts_with(name) && l.contains('=') && l.split('=').nth(1).map_or(false, |v| !v.trim().is_empty()))
+        })
     };
     json!({
         "env_file_exists": env_path.is_file(),
-        "graphify_keys": {
-            "gemini": has_key("GEMINI_API_KEY"),
-            "deepseek": has_key("DEEPSEEK_API_KEY"),
-            "ollama": has_key("OLLAMA_BASE_URL"),
-            "openai": has_key("OPENAI_API_KEY"),
-        },
-        "mineru_key": has_key("MINERU_API_KEY"),
+        "has_llm_key": has_non_empty(&["GEMINI_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OLLAMA_BASE_URL"]),
+        "has_mineru_key": has_non_empty(&["MINERU_API_KEY"]),
         "source_env_cmd": "set -a && source .env && set +a",
     })
 }
