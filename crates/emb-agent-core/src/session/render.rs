@@ -350,7 +350,7 @@ pub fn build_next_json_with_tasks_and_policy(
     } else if snapshot.recommended_command == "prd-breakdown" {
         (
             "prd-breakdown",
-            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until user confirms. TOOL USE: read docs/prd/system.md, hw.yaml, req.yaml, graphify-out/GRAPH_REPORT.md. For MCU specs: use graphify query or turbovec semantic-search to find register details — NEVER read the full cached manual. If turbovec index missing, build it first: uv run --with turbovec --with fastembed python3 build_index.py. Step 1: analyze constraints (ROM/RAM/real-time/peripheral/power) using graph+turbovec evidence; propose framework with register-level citations; wait for agreement. Step 2: create P0 framework PRD. Step 3: present P2 slices; create after confirm. Output must cite specific registers and graph entities — no fabricating.",
+            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until user confirms. TOOL USE: read docs/prd/system.md, hw.yaml, req.yaml, graphify-out/GRAPH_REPORT.md. For MCU specs: use graphify query or turbovec semantic-search — NEVER read the full cached manual. If graph_health.turbovec_index is false, build it first. Step 1: analyze constraints (ROM/RAM/real-time/peripheral/power) using graph+turbovec evidence; propose framework with register-level citations; wait for agreement. Step 2: create P0 framework PRD. Step 3: present P2 slices; create after confirm. All output must cite registers and graph entities — no fabricating.",
         )
     } else if snapshot.recommended_command == "choose-work" || snapshot.open_tasks > 0 {
         (
@@ -402,8 +402,8 @@ fn build_graph_health(snapshot: &ProjectSnapshot) -> Value {
         }
     }
     let noise_pct = if nodes > 0 { noise * 100 / nodes as u64 } else { 0 };
-    let turbovec_index = Path::new(&snapshot.project_root).join(".emb-agent/cache/turbovec");
-    let has_turbovec = turbovec_index.is_dir() && std::fs::read_dir(&turbovec_index).map_or(false, |mut d| d.any(|e| e.map_or(false, |e| e.path().extension().map_or(false, |x| x == "tq"))));
+    let tv_dir = Path::new(&snapshot.project_root).join(".emb-agent/cache/turbovec");
+    let has_turbovec = tv_dir.is_dir() && std::fs::read_dir(&tv_dir).map_or(false, |mut d| d.any(|e| e.map_or(false, |e| e.path().extension().map_or(false, |x| x == "tq"))));
     json!({
         "status": if noise_pct > 50 { "noisy" } else if nodes == 0 { "empty" } else { "clean" },
         "nodes": nodes,
@@ -413,6 +413,9 @@ fn build_graph_health(snapshot: &ProjectSnapshot) -> Value {
         "turbovec_index": has_turbovec,
         "hint": if noise_pct > 50 { ".graphifyignore may be missing — run `emb init` or create one excluding .emb-agent/ runtime" } else { "" }
     })
+}
+
+    let active_task = json_value_or_null(&build_task_json(snapshot));
     let language_instruction = response_language_instruction(&snapshot.language);
     let routed_tasks = if !snapshot.prd_task_candidates.is_empty() && tasks.is_empty() {
         snapshot.prd_task_candidates.as_slice()
