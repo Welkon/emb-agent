@@ -542,7 +542,7 @@ fn build_next_agent_protocol_with_policy(
                 "system_prd_path": "docs/prd/system.md",
                 "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
                 "workflow_steps": [
-                    "1. read system PRD, hw.yaml, req.yaml, MCU datasheet/manual, and vendor examples",
+                    "1. read system PRD, hw.yaml, req.yaml. For the MCU manual/datasheet: check `.emb-agent/cache/docs/` for cached parse.md first — if already parsed by mineru, read that. If not parsed, run `ingest doc --file <manual.pdf> --provider mineru --kind datasheet --to hardware` before trying to read the PDF directly (plain PDF reads return only TOC/image alt-text, not register data)",
                     "2. analyze constraints: ROM/RAM budget, real-time deadlines, peripheral complexity (ADC/PWM/timers/gpio), power/sleep requirements, ISR nesting needs",
                     "3. determine the best program framework: bare-metal state-machine, RTOS (FreeRTOS/uCOS/RT-Thread), cooperative time-slice scheduler, or vendor SDK framework",
                     "4. present your analysis and framework recommendation to the user with concrete trade-off reasoning; wait for explicit agreement",
