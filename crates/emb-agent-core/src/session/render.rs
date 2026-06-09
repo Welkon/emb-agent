@@ -493,9 +493,15 @@ fn build_next_agent_protocol_with_policy(
                 "kind": "firmware-manual-required",
                 "blocking": true,
                 "required_evidence": ["parsed MCU manual or datasheet", "register map", "GPIO bias/wakeup limits", "ADC reference/channel evidence", "timer/PWM evidence", "sleep/reset behavior"],
-                "allowed_actions": ["create_or_fill_env", "ingest_doc_with_mineru", "fetch_cached_parse", "record_manual_evidence", "rerun_next_after_evidence"],
-                "forbidden_actions": ["create_firmware_task", "start_implementation", "declare_firmware_ready_without_manual", "guess_registers_from_pin_names"],
-                "recommended_command": "ingest doc --file <manual.pdf> --provider mineru --kind datasheet --to hardware"
+                "preprocessing": [
+                    "1. ensure markitdown is installed: check `python3 -c \"import markitdown\" 2>/dev/null` — if it fails, run `pip install 'markitdown[all]'` (installs PDF/DOCX/PPTX/XLSX/audio support). This is a one-time setup; skip if already installed.",
+                    "2. convert the MCU manual PDF to clean Markdown: `markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md`. This preserves headings, tables, and register lists that plain PDF reads lose.",
+                    "3. if mineru API key is configured, fine: `ingest doc --file <manual.pdf> --provider mineru --kind datasheet --to hardware`. If not, read the cached `.md` file and proceed — the markdown has structure.",
+                    "4. for DOCX/PPTX/XLSX datasheets or vendor examples, markitdown handles them directly (same `markitdown <file> -o <output>.md` command)."
+                ],
+                "allowed_actions": ["install_markitdown_if_missing", "convert_pdf_with_markitdown", "ingest_doc_with_mineru_if_key_exists", "read_cached_markdown", "record_manual_evidence", "rerun_next_after_evidence"],
+                "forbidden_actions": ["create_firmware_task", "start_implementation", "declare_firmware_ready_without_manual", "guess_registers_from_pin_names", "read_raw_pdf_without_conversion"],
+                "recommended_command": "markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md"
             }
         })
         .to_string();
@@ -528,7 +534,6 @@ fn build_next_agent_protocol_with_policy(
                 "slice_rule": "Use vertical tracer-bullet slices: each slice must deliver one narrow but complete observable path across firmware, hardware truth, docs, and verification surfaces.",
                 "allowed_actions": ["present_existing_task_candidates", "present_child_prd_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear", "create_task_from_selected_child_prd"],
                 "forbidden_actions": ["force_existing_task_activation", "ask_user_to_run_task_list", "ask_user_to_run_task_activate", "invent_task_name", "start_implementation_without_selected_or_created_ready_task", "run_shell_command_for_emb_slash_command", "create_horizontal_layer_tasks", "ignore_child_prd_candidates"],
-                "recommended_command": "/emb-next"
             }
         })
         .to_string();
@@ -537,20 +542,21 @@ fn build_next_agent_protocol_with_policy(
         return json!({
             "gate": {
                 "kind": "prd-breakdown",
-                "blocking": true,
-                "method": "analyze-constraints-propose-framework-then-slice",
-                "system_prd_path": "docs/prd/system.md",
-                "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
-                "workflow_steps": [
-                    "1. read system PRD, hw.yaml, req.yaml. For the MCU manual/datasheet: check `.emb-agent/cache/docs/` for cached parse.md first — if already parsed by mineru, read that. If not parsed, run `ingest doc --file <manual.pdf> --provider mineru --kind datasheet --to hardware` before trying to read the PDF directly (plain PDF reads return only TOC/image alt-text, not register data)",
-                    "2. analyze constraints: ROM/RAM budget, real-time deadlines, peripheral complexity (ADC/PWM/timers/gpio), power/sleep requirements, ISR nesting needs",
-                    "3. determine the best program framework: bare-metal state-machine, RTOS (FreeRTOS/uCOS/RT-Thread), cooperative time-slice scheduler, or vendor SDK framework",
-                    "4. present your analysis and framework recommendation to the user with concrete trade-off reasoning; wait for explicit agreement",
-                    "5. after agreement, create a program-framework task PRD (P0) under docs/prd/tasks/ that defines: main loop structure, ISR topology, peripheral init order, sleep/wake policy, and build system skeleton",
-                    "6. then present prd_task_candidates for functional vertical slices (P2); create each only after user confirms the slice list"
+                "preprocessing": [
+                    "0a. ensure graphify is installed: `uv tool list 2>/dev/null | grep -q graphifyy || uv tool install graphifyy`. Then `graphify install --project` to register the skill so AI can use `/graphify`. Both are one-time; skip if already done.",
+                    "0b. build/refresh code knowledge graph: if `graphify-out/graph.json` is missing, run `/graphify .`. If stale, run `/graphify . --update` (AST-only, no LLM cost). The graphify skill handles query/path/explain — AI does not need manual graphify CLI instructions.",
+                    "0c. same for markitdown: `python3 -c \"import markitdown\" 2>/dev/null || pip install 'markitdown[all]'` (one-time). Convert MCU manual PDF: `markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md` if not cached."
                 ],
-                "allowed_actions": ["read_system_prd", "read_hardware_truth", "read_mcu_manual_and_examples", "analyze_constraints", "propose_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
-                "forbidden_actions": ["create_any_files_before_user_agreement", "start_functional_implementation_before_framework", "present_functional_slices_before_framework_agreement", "guess_framework_without_analyzing_constraints", "ask_user_to_choose_framework_without_recommendation", "ask_user_for_blank_task_when_system_prd_has_candidates", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health"],
+                "workflow_steps": [
+                    "2. query the graphify knowledge graph for code architecture (call chains, module dependencies, framework patterns) — use `/graphify query \"...\"` or read `graphify-out/GRAPH_REPORT.md` for god nodes and surprising connections",
+                    "3. analyze constraints: ROM/RAM budget, real-time deadlines, peripheral complexity (ADC/PWM/timers/gpio), power/sleep requirements, ISR nesting needs",
+                    "4. determine the best program framework: bare-metal state-machine, RTOS (FreeRTOS/uCOS/RT-Thread), cooperative time-slice scheduler, or vendor SDK framework",
+                    "5. present your analysis and framework recommendation to the user with concrete trade-off reasoning; wait for explicit agreement",
+                    "6. after agreement, create a program-framework task PRD (P0) under docs/prd/tasks/ that defines: main loop structure, ISR topology, peripheral init order, sleep/wake policy, and build system skeleton",
+                    "7. then present prd_task_candidates for functional vertical slices (P2); create each only after user confirms the slice list"
+                ],
+                "allowed_actions": ["install_graphify_if_missing", "install_markitdown_if_missing", "build_or_refresh_graphify_graph", "convert_pdf_with_markitdown", "read_system_prd", "read_hardware_truth", "query_graphify_for_architecture", "analyze_constraints", "propose_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
+                "forbidden_actions": ["create_any_files_before_user_agreement", "start_functional_implementation_before_framework", "present_functional_slices_before_framework_agreement", "guess_framework_without_analyzing_constraints", "ask_user_to_choose_framework_without_recommendation", "ask_user_for_blank_task_when_system_prd_has_candidates", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health", "read_raw_pdf_without_conversion"],
             }
         })
         .to_string();
