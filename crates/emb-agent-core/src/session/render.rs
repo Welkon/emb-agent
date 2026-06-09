@@ -494,14 +494,13 @@ fn build_next_agent_protocol_with_policy(
                 "blocking": true,
                 "required_evidence": ["parsed MCU manual or datasheet", "register map", "GPIO bias/wakeup limits", "ADC reference/channel evidence", "timer/PWM evidence", "sleep/reset behavior"],
                 "preprocessing": [
-                    "1. ensure markitdown is installed: check `python3 -c \"import markitdown\" 2>/dev/null` — if it fails, run `pip install 'markitdown[all]'` (installs PDF/DOCX/PPTX/XLSX/audio support). This is a one-time setup; skip if already installed.",
-                    "2. convert the MCU manual PDF to clean Markdown: `markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md`. This preserves headings, tables, and register lists that plain PDF reads lose.",
-                    "3. if mineru API key is configured, fine: `ingest doc --file <manual.pdf> --provider mineru --kind datasheet --to hardware`. If not, read the cached `.md` file and proceed — the markdown has structure.",
-                    "4. for DOCX/PPTX/XLSX datasheets or vendor examples, markitdown handles them directly (same `markitdown <file> -o <output>.md` command)."
+                    "1. ensure markitdown is installed: check `python3 -c \"import markitdown\" 2>/dev/null` — if fails, run `pip install 'markitdown[all]'` (one-time, skip if installed).",
+                    "2. first pass with markitdown: `markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md`. This is fast, local, and free.",
+                    "3. quality check: if the output .md has <500 lines OR contains garbled multi-column table fragments (markitdown artifacts from image-heavy PDFs), the PDF is image-heavy. In that case: if MINERU_API_KEY is set, run `ingest doc --file <manual.pdf> --provider mineru --kind datasheet --to hardware` as fallback (mineru VLM handles image-rich Chinese datasheets). If no mineru key, warn user that this datasheet is image-heavy and results will be degraded.",
+                    "4. for text-heavy PDFs (500+ lines, clean headings/tables), the cached .md is sufficient — proceed directly."
                 ],
-                "allowed_actions": ["install_markitdown_if_missing", "convert_pdf_with_markitdown", "ingest_doc_with_mineru_if_key_exists", "read_cached_markdown", "record_manual_evidence", "rerun_next_after_evidence"],
-                "forbidden_actions": ["create_firmware_task", "start_implementation", "declare_firmware_ready_without_manual", "guess_registers_from_pin_names", "read_raw_pdf_without_conversion"],
-                "recommended_command": "markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md"
+                "allowed_actions": ["install_markitdown_if_missing", "convert_pdf_with_markitdown", "assess_output_quality", "ingest_doc_with_mineru_as_fallback_if_image_heavy", "read_cached_markdown_or_mineru_result", "record_manual_evidence", "rerun_next_after_evidence"],
+                "forbidden_actions": ["create_firmware_task", "start_implementation", "declare_firmware_ready_without_manual", "guess_registers_from_pin_names", "read_raw_pdf_without_conversion", "skip_quality_check_on_markitdown_output"],
             }
         })
         .to_string();
@@ -545,7 +544,7 @@ fn build_next_agent_protocol_with_policy(
                 "preprocessing": [
                     "0a. ensure graphify is installed: `uv tool list 2>/dev/null | grep -q graphifyy || uv tool install graphifyy`. Then `graphify install --project` to register the skill so AI can use `/graphify`. Both are one-time; skip if already done.",
                     "0b. build/refresh code knowledge graph: if `graphify-out/graph.json` is missing, run `/graphify .`. If stale, run `/graphify . --update` (AST-only, no LLM cost). The graphify skill handles query/path/explain — AI does not need manual graphify CLI instructions.",
-                    "0c. same for markitdown: `python3 -c \"import markitdown\" 2>/dev/null || pip install 'markitdown[all]'` (one-time). Convert MCU manual PDF: `markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md` if not cached."
+                    "0c. same for markitdown: `python3 -c \"import markitdown\" 2>/dev/null || pip install 'markitdown[all]'` (one-time). Convert PDFs: `markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md`. Quality check: if output <500 lines or has garbled table artifacts → image-heavy PDF; fall back to `ingest doc --provider mineru` if MINERU_API_KEY is set. Text-heavy PDFs (500+ clean lines) are fine as-is.",
                 ],
                 "workflow_steps": [
                     "2. query the graphify knowledge graph for code architecture (call chains, module dependencies, framework patterns) — use `/graphify query \"...\"` or read `graphify-out/GRAPH_REPORT.md` for god nodes and surprising connections",
