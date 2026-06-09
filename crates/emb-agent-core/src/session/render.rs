@@ -370,22 +370,7 @@ pub fn build_next_json_with_tasks_and_policy(
     };
 
 
-fn build_env_status(snapshot: &ProjectSnapshot) -> Value {
-    let root = Path::new(&snapshot.project_root);
-    let env_path = root.join(".env");
-    let content = std::fs::read_to_string(&env_path).unwrap_or_default();
-    let has_non_empty = |names: &[&str]| -> bool {
-        names.iter().any(|&name| {
-            content.lines().any(|l| l.starts_with(name) && l.contains('=') && l.split('=').nth(1).map_or(false, |v| !v.trim().is_empty()))
-        })
-    };
-    json!({
-        "env_file_exists": env_path.is_file(),
-        "has_llm_key": has_non_empty(&["GEMINI_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OLLAMA_BASE_URL"]),
-        "has_mineru_key": has_non_empty(&["MINERU_API_KEY"]),
-        "source_env_cmd": "set -a && source .env && set +a",
-    })
-}
+
 
 fn build_graph_health(snapshot: &ProjectSnapshot) -> Value {
     let graph_path = Path::new(&snapshot.project_root).join("graphify-out/graph.json");
@@ -470,7 +455,6 @@ fn build_graph_health(snapshot: &ProjectSnapshot) -> Value {
         "truth_validation_errors": snapshot.truth_validation_errors,
         "truth_validation_summary": truth_errors_summary,
         "firmware_manual_required": snapshot.firmware_manual_required,
-        "env": build_env_status(snapshot),
         "graph_health": build_graph_health(snapshot),
     });
     if let Some(policy) = worktree_policy {
