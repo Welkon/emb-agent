@@ -350,7 +350,7 @@ pub fn build_next_json_with_tasks_and_policy(
     } else if snapshot.recommended_command == "prd-breakdown" {
         (
             "prd-breakdown",
-            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until user confirms. TOOL USE: read docs/prd/system.md, hw.yaml, req.yaml, graphify-out/GRAPH_REPORT.md. For MCU specs: use graphify query or turbovec semantic-search — NEVER read the full cached manual. If graph_health.turbovec_index is false, build it first. Step 1: analyze constraints (ROM/RAM/real-time/peripheral/power) using graph+turbovec evidence; propose framework with register-level citations; wait for agreement. Step 2: create P0 framework PRD. Step 3: present P2 slices; create after confirm. All output must cite registers and graph entities — no fabricating.",
+            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until user confirms. TOOL USE: read docs/prd/system.md, hw.yaml, req.yaml, graphify-out/GRAPH_REPORT.md. For MCU specs: query graphify for register/peripheral details — NEVER read the full cached manual. If graph_health.turbovec_index is true, semantic-search is available as an experimental bonus. Step 1: analyze constraints (ROM/RAM/real-time/peripheral/power) using graph evidence; propose framework with register-level citations; wait for agreement. Step 2: create P0 framework PRD. Step 3: present P2 slices; create after confirm. Output must cite graph entities and register names — no fabricating.",
         )
     } else if snapshot.recommended_command == "choose-work" || snapshot.open_tasks > 0 {
         (
