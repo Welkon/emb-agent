@@ -1271,6 +1271,14 @@ function installForHost(projectRoot, host, callback) {
 			logDetail("    AGENTS.md deployed to project root");
 		}
 
+		if (resolveAndDeploy(projectRoot,
+			path.join(RUNTIME_SRC, "scaffolds", "shells", ".graphifyignore"),
+			path.join(projectRoot, ".graphifyignore"),
+			templateVars
+		)) {
+			logDetail("    .graphifyignore deployed to project root");
+		}
+
 		var hostRootFiles = { claude: "CLAUDE.md", codex: "CODEX.md" };
 		var rootFile = hostRootFiles[host.name];
 		if (rootFile) {
