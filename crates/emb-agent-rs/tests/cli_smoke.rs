@@ -872,7 +872,7 @@ fn system_prd_without_child_prds_routes_to_prd_breakdown() {
         value["instructions"]
             .as_str()
             .unwrap_or("")
-            .contains("system PRD"),
+            .contains("docs/prd/system.md"),
         "next output: {next}"
     );
 
