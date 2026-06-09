@@ -574,8 +574,12 @@ fn build_next_agent_protocol_with_policy(
         }
         return json!({
             "gate": {
+                "kind": "prd-breakdown",
+                "blocking": true,
+                "method": "analyze-constraints-propose-framework-then-slice",
+                "system_prd_path": "docs/prd/system.md",
+                "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
                 "preprocessing": [
-                    "0a. ensure tools current: `uv tool upgrade graphifyy markitdown 2>/dev/null`. Install if missing: `uv tool list | grep -q graphifyy || uv tool install 'graphifyy[openai]'` (openai extra needed for DeepSeek/OpenAI backends). `uv tool list | grep -q markitdown || uv tool install 'markitdown[all]'`.",
                     "0b. load API keys from .env: `set -a; source .env 2>/dev/null; set +a` (graphify reads GEMINI_API_KEY/DEEPSEEK_API_KEY from environment, not .env file).",
                     "0c. remove stale .graphifyignore if present: `rm -f .graphifyignore` (may have been left by earlier runs and blocks all scanning).",
                     "0d. refresh graph: `/graphify . --update` (incremental, AST+LLM). If no graph exists, build full: `/graphify .` then `/graphify cluster-only .` for community report.",
