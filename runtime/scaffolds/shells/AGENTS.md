@@ -24,10 +24,7 @@
 
 ## Local Rules
 
-- **High-SNR Input Filtering (Blind & Deaf Focus):** Aggressively strip emotional descriptions, conversational pleasantries, and non-technical noise from incoming logs or user inputs. Isolate only the exact state transitions, hardware registers, and pin symptoms.
-- **Resource Equilibrium & Thrift:** Evaluate all code modifications against critical resource budgets (e.g., 8-bit platforms with < 2K ROM / 176B RAM). Absolute ban on dynamic memory allocation, heavy standard libraries, or redundant token-wasting chain-of-thought processing.
-- **Discrete Symbol Mapping:** Complex multi-branch behaviors must be mapped directly into discrete state space models (such as StateSmith code tables or compact bitmasks) rather than compound, deeply nested `if-else` branching systems.
-- **Hidden Execution Architecture:** Hide raw conversational intermediate steps or reasoning chatters in final operational interfaces. Converge responses rapidly and directly into deterministic tool execution blocks, structural JSON payloads, or explicit Git diffs.
+Add project-specific rules here. For embedded defaults, see `.emb-agent/rules/local.md`.
 
 ## emb-agent
 

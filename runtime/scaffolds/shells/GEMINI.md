@@ -22,9 +22,6 @@
 
 ## Gemini Notes
 
-- Use installed emb-agent project truth and host skills; do not expect runtime scaffold folders in the host install.
-- Do not add project-specific defaults here without passing the anti-template test.
-- The template should remember harness infrastructure so the skill author can focus on project truth.
 - Treat `agent_protocol.gate` fields from emb-agent JSON as authoritative; execute allowed host actions yourself and never ask the user to run emb-agent commands manually.
 
 ## emb-agent
