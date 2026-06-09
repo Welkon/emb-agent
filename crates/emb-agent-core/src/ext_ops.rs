@@ -210,6 +210,12 @@ Do not record generic programming knowledge or facts obvious from code and datas
     let bootstrap_dir = ext_dir.join("tasks").join("00-bootstrap-project");
     let _ = fs::create_dir_all(&bootstrap_dir);
     let now = crate::task::task_ops::chrono_now();
+    let truth_validation_errors = validate_truth_files(cwd);
+    let truth_validation_status = if truth_validation_errors.is_empty() {
+        "ok"
+    } else {
+        "error"
+    };
     let bootstrap_task = serde_json::json!({
         "id": format!("{}-00-bootstrap-project", now.split('T').next().unwrap_or("init")),
         "name": "00-bootstrap-project",
@@ -234,12 +240,29 @@ Do not record generic programming knowledge or facts obvious from code and datas
         "pr_url": "",
         "pr": {"status": ""},
         "artifacts": {
-            "prd": "docs/prd/system.md"
+            "prd": "docs/prd/system.md",
+            "validation": {
+                "command": "validate",
+                "status": truth_validation_status,
+                "errors": truth_validation_errors.clone()
+            },
+            "aar": ".emb-agent/tasks/00-bootstrap-project/aar.md"
         },
         "context": {
             "implement": [],
-            "check": [],
+            "check": [{
+                "command": "validate",
+                "status": truth_validation_status,
+                "errors": truth_validation_errors.clone()
+            }],
             "debug": []
+        },
+        "aar": {
+            "scan_completed": true,
+            "record_required": false,
+            "record_completed": true,
+            "updated_at": &now,
+            "note": "Bootstrap auto-complete recorded no durable lessons; project truth validation was run during init."
         },
         "injected_specs": []
     });
@@ -247,8 +270,23 @@ Do not record generic programming knowledge or facts obvious from code and datas
         bootstrap_dir.join("task.json"),
         serde_json::to_string_pretty(&bootstrap_task).unwrap_or_default(),
     );
+    let _ = fs::write(
+        bootstrap_dir.join("aar.md"),
+        format!(
+            "# AAR: 00-bootstrap-project\n\nScan completed during bootstrap auto-complete. No durable lessons were recorded. Validation status: {}.\n",
+            truth_validation_status
+        ),
+    );
 
-    r#"{"status":"ok","initialized":true}"#.to_string()
+    serde_json::json!({
+        "status": "ok",
+        "initialized": true,
+        "truth_validation": {
+            "status": truth_validation_status,
+            "errors": truth_validation_errors
+        }
+    })
+    .to_string()
 }
 
 fn ensure_gitignore_entry(project_root: &Path, entry: &str) {

@@ -41,6 +41,11 @@ pub struct ProjectSnapshot {
     pub requirements_unknown_count: usize,
     pub hardware_unknown_count: usize,
     pub truth_validation_errors: Vec<String>,
+    pub system_prd_exists: bool,
+    pub system_prd_has_content: bool,
+    pub child_prd_count: usize,
+    pub prd_breakdown_needed: bool,
+    pub prd_task_candidates: Vec<TaskSnapshot>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -263,6 +268,194 @@ fn is_clarification_task(task: &TaskRef) -> bool {
     ]
     .iter()
     .any(|needle| text.contains(needle))
+}
+
+fn system_prd_path(project_root: &Path) -> PathBuf {
+    project_root.join("docs").join("prd").join("system.md")
+}
+
+fn child_prd_count(project_root: &Path) -> usize {
+    let prd_root = project_root.join("docs").join("prd");
+    ["tasks", "features", "modules", "components", "subsystems"]
+        .iter()
+        .map(|dir| count_markdown_files(&prd_root.join(dir)))
+        .sum()
+}
+
+fn is_child_prd_markdown(path: &Path) -> bool {
+    if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+        return false;
+    }
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    !matches!(name, "index.md" | "README.md" | "readme.md" | "log.md")
+}
+
+fn count_markdown_files(dir: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| {
+            let path = entry.path();
+            if path.is_dir() {
+                count_markdown_files(&path)
+            } else if is_child_prd_markdown(&path) {
+                1
+            } else {
+                0
+            }
+        })
+        .sum()
+}
+
+fn collect_markdown_files(dir: &Path, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_markdown_files(&path, files);
+        } else if is_child_prd_markdown(&path) {
+            files.push(path);
+        }
+    }
+}
+
+fn derive_child_prd_candidates(project_root: &Path) -> Vec<TaskSnapshot> {
+    let prd_root = project_root.join("docs").join("prd");
+    let mut files = Vec::new();
+    for dir in ["tasks", "features", "modules", "components", "subsystems"] {
+        collect_markdown_files(&prd_root.join(dir), &mut files);
+    }
+    files.sort();
+    files
+        .into_iter()
+        .filter_map(|path| {
+            let name = path.file_stem()?.to_str()?.trim();
+            if name.is_empty() {
+                return None;
+            }
+            let source = fs::read_to_string(&path).unwrap_or_default();
+            let title = first_markdown_heading(&source)
+                .unwrap_or_else(|| format!("Create task from child PRD {}", name));
+            Some(TaskSnapshot {
+                name: name.to_string(),
+                title,
+                status: "prd-ready".to_string(),
+                priority: "P2".to_string(),
+                package: String::new(),
+            })
+        })
+        .collect()
+}
+
+fn first_markdown_heading(source: &str) -> Option<String> {
+    source.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let title = trimmed.strip_prefix("# ")?.trim();
+        if title.is_empty() {
+            None
+        } else {
+            Some(title.to_string())
+        }
+    })
+}
+
+fn system_prd_has_substantive_content(source: &str) -> bool {
+    let mut meaningful_lines = 0usize;
+    let mut bullet_lines = 0usize;
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('>') {
+            continue;
+        }
+        meaningful_lines += 1;
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+            bullet_lines += 1;
+        }
+    }
+    bullet_lines > 0 || meaningful_lines >= 3
+}
+
+fn derive_prd_task_candidates(project_root: &Path) -> Vec<TaskSnapshot> {
+    let path = system_prd_path(project_root);
+    let source = fs::read_to_string(path).unwrap_or_default();
+    if !system_prd_has_substantive_content(&source) {
+        return Vec::new();
+    }
+    let haystack = source.to_ascii_lowercase();
+    let groups: [(&str, &str, &[&str]); 7] = [
+        (
+            "motor-control",
+            "Create motor control / PWM run-cycle task PRD",
+            &[
+                "motor",
+                "pwm",
+                "boost",
+                "mosfet",
+                "soft-start",
+                "duty",
+                "run_30s",
+            ],
+        ),
+        (
+            "safety-interlock",
+            "Create safety interlock task PRD",
+            &["safety", "interlock", "skey", "key", "press", "release"],
+        ),
+        (
+            "low-voltage-protection",
+            "Create low-voltage protection task PRD",
+            &["low-voltage", "low voltage", "cutoff", "recovery", "badc"],
+        ),
+        (
+            "current-stall-protection",
+            "Create current / stall protection task PRD",
+            &["current", "stall", "overload", "cstuck", "fault"],
+        ),
+        (
+            "led-charge-indication",
+            "Create LED and charge indication task PRD",
+            &["led", "red", "green", "charge", "charging", "chrg", "usb"],
+        ),
+        (
+            "sleep-wake-policy",
+            "Create sleep / wake policy task PRD",
+            &["sleep", "wake", "stop", "reset", "standby"],
+        ),
+        (
+            "hardware-acceptance",
+            "Create hardware acceptance evidence task PRD",
+            &["hardware", "resistor", "feedback", "vout", "schematic"],
+        ),
+    ];
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    for (name, title, needles) in groups {
+        if needles.iter().any(|needle| haystack.contains(needle)) && seen.insert(name) {
+            candidates.push(TaskSnapshot {
+                name: name.to_string(),
+                title: title.to_string(),
+                status: "suggested".to_string(),
+                priority: "P2".to_string(),
+                package: String::new(),
+            });
+        }
+    }
+    if candidates.is_empty() {
+        candidates.push(TaskSnapshot {
+            name: "system-prd-slice".to_string(),
+            title: "Create first child execution PRD from docs/prd/system.md".to_string(),
+            status: "suggested".to_string(),
+            priority: "P2".to_string(),
+            package: String::new(),
+        });
+    }
+    candidates
 }
 
 pub fn validate_truth_files(project_root: &Path) -> Vec<String> {
@@ -540,6 +733,14 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         };
     }
 
+    let project_root = Path::new(&state.project_root);
+    let system_prd = system_prd_path(project_root);
+    let system_prd_exists = system_prd.is_file();
+    let system_prd_source = fs::read_to_string(&system_prd).unwrap_or_default();
+    let system_prd_has_content =
+        system_prd_exists && system_prd_has_substantive_content(&system_prd_source);
+    let child_prd_count = child_prd_count(project_root);
+
     let has_hardware = is_declared_hardware_model(&state.hardware.model);
     let active_is_clarification = state
         .current_task
@@ -547,13 +748,20 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         .map(is_clarification_task)
         .unwrap_or(false);
     let has_truth_errors = !state.truth_validation_errors.is_empty();
-    let firmware_manual_required = has_hardware
-        && !has_firmware_manual_evidence(Path::new(&state.state_dir), &state.hardware.model)
-        && (state.current_task.is_some() || state.open_tasks == 0);
+    let requirements_have_content = !state.requirements.goals.is_empty()
+        || !state.requirements.features.is_empty()
+        || !state.requirements.constraints.is_empty()
+        || !state.requirements.acceptance.is_empty()
+        || !state.requirements.failure_policy.is_empty();
+    let needs_prd_exploration = state.current_task.is_none()
+        && state.open_tasks == 0
+        && !requirements_have_content
+        && (!system_prd_exists || !system_prd_has_content);
     let needs_clarification = has_truth_errors
         || !state.requirements.unknowns.is_empty()
         || !state.hardware.unknowns.is_empty()
-        || active_is_clarification;
+        || active_is_clarification
+        || needs_prd_exploration;
     let bootstrap_status = if !state.config.active_specs.is_empty() {
         "ready"
     } else if has_hardware {
@@ -572,6 +780,33 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     } else {
         "concept"
     };
+    let prd_breakdown_needed = has_hardware
+        && !has_truth_errors
+        && !needs_prd_exploration
+        && state.current_task.is_none()
+        && state.open_tasks == 0
+        && system_prd_has_content
+        && child_prd_count == 0;
+    let firmware_manual_required = has_hardware
+        && !has_firmware_manual_evidence(Path::new(&state.state_dir), &state.hardware.model)
+        && (state.current_task.is_some()
+            || (state.open_tasks == 0
+                && requirements_have_content
+                && !prd_breakdown_needed
+                && child_prd_count == 0));
+    let prd_child_selection_needed = has_hardware
+        && !has_truth_errors
+        && !needs_prd_exploration
+        && state.current_task.is_none()
+        && state.open_tasks == 0
+        && child_prd_count > 0;
+    let prd_task_candidates = if prd_breakdown_needed {
+        derive_prd_task_candidates(project_root)
+    } else if prd_child_selection_needed {
+        derive_child_prd_candidates(project_root)
+    } else {
+        Vec::new()
+    };
     let task_intake_summary = if has_truth_errors {
         format!(
             "Project truth validation failed: {}. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml first; run the installed emb-agent runtime's doctor or health command after editing. Do not proceed to implementation while truth files are invalid.",
@@ -579,12 +814,21 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         )
     } else if active_is_clarification {
         "Continue the active clarification/brainstorming task as a doc-grounded grilling loop. Ask one load-bearing question at a time, challenge ambiguous terms against project truth, extract exact timing/percentage/slope values from any waveform or measurement captures before implementing, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string()
+    } else if needs_prd_exploration {
+        "System PRD is missing or still scaffold-only. Run PRD exploration before task creation: ask one load-bearing behavior/power/reset/acceptance question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run validate or health after truth edits, and stop until explicit agreement.".to_string()
     } else if firmware_manual_required {
         "MCU/package truth exists but no parsed MCU manual or chip-support evidence is available. Ingest the MCU manual/datasheet with `ingest doc --provider mineru`, verify register/GPIO/ADC/timer/sleep evidence, then rerun next before firmware work.".to_string()
     } else if state.current_task.is_some() {
         String::new()
-    } else if needs_clarification || !has_hardware {
+    } else if !state.requirements.unknowns.is_empty()
+        || !state.hardware.unknowns.is_empty()
+        || !has_hardware
+    {
         "Continue requirement exploration/brainstorming as a doc-grounded grilling loop. Clarify behavior, interaction, power, LED, mechanical, hardware constraints, and the state-machine checklist; update docs/prd/system.md and .emb-agent/req.yaml; run the installed emb-agent runtime's validate or health command after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string()
+    } else if prd_breakdown_needed {
+        "docs/prd/system.md exists but no child execution PRDs exist under docs/prd/tasks|features|modules|components|subsystems. Read docs/prd/system.md, present prd_task_candidates, create vertical child PRDs, run validate or health after PRD edits, then wait for explicit agreement before task add or activation.".to_string()
+    } else if prd_child_selection_needed {
+        "Child execution PRDs exist but no task is active. Present prd_task_candidates as ready child-PRD work options, create/activate a task only after explicit selection and enough agent brief detail, and keep the selected child PRD in the task artifacts.".to_string()
     } else {
         "Ask what work the user wants to start. Classify it as bug, feature, board-bringup, power, timing, or toolchain; draft a durable agent brief and split large work into vertical tracer-bullet slices before activation.".to_string()
     };
@@ -602,6 +846,11 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
             "clarify".to_string(),
             "Active work is requirement/hardware clarification. Continue the doc-grounded grilling loop and record confirmed decisions before creating implementation tasks.".to_string(),
         )
+    } else if needs_prd_exploration {
+        (
+            "clarify".to_string(),
+            "System PRD is missing or scaffold-only. Complete PRD exploration and validation before creating implementation tasks.".to_string(),
+        )
     } else if firmware_manual_required {
         (
             "ingest-docs".to_string(),
@@ -609,10 +858,23 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         )
     } else if state.current_task.is_some() {
         ("do".to_string(), "Active task is selected".to_string())
-    } else if needs_clarification || !has_hardware {
+    } else if !state.requirements.unknowns.is_empty()
+        || !state.hardware.unknowns.is_empty()
+        || !has_hardware
+    {
         (
             "clarify".to_string(),
             "Project is still in concept/requirements exploration. Clarify the listed blockers, state-machine behavior, and acceptance evidence before task creation or implementation.".to_string(),
+        )
+    } else if prd_breakdown_needed {
+        (
+            "prd-breakdown".to_string(),
+            "System PRD exists but no child execution PRDs or open tasks exist. Break the system PRD into vertical task PRDs before work selection.".to_string(),
+        )
+    } else if prd_child_selection_needed {
+        (
+            "choose-work".to_string(),
+            "Child execution PRDs exist but no task is active. Choose a child PRD and create or activate a task before implementation.".to_string(),
         )
     } else {
         (
@@ -654,6 +916,11 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         requirements_unknown_count: state.requirements.unknowns.len(),
         hardware_unknown_count,
         truth_validation_errors: state.truth_validation_errors,
+        system_prd_exists,
+        system_prd_has_content,
+        child_prd_count,
+        prd_breakdown_needed,
+        prd_task_candidates,
     }
 }
 

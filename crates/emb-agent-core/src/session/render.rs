@@ -124,6 +124,10 @@ You are the user's embedded development assistant. Start with onboarding, not im
         ));
     }
     lines.push(format!("Open tasks: {}", snapshot.open_tasks));
+    lines.push(format!(
+        "PRD: system={}, substantive={}, child_prds={}",
+        snapshot.system_prd_exists, snapshot.system_prd_has_content, snapshot.child_prd_count
+    ));
     lines.push(format!("Wiki pages: {}", snapshot.wiki_pages));
     if !snapshot.git_branch.is_empty() {
         lines.push(format!("Git branch: {}", snapshot.git_branch));
@@ -279,10 +283,15 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
             "do".to_string(),
             "Active task exists. Limit reads to task PRD + hw.yaml + req.yaml + scoped source files. Use the task brief's exact waveform/measurement params directly without re-extraction. Trigger `/emb:do`.".to_string(),
         )
-    } else if snapshot.open_tasks > 0 {
+    } else if snapshot.recommended_command == "prd-breakdown" {
+        (
+            "prd-breakdown".to_string(),
+            "System PRD exists but no child execution PRDs or open tasks exist. Read docs/prd/system.md, present suggested vertical slices, create child PRDs under docs/prd/tasks|features|modules|components|subsystems, run validate/health, then wait for explicit agreement.".to_string(),
+        )
+    } else if snapshot.recommended_command == "choose-work" || snapshot.open_tasks > 0 {
         (
             "choose-work".to_string(),
-            "Open tasks exist but none is active. Present candidates as options, classify the work, fill a durable agent brief, split large work into vertical tracer-bullet slices, and activate only after explicit ready-task selection.".to_string(),
+            "Present existing tasks or child PRD candidates as options, classify the work, fill a durable agent brief, split large work into vertical tracer-bullet slices, and activate/create only after explicit ready-work selection.".to_string(),
         )
     } else if snapshot.bootstrap_status != "ready" && snapshot.bootstrap_status != "concept" {
         (
@@ -337,10 +346,15 @@ pub fn build_next_json_with_tasks_and_policy(
             "do",
             "Active task exists. Before implementation: 1) Limit initial file reads to the active task PRD, .emb-agent/hw.yaml, .emb-agent/req.yaml, and the source files directly under the task scope — do not scan unrelated project files, migration docs, or other projects. 2) If the task brief contains exact waveform/measurement params, use them directly; do not re-extract or re-measure. Trigger `/emb:do` only after the active task is briefed enough to execute.",
         )
-    } else if snapshot.open_tasks > 0 {
+    } else if snapshot.recommended_command == "prd-breakdown" {
+        (
+            "prd-breakdown",
+            "System PRD exists but no child execution PRDs or open tasks exist. Read docs/prd/system.md, present `prd_task_candidates`, create vertical child PRDs under docs/prd/tasks|features|modules|components|subsystems, run the installed emb-agent runtime's validate or health command after PRD edits, and wait for explicit agreement before task add, activation, scan, plan, or do.",
+        )
+    } else if snapshot.recommended_command == "choose-work" || snapshot.open_tasks > 0 {
         (
             "choose-work",
-            "Open tasks exist but none is active. Present `task_candidates` as existing-work options, and classify the desired path as bug, feature, board-bringup, power, timing, or toolchain. Existing or new work must have a durable agent brief and a vertical tracer-bullet slice before activation. Trigger `/emb:task activate <name>` only after explicit task selection and enough acceptance/verification detail.",
+            "Present `task_candidates` as existing-task or child-PRD work options, and classify the desired path as bug, feature, board-bringup, power, timing, or toolchain. Existing or new work must have a durable agent brief and a vertical tracer-bullet slice before activation. Trigger `/emb:task activate <name>` only after explicit task selection and enough acceptance/verification detail; if the candidate is a child PRD without a task manifest, create the task from that PRD first.",
         )
     } else if snapshot.bootstrap_status != "ready" && snapshot.bootstrap_status != "concept" {
         (
@@ -356,7 +370,14 @@ pub fn build_next_json_with_tasks_and_policy(
 
     let active_task = json_value_or_null(&build_task_json(snapshot));
     let language_instruction = response_language_instruction(&snapshot.language);
-    let task_candidates = json_value_or_null(&build_task_candidates_json(tasks));
+    let routed_tasks = if !snapshot.prd_task_candidates.is_empty() && tasks.is_empty() {
+        snapshot.prd_task_candidates.as_slice()
+    } else {
+        tasks
+    };
+    let task_candidates = json_value_or_null(&build_task_candidates_json(routed_tasks));
+    let prd_task_candidates =
+        json_value_or_null(&build_task_candidates_json(&snapshot.prd_task_candidates));
     let agent_protocol = json_value_or_null(&build_next_agent_protocol_with_policy(
         snapshot,
         action,
@@ -374,6 +395,15 @@ pub fn build_next_json_with_tasks_and_policy(
         "active_task": active_task,
         "open_tasks": snapshot.open_tasks,
         "task_candidates": task_candidates,
+        "prd_task_candidates": prd_task_candidates,
+        "prd": {
+            "system_prd": snapshot.system_prd_exists,
+            "system_prd_has_content": snapshot.system_prd_has_content,
+            "system_prd_path": "docs/prd/system.md",
+            "child_prd_count": snapshot.child_prd_count,
+            "breakdown_needed": snapshot.prd_breakdown_needed,
+            "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"]
+        },
         "instructions": instructions,
         "agent_protocol": agent_protocol,
         "requirements_unknown_count": snapshot.requirements_unknown_count,
@@ -484,7 +514,9 @@ fn build_next_agent_protocol_with_policy(
         })
         .to_string();
     }
-    if action == "choose-work" && snapshot.open_tasks > 0 {
+    if action == "choose-work"
+        && (snapshot.open_tasks > 0 || !snapshot.prd_task_candidates.is_empty())
+    {
         return json!({
             "gate": {
                 "kind": "work-selection",
@@ -494,11 +526,27 @@ fn build_next_agent_protocol_with_policy(
                 "triage_states": ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"],
                 "required_brief_fields": ["current_behavior", "desired_behavior", "hardware_facts", "firmware_interfaces", "acceptance_criteria", "out_of_scope", "required_verification"],
                 "slice_rule": "Use vertical tracer-bullet slices: each slice must deliver one narrow but complete observable path across firmware, hardware truth, docs, and verification surfaces.",
-                "allowed_actions": ["present_existing_task_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear"],
-                "forbidden_actions": ["force_existing_task_activation", "ask_user_to_run_task_list", "ask_user_to_run_task_activate", "invent_task_name", "start_implementation_without_selected_or_created_ready_task", "run_shell_command_for_emb_slash_command", "create_horizontal_layer_tasks"],
+                "allowed_actions": ["present_existing_task_candidates", "present_child_prd_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear", "create_task_from_selected_child_prd"],
+                "forbidden_actions": ["force_existing_task_activation", "ask_user_to_run_task_list", "ask_user_to_run_task_activate", "invent_task_name", "start_implementation_without_selected_or_created_ready_task", "run_shell_command_for_emb_slash_command", "create_horizontal_layer_tasks", "ignore_child_prd_candidates"],
                 "recommended_command": "/emb-next"
             }
-        }).to_string();
+        })
+        .to_string();
+    }
+    if action == "prd-breakdown" {
+        return json!({
+            "gate": {
+                "kind": "prd-breakdown",
+                "blocking": true,
+                "method": "system-prd-to-child-prds",
+                "system_prd_path": "docs/prd/system.md",
+                "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
+                "allowed_actions": ["read_system_prd", "present_prd_task_candidates", "create_vertical_child_prds", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits", "wait_for_explicit_user_agreement"],
+                "forbidden_actions": ["ask_user_for_blank_task_when_system_prd_has_candidates", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health"],
+                "recommended_command": "/emb-next"
+            }
+        })
+        .to_string();
     }
     "{\"gate\":{\"kind\":\"none\",\"blocking\":false}}".to_string()
 }
@@ -513,29 +561,43 @@ pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
         .as_ref()
         .map(|task| task.name.as_str())
         .unwrap_or("");
-    format!(
-        "{{\"status\":\"ok\",\"language\":{},\"language_instruction\":{},\"project\":{{\"root\":{},\"initialized\":{},\"active_variant\":{},\"variant_dir\":{},\"mcu\":{},\"package\":{},\"developer\":{},\"branch\":{},\"bootstrap\":{},\"workflow\":{}}},\"tasks\":{{\"open\":{},\"wiki_pages\":{},\"active\":{}}},\"next\":{{\"command\":{},\"reason\":{},\"task_intake\":{}}},\"truth_validation_errors\":{}}}",
-        json_quote(&snapshot.language),
-        json_quote(response_language_instruction(&snapshot.language)),
-        json_quote(&snapshot.project_root),
-        snapshot.initialized,
-        json_quote(&snapshot.active_variant),
-        json_quote(&snapshot.variant_dir),
-        json_quote(&snapshot.mcu_model),
-        json_quote(&snapshot.mcu_package),
-        json_quote(&snapshot.developer),
-        json_quote(&snapshot.git_branch),
-        json_quote(&snapshot.bootstrap_status),
-        json_quote(&snapshot.workflow_state),
-        snapshot.open_tasks,
-        snapshot.wiki_pages,
-        json_quote(active_task_name),
-        json_quote(&snapshot.recommended_command),
-        json_quote(&snapshot.recommended_reason),
-        json_quote(&snapshot.task_intake_summary),
-        serde_json::to_string(&snapshot.truth_validation_errors)
-            .unwrap_or_else(|_| "[]".to_string())
-    )
+    json!({
+        "status": "ok",
+        "language": snapshot.language,
+        "language_instruction": response_language_instruction(&snapshot.language),
+        "project": {
+            "root": snapshot.project_root,
+            "initialized": snapshot.initialized,
+            "active_variant": snapshot.active_variant,
+            "variant_dir": snapshot.variant_dir,
+            "mcu": snapshot.mcu_model,
+            "package": snapshot.mcu_package,
+            "developer": snapshot.developer,
+            "branch": snapshot.git_branch,
+            "bootstrap": snapshot.bootstrap_status,
+            "workflow": snapshot.workflow_state
+        },
+        "prd": {
+            "system_prd": snapshot.system_prd_exists,
+            "system_prd_has_content": snapshot.system_prd_has_content,
+            "system_prd_path": "docs/prd/system.md",
+            "child_prd_count": snapshot.child_prd_count,
+            "breakdown_needed": snapshot.prd_breakdown_needed,
+            "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"]
+        },
+        "tasks": {
+            "open": snapshot.open_tasks,
+            "wiki_pages": snapshot.wiki_pages,
+            "active": active_task_name
+        },
+        "next": {
+            "command": snapshot.recommended_command,
+            "reason": snapshot.recommended_reason,
+            "task_intake": snapshot.task_intake_summary
+        },
+        "truth_validation_errors": snapshot.truth_validation_errors
+    })
+    .to_string()
 }
 
 fn build_task_json(snapshot: &ProjectSnapshot) -> String {
@@ -594,6 +656,12 @@ pub fn build_external_start_json(snapshot: &ProjectSnapshot) -> String {
         "mcu_model": snapshot.mcu_model,
         "mcu_package": snapshot.mcu_package,
         "open_tasks": snapshot.open_tasks,
+        "prd": {
+            "system_prd": snapshot.system_prd_exists,
+            "system_prd_has_content": snapshot.system_prd_has_content,
+            "child_prd_count": snapshot.child_prd_count,
+            "breakdown_needed": snapshot.prd_breakdown_needed
+        },
         "next": {
             "command": next_cmd,
             "reason": next_reason,
@@ -611,6 +679,12 @@ pub fn build_external_next_json(snapshot: &ProjectSnapshot, tasks: &[TaskSnapsho
         "onboard"
     } else if snapshot.recommended_command == "ingest-docs" {
         "ingest-docs"
+    } else if snapshot.recommended_command == "prd-breakdown" {
+        "prd-breakdown"
+    } else if snapshot.recommended_command == "choose-work" {
+        "choose-work"
+    } else if snapshot.recommended_command == "clarify" {
+        "clarify"
     } else if snapshot.current_task.is_some() {
         "do"
     } else {
@@ -623,7 +697,12 @@ pub fn build_external_next_json(snapshot: &ProjectSnapshot, tasks: &[TaskSnapsho
         "pending": if action == "do" { 0 } else { 1 },
         "failed": 0
     });
-    let task_candidates: Vec<Value> = tasks
+    let routed_tasks = if !snapshot.prd_task_candidates.is_empty() && tasks.is_empty() {
+        snapshot.prd_task_candidates.as_slice()
+    } else {
+        tasks
+    };
+    let task_candidates: Vec<Value> = routed_tasks
         .iter()
         .filter(|t| t.status != "closed" && t.status != "done" && t.status != "resolved")
         .map(|t| {
@@ -644,6 +723,12 @@ pub fn build_external_next_json(snapshot: &ProjectSnapshot, tasks: &[TaskSnapsho
         "action": action,
         "open_tasks": snapshot.open_tasks,
         "task_candidates": task_candidates,
+        "prd": {
+            "system_prd": snapshot.system_prd_exists,
+            "system_prd_has_content": snapshot.system_prd_has_content,
+            "child_prd_count": snapshot.child_prd_count,
+            "breakdown_needed": snapshot.prd_breakdown_needed
+        },
         "next": {
             "command": next_cmd,
             "reason": next_reason,
@@ -674,6 +759,12 @@ pub fn build_external_status_json(snapshot: &ProjectSnapshot) -> String {
     json!({
         "protocol": "emb-agent.external/1",
         "entrypoint": "status",
+        "prd": {
+            "system_prd": snapshot.system_prd_exists,
+            "system_prd_has_content": snapshot.system_prd_has_content,
+            "child_prd_count": snapshot.child_prd_count,
+            "breakdown_needed": snapshot.prd_breakdown_needed
+        },
         "runtime_cli": "node .<host>/emb-agent/bin/emb-agent.cjs",
         "status": snapshot.workflow_state,
         "summary": format!("{} open tasks, {} wiki pages", snapshot.open_tasks, snapshot.wiki_pages),
@@ -703,10 +794,11 @@ pub fn build_external_health_json(snapshot: &ProjectSnapshot) -> String {
         && truth_valid
         && has_mcu
         && snapshot.bootstrap_status == "ready"
+        && !snapshot.prd_breakdown_needed
         && !snapshot.firmware_manual_required;
     let runtime_events = json!({
         "status": if all_ok { "ok" } else { "blocked" },
-        "total": 5,
+        "total": 6,
         "blocked": if all_ok { 0 } else { 1 },
         "pending": 0,
         "failed": 0
@@ -722,6 +814,7 @@ pub fn build_external_health_json(snapshot: &ProjectSnapshot) -> String {
             "truth_yaml_valid": truth_valid,
             "mcu_declared": has_mcu,
             "bootstrap_ready": snapshot.bootstrap_status == "ready",
+            "prd_child_planning": !snapshot.prd_breakdown_needed,
             "firmware_manual_evidence": !snapshot.firmware_manual_required
         },
         "truth_validation_errors": snapshot.truth_validation_errors,
@@ -773,6 +866,15 @@ pub fn build_health_json(snapshot: &ProjectSnapshot) -> String {
             "bootstrap_ready",
             snapshot.bootstrap_status == "ready",
             "Bootstrap is complete".to_string(),
+        ),
+        (
+            "prd_child_planning",
+            !snapshot.prd_breakdown_needed,
+            if snapshot.prd_breakdown_needed {
+                "System PRD exists but no child execution PRDs or open tasks exist; run PRD breakdown before work selection".to_string()
+            } else {
+                "PRD child planning gate is clear".to_string()
+            },
         ),
         (
             "firmware_manual_evidence",
@@ -853,6 +955,11 @@ mod tests {
             requirements_unknown_count: 0,
             hardware_unknown_count: 0,
             truth_validation_errors: Vec::new(),
+            system_prd_exists: true,
+            system_prd_has_content: true,
+            child_prd_count: 1,
+            prd_breakdown_needed: false,
+            prd_task_candidates: Vec::new(),
         }
     }
     #[test]
@@ -906,6 +1013,8 @@ mod tests {
         );
         assert_eq!(status["tasks"]["active"], "task-1");
 
+        assert_eq!(status["prd"]["system_prd"], true);
+        assert_eq!(status["prd"]["child_prd_count"], 1);
         let next: serde_json::Value =
             serde_json::from_str(&build_next_json(&sample_snapshot())).unwrap();
         assert_eq!(next["language"], "zh");

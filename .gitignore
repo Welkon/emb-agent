@@ -25,3 +25,4 @@ bin/emb-agent-rs.exe
 /scripts/
 .emb-agent/sessions/
 .pi-lens/
+.ace-tool/

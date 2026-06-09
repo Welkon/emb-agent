@@ -25,8 +25,9 @@ All installed commands remain available. `init`, `init-project`, `bootstrap`, an
 ## PRD Intake
 
 - Before confirming a system PRD, interrogate the user about product behavior, interactions, defaults, failure/power/reset cases, constraints, and acceptance evidence; do not fill PRD from hardware guesses alone.
-- Mirror confirmed structured truth into `.emb-agent/req.yaml` and create child execution PRDs under `docs/prd/features|modules|components|subsystems/*.md` before `prd confirm --create-tasks`.
-- If `agent_protocol.gate.kind=prd-exploration`, stop before `prd confirm`, `task add`, `task activate`, `scan`, `plan`, or `do`; ask questions, update PRD/req truth, run the installed runtime's `validate` or `health` command, and wait for explicit agreement.
+- Mirror confirmed structured truth into `.emb-agent/req.yaml` during exploration. Create child execution PRDs under `docs/prd/tasks|features|modules|components|subsystems/*.md` only after `agent_protocol.gate.kind=prd-breakdown` requests PRD breakdown.
+- If `agent_protocol.gate.kind=prd-exploration`, stop before `task add`, `task activate`, `scan`, `plan`, or `do`; ask questions, update PRD/req truth, run the installed runtime's `validate` or `health` command, and wait for explicit agreement.
+- If `agent_protocol.gate.kind=prd-breakdown`, read the system PRD, present the runtime's suggested vertical child PRDs, create those child PRDs, run `validate` or `health`, and wait for agreement before `task add` or activation.
 - Before saying the system PRD is complete, show a compact state-machine checklist: boot state, first input, press/release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, and acceptance evidence.
 
 ## Task Intake

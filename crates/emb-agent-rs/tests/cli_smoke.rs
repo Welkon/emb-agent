@@ -156,6 +156,61 @@ impl Drop for TestProject {
     }
 }
 
+#[test]
+fn init_records_bootstrap_validation_and_aar() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("emb-agent-init-aar-{nonce}"));
+    fs::create_dir_all(&root).expect("create init root");
+
+    let output = Command::new(emb_agent_bin())
+        .arg("init")
+        .arg("--cwd")
+        .arg(&root)
+        .output()
+        .expect("run init");
+    let stdout = assert_success(output);
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("init json");
+    assert_eq!(
+        value["truth_validation"]["status"], "ok",
+        "init output: {stdout}"
+    );
+
+    let task_json = fs::read_to_string(
+        root.join(".emb-agent")
+            .join("tasks")
+            .join("00-bootstrap-project")
+            .join("task.json"),
+    )
+    .expect("read bootstrap task");
+    let task: serde_json::Value = serde_json::from_str(&task_json).expect("bootstrap task json");
+    assert_eq!(task["status"], "completed", "bootstrap task: {task_json}");
+    assert_eq!(
+        task["aar"]["scan_completed"], true,
+        "bootstrap task: {task_json}"
+    );
+    assert_eq!(
+        task["aar"]["record_completed"], true,
+        "bootstrap task: {task_json}"
+    );
+    assert_eq!(
+        task["context"]["check"][0]["command"], "validate",
+        "bootstrap task: {task_json}"
+    );
+    assert!(
+        root.join(".emb-agent")
+            .join("tasks")
+            .join("00-bootstrap-project")
+            .join("aar.md")
+            .exists(),
+        "bootstrap AAR missing"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
 fn assert_success(output: Output) -> String {
     if !output.status.success() {
         panic!(
@@ -749,6 +804,125 @@ fn work_selection_gate_exposes_triage_and_slicing_protocol() {
             .map(|items| items.iter().any(|item| item == "acceptance_criteria"))
             .unwrap_or(false),
         "next output: {next}"
+    );
+}
+
+#[test]
+fn system_prd_without_child_prds_routes_to_prd_breakdown() {
+    let project = TestProject::new("prd-breakdown");
+    fs::remove_dir_all(project.path().join(".emb-agent/tasks/pwm-led")).expect("remove pwm task");
+    fs::remove_dir_all(project.path().join(".emb-agent/tasks/schematic-review"))
+        .expect("remove schematic task");
+    let _ = run(
+        &project,
+        &[
+            "declare",
+            "hardware",
+            "--mcu",
+            "CA51M550",
+            "--package",
+            "SOP8",
+        ],
+    );
+    fs::write(
+        project.path().join(".emb-agent/req.yaml"),
+        "goals:\n  - run motor safely\nfeatures:\n  - PWM motor cycle\nacceptance:\n  - SKEY plus KEY starts motor\n",
+    )
+    .expect("write req truth");
+    fs::write(
+        project.path().join("docs/prd/system.md"),
+        "# System PRD\n\n## Behaviors\n\n- Firmware controls the motor with PWM soft-start.\n- SKEY is a continuous safety interlock.\n- Low-voltage cutoff stops the motor and flashes red.\n\n## Acceptance Evidence\n\n- Verify boot, run, stop, and fault states.\n",
+    )
+    .expect("write system prd");
+
+    let next = run(&project, &["next", "--brief"]);
+    let value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    assert_eq!(value["action"], "prd-breakdown", "next output: {next}");
+    assert_eq!(
+        value["agent_protocol"]["gate"]["kind"], "prd-breakdown",
+        "next output: {next}"
+    );
+    assert_eq!(
+        value["prd"]["breakdown_needed"], true,
+        "next output: {next}"
+    );
+    let candidates = value["task_candidates"]
+        .as_array()
+        .expect("task candidates");
+    assert!(
+        candidates
+            .iter()
+            .any(|task| task["name"] == "motor-control"),
+        "motor-control suggestion missing: {next}"
+    );
+    assert!(
+        value["instructions"]
+            .as_str()
+            .unwrap_or("")
+            .contains("docs/prd/system.md"),
+        "next output: {next}"
+    );
+
+    let health = run(&project, &["health"]);
+    let health_json: serde_json::Value = serde_json::from_str(&health).expect("health json");
+    assert_eq!(health_json["status"], "fail", "health output: {health}");
+    assert!(
+        health_json["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|check| { check["name"] == "prd_child_planning" && check["pass"] == false }),
+        "health output: {health}"
+    );
+}
+
+#[test]
+fn child_prds_without_tasks_route_to_work_selection() {
+    let project = TestProject::new("child-prd-selection");
+    fs::remove_dir_all(project.path().join(".emb-agent/tasks/pwm-led")).expect("remove pwm task");
+    fs::remove_dir_all(project.path().join(".emb-agent/tasks/schematic-review"))
+        .expect("remove schematic task");
+    let _ = run(
+        &project,
+        &[
+            "declare",
+            "hardware",
+            "--mcu",
+            "CA51M550",
+            "--package",
+            "SOP8",
+        ],
+    );
+    fs::write(
+        project.path().join("docs/prd/system.md"),
+        "# System PRD\n\n## Behaviors\n\n- Firmware controls the motor with PWM soft-start.\n",
+    )
+    .expect("write system prd");
+    let child_dir = project.path().join("docs/prd/tasks");
+    fs::create_dir_all(&child_dir).expect("create child prd dir");
+    fs::write(
+        child_dir.join("motor-control.md"),
+        "# Motor Control Slice\n\nImplement one verified motor-control path.\n",
+    )
+    .expect("write child prd");
+
+    let next = run(&project, &["next", "--brief"]);
+    let value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    assert_eq!(value["action"], "choose-work", "next output: {next}");
+    assert_eq!(
+        value["agent_protocol"]["gate"]["kind"], "work-selection",
+        "next output: {next}"
+    );
+    assert_eq!(value["open_tasks"], 0, "next output: {next}");
+    assert_eq!(value["prd"]["child_prd_count"], 1, "next output: {next}");
+    let candidates = value["task_candidates"]
+        .as_array()
+        .expect("task candidates");
+    assert!(
+        candidates
+            .iter()
+            .any(|task| { task["name"] == "motor-control" && task["status"] == "prd-ready" }),
+        "child PRD candidate missing: {next}"
     );
 }
 
