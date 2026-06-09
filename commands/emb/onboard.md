@@ -40,7 +40,7 @@ Use `$emb-onboard` as the default first step when `.emb-agent/` is missing, inco
 
 ## Runtime handoff
 
-`emb-agent onboard` returns a compact handoff object for hosts. The human-facing action is:
+The runtime `onboard` command returns a compact handoff object for hosts. The human-facing action is:
 
 ```text
 Invoke emb-onboard → audit/scaffold/migrate → next --brief

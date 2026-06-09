@@ -80,7 +80,7 @@ pub fn lookup_docs(
         candidates.extend(cache_candidates);
     }
 
-    candidates.sort_by(|a, b| b.score.cmp(&a.score));
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.score));
     let limit = limit.unwrap_or(10);
     candidates.truncate(limit);
 
@@ -103,12 +103,11 @@ pub fn lookup_docs(
 }
 
 fn extract_yaml_field(content: &str, key: &str) -> String {
+    let key = key.trim_start();
     for line in content.lines() {
-        if line.trim_start().starts_with(key.trim_start()) {
-            return line.trim_start()[key.len()..]
-                .trim()
-                .trim_matches('"')
-                .to_string();
+        let trimmed = line.trim_start();
+        if let Some(value) = trimmed.strip_prefix(key) {
+            return value.trim().trim_matches('"').to_string();
         }
     }
     String::new()
@@ -240,67 +239,16 @@ pub struct ComponentMatch {
 pub fn lookup_components(
     project_root: &Path,
     parsed_path: Option<&str>,
+    file_path: Option<&str>,
     ref_filter: Option<&str>,
     limit: Option<usize>,
 ) -> Result<ComponentLookupResult, String> {
-    // Load parsed.json if available
-    let components = if let Some(pp) = parsed_path {
-        let path = if Path::new(pp).is_absolute() {
-            Path::new(pp).to_path_buf()
-        } else {
-            project_root.join(pp)
-        };
-        if path.exists() {
-            let content = fs::read_to_string(&path).map_err(|e| format!("read error: {e}"))?;
-            let parsed: serde_json::Value =
-                serde_json::from_str(&content).map_err(|e| format!("json error: {e}"))?;
-            parsed["components"].as_array().cloned().unwrap_or_default()
-        } else {
-            // Try auto-discover
-            let schem_dir = project_root
-                .join(".emb-agent")
-                .join("cache")
-                .join("schematics");
-            let mut found = None;
-            if schem_dir.exists()
-                && let Ok(entries) = fs::read_dir(&schem_dir)
-            {
-                for entry in entries.flatten() {
-                    let p = entry.path().join("parsed.json");
-                    if p.exists() {
-                        let content = fs::read_to_string(&p).unwrap_or_default();
-                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
-                            found = parsed["components"].as_array().cloned();
-                            break;
-                        }
-                    }
-                }
-            }
-            found.unwrap_or_default()
-        }
-    } else {
-        // Auto-discover
-        let schem_dir = project_root
-            .join(".emb-agent")
-            .join("cache")
-            .join("schematics");
-        let mut found = None;
-        if schem_dir.exists()
-            && let Ok(entries) = fs::read_dir(&schem_dir)
-        {
-            for entry in entries.flatten() {
-                let p = entry.path().join("parsed.json");
-                if p.exists() {
-                    let content = fs::read_to_string(&p).unwrap_or_default();
-                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
-                        found = parsed["components"].as_array().cloned();
-                        break;
-                    }
-                }
-            }
-        }
-        found.unwrap_or_default()
-    };
+    let (resolved_path, parsed_display) =
+        crate::schematic::resolve_parsed_path(project_root, parsed_path, file_path)?;
+    let content = fs::read_to_string(&resolved_path).map_err(|e| format!("read error: {e}"))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("json error: {e}"))?;
+    let components = parsed["components"].as_array().cloned().unwrap_or_default();
 
     let limit = limit.unwrap_or(10);
     let matches: Vec<_> = components
@@ -327,8 +275,8 @@ pub fn lookup_components(
         provider: "local".to_string(),
         scope: ComponentLookupScope {
             project_root: project_root.to_string_lossy().to_string(),
-            from_schematic: String::new(),
-            parsed: parsed_path.unwrap_or("").to_string(),
+            from_schematic: file_path.unwrap_or("").to_string(),
+            parsed: parsed_display,
             ref_: ref_filter.unwrap_or("").to_string(),
         },
         components: matches,
@@ -419,35 +367,61 @@ pub fn query_board(
 // === fetch document ===
 
 pub fn fetch_document(project_root: &Path, doc_path: &str) -> Result<String, String> {
+    if let Some(content) = fetch_cached_parse(project_root, doc_path)? {
+        return Ok(content);
+    }
+
     // Try project-relative path
     let path = project_root.join(doc_path);
     if path.exists() {
-        return fs::read_to_string(&path).map_err(|e| format!("read error: {e}"));
+        return read_fetchable_text(&path, doc_path);
     }
 
     // Try absolute path
     let abs = Path::new(doc_path);
     if abs.exists() {
-        return fs::read_to_string(abs).map_err(|e| format!("read error: {e}"));
+        return read_fetchable_text(abs, doc_path);
     }
 
-    // Try cache path
+    Err(format!(
+        "Document not found or not parsed: {doc_path}. Run `ingest doc --file {doc_path} --provider mineru` first."
+    ))
+}
+
+fn fetch_cached_parse(project_root: &Path, doc_path: &str) -> Result<Option<String>, String> {
     let cache_path = project_root.join(".emb-agent").join("cache").join("docs");
     for entry in walk_dir(&cache_path) {
         let p = entry.join("parse.md");
         if p.exists() && p.strip_prefix(&cache_path).is_ok() {
-            // Check if this cache dir matches the doc
             let source_path = entry.join("source.json");
             if source_path.exists()
                 && let Ok(content) = fs::read_to_string(&source_path)
                 && content.contains(doc_path)
             {
-                return fs::read_to_string(&p).map_err(|e| format!("read error: {e}"));
+                return fs::read_to_string(&p)
+                    .map(Some)
+                    .map_err(|e| format!("read error: {e}"));
             }
         }
     }
+    Ok(None)
+}
 
-    Err(format!("Document not found: {doc_path}"))
+fn read_fetchable_text(path: &Path, requested: &str) -> Result<String, String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if matches!(
+        ext.as_str(),
+        "pdf" | "doc" | "docx" | "ppt" | "pptx" | "xls" | "xlsx"
+    ) {
+        return Err(format!(
+            "Document is binary and has no cached parse.md: {requested}. Run `ingest doc --file {requested} --provider mineru` first."
+        ));
+    }
+    fs::read_to_string(path).map_err(|e| format!("read error: {e}"))
 }
 
 fn walk_dir(dir: &Path) -> Vec<std::path::PathBuf> {

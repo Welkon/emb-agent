@@ -82,7 +82,7 @@ Skip: generic programming patterns, facts obvious from datasheets, vendor SDK co
 - Before confirming a PRD, interrogate missing constraints with the user.
 - Run `next --brief` after significant state changes.
 - Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
-- After editing `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, or `docs/prd/*.md`, run `emb-agent validate` or `emb-agent health` before saying PRD/truth is complete.
+- After editing `.emb-agent/hw.yaml`, `.emb-agent/req.yaml`, or `docs/prd/*.md`, run the installed runtime's `validate` or `health` command before saying PRD/truth is complete.
 - For PRD exploration, confirm a compact state-machine checklist before implementation: boot state, first input, press vs release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, acceptance evidence, and if waveform or measurement captures exist, extract exact timings/percentages/slopes from them before declaring requirements complete.
 - When only dispatching tools with no conversational reply, do not emit a "." filler. Send tool calls as the turn's sole content.
 - For tasks, classify work as bug, feature, board-bringup, power, timing, or toolchain; require a durable agent brief before activation: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification.

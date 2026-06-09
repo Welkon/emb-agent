@@ -19,7 +19,7 @@ allowed-tools:
 - If an active task already exists, `next` should keep the task `prd.md` in the loop and explicitly tell you whether the right route is `scan-first` or `plan-first`.
 - For a new or concept-stage project, `next` should keep `docs/prd/system.md` in the loop before narrowing `.emb-agent/req.yaml` or choosing hardware.
 - If `.emb-agent/` is missing, incomplete, or hardware truth is scattered in existing docs, `next` should route to `onboard` before `declare hardware`, `scan`, `plan`, or `do`.
-- If `next` returns `agent_protocol.gate.kind=prd-exploration`, ask detailed requirement/behavior questions, update `docs/prd/system.md`, `.emb-agent/req.yaml`, and child execution PRDs, run `emb-agent validate` or `emb-agent health`, then stop until explicit agreement.
+- If `next` returns `agent_protocol.gate.kind=prd-exploration`, ask detailed requirement/behavior questions, update `docs/prd/system.md`, `.emb-agent/req.yaml`, and child execution PRDs, run the installed runtime's `validate` or `health` command, then stop until explicit agreement.
 - Before declaring PRD exploration complete, show a compact state-machine checklist covering boot state, first input, press/release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, and acceptance evidence.
 - Use `external next` when the caller wants the stable external-driver protocol with `status`, `summary`, `next.cli`, and summarized `runtime_events`.
 - Treat PCB layout evidence as optional. Recommend board ingest only when the current task needs layout, routing, connector, bring-up, or manufacturing evidence; missing PCB files should skip layout checks and keep `can_continue=true`.

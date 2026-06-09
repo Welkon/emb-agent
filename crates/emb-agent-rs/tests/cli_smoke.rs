@@ -142,6 +142,11 @@ impl TestProject {
             }"#,
         )
         .expect("write parsed fixture");
+        fs::write(
+            cache.join("source.json"),
+            r#"{"source_path":"docs/fixture.SchDoc","parser_mode":"fixture"}"#,
+        )
+        .expect("write schematic source fixture");
     }
 }
 
@@ -313,6 +318,322 @@ fn common_user_paths_smoke() {
     assert!(
         diagnostics.contains("initialized"),
         "diagnostics output: {diagnostics}"
+    );
+}
+
+#[test]
+fn doc_ingest_creates_env_and_blocks_until_mineru_key_exists() {
+    let project = TestProject::new("doc-env");
+    assert!(
+        project.path().join(".env").exists(),
+        "init should create .env"
+    );
+    assert!(
+        project.path().join(".env.example").exists(),
+        "init should create .env.example"
+    );
+    let docs = project.path().join("docs");
+    fs::create_dir_all(&docs).expect("create docs");
+    fs::write(docs.join("manual.pdf"), b"%PDF-1.4\nfixture\n").expect("write pdf fixture");
+
+    let output = Command::new(emb_agent_bin())
+        .args([
+            "ingest",
+            "doc",
+            "--file",
+            "docs/manual.pdf",
+            "--provider",
+            "mineru",
+            "--kind",
+            "datasheet",
+            "--to",
+            "hardware",
+        ])
+        .arg("--cwd")
+        .arg(project.path())
+        .env_remove("MINERU_API_KEY")
+        .output()
+        .expect("run ingest doc");
+    let ingest = assert_success(output);
+    let value: serde_json::Value = serde_json::from_str(&ingest).expect("ingest json");
+    assert_eq!(
+        value["status"], "needs_credentials",
+        "ingest output: {ingest}"
+    );
+    assert_eq!(
+        value["env"]["required_key"], "MINERU_API_KEY",
+        "ingest output: {ingest}"
+    );
+    assert!(
+        fs::read_to_string(project.path().join(".gitignore"))
+            .expect("read gitignore")
+            .lines()
+            .any(|line| line.trim() == ".env"),
+        ".env must be gitignored"
+    );
+
+    let fetch = Command::new(emb_agent_bin())
+        .args(["doc", "fetch", "--path", "docs/manual.pdf"])
+        .arg("--cwd")
+        .arg(project.path())
+        .output()
+        .expect("run doc fetch");
+    assert!(
+        !fetch.status.success(),
+        "fetching an unparsed PDF must not pretend UTF-8 text"
+    );
+    let stderr = String::from_utf8_lossy(&fetch.stderr);
+    assert!(
+        stderr.contains("binary") && stderr.contains("ingest doc"),
+        "doc fetch stderr: {stderr}"
+    );
+}
+
+#[test]
+fn installer_bin_dispatches_runtime_validate_command() {
+    let project = TestProject::new("installer-dispatch");
+    let output = Command::new("node")
+        .arg(repo_root().join("bin").join("install.js"))
+        .arg("validate")
+        .arg("--cwd")
+        .arg(project.path())
+        .output()
+        .expect("run installer validate dispatch");
+    let stdout = assert_success(output);
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("validate json");
+    assert_eq!(value["status"], "ok", "validate dispatch output: {stdout}");
+}
+
+#[test]
+fn runtime_wrapper_allows_long_doc_ingest() {
+    let wrapper = fs::read_to_string(repo_root().join("runtime/bin/emb-agent.cjs"))
+        .expect("read runtime wrapper");
+    assert!(
+        wrapper.contains("function rustTimeoutMs"),
+        "runtime wrapper must compute command-specific timeouts"
+    );
+    assert!(
+        wrapper.contains("args[0] !== \"ingest\" || args[1] !== \"doc\""),
+        "runtime wrapper must special-case ingest doc"
+    );
+    assert!(
+        wrapper.contains("timeout: rustTimeoutMs(args)"),
+        "runtime wrapper must not keep a fixed 120s spawn timeout for MinerU parsing"
+    );
+    assert!(
+        wrapper.contains("fs.writeSync(1, result.stdout)"),
+        "runtime wrapper must flush large doc fetch output before process.exit"
+    );
+    let installer = fs::read_to_string(repo_root().join("bin/install.js")).expect("read installer");
+    assert!(
+        installer.contains("fs.writeSync(1, result.stdout)"),
+        "installer runtime dispatch must flush large outputs before process.exit"
+    );
+}
+
+#[test]
+fn doc_lookup_preserves_first_yaml_character() {
+    let project = TestProject::new("doc-lookup-yaml");
+    fs::write(
+        project.path().join(".emb-agent/hw.yaml"),
+        "model: \"SC8F072\"\npackage: \"SOP-14\"\n",
+    )
+    .expect("write hw truth");
+    fs::write(project.path().join("docs/SC8F072-user-manual.pdf"), b"pdf")
+        .expect("write doc candidate");
+    let lookup = run(&project, &["doc", "lookup", "--keyword", "manual"]);
+    let value: serde_json::Value = serde_json::from_str(&lookup).expect("lookup json");
+    assert_eq!(value["scope"]["chip"], "SC8F072", "lookup output: {lookup}");
+    assert_eq!(
+        value["scope"]["package"], "SOP-14",
+        "lookup output: {lookup}"
+    );
+}
+
+#[test]
+fn validate_catches_duplicate_yaml_keys() {
+    let project = TestProject::new("validate-duplicates");
+    fs::write(
+        project.path().join(".emb-agent/req.yaml"),
+        "confirmed_facts:\n  - source: schematic\n    fact: first\n    fact: duplicate\n",
+    )
+    .expect("write duplicate req truth");
+    let validate = run(&project, &["validate"]);
+    let value: serde_json::Value = serde_json::from_str(&validate).expect("validate json");
+    assert_eq!(value["status"], "error", "validate output: {validate}");
+    assert!(
+        value["truth_validation_errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|err| err.as_str().unwrap_or("").contains("duplicate key `fact`")),
+        "validate output: {validate}"
+    );
+}
+
+#[test]
+fn schematic_and_component_file_arguments_select_matching_cache() {
+    let project = TestProject::new("schematic-file-args");
+    let cache = project
+        .path()
+        .join(".emb-agent")
+        .join("cache")
+        .join("schematics")
+        .join("other");
+    fs::create_dir_all(&cache).expect("create second schematic cache");
+    fs::write(
+        cache.join("parsed.json"),
+        r#"{
+          "parser_mode": "other-fixture",
+          "components": [{"designator":"U2","value":"ALT_MCU","libref":"MCU"}],
+          "nets": [{"name":"ALT","members":["U2.1"],"confidence":"fixture","evidence":[]}],
+          "bom": [],
+          "objects": [{"RECORD":"other"}],
+          "raw_summary": {"fixture": "other"}
+        }"#,
+    )
+    .expect("write second parsed fixture");
+    fs::write(
+        cache.join("source.json"),
+        r#"{"source_path":"docs/other.SchDoc","parser_mode":"fixture"}"#,
+    )
+    .expect("write second source fixture");
+
+    let ambiguous = Command::new(emb_agent_bin())
+        .args(["schematic", "summary"])
+        .arg("--cwd")
+        .arg(project.path())
+        .output()
+        .expect("run ambiguous schematic summary");
+    assert!(
+        !ambiguous.status.success(),
+        "schematic summary without --file must fail when multiple caches exist"
+    );
+    let ambiguous_stderr = String::from_utf8_lossy(&ambiguous.stderr);
+    assert!(
+        ambiguous_stderr.contains("Multiple schematic caches found"),
+        "ambiguous stderr: {ambiguous_stderr}"
+    );
+
+    let summary = run(&project, &["schematic", "summary", "docs/other.SchDoc"]);
+    let summary_json: serde_json::Value = serde_json::from_str(&summary).expect("summary json");
+    assert_eq!(
+        summary_json["summary"]["components"], 1,
+        "summary output: {summary}"
+    );
+    assert_eq!(
+        summary_json["scope"]["source_schematic"], "docs/other.SchDoc",
+        "summary output: {summary}"
+    );
+
+    let net = run(
+        &project,
+        &["schematic", "net", "ALT", "--file", "docs/other.SchDoc"],
+    );
+    let net_json: serde_json::Value = serde_json::from_str(&net).expect("net json");
+    assert_eq!(net_json["name"], "ALT", "net output: {net}");
+    assert_eq!(net_json["net"]["members"][0], "U2.1", "net output: {net}");
+
+    let component = run(
+        &project,
+        &[
+            "component",
+            "lookup",
+            "--file",
+            "docs/other.SchDoc",
+            "--ref",
+            "U2",
+        ],
+    );
+    let component_json: serde_json::Value =
+        serde_json::from_str(&component).expect("component json");
+    assert_eq!(
+        component_json["scope"]["from_schematic"], "docs/other.SchDoc",
+        "component output: {component}"
+    );
+    assert_eq!(
+        component_json["components"][0]["designator"], "U2",
+        "component output: {component}"
+    );
+}
+
+#[test]
+fn ingest_schematic_accepts_repeated_file_options() {
+    let project = TestProject::new("schematic-multi-file");
+    let docs = project.path().join("docs");
+    fs::create_dir_all(&docs).expect("create docs");
+    fs::write(docs.join("sheet1.net"), "U1 MCU\n").expect("write sheet1");
+    fs::write(docs.join("sheet2.net"), "R1 1K\n").expect("write sheet2");
+
+    let ingest = run(
+        &project,
+        &[
+            "ingest",
+            "schematic",
+            "--file",
+            "docs/sheet1.net",
+            "--file",
+            "docs/sheet2.net",
+            "--format",
+            "netlist",
+        ],
+    );
+    let ingest_json: serde_json::Value = serde_json::from_str(&ingest).expect("ingest json");
+    assert_eq!(ingest_json["sheet_count"], 2, "ingest output: {ingest}");
+    assert_eq!(
+        ingest_json["components_found"], 2,
+        "ingest output: {ingest}"
+    );
+
+    let summary = run(&project, &["schematic", "summary", "docs/sheet2.net"]);
+    let summary_json: serde_json::Value = serde_json::from_str(&summary).expect("summary json");
+    assert_eq!(
+        summary_json["summary"]["components"], 2,
+        "summary output: {summary}"
+    );
+}
+
+#[test]
+fn next_requires_manual_evidence_before_new_firmware_work() {
+    let project = TestProject::new("manual-gate");
+    fs::remove_dir_all(project.path().join(".emb-agent/tasks/pwm-led")).expect("remove task");
+    fs::remove_dir_all(project.path().join(".emb-agent/tasks/schematic-review"))
+        .expect("remove task");
+    let _ = run(
+        &project,
+        &[
+            "declare",
+            "hardware",
+            "--mcu",
+            "SC8F072",
+            "--package",
+            "SOP-14",
+        ],
+    );
+    fs::write(
+        project.path().join(".emb-agent/req.yaml"),
+        "goals:\n  - run motor\n",
+    )
+    .expect("write req truth");
+
+    let next = run(&project, &["next", "--brief"]);
+    let value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    assert_eq!(value["action"], "ingest-docs", "next output: {next}");
+    assert_eq!(
+        value["agent_protocol"]["gate"]["kind"], "firmware-manual-required",
+        "next output: {next}"
+    );
+
+    let health = run(&project, &["health"]);
+    let health_json: serde_json::Value = serde_json::from_str(&health).expect("health json");
+    assert_eq!(health_json["status"], "fail", "health output: {health}");
+    assert!(
+        health_json["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|check| { check["name"] == "firmware_manual_evidence" && check["pass"] == false }),
+        "health output: {health}"
     );
 }
 
@@ -960,6 +1281,10 @@ fn installer_exposes_same_two_shell_commands_per_host() {
             && cursor_hooks.contains("ReadFile")
             && cursor_hooks.contains("Glob"),
         "Cursor hooks config: {cursor_hooks}"
+    );
+    assert!(
+        !cursor_hooks.contains("{{"),
+        "Cursor hooks config must not contain unresolved template placeholders: {cursor_hooks}"
     );
     assert!(
         root.join(".cursor")

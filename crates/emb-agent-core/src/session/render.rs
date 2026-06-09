@@ -268,6 +268,12 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
             "Run PRD exploration as a doc-grounded grilling loop: ask one load-bearing question at a time, update PRD/req truth after confirmation, run health after truth edits, and stop before task creation until the state-machine checklist is explicit.".to_string(),
         );
     }
+    if snapshot.recommended_command == "ingest-docs" {
+        return (
+            "ingest-docs".to_string(),
+            "Ingest the MCU manual/datasheet before firmware work. Run the installed runtime command `ingest doc --file <manual.pdf> --provider mineru --kind datasheet --to hardware`, then verify register/GPIO/ADC/timer/sleep evidence.".to_string(),
+        );
+    }
     if snapshot.current_task.is_some() {
         (
             "do".to_string(),
@@ -309,7 +315,7 @@ pub fn build_next_json_with_tasks_and_policy(
     let (action, instructions) = if has_truth_errors {
         (
             "repair-truth",
-            "Project truth validation failed. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml, then run `emb-agent health` before continuing. Do not start implementation while truth files are invalid.",
+            "Project truth validation failed. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml, then run the installed emb-agent runtime's health command before continuing. Do not start implementation while truth files are invalid.",
         )
     } else if snapshot.recommended_command == "onboard" {
         (
@@ -319,7 +325,12 @@ pub fn build_next_json_with_tasks_and_policy(
     } else if snapshot.recommended_command == "clarify" {
         (
             "clarify",
-            "Run PRD exploration as a doc-grounded grilling loop: challenge ambiguous terms against existing project truth, ask one load-bearing behavior/hardware/power/state-machine question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run emb-agent validate or health after truth edits, and stop before task creation until the compact state-machine checklist is explicit.",
+            "Run PRD exploration as a doc-grounded grilling loop: challenge ambiguous terms against existing project truth, ask one load-bearing behavior/hardware/power/state-machine question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and stop before task creation until the compact state-machine checklist is explicit.",
+        )
+    } else if snapshot.recommended_command == "ingest-docs" {
+        (
+            "ingest-docs",
+            "MCU/package truth exists, but parsed MCU manual or chip-support evidence is missing. Ingest the MCU manual/datasheet with `ingest doc --provider mineru`, verify register, GPIO bias/wakeup, ADC, timer/PWM, and sleep/reset evidence, then rerun next before firmware implementation or task creation.",
         )
     } else if snapshot.current_task.is_some() {
         (
@@ -368,7 +379,8 @@ pub fn build_next_json_with_tasks_and_policy(
         "requirements_unknown_count": snapshot.requirements_unknown_count,
         "hardware_unknown_count": snapshot.hardware_unknown_count,
         "truth_validation_errors": snapshot.truth_validation_errors,
-        "truth_validation_summary": truth_errors_summary
+        "truth_validation_summary": truth_errors_summary,
+        "firmware_manual_required": snapshot.firmware_manual_required,
     });
     if let Some(policy) = worktree_policy
         && let Some(obj) = payload.as_object_mut()
@@ -441,6 +453,19 @@ fn build_next_agent_protocol_with_policy(
                 "allowed_actions": ["brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "extract_and_record_exact_timing_percent_times_from_captures"],
                 "forbidden_actions": ["create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params"],
                 "recommended_command": "/emb-next"
+            }
+        })
+        .to_string();
+    }
+    if action == "ingest-docs" {
+        return json!({
+            "gate": {
+                "kind": "firmware-manual-required",
+                "blocking": true,
+                "required_evidence": ["parsed MCU manual or datasheet", "register map", "GPIO bias/wakeup limits", "ADC reference/channel evidence", "timer/PWM evidence", "sleep/reset behavior"],
+                "allowed_actions": ["create_or_fill_env", "ingest_doc_with_mineru", "fetch_cached_parse", "record_manual_evidence", "rerun_next_after_evidence"],
+                "forbidden_actions": ["create_firmware_task", "start_implementation", "declare_firmware_ready_without_manual", "guess_registers_from_pin_names"],
+                "recommended_command": "ingest doc --file <manual.pdf> --provider mineru --kind datasheet --to hardware"
             }
         })
         .to_string();
@@ -584,6 +609,8 @@ pub fn build_external_next_json(snapshot: &ProjectSnapshot, tasks: &[TaskSnapsho
     let (next_cmd, next_reason) = build_next_routing(snapshot);
     let action = if snapshot.recommended_command == "onboard" {
         "onboard"
+    } else if snapshot.recommended_command == "ingest-docs" {
+        "ingest-docs"
     } else if snapshot.current_task.is_some() {
         "do"
     } else {
@@ -672,11 +699,14 @@ pub fn build_external_status_json(snapshot: &ProjectSnapshot) -> String {
 pub fn build_external_health_json(snapshot: &ProjectSnapshot) -> String {
     let has_mcu = !snapshot.mcu_model.is_empty();
     let truth_valid = snapshot.truth_validation_errors.is_empty();
-    let all_ok =
-        snapshot.initialized && truth_valid && has_mcu && snapshot.bootstrap_status == "ready";
+    let all_ok = snapshot.initialized
+        && truth_valid
+        && has_mcu
+        && snapshot.bootstrap_status == "ready"
+        && !snapshot.firmware_manual_required;
     let runtime_events = json!({
         "status": if all_ok { "ok" } else { "blocked" },
-        "total": 4,
+        "total": 5,
         "blocked": if all_ok { 0 } else { 1 },
         "pending": 0,
         "failed": 0
@@ -691,7 +721,8 @@ pub fn build_external_health_json(snapshot: &ProjectSnapshot) -> String {
             "project_initialized": snapshot.initialized,
             "truth_yaml_valid": truth_valid,
             "mcu_declared": has_mcu,
-            "bootstrap_ready": snapshot.bootstrap_status == "ready"
+            "bootstrap_ready": snapshot.bootstrap_status == "ready",
+            "firmware_manual_evidence": !snapshot.firmware_manual_required
         },
         "truth_validation_errors": snapshot.truth_validation_errors,
         "runtime_events": runtime_events
@@ -742,6 +773,15 @@ pub fn build_health_json(snapshot: &ProjectSnapshot) -> String {
             "bootstrap_ready",
             snapshot.bootstrap_status == "ready",
             "Bootstrap is complete".to_string(),
+        ),
+        (
+            "firmware_manual_evidence",
+            !snapshot.firmware_manual_required,
+            if snapshot.firmware_manual_required {
+                "Parsed MCU manual/register evidence is required before firmware work".to_string()
+            } else {
+                "Firmware manual gate is clear".to_string()
+            },
         ),
     ];
     let pass_count = checks.iter().filter(|(_, ok, _)| *ok).count();
@@ -809,6 +849,7 @@ mod tests {
             workflow_state: "task_active".to_string(),
             has_hardware_truth: true,
             task_intake_summary: String::new(),
+            firmware_manual_required: false,
             requirements_unknown_count: 0,
             hardware_unknown_count: 0,
             truth_validation_errors: Vec::new(),

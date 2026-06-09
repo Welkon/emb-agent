@@ -451,7 +451,7 @@ pub fn identify_mcu_candidates(components: &[SchematicComponent]) -> Vec<McuCand
         }
     }
 
-    candidates.sort_by(|a, b| b.score.cmp(&a.score));
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.score));
     candidates.truncate(5);
     candidates
 }
@@ -645,18 +645,19 @@ pub fn parse_altium_json(text: &str) -> Result<ParsedSchematic, String> {
         .collect();
 
     let bom = build_bom_from_components(&components);
+    let object_count = objects.len();
 
     Ok(ParsedSchematic {
         parser_mode: "heuristic-json".to_string(),
         components,
         nets,
-        objects: vec![],
+        objects,
         bom,
         schematic_advice: None,
         preview: None,
         visual_netlist: None,
         raw_summary: serde_json::json!({
-            "object_count": objects.len(),
+            "object_count": object_count,
         }),
         sheets: vec![],
     })
@@ -1003,7 +1004,8 @@ pub fn ingest_schematic_file(
     match fmt {
         IngestedFormat::AltiumRaw => {
             let data = binary_data.ok_or("SchDoc binary data required")?;
-            let (ext_components, ext_nets) = super::schdoc::parse_schdoc_buffer_full(data)?;
+            let (ext_components, ext_nets, records) =
+                super::schdoc::parse_schdoc_buffer_full_with_records(data)?;
             let components: Vec<SchematicComponent> = ext_components
                 .iter()
                 .map(|c| SchematicComponent {
@@ -1032,17 +1034,27 @@ pub fn ingest_schematic_file(
                     sheets: vec![],
                 })
                 .collect();
+            let objects: Vec<Value> = records
+                .iter()
+                .map(|record| {
+                    serde_json::json!({
+                        "index": record.index,
+                        "RECORD": record.record_type.clone(),
+                        "fields": record.fields.clone(),
+                    })
+                })
+                .collect();
             let bom = build_bom_from_components(&components);
             Ok(ParsedSchematic {
                 parser_mode: "altium-raw-internal".to_string(),
                 components,
                 nets,
-                objects: vec![],
+                objects,
                 bom,
                 schematic_advice: None,
                 preview: None,
                 visual_netlist: None,
-                raw_summary: Value::Null,
+                raw_summary: serde_json::json!({"object_count": records.len()}),
                 sheets: vec![],
             })
         }

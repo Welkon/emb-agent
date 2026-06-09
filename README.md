@@ -165,6 +165,8 @@ npx emb-agent --target all --local --dry-run
 ```
 Where `<host>` is one of: `codex`, `claude`, `cursor`, `pi`, `omp`, `windsurf`, or `all`.
 
+Interactive install scans for `emb-support` (via `EMB_SUPPORT_DIR`, project ancestors, the installer checkout, or the home directory) and prompts for external support specs and skills. Direct installs can select the same support entries with repeatable `--spec <name>` and `--skill <name>` flags.
+
 > **Note:** `pi` and `windsurf` are experimental and disabled by default in development builds. To enable them, remove their entries from `shells.json.disabled`.
 ### Local vs global
 

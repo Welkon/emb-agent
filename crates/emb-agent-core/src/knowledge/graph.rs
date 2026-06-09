@@ -1,8 +1,8 @@
+use crate::compound::extract_yaml_field;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use crate::compound::extract_yaml_field;
 
 /// Knowledge graph node
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,7 +148,7 @@ pub fn graph_report(project_root: &Path) -> Result<String, String> {
         *node_degrees.entry(&e.to).or_default() += 1;
     }
     let mut hot: Vec<_> = node_degrees.into_iter().collect();
-    hot.sort_by(|a, b| b.1.cmp(&a.1));
+    hot.sort_by_key(|(_, degree)| std::cmp::Reverse(*degree));
 
     for (node_id, degree) in hot.iter().take(10) {
         if let Some(node) = graph.nodes.iter().find(|n| n.id == *node_id) {

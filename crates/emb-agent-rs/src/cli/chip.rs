@@ -1,5 +1,7 @@
 use super::util::{current_dir_string, option_value};
-use emb_agent_core::{build_chip_diff_json, build_chip_swap_confirm_json, build_chip_swap_json, query_chip_registers};
+use emb_agent_core::{
+    build_chip_diff_json, build_chip_swap_confirm_json, build_chip_swap_json, query_chip_registers,
+};
 use std::path::Path;
 
 pub fn run(args: &[String]) -> Result<(), String> {

@@ -319,7 +319,7 @@ pub fn build_debug_output(snapshot: &ProjectSnapshot) -> DebugOutput {
             vec![
                 "Check system contract completeness in docs/prd/system.md".to_string(),
                 "Check req.yaml for explicit constraints and acceptance evidence".to_string(),
-                "Run emb-agent validate or health after truth edits".to_string(),
+                "Run the installed emb-agent runtime's validate or health command after truth edits".to_string(),
             ]
         } else {
             vec![

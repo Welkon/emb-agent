@@ -99,7 +99,9 @@ pub fn run_external(args: &[String]) -> Result<(), String> {
             println!("{}", build_external_dispatch_next_json(&snapshot, &tasks));
             Ok(())
         }
-        _ => Err(format!("unknown external entrypoint: {entrypoint}. Valid: start, next, status, health, dispatch-next")),
+        _ => Err(format!(
+            "unknown external entrypoint: {entrypoint}. Valid: start, next, status, health, dispatch-next"
+        )),
     }
 }
 

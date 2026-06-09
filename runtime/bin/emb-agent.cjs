@@ -117,6 +117,18 @@ function printUpdateCheck() {
 	});
 }
 
+function rustTimeoutMs(args) {
+	var base = 120000;
+	if (!Array.isArray(args) || args[0] !== "ingest" || args[1] !== "doc") return base;
+	var requested = 300000;
+	for (var i = 0; i < args.length - 1; i++) {
+		if (args[i] !== "--timeout-ms") continue;
+		var parsed = parseInt(args[i + 1], 10);
+		if (Number.isFinite(parsed) && parsed > 0) requested = parsed;
+	}
+	return Math.max(base, requested + 60000);
+}
+
 function main(argv) {
 	var args = Array.isArray(argv) ? argv : process.argv.slice(2);
 	if (args[0] === "update" && (!args[1] || args[1] === "check" || args[1] === "command" || args[1] === "--brief" || args[1] === "--json")) {
@@ -138,7 +150,7 @@ function main(argv) {
 		encoding: "utf8",
 		input: readStdinPayload(),
 		maxBuffer: 1024 * 1024,
-		timeout: 120000,
+		timeout: rustTimeoutMs(args),
 		stdio: ["pipe", "pipe", "pipe"],
 	});
 	if (result.error) {
@@ -146,8 +158,8 @@ function main(argv) {
 		process.exit(1);
 	}
 
-	if (result.stdout) process.stdout.write(result.stdout);
-	if (result.stderr) process.stderr.write(result.stderr);
+	if (result.stdout) fs.writeSync(1, result.stdout);
+	if (result.stderr) fs.writeSync(2, result.stderr);
 	process.exit(typeof result.status === "number" ? result.status : 1);
 }
 

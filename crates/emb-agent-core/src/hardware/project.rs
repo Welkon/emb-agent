@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -37,6 +37,7 @@ pub struct ProjectSnapshot {
     pub workflow_state: String,
     pub has_hardware_truth: bool,
     pub task_intake_summary: String,
+    pub firmware_manual_required: bool,
     pub requirements_unknown_count: usize,
     pub hardware_unknown_count: usize,
     pub truth_validation_errors: Vec<String>,
@@ -287,7 +288,7 @@ pub fn validate_truth_files(project_root: &Path) -> Vec<String> {
             "unknowns",
             "sources",
         ],
-        &[],
+        &["confirmed_facts"],
         &mut errors,
     );
     errors
@@ -310,6 +311,16 @@ fn validate_truth_yaml_file(
         return;
     }
     validate_yaml_structure(source, label, list_keys, object_list_keys, errors);
+    validate_duplicate_yaml_keys(source, label, errors);
+    if label == "req.yaml" {
+        validate_object_list_required_fields(
+            source,
+            label,
+            "confirmed_facts",
+            &["source", "fact"],
+            errors,
+        );
+    }
 }
 
 fn validate_yaml_structure(
@@ -365,6 +376,159 @@ fn validate_yaml_structure(
     }
 }
 
+struct YamlMapFrame {
+    indent: usize,
+    keys: HashSet<String>,
+}
+
+fn validate_duplicate_yaml_keys(source: &str, label: &str, errors: &mut Vec<String>) {
+    let mut stack: Vec<YamlMapFrame> = Vec::new();
+    for (line_index, line) in source.lines().enumerate() {
+        let line_no = line_index + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = line.chars().take_while(|ch| *ch == ' ').count();
+        if let Some(item) = trimmed.strip_prefix("- ") {
+            let map_indent = indent + 2;
+            while stack.last().is_some_and(|frame| frame.indent >= map_indent) {
+                stack.pop();
+            }
+            stack.push(YamlMapFrame {
+                indent: map_indent,
+                keys: HashSet::new(),
+            });
+            if let Some(key) = yaml_key_name(item) {
+                record_yaml_key(label, line_no, key, stack.last_mut(), errors);
+            }
+            continue;
+        }
+        let Some(key) = yaml_key_name(trimmed) else {
+            continue;
+        };
+        while stack.last().is_some_and(|frame| frame.indent > indent) {
+            stack.pop();
+        }
+        if stack
+            .last()
+            .map(|frame| frame.indent < indent)
+            .unwrap_or(true)
+        {
+            stack.push(YamlMapFrame {
+                indent,
+                keys: HashSet::new(),
+            });
+        }
+        record_yaml_key(label, line_no, key, stack.last_mut(), errors);
+    }
+}
+
+fn record_yaml_key(
+    label: &str,
+    line_no: usize,
+    key: &str,
+    frame: Option<&mut YamlMapFrame>,
+    errors: &mut Vec<String>,
+) {
+    if let Some(frame) = frame
+        && !frame.keys.insert(key.to_string())
+    {
+        errors.push(format!(
+            "{label}:{line_no}: duplicate key `{key}` in the same YAML mapping"
+        ));
+    }
+}
+
+fn yaml_key_name(line: &str) -> Option<&str> {
+    let (key, _) = line.split_once(':')?;
+    let key = key.trim();
+    if key.is_empty() || key.contains(' ') || key.starts_with('#') {
+        None
+    } else {
+        Some(key)
+    }
+}
+
+fn validate_object_list_required_fields(
+    source: &str,
+    label: &str,
+    key: &str,
+    required: &[&str],
+    errors: &mut Vec<String>,
+) {
+    if !source
+        .lines()
+        .any(|line| line.trim() == format!("{key}:").as_str())
+    {
+        return;
+    }
+    for (index, entry) in yaml_object_list(source, key).iter().enumerate() {
+        for field in required {
+            if entry
+                .get(*field)
+                .map(|value| value.trim().is_empty())
+                .unwrap_or(true)
+            {
+                errors.push(format!(
+                    "{label}: `{key}` item {} is missing required `{field}`",
+                    index + 1
+                ));
+            }
+        }
+    }
+}
+
+fn has_firmware_manual_evidence(state_dir: &Path, model: &str) -> bool {
+    let model_key = normalize_identifier(model);
+    if model_key.is_empty() {
+        return false;
+    }
+    cache_has_parsed_doc(state_dir)
+        || dir_has_named_evidence(&state_dir.join("wiki").join("chips"), &model_key)
+        || dir_has_named_evidence(&state_dir.join("chips"), &model_key)
+        || dir_has_named_evidence(
+            &state_dir.join("extensions").join("chips").join("profiles"),
+            &model_key,
+        )
+}
+
+fn cache_has_parsed_doc(state_dir: &Path) -> bool {
+    let cache_dir = state_dir.join("cache").join("docs");
+    let Ok(entries) = fs::read_dir(cache_dir) else {
+        return false;
+    };
+    entries
+        .flatten()
+        .any(|entry| entry.path().join("parse.md").is_file())
+}
+
+fn dir_has_named_evidence(dir: &Path, model_key: &str) -> bool {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let path = entry.path();
+        if path.is_dir() {
+            return dir_has_named_evidence(&path, model_key);
+        }
+        let name = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map(normalize_identifier)
+            .unwrap_or_default();
+        !name.is_empty() && (name.contains(model_key) || model_key.contains(&name))
+    })
+}
+
+fn normalize_identifier(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
 pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     let state = project_state_from_cwd(cwd);
     if !state.initialized && state.project_root.is_empty() {
@@ -383,9 +547,12 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         .map(is_clarification_task)
         .unwrap_or(false);
     let has_truth_errors = !state.truth_validation_errors.is_empty();
+    let firmware_manual_required = has_hardware
+        && !has_firmware_manual_evidence(Path::new(&state.state_dir), &state.hardware.model)
+        && (state.current_task.is_some() || state.open_tasks == 0);
     let needs_clarification = has_truth_errors
         || !state.requirements.unknowns.is_empty()
-        || (!has_hardware && !state.hardware.unknowns.is_empty())
+        || !state.hardware.unknowns.is_empty()
         || active_is_clarification;
     let bootstrap_status = if !state.config.active_specs.is_empty() {
         "ready"
@@ -407,15 +574,17 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     };
     let task_intake_summary = if has_truth_errors {
         format!(
-            "Project truth validation failed: {}. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml first; run `emb-agent doctor --host all --brief` or `emb-agent health` after editing. Do not proceed to implementation while truth files are invalid.",
+            "Project truth validation failed: {}. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml first; run the installed emb-agent runtime's doctor or health command after editing. Do not proceed to implementation while truth files are invalid.",
             state.truth_validation_errors.join("; ")
         )
     } else if active_is_clarification {
-        "Continue the active clarification/brainstorming task as a doc-grounded grilling loop. Ask one load-bearing question at a time, challenge ambiguous terms against project truth, extract exact timing/percentage/slope values from any waveform or measurement captures before implementing, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run emb-agent health after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string()
+        "Continue the active clarification/brainstorming task as a doc-grounded grilling loop. Ask one load-bearing question at a time, challenge ambiguous terms against project truth, extract exact timing/percentage/slope values from any waveform or measurement captures before implementing, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string()
+    } else if firmware_manual_required {
+        "MCU/package truth exists but no parsed MCU manual or chip-support evidence is available. Ingest the MCU manual/datasheet with `ingest doc --provider mineru`, verify register/GPIO/ADC/timer/sleep evidence, then rerun next before firmware work.".to_string()
     } else if state.current_task.is_some() {
         String::new()
     } else if needs_clarification || !has_hardware {
-        "Continue requirement exploration/brainstorming as a doc-grounded grilling loop. Clarify behavior, interaction, power, LED, mechanical, hardware constraints, and the state-machine checklist; update docs/prd/system.md and .emb-agent/req.yaml; run emb-agent health after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string()
+        "Continue requirement exploration/brainstorming as a doc-grounded grilling loop. Clarify behavior, interaction, power, LED, mechanical, hardware constraints, and the state-machine checklist; update docs/prd/system.md and .emb-agent/req.yaml; run the installed emb-agent runtime's validate or health command after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string()
     } else {
         "Ask what work the user wants to start. Classify it as bug, feature, board-bringup, power, timing, or toolchain; draft a durable agent brief and split large work into vertical tracer-bullet slices before activation.".to_string()
     };
@@ -433,6 +602,11 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
             "clarify".to_string(),
             "Active work is requirement/hardware clarification. Continue the doc-grounded grilling loop and record confirmed decisions before creating implementation tasks.".to_string(),
         )
+    } else if firmware_manual_required {
+        (
+            "ingest-docs".to_string(),
+            "MCU manual/register evidence is required before firmware implementation or task creation. Ingest and verify the MCU manual/datasheet first.".to_string(),
+        )
     } else if state.current_task.is_some() {
         ("do".to_string(), "Active task is selected".to_string())
     } else if needs_clarification || !has_hardware {
@@ -447,11 +621,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         )
     };
 
-    let hardware_unknown_count = if has_hardware {
-        0
-    } else {
-        state.hardware.unknowns.len()
-    };
+    let hardware_unknown_count = state.hardware.unknowns.len();
 
     ProjectSnapshot {
         initialized: state.initialized,
@@ -480,6 +650,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         workflow_state: workflow_state.to_string(),
         has_hardware_truth: has_hardware,
         task_intake_summary,
+        firmware_manual_required,
         requirements_unknown_count: state.requirements.unknowns.len(),
         hardware_unknown_count,
         truth_validation_errors: state.truth_validation_errors,

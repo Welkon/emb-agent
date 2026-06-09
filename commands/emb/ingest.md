@@ -25,6 +25,7 @@ allowed-tools:
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
 - For PDFs and manuals, prefer:
   `/emb:ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
+- `ingest doc` creates `.env.example` and `.env` when missing; put `MINERU_API_KEY=` in `.env` for MinerU precise API parsing and rerun with `--force` after filling it.
 - MinerU API ZIP results are cached with `images/...` assets under `.emb-agent/cache/docs/<doc-id>/`; if `parse.md` references an image, inspect that cached asset or trigger `/emb:ingest doc --force` before trying PDF rendering or web image workarounds.
 - If the PDF is still missing but the chip or schematic already hints at it, use:
   `/emb:doc lookup --chip <name> --vendor <name>`

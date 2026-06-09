@@ -316,33 +316,85 @@ pub fn resolve_parsed_path(
         return Err(format!("Parsed file not found: {parsed}"));
     }
 
+    let dirs = find_schematic_cache_dirs(project_root);
+
     // 2. --file (schematic source) → find matching cache
     if let Some(file) = file_arg
         && !file.is_empty()
     {
-        let dirs = find_schematic_cache_dirs(project_root);
+        let mut matches = Vec::new();
         for dir in &dirs {
             if let Ok(source) = fs::read_to_string(dir.join("source.json"))
                 && let Ok(source_json) = serde_json::from_str::<serde_json::Value>(&source)
+                && source_json_matches_file(&source_json, file)
             {
-                let source_path = source_json["source_path"].as_str().unwrap_or("");
-                if source_path.contains(file) || file.contains(source_path) {
-                    let parsed_path = dir.join("parsed.json");
-                    return Ok((parsed_path.clone(), format!("{}", parsed_path.display())));
-                }
+                matches.push(dir.join("parsed.json"));
             }
         }
-        return Err(format!("No schematic cache found matching file: {file}"));
+        return match matches.len() {
+            0 => Err(format!("No schematic cache found matching file: {file}")),
+            1 => {
+                let parsed_path = matches.remove(0);
+                Ok((parsed_path.clone(), format!("{}", parsed_path.display())))
+            }
+            _ => Err(format!(
+                "Multiple schematic caches match file: {file}. Pass --parsed <path> to select one explicitly."
+            )),
+        };
     }
 
-    // 3. Auto-discover: use first available parsed.json
-    let dirs = find_schematic_cache_dirs(project_root);
-    if let Some(dir) = dirs.first() {
-        let parsed_path = dir.join("parsed.json");
-        return Ok((parsed_path.clone(), format!("{}", parsed_path.display())));
+    // 3. Auto-discover only when unambiguous
+    match dirs.len() {
+        0 => Err(
+            "No parsed.json found. Trigger `/emb:ingest schematic --file <path>` first."
+                .to_string(),
+        ),
+        1 => {
+            let parsed_path = dirs[0].join("parsed.json");
+            Ok((parsed_path.clone(), format!("{}", parsed_path.display())))
+        }
+        _ => Err(
+            "Multiple schematic caches found. Pass --file <source.SchDoc> or --parsed <parsed.json> to select one explicitly."
+                .to_string(),
+        ),
     }
+}
 
-    Err("No parsed.json found. Trigger `/emb:ingest schematic --file <path>` first.".to_string())
+fn source_json_matches_file(source_json: &serde_json::Value, requested: &str) -> bool {
+    source_json
+        .get("source_path")
+        .and_then(serde_json::Value::as_str)
+        .map(|source| schematic_paths_match(source, requested))
+        .unwrap_or(false)
+        || source_json
+            .get("source_paths")
+            .and_then(serde_json::Value::as_array)
+            .map(|paths| {
+                paths.iter().any(|path| {
+                    path.as_str()
+                        .map(|source| schematic_paths_match(source, requested))
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false)
+}
+
+fn schematic_paths_match(source: &str, requested: &str) -> bool {
+    let source = normalize_lookup_path(source);
+    let requested = normalize_lookup_path(requested);
+    if source.is_empty() || requested.is_empty() {
+        return false;
+    }
+    source == requested
+        || source.ends_with(&format!("/{requested}"))
+        || requested.ends_with(&format!("/{source}"))
+}
+
+fn normalize_lookup_path(path: &str) -> String {
+    path.trim()
+        .replace('\\', "/")
+        .trim_start_matches("./")
+        .to_ascii_lowercase()
 }
 
 pub struct SchematicQueryOptions<'a> {

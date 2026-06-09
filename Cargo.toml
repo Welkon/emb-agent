@@ -1,3 +1,9 @@
 [workspace]
 members = ["crates/emb-agent-core", "crates/emb-agent-rs"]
 resolver = "3"
+
+[profile.release]
+strip = "symbols"
+opt-level = "z"
+lto = "thin"
+codegen-units = 1

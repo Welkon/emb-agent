@@ -797,6 +797,22 @@ pub fn parse_schdoc_buffer_full(
     Ok((components, nets))
 }
 
+pub type SchDocParseWithRecords = (
+    Vec<ExtractedComponent>,
+    Vec<ExtractedNet>,
+    Vec<SchDocRecord>,
+);
+
+/// Parse an Altium SchDoc binary file, returning extracted components, nets, and raw records.
+pub fn parse_schdoc_buffer_full_with_records(
+    data: &[u8],
+) -> Result<SchDocParseWithRecords, String> {
+    let records = parse_schdoc_records(data)?;
+    let components = extract_components(&records);
+    let nets = build_nets(&records, &components);
+    Ok((components, nets, records))
+}
+
 /// Parse an Altium SchDoc binary file, returning extracted components only
 pub fn parse_schdoc_buffer(data: &[u8]) -> Result<Vec<ExtractedComponent>, String> {
     let records = parse_schdoc_records(data)?;

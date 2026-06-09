@@ -14,6 +14,13 @@ pub fn option_value(args: &[String], name: &str) -> Option<String> {
         .map(|pair| pair[1].clone())
 }
 
+pub fn option_values(args: &[String], name: &str) -> Vec<String> {
+    args.windows(2)
+        .filter(|pair| pair[0] == name)
+        .map(|pair| pair[1].clone())
+        .collect()
+}
+
 pub fn positional_after(args: &[String], start: usize) -> Option<String> {
     let mut i = start;
     while i < args.len() {
@@ -28,7 +35,19 @@ pub fn positional_after(args: &[String], start: usize) -> Option<String> {
 }
 
 fn option_takes_value(name: &str) -> bool {
-    !matches!(name, "--json" | "--brief" | "--confirm" | "--help" | "-h")
+    !matches!(
+        name,
+        "--json"
+            | "--brief"
+            | "--confirm"
+            | "--force"
+            | "--ocr"
+            | "--is-ocr"
+            | "--no-table"
+            | "--no-formula"
+            | "--help"
+            | "-h"
+    )
 }
 
 pub fn hook_cwd(args: &[String]) -> String {

@@ -8,8 +8,23 @@ pub fn init_project(cwd: &Path) -> String {
     let ext_dir = cwd.join(".emb-agent");
     let project_json = ext_dir.join("project.json");
     if project_json.exists() {
-        return r#"{"status":"ok","initialized":false,"reason":"already initialized"}"#.to_string();
+        let env = crate::lookup::ensure_project_env(cwd);
+        return serde_json::json!({
+            "status": "ok",
+            "initialized": true,
+            "reason": "already initialized",
+            "env": {
+                "env_path": env.env_path,
+                "env_example_path": env.env_example_path,
+                "env_created": env.env_created,
+                "env_example_created": env.env_example_created,
+                "required_key": "MINERU_API_KEY",
+                "key_present": env.key_present
+            }
+        })
+        .to_string();
     }
+    let _ = crate::lookup::ensure_project_env(cwd);
 
     let _ = fs::create_dir_all(&ext_dir);
     let _ = fs::create_dir_all(ext_dir.join("tasks"));
@@ -38,7 +53,22 @@ pub fn init_project(cwd: &Path) -> String {
         "flash_flow": "",
         "developer": {"name": "", "email": ""},
         "preferences": {"truth_source_mode": "hardware_first"},
-        "hooks": {}
+        "hooks": {},
+        "integrations": {
+            "mineru": {
+                "mode": "api",
+                "base_url": "https://mineru.net",
+                "api_key": "",
+                "api_key_env": "MINERU_API_KEY",
+                "model_version": "vlm",
+                "language": "ch",
+                "enable_table": true,
+                "is_ocr": false,
+                "enable_formula": true,
+                "poll_interval_ms": 3000,
+                "timeout_ms": 300000
+            }
+        }
     });
     let _ = fs::write(
         &project_json,

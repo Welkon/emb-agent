@@ -38,6 +38,79 @@ var CANONICAL_SHELL_COMMANDS = [
 	},
 ];
 
+var RUNTIME_COMMANDS = {
+	adapter: true, arch: true, attention: true, board: true, bootstrap: true, capability: true,
+	chip: true, commands: true, component: true, compound: true, config: true, context: true,
+	debug: true, declare: true, diagnostics: true, doc: true, doctor: true, do: true,
+	executor: true, external: true, health: true, help: true, ingest: true, init: true,
+	"init-project": true, insight: true, knowledge: true, memory: true, migrate: true,
+	next: true, note: true, onboard: true, orchestrate: true, pause: true, plan: true,
+	prd: true, prefs: true, resolve: true, resume: true, review: true, scaffold: true,
+	scan: true, session: true, settings: true, skills: true, snippet: true, start: true,
+	status: true, statusline: true, support: true, task: true, tool: true, trace: true,
+	update: true, validate: true, variant: true, verify: true, workflow: true, workspace: true
+};
+function isRuntimeCommand(argv) {
+	return argv && argv.length > 0 && RUNTIME_COMMANDS[argv[0]] && argv[0] !== "update";
+}
+
+function findBundledRustBinary() {
+	var candidates = [process.env["CARGO_BIN_EXE_emb-agent-rs"], binarySrc(), path.join(REPO_ROOT, "target", "debug", "emb-agent-rs" + (process.platform === "win32" ? ".exe" : "")), path.join(REPO_ROOT, "target", "release", "emb-agent-rs" + (process.platform === "win32" ? ".exe" : ""))].filter(Boolean);
+	for (var i = 0; i < candidates.length; i++) {
+		try { if (fs.existsSync(candidates[i])) return candidates[i]; } catch (_) {}
+	}
+	return "";
+}
+
+function dispatchRuntimeCommand(argv) {
+	var rustBin = findBundledRustBinary();
+	if (!rustBin) {
+		console.error("emb-agent: Rust binary (emb-agent-rs) not found. Run `npx emb-agent --target <host> --local` or build with `cargo build --release`.");
+		process.exit(1);
+	}
+	var result = childProcess.spawnSync(rustBin, argv, {
+		cwd: process.cwd(),
+		encoding: "utf8",
+		input: readStdinIfAny(),
+		maxBuffer: 1024 * 1024,
+		stdio: ["pipe", "pipe", "pipe"]
+	});
+	if (result.error) {
+		console.error("emb-agent spawn error: " + result.error.message);
+		process.exit(1);
+	}
+	if (result.stdout) fs.writeSync(1, result.stdout);
+	if (result.stderr) fs.writeSync(2, result.stderr);
+	process.exit(typeof result.status === "number" ? result.status : 1);
+}
+
+function readStdinIfAny() {
+	if (process.stdin.isTTY) return undefined;
+	try { var input = fs.readFileSync(0); return input && input.length ? input : undefined; } catch (_) { return undefined; }
+}
+
+function ensureProjectEnvFiles(projectRoot) {
+	var content = [
+		"# emb-agent integration secrets",
+		"# Set MinerU API token for /emb:ingest doc --provider mineru.",
+		"MINERU_API_KEY=",
+		""
+	].join("\n");
+	var envExample = path.join(projectRoot, ".env.example");
+	var env = path.join(projectRoot, ".env");
+	if (!fs.existsSync(envExample)) fs.writeFileSync(envExample, content, "utf8");
+	if (!fs.existsSync(env)) fs.writeFileSync(env, content, "utf8");
+	var gitignore = path.join(projectRoot, ".gitignore");
+	var existing = "";
+	try { existing = fs.readFileSync(gitignore, "utf8"); } catch (_) {}
+	if (!existing.split(/\r?\n/).some(function (line) { return line.trim() === ".env"; })) {
+		var updated = existing.replace(/\s+$/, "");
+		if (updated) updated += "\n";
+		updated += ".env\n";
+		fs.writeFileSync(gitignore, updated, "utf8");
+	}
+}
+
 
 var SUPPORTED_HOSTS = [
 	{ name: "codex", dir: ".codex", profile: "core" },
@@ -168,6 +241,8 @@ function usage() {
 		"  npx emb-agent                            # Interactive install",
 		"  npx emb-agent --target pi                # Install for pi (experimental)",
 		"  npx emb-agent --target all               # Install for all hosts",
+		"  npx emb-agent validate                   # Run runtime command directly",
+		"  npx emb-agent health                     # Run runtime health directly",
 		"",
 		"Options:",
 		"  --target <name>   Host: codex, cursor, claude, omp, pi*, windsurf*, all (*experimental)",
@@ -348,7 +423,8 @@ function resolveIncludes(content, vars) {
 		if (fs.existsSync(incPath)) return fs.readFileSync(incPath, "utf8").trim();
 		return "<!-- missing: " + name + " -->";
 	});
-	return resolved.replace(/\{\{LANGUAGE_INSTRUCTION\}\}/g, languageBlock(values.LANGUAGE));
+	resolved = resolved.replace(/\{\{LANGUAGE_INSTRUCTION\}\}/g, languageBlock(values.LANGUAGE));
+	return applyTemplate(resolved, values);
 }
 
 function applyTemplate(content, vars) {
@@ -1111,6 +1187,7 @@ function installForHost(projectRoot, host, callback) {
 
 	logDetail("  Installing for " + host.name + " → " + hostDir);
 
+	ensureProjectEnvFiles(projectRoot);
 	ensureDir(path.join(projectRoot, "docs"));
 	ensureDir(path.join(projectRoot, "docs", "prd"));
 	ensureDir(path.join(embDir, "bin"));
@@ -1167,6 +1244,8 @@ function installForHost(projectRoot, host, callback) {
 			}
 		}
 
+		var templateVars = hostTemplateVars(projectRoot, host);
+
 		var hostShellDir = path.join(RUNTIME_SRC, "scaffolds", "shells", host.dir);
 		var configFiles = ["hooks.json", "settings.json"];
 		for (var ci = 0; ci < configFiles.length; ci++) {
@@ -1175,15 +1254,15 @@ function installForHost(projectRoot, host, callback) {
 			if (fs.existsSync(cfgSrc)) {
 				var cfgDest = path.join(hostDir, cfg);
 				if (host.name === "cursor" && cfg === "hooks.json") {
-					fs.writeFileSync(cfgDest, normalizeCursorHooksConfig(fs.readFileSync(cfgSrc, "utf8")));
+					fs.writeFileSync(cfgDest, applyTemplate(normalizeCursorHooksConfig(fs.readFileSync(cfgSrc, "utf8")), templateVars));
 				} else {
-					fs.copyFileSync(cfgSrc, cfgDest);
+					resolveAndDeploy(projectRoot, cfgSrc, cfgDest, templateVars);
 				}
 				logDetail("    " + cfg + " deployed to " + host.dir + "/");
 			}
 		}
 
-		var templateVars = { PROJECT_NAME: path.basename(projectRoot), INSTALL_DATE: new Date().toISOString().split("T")[0], LANGUAGE: readLanguagePreference(projectRoot) };
+
 		if (resolveAndDeploy(projectRoot,
 			path.join(RUNTIME_SRC, "scaffolds", "shells", "AGENTS.md"),
 			path.join(projectRoot, "AGENTS.md"),
@@ -1320,6 +1399,98 @@ function stateNames(state, key, itemKey) {
 	if (Array.isArray(state[key])) return uniqueNames(state[key]);
 	var items = Array.isArray(state[itemKey]) ? state[itemKey] : [];
 	return uniqueNames(items.map(function (item) { return item.name; }));
+}
+
+function pushUniquePath(paths, candidate) {
+	if (!candidate) return;
+	var normalized = path.resolve(candidate);
+	if (paths.indexOf(normalized) === -1) paths.push(normalized);
+}
+
+function isSupportDir(dir) {
+	try {
+		if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return false;
+		return fs.existsSync(path.join(dir, "specs")) || fs.existsSync(path.join(dir, "skills"));
+	} catch (_) { return false; }
+}
+
+function discoverLocalSupportDir(projectRoot) {
+	var candidates = [];
+	pushUniquePath(candidates, process.env.EMB_SUPPORT_DIR || "");
+	var cursor = path.resolve(projectRoot);
+	while (true) {
+		if (path.basename(cursor) === "emb-support") pushUniquePath(candidates, cursor);
+		pushUniquePath(candidates, path.join(cursor, "emb-support"));
+		var parent = path.dirname(cursor);
+		if (parent === cursor) break;
+		cursor = parent;
+	}
+	pushUniquePath(candidates, path.join(REPO_ROOT, "..", "emb-support"));
+	pushUniquePath(candidates, path.join(os.homedir(), "Projects", "emb-support"));
+	pushUniquePath(candidates, path.join(os.homedir(), "emb-support"));
+	for (var i = 0; i < candidates.length; i++) {
+		if (isSupportDir(candidates[i])) return candidates[i];
+	}
+	return null;
+}
+
+function parseFrontmatterFile(filePath) {
+	try { return parseMarkdownDocument(fs.readFileSync(filePath, "utf8")).meta || {}; }
+	catch (_) { return {}; }
+}
+
+function readLocalSupportSpecs(supportDir) {
+	var specs = [];
+	var dir = path.join(supportDir, "specs");
+	if (!fs.existsSync(dir)) return specs;
+	var files = fs.readdirSync(dir).filter(function (file) { return file.endsWith(".md") && file !== "README.md"; }).sort();
+	for (var i = 0; i < files.length; i++) {
+		var filePath = path.join(dir, files[i]);
+		var meta = parseFrontmatterFile(filePath);
+		var name = meta.name || files[i].replace(/\.md$/, "");
+		specs.push({ name: name, desc: meta.title || meta.summary || "", url: filePath });
+	}
+	return specs;
+}
+
+function readLocalSupportSkills(supportDir) {
+	var skills = [];
+	var dir = path.join(supportDir, "skills");
+	if (!fs.existsSync(dir)) return skills;
+	var entries = fs.readdirSync(dir, { withFileTypes: true }).filter(function (entry) { return entry.isDirectory(); }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+	for (var i = 0; i < entries.length; i++) {
+		var skillPath = path.join(dir, entries[i].name, "SKILL.md");
+		if (!fs.existsSync(skillPath)) continue;
+		var meta = parseFrontmatterFile(skillPath);
+		skills.push({ name: meta.name || entries[i].name, desc: meta.description || meta.summary || "", url: skillPath });
+	}
+	return skills;
+}
+
+function loadLocalSupportLists(supportDir) {
+	return { specs: readLocalSupportSpecs(supportDir), skills: readLocalSupportSkills(supportDir) };
+}
+
+function supportItemsByName(items) {
+	var byName = {};
+	for (var i = 0; i < items.length; i++) byName[items[i].name] = items[i];
+	return byName;
+}
+
+function selectedSupportStateFromNames(projectRoot, specNames, skillNames) {
+	var specs = uniqueNames(specNames || []);
+	var skills = uniqueNames(skillNames || []);
+	if (specs.length === 0 && skills.length === 0) return { specItems: [], skillItems: [], specs: specs, skills: skills };
+	var supportDir = discoverLocalSupportDir(projectRoot);
+	var local = supportDir ? loadLocalSupportLists(supportDir) : { specs: [], skills: [] };
+	var specsByName = supportItemsByName(local.specs);
+	var skillsByName = supportItemsByName(local.skills);
+	return {
+		specItems: specs.map(function (name) { return specsByName[name] || { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }),
+		skillItems: skills.map(function (name) { return skillsByName[name] || { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }),
+		specs: specs,
+		skills: skills
+	};
 }
 
 function readSpecDoc(projectRoot, name) {
@@ -1587,6 +1758,7 @@ function fetchSkillListFromGitHub(callback) {
 // ── CLI ───────────────────────────────────────────────────────────
 
 function main(argv) {
+	if (isRuntimeCommand(argv)) { dispatchRuntimeCommand(argv); return; }
 	var args = parseArgs(argv);
 
 	if (args.help) { usage(); return; }
@@ -1622,7 +1794,7 @@ function main(argv) {
 		return;
 	}
 	if (args.target === "all") {
-		var selectedStateAll = { specItems: args.specs.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }), skillItems: args.skills.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }), specs: args.specs, skills: args.skills };
+		var selectedStateAll = selectedSupportStateFromNames(projectRoot, args.specs, args.skills);
 		var allHosts = scopedHosts(requestedHosts, cliScope);
 		console.log(renderInstallPlan(projectRoot, allHosts, { mode: args.mode, scope: cliScope, lang: args.lang, developer: args.developer, specs: args.specs, skills: args.skills, compact: !args.dryRun }));
 		if (args.dryRun) return;
@@ -1647,7 +1819,7 @@ function main(argv) {
 		console.log(renderInstallPlan(projectRoot, oneHosts, { mode: args.mode, scope: cliScope, lang: args.lang, developer: args.developer, specs: args.specs, skills: args.skills, compact: !args.dryRun }));
 		if (args.dryRun) return;
 		installForHost(projectRoot, host, function (done) {
-			var selectedState = { specItems: args.specs.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/specs/" + name + ".md" }; }), skillItems: args.skills.map(function (name) { return { name: name, url: "https://raw.githubusercontent.com/Welkon/emb-support/main/skills/" + name + "/SKILL.md" }; }), specs: args.specs, skills: args.skills };
+			var selectedState = selectedSupportStateFromNames(projectRoot, args.specs, args.skills);
 			materializeSelectedSupport(projectRoot, host, selectedState, function () {
 				updateProjectActiveSpecs(projectRoot, args.specs);
 				injectSelectedSupport(projectRoot, host, selectedState);
@@ -1661,38 +1833,14 @@ function main(argv) {
 		var readline = require("readline");
 		var state = { host: null, developer: "developer", lang: "en" };
 
-		// Scan local emb-support or fetch from GitHub
-		var supportDir = null;
-		var candidates = [path.join(projectRoot, "..", "emb-support"), path.join(os.homedir(), "Projects", "emb-support"), path.join(os.homedir(), "emb-support")];
-		for (var ci = 0; ci < candidates.length; ci++) { if (fs.existsSync(candidates[ci])) { supportDir = candidates[ci]; break; } }
-
+		// Scan local emb-support or fetch from GitHub.
+		var supportDir = discoverLocalSupportDir(projectRoot);
 		var extSpecs = [], extSkills = [];
 		function scanLocal() {
 			if (!supportDir) return;
-			var sd = path.join(supportDir, "specs");
-			if (fs.existsSync(sd)) {
-				var sf = fs.readdirSync(sd).filter(function(f) { return f.endsWith(".md") && f !== "README.md"; });
-				for (var si = 0; si < sf.length; si++) {
-					var raw = fs.readFileSync(path.join(sd, sf[si]), "utf8");
-					var m = raw.match(/^---\n([\s\S]*?)\n---/); if (!m) continue;
-					var fm = {}, lines = m[1].split("\n");
-					for (var li = 0; li < lines.length; li++) { var kv = lines[li].split(":"); if (kv.length >= 2) fm[kv[0].trim()] = kv.slice(1).join(":").trim(); }
-					extSpecs.push({ name: fm.name || sf[si].replace(".md",""), desc: fm.title || fm.summary || "", url: path.join(sd, sf[si]) });
-				}
-			}
-			var kd = path.join(supportDir, "skills");
-			if (fs.existsSync(kd)) {
-				var df = fs.readdirSync(kd, { withFileTypes: true }).filter(function(d) { return d.isDirectory(); });
-				for (var di = 0; di < df.length; di++) {
-					var sk = path.join(kd, df[di].name, "SKILL.md");
-					if (!fs.existsSync(sk)) continue;
-					var raw = fs.readFileSync(sk, "utf8");
-					var m = raw.match(/^---\n([\s\S]*?)\n---/); if (!m) continue;
-					var fm = {}, lines = m[1].split("\n");
-					for (var li = 0; li < lines.length; li++) { var kv = lines[li].split(":"); if (kv.length >= 2) fm[kv[0].trim()] = kv.slice(1).join(":").trim(); }
-					extSkills.push({ name: df[di].name, desc: (fm.description || "").replace(/^"/,"").replace(/"$/,""), url: sk });
-				}
-			}
+			var supportLists = loadLocalSupportLists(supportDir);
+			extSpecs = supportLists.specs;
+			extSkills = supportLists.skills;
 		}
 
 		function externalSourceLabel() {
