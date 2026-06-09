@@ -575,8 +575,10 @@ fn build_next_agent_protocol_with_policy(
                 "system_prd_path": "docs/prd/system.md",
                 "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
                 "preprocessing": [
-                    "0a. ensure tools current: `uv tool upgrade graphifyy 2>/dev/null; uv tool upgrade markitdown 2>/dev/null` (no-op if current).",
-                    "0b. refresh code graph: `/graphify . --update` (AST-only, no LLM).",
+                    "0a. ensure tools current: `uv tool upgrade graphifyy markitdown 2>/dev/null`. Install headroom MCP server if missing: `uv tool list 2>/dev/null | grep -q headroom-ai || uv tool install 'headroom-ai[all]'`.",
+                    "0b. start headroom MCP: `headroom mcp install` registers compress/retrieve tools. Run `headroom proxy --port 8787` in background (one per project).",
+                    "0c. refresh code graph: `/graphify . --update` (AST-only, no LLM).",
+                    "0d. compress large outputs: before reading graphify reports, markitdown manuals, or turbovec results, call MCP tool `headroom_compress` to reduce token usage 60-95%. LLM can retrieve original detail via `headroom_retrieve`.",
                 ],
                 "workflow_steps": [
                     "1. read system PRD, hw.yaml, req.yaml, and cached MCU manual markdown. If turbovec index built, semantic-search it.",
