@@ -286,7 +286,7 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
     } else if snapshot.recommended_command == "prd-breakdown" {
         (
             "prd-breakdown".to_string(),
-            "System PRD exists but no child execution PRDs or open tasks exist. Read docs/prd/system.md, present suggested vertical slices, create child PRDs under docs/prd/tasks|features|modules|components|subsystems, run validate/health, then wait for explicit agreement.".to_string(),
+            "System PRD exists but no child execution PRDs or open tasks exist. First: read hw.yaml, req.yaml, MCU manual, and vendor examples; analyze constraints (ROM/RAM, real-time, peripherals, power); propose the best program framework with reasoning; wait for agreement. Then: create a program-framework task PRD. Finally: present functional vertical slice candidates; create each only after user confirms.".to_string(),
         )
     } else if snapshot.recommended_command == "choose-work" || snapshot.open_tasks > 0 {
         (
@@ -349,7 +349,7 @@ pub fn build_next_json_with_tasks_and_policy(
     } else if snapshot.recommended_command == "prd-breakdown" {
         (
             "prd-breakdown",
-            "System PRD exists but no child execution PRDs or open tasks exist. Read docs/prd/system.md, present `prd_task_candidates`, create vertical child PRDs under docs/prd/tasks|features|modules|components|subsystems, run the installed emb-agent runtime's validate or health command after PRD edits, and wait for explicit agreement before task add, activation, scan, plan, or do.",
+            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until the user confirms each step. Step 1: read docs/prd/system.md, hw.yaml, req.yaml, MCU manual, vendor examples; analyze ROM/RAM/real-time/peripheral/power constraints; propose the best program framework with reasoning; wait for agreement. Step 2: create a program-framework task PRD (P0) defining main loop, ISR topology, peripheral init order, sleep/wake policy. Step 3: present functional vertical slice candidates from prd_task_candidates; create each only after user confirms the list. Run validate/health after PRD edits.",
         )
     } else if snapshot.recommended_command == "choose-work" || snapshot.open_tasks > 0 {
         (
@@ -538,12 +538,19 @@ fn build_next_agent_protocol_with_policy(
             "gate": {
                 "kind": "prd-breakdown",
                 "blocking": true,
-                "method": "system-prd-to-child-prds",
+                "method": "analyze-constraints-propose-framework-then-slice",
                 "system_prd_path": "docs/prd/system.md",
                 "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
-                "allowed_actions": ["read_system_prd", "present_prd_task_candidates", "create_vertical_child_prds", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits", "wait_for_explicit_user_agreement"],
-                "forbidden_actions": ["ask_user_for_blank_task_when_system_prd_has_candidates", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health"],
-                "recommended_command": "/emb-next"
+                "workflow_steps": [
+                    "1. read system PRD, hw.yaml, req.yaml, MCU datasheet/manual, and vendor examples",
+                    "2. analyze constraints: ROM/RAM budget, real-time deadlines, peripheral complexity (ADC/PWM/timers/gpio), power/sleep requirements, ISR nesting needs",
+                    "3. determine the best program framework: bare-metal state-machine, RTOS (FreeRTOS/uCOS/RT-Thread), cooperative time-slice scheduler, or vendor SDK framework",
+                    "4. present your analysis and framework recommendation to the user with concrete trade-off reasoning; wait for explicit agreement",
+                    "5. after agreement, create a program-framework task PRD (P0) under docs/prd/tasks/ that defines: main loop structure, ISR topology, peripheral init order, sleep/wake policy, and build system skeleton",
+                    "6. then present prd_task_candidates for functional vertical slices (P2); create each only after user confirms the slice list"
+                ],
+                "allowed_actions": ["read_system_prd", "read_hardware_truth", "read_mcu_manual_and_examples", "analyze_constraints", "propose_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
+                "forbidden_actions": ["create_any_files_before_user_agreement", "start_functional_implementation_before_framework", "present_functional_slices_before_framework_agreement", "guess_framework_without_analyzing_constraints", "ask_user_to_choose_framework_without_recommendation", "ask_user_for_blank_task_when_system_prd_has_candidates", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health"],
             }
         })
         .to_string();
