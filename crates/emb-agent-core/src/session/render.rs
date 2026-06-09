@@ -580,9 +580,9 @@ fn build_next_agent_protocol_with_policy(
                 ],
                 "workflow_steps": [
                     "1. read system PRD, hw.yaml, req.yaml, and cached MCU manual markdown. If turbovec index built, semantic-search it.",
-                    "2. query graphify: `/graphify query \"main loop and ISR handlers\"`, `/graphify query \"peripheral init order\"`, or read `graphify-out/GRAPH_REPORT.md`.",
-                    "3. analyze constraints: ROM/RAM, real-time, peripheral complexity, power/sleep.",
-                    "4. determine framework: bare-metal state-machine, RTOS, cooperative scheduler, or vendor SDK.",
+                    "2. query graphify for code architecture. OUTPUT REQUIREMENT: cite at least 3 specific code entities (function names, file paths, module names) that graphify surfaced. Do NOT fabricate — if graphify found nothing useful, state that explicitly.",
+                    "3. analyze constraints: ROM/RAM, real-time, peripheral complexity, power/sleep. OUTPUT REQUIREMENT: cite specific register names or bit fields from the manual (step 1) for each constraint.",
+                    "4. determine framework. OUTPUT REQUIREMENT: justify choice with concrete evidence from graphify + manual, not general reasoning.",
                     "5. present analysis + recommendation with trade-offs; wait for user agreement.",
                     "6. create P0 framework task PRD under docs/prd/tasks/.",
                     "7. present P2 vertical slice candidates; create only after user confirms."
