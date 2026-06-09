@@ -369,6 +369,69 @@ pub fn build_next_json_with_tasks_and_policy(
         )
     };
 
+
+fn build_env_status(snapshot: &ProjectSnapshot) -> Value {
+    let root = Path::new(&snapshot.project_root);
+    let env_path = root.join(".env");
+    let content = std::fs::read_to_string(&env_path).unwrap_or_default();
+    let has_key = |name: &str| -> bool {
+        content
+            .lines()
+            .any(|l| l.starts_with(name) && l.contains('=') && l.split('=').nth(1).map_or(false, |v| !v.trim().is_empty()))
+    };
+    json!({
+        "env_file_exists": env_path.is_file(),
+        "graphify_keys": {
+            "gemini": has_key("GEMINI_API_KEY"),
+            "deepseek": has_key("DEEPSEEK_API_KEY"),
+            "ollama": has_key("OLLAMA_BASE_URL"),
+            "openai": has_key("OPENAI_API_KEY"),
+        },
+        "mineru_key": has_key("MINERU_API_KEY"),
+        "source_env_cmd": "set -a && source .env && set +a",
+    })
+}
+
+fn build_graph_health(snapshot: &ProjectSnapshot) -> Value {
+    let graph_path = Path::new(&snapshot.project_root).join("graphify-out/graph.json");
+    if !graph_path.is_file() {
+        return json!({"status": "missing", "hint": "run `graphify .` to build"});
+    }
+    let Ok(content) = std::fs::read_to_string(&graph_path) else {
+        return json!({"status": "unreadable"});
+    };
+    let Ok(g) = serde_json::from_str::<Value>(&content) else {
+        return json!({"status": "invalid_json"});
+    };
+    let nodes = g.get("nodes").and_then(|n| n.as_array()).map(|a| a.len()).unwrap_or(0);
+    let communities = g.get("graph").and_then(|g| g.as_object()).map(|o| o.len()).unwrap_or(0);
+    let mut noise = 0u64;
+    if let Some(arr) = g.get("nodes").and_then(|n| n.as_array()) {
+        for n in arr {
+            let sf = n.get("source_file").and_then(|v| v.as_str()).unwrap_or("");
+            if sf.starts_with(".emb-agent/bin")
+                || sf.starts_with(".emb-agent/command-docs")
+                || sf.starts_with(".emb-agent/agents")
+                || sf.starts_with(".codex/")
+                || sf.starts_with(".claude/")
+                || sf.starts_with(".cursor/")
+                || sf.starts_with(".omp/")
+            {
+                noise += 1;
+            }
+        }
+    }
+    let noise_pct = if nodes > 0 { noise * 100 / nodes as u64 } else { 0 };
+    json!({
+        "status": if noise_pct > 50 { "noisy" } else if nodes == 0 { "empty" } else { "clean" },
+        "nodes": nodes,
+        "noise_nodes": noise,
+        "noise_pct": noise_pct,
+        "communities": communities,
+        "hint": if noise_pct > 50 { ".graphifyignore may be missing — run `emb init` or create one excluding .emb-agent/ runtime" } else { "" }
+    })
+}
+
     let active_task = json_value_or_null(&build_task_json(snapshot));
     let language_instruction = response_language_instruction(&snapshot.language);
     let routed_tasks = if !snapshot.prd_task_candidates.is_empty() && tasks.is_empty() {
@@ -412,11 +475,13 @@ pub fn build_next_json_with_tasks_and_policy(
         "truth_validation_errors": snapshot.truth_validation_errors,
         "truth_validation_summary": truth_errors_summary,
         "firmware_manual_required": snapshot.firmware_manual_required,
+        "env": build_env_status(snapshot),
+        "graph_health": build_graph_health(snapshot),
     });
-    if let Some(policy) = worktree_policy
-        && let Some(obj) = payload.as_object_mut()
-    {
-        obj.insert("worktree_policy".to_string(), worktree_policy_json(policy));
+    if let Some(policy) = worktree_policy {
+        if let Some(obj) = payload.as_object_mut() {
+            obj.insert("worktree_policy".to_string(), worktree_policy_json(policy));
+        }
     }
     serde_json::to_string(&payload).unwrap_or_default()
 }
@@ -657,6 +722,7 @@ fn walkdir_first_file(root: &Path, ext: &str) -> bool {
 fn json_value_or_null(source: &str) -> Value {
     serde_json::from_str(source).unwrap_or(Value::Null)
 }
+
 
 pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
     let active_task_name = snapshot
