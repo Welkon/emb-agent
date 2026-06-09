@@ -7,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const MINERU_BASE_URL: &str = "https://mineru.net";
-const ENV_EXAMPLE: &str = "# emb-agent integration secrets\n# Set MinerU API token for /emb:ingest doc --provider mineru.\nMINERU_API_KEY=\n";
+const ENV_EXAMPLE: &str = "# emb-agent integration secrets\n#\n# MinerU — PDF parsing API\nMINERU_API_KEY=\n#\n# Graphify — only needed if you want LLM-powered doc/PDF semantic extraction.\n# Code-only graph extraction is free (AST, local) and needs no key.\n# Pick one backend; if unset, graphify skips doc extraction and works code-only:\n# GEMINI_API_KEY=       # free tier available\n# DEEPSEEK_API_KEY=     # alternative for Chinese datasheets\n# OLLAMA_BASE_URL=http://localhost:11434  # fully local, no API key\n";
 const DEFAULT_LANGUAGE: &str = "ch";
 const DEFAULT_MODEL_VERSION: &str = "vlm";
 const DEFAULT_POLL_INTERVAL_MS: u64 = 3_000;
