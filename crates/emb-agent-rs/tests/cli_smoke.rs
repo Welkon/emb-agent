@@ -834,6 +834,19 @@ fn system_prd_without_child_prds_routes_to_prd_breakdown() {
         "# System PRD\n\n## Behaviors\n\n- Firmware controls the motor with PWM soft-start.\n- SKEY is a continuous safety interlock.\n- Low-voltage cutoff stops the motor and flashes red.\n\n## Acceptance Evidence\n\n- Verify boot, run, stop, and fault states.\n",
     )
     .expect("write system prd");
+    // Hard constraint: preflight-tools gate checks for graphify graph and parsed MCU manual.
+    fs::create_dir_all(project.path().join("graphify-out")).expect("create graphify-out");
+    fs::write(
+        project.path().join("graphify-out/graph.json"),
+        r#"{"nodes":[],"edges":[]}"#,
+    )
+    .expect("write graph stub");
+    fs::create_dir_all(project.path().join(".emb-agent/cache/docs/mock")).expect("create doc cache");
+    fs::write(
+        project.path().join(".emb-agent/cache/docs/mock/parse.md"),
+        "# Mock MCU Manual",
+    )
+    .expect("write manual stub");
 
     let next = run(&project, &["next", "--brief"]);
     let value: serde_json::Value = serde_json::from_str(&next).expect("next json");

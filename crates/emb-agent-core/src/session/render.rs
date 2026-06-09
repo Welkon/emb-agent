@@ -2,6 +2,7 @@ use crate::hardware::project::{ProjectSnapshot, TaskSnapshot};
 use crate::json::json_quote;
 use crate::task::{WorktreePolicy, worktree_policy_json};
 use serde_json::{Value, json};
+use std::path::Path;
 
 fn response_language_instruction(language: &str) -> &'static str {
     match language.trim().to_ascii_lowercase().as_str() {
@@ -538,6 +539,34 @@ fn build_next_agent_protocol_with_policy(
         .to_string();
     }
     if action == "prd-breakdown" {
+        let graph_path = Path::new(&snapshot.project_root).join("graphify-out/graph.json");
+        let graph_exists = graph_path.is_file();
+        let manual_parsed = manual_cached_or_parsed(snapshot);
+        if !graph_exists || !manual_parsed {
+            let mut required: Vec<&str> = Vec::new();
+            if !graph_exists {
+                required.push("build knowledge graph: `uv tool upgrade graphifyy 2>/dev/null; uv tool list | grep -q graphifyy || uv tool install graphifyy; graphify install --project; /graphify .`");
+            }
+            if !manual_parsed {
+                required.push("parse MCU manual: `uv tool upgrade markitdown 2>/dev/null; uv tool list | grep -q markitdown || uv tool install 'markitdown[all]'; markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md` — if image-heavy, fall back to mineru");
+            }
+            return json!({
+                "gate": {
+                    "kind": "preflight-tools",
+                    "blocking": true,
+                    "method": "ensure-external-tools-ready-before-prd-breakdown",
+                    "checks": {
+                        "graphify_graph": graph_exists,
+                        "mcum_manual_parsed": manual_parsed
+                    },
+                    "required_actions": required,
+                    "forbidden_actions": ["proceed_to_prd_breakdown_without_tools_ready", "skip_graph_build", "skip_manual_parsing", "read_raw_pdf_without_conversion"],
+                    "completion_condition": "Both graphify-out/graph.json and cached MCU manual markdown exist. Then re-run `emb next`.",
+                }
+            })
+            .to_string();
+        }
+        // Tools ready — proceed to actual prd-breakdown
         return json!({
             "gate": {
                 "kind": "prd-breakdown",
@@ -546,27 +575,46 @@ fn build_next_agent_protocol_with_policy(
                 "system_prd_path": "docs/prd/system.md",
                 "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
                 "preprocessing": [
-                    "0a. ensure tools are current: `uv tool upgrade graphifyy 2>/dev/null; uv tool upgrade markitdown 2>/dev/null` (checks updates, no-op if current). Then `uv tool list 2>/dev/null | grep -q graphifyy || uv tool install graphifyy` and `uv tool list 2>/dev/null | grep -q markitdown || uv tool install 'markitdown[all]'`. `graphify install --project` to register skill. All one-time; skip if already done.",
-                    "0b. build/refresh code graph: if `graphify-out/graph.json` missing, run `/graphify .`. If stale, run `/graphify . --update` (AST-only, no LLM).",
-                    "0c. convert PDFs: `markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md`. Quality: <500 lines or garbled → image-heavy → mineru fallback if key set.",
-                    "0d. [EXPERIMENTAL] if TURBOVEC_ENABLED=true: turbovec+fastembed via uv on-demand: `uv run --with turbovec --with fastembed python3 -c \"from fastembed import TextEmbedding; from turbovec import TurboQuantIndex; ...\"` (uv auto-fetches latest, caches ~100MB globally). Build index at `.emb-agent/cache/turbovec/`. Skip if TURBOVEC_ENABLED=false.",
+                    "0a. ensure tools current: `uv tool upgrade graphifyy 2>/dev/null; uv tool upgrade markitdown 2>/dev/null` (no-op if current).",
+                    "0b. refresh code graph: `/graphify . --update` (AST-only, no LLM).",
                 ],
                 "workflow_steps": [
-                    "1. read system PRD, hw.yaml, req.yaml, and the cached `.emb-agent/cache/docs/<chip>_manual.md` (or mineru-parsed result if available). If turbovec index is built, semantic-search the manual for relevant register specs and constraints.",
-                    "2. query the graphify knowledge graph for code architecture (call chains, module dependencies, framework patterns) — use `/graphify query \"...\"` or read `graphify-out/GRAPH_REPORT.md` for god nodes and surprising connections.",
-                    "3. analyze constraints: ROM/RAM budget, real-time deadlines, peripheral complexity (ADC/PWM/timers/gpio), power/sleep requirements, ISR nesting needs.",
-                    "4. determine the best program framework: bare-metal state-machine, RTOS (FreeRTOS/uCOS/RT-Thread), cooperative time-slice scheduler, or vendor SDK framework.",
-                    "5. present your analysis and framework recommendation to the user with concrete trade-off reasoning; wait for explicit agreement.",
-                    "6. after agreement, create a program-framework task PRD (P0) under docs/prd/tasks/ that defines: main loop structure, ISR topology, peripheral init order, sleep/wake policy, and build system skeleton.",
-                    "7. then present prd_task_candidates for functional vertical slices (P2); create each only after user confirms the slice list."
+                    "1. read system PRD, hw.yaml, req.yaml, and cached MCU manual markdown. If turbovec index built, semantic-search it.",
+                    "2. query graphify: `/graphify query \"main loop and ISR handlers\"`, `/graphify query \"peripheral init order\"`, or read `graphify-out/GRAPH_REPORT.md`.",
+                    "3. analyze constraints: ROM/RAM, real-time, peripheral complexity, power/sleep.",
+                    "4. determine framework: bare-metal state-machine, RTOS, cooperative scheduler, or vendor SDK.",
+                    "5. present analysis + recommendation with trade-offs; wait for user agreement.",
+                    "6. create P0 framework task PRD under docs/prd/tasks/.",
+                    "7. present P2 vertical slice candidates; create only after user confirms."
                 ],
-                "allowed_actions": ["install_graphify_if_missing", "install_markitdown_if_missing", "build_or_refresh_graphify_graph", "convert_pdf_with_markitdown", "read_system_prd", "read_hardware_truth", "query_graphify_for_architecture", "analyze_constraints", "propose_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
-                "forbidden_actions": ["create_any_files_before_user_agreement", "start_functional_implementation_before_framework", "present_functional_slices_before_framework_agreement", "guess_framework_without_analyzing_constraints", "ask_user_to_choose_framework_without_recommendation", "ask_user_for_blank_task_when_system_prd_has_candidates", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health", "read_raw_pdf_without_conversion"],
+                "allowed_actions": ["read_system_prd", "read_hardware_truth", "query_graphify_for_architecture", "analyze_constraints", "propose_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
+                "forbidden_actions": ["create_any_files_before_user_agreement", "start_functional_implementation_before_framework", "present_functional_slices_before_framework_agreement", "guess_framework_without_analyzing_constraints", "ask_user_to_choose_framework_without_recommendation", "ask_user_for_blank_task_when_system_prd_has_candidates", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health"],
             }
         })
         .to_string();
     }
     "{\"gate\":{\"kind\":\"none\",\"blocking\":false}}".to_string()
+}
+
+/// Returns true if any MCU manual markdown or mineru parse.md exists in cache/docs/.
+fn manual_cached_or_parsed(snapshot: &ProjectSnapshot) -> bool {
+    let cache = Path::new(&snapshot.project_root).join(".emb-agent/cache/docs");
+    if !cache.is_dir() {
+        return false;
+    }
+    match std::fs::read_dir(&cache) {
+        Ok(entries) => entries
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                let path = e.path();
+                if path.is_dir() {
+                    path.join("parse.md").is_file()
+                } else {
+                    path.extension().map_or(false, |ext| ext == "md")
+                }
+            }),
+        Err(_) => false,
+    }
 }
 
 fn json_value_or_null(source: &str) -> Value {
