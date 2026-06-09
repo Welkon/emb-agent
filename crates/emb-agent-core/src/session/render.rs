@@ -574,16 +574,12 @@ fn build_next_agent_protocol_with_policy(
         }
         return json!({
             "gate": {
-                "kind": "prd-breakdown",
-                "blocking": true,
-                "method": "analyze-constraints-propose-framework-then-slice",
-                "system_prd_path": "docs/prd/system.md",
-                "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
                 "preprocessing": [
-                    "0a. ensure tools current: `uv tool upgrade graphifyy markitdown 2>/dev/null`. Install headroom MCP server if missing: `uv tool list 2>/dev/null | grep -q headroom-ai || uv tool install 'headroom-ai[all]'`.",
-                    "0b. start headroom MCP: `headroom mcp install` registers compress/retrieve tools. Run `headroom proxy --port 8787` in background (one per project).",
-                    "0c. refresh code graph: `/graphify . --update` (AST-only, no LLM).",
-                    "0d. compress large outputs: before reading graphify reports, markitdown manuals, or turbovec results, call MCP tool `headroom_compress` to reduce token usage 60-95%. LLM can retrieve original detail via `headroom_retrieve`.",
+                    "0a. ensure tools current: `uv tool upgrade graphifyy markitdown 2>/dev/null`. Install if missing: `uv tool list | grep -q graphifyy || uv tool install 'graphifyy[openai]'` (openai extra needed for DeepSeek/OpenAI backends). `uv tool list | grep -q markitdown || uv tool install 'markitdown[all]'`.",
+                    "0b. load API keys from .env: `set -a; source .env 2>/dev/null; set +a` (graphify reads GEMINI_API_KEY/DEEPSEEK_API_KEY from environment, not .env file).",
+                    "0c. remove stale .graphifyignore if present: `rm -f .graphifyignore` (may have been left by earlier runs and blocks all scanning).",
+                    "0d. refresh graph: `/graphify . --update` (incremental, AST+LLM). If no graph exists, build full: `/graphify .` then `/graphify cluster-only .` for community report.",
+                    "0e. [optional] start headroom MCP for output compression: `uv tool list | grep -q headroom-ai || uv tool install 'headroom-ai[all]'; headroom mcp install`. Before feeding large graph/manual outputs to LLM, call `headroom_compress` MCP tool (60-95% fewer tokens).",
                 ],
                 "workflow_steps": [
                     "1. read system PRD, hw.yaml, req.yaml, and cached MCU manual markdown. If turbovec index built, semantic-search it.",
