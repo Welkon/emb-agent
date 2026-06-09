@@ -539,15 +539,20 @@ fn build_next_agent_protocol_with_policy(
         .to_string();
     }
     if action == "prd-breakdown" {
-        let graph_path = Path::new(&snapshot.project_root).join("graphify-out/graph.json");
+        let project_root = Path::new(&snapshot.project_root);
+        let graph_path = project_root.join("graphify-out/graph.json");
         let graph_exists = graph_path.is_file();
         let manual_parsed = manual_cached_or_parsed(snapshot);
-        if !graph_exists || !manual_parsed {
+        let has_code = has_source_files(project_root);
+        // Graph is only required if project has source code. Pre-firmware projects (no .c/.h/.rs) skip this check.
+        let graph_required = has_code && !graph_exists;
+        let manual_required = !manual_parsed;
+        if graph_required || manual_required {
             let mut required: Vec<&str> = Vec::new();
-            if !graph_exists {
+            if graph_required {
                 required.push("build knowledge graph: `uv tool upgrade graphifyy 2>/dev/null; uv tool list | grep -q graphifyy || uv tool install graphifyy; graphify install --project; /graphify .`");
             }
-            if !manual_parsed {
+            if manual_required {
                 required.push("parse MCU manual: `uv tool upgrade markitdown 2>/dev/null; uv tool list | grep -q markitdown || uv tool install 'markitdown[all]'; markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md` — if image-heavy, fall back to mineru");
             }
             return json!({
@@ -556,17 +561,17 @@ fn build_next_agent_protocol_with_policy(
                     "blocking": true,
                     "method": "ensure-external-tools-ready-before-prd-breakdown",
                     "checks": {
-                        "graphify_graph": graph_exists,
-                        "mcum_manual_parsed": manual_parsed
+                        "graphify_graph": graph_exists || !has_code,
+                        "mcum_manual_parsed": manual_parsed,
+                        "has_source_code": has_code
                     },
                     "required_actions": required,
                     "forbidden_actions": ["proceed_to_prd_breakdown_without_tools_ready", "skip_graph_build", "skip_manual_parsing", "read_raw_pdf_without_conversion"],
-                    "completion_condition": "Both graphify-out/graph.json and cached MCU manual markdown exist. Then re-run `emb next`.",
+                    "completion_condition": if has_code { "graphify-out/graph.json and cached MCU manual markdown exist. Then re-run `emb next`." } else { "Cached MCU manual markdown exists. Then re-run `emb next`." },
                 }
             })
             .to_string();
         }
-        // Tools ready — proceed to actual prd-breakdown
         return json!({
             "gate": {
                 "kind": "prd-breakdown",
@@ -605,18 +610,47 @@ fn manual_cached_or_parsed(snapshot: &ProjectSnapshot) -> bool {
         return false;
     }
     match std::fs::read_dir(&cache) {
-        Ok(entries) => entries
-            .filter_map(|e| e.ok())
-            .any(|e| {
-                let path = e.path();
-                if path.is_dir() {
-                    path.join("parse.md").is_file()
-                } else {
-                    path.extension().map_or(false, |ext| ext == "md")
-                }
-            }),
+        Ok(entries) => entries.filter_map(|e| e.ok()).any(|e| {
+            let path = e.path();
+            if path.is_dir() {
+                path.join("parse.md").is_file()
+            } else {
+                path.extension().map_or(false, |ext| ext == "md")
+            }
+        }),
         Err(_) => false,
     }
+}
+
+/// Returns true if any source files exist (C, header, Rust, Python, assembly).
+fn has_source_files(project_root: &Path) -> bool {
+    let extensions = ["c", "h", "rs", "py", "cpp", "hpp", "s", "asm", "S"];
+    for ext in &extensions {
+        if walkdir_first_file(project_root, ext) {
+            return true;
+        }
+    }
+    false
+}
+
+fn walkdir_first_file(root: &Path, ext: &str) -> bool {
+    use std::fs;
+    let Ok(entries) = fs::read_dir(root) else { return false };
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_dir() {
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            if name.starts_with('.') || name == "node_modules" || name == "target" {
+                continue;
+            }
+            if walkdir_first_file(&path, ext) {
+                return true;
+            }
+        } else if path.extension().map_or(false, |e| e == ext) {
+            return true;
+        }
+    }
+    false
 }
 
 fn json_value_or_null(source: &str) -> Value {
