@@ -350,7 +350,7 @@ pub fn build_next_json_with_tasks_and_policy(
     } else if snapshot.recommended_command == "prd-breakdown" {
         (
             "prd-breakdown",
-            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until user confirms. TOOL USE: read docs/prd/system.md, hw.yaml, req.yaml, graphify-out/GRAPH_REPORT.md. For MCU specs: query graphify for register/peripheral details — NEVER read the full cached manual. If graph_health.turbovec_index is true, semantic-search is available as an experimental bonus. Step 1: analyze constraints (ROM/RAM/real-time/peripheral/power) using graph evidence; propose framework with register-level citations; wait for agreement. Step 2: create P0 framework PRD. Step 3: present P2 slices; create after confirm. Output must cite graph entities and register names — no fabricating.",
+            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until user confirms. TOOL USE: read docs/prd/system.md, hw.yaml, req.yaml, graphify-out/GRAPH_REPORT.md. For MCU specs, use targeted evidence only: first use `doc lookup --keyword <register/peripheral>` or a semantic/turbovec query when `graph_health.turbovec_index=true`; otherwise search cached manual markdown for exact headings/register names and read only narrow line ranges. NEVER read the full cached manual. Step 1: analyze constraints (ROM/RAM/real-time/peripheral/power) using graph/manual evidence; propose framework with register-level citations; wait for agreement. Step 2: create P0 framework PRD. Step 3: present P2 slices; create after confirm. Output must cite graph entities and register names — no fabricating.",
         )
     } else if snapshot.recommended_command == "choose-work" || snapshot.open_tasks > 0 {
         (
@@ -368,52 +368,6 @@ pub fn build_next_json_with_tasks_and_policy(
             snapshot.task_intake_summary.as_str(),
         )
     };
-
-
-
-
-fn build_graph_health(snapshot: &ProjectSnapshot) -> Value {
-    let graph_path = Path::new(&snapshot.project_root).join("graphify-out/graph.json");
-    if !graph_path.is_file() {
-        return json!({"status": "missing", "hint": "run `graphify .` to build"});
-    }
-    let Ok(content) = std::fs::read_to_string(&graph_path) else {
-        return json!({"status": "unreadable"});
-    };
-    let Ok(g) = serde_json::from_str::<Value>(&content) else {
-        return json!({"status": "invalid_json"});
-    };
-    let nodes = g.get("nodes").and_then(|n| n.as_array()).map(|a| a.len()).unwrap_or(0);
-    let communities = g.get("graph").and_then(|g| g.as_object()).map(|o| o.len()).unwrap_or(0);
-    let mut noise = 0u64;
-    if let Some(arr) = g.get("nodes").and_then(|n| n.as_array()) {
-        for n in arr {
-            let sf = n.get("source_file").and_then(|v| v.as_str()).unwrap_or("");
-            if sf.starts_with(".emb-agent/bin")
-                || sf.starts_with(".emb-agent/command-docs")
-                || sf.starts_with(".emb-agent/agents")
-                || sf.starts_with(".codex/")
-                || sf.starts_with(".claude/")
-                || sf.starts_with(".cursor/")
-                || sf.starts_with(".omp/")
-            {
-                noise += 1;
-            }
-        }
-    }
-    let noise_pct = if nodes > 0 { noise * 100 / nodes as u64 } else { 0 };
-    let tv_dir = Path::new(&snapshot.project_root).join(".emb-agent/cache/turbovec");
-    let has_turbovec = tv_dir.is_dir() && std::fs::read_dir(&tv_dir).map_or(false, |mut d| d.any(|e| e.map_or(false, |e| e.path().extension().map_or(false, |x| x == "tq"))));
-    json!({
-        "status": if noise_pct > 50 { "noisy" } else if nodes == 0 { "empty" } else { "clean" },
-        "nodes": nodes,
-        "noise_nodes": noise,
-        "noise_pct": noise_pct,
-        "communities": communities,
-        "turbovec_index": has_turbovec,
-        "hint": if noise_pct > 50 { ".graphifyignore may be missing — run `emb init` or create one excluding .emb-agent/ runtime" } else { "" }
-    })
-}
 
     let active_task = json_value_or_null(&build_task_json(snapshot));
     let language_instruction = response_language_instruction(&snapshot.language);
@@ -634,9 +588,10 @@ fn build_next_agent_protocol_with_policy(
                     "0e. [optional] headroom MCP: `uv tool list | grep -q headroom-ai || uv tool install 'headroom-ai[all]'; headroom mcp install`. Use `headroom_compress` before feeding large outputs to LLM.",
                 ],
                 "workflow_steps": [
-                    "1. read system PRD, hw.yaml, req.yaml, and cached MCU manual markdown. If turbovec index built, semantic-search it.",
+                    "1. read system PRD, hw.yaml, req.yaml, and graphify-out/GRAPH_REPORT.md.",
+                    "1a. for MCU manual/register evidence, use targeted lookup only: `doc lookup --keyword <register/peripheral>` or semantic/turbovec query when graph_health.turbovec_index=true; if no semantic query tool is available, search cached manual markdown for exact headings/register names and read only narrow line ranges. NEVER read the full cached manual.",
                     "2. query graphify for code architecture. OUTPUT REQUIREMENT: cite at least 3 specific code entities (function names, file paths, module names) that graphify surfaced. Do NOT fabricate — if graphify found nothing useful, state that explicitly.",
-                    "3. analyze constraints: ROM/RAM, real-time, peripheral complexity, power/sleep. OUTPUT REQUIREMENT: cite specific register names or bit fields from the manual (step 1) for each constraint.",
+                    "3. analyze constraints: ROM/RAM, real-time, peripheral complexity, power/sleep. OUTPUT REQUIREMENT: cite specific register names or bit fields from targeted manual evidence (step 1a) for each constraint.",
                     "4. determine framework. OUTPUT REQUIREMENT: justify choice with concrete evidence from graphify + manual, not general reasoning.",
                     "5. present analysis + recommendation with trade-offs; wait for user agreement.",
                     "6. create P0 framework task PRD under docs/prd/tasks/.",
@@ -681,9 +636,69 @@ fn has_source_files(project_root: &Path) -> bool {
     false
 }
 
+fn build_graph_health(snapshot: &ProjectSnapshot) -> Value {
+    let graph_path = Path::new(&snapshot.project_root).join("graphify-out/graph.json");
+    if !graph_path.is_file() {
+        return json!({"status": "missing", "hint": "run `graphify .` to build"});
+    }
+    let Ok(content) = std::fs::read_to_string(&graph_path) else {
+        return json!({"status": "unreadable"});
+    };
+    let Ok(g) = serde_json::from_str::<Value>(&content) else {
+        return json!({"status": "invalid_json"});
+    };
+    let nodes = g
+        .get("nodes")
+        .and_then(|n| n.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    let communities = g
+        .get("graph")
+        .and_then(|g| g.as_object())
+        .map(|o| o.len())
+        .unwrap_or(0);
+    let mut noise = 0u64;
+    if let Some(arr) = g.get("nodes").and_then(|n| n.as_array()) {
+        for n in arr {
+            let sf = n.get("source_file").and_then(|v| v.as_str()).unwrap_or("");
+            if sf.starts_with(".emb-agent/bin")
+                || sf.starts_with(".emb-agent/command-docs")
+                || sf.starts_with(".emb-agent/agents")
+                || sf.starts_with(".codex/")
+                || sf.starts_with(".claude/")
+                || sf.starts_with(".cursor/")
+                || sf.starts_with(".omp/")
+            {
+                noise += 1;
+            }
+        }
+    }
+    let noise_pct = if nodes > 0 {
+        noise * 100 / nodes as u64
+    } else {
+        0
+    };
+    let tv_dir = Path::new(&snapshot.project_root).join(".emb-agent/cache/turbovec");
+    let has_turbovec = tv_dir.is_dir()
+        && std::fs::read_dir(&tv_dir).map_or(false, |mut d| {
+            d.any(|e| e.map_or(false, |e| e.path().extension().map_or(false, |x| x == "tq")))
+        });
+    json!({
+        "status": if noise_pct > 50 { "noisy" } else if nodes == 0 { "empty" } else { "clean" },
+        "nodes": nodes,
+        "noise_nodes": noise,
+        "noise_pct": noise_pct,
+        "communities": communities,
+        "turbovec_index": has_turbovec,
+        "hint": if noise_pct > 50 { ".graphifyignore may be missing — run `emb init` or create one excluding .emb-agent/ runtime" } else { "" }
+    })
+}
+
 fn walkdir_first_file(root: &Path, ext: &str) -> bool {
     use std::fs;
-    let Ok(entries) = fs::read_dir(root) else { return false };
+    let Ok(entries) = fs::read_dir(root) else {
+        return false;
+    };
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.is_dir() {
@@ -704,7 +719,6 @@ fn walkdir_first_file(root: &Path, ext: &str) -> bool {
 fn json_value_or_null(source: &str) -> Value {
     serde_json::from_str(source).unwrap_or(Value::Null)
 }
-
 
 pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
     let active_task_name = snapshot

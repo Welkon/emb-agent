@@ -60,6 +60,8 @@ interface TaskItem {
   title?: string;
   status?: string;
   bootstrap?: boolean;
+  package?: string;
+  prdPath?: string;
 }
 
 class TaskPicker {
@@ -472,7 +474,28 @@ interface EmbAgentResult {
     title?: string;
     priority?: string;
     status?: string;
+    package?: string;
+    prd_path?: string;
+    prdPath?: string;
   }>;
+  prd_task_candidates?: Array<{
+    name: string;
+    title?: string;
+    priority?: string;
+    status?: string;
+    package?: string;
+    prd_path?: string;
+    prdPath?: string;
+  }>;
+  graph_health?: {
+    status?: string;
+    nodes?: number;
+    noise_nodes?: number;
+    noise_pct?: number;
+    communities?: number;
+    turbovec_index?: boolean;
+    hint?: string;
+  };
   activated?: boolean;
   gate?: unknown;
   next_instructions?: string;
@@ -607,14 +630,35 @@ function renderNextLines(result: EmbAgentResult, update?: EmbAgentResult | null)
   }
   if (result.reason) lines.push("State: " + result.reason);
   if (result.action) lines.push("Action: " + result.action);
-  if (result.instructions) lines.push("\n" + result.instructions);
-  if (result.task_candidates?.length) {
-    lines.push("Tasks:");
-    for (const t of result.task_candidates) {
-      lines.push("  - " + t.name + " [" + (t.priority || "-") + "] " + (t.title || t.name) + " (" + (t.status || "-") + ")");
-    }
+  if (result.graph_health) {
+    const g = result.graph_health;
+    const parts = [
+      g.status ? `status=${g.status}` : "",
+      typeof g.nodes === "number" ? `nodes=${g.nodes}` : "",
+      typeof g.noise_pct === "number" ? `noise=${g.noise_pct}%` : "",
+      typeof g.turbovec_index === "boolean" ? `turbovec=${g.turbovec_index ? "yes" : "no"}` : "",
+    ].filter(Boolean);
+    if (parts.length) lines.push("Graph health: " + parts.join(", "));
+    if (g.hint) lines.push("Graph hint: " + g.hint);
   }
+  if (result.instructions) lines.push("\n" + result.instructions);
+  appendTaskLines(lines, "Tasks", result.task_candidates);
+  appendTaskLines(lines, "Child PRD candidates", result.prd_task_candidates);
   return lines;
+}
+
+function appendTaskLines(
+  lines: string[],
+  label: string,
+  tasks: EmbAgentResult["task_candidates"],
+): void {
+  if (!tasks?.length) return;
+  lines.push(label + ":");
+  for (const t of tasks) {
+    const path = t.prd_path || t.prdPath || "";
+    const suffix = path ? " — " + path : "";
+    lines.push("  - " + t.name + " [" + (t.priority || "-") + "] " + (t.title || t.name) + " (" + (t.status || "-") + ")" + suffix);
+  }
 }
 
 
