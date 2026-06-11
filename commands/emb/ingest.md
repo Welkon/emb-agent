@@ -23,9 +23,10 @@ allowed-tools:
 - Trigger `/emb:ingest ...` when the user asks to import, extract, parse, or normalize external hardware evidence.
 - Do not manually read/head/xxd binary `.SchDoc` or `.PcbDoc` files first; emb-agent has dedicated parsers for these containers.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
-- For PDFs and manuals, prefer:
-  `/emb:ingest doc --file <path> --provider mineru --kind datasheet --to hardware`
-- `ingest doc` creates `.env.example` and `.env` when missing; put `MINERU_API_KEY=` in `.env` for MinerU precise API parsing and rerun with `--force` after filling it.
+- For PDFs and manuals, prefer the auto/local path first:
+  `/emb:ingest doc --file <path> --provider auto --kind datasheet --to hardware`
+- `--provider auto` tries local conversion first using `.emb-agent/project.json` `integrations.doc_ingest.local_tool_priority` or `EMB_AGENT_DOC_LOCAL_TOOLS`; the default project policy is `markitdown`, then `pdftotext`, then `mutool`. It falls back to MinerU only when local conversion is unavailable/low-quality and `MINERU_API_KEY` is configured.
+- `ingest doc` creates `.env.example` and `.env` when missing; put `MINERU_API_KEY=` in `.env` for MinerU precise API parsing and rerun with `--provider mineru --force` when the PDF is image-heavy or local output is sparse.
 - MinerU API ZIP results are cached with `images/...` assets under `.emb-agent/cache/docs/<doc-id>/`; if `parse.md` references an image, inspect that cached asset or trigger `/emb:ingest doc --force` before trying PDF rendering or web image workarounds.
 - If the PDF is still missing but the chip or schematic already hints at it, use:
   `/emb:doc lookup --chip <name> --vendor <name>`

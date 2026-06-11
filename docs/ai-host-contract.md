@@ -55,7 +55,7 @@ AI hosts and command wrappers must:
 
 ## PRD exploration gate
 
-Before a system PRD can be confirmed, `agent_protocol.gate.kind = "prd-exploration"` means the host should run a human-facing requirement exploration loop first. The host should ask what behavior, interactions, defaults, abnormal cases, power/reset behavior, constraints, and acceptance evidence the user actually wants; mark schematic/manual inference separately from confirmed facts; update `docs/prd/system.md`; mirror structured truth into `.emb-agent/req.yaml`; and stop until explicit user agreement. Child execution PRDs are created only after the later `prd-breakdown` gate asks for system-PRD breakdown.
+Before a system PRD can be confirmed, `agent_protocol.gate.kind = "prd-exploration"` means the host should run a doc-grounded requirement exploration loop first. If `document_evidence_policy.hardware_first=true`, the host must scan and ingest the listed schematics, datasheets, and manuals before asking the first behavior question; PDF/manual parsing should use the configured local tool order before MinerU fallback. The host should ask what behavior, interactions, defaults, abnormal cases, power/reset behavior, constraints, and acceptance evidence the user actually wants; mark schematic/manual inference separately from confirmed facts; update `docs/prd/system.md`; mirror structured truth into `.emb-agent/req.yaml`; and stop until explicit user agreement. Child execution PRDs are created only after the later `prd-breakdown` gate asks for system-PRD breakdown.
 
 ## PRD breakdown gate
 

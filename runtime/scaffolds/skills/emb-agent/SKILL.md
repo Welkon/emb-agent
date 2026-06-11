@@ -43,8 +43,8 @@ Common host dirs: .omp (Oh My Pi), .cursor (Cursor), .codex (Codex), .claude (Cl
 | Knowledge wiki | `knowledge show <page>` |
 | Graph query | `knowledge graph query <term>` |
 | Record decision | `decision record` |
-| Ingest datasheet | `ingest doc <path>` |
-| Analyze schematic | `schematic analyze <path>` |
+| Ingest datasheet/manual | `ingest doc --provider auto --file <path> --kind datasheet --to hardware` |
+| Ingest schematic | `ingest schematic --file <path>` |
 | Task AAR | `task aar scan` |
 | Board signoff | `verify board --result pass <summary>` |
 | Full command docs | `.<host>/emb-agent/commands/emb/<command>.md` for any installed command; prefer the fast path unless the task needs a specialized command |
@@ -78,6 +78,7 @@ Skip: generic programming patterns, facts obvious from datasheets, vendor SDK co
 
 - Never guess hardware facts. Read `.emb-agent/hw.yaml` and `.emb-agent/req.yaml`.
 - Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
+- In `prd-exploration`, if `document_evidence_policy.hardware_first=true`, ingest listed schematics and parse datasheets/manuals before asking the first behavior question. PDF parsing uses the configured local tool order, with MinerU as fallback.
 - After editing truth files or PRDs, run `validate` or `health`.
 - Split work into vertical tracer-bullet slices.
 - If `.emb-agent/` is missing or incomplete, route to `emb-onboard` agent first.

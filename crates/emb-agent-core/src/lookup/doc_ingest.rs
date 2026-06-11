@@ -1,8 +1,10 @@
 use serde_json::{Value, json};
 use sha1::{Digest, Sha1};
+use std::env;
 use std::fs;
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -60,11 +62,12 @@ pub fn ingest_document(
     options: DocIngestOptions<'_>,
 ) -> Result<Value, String> {
     let env = ensure_project_env(project_root);
-    let provider = non_empty(options.provider, "mineru");
+    let mut provider = non_empty(options.provider, "auto").to_string();
     let kind = non_empty(options.kind, "datasheet");
     let intended_to = non_empty(options.intended_to, "hardware");
     let language = non_empty(options.language.unwrap_or(""), DEFAULT_LANGUAGE);
     let model_version = non_empty(options.model_version.unwrap_or(""), DEFAULT_MODEL_VERSION);
+    let local_tool_order = configured_local_tool_order(project_root);
     let file_path = resolve_project_path(project_root, options.file);
     let metadata =
         fs::metadata(&file_path).map_err(|e| format!("Cannot read {}: {e}", options.file))?;
@@ -104,9 +107,9 @@ pub fn ingest_document(
     let rel_assets_path = relative_json_path(project_root, &assets_path);
 
     let source_json = json!({
-        "provider": provider,
+        "provider": provider.as_str(),
         "kind": kind,
-        "title": title,
+        "title": title.as_str(),
         "intended_to": intended_to,
         "source": normalize_path(options.file),
         "source_abs": file_path.to_string_lossy(),
@@ -121,7 +124,7 @@ pub fn ingest_document(
         let result = result_json(
             "cached",
             &doc_id,
-            provider,
+            &provider,
             kind,
             intended_to,
             &env,
@@ -137,42 +140,152 @@ pub fn ingest_document(
         return Ok(result);
     }
 
-    if provider == "local" {
-        let content = read_text_document(&file_path)?;
-        fs::write(&parse_path, content).map_err(|e| format!("Cannot write parse.md: {e}"))?;
-        write_json(
-            &parse_json_path,
-            &json!({"provider": "local", "mode": "text", "parsed": true}),
-        )?;
-        write_summary(
-            &summary_path,
-            &doc_id,
-            &rel_parse_path,
-            &rel_parse_json_path,
-            &rel_source_path,
-        )?;
-        let result = result_json(
-            "ok",
-            &doc_id,
-            provider,
-            kind,
-            intended_to,
-            &env,
-            &rel_source_path,
-            &rel_parse_path,
-            &rel_parse_json_path,
-            &rel_summary_path,
-            None,
-            json!({"direct": false}),
-            "Document text cached. Use doc fetch --path <source> or inspect parse.md.",
-        );
-        update_doc_index(project_root, &result)?;
-        return Ok(result);
+    if provider == "local" || provider == "auto" {
+        match read_local_document(&file_path, &local_tool_order) {
+            Ok(local) => {
+                eprintln!(
+                    "emb-agent ingest doc: local parse succeeded with {} ({} lines)",
+                    local.tool, local.line_count
+                );
+                fs::write(&parse_path, &local.content)
+                    .map_err(|e| format!("Cannot write parse.md: {e}"))?;
+                write_json(
+                    &parse_json_path,
+                    &json!({
+                        "provider": "local",
+                        "requested_provider": provider.as_str(),
+                        "mode": local.mode.as_str(),
+                        "parsed": true,
+                        "tool": local.tool.as_str(),
+                        "line_count": local.line_count,
+                        "char_count": local.char_count,
+                        "quality": local_quality(local.line_count, local.char_count),
+                        "local_tool_order": local_tool_order.clone()
+                    }),
+                )?;
+                write_summary(
+                    &summary_path,
+                    &doc_id,
+                    &rel_parse_path,
+                    &rel_parse_json_path,
+                    &rel_source_path,
+                )?;
+                let mut result = result_json(
+                    "ok",
+                    &doc_id,
+                    "local",
+                    kind,
+                    intended_to,
+                    &env,
+                    &rel_source_path,
+                    &rel_parse_path,
+                    &rel_parse_json_path,
+                    &rel_summary_path,
+                    None,
+                    json!({"direct": false}),
+                    "Document parsed locally. Inspect parse.md quality; if it is sparse or table-garbled, rerun with --provider mineru.",
+                );
+                attach_local_parse_info(&mut result, &local_tool_order, Some(&local), None);
+                update_doc_index(project_root, &result)?;
+                return Ok(result);
+            }
+            Err(local_error) if provider == "local" => {
+                write_json(
+                    &parse_json_path,
+                    &json!({
+                        "provider": "local",
+                        "mode": "local-conversion",
+                        "parsed": false,
+                        "status": local_error.status.as_str(),
+                        "error": local_error.message.as_str(),
+                        "local_tool_order": local_tool_order.clone(),
+                        "attempts": local_error.attempts.clone()
+                    }),
+                )?;
+                write_summary(
+                    &summary_path,
+                    &doc_id,
+                    &rel_parse_path,
+                    &rel_parse_json_path,
+                    &rel_source_path,
+                )?;
+                let mut result = result_json(
+                    &local_error.status,
+                    &doc_id,
+                    "local",
+                    kind,
+                    intended_to,
+                    &env,
+                    &rel_source_path,
+                    &rel_parse_path,
+                    &rel_parse_json_path,
+                    &rel_summary_path,
+                    None,
+                    json!({"direct": false}),
+                    "Local PDF/document conversion did not produce usable text. Install/configure one of the local tools in integrations.doc_ingest.local_tool_priority, or rerun with --provider mineru and MINERU_API_KEY.",
+                );
+                attach_local_parse_info(&mut result, &local_tool_order, None, Some(&local_error));
+                update_doc_index(project_root, &result)?;
+                return Ok(result);
+            }
+            Err(local_error) => {
+                if read_mineru_api_key(project_root).is_none() {
+                    write_json(
+                        &parse_json_path,
+                        &json!({
+                            "provider": "auto",
+                            "mode": "local-first",
+                            "parsed": false,
+                            "status": local_error.status.as_str(),
+                            "error": local_error.message.as_str(),
+                            "required_env": "MINERU_API_KEY",
+                            "local_tool_order": local_tool_order.clone(),
+                            "attempts": local_error.attempts.clone()
+                        }),
+                    )?;
+                    write_summary(
+                        &summary_path,
+                        &doc_id,
+                        &rel_parse_path,
+                        &rel_parse_json_path,
+                        &rel_source_path,
+                    )?;
+                    let mut result = result_json(
+                        &local_error.status,
+                        &doc_id,
+                        "auto",
+                        kind,
+                        intended_to,
+                        &env,
+                        &rel_source_path,
+                        &rel_parse_path,
+                        &rel_parse_json_path,
+                        &rel_summary_path,
+                        None,
+                        json!({"direct": false}),
+                        "Auto provider tried local conversion first. Install/configure a local converter, or configure MINERU_API_KEY and rerun with --force.",
+                    );
+                    attach_local_parse_info(
+                        &mut result,
+                        &local_tool_order,
+                        None,
+                        Some(&local_error),
+                    );
+                    update_doc_index(project_root, &result)?;
+                    return Ok(result);
+                }
+                eprintln!(
+                    "emb-agent ingest doc: local parse unavailable ({}); falling back to MinerU",
+                    local_error.message
+                );
+                provider = "mineru".to_string();
+            }
+        }
     }
 
     if provider != "mineru" {
         return Err(format!(
-            "Unsupported doc provider: {provider}. Expected: mineru or local"
+            "Unsupported doc provider: {provider}. Expected: auto, local, or mineru"
         ));
     }
 
@@ -197,7 +310,7 @@ pub fn ingest_document(
         let result = result_json(
             "needs_credentials",
             &doc_id,
-            provider,
+            &provider,
             kind,
             intended_to,
             &env,
@@ -209,13 +322,15 @@ pub fn ingest_document(
             json!({"direct": false}),
             "Fill MINERU_API_KEY in .env, then rerun ingest doc --force.",
         );
+        let mut result = result;
+        attach_local_tool_order(&mut result, &local_tool_order);
         update_doc_index(project_root, &result)?;
         return Ok(result);
     };
 
     let file_bytes =
         fs::read(&file_path).map_err(|e| format!("Cannot read {}: {e}", options.file))?;
-    let mineru = run_mineru_precise_parse(
+    let mineru = match run_mineru_precise_parse(
         &api_key,
         &title,
         &file_bytes,
@@ -230,7 +345,47 @@ pub fn ingest_document(
             poll_interval_ms: options.poll_interval_ms.unwrap_or(DEFAULT_POLL_INTERVAL_MS),
             timeout_ms: options.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
         },
-    )?;
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            write_json(
+                &parse_json_path,
+                &json!({
+                    "provider": "mineru",
+                    "mode": "api",
+                    "parsed": false,
+                    "status": "failed",
+                    "error": error
+                }),
+            )?;
+            write_summary(
+                &summary_path,
+                &doc_id,
+                &rel_parse_path,
+                &rel_parse_json_path,
+                &rel_source_path,
+            )?;
+            let mut result = result_json(
+                "failed",
+                &doc_id,
+                &provider,
+                kind,
+                intended_to,
+                &env,
+                &rel_source_path,
+                &rel_parse_path,
+                &rel_parse_json_path,
+                &rel_summary_path,
+                None,
+                json!({"direct": false}),
+                "MinerU parse failed. Inspect metadata for the error, retry with --force, or use --provider local after configuring a local converter.",
+            );
+            result["error"] = json!(error);
+            attach_local_tool_order(&mut result, &local_tool_order);
+            update_doc_index(project_root, &result)?;
+            return Ok(result);
+        }
+    };
 
     let zip_url = mineru
         .get("result_zip_url")
@@ -251,7 +406,7 @@ pub fn ingest_document(
     let result = result_json(
         "ok",
         &doc_id,
-        provider,
+        &provider,
         kind,
         intended_to,
         &env,
@@ -286,6 +441,7 @@ fn run_mineru_precise_parse(
     options: MineruParseOptions<'_>,
 ) -> Result<Value, String> {
     let auth = format!("Bearer {api_key}");
+    eprintln!("emb-agent ingest doc: MinerU create upload URL");
     let mut file_payload = json!({"name": file_name, "data_id": options.doc_id});
     if let Some(pages) = options.pages.filter(|pages| !pages.trim().is_empty()) {
         file_payload["page_ranges"] = json!(pages);
@@ -320,6 +476,10 @@ fn run_mineru_precise_parse(
         .ok_or("MinerU create response missing data.file_urls[0]".to_string())?
         .to_string();
 
+    eprintln!(
+        "emb-agent ingest doc: MinerU upload {} bytes",
+        file_bytes.len()
+    );
     let upload = ureq::put(&file_url)
         .send_bytes(file_bytes)
         .map_err(|e| format!("MinerU file upload failed: {e}"))?;
@@ -332,6 +492,7 @@ fn run_mineru_precise_parse(
 
     let deadline = Instant::now() + Duration::from_millis(options.timeout_ms);
     loop {
+        eprintln!("emb-agent ingest doc: MinerU polling batch {batch_id}");
         let completed: Value = ureq::get(&format!(
             "{MINERU_BASE_URL}/api/v4/extract-results/batch/{batch_id}"
         ))
@@ -349,6 +510,7 @@ fn run_mineru_precise_parse(
             .unwrap_or(Value::Null);
         let state = extract.get("state").and_then(Value::as_str).unwrap_or("");
         if state == "done" {
+            eprintln!("emb-agent ingest doc: MinerU parse done");
             return Ok(json!({
                 "provider": "mineru",
                 "mode": "api",
@@ -369,6 +531,9 @@ fn run_mineru_precise_parse(
                 "MinerU parse timed out after {} ms; last response: {}",
                 options.timeout_ms, completed
             ));
+        }
+        if !state.is_empty() {
+            eprintln!("emb-agent ingest doc: MinerU state={state}");
         }
         thread::sleep(Duration::from_millis(options.poll_interval_ms.max(500)));
     }
@@ -442,22 +607,261 @@ fn ensure_mineru_ok(value: &Value, action: &str) -> Result<(), String> {
     Err(format!("MinerU {action} returned code {code}: {msg}"))
 }
 
-fn read_text_document(path: &Path) -> Result<String, String> {
+#[derive(Debug, Clone)]
+struct LocalParseSuccess {
+    content: String,
+    tool: String,
+    mode: String,
+    line_count: usize,
+    char_count: usize,
+}
+
+#[derive(Debug, Clone)]
+struct LocalParseError {
+    status: String,
+    message: String,
+    attempts: Vec<Value>,
+}
+
+pub(crate) fn configured_local_tool_order(project_root: &Path) -> Vec<String> {
+    if let Ok(raw) = env::var("EMB_AGENT_DOC_LOCAL_TOOLS") {
+        let tools = split_tool_order(&raw);
+        if !tools.is_empty() {
+            return tools;
+        }
+    }
+    if let Some(tools) = project_local_tool_order(project_root) {
+        if !tools.is_empty() {
+            return tools;
+        }
+    }
+    vec![
+        "markitdown".to_string(),
+        "pdftotext".to_string(),
+        "mutool".to_string(),
+    ]
+}
+
+fn project_local_tool_order(project_root: &Path) -> Option<Vec<String>> {
+    let path = project_root.join(".emb-agent").join("project.json");
+    let raw = fs::read_to_string(path).ok()?;
+    let value = serde_json::from_str::<Value>(&raw).ok()?;
+    for pointer in [
+        "/integrations/doc_ingest/local_tool_priority",
+        "/integrations/doc_ingest/local_tools",
+        "/integrations/document/local_tool_priority",
+        "/integrations/document/local_tools",
+    ] {
+        let Some(items) = value.pointer(pointer).and_then(Value::as_array) else {
+            continue;
+        };
+        let tools: Vec<String> = items
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|tool| !tool.is_empty())
+            .map(str::to_string)
+            .collect();
+        if !tools.is_empty() {
+            return Some(tools);
+        }
+    }
+    None
+}
+
+fn split_tool_order(raw: &str) -> Vec<String> {
+    raw.split([',', ';', ':'])
+        .map(str::trim)
+        .filter(|tool| !tool.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn read_local_document(
+    path: &Path,
+    tool_order: &[String],
+) -> Result<LocalParseSuccess, LocalParseError> {
     let lower = path
         .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if matches!(
-        lower.as_str(),
-        "pdf" | "doc" | "docx" | "ppt" | "pptx" | "xls" | "xlsx"
-    ) {
+    if !is_converter_document_ext(&lower) {
+        return fs::read_to_string(path)
+            .map(|content| local_success(content, "utf8", "text"))
+            .map_err(|e| LocalParseError {
+                status: "local_parse_failed".to_string(),
+                message: format!("read error: {e}"),
+                attempts: vec![json!({"tool": "utf8", "available": true, "error": e.to_string()})],
+            });
+    }
+
+    let mut attempts = Vec::new();
+    for tool in tool_order {
+        let tool = tool.trim();
+        if tool.is_empty() {
+            continue;
+        }
+        if !tool_supports_extension(tool, &lower) {
+            attempts.push(
+                json!({"tool": tool, "available": false, "skipped": "unsupported_extension"}),
+            );
+            continue;
+        }
+        if !command_available(tool) {
+            attempts.push(json!({"tool": tool, "available": false}));
+            continue;
+        }
+        eprintln!("emb-agent ingest doc: trying local converter {tool}");
+        match run_local_converter(tool, path, &lower) {
+            Ok((content, mode)) => return Ok(local_success(content, tool, mode)),
+            Err(error) => attempts.push(json!({
+                "tool": tool,
+                "available": true,
+                "error": error
+            })),
+        }
+    }
+
+    let any_available = attempts
+        .iter()
+        .any(|attempt| attempt.get("available").and_then(Value::as_bool) == Some(true));
+    let status = if any_available {
+        "local_parse_failed"
+    } else {
+        "local_tools_missing"
+    };
+    Err(LocalParseError {
+        status: status.to_string(),
+        message: if any_available {
+            "local converters ran but did not produce usable text".to_string()
+        } else {
+            format!(
+                "no configured local converter found; configured order: {}",
+                tool_order.join(", ")
+            )
+        },
+        attempts,
+    })
+}
+
+fn tool_supports_extension(tool: &str, ext: &str) -> bool {
+    match tool {
+        "pdftotext" | "mutool" => ext == "pdf",
+        _ => true,
+    }
+}
+
+fn run_local_converter(
+    tool: &str,
+    path: &Path,
+    ext: &str,
+) -> Result<(String, &'static str), String> {
+    let path_string = path.to_string_lossy();
+    match tool {
+        "pdftotext" if ext == "pdf" => {
+            command_stdout(tool, &[path_string.as_ref(), "-"]).map(|content| (content, "text"))
+        }
+        "mutool" if ext == "pdf" => command_stdout(
+            tool,
+            &["draw", "-F", "txt", "-o", "-", path_string.as_ref()],
+        )
+        .map(|content| (content, "text")),
+        "markitdown" => command_stdout(tool, &[path_string.as_ref()]).map(|content| {
+            let mode = if ext == "pdf" { "markdown" } else { "text" };
+            (content, mode)
+        }),
+        _ => command_stdout(tool, &[path_string.as_ref()]).map(|content| (content, "text")),
+    }
+}
+
+fn local_success(content: String, tool: &str, mode: &str) -> LocalParseSuccess {
+    let line_count = content.lines().count();
+    let char_count = content.chars().count();
+    LocalParseSuccess {
+        content,
+        tool: tool.to_string(),
+        mode: mode.to_string(),
+        line_count,
+        char_count,
+    }
+}
+
+fn command_stdout(command: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(command)
+        .args(args)
+        .output()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    if !output.status.success() {
         return Err(format!(
-            "{} is binary; use --provider mineru and configure MINERU_API_KEY in .env",
-            path.display()
+            "exit {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    fs::read_to_string(path).map_err(|e| format!("read error: {e}"))
+    let content = String::from_utf8_lossy(&output.stdout).to_string();
+    if content.trim().is_empty() {
+        return Err("converter produced empty stdout".to_string());
+    }
+    Ok(content)
+}
+
+fn command_available(command: &str) -> bool {
+    let Some(paths) = env::var_os("PATH") else {
+        return false;
+    };
+    let names: Vec<String> = if cfg!(windows) {
+        vec![format!("{command}.exe"), command.to_string()]
+    } else {
+        vec![command.to_string()]
+    };
+    env::split_paths(&paths).any(|dir| names.iter().any(|name| dir.join(name).is_file()))
+}
+
+fn is_converter_document_ext(ext: &str) -> bool {
+    matches!(
+        ext,
+        "pdf" | "doc" | "docx" | "ppt" | "pptx" | "xls" | "xlsx"
+    )
+}
+
+fn local_quality(line_count: usize, char_count: usize) -> &'static str {
+    if line_count >= 500 && char_count >= 10_000 {
+        "good"
+    } else if line_count >= 50 && char_count >= 2_000 {
+        "review"
+    } else {
+        "sparse-review-or-fallback"
+    }
+}
+
+fn attach_local_parse_info(
+    result: &mut Value,
+    tool_order: &[String],
+    success: Option<&LocalParseSuccess>,
+    error: Option<&LocalParseError>,
+) {
+    attach_local_tool_order(result, tool_order);
+    if let Some(success) = success {
+        result["local_parse"] = json!({
+            "tool": success.tool,
+            "mode": success.mode,
+            "line_count": success.line_count,
+            "char_count": success.char_count,
+            "quality": local_quality(success.line_count, success.char_count)
+        });
+    }
+    if let Some(error) = error {
+        result["local_parse"] = json!({
+            "status": error.status,
+            "error": error.message,
+            "attempts": error.attempts
+        });
+    }
+}
+
+fn attach_local_tool_order(result: &mut Value, tool_order: &[String]) {
+    result["local_pdf_tool_priority"] = json!(tool_order);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -501,7 +905,13 @@ fn result_json(
             "summary": summary_path,
             "assets_manifest": assets_path.unwrap_or("")
         },
-        "next": if status == "needs_credentials" { "fill .env then rerun ingest doc --force" } else { "doc fetch" },
+        "next": match status {
+            "needs_credentials" => "fill .env then rerun ingest doc --force",
+            "local_tools_missing" => "install/configure a local converter or configure MINERU_API_KEY, then rerun ingest doc --force",
+            "local_parse_failed" => "inspect local_parse.attempts or rerun with --provider mineru",
+            "failed" => "inspect error, retry with --force, or use another provider",
+            _ => "doc fetch",
+        },
         "next_instructions": next_instructions
     })
 }

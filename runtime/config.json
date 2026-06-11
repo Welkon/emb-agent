@@ -13,6 +13,10 @@
     "review_mode": "auto",
     "verification_mode": "lean"
   },
+  "default_doc_ingest": {
+    "provider": "auto",
+    "local_tool_priority": ["markitdown", "pdftotext", "mutool"]
+  },
   "default_workflow_source": {
     "type": "git",
     "location": "https://github.com/Welkon/emb-support.git",

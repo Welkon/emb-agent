@@ -270,13 +270,13 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
     if snapshot.recommended_command == "clarify" {
         return (
             "clarify".to_string(),
-            "Run PRD exploration as a doc-grounded grilling loop: ask one load-bearing question at a time, update PRD/req truth after confirmation, run health after truth edits, and stop before task creation until the state-machine checklist is explicit.".to_string(),
+            "Run PRD exploration as a doc-grounded grilling loop: if hardware-first docs exist, ingest schematics and parse datasheets/manuals before the first behavior question; then ask one load-bearing question at a time, update PRD/req truth after confirmation, run health after truth edits, and stop before task creation until the state-machine checklist is explicit.".to_string(),
         );
     }
     if snapshot.recommended_command == "ingest-docs" {
         return (
             "ingest-docs".to_string(),
-            "Ingest the MCU manual/datasheet before firmware work. Run the installed runtime command `ingest doc --file <manual.pdf> --provider mineru --kind datasheet --to hardware`, then verify register/GPIO/ADC/timer/sleep evidence.".to_string(),
+            "Ingest the MCU manual/datasheet before firmware work. Run the installed runtime command `ingest doc --file <manual.pdf> --provider auto --kind datasheet --to hardware`, then verify register/GPIO/ADC/timer/sleep evidence.".to_string(),
         );
     }
     if snapshot.current_task.is_some() {
@@ -335,12 +335,12 @@ pub fn build_next_json_with_tasks_and_policy(
     } else if snapshot.recommended_command == "clarify" {
         (
             "clarify",
-            "Run PRD exploration as a doc-grounded grilling loop: challenge ambiguous terms against existing project truth, ask one load-bearing behavior/hardware/power/state-machine question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and stop before task creation until the compact state-machine checklist is explicit.",
+            "Run PRD exploration as a doc-grounded grilling loop: if hardware-first docs exist under docs/, first ingest schematics and parse datasheets/manuals with the configured local conversion order before MinerU fallback, record unconfirmed hardware conflicts in PRD/req unknowns, then challenge ambiguous terms against existing project truth, ask one load-bearing behavior/hardware/power/state-machine question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and stop before task creation until the compact state-machine checklist is explicit.",
         )
     } else if snapshot.recommended_command == "ingest-docs" {
         (
             "ingest-docs",
-            "MCU/package truth exists, but parsed MCU manual or chip-support evidence is missing. Ingest the MCU manual/datasheet with `ingest doc --provider mineru`, verify register, GPIO bias/wakeup, ADC, timer/PWM, and sleep/reset evidence, then rerun next before firmware implementation or task creation.",
+            "MCU/package truth exists, but parsed MCU manual or chip-support evidence is missing. Ingest the MCU manual/datasheet with `ingest doc --provider auto`, verify register, GPIO bias/wakeup, ADC, timer/PWM, and sleep/reset evidence, then rerun next before firmware implementation or task creation.",
         )
     } else if snapshot.current_task.is_some() {
         (
@@ -412,6 +412,7 @@ pub fn build_next_json_with_tasks_and_policy(
         "truth_validation_errors": snapshot.truth_validation_errors,
         "truth_validation_summary": truth_errors_summary,
         "firmware_manual_required": snapshot.firmware_manual_required,
+        "hardware_evidence_files": snapshot.hardware_evidence_files,
         "graph_health": build_graph_health(snapshot),
     });
     if let Some(policy) = worktree_policy {
@@ -476,14 +477,27 @@ fn build_next_agent_protocol_with_policy(
         .to_string();
     }
     if action == "clarify" {
+        let hardware_docs_pending =
+            !snapshot.has_hardware_truth && !snapshot.hardware_evidence_files.is_empty();
         return json!({
             "gate": {
                 "kind": "prd-exploration",
                 "blocking": true,
                 "method": "grill-with-docs",
+                "document_evidence_policy": {
+                    "hardware_first": hardware_docs_pending,
+                    "evidence_files": snapshot.hardware_evidence_files,
+                    "before_first_question": if hardware_docs_pending {
+                        json!(["scan_docs_for_hardware_evidence", "ingest_schematic", "ingest_datasheet_or_manual", "record_unconfirmed_hardware_conflicts"])
+                    } else {
+                        json!([])
+                    },
+                    "local_pdf_tool_priority": snapshot.local_doc_tool_priority.clone(),
+                    "fallback": "Use MinerU only when local conversion is missing, low-quality, image-heavy, or explicitly requested."
+                },
                 "state_machine_checklist": ["boot_state", "first_input", "press_vs_release_trigger", "mode_cycle_including_off", "long_press_valid_states", "memory_semantics", "stop_entry", "wake_source", "low_voltage_behavior", "acceptance_evidence", "extract_exact_waveform_or_measurement_params_from_captures"],
-                "allowed_actions": ["brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "extract_and_record_exact_timing_percent_times_from_captures"],
-                "forbidden_actions": ["create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params"],
+                "allowed_actions": ["scan_docs_for_hardware_evidence", "ingest_schematic", "ingest_datasheet_or_manual", "read_cached_schematic_and_manual_artifacts", "record_unconfirmed_hardware_conflicts", "brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "extract_and_record_exact_timing_percent_times_from_captures"],
+                "forbidden_actions": ["skip_existing_docs_before_question_when_hardware_first", "create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params"],
                 "recommended_command": "/emb-next"
             }
         })
@@ -496,13 +510,13 @@ fn build_next_agent_protocol_with_policy(
                 "blocking": true,
                 "required_evidence": ["parsed MCU manual or datasheet", "register map", "GPIO bias/wakeup limits", "ADC reference/channel evidence", "timer/PWM evidence", "sleep/reset behavior"],
                 "preprocessing": [
-                    "1. ensure tools are current and installed: `uv tool upgrade markitdown 2>/dev/null; uv tool list 2>/dev/null | grep -q markitdown || uv tool install 'markitdown[all]'` (global, one-time).",
-                    "2. first pass: `markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md` (fast, local, free).",
-                    "3. quality check: output <500 lines or garbled table fragments → image-heavy PDF. If MINERU_API_KEY is set, fall back to `ingest doc --provider mineru`. Otherwise warn user.",
-                    "4. text-heavy PDFs (500+ clean lines) → cached .md sufficient, proceed directly."
+                    "1. first pass uses configured local conversion: `ingest doc --provider auto --file <manual.pdf> --kind datasheet --to hardware`.",
+                    "2. default local tool order is markitdown, then pdftotext, then mutool; override it with `.emb-agent/project.json` integrations.doc_ingest.local_tool_priority or EMB_AGENT_DOC_LOCAL_TOOLS.",
+                    "3. quality check: output <500 lines or garbled table fragments means image-heavy/low-quality; fall back to MinerU when MINERU_API_KEY is set.",
+                    "4. text-heavy PDFs (500+ clean lines) are sufficient after cached parse.md is inspected."
                 ],
-                "allowed_actions": ["install_markitdown_if_missing", "convert_pdf_with_markitdown", "assess_output_quality", "ingest_doc_with_mineru_as_fallback_if_image_heavy", "read_cached_markdown_or_mineru_result", "record_manual_evidence", "rerun_next_after_evidence"],
-                "forbidden_actions": ["create_firmware_task", "start_implementation", "declare_firmware_ready_without_manual", "guess_registers_from_pin_names", "read_raw_pdf_without_conversion", "skip_quality_check_on_markitdown_output"],
+                "allowed_actions": ["convert_pdf_with_local_markitdown_first_tooling", "assess_output_quality", "ingest_doc_with_mineru_as_fallback_if_image_heavy_or_local_unavailable", "read_cached_markdown_or_mineru_result", "record_manual_evidence", "rerun_next_after_evidence"],
+                "forbidden_actions": ["create_firmware_task", "start_implementation", "declare_firmware_ready_without_manual", "guess_registers_from_pin_names", "read_raw_pdf_without_conversion", "skip_quality_check_on_pdf_conversion"],
             }
         })
         .to_string();
@@ -554,7 +568,7 @@ fn build_next_agent_protocol_with_policy(
                 required.push("build knowledge graph: `uv tool upgrade graphifyy 2>/dev/null; uv tool list | grep -q graphifyy || uv tool install graphifyy; graphify install --project; /graphify .`");
             }
             if manual_required {
-                required.push("parse MCU manual: `uv tool upgrade markitdown 2>/dev/null; uv tool list | grep -q markitdown || uv tool install 'markitdown[all]'; markitdown <manual.pdf> -o .emb-agent/cache/docs/<chip>_manual.md` — if image-heavy, fall back to mineru");
+                required.push("parse MCU manual: `ingest doc --provider auto --file <manual.pdf> --kind datasheet --to hardware` — local conversion tries markitdown first, then pdftotext/mutool, then MinerU fallback when configured");
             }
             return json!({
                 "gate": {
@@ -582,7 +596,7 @@ fn build_next_agent_protocol_with_policy(
                 "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
                 "preprocessing": [
                     "0a. ensure graphify installed with LLM backend support: `uv tool list | grep -q graphifyy || uv tool install 'graphifyy[openai]'` (openai extra needed for DeepSeek/OpenAI backends). `uv tool upgrade graphifyy 2>/dev/null` to keep current.",
-                    "0b. ensure markitdown: `uv tool list | grep -q markitdown || uv tool install 'markitdown[all]'`. `uv tool upgrade markitdown 2>/dev/null`.",
+                    "0b. parse the MCU manual with `ingest doc --provider auto --file <manual.pdf> --kind datasheet --to hardware`; local conversion tries markitdown first, then pdftotext/mutool, then MinerU fallback when configured.",
                     "0c. load API keys and build/refresh graph: `cd <project> && set -a && source .env && set +a && graphify . --update` (sources .env so graphify sees GEMINI_API_KEY/DEEPSEEK_API_KEY). If no graph exists: `graphify . ; graphify cluster-only .`.",
                     "0d. if .graphifyignore is missing, one was deployed at init — check `ls .graphifyignore`. If missing, create one excluding .emb-agent/, .codex/, backup/, graphify-out/, build/.",
                     "0e. [optional] headroom MCP: `uv tool list | grep -q headroom-ai || uv tool install 'headroom-ai[all]'; headroom mcp install`. Use `headroom_compress` before feeding large outputs to LLM.",
@@ -953,17 +967,21 @@ pub fn build_external_status_json(snapshot: &ProjectSnapshot) -> String {
 
 /// Build external protocol envelope for health
 pub fn build_external_health_json(snapshot: &ProjectSnapshot) -> String {
-    let has_mcu = !snapshot.mcu_model.is_empty();
+    let has_mcu = is_declared_chip(&snapshot.mcu_model);
+    let has_package = is_declared_chip(&snapshot.mcu_package);
+    let has_pin_mapping = snapshot.hardware_pin_mapping_declared;
     let truth_valid = snapshot.truth_validation_errors.is_empty();
     let all_ok = snapshot.initialized
         && truth_valid
         && has_mcu
+        && has_package
+        && has_pin_mapping
         && snapshot.bootstrap_status == "ready"
         && !snapshot.prd_breakdown_needed
         && !snapshot.firmware_manual_required;
     let runtime_events = json!({
         "status": if all_ok { "ok" } else { "blocked" },
-        "total": 6,
+        "total": 8,
         "blocked": if all_ok { 0 } else { 1 },
         "pending": 0,
         "failed": 0
@@ -978,6 +996,8 @@ pub fn build_external_health_json(snapshot: &ProjectSnapshot) -> String {
             "project_initialized": snapshot.initialized,
             "truth_yaml_valid": truth_valid,
             "mcu_declared": has_mcu,
+            "mcu_package_declared": has_package,
+            "hardware_pin_mapping": has_pin_mapping,
             "bootstrap_ready": snapshot.bootstrap_status == "ready",
             "prd_child_planning": !snapshot.prd_breakdown_needed,
             "firmware_manual_evidence": !snapshot.firmware_manual_required
@@ -1002,7 +1022,9 @@ pub fn build_task_show_json(task_json: &str) -> String {
 
 pub fn build_health_json(snapshot: &ProjectSnapshot) -> String {
     let initialized = snapshot.initialized;
-    let has_mcu = !snapshot.mcu_model.is_empty();
+    let has_mcu = is_declared_chip(&snapshot.mcu_model);
+    let has_package = is_declared_chip(&snapshot.mcu_package);
+    let has_pin_mapping = snapshot.hardware_pin_mapping_declared;
     let truth_valid = snapshot.truth_validation_errors.is_empty();
     let checks = [
         (
@@ -1026,6 +1048,16 @@ pub fn build_health_json(snapshot: &ProjectSnapshot) -> String {
             "mcu_declared",
             has_mcu,
             "MCU model is declared in hw.yaml".to_string(),
+        ),
+        (
+            "mcu_package_declared",
+            has_package,
+            "MCU package is declared in hw.yaml".to_string(),
+        ),
+        (
+            "hardware_pin_mapping",
+            has_pin_mapping,
+            "Hardware pin mapping is declared in hw.yaml signals".to_string(),
         ),
         (
             "bootstrap_ready",
@@ -1096,7 +1128,7 @@ mod tests {
             variant_dir: "/tmp/demo/.emb-agent/variants/esp32-c3".to_string(),
             developer: "Felix".to_string(),
             language: "zh".to_string(),
-            mcu_model: "ESP32-C3".to_string(),
+            mcu_model: "CTRL-123".to_string(),
             mcu_package: "QFN32".to_string(),
             default_package: "core".to_string(),
             active_package: "core".to_string(),
@@ -1119,6 +1151,13 @@ mod tests {
             firmware_manual_required: false,
             requirements_unknown_count: 0,
             hardware_unknown_count: 0,
+            hardware_pin_mapping_declared: true,
+            hardware_evidence_files: Vec::new(),
+            local_doc_tool_priority: vec![
+                "markitdown".to_string(),
+                "pdftotext".to_string(),
+                "mutool".to_string(),
+            ],
             truth_validation_errors: Vec::new(),
             system_prd_exists: true,
             system_prd_has_content: true,
@@ -1141,7 +1180,7 @@ mod tests {
     fn statusline_includes_core_state() {
         let line = build_statusline(&sample_snapshot());
         assert!(line.contains("emb"));
-        assert!(line.contains("ESP32-C3 QFN32"));
+        assert!(line.contains("CTRL-123 QFN32"));
         assert!(line.contains("1 task(s)"));
         assert!(line.contains("var: esp32-c3"));
         assert!(line.contains("[P1] Implement ADC"));

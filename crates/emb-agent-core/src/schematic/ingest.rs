@@ -270,52 +270,9 @@ pub fn build_visual_netlist_analysis(
 
 // === MCU Candidate Identification ===
 
-const MCU_PATTERNS: &[(&str, &str)] = &[
-    ("esp32", "espressif"),
-    ("esp8266", "espressif"),
-    ("stm32", "stmicro"),
-    ("stm8", "stmicro"),
-    ("nrf51", "nordic"),
-    ("nrf52", "nordic"),
-    ("nrf53", "nordic"),
-    ("nrf54", "nordic"),
-    ("nrf91", "nordic"),
-    ("atmega", "microchip"),
-    ("attiny", "microchip"),
-    ("atsam", "microchip"),
-    ("at89", "microchip"),
-    ("pic12", "microchip"),
-    ("pic16", "microchip"),
-    ("pic18", "microchip"),
-    ("pic24", "microchip"),
-    ("pic32", "microchip"),
-    ("msp430", "ti"),
-    ("cc13", "ti"),
-    ("cc25", "ti"),
-    ("cc26", "ti"),
-    ("cc32", "ti"),
-    ("tm4c", "ti"),
-    ("lpc", "nxp"),
-    ("mk", "nxp"),
-    ("gd32", "gigadevice"),
-    ("ch32", "wch"),
-    ("ch55", "wch"),
-    ("ch57", "wch"),
-    ("ch58", "wch"),
-    ("hc32", "hdsc"),
-    ("mm32", "mindmotion"),
-    ("bl60", "bouffalo"),
-    ("bl61", "bouffalo"),
-    ("bl70", "bouffalo"),
-    ("rp2040", "raspberrypi"),
-    ("rp2350", "raspberrypi"),
-    ("f1c", "allwinner"),
-    ("ca51", "cachip"),
-];
-
-const MCU_PACKAGE_PATTERNS: &[&str] = &[
+const IC_PACKAGE_PATTERNS: &[&str] = &[
     "qfp", "tqfp", "vqfp", "htqfp", "qfn", "dqfn", "vqfn", "uqfn", "hvqfn", "bga", "fbga", "lga",
-    "wlcsp", "sop-", "ssop-", "tssop-", "soic-",
+    "wlcsp", "sop-", "sop8", "sop-8", "ssop-", "tssop-", "soic-",
 ];
 
 fn is_ic_designator(designator: &str) -> bool {
@@ -335,9 +292,39 @@ fn is_passive_designator(designator: &str) -> bool {
         || d.starts_with("USB")
 }
 
-fn is_mcu_package(footprint: &str) -> bool {
+fn is_ic_package(footprint: &str) -> bool {
     let f = footprint.to_lowercase();
-    MCU_PACKAGE_PATTERNS.iter().any(|p| f.contains(p))
+    IC_PACKAGE_PATTERNS.iter().any(|p| f.contains(p))
+}
+
+fn looks_like_part_number(value: &str) -> bool {
+    let normalized: String = value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
+        .collect();
+    if normalized.len() < 4 {
+        return false;
+    }
+    let has_letter = normalized.chars().any(|ch| ch.is_ascii_alphabetic());
+    let has_digit = normalized.chars().any(|ch| ch.is_ascii_digit());
+    let alpha_count = normalized
+        .chars()
+        .filter(|ch| ch.is_ascii_alphabetic())
+        .count();
+    let digit_count = normalized.chars().filter(|ch| ch.is_ascii_digit()).count();
+    has_letter && has_digit && alpha_count >= 2 && digit_count >= 2 && !is_passive_like_value(value)
+}
+
+fn is_passive_like_value(value: &str) -> bool {
+    let lower = value.trim().to_ascii_lowercase();
+    lower.ends_with("k")
+        || lower.ends_with("r")
+        || lower.ends_with("ohm")
+        || lower.ends_with("nf")
+        || lower.ends_with("uf")
+        || lower.ends_with("pf")
+        || lower.ends_with("mh")
+        || lower.ends_with("uh")
 }
 
 /// Identify MCU candidates from schematic components
@@ -355,7 +342,7 @@ pub fn identify_mcu_candidates(components: &[SchematicComponent]) -> Vec<McuCand
 
         let mut score: i32 = 0;
         let mut reasons = Vec::new();
-        let mut vendor_guess = String::new();
+        let vendor_guess = String::new();
 
         // IC designator bonus
         if is_ic_designator(&designator) {
@@ -390,21 +377,20 @@ pub fn identify_mcu_candidates(components: &[SchematicComponent]) -> Vec<McuCand
             reasons.push("passive pin count".to_string());
         }
 
-        // Known MCU pattern matching
-        let search_text = format!("{value} {libref} {comment}").to_lowercase();
-        for (pattern, vendor) in MCU_PATTERNS {
-            if search_text.contains(*pattern) {
-                score += 25;
-                vendor_guess = vendor.to_string();
-                reasons.push(format!("known MCU pattern: {vendor}"));
-                break;
-            }
+        let search_text = format!("{value} {libref} {comment} {footprint}").to_lowercase();
+
+        // Generic part-number heuristic. Core must not know chip families; vendor/package
+        // evidence belongs in project truth or chip-support adapters.
+        if looks_like_part_number(&format!("{value} {comment}")) && is_ic_designator(&designator) {
+            score += 12;
+            reasons.push("IC designator with part-number-like value".to_string());
         }
 
         // Package matching
-        if is_mcu_package(&footprint) {
+        let package_text = format!("{footprint} {libref} {value} {comment}");
+        if is_ic_package(&package_text) {
             score += 10;
-            reasons.push("MCU-like package".to_string());
+            reasons.push("IC-like package".to_string());
         }
 
         // MCU keyword
@@ -418,13 +404,7 @@ pub fn identify_mcu_candidates(components: &[SchematicComponent]) -> Vec<McuCand
         }
 
         // Passive-like value penalty
-        if value.to_lowercase().ends_with("k")
-            || value.to_lowercase().ends_with("r")
-            || value.to_lowercase().ends_with("ohm")
-            || value.to_lowercase().ends_with("nf")
-            || value.to_lowercase().ends_with("uf")
-            || value.to_lowercase().ends_with("pf")
-        {
+        if is_passive_like_value(&value) {
             score -= 10;
             reasons.push("passive-like value".to_string());
         }
@@ -1111,7 +1091,7 @@ pub fn ingest_schematic_file(
 }
 
 fn parse_netlist_component(line: &str) -> Option<(String, String)> {
-    // Match patterns like: "U1  STM32F103" or "R1 10K"
+    // Match patterns like: "U1  CTRL1234" or "R1 10K"
     let parts: Vec<&str> = line.split_whitespace().collect();
     if parts.len() >= 2 {
         let first = parts[0];

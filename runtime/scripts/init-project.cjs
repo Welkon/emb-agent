@@ -759,6 +759,10 @@ function buildProjectConfig(projectRoot, args, options = {}) {
         trigger_patterns: []
       },
       integrations: {
+        doc_ingest: RUNTIME_CONFIG.default_doc_ingest || {
+          provider: 'auto',
+          local_tool_priority: ['markitdown', 'pdftotext', 'mutool']
+        },
         mineru: {
           mode: 'auto',
           base_url: '',

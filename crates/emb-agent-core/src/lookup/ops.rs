@@ -384,7 +384,7 @@ pub fn fetch_document(project_root: &Path, doc_path: &str) -> Result<String, Str
     }
 
     Err(format!(
-        "Document not found or not parsed: {doc_path}. Run `ingest doc --file {doc_path} --provider mineru` first."
+        "Document not found or not parsed: {doc_path}. Run `ingest doc --file {doc_path} --provider auto` first."
     ))
 }
 
@@ -418,7 +418,7 @@ fn read_fetchable_text(path: &Path, requested: &str) -> Result<String, String> {
         "pdf" | "doc" | "docx" | "ppt" | "pptx" | "xls" | "xlsx"
     ) {
         return Err(format!(
-            "Document is binary and has no cached parse.md: {requested}. Run `ingest doc --file {requested} --provider mineru` first."
+            "Document is binary and has no cached parse.md: {requested}. Run `ingest doc --file {requested} --provider auto` first."
         ));
     }
     fs::read_to_string(path).map_err(|e| format!("read error: {e}"))

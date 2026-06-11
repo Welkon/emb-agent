@@ -419,6 +419,10 @@ fn doc_ingest_creates_env_and_blocks_until_mineru_key_exists() {
         value["env"]["required_key"], "MINERU_API_KEY",
         "ingest output: {ingest}"
     );
+    assert_eq!(
+        value["local_pdf_tool_priority"][0], "markitdown",
+        "ingest output: {ingest}"
+    );
     assert!(
         fs::read_to_string(project.path().join(".gitignore"))
             .expect("read gitignore")
@@ -441,6 +445,73 @@ fn doc_ingest_creates_env_and_blocks_until_mineru_key_exists() {
     assert!(
         stderr.contains("binary") && stderr.contains("ingest doc"),
         "doc fetch stderr: {stderr}"
+    );
+}
+
+#[test]
+fn doc_ingest_auto_uses_local_provider_for_text_inputs() {
+    let project = TestProject::new("doc-auto-local");
+    let docs = project.path().join("docs");
+    fs::create_dir_all(&docs).expect("create docs");
+    fs::write(docs.join("manual.md"), "# Manual\n\nGPIO table\n").expect("write manual");
+
+    let ingest = run(
+        &project,
+        &[
+            "ingest",
+            "doc",
+            "--file",
+            "docs/manual.md",
+            "--kind",
+            "datasheet",
+            "--to",
+            "hardware",
+        ],
+    );
+    let value: serde_json::Value = serde_json::from_str(&ingest).expect("ingest json");
+    assert_eq!(value["status"], "ok", "ingest output: {ingest}");
+    assert_eq!(value["provider"], "local", "ingest output: {ingest}");
+    assert_eq!(
+        value["local_pdf_tool_priority"][0], "markitdown",
+        "ingest output: {ingest}"
+    );
+}
+
+#[test]
+fn doc_ingest_local_tool_priority_is_project_configurable() {
+    let project = TestProject::new("doc-tool-config");
+    let project_json_path = project.path().join(".emb-agent/project.json");
+    let raw = fs::read_to_string(&project_json_path).expect("read project json");
+    let mut value: serde_json::Value = serde_json::from_str(&raw).expect("project json");
+    value["integrations"]["doc_ingest"]["local_tool_priority"] =
+        serde_json::json!(["custom-doc-tool", "markitdown"]);
+    fs::write(
+        &project_json_path,
+        serde_json::to_string_pretty(&value).expect("project json serialize"),
+    )
+    .expect("write project json");
+
+    let docs = project.path().join("docs");
+    fs::create_dir_all(&docs).expect("create docs");
+    fs::write(docs.join("manual.md"), "# Manual\n\nGPIO table\n").expect("write manual");
+
+    let ingest = run(
+        &project,
+        &[
+            "ingest",
+            "doc",
+            "--file",
+            "docs/manual.md",
+            "--kind",
+            "datasheet",
+            "--to",
+            "hardware",
+        ],
+    );
+    let value: serde_json::Value = serde_json::from_str(&ingest).expect("ingest json");
+    assert_eq!(
+        value["local_pdf_tool_priority"][0], "custom-doc-tool",
+        "ingest output: {ingest}"
     );
 }
 
@@ -649,6 +720,39 @@ fn ingest_schematic_accepts_repeated_file_options() {
 }
 
 #[test]
+fn ingest_schematic_identifies_generic_sop8_controller_candidate() {
+    let project = TestProject::new("schematic-generic-controller-candidate");
+    let docs = project.path().join("docs");
+    fs::create_dir_all(&docs).expect("create docs");
+    fs::write(
+        docs.join("bom.csv"),
+        "designator,value,footprint\nU2,ZX1234 SOP-8,SOP-8\nR1,10K,0603\n",
+    )
+    .expect("write bom");
+
+    let ingest = run(
+        &project,
+        &[
+            "ingest",
+            "schematic",
+            "--file",
+            "docs/bom.csv",
+            "--format",
+            "bom-csv",
+        ],
+    );
+    let value: serde_json::Value = serde_json::from_str(&ingest).expect("ingest json");
+    let candidates = value["mcu_candidates"].as_array().expect("mcu candidates");
+    assert!(
+        candidates.iter().any(|candidate| {
+            candidate["designator"] == "U2"
+                && candidate["value"].as_str().unwrap_or("").contains("ZX1234")
+        }),
+        "ingest output: {ingest}"
+    );
+}
+
+#[test]
 fn next_requires_manual_evidence_before_new_firmware_work() {
     let project = TestProject::new("manual-gate");
     fs::remove_dir_all(project.path().join(".emb-agent/tasks/pwm-led")).expect("remove task");
@@ -841,7 +945,8 @@ fn system_prd_without_child_prds_routes_to_prd_breakdown() {
         r#"{"nodes":[],"edges":[]}"#,
     )
     .expect("write graph stub");
-    fs::create_dir_all(project.path().join(".emb-agent/cache/docs/mock")).expect("create doc cache");
+    fs::create_dir_all(project.path().join(".emb-agent/cache/docs/mock"))
+        .expect("create doc cache");
     fs::write(
         project.path().join(".emb-agent/cache/docs/mock/parse.md"),
         "# Mock MCU Manual",
@@ -1824,6 +1929,85 @@ fn initialized_project_without_hardware_still_routes_to_onboard() {
     let knowledge = root.join(".emb-agent/reference/knowledge-evolution.md");
     assert!(shared.exists(), "shared conventions missing");
     assert!(knowledge.exists(), "knowledge evolution missing");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn hardware_first_prd_exploration_surfaces_doc_ingest_before_questions() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("emb-agent-hw-first-docs-{nonce}"));
+    fs::create_dir_all(&root).expect("create root");
+
+    let output = Command::new(emb_agent_bin())
+        .arg("init")
+        .arg("--cwd")
+        .arg(&root)
+        .output()
+        .expect("run init");
+    assert_success(output);
+
+    let project_json_path = root.join(".emb-agent/project.json");
+    let raw = fs::read_to_string(&project_json_path).expect("read project json");
+    let mut project_json: serde_json::Value = serde_json::from_str(&raw).expect("project json");
+    project_json["integrations"]["doc_ingest"]["local_tool_priority"] =
+        serde_json::json!(["custom-doc-tool", "markitdown"]);
+    fs::write(
+        &project_json_path,
+        serde_json::to_string_pretty(&project_json).expect("project json serialize"),
+    )
+    .expect("write project json");
+
+    let docs = root.join("docs");
+    fs::create_dir_all(&docs).expect("create docs");
+    fs::write(docs.join("board.SchDoc"), b"fixture").expect("write schdoc");
+    fs::write(
+        docs.join("controller-user-manual.pdf"),
+        b"%PDF-1.4\nfixture\n",
+    )
+    .expect("write pdf");
+
+    let output = Command::new(emb_agent_bin())
+        .args(["next", "--brief"])
+        .arg("--cwd")
+        .arg(&root)
+        .output()
+        .expect("run next");
+    let next = assert_success(output);
+    let value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    assert_eq!(value["action"], "clarify", "next output: {next}");
+    assert!(
+        value["hardware_unknown_count"].as_u64().unwrap_or(0) >= 2,
+        "next output: {next}"
+    );
+    assert!(
+        value["hardware_evidence_files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item == "docs/board.SchDoc"),
+        "next output: {next}"
+    );
+    assert_eq!(
+        value["agent_protocol"]["gate"]["document_evidence_policy"]["hardware_first"], true,
+        "next output: {next}"
+    );
+    assert!(
+        value["agent_protocol"]["gate"]["document_evidence_policy"]["before_first_question"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item == "ingest_schematic"),
+        "next output: {next}"
+    );
+    assert_eq!(
+        value["agent_protocol"]["gate"]["document_evidence_policy"]["local_pdf_tool_priority"][0],
+        "custom-doc-tool",
+        "next output: {next}"
+    );
 
     let _ = fs::remove_dir_all(root);
 }

@@ -40,6 +40,9 @@ pub struct ProjectSnapshot {
     pub firmware_manual_required: bool,
     pub requirements_unknown_count: usize,
     pub hardware_unknown_count: usize,
+    pub hardware_pin_mapping_declared: bool,
+    pub hardware_evidence_files: Vec<String>,
+    pub local_doc_tool_priority: Vec<String>,
     pub truth_validation_errors: Vec<String>,
     pub system_prd_exists: bool,
     pub system_prd_has_content: bool,
@@ -248,6 +251,37 @@ fn is_declared_hardware_model(model: &str) -> bool {
     !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("unknown")
 }
 
+fn has_declared_package(package: &str) -> bool {
+    let trimmed = package.trim();
+    !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("unknown")
+}
+
+fn has_pin_mapping(signals: &[HardwareSignal]) -> bool {
+    signals
+        .iter()
+        .any(|signal| !signal.name.trim().is_empty() && !signal.pin.trim().is_empty())
+}
+
+fn hardware_unknown_count(hardware: &HardwareTruth) -> usize {
+    let mut count = hardware
+        .unknowns
+        .iter()
+        .filter(|item| !item.trim().is_empty())
+        .count();
+    let has_model = is_declared_hardware_model(&hardware.model);
+    let has_package = has_declared_package(&hardware.package);
+    if !has_model {
+        count += 1;
+    }
+    if !has_package {
+        count += 1;
+    }
+    if has_model && has_package && !has_pin_mapping(&hardware.signals) {
+        count += 1;
+    }
+    count
+}
+
 fn is_clarification_task(task: &TaskRef) -> bool {
     let text = format!("{} {}", task.name, task.title).to_lowercase();
     [
@@ -280,6 +314,68 @@ fn child_prd_count(project_root: &Path) -> usize {
         .iter()
         .map(|dir| count_markdown_files(&prd_root.join(dir)))
         .sum()
+}
+
+fn hardware_evidence_files(project_root: &Path) -> Vec<String> {
+    let docs_dir = project_root.join("docs");
+    let mut files = Vec::new();
+    collect_hardware_evidence_files(project_root, &docs_dir, &mut files);
+    files.sort();
+    files.dedup();
+    files
+}
+
+fn collect_hardware_evidence_files(project_root: &Path, dir: &Path, files: &mut Vec<String>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_hardware_evidence_files(project_root, &path, files);
+            continue;
+        }
+        if !is_hardware_evidence_file(&path) {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(project_root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        files.push(rel);
+    }
+}
+
+fn is_hardware_evidence_file(path: &Path) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if matches!(
+        ext.as_str(),
+        "schdoc" | "pcbdoc" | "pdf" | "csv" | "net" | "json"
+    ) {
+        return true;
+    }
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(ext.as_str(), "md" | "txt")
+        && [
+            "schematic",
+            "sch",
+            "datasheet",
+            "manual",
+            "芯片",
+            "手册",
+            "原理图",
+        ]
+        .iter()
+        .any(|needle| name.contains(needle))
 }
 
 fn is_child_prd_markdown(path: &Path) -> bool {
@@ -742,6 +838,16 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     let child_prd_count = child_prd_count(project_root);
 
     let has_hardware = is_declared_hardware_model(&state.hardware.model);
+    let evidence_files = hardware_evidence_files(project_root);
+    let local_doc_tool_priority = crate::lookup::configured_local_tool_order(project_root);
+    let hardware_first_docs_pending = state
+        .config
+        .preferences
+        .truth_source_mode
+        .trim()
+        .eq_ignore_ascii_case("hardware_first")
+        && !has_hardware
+        && !evidence_files.is_empty();
     let active_is_clarification = state
         .current_task
         .as_ref()
@@ -815,9 +921,13 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     } else if active_is_clarification {
         "Continue the active clarification/brainstorming task as a doc-grounded grilling loop. Ask one load-bearing question at a time, challenge ambiguous terms against project truth, extract exact timing/percentage/slope values from any waveform or measurement captures before implementing, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string()
     } else if needs_prd_exploration {
-        "System PRD is missing or still scaffold-only. Run PRD exploration before task creation: ask one load-bearing behavior/power/reset/acceptance question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run validate or health after truth edits, and stop until explicit agreement.".to_string()
+        if hardware_first_docs_pending {
+            "System PRD is missing or still scaffold-only, and hardware-first evidence exists under docs/. Before asking behavior questions, list docs hardware inputs, ingest schematics with `ingest schematic`, parse MCU/datasheet PDFs with `ingest doc` using the configured local tool order before MinerU fallback, record schematic/manual conflicts as PRD/req unknowns, then ask one load-bearing behavior/power/reset/acceptance question at a time.".to_string()
+        } else {
+            "System PRD is missing or still scaffold-only. Run PRD exploration before task creation: ask one load-bearing behavior/power/reset/acceptance question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run validate or health after truth edits, and stop until explicit agreement.".to_string()
+        }
     } else if firmware_manual_required {
-        "MCU/package truth exists but no parsed MCU manual or chip-support evidence is available. Ingest the MCU manual/datasheet with `ingest doc --provider mineru`, verify register/GPIO/ADC/timer/sleep evidence, then rerun next before firmware work.".to_string()
+        "MCU/package truth exists but no parsed MCU manual or chip-support evidence is available. Ingest the MCU manual/datasheet with `ingest doc --provider auto`, verify register/GPIO/ADC/timer/sleep evidence, then rerun next before firmware work.".to_string()
     } else if state.current_task.is_some() {
         String::new()
     } else if !state.requirements.unknowns.is_empty()
@@ -883,7 +993,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         )
     };
 
-    let hardware_unknown_count = state.hardware.unknowns.len();
+    let hardware_unknown_count = hardware_unknown_count(&state.hardware);
 
     ProjectSnapshot {
         initialized: state.initialized,
@@ -915,6 +1025,9 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         firmware_manual_required,
         requirements_unknown_count: state.requirements.unknowns.len(),
         hardware_unknown_count,
+        hardware_pin_mapping_declared: has_pin_mapping(&state.hardware.signals),
+        hardware_evidence_files: evidence_files,
+        local_doc_tool_priority,
         truth_validation_errors: state.truth_validation_errors,
         system_prd_exists,
         system_prd_has_content,

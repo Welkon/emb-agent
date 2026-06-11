@@ -140,7 +140,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             let file = option_value(args, "--file")
                 .or_else(|| args.get(2).cloned())
                 .ok_or("ingest doc requires --file <path>")?;
-            let provider = option_value(args, "--provider").unwrap_or_else(|| "mineru".to_string());
+            let provider = option_value(args, "--provider").unwrap_or_else(|| "auto".to_string());
             let kind = option_value(args, "--kind").unwrap_or_else(|| "datasheet".to_string());
             let intended_to = option_value(args, "--to").unwrap_or_else(|| "hardware".to_string());
             let title = option_value(args, "--title");

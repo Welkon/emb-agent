@@ -55,6 +55,10 @@ pub fn init_project(cwd: &Path) -> String {
         "preferences": {"truth_source_mode": "hardware_first"},
         "hooks": {},
         "integrations": {
+            "doc_ingest": {
+                "provider": "auto",
+                "local_tool_priority": ["markitdown", "pdftotext", "mutool"]
+            },
             "mineru": {
                 "mode": "api",
                 "base_url": "https://mineru.net",
