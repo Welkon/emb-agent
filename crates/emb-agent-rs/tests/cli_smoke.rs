@@ -1433,6 +1433,27 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         .expect("run installer");
     assert_success(output);
 
+    let env_example =
+        fs::read_to_string(root.join(".env.example")).expect("read installer env example");
+    for expected in [
+        "MINERU_API_KEY=",
+        "GEMINI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OLLAMA_BASE_URL",
+        "HEADROOM_PORT",
+        "TURBOVEC_ENABLED=false",
+        "TURBOVEC_INDEX_DIR",
+    ] {
+        assert!(
+            env_example.contains(expected),
+            "installer .env.example missing {expected}: {env_example}"
+        );
+    }
+    assert!(
+        !root.join(".env").exists(),
+        "installer should create .env.example only, not .env"
+    );
+
     for skill in ["emb-next", "emb-onboard"] {
         let skill_path = root
             .join(".agents")

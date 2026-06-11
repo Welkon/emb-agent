@@ -89,17 +89,62 @@ function readStdinIfAny() {
 	try { var input = fs.readFileSync(0); return input && input.length ? input : undefined; } catch (_) { return undefined; }
 }
 
+var ENV_MINERU_BLOCK = [
+	"# emb-agent integration secrets",
+	"#",
+	"# MinerU - PDF parsing API",
+	"MINERU_API_KEY=",
+	""
+].join("\n");
+var ENV_GRAPHIFY_BLOCK = [
+	"# Graphify - optional LLM backend for doc/PDF semantic extraction.",
+	"# Code-only graph extraction is local and needs no key.",
+	"# Pick one backend; if unset, graphify can still work code-only:",
+	"# GEMINI_API_KEY=       # free tier available",
+	"# DEEPSEEK_API_KEY=     # alternative for Chinese datasheets",
+	"# OLLAMA_BASE_URL=http://localhost:11434  # fully local, no API key",
+	""
+].join("\n");
+var ENV_HEADROOM_BLOCK = [
+	"# headroom - optional local context compression",
+	"# HEADROOM_PORT=8787",
+	"# HEADROOM_MODEL=kompress-base",
+	""
+].join("\n");
+var ENV_TURBOVEC_BLOCK = [
+	"# turbovec - experimental semantic vector search (opt-in)",
+	"TURBOVEC_ENABLED=false",
+	"# TURBOVEC_MODEL=BAAI/bge-small-en-v1.5",
+	"# TURBOVEC_INDEX_DIR=.emb-agent/cache/turbovec",
+	""
+].join("\n");
+var ENV_TEMPLATE = [
+	ENV_MINERU_BLOCK,
+	ENV_GRAPHIFY_BLOCK,
+	ENV_HEADROOM_BLOCK,
+	ENV_TURBOVEC_BLOCK
+].join("\n");
+
+function appendEnvExampleBlockIfMissing(filePath, key, block) {
+	var existing = "";
+	try { existing = fs.readFileSync(filePath, "utf8"); } catch (_) { existing = ""; }
+	if (existing.indexOf(key) !== -1) return;
+	var updated = existing.replace(/\s+$/, "");
+	if (updated) updated += "\n\n";
+	updated += block.replace(/\s+$/, "") + "\n";
+	fs.writeFileSync(filePath, updated, "utf8");
+}
+
 function ensureProjectEnvFiles(projectRoot) {
-	var content = [
-		"# emb-agent integration secrets",
-		"# Set MinerU API token for /emb:ingest doc --provider mineru.",
-		"MINERU_API_KEY=",
-		""
-	].join("\n");
 	var envExample = path.join(projectRoot, ".env.example");
-	var env = path.join(projectRoot, ".env");
-	if (!fs.existsSync(envExample)) fs.writeFileSync(envExample, content, "utf8");
-	if (!fs.existsSync(env)) fs.writeFileSync(env, content, "utf8");
+	if (!fs.existsSync(envExample)) {
+		fs.writeFileSync(envExample, ENV_TEMPLATE, "utf8");
+	} else {
+		appendEnvExampleBlockIfMissing(envExample, "MINERU_API_KEY", ENV_MINERU_BLOCK);
+		appendEnvExampleBlockIfMissing(envExample, "GEMINI_API_KEY", ENV_GRAPHIFY_BLOCK);
+		appendEnvExampleBlockIfMissing(envExample, "HEADROOM_PORT", ENV_HEADROOM_BLOCK);
+		appendEnvExampleBlockIfMissing(envExample, "TURBOVEC_ENABLED", ENV_TURBOVEC_BLOCK);
+	}
 	var gitignore = path.join(projectRoot, ".gitignore");
 	var existing = "";
 	try { existing = fs.readFileSync(gitignore, "utf8"); } catch (_) {}
@@ -109,6 +154,14 @@ function ensureProjectEnvFiles(projectRoot) {
 		updated += ".env\n";
 		fs.writeFileSync(gitignore, updated, "utf8");
 	}
+}
+
+function removeInstallerGeneratedEnv(projectRoot, hadEnvBeforeInstall) {
+	if (hadEnvBeforeInstall) return;
+	var env = path.join(projectRoot, ".env");
+	try {
+		if (fs.existsSync(env)) fs.unlinkSync(env);
+	} catch (_) {}
 }
 
 
@@ -1184,6 +1237,7 @@ function completeInstallBatch(projectRoot, hosts, options) {
 function installForHost(projectRoot, host, callback) {
 	var hostDir = hostDirFor(projectRoot, host);
 	var embDir = path.join(hostDir, "emb-agent");
+	var hadEnvBeforeInstall = fs.existsSync(path.join(projectRoot, ".env"));
 
 	logDetail("  Installing for " + host.name + " → " + hostDir);
 
@@ -1315,6 +1369,7 @@ function installForHost(projectRoot, host, callback) {
 					if (j.initialized) logDetail("    Project workspace initialized (.emb-agent/)");
 				}
 			} catch (_) {}
+			removeInstallerGeneratedEnv(projectRoot, hadEnvBeforeInstall);
 		}
 		function finishDone() {
 			logDetail("Done. emb-agent is now installed for your AI runtime.");
