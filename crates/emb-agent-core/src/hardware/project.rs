@@ -49,6 +49,7 @@ pub struct ProjectSnapshot {
     pub child_prd_count: usize,
     pub prd_breakdown_needed: bool,
     pub prd_task_candidates: Vec<TaskSnapshot>,
+    pub power_management_risk: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -80,7 +81,28 @@ pub struct ProjectConfig {
     pub flash_flow: String,
     pub developer: DeveloperInfo,
     pub preferences: ProjectPreferences,
+    pub firmware_framework: FirmwareFramework,
     pub hooks: HookConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FirmwareFramework {
+    pub official_mode: String,
+    pub control_contract: String,
+    pub execution_backend: String,
+    pub legacy_project_policy: String,
+}
+
+impl Default for FirmwareFramework {
+    fn default() -> Self {
+        Self {
+            official_mode: "event-step".to_string(),
+            control_contract: "sample-update-apply".to_string(),
+            execution_backend: "project-selects-baremetal-or-rtos".to_string(),
+            legacy_project_policy: "grandfather-existing-layouts-do-not-rewrite-by-default"
+                .to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -477,6 +499,80 @@ fn system_prd_has_substantive_content(source: &str) -> bool {
     bullet_lines > 0 || meaningful_lines >= 3
 }
 
+fn text_mentions_any(text: &str, needles: &[&str]) -> bool {
+    let haystack = text.to_ascii_lowercase();
+    needles.iter().any(|needle| haystack.contains(needle))
+}
+
+fn list_mentions_any(items: &[String], needles: &[&str]) -> bool {
+    items.iter().any(|item| text_mentions_any(item, needles))
+}
+
+fn has_structure_explanation_intent(state: &ProjectState) -> bool {
+    let keywords = [
+        "service walkthrough",
+        "service split",
+        "scheduler",
+        "time-slice",
+        "timeslice",
+        "call chain",
+        "structure explanation",
+        "explain current structure",
+        "architecture walkthrough",
+    ];
+    list_mentions_any(&state.requirements.goals, &keywords)
+        || list_mentions_any(&state.requirements.features, &keywords)
+        || list_mentions_any(&state.requirements.acceptance, &keywords)
+        || state
+            .current_task
+            .as_ref()
+            .map(|task| {
+                text_mentions_any(&task.name, &keywords)
+                    || text_mentions_any(&task.title, &keywords)
+            })
+            .unwrap_or(false)
+}
+
+fn has_power_management_risk(system_prd_source: &str, state: &ProjectState) -> bool {
+    let keywords = [
+        "battery",
+        "sleep",
+        "wake",
+        "wakeup",
+        "wake-up",
+        "stop",
+        "standby",
+        "low-power",
+        "low power",
+        "watchdog",
+        "wdt",
+        "swdten",
+        "deep sleep",
+        "idle current",
+        "quiescent current",
+        "key wake",
+        "button wake",
+        "power-down",
+        "power down",
+    ];
+    text_mentions_any(system_prd_source, &keywords)
+        || list_mentions_any(&state.requirements.goals, &keywords)
+        || list_mentions_any(&state.requirements.features, &keywords)
+        || list_mentions_any(&state.requirements.constraints, &keywords)
+        || list_mentions_any(&state.requirements.acceptance, &keywords)
+        || list_mentions_any(&state.requirements.failure_policy, &keywords)
+        || list_mentions_any(&state.requirements.unknowns, &keywords)
+        || list_mentions_any(&state.hardware.unknowns, &keywords)
+        || state
+            .current_task
+            .as_ref()
+            .map(|task| {
+                text_mentions_any(&task.name, &keywords)
+                    || text_mentions_any(&task.title, &keywords)
+            })
+            .unwrap_or(false)
+}
+
 fn derive_prd_task_candidates(project_root: &Path) -> Vec<TaskSnapshot> {
     let path = system_prd_path(project_root);
     let source = fs::read_to_string(path).unwrap_or_default();
@@ -836,6 +932,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     let system_prd_has_content =
         system_prd_exists && system_prd_has_substantive_content(&system_prd_source);
     let child_prd_count = child_prd_count(project_root);
+    let power_management_risk = has_power_management_risk(&system_prd_source, &state);
 
     let has_hardware = is_declared_hardware_model(&state.hardware.model);
     let evidence_files = hardware_evidence_files(project_root);
@@ -886,20 +983,23 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     } else {
         "concept"
     };
+    let explanation_only_path = has_structure_explanation_intent(&state)
+        && state.current_task.is_none()
+        && state.open_tasks == 0
+        && requirements_have_content;
     let prd_breakdown_needed = has_hardware
         && !has_truth_errors
         && !needs_prd_exploration
         && state.current_task.is_none()
         && state.open_tasks == 0
+        && !explanation_only_path
         && system_prd_has_content
         && child_prd_count == 0;
     let firmware_manual_required = has_hardware
         && !has_firmware_manual_evidence(Path::new(&state.state_dir), &state.hardware.model)
+        && !explanation_only_path
         && (state.current_task.is_some()
-            || (state.open_tasks == 0
-                && requirements_have_content
-                && !prd_breakdown_needed
-                && child_prd_count == 0));
+            || (state.open_tasks == 0 && requirements_have_content && child_prd_count == 0));
     let prd_child_selection_needed = has_hardware
         && !has_truth_errors
         && !needs_prd_exploration
@@ -919,28 +1019,50 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
             state.truth_validation_errors.join("; ")
         )
     } else if active_is_clarification {
-        "Continue the active clarification/brainstorming task as a doc-grounded grilling loop. Ask one load-bearing question at a time, challenge ambiguous terms against project truth, extract exact timing/percentage/slope values from any waveform or measurement captures before implementing, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string()
+        let mut summary = "Continue the active clarification/brainstorming task as a doc-grounded grilling loop. Ask one load-bearing question at a time, challenge ambiguous terms against project truth, extract exact timing/percentage/slope values from any waveform or measurement captures before implementing, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string();
+        if power_management_risk {
+            summary.push_str(" Because sleep/power behavior is in scope, explicitly lock down watchdog policy, sleep entry conditions, wake sources, pre-sleep peripheral shutdown, post-wake restore sequence, config-bit dependencies, and idle-current acceptance evidence before coding.");
+        }
+        summary
     } else if needs_prd_exploration {
         if hardware_first_docs_pending {
-            "System PRD is missing or still scaffold-only, and hardware-first evidence exists under docs/. Before asking behavior questions, list docs hardware inputs, ingest schematics with `ingest schematic`, parse MCU/datasheet PDFs with `ingest doc` using the configured local tool order before MinerU fallback, record schematic/manual conflicts as PRD/req unknowns, then ask one load-bearing behavior/power/reset/acceptance question at a time.".to_string()
+            let mut summary = "System PRD is missing or still scaffold-only, and hardware-first evidence exists under docs/. Before asking behavior questions, list docs hardware inputs, ingest schematics with `ingest schematic`, parse MCU/datasheet PDFs with `ingest doc` using the configured local tool order before MinerU fallback, record schematic/manual conflicts as PRD/req unknowns, then ask one load-bearing behavior/power/reset/acceptance question at a time.".to_string();
+            if power_management_risk {
+                summary.push_str(" Treat watchdog and sleep policy as first-pass PRD questions, not later implementation cleanup.");
+            }
+            summary
         } else {
-            "System PRD is missing or still scaffold-only. Run PRD exploration before task creation: ask one load-bearing behavior/power/reset/acceptance question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run validate or health after truth edits, and stop until explicit agreement.".to_string()
+            let mut summary = "System PRD is missing or still scaffold-only. Run PRD exploration before task creation: ask one load-bearing behavior/power/reset/acceptance question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run validate or health after truth edits, and stop until explicit agreement.".to_string();
+            if power_management_risk {
+                summary.push_str(" Front-load watchdog behavior, sleep entry and wake conditions, config-bit dependencies, peripheral shutdown/restore, and measured idle-current acceptance.");
+            }
+            summary
         }
     } else if firmware_manual_required {
-        "MCU/package truth exists but no parsed MCU manual or chip-support evidence is available. Ingest the MCU manual/datasheet with `ingest doc --provider auto`, verify register/GPIO/ADC/timer/sleep evidence, then rerun next before firmware work.".to_string()
+        let mut summary = "MCU/package truth exists but no parsed MCU manual or chip-support evidence is available. Ingest the MCU manual/datasheet with `ingest doc --provider auto`, verify register/GPIO/ADC/timer/sleep evidence, then rerun next before firmware work.".to_string();
+        if power_management_risk {
+            summary.push_str(" Include watchdog software-control limits, config words, wake sources, and STOP/standby caveats in that evidence pass.");
+        }
+        summary
     } else if state.current_task.is_some() {
         String::new()
     } else if !state.requirements.unknowns.is_empty()
         || !state.hardware.unknowns.is_empty()
         || !has_hardware
     {
-        "Continue requirement exploration/brainstorming as a doc-grounded grilling loop. Clarify behavior, interaction, power, LED, mechanical, hardware constraints, and the state-machine checklist; update docs/prd/system.md and .emb-agent/req.yaml; run the installed emb-agent runtime's validate or health command after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string()
+        let mut summary = "Continue requirement exploration/brainstorming as a doc-grounded grilling loop. Clarify behavior, interaction, power, LED, mechanical, hardware constraints, and the state-machine checklist; update docs/prd/system.md and .emb-agent/req.yaml; run the installed emb-agent runtime's validate or health command after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string();
+        if power_management_risk {
+            summary.push_str(" For battery or low-power behavior, explicitly close watchdog, sleep/wake, config-bit, and idle-current unknowns early.");
+        }
+        summary
+    } else if explanation_only_path {
+        "The current request is understanding-first work about structure, scheduler flow, or service layout. Answer directly with a scoped architecture walkthrough before creating PRDs or tasks. If the discussion later turns into resumable implementation work, then create a durable task or PRD.".to_string()
     } else if prd_breakdown_needed {
         "docs/prd/system.md exists but no child execution PRDs exist under docs/prd/tasks|features|modules|components|subsystems. Read docs/prd/system.md, present prd_task_candidates, create vertical child PRDs, run validate or health after PRD edits, then wait for explicit agreement before task add or activation.".to_string()
     } else if prd_child_selection_needed {
-        "Child execution PRDs exist but no task is active. Present prd_task_candidates as ready child-PRD work options, create/activate a task only after explicit selection and enough agent brief detail, and keep the selected child PRD in the task artifacts.".to_string()
+        "Child execution PRDs exist but no task is active. Present prd_task_candidates as ready child-PRD work options. A task is recommended for multi-step or resumable work, but a narrowly scoped explanation, evidence lookup, verification run, or small fix can proceed directly after the scope and verification surface are explicit.".to_string()
     } else {
-        "Ask what work the user wants to start. Classify it as bug, feature, board-bringup, power, timing, or toolchain; draft a durable agent brief and split large work into vertical tracer-bullet slices before activation.".to_string()
+        "Ask what work the user wants to start. Classify it as bug, feature, board-bringup, power, timing, or toolchain. Use a durable agent brief and vertical tracer-bullet slices for multi-step work, but do not force task creation for a narrow one-off analysis, explanation, verification run, or small scoped fix.".to_string()
     };
 
     let (recommended_command, recommended_reason) = if has_truth_errors {
@@ -976,6 +1098,11 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
             "clarify".to_string(),
             "Project is still in concept/requirements exploration. Clarify the listed blockers, state-machine behavior, and acceptance evidence before task creation or implementation.".to_string(),
         )
+    } else if explanation_only_path {
+        (
+            "next".to_string(),
+            "The current request is structure explanation or scheduler understanding. Route directly to explanation-first work; do not force PRD breakdown or task creation unless the scope expands into implementation.".to_string(),
+        )
     } else if prd_breakdown_needed {
         (
             "prd-breakdown".to_string(),
@@ -984,7 +1111,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     } else if prd_child_selection_needed {
         (
             "choose-work".to_string(),
-            "Child execution PRDs exist but no task is active. Choose a child PRD and create or activate a task before implementation.".to_string(),
+            "Child execution PRDs exist but no task is active. Choose a child PRD and decide whether the work needs a durable task or can be handled as a bounded one-off change or analysis.".to_string(),
         )
     } else {
         (
@@ -1034,6 +1161,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         child_prd_count,
         prd_breakdown_needed,
         prd_task_candidates,
+        power_management_risk,
     }
 }
 
@@ -1132,6 +1260,9 @@ impl ProjectConfig {
             preferences: ProjectPreferences::from_value(
                 value.get("preferences").unwrap_or(&Value::Null),
             ),
+            firmware_framework: FirmwareFramework::from_value(
+                value.get("firmware_framework").unwrap_or(&Value::Null),
+            ),
             hooks: HookConfig::from_value(value.get("hooks").unwrap_or(&Value::Null)),
         }
     }
@@ -1177,6 +1308,43 @@ impl ProjectPreferences {
                     _ => false,
                 })
                 .unwrap_or(false),
+        }
+    }
+}
+
+impl FirmwareFramework {
+    fn from_value(value: &Value) -> Self {
+        let defaults = Self::default();
+        let legacy_shape = value_string(value, "scheduler_shape");
+        let legacy_backend = if legacy_shape.is_empty() {
+            String::new()
+        } else {
+            "baremetal-superloop-compatible".to_string()
+        };
+        Self {
+            official_mode: first_non_empty(&[
+                value_string(value, "official_mode"),
+                if legacy_shape.is_empty() {
+                    String::new()
+                } else {
+                    "event-step".to_string()
+                },
+                defaults.official_mode,
+            ]),
+            control_contract: first_non_empty(&[
+                value_string(value, "control_contract"),
+                legacy_shape,
+                defaults.control_contract,
+            ]),
+            execution_backend: first_non_empty(&[
+                value_string(value, "execution_backend"),
+                legacy_backend,
+                defaults.execution_backend,
+            ]),
+            legacy_project_policy: first_non_empty(&[
+                value_string(value, "legacy_project_policy"),
+                defaults.legacy_project_policy,
+            ]),
         }
     }
 }

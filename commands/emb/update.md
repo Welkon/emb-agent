@@ -26,5 +26,5 @@ allowed-tools:
 npx emb-agent@latest update --target all --local
 ```
 
-- Restart the host session after updating OMP/Pi extensions or command files.
+- Restart the host session after updating Pi extensions or command files.
 - Prefer update over repair when the source package changed; use repair when files are damaged but the installed version is already correct.

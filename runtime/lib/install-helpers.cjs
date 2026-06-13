@@ -2126,13 +2126,13 @@ function createInstallHelpers(deps) {
     if (!hasContextMonitorHook) {
       if (target.hookMode === 'cursor-settings') {
         next.hooks.PostToolUse.push({
-          matcher: 'Bash|Edit|Write|MultiEdit|Agent|Task',
+          matcher: 'Edit|Write|MultiEdit|Task',
           command: contextMonitorCommand,
           timeout: 10
         });
       } else {
         next.hooks.PostToolUse.push({
-          matcher: 'Bash|Edit|Write|MultiEdit|Agent|Task',
+          matcher: 'Edit|Write|MultiEdit|Task',
           hooks: [
             {
               type: 'command',

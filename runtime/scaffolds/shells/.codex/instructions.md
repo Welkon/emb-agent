@@ -7,7 +7,9 @@
 ## Auto Triggers
 
 {{INCLUDE:_partials/auto-trigger-closure.md}}
-- After context compression, re-enter through this file before continuing.
+- After context compression, prefer the injected emb-agent re-entry context. Re-open this file only if routing or host integration behavior is unclear.
+
+When the user asks what an existing service split, scheduler path, or time-slice call chain means, explanation-first is a valid direct route. Do not force task creation just to answer that question.
 
 ## Red Flags - STOP
 
@@ -28,3 +30,4 @@
 - Ask the anti-template question before adding defaults.
 - The template should remember harness infrastructure so the skill author can focus on project truth.
 - Treat `agent_protocol.gate` fields from emb-agent JSON as authoritative; execute allowed host actions yourself and never ask the user to run emb-agent commands manually.
+- If the current request is a narrow explanation, one-off verification, or small scoped fix, keep the flow direct unless the scope clearly turns into resumable multi-step work.

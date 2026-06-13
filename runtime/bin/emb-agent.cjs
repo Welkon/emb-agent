@@ -14,7 +14,6 @@ function findRustBinary() {
 	var dirs = [
 		__dirname,
 		path.join(process.cwd(), ".cursor", "emb-agent", "bin"),
-		path.join(process.cwd(), ".omp", "emb-agent", "bin"),
 		path.join(process.cwd(), ".claude", "emb-agent", "bin"),
 		path.join(process.cwd(), ".codex", "emb-agent", "bin"),
 		path.join(process.cwd(), ".pi", "emb-agent", "bin"),

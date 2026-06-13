@@ -1,3 +1,4 @@
+use super::tooling::maybe_auto_ensure_markitdown;
 use super::util::{current_dir_string, option_value, option_values};
 use std::path::Path;
 
@@ -141,6 +142,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 .or_else(|| args.get(2).cloned())
                 .ok_or("ingest doc requires --file <path>")?;
             let provider = option_value(args, "--provider").unwrap_or_else(|| "auto".to_string());
+            maybe_auto_ensure_markitdown(&provider, &cwd);
             let kind = option_value(args, "--kind").unwrap_or_else(|| "datasheet".to_string());
             let intended_to = option_value(args, "--to").unwrap_or_else(|| "hardware".to_string());
             let title = option_value(args, "--title");

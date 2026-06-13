@@ -58,7 +58,59 @@ pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
     line
 }
 
+fn clarify_instructions(snapshot: &ProjectSnapshot) -> String {
+    let mut instructions = "Run PRD exploration as a doc-grounded grilling loop: if hardware-first docs exist under docs/, first ingest schematics and parse datasheets/manuals with the configured local conversion order before MinerU fallback, record unconfirmed hardware conflicts in PRD/req unknowns, then challenge ambiguous terms against existing project truth, ask one load-bearing behavior/hardware/power/state-machine question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and stop before task creation until the compact state-machine checklist is explicit.".to_string();
+    if snapshot.power_management_risk {
+        instructions.push_str(" Because low-power or wake behavior is in scope, front-load watchdog policy, sleep entry conditions, wake sources, pre-sleep peripheral shutdown, post-wake restore sequence, config-bit dependencies, and idle-current acceptance evidence.");
+    }
+    instructions
+}
+
+fn firmware_manual_instructions(snapshot: &ProjectSnapshot) -> String {
+    let mut instructions = "MCU/package truth exists, but parsed MCU manual or chip-support evidence is missing. Ingest the MCU manual/datasheet with `ingest doc --provider auto`, verify register, GPIO bias/wakeup, ADC, timer/PWM, and sleep/reset evidence, then rerun next before firmware implementation or task creation.".to_string();
+    if snapshot.power_management_risk {
+        instructions.push_str(" Include watchdog software-control limits, config words, wake sources, and STOP/standby caveats in that evidence pass.");
+    }
+    instructions
+}
+
+fn work_selection_instructions() -> &'static str {
+    "Present `task_candidates` as existing-task or child-PRD work options, and classify the desired path as bug, feature, board-bringup, power, timing, or toolchain. Use a durable agent brief and a vertical tracer-bullet slice when the work is multi-step, cross-cutting, or likely to need resume/handoff. For a narrow explanation, structure walkthrough, evidence lookup, one-off verification run, or small scoped fix, direct bounded execution is allowed without creating or activating a task once the scope and verification surface are explicit. If the user says they do not understand the current service split or time-slice flow, explain the existing structure and tradeoffs before proposing refactors."
+}
+
+fn clarify_state_machine_checklist(snapshot: &ProjectSnapshot) -> Vec<&'static str> {
+    let mut checklist = vec![
+        "boot_state",
+        "first_input",
+        "press_vs_release_trigger",
+        "mode_cycle_including_off",
+        "long_press_valid_states",
+        "memory_semantics",
+        "stop_entry",
+        "wake_source",
+        "low_voltage_behavior",
+        "acceptance_evidence",
+        "extract_exact_waveform_or_measurement_params_from_captures",
+    ];
+    if snapshot.power_management_risk {
+        checklist.extend([
+            "watchdog_policy_awake_vs_sleep",
+            "sleep_entry_conditions",
+            "sleep_wake_sources",
+            "pre_sleep_peripheral_shutdown",
+            "post_wake_restore_sequence",
+            "config_bit_dependencies",
+            "idle_current_acceptance_evidence",
+        ]);
+    }
+    checklist
+}
+
 pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
+    build_session_context_for_trigger(snapshot, "startup")
+}
+
+pub fn build_session_context_for_trigger(snapshot: &ProjectSnapshot, trigger: &str) -> String {
     if !snapshot.initialized && snapshot.project_root.is_empty() {
         return "\
 <emb-agent-session-context>
@@ -73,6 +125,39 @@ You are the user's embedded development assistant. Start with onboarding, not im
 5. After onboarding completes, run `/emb-next` and follow its recommendation.
 6. Match your response language to the user's language.
 </emb-agent-session-context>".to_string();
+    }
+
+    let trigger = trigger.trim().to_ascii_lowercase();
+    if trigger == "compact" || trigger == "clear" {
+        let mut lines = vec![
+            "<emb-agent-session-context>".to_string(),
+            format!("emb-agent re-entry context refreshed after {trigger}."),
+            "Treat this as a compact delta, not a full reboot.".to_string(),
+            "Do not replay welcome text, onboarding advice, or broad rule files unless the current gate is unclear.".to_string(),
+            "</emb-agent-session-context>".to_string(),
+            String::new(),
+            "<current-state>".to_string(),
+            format!("Project root: {}", snapshot.project_root),
+            format!("Workflow state: {}", snapshot.workflow_state),
+            format!("Recommended next command: {}", snapshot.recommended_command),
+            format!("Reason: {}", snapshot.recommended_reason),
+            format!("Open tasks: {}", snapshot.open_tasks),
+        ];
+        if let Some(task) = &snapshot.current_task {
+            lines.push(format!("Active task: {} ({})", task.name, task.title));
+        }
+        if snapshot.power_management_risk {
+            lines.push("Embedded power-risk reminder: keep watchdog, sleep/wake, config-bit truth, and idle-current acceptance visible.".to_string());
+        }
+        lines.extend([
+            "</current-state>".to_string(),
+            String::new(),
+            "<ready>".to_string(),
+            "Continue from the current gate and nearby files only; avoid broad file rediscovery.".to_string(),
+            "Re-open `.codex/instructions.md` only if host integration behavior or routing is unclear.".to_string(),
+            "</ready>".to_string(),
+        ]);
+        return lines.join("\n");
     }
 
     let welcome = build_welcome_message(snapshot);
@@ -140,6 +225,9 @@ You are the user's embedded development assistant. Start with onboarding, not im
             task.status, task.priority
         ));
     }
+    if snapshot.power_management_risk {
+        lines.push("Embedded power-risk: watchdog, sleep/wake behavior, config-bit truth, and idle-current acceptance must be made explicit early.".to_string());
+    }
 
     if !snapshot.task_intake_summary.is_empty() {
         lines.push(format!("Task intake: {}", snapshot.task_intake_summary));
@@ -152,6 +240,7 @@ You are the user's embedded development assistant. Start with onboarding, not im
         "Routing gate — before implementation or broad file exploration:".to_string(),
         "Run the current host's emb-next entry (for example `/emb-next`, `$emb-next`, or the installed runtime command `node .<host>/emb-agent/bin/emb-agent.cjs next --brief`) and follow `agent_protocol.gate` exactly.".to_string(),
         "Do not manually explore files or decide next steps on your own until you have that routing recommendation.".to_string(),
+        "When the user explicitly asks what a service split, scheduler path, or time-slice call chain means, treat explanation-first as a valid direct route; do not force task creation just to answer that question.".to_string(),
         String::new(),
         "Rules:".to_string(),
         "- Do NOT re-run `start` on subsequent turns.".to_string(),
@@ -197,37 +286,44 @@ pub fn build_welcome_message(snapshot: &ProjectSnapshot) -> String {
 
     lines.extend([
         "\nWhat you can do next:".to_string(),
-        "1. **Describe your goal** (e.g., \"review the schematic\") — I will route it to the right task.".to_string(),
-        "2. Run `/emb-next` — see the recommended workflow step.".to_string(),
-        "3. Ask me \"what should I do next?\" — I will show available tasks and wait for your selection.".to_string(),
-        "4. Run `status --brief` through the emb-agent runtime — view project state.".to_string(),
+        "1. **Describe your goal** (e.g., \"review the schematic\") — I will route it to the right workflow.".to_string(),
+        "2. Ask me \"what should I do next?\" — I will show the recommended next step and any ready work options.".to_string(),
+        "3. If you do not understand the current structure, scheduler, or time-slice flow, ask for a walkthrough first — this does not need a task.".to_string(),
+        "4. For a narrow analysis, verification run, or small scoped fix, ask directly — this often does not need a task first.".to_string(),
+        "5. Run `/emb-next` or `status --brief` through the emb-agent runtime if you want the raw routing state.".to_string(),
     ]);
 
     lines.join("\n")
 }
 
 pub fn build_host_session_start_payload(host: &str, message: &str, welcome: &str) -> String {
+    build_host_session_start_payload_for_trigger(host, message, welcome, "startup")
+}
+
+pub fn build_host_session_start_payload_for_trigger(
+    host: &str,
+    message: &str,
+    welcome: &str,
+    trigger: &str,
+) -> String {
     let event_name = "SessionStart";
+    let emit_welcome = trigger.trim().eq_ignore_ascii_case("startup");
     match host {
         "cursor" => format!("{{\"additional_context\":{}}}", json_quote(message)),
         "codex" => {
-            let mut context = message.to_string();
-            if !welcome.is_empty() {
-                context.push_str("\n\n");
-                context.push_str(welcome);
-            }
             format!(
                 "{{\"suppressOutput\":true,\"systemMessage\":{},\"hookSpecificOutput\":{{\"hookEventName\":{},\"additionalContext\":{}}}}}",
                 json_quote(&format!(
-                    "emb-agent rust context injected ({} chars)",
-                    context.len()
+                    "emb-agent rust context injected after {} ({} chars)",
+                    trigger,
+                    message.len()
                 )),
                 json_quote(event_name),
-                json_quote(&context)
+                json_quote(message)
             )
         }
         _ => {
-            let welcome_json = if welcome.is_empty() {
+            let welcome_json = if !emit_welcome || welcome.is_empty() {
                 "null".to_string()
             } else {
                 json_quote(welcome)
@@ -268,31 +364,28 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
         );
     }
     if snapshot.recommended_command == "clarify" {
-        return (
-            "clarify".to_string(),
-            "Run PRD exploration as a doc-grounded grilling loop: if hardware-first docs exist, ingest schematics and parse datasheets/manuals before the first behavior question; then ask one load-bearing question at a time, update PRD/req truth after confirmation, run health after truth edits, and stop before task creation until the state-machine checklist is explicit.".to_string(),
-        );
+        return ("clarify".to_string(), clarify_instructions(snapshot));
     }
     if snapshot.recommended_command == "ingest-docs" {
         return (
             "ingest-docs".to_string(),
-            "Ingest the MCU manual/datasheet before firmware work. Run the installed runtime command `ingest doc --file <manual.pdf> --provider auto --kind datasheet --to hardware`, then verify register/GPIO/ADC/timer/sleep evidence.".to_string(),
+            firmware_manual_instructions(snapshot),
         );
     }
     if snapshot.current_task.is_some() {
         (
             "do".to_string(),
-            "Active task exists. Limit reads to task PRD + hw.yaml + req.yaml + scoped source files. Use the task brief's exact waveform/measurement params directly without re-extraction. Trigger `/emb:do`.".to_string(),
+            "Active task exists. Limit reads to task PRD + hw.yaml + req.yaml + scoped source files. If the user is confused about the structure, explain the in-scope service split or time-slice call flow before editing. Use the task brief's exact waveform/measurement params directly without re-extraction. Trigger `/emb:do` only when execution is actually the next step.".to_string(),
         )
     } else if snapshot.recommended_command == "prd-breakdown" {
         (
             "prd-breakdown".to_string(),
-            "System PRD exists but no child execution PRDs or open tasks exist. First: read hw.yaml, req.yaml, MCU manual, and vendor examples; analyze constraints (ROM/RAM, real-time, peripherals, power); propose the best program framework with reasoning; wait for agreement. Then: create a program-framework task PRD. Finally: present functional vertical slice candidates; create each only after user confirms.".to_string(),
+            "System PRD exists but no child execution PRDs or open tasks exist. First: read hw.yaml, req.yaml, MCU manual, and vendor examples; analyze constraints (ROM/RAM, real-time, peripherals, power); validate whether the official `event-step` control contract fits without exception and name any evidence-backed deviation. Be explicit about watchdog, sleep/wake, and reset/config-bit implications. Wait for agreement. Then: create a framework task PRD around that official mode. Finally: present functional vertical slice candidates; create each only after user confirms.".to_string(),
         )
     } else if snapshot.recommended_command == "choose-work" || snapshot.open_tasks > 0 {
         (
             "choose-work".to_string(),
-            "Present existing tasks or child PRD candidates as options, classify the work, fill a durable agent brief, split large work into vertical tracer-bullet slices, and activate/create only after explicit ready-work selection.".to_string(),
+            work_selection_instructions().to_string(),
         )
     } else if snapshot.bootstrap_status != "ready" && snapshot.bootstrap_status != "concept" {
         (
@@ -301,8 +394,8 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
         )
     } else {
         (
-            "task add".to_string(),
-            "No tasks exist. Ask what work to start, classify it, then trigger `/emb:task add <summary>` only after the scope is clear enough to draft an agent brief and verification surface.".to_string(),
+            "task-or-direct".to_string(),
+            "No tasks exist yet. Ask what work to start, classify it, then choose between direct bounded execution and `/emb:task add <summary>`. Use a task only when the scope is multi-step, resumable, or needs durable handoff/verification structure. If the user mainly wants to understand the current design, answer directly before suggesting any task.".to_string(),
         )
     }
 }
@@ -322,50 +415,47 @@ pub fn build_next_json_with_tasks_and_policy(
 ) -> String {
     let has_truth_errors = !snapshot.truth_validation_errors.is_empty();
     let truth_errors_summary = snapshot.truth_validation_errors.join("; ");
-    let (action, instructions) = if has_truth_errors {
+    let (action, instructions): (String, String) = if has_truth_errors {
         (
-            "repair-truth",
-            "Project truth validation failed. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml, then run the installed emb-agent runtime's health command before continuing. Do not start implementation while truth files are invalid.",
+            "repair-truth".to_string(),
+            "Project truth validation failed. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml, then run the installed emb-agent runtime's health command before continuing. Do not start implementation while truth files are invalid.".to_string(),
         )
     } else if snapshot.recommended_command == "onboard" {
         (
-            "onboard",
-            "Project needs onboarding. Invoke emb-onboard or trigger `/emb-onboard`; audit existing hardware docs before declaring hardware or implementing.",
+            "onboard".to_string(),
+            "Project needs onboarding. Invoke emb-onboard or trigger `/emb-onboard`; audit existing hardware docs before declaring hardware or implementing.".to_string(),
         )
     } else if snapshot.recommended_command == "clarify" {
-        (
-            "clarify",
-            "Run PRD exploration as a doc-grounded grilling loop: if hardware-first docs exist under docs/, first ingest schematics and parse datasheets/manuals with the configured local conversion order before MinerU fallback, record unconfirmed hardware conflicts in PRD/req unknowns, then challenge ambiguous terms against existing project truth, ask one load-bearing behavior/hardware/power/state-machine question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and stop before task creation until the compact state-machine checklist is explicit.",
-        )
+        ("clarify".to_string(), clarify_instructions(snapshot))
     } else if snapshot.recommended_command == "ingest-docs" {
         (
-            "ingest-docs",
-            "MCU/package truth exists, but parsed MCU manual or chip-support evidence is missing. Ingest the MCU manual/datasheet with `ingest doc --provider auto`, verify register, GPIO bias/wakeup, ADC, timer/PWM, and sleep/reset evidence, then rerun next before firmware implementation or task creation.",
+            "ingest-docs".to_string(),
+            firmware_manual_instructions(snapshot),
         )
     } else if snapshot.current_task.is_some() {
         (
-            "do",
-            "Active task exists. Before implementation: 1) Limit initial file reads to the active task PRD, .emb-agent/hw.yaml, .emb-agent/req.yaml, and the source files directly under the task scope — do not scan unrelated project files, migration docs, or other projects. 2) If the task brief contains exact waveform/measurement params, use them directly; do not re-extract or re-measure. Trigger `/emb:do` only after the active task is briefed enough to execute.",
+            "do".to_string(),
+            "Active task exists. Before implementation: 1) Limit initial file reads to the active task PRD, .emb-agent/hw.yaml, .emb-agent/req.yaml, and the source files directly under the task scope — do not scan unrelated project files, migration docs, or other projects. 2) If the user signals confusion about readability or architecture, first explain the in-scope service split, scheduler path, or time-slice call chain before changing code. 3) If the task brief contains exact waveform/measurement params, use them directly; do not re-extract or re-measure. Trigger `/emb:do` only after the active task is briefed enough to execute.".to_string(),
         )
     } else if snapshot.recommended_command == "prd-breakdown" {
         (
-            "prd-breakdown",
-            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until user confirms. TOOL USE: read docs/prd/system.md, hw.yaml, req.yaml, graphify-out/GRAPH_REPORT.md. For MCU specs, use targeted evidence only: first use `doc lookup --keyword <register/peripheral>` or a semantic/turbovec query when `graph_health.turbovec_index=true`; otherwise search cached manual markdown for exact headings/register names and read only narrow line ranges. NEVER read the full cached manual. Step 1: analyze constraints (ROM/RAM/real-time/peripheral/power) using graph/manual evidence; propose framework with register-level citations; wait for agreement. Step 2: create P0 framework PRD. Step 3: present P2 slices; create after confirm. Output must cite graph entities and register names — no fabricating.",
+            "prd-breakdown".to_string(),
+            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until user confirms. TOOL USE: read docs/prd/system.md, hw.yaml, req.yaml, graphify-out/GRAPH_REPORT.md. For MCU specs, use targeted evidence only: first use `doc lookup --keyword <register/peripheral>` or a semantic/turbovec query when `graph_health.turbovec_index=true`; otherwise search cached manual markdown for exact headings/register names and read only narrow line ranges. NEVER read the full cached manual. Step 1: analyze constraints (ROM/RAM/real-time/peripheral/power) using graph/manual evidence; validate the official `event-step` control contract with register-level citations and name any evidence-backed exception. State whether the backend should stay bare-metal or move onto RTOS, and why. Wait for agreement. Step 2: create a P0 framework PRD around that official mode. Step 3: present P2 slices; create after confirm. Output must cite graph entities and register names — no fabricating.".to_string(),
         )
     } else if snapshot.recommended_command == "choose-work" || snapshot.open_tasks > 0 {
         (
-            "choose-work",
-            "Present `task_candidates` as existing-task or child-PRD work options, and classify the desired path as bug, feature, board-bringup, power, timing, or toolchain. Existing or new work must have a durable agent brief and a vertical tracer-bullet slice before activation. Trigger `/emb:task activate <name>` only after explicit task selection and enough acceptance/verification detail; if the candidate is a child PRD without a task manifest, create the task from that PRD first.",
+            "choose-work".to_string(),
+            work_selection_instructions().to_string(),
         )
     } else if snapshot.bootstrap_status != "ready" && snapshot.bootstrap_status != "concept" {
         (
-            "bootstrap",
-            "Project needs bootstrap. Trigger `/emb:bootstrap status`.",
+            "bootstrap".to_string(),
+            "Project needs bootstrap. Trigger `/emb:bootstrap status`.".to_string(),
         )
     } else {
         (
-            snapshot.recommended_command.as_str(),
-            snapshot.task_intake_summary.as_str(),
+            "task-or-direct".to_string(),
+            snapshot.task_intake_summary.clone(),
         )
     };
 
@@ -381,7 +471,7 @@ pub fn build_next_json_with_tasks_and_policy(
         json_value_or_null(&build_task_candidates_json(&snapshot.prd_task_candidates));
     let agent_protocol = json_value_or_null(&build_next_agent_protocol_with_policy(
         snapshot,
-        action,
+        &action,
         worktree_policy,
     ));
     let mut payload = json!({
@@ -479,6 +569,7 @@ fn build_next_agent_protocol_with_policy(
     if action == "clarify" {
         let hardware_docs_pending =
             !snapshot.has_hardware_truth && !snapshot.hardware_evidence_files.is_empty();
+        let checklist = clarify_state_machine_checklist(snapshot);
         return json!({
             "gate": {
                 "kind": "prd-exploration",
@@ -495,9 +586,9 @@ fn build_next_agent_protocol_with_policy(
                     "local_pdf_tool_priority": snapshot.local_doc_tool_priority.clone(),
                     "fallback": "Use MinerU only when local conversion is missing, low-quality, image-heavy, or explicitly requested."
                 },
-                "state_machine_checklist": ["boot_state", "first_input", "press_vs_release_trigger", "mode_cycle_including_off", "long_press_valid_states", "memory_semantics", "stop_entry", "wake_source", "low_voltage_behavior", "acceptance_evidence", "extract_exact_waveform_or_measurement_params_from_captures"],
-                "allowed_actions": ["scan_docs_for_hardware_evidence", "ingest_schematic", "ingest_datasheet_or_manual", "read_cached_schematic_and_manual_artifacts", "record_unconfirmed_hardware_conflicts", "brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "extract_and_record_exact_timing_percent_times_from_captures"],
-                "forbidden_actions": ["skip_existing_docs_before_question_when_hardware_first", "create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params"],
+                "state_machine_checklist": checklist,
+                "allowed_actions": ["scan_docs_for_hardware_evidence", "ingest_schematic", "ingest_datasheet_or_manual", "read_cached_schematic_and_manual_artifacts", "record_unconfirmed_hardware_conflicts", "brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "extract_and_record_exact_timing_percent_times_from_captures", "verify_watchdog_and_sleep_policy", "verify_config_bit_dependencies", "record_current_measurement_acceptance"],
+                "forbidden_actions": ["skip_existing_docs_before_question_when_hardware_first", "create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params", "assume_watchdog_behavior_without_config_truth", "assume_sleep_current_without_shutdown_plan"],
                 "recommended_command": "/emb-next"
             }
         })
@@ -508,7 +599,7 @@ fn build_next_agent_protocol_with_policy(
             "gate": {
                 "kind": "firmware-manual-required",
                 "blocking": true,
-                "required_evidence": ["parsed MCU manual or datasheet", "register map", "GPIO bias/wakeup limits", "ADC reference/channel evidence", "timer/PWM evidence", "sleep/reset behavior"],
+                "required_evidence": ["parsed MCU manual or datasheet", "register map", "GPIO bias/wakeup limits", "ADC reference/channel evidence", "timer/PWM evidence", "sleep/reset behavior", "watchdog/config-bit behavior when power-state semantics depend on it"],
                 "preprocessing": [
                     "1. first pass uses configured local conversion: `ingest doc --provider auto --file <manual.pdf> --kind datasheet --to hardware`.",
                     "2. default local tool order is markitdown, then pdftotext, then mutool; override it with `.emb-agent/project.json` integrations.doc_ingest.local_tool_priority or EMB_AGENT_DOC_LOCAL_TOOLS.",
@@ -542,13 +633,41 @@ fn build_next_agent_protocol_with_policy(
             "gate": {
                 "kind": "work-selection",
                 "blocking": true,
-                "method": "triage-agent-brief-vertical-slice",
+                "method": "triage-brief-slice-or-direct-bounded-work",
                 "categories": ["bug", "feature", "board-bringup", "power", "timing", "toolchain"],
                 "triage_states": ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"],
                 "required_brief_fields": ["current_behavior", "desired_behavior", "hardware_facts", "firmware_interfaces", "acceptance_criteria", "out_of_scope", "required_verification"],
                 "slice_rule": "Use vertical tracer-bullet slices: each slice must deliver one narrow but complete observable path across firmware, hardware truth, docs, and verification surfaces.",
-                "allowed_actions": ["present_existing_task_candidates", "present_child_prd_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear", "create_task_from_selected_child_prd"],
-                "forbidden_actions": ["force_existing_task_activation", "ask_user_to_run_task_list", "ask_user_to_run_task_activate", "invent_task_name", "start_implementation_without_selected_or_created_ready_task", "run_shell_command_for_emb_slash_command", "create_horizontal_layer_tasks", "ignore_child_prd_candidates"],
+                "direct_work_allowed_for": ["design_explanation", "explanation_only", "narrow_read_only_analysis", "one_off_verification_run", "small_scoped_fix"],
+                "allowed_actions": ["present_existing_task_candidates", "present_child_prd_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear", "create_task_from_selected_child_prd", "explain_existing_structure_before_refactor", "walk_service_and_time_slice_flow", "perform_direct_bounded_analysis_without_task", "perform_direct_bounded_fix_without_task", "run_one_off_verification_without_task"],
+                "forbidden_actions": ["force_existing_task_activation", "ask_user_to_run_task_list", "ask_user_to_run_task_activate", "invent_task_name", "start_broad_or_multi_area_implementation_without_selected_or_created_ready_task", "run_shell_command_for_emb_slash_command", "create_horizontal_layer_tasks", "ignore_child_prd_candidates"],
+            }
+        })
+        .to_string();
+    }
+    if action == "task-or-direct" {
+        return json!({
+            "gate": {
+                "kind": "task-or-direct-intake",
+                "blocking": false,
+                "method": "classify-then-direct-or-durable",
+                "categories": ["bug", "feature", "board-bringup", "power", "timing", "toolchain"],
+                "direct_work_allowed_for": ["design_explanation", "explanation_only", "narrow_read_only_analysis", "one_off_verification_run", "small_scoped_fix"],
+                "allowed_actions": ["classify_work_category", "answer_design_or_structure_question_directly", "walk_service_and_time_slice_flow", "perform_direct_bounded_analysis_without_task", "perform_direct_bounded_fix_without_task", "run_one_off_verification_without_task", "trigger_task_add_after_scope_clear"],
+                "forbidden_actions": ["force_task_creation_for_explanation", "force_task_creation_for_small_fix", "start_broad_multi_area_implementation_without_agreed_scope"],
+                "recommended_command": "/emb-next"
+            }
+        })
+        .to_string();
+    }
+    if action == "do" && snapshot.current_task.is_some() {
+        return json!({
+            "gate": {
+                "kind": "task-execution",
+                "blocking": false,
+                "allowed_actions": ["explain_existing_structure_in_task_scope", "walk_time_slice_or_service_call_graph", "refine_brief_in_scope", "implement_within_task_scope", "verify_within_task_scope"],
+                "preferred_first_step_when_user_signals_confusion": ["explain_existing_structure_in_task_scope", "walk_time_slice_or_service_call_graph", "propose_refactor_only_after_shared_understanding"],
+                "forbidden_actions": ["broad_file_scan_outside_task_scope", "invent_new_cross_project_scope_without_updating_task"]
             }
         })
         .to_string();
@@ -591,12 +710,18 @@ fn build_next_agent_protocol_with_policy(
             "gate": {
                 "kind": "prd-breakdown",
                 "blocking": true,
-                "method": "analyze-constraints-propose-framework-then-slice",
+                "method": "analyze-constraints-validate-official-framework-then-slice",
                 "system_prd_path": "docs/prd/system.md",
                 "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
+                "official_framework": {
+                    "mode": "event-step",
+                    "control_contract": "sample-update-apply",
+                    "execution_backend": "project-selects-baremetal-or-rtos",
+                    "legacy_project_policy": "grandfather-existing-layouts-do-not-rewrite-by-default"
+                },
                 "preprocessing": [
-                    "0a. ensure graphify installed with LLM backend support: `uv tool list | grep -q graphifyy || uv tool install 'graphifyy[openai]'` (openai extra needed for DeepSeek/OpenAI backends). `uv tool upgrade graphifyy 2>/dev/null` to keep current.",
-                    "0b. parse the MCU manual with `ingest doc --provider auto --file <manual.pdf> --kind datasheet --to hardware`; local conversion tries markitdown first, then pdftotext/mutool, then MinerU fallback when configured.",
+                    "0a. ensure graphify installed with LLM backend support: `emb next --brief` will auto-ensure missing `graphify` globally on first need when `uv` is available; manual fallback remains `uv tool install 'graphifyy[openai]'` and `uv tool upgrade graphifyy 2>/dev/null`.",
+                    "0b. parse the MCU manual with `ingest doc --provider auto --file <manual.pdf> --kind datasheet --to hardware`; emb-agent auto-ensures missing `markitdown` globally on first local-ingest need, then local conversion tries markitdown, then pdftotext/mutool, then MinerU fallback when configured.",
                     "0c. load API keys and build/refresh graph: `cd <project> && set -a && source .env && set +a && graphify . --update` (sources .env so graphify sees GEMINI_API_KEY/DEEPSEEK_API_KEY). If no graph exists: `graphify . ; graphify cluster-only .`.",
                     "0d. if .graphifyignore is missing, one was deployed at init — check `ls .graphifyignore`. If missing, create one excluding .emb-agent/, .codex/, backup/, graphify-out/, build/.",
                     "0e. [optional] headroom MCP: `uv tool list | grep -q headroom-ai || uv tool install 'headroom-ai[all]'; headroom mcp install`. Use `headroom_compress` before feeding large outputs to LLM.",
@@ -606,13 +731,13 @@ fn build_next_agent_protocol_with_policy(
                     "1a. for MCU manual/register evidence, use targeted lookup only: `doc lookup --keyword <register/peripheral>` or semantic/turbovec query when graph_health.turbovec_index=true; if no semantic query tool is available, search cached manual markdown for exact headings/register names and read only narrow line ranges. NEVER read the full cached manual.",
                     "2. query graphify for code architecture. OUTPUT REQUIREMENT: cite at least 3 specific code entities (function names, file paths, module names) that graphify surfaced. Do NOT fabricate — if graphify found nothing useful, state that explicitly.",
                     "3. analyze constraints: ROM/RAM, real-time, peripheral complexity, power/sleep. OUTPUT REQUIREMENT: cite specific register names or bit fields from targeted manual evidence (step 1a) for each constraint.",
-                    "4. determine framework. OUTPUT REQUIREMENT: justify choice with concrete evidence from graphify + manual, not general reasoning.",
+                    "4. validate the official `event-step` control contract against those constraints. OUTPUT REQUIREMENT: either confirm it fits, or name the exact evidence-backed exception that forces deviation. Also state whether the execution backend should be bare-metal or RTOS while preserving the same control contract. Do not present multiple peer frameworks as equal defaults.",
                     "5. present analysis + recommendation with trade-offs; wait for user agreement.",
                     "6. create P0 framework task PRD under docs/prd/tasks/.",
                     "7. present P2 vertical slice candidates; create only after user confirms."
                 ],
-                "allowed_actions": ["read_system_prd", "read_hardware_truth", "query_graphify_for_architecture", "analyze_constraints", "propose_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
-                "forbidden_actions": ["create_any_files_before_user_agreement", "start_functional_implementation_before_framework", "present_functional_slices_before_framework_agreement", "guess_framework_without_analyzing_constraints", "ask_user_to_choose_framework_without_recommendation", "ask_user_for_blank_task_when_system_prd_has_candidates", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health"],
+                "allowed_actions": ["read_system_prd", "read_hardware_truth", "query_graphify_for_architecture", "analyze_constraints", "validate_official_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
+                "forbidden_actions": ["create_any_files_before_user_agreement", "start_functional_implementation_before_framework", "present_functional_slices_before_framework_agreement", "guess_framework_without_analyzing_constraints", "ask_user_to_choose_framework_without_recommendation", "ask_user_for_blank_task_when_system_prd_has_candidates", "present_multiple_default_frameworks_without_exception_evidence", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health"],
             }
         })
         .to_string();
@@ -1164,6 +1289,7 @@ mod tests {
             child_prd_count: 1,
             prd_breakdown_needed: false,
             prd_task_candidates: Vec::new(),
+            power_management_risk: false,
         }
     }
     #[test]

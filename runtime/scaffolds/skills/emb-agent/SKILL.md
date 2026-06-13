@@ -23,7 +23,7 @@ grounded.
 ```
 node <project>/.<host>/emb-agent/bin/emb-agent.cjs <command>
 ```
-Common host dirs: .omp (Oh My Pi), .cursor (Cursor), .codex (Codex), .claude (Claude), .pi (Pi).
+Common host dirs: .cursor (Cursor), .codex (Codex), .claude (Claude), .pi (Pi).
 
 ## Quick Routing
 
@@ -33,8 +33,8 @@ Common host dirs: .omp (Oh My Pi), .cursor (Cursor), .codex (Codex), .claude (Cl
 | What next? | `next --brief` |
 | Project health | `health` |
 | List active tasks | `task list` |
-| Activate a task | `task activate <name>` |
-| Create a task | `task add <summary>` |
+| Activate a durable task for resumable work | `task activate <name>` |
+| Create a durable task when the work needs handoff/resume structure | `task add <summary>` |
 | Scan current state | `capability run scan` |
 | Plan implementation | `capability run plan` |
 | Implement | `capability run do` |
@@ -45,22 +45,29 @@ Common host dirs: .omp (Oh My Pi), .cursor (Cursor), .codex (Codex), .claude (Cl
 | Record decision | `decision record` |
 | Ingest datasheet/manual | `ingest doc --provider auto --file <path> --kind datasheet --to hardware` |
 | Ingest schematic | `ingest schematic --file <path>` |
-| Task AAR | `task aar scan` |
+| Capture a durable lesson when one actually emerged | `task aar scan` |
 | Board signoff | `verify board --result pass <summary>` |
 | Full command docs | `.<host>/emb-agent/commands/emb/<command>.md` for any installed command; prefer the fast path unless the task needs a specialized command |
 ## Session Flow
 
-1. On session start, emb-agent auto-injects project state via the OMP extension.
+1. On session start, emb-agent auto-injects project state via the installed host integration.
 2. If the status bar says `emb: activate`, use `/emb-next` or `next --brief` to see
-   available tasks, then activate one.
-3. Once a task is active, follow the workflow: scan → plan → do → review → verify.
-4. After any significant workflow exit (bug closed, feature implemented, review completed),
-   run the post-flow knowledge capture checklist below. Do NOT skip this — it is the
-   compound-interest mechanism that makes each task improve future ones.
+   available work options. Activate a task only when the work is multi-step, resumable,
+   or needs durable handoff; a narrow analysis, explanation, verification run, or small
+   fix can stay direct if the scope is explicit.
+3. If the user says the current service split, scheduler path, or time-slice flow is hard
+   to understand, explain the existing structure first and only then propose a refactor.
+4. Once a durable task is active, follow the workflow that fits the work: explain/scan →
+   plan → do → review → verify. Not every task starts with implementation.
+5. After a substantial workflow exit, capture knowledge only if a reusable lesson,
+   invariant, pitfall, or workflow rule actually emerged.
+6. For new firmware architecture, default to the official `event-step` control contract:
+   one top-level sample → update → apply step. Bare-metal tick loops and RTOS task/timer
+   dispatch are backend choices under the same contract, not peer default frameworks.
 
-## Post-Flow Knowledge Capture (mandatory at every workflow exit)
+## Post-Flow Knowledge Capture (only when a durable lesson emerged)
 
-Before declaring any non-trivial task complete, check:
+Before recording post-flow knowledge, check:
 - [ ] **Trap?** — Did you hit a chip-specific quirk, register behavior, or timing constraint
   not documented in the datasheet? → `compound trap --slug "..." --summary "..." --chip X`
 - [ ] **Trick?** — Did you use or develop a reusable pattern (PWM config sequence, ADC
@@ -72,13 +79,14 @@ Before declaring any non-trivial task complete, check:
 
 Recording threshold (from `.emb-agent/reference/knowledge-evolution.md`):
 record only if repeatable AND (expensive OR not-visible-in-code).
-Skip: generic programming patterns, facts obvious from datasheets, vendor SDK conventions.
+Skip routine fixes, generic programming patterns, facts obvious from datasheets, and vendor SDK conventions.
 
 ## Core Rules
 
 - Never guess hardware facts. Read `.emb-agent/hw.yaml` and `.emb-agent/req.yaml`.
 - Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
 - In `prd-exploration`, if `document_evidence_policy.hardware_first=true`, ingest listed schematics and parse datasheets/manuals before asking the first behavior question. PDF parsing uses the configured local tool order, with MinerU as fallback.
+- If `graphify` or `markitdown` is missing when first needed and `uv` is available, emb-agent should auto-ensure it globally at user level. Do not install tooling into each project checkout.
 - After editing truth files or PRDs, run `validate` or `health`.
 - Split work into vertical tracer-bullet slices.
 - If `.emb-agent/` is missing or incomplete, route to `emb-onboard` agent first.

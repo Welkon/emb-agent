@@ -1,7 +1,7 @@
 # emb-agent runtime
 
 This directory contains the installed emb-agent runtime that lives under the host configuration directory.
-Officially supported hosts are `Codex`, `Claude Code`, `Cursor`, and `OMP`. `Pi` and `Windsurf` are experimental.
+Officially supported hosts are `Codex`, `Claude Code`, and `Cursor`. `Pi` and `Windsurf` are experimental and disabled in development builds. `OMP` is currently disabled.
 
 ## Host Conventions
 
@@ -17,10 +17,6 @@ Officially supported hosts are `Codex`, `Claude Code`, `Cursor`, and `OMP`. `Pi`
 - `Pi`
   `runtime-home = ~/.pi/agent` globally or `./.pi` locally
   `host-integration = extensions/emb-agent.ts + skills/`
-- `OMP`
-  `runtime-home = ~/.omp`
-  `host-integration = extensions/emb-agent.ts`
-
 Unified runtime entry:
 
 ```bash

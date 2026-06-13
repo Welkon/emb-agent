@@ -141,7 +141,7 @@ pub fn task_add_with_deps(
     }
 
     format!(
-        "{{\"status\":\"ok\",\"created\":true,\"task\":{{\"name\":{},\"title\":{},\"status\":\"pending\",\"priority\":{},\"category\":{},\"triage_state\":\"needs-triage\",\"human_gate\":{}}},\"next\":\"task brief\",\"next_instructions\":\"Task created in needs-triage. Present the agent brief fields and ask only for missing load-bearing behavior, hardware facts, acceptance, out-of-scope, and verification evidence. Activate only after the brief is concrete.\",\"activation_command\":\"/emb:task activate {}\"}}",
+        "{{\"status\":\"ok\",\"created\":true,\"task\":{{\"name\":{},\"title\":{},\"status\":\"pending\",\"priority\":{},\"category\":{},\"triage_state\":\"needs-triage\",\"human_gate\":{}}},\"task_optional\":true,\"direct_work_allowed_for\":[\"design_explanation\",\"narrow_read_only_analysis\",\"one_off_verification_run\",\"small_scoped_fix\"],\"next\":\"task brief\",\"next_instructions\":\"Task created as a durable container. Fill only the missing agent-brief fields if this work is multi-step, resumable, or needs handoff/verification structure. If the request is only a narrow explanation, one-off verification, or small scoped fix, this task can stay pending while the work proceeds directly.\",\"activation_command\":\"/emb:task activate {}\"}}",
         json_quote(&name),
         json_quote(summary),
         json_quote(priority),
@@ -212,7 +212,7 @@ pub fn task_activate_with_options(ext_dir: &Path, name: &str, use_worktree: bool
     }
     if current_status == "in_progress" {
         return format!(
-            "{{\"status\":\"ok\",\"activated\":false,\"already_active\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"next\":\"do\",\"next_instructions\":\"Task is already active. Trigger `/emb:do` to continue.\"}}",
+            "{{\"status\":\"ok\",\"activated\":false,\"already_active\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"next\":\"do\",\"next_instructions\":\"Task is already active. Use `/emb:do` for structured execution when ready, but scoped explanation or design review can still happen first.\"}}",
             json_quote(name)
         );
     }
@@ -262,7 +262,7 @@ pub fn task_activate_with_options(ext_dir: &Path, name: &str, use_worktree: bool
         .unwrap_or_else(|| "null".to_string());
 
     format!(
-        "{{\"status\":\"ok\",\"activated\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"worktree\":{},\"next\":\"do\",\"next_instructions\":\"Task activated. Trigger `/emb:do` to start implementation.\"}}",
+        "{{\"status\":\"ok\",\"activated\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"worktree\":{},\"next\":\"do\",\"next_instructions\":\"Task activated. Use `/emb:do` when you are ready for structured implementation or verification; brief refinement, explanation, or design review can still happen first.\"}}",
         json_quote(name),
         worktree_json
     )
@@ -318,7 +318,8 @@ pub fn task_delete(ext_dir: &Path, name: &str) -> String {
 /// Resolve (complete) a task
 pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     let state_dir = crate::variant_ops::active_state_dir(ext_dir);
-    let task_path = state_dir.join("tasks").join(name).join("task.json");
+    let task_dir = state_dir.join("tasks").join(name);
+    let task_path = task_dir.join("task.json");
     if !task_path.exists() {
         return format!(
             "{{\"status\":\"error\",\"error\":{{\"code\":\"not-found\",\"message\":\"Task not found: {}\"}}}}",
@@ -344,7 +345,8 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     }
 
     let gate = aar_gate(&task);
-    if !gate.allowed {
+    let auto_recorded_no_lessons = !gate.scan_completed;
+    if gate.record_required && !gate.record_completed {
         return format!(
             "{{\"status\":\"error\",\"error\":{{\"code\":\"aar-required\",\"message\":{}}},\"task\":{{\"name\":{}}},\"aar\":{{\"scan_completed\":{},\"record_required\":{},\"record_completed\":{}}},\"next\":{},\"next_instructions\":{}}}",
             json_quote(&gate.message),
@@ -358,6 +360,19 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     }
 
     if let Some(obj) = task.as_object_mut() {
+        if auto_recorded_no_lessons {
+            obj.insert(
+                "aar".to_string(),
+                json!(minimal_aar_state("resolve-auto-no-lessons")),
+            );
+            let _ = write_aar_markdown(
+                &task_dir,
+                format!(
+                    "# AAR: {}\n\nResolve auto-recorded a minimal no-lessons AAR. Add a lesson later only if the task revealed a durable hardware, firmware, debugging, or workflow insight.\n",
+                    name
+                ),
+            );
+        }
         obj.insert("status".to_string(), json!("completed"));
         obj.insert("completedAt".to_string(), json!(chrono_now()));
         if !note.is_empty() {
@@ -380,8 +395,14 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     }
 
     format!(
-        "{{\"status\":\"ok\",\"resolved\":true,\"task\":{{\"name\":{},\"status\":\"completed\"}},\"next\":\"next\",\"next_instructions\":\"Task completed. Trigger `/emb-next` to find the next task or action.\"}}",
-        json_quote(name)
+        "{{\"status\":\"ok\",\"resolved\":true,\"task\":{{\"name\":{},\"status\":\"completed\"}},\"aar\":{{\"auto_recorded_no_lessons\":{}}},\"next\":\"next\",\"next_instructions\":{}}}",
+        json_quote(name),
+        auto_recorded_no_lessons,
+        json_quote(if auto_recorded_no_lessons {
+            "Task completed. emb-agent auto-recorded a minimal no-lessons AAR so routine work can close without extra ceremony. Trigger `/emb-next` to find the next task or action."
+        } else {
+            "Task completed. Trigger `/emb-next` to find the next task or action."
+        })
     )
 }
 
@@ -420,9 +441,8 @@ pub fn task_aar_scan(ext_dir: &Path, name: &str, lessons: Option<bool>) -> Strin
     }
     if lessons.is_none() {
         return format!(
-            "{{\"status\":\"needs-answer\",\"task\":{{\"name\":{}}},\"questions\":[\"Did this task reveal a new hardware invariant?\",\"Did it reveal a reusable firmware pattern?\",\"Did it reveal a debugging pitfall or tool gotcha?\",\"Did it change project-local workflow rules?\"],\"next\":\"task aar scan\",\"next_instructions\":\"Ask the user these AAR questions. After the answers are clear, trigger `/emb:task aar scan {} --no-lessons` if all answers are no, or `/emb:task aar scan {} --lessons` if any answer is yes. Do not ask the user to run the command.\"}}",
+            "{{\"status\":\"needs-answer\",\"task\":{{\"name\":{}}},\"questions\":[\"Did this task produce any durable lesson worth keeping, such as a hardware invariant, reusable firmware pattern, debugging pitfall, or project-local workflow rule?\"],\"next\":\"task aar scan\",\"next_instructions\":\"If no durable lesson emerged, you can skip explicit AAR capture and resolve directly; resolve will auto-record a minimal no-lessons AAR. If a durable lesson did emerge, trigger `/emb:task aar scan {} --lessons`; otherwise use `--no-lessons`. Do not ask the user to run the command.\"}}",
             json_quote(name),
-            name,
             name
         );
     }
@@ -445,7 +465,6 @@ pub fn task_aar_scan(ext_dir: &Path, name: &str, lessons: Option<bool>) -> Strin
         &task_path,
         serde_json::to_string_pretty(&task).unwrap_or_default(),
     );
-    let aar_path = task_dir.join("aar.md");
     let body = if record_required {
         format!(
             "# AAR: {}\n\nScan completed. Lessons are present and must be recorded before resolve.\n",
@@ -457,7 +476,7 @@ pub fn task_aar_scan(ext_dir: &Path, name: &str, lessons: Option<bool>) -> Strin
             name
         )
     };
-    let _ = fs::write(&aar_path, body);
+    let _ = write_aar_markdown(&task_dir, body);
     format!(
         "{{\"status\":\"ok\",\"task\":{{\"name\":{}}},\"aar\":{{\"scan_completed\":true,\"record_required\":{},\"record_completed\":{}}},\"next\":{},\"next_instructions\":{}}}",
         json_quote(name),
@@ -471,7 +490,7 @@ pub fn task_aar_scan(ext_dir: &Path, name: &str, lessons: Option<bool>) -> Strin
         json_quote(if record_required {
             "Ask the user for the lesson note, then trigger `/emb:task aar record <task> <note>` before resolve. Do not ask the user to run the command."
         } else {
-            "AAR gate is clear. Trigger `/emb:task resolve <task>` when the user confirms closure."
+            "No durable lesson needs recording. Trigger `/emb:task resolve <task>` when the user confirms closure, or just resolve directly next time and let emb-agent auto-record the minimal no-lessons AAR."
         })
     )
 }
@@ -512,7 +531,7 @@ pub fn task_aar_record(ext_dir: &Path, name: &str, note: &str) -> String {
         chrono_now(),
         note
     );
-    let _ = fs::write(&aar_path, updated);
+    let _ = write_aar_markdown(&task_dir, updated);
     format!(
         "{{\"status\":\"ok\",\"recorded\":true,\"task\":{{\"name\":{}}},\"next\":\"task resolve\",\"next_instructions\":\"AAR recorded. Trigger `/emb:task resolve {}` when the user confirms closure.\"}}",
         json_quote(name),
@@ -544,18 +563,6 @@ fn aar_gate(task: &Value) -> AarGate {
         .get("record_completed")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    if !scan_completed {
-        return AarGate {
-            allowed: false,
-            scan_completed,
-            record_required,
-            record_completed,
-            message: "AAR scan is required before task resolve".to_string(),
-            next: "task aar scan".to_string(),
-            instructions: "Ask the AAR questions, then trigger `/emb:task aar scan <task> --no-lessons` or `--lessons`. Do not ask the user to run the command."
-                .to_string(),
-        };
-    }
     if record_required && !record_completed {
         return AarGate {
             allowed: false,
@@ -567,15 +574,40 @@ fn aar_gate(task: &Value) -> AarGate {
             instructions: "Ask for the lesson note, then trigger `/emb:task aar record <task> <note>` before resolve. Do not ask the user to run the command.".to_string(),
         };
     }
+    if !scan_completed {
+        return AarGate {
+            allowed: true,
+            scan_completed,
+            record_required,
+            record_completed,
+            message: "No AAR has been captured yet. Routine tasks can resolve directly and emb-agent will auto-record a minimal no-lessons AAR; use task aar scan only when there is a durable lesson worth keeping.".to_string(),
+            next: "task resolve".to_string(),
+            instructions: "Resolve directly for routine work, or trigger `task aar scan` first if the task revealed a reusable lesson.".to_string(),
+        };
+    }
     AarGate {
         allowed: true,
         scan_completed,
         record_required,
         record_completed,
-        message: "AAR gate satisfied".to_string(),
+        message: "AAR state is clear".to_string(),
         next: "task resolve".to_string(),
-        instructions: "AAR gate is clear.".to_string(),
+        instructions: "No extra AAR action is required.".to_string(),
     }
+}
+
+fn minimal_aar_state(source: &str) -> Value {
+    json!({
+        "scan_completed": true,
+        "record_required": false,
+        "record_completed": true,
+        "updated_at": chrono_now(),
+        "source": source
+    })
+}
+
+fn write_aar_markdown(task_dir: &Path, body: String) -> std::io::Result<()> {
+    fs::write(task_dir.join("aar.md"), body)
 }
 
 #[derive(Debug, Clone)]

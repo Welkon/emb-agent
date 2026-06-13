@@ -755,6 +755,12 @@ function buildProjectConfig(projectRoot, args, options = {}) {
         runtime: args.runtime || (RUNTIME_CONFIG.developer && RUNTIME_CONFIG.developer.runtime) || ''
       },
       preferences: RUNTIME_CONFIG.default_preferences,
+      firmware_framework: {
+        official_mode: 'event-step',
+        control_contract: 'sample-update-apply',
+        execution_backend: 'project-selects-baremetal-or-rtos',
+        legacy_project_policy: 'grandfather-existing-layouts-do-not-rewrite-by-default'
+      },
       arch_review: {
         trigger_patterns: []
       },
@@ -1038,7 +1044,7 @@ function buildBootstrapTaskNotes(projectConfig, docsPlan) {
     'Init now creates the minimum emb-agent project skeleton first; note templates are deferred until you decide they are needed.',
     '',
     'Suggested order:',
-    `1. Define the system contract in ${systemPrdPath}: goal, non-goals, firmware shape, resource constraints, and acceptance boundary.`,
+    `1. Define the system contract in ${systemPrdPath}: goal, non-goals, firmware shape, resource constraints, and acceptance boundary. Default to the official event-step control contract unless a documented exception is approved.`,
     '2. Mirror structured goals, constraints, and acceptance facts into .emb-agent/req.yaml.',
     '3. If the chip/package are already known, record them in .emb-agent/hw.yaml. Otherwise leave hw.yaml unknown until a candidate is chosen.',
     '4. Fill only the note templates that matter for this project.',

@@ -12,5 +12,6 @@ pub mod misc;
 pub mod schematic;
 pub mod session;
 pub mod task;
+pub mod tooling;
 pub mod util;
 pub mod variant;

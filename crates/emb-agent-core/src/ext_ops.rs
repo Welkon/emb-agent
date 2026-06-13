@@ -51,8 +51,14 @@ pub fn init_project(cwd: &Path) -> String {
         "default_package": "",
         "active_package": "",
         "flash_flow": "",
-        "developer": {"name": "", "email": ""},
+        "developer": {"name": "", "runtime": ""},
         "preferences": {"truth_source_mode": "hardware_first"},
+        "firmware_framework": {
+            "official_mode": "event-step",
+            "control_contract": "sample-update-apply",
+            "execution_backend": "project-selects-baremetal-or-rtos",
+            "legacy_project_policy": "grandfather-existing-layouts-do-not-rewrite-by-default"
+        },
         "hooks": {},
         "integrations": {
             "doc_ingest": {
@@ -96,6 +102,13 @@ pub fn init_project(cwd: &Path) -> String {
 > Fill this during requirement exploration. Unknown items should be explored with the user, not guessed.\n\
 \n\
 ## Product Overview\n\
+\n\
+## Firmware Shape\n\
+\n\
+- Official framework: event-step\n\
+- Contract: ISR only captures hardware events or fixed scan work; one top-level app step owns a stable sample -> update -> apply order; the execution backend may be a bare-metal base tick or an RTOS task/timer, but the control contract stays the same.\n\
+- Power/reset note: watchdog servicing, sleep entry/wake policy, and reset/config-bit dependencies must be named explicitly instead of being implied by the scheduler choice.\n\
+- Legacy note: existing projects may keep older layouts until a deliberate migration is approved.\n\
 \n\
 ## Behaviors\n\
 \n\
@@ -359,7 +372,6 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
                 "cursor".into(),
                 "claude".into(),
                 "pi".into(),
-                "omp".into(),
                 "windsurf".into(),
             ]
         } else {
@@ -556,7 +568,7 @@ pub fn skills_status(_ext_dir: &Path) -> String {
 pub fn update_check(ext_dir: &Path) -> String {
     let project_root = ext_dir.parent().unwrap_or(Path::new("."));
     let expected = read_project_runtime_version(project_root);
-    let hosts = ["codex", "cursor", "claude", "pi", "omp", "windsurf"];
+    let hosts = ["codex", "cursor", "claude", "pi", "windsurf"];
     let mut host_versions = Vec::new();
     for host in hosts {
         let dir = match host {

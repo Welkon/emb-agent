@@ -11,6 +11,7 @@ use crate::json::json_quote;
 const WARNING_REMAINING_PERCENT: f64 = 35.0;
 const CRITICAL_REMAINING_PERCENT: f64 = 25.0;
 const DEBOUNCE_CALLS: u64 = 5;
+const MIN_EMIT_INTERVAL_MS: u128 = 20_000;
 const METRICS_STALE_MS: u128 = 60_000;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -245,6 +246,13 @@ pub fn should_emit(project_root: &str, level: &str, signature: &str) -> bool {
     let first_warn = !warn_path.exists();
     state.calls_since_warn = state.calls_since_warn.saturating_add(1);
     let severity_escalated = severity_rank(level) > severity_rank(&state.last_level);
+    let now = now_ms();
+    let recently_emitted = now.saturating_sub(state.last_emitted_at_ms) < MIN_EMIT_INTERVAL_MS;
+
+    if !first_warn && recently_emitted && !severity_escalated {
+        write_warn_state(&warn_path, &state);
+        return false;
+    }
 
     if !signature.is_empty() {
         let same_signature = state.last_signature == signature;
@@ -256,6 +264,7 @@ pub fn should_emit(project_root: &str, level: &str, signature: &str) -> bool {
         state.calls_since_warn = 0;
         state.last_level = level.to_string();
         state.last_signature = signature.to_string();
+        state.last_emitted_at_ms = now;
         write_warn_state(&warn_path, &state);
         return true;
     }
@@ -267,6 +276,7 @@ pub fn should_emit(project_root: &str, level: &str, signature: &str) -> bool {
 
     state.calls_since_warn = 0;
     state.last_level = level.to_string();
+    state.last_emitted_at_ms = now;
     write_warn_state(&warn_path, &state);
     true
 }
@@ -447,6 +457,7 @@ struct WarnState {
     calls_since_warn: u64,
     last_level: String,
     last_signature: String,
+    last_emitted_at_ms: u128,
 }
 
 fn warn_state_path(project_root: &str) -> PathBuf {
@@ -461,6 +472,7 @@ fn read_warn_state(path: &PathBuf) -> WarnState {
         calls_since_warn: 0,
         last_level: "stable".to_string(),
         last_signature: String::new(),
+        last_emitted_at_ms: 0,
     };
     let Ok(text) = fs::read_to_string(path) else {
         return default;
@@ -483,6 +495,7 @@ fn read_warn_state(path: &PathBuf) -> WarnState {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string(),
+        last_emitted_at_ms: value.get("timestamp").and_then(Value::as_u64).unwrap_or(0) as u128,
     }
 }
 

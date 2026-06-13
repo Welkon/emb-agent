@@ -8,7 +8,7 @@
 ## Auto Triggers
 
 {{INCLUDE:_partials/auto-trigger-closure.md}}
-- Re-read `AGENTS.md` and `.codex/instructions.md` before starting a new workstream after compression or resume.
+- After compression or resume, continue from the injected emb-agent re-entry context first. Re-open `.codex/instructions.md` only if the current gate or host integration behavior is unclear.
 {{INCLUDE:_partials/auto-trigger-load-bearing.md}}
 
 ## Red Flags - STOP

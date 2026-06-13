@@ -211,6 +211,63 @@ fn init_records_bootstrap_validation_and_aar() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn init_uses_backend_neutral_event_step_framework_defaults() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("emb-agent-init-framework-{nonce}"));
+    fs::create_dir_all(&root).expect("create init root");
+
+    let output = Command::new(emb_agent_bin())
+        .arg("init")
+        .arg("--cwd")
+        .arg(&root)
+        .output()
+        .expect("run init");
+    let stdout = assert_success(output);
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("init json");
+    assert_eq!(value["status"], "ok", "init output: {stdout}");
+
+    let project_json_path = root.join(".emb-agent/project.json");
+    let raw = fs::read_to_string(&project_json_path).expect("read project json");
+    let project_json: serde_json::Value = serde_json::from_str(&raw).expect("project json");
+    let framework = &project_json["firmware_framework"];
+    assert_eq!(
+        framework["official_mode"], "event-step",
+        "project json: {raw}"
+    );
+    assert_eq!(
+        framework["control_contract"], "sample-update-apply",
+        "project json: {raw}"
+    );
+    assert_eq!(
+        framework["execution_backend"], "project-selects-baremetal-or-rtos",
+        "project json: {raw}"
+    );
+    assert!(
+        framework.get("tick_base_hz").is_none(),
+        "project json must not emit legacy tick_base_hz: {raw}"
+    );
+    assert!(
+        framework.get("scheduler_shape").is_none(),
+        "project json must not emit legacy scheduler_shape: {raw}"
+    );
+
+    let system_prd = fs::read_to_string(root.join("docs/prd/system.md")).expect("read system prd");
+    assert!(
+        system_prd.contains("Official framework: event-step"),
+        "system PRD: {system_prd}"
+    );
+    assert!(
+        system_prd.contains("bare-metal base tick or an RTOS task/timer"),
+        "system PRD: {system_prd}"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
 fn assert_success(output: Output) -> String {
     if !output.status.success() {
         panic!(
@@ -290,6 +347,25 @@ fn cursor_session_start_reads_multiline_stdin_and_uses_cursor_shape() {
     assert!(
         output.contains(&project.path().to_string_lossy().to_string()),
         "hook must use cwd from full JSON stdin: {output}"
+    );
+}
+
+#[test]
+fn compact_session_start_uses_delta_context_without_welcome_duplication() {
+    let project = TestProject::new("compact-session-start");
+    let payload = format!(
+        "{{\n  \"hook_event_name\": \"SessionStart\",\n  \"cwd\": \"{}\",\n  \"source\": \"compact\"\n}}\n",
+        project.path().to_string_lossy()
+    );
+
+    let output = run_with_stdin(&["hook", "session-start", "--host", "codex"], &payload);
+    assert!(
+        output.contains("re-entry context refreshed after compact"),
+        "hook output: {output}"
+    );
+    assert!(
+        !output.contains("What you can do next"),
+        "hook output: {output}"
     );
 }
 
@@ -862,6 +938,14 @@ fn task_add_creates_triage_brief_and_vertical_slice_metadata() {
         "task add output: {output}"
     );
     assert_eq!(created["next"], "task brief", "task add output: {output}");
+    assert_eq!(created["task_optional"], true, "task add output: {output}");
+    assert!(
+        created["direct_work_allowed_for"]
+            .as_array()
+            .map(|items| items.iter().any(|item| item == "design_explanation"))
+            .unwrap_or(false),
+        "task add output: {output}"
+    );
 
     let task_name = created["task"]["name"].as_str().expect("task name");
     let shown = run(&project, &["task", "show", task_name]);
@@ -899,7 +983,7 @@ fn work_selection_gate_exposes_triage_and_slicing_protocol() {
     let value: serde_json::Value = serde_json::from_str(&next).expect("next json");
     assert_eq!(value["action"], "choose-work", "next output: {next}");
     assert_eq!(
-        value["agent_protocol"]["gate"]["method"], "triage-agent-brief-vertical-slice",
+        value["agent_protocol"]["gate"]["method"], "triage-brief-slice-or-direct-bounded-work",
         "next output: {next}"
     );
     assert!(
@@ -908,6 +992,125 @@ fn work_selection_gate_exposes_triage_and_slicing_protocol() {
             .map(|items| items.iter().any(|item| item == "acceptance_criteria"))
             .unwrap_or(false),
         "next output: {next}"
+    );
+    assert!(
+        value["agent_protocol"]["gate"]["direct_work_allowed_for"]
+            .as_array()
+            .map(|items| items.iter().any(|item| item == "small_scoped_fix"))
+            .unwrap_or(false),
+        "next output: {next}"
+    );
+    assert!(
+        value["agent_protocol"]["gate"]["allowed_actions"]
+            .as_array()
+            .map(|items| items
+                .iter()
+                .any(|item| item == "walk_service_and_time_slice_flow"))
+            .unwrap_or(false),
+        "next output: {next}"
+    );
+}
+
+#[test]
+fn next_without_existing_tasks_routes_to_task_or_direct_intake() {
+    let project = TestProject::new("task-or-direct");
+    let _ = run(
+        &project,
+        &[
+            "declare",
+            "hardware",
+            "--mcu",
+            "CA51M550",
+            "--package",
+            "SOP8",
+        ],
+    );
+    fs::remove_dir_all(project.path().join(".emb-agent/tasks/pwm-led")).expect("remove pwm task");
+    fs::remove_dir_all(project.path().join(".emb-agent/tasks/schematic-review"))
+        .expect("remove schematic task");
+    fs::write(
+        project.path().join(".emb-agent/req.yaml"),
+        "goals:\n  - explain current scheduler structure\nfeatures:\n  - service walkthrough\nacceptance:\n  - identify direct explanation path without forcing task activation\n",
+    )
+    .expect("write req truth");
+    fs::create_dir_all(project.path().join(".emb-agent/cache/docs/mock"))
+        .expect("create doc cache");
+    fs::write(
+        project.path().join(".emb-agent/cache/docs/mock/parse.md"),
+        "# Mock MCU Manual",
+    )
+    .expect("write manual stub");
+
+    let next = run(&project, &["next", "--brief"]);
+    let value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    assert_eq!(value["action"], "task-or-direct", "next output: {next}");
+    assert_eq!(
+        value["agent_protocol"]["gate"]["kind"], "task-or-direct-intake",
+        "next output: {next}"
+    );
+    assert!(
+        value["agent_protocol"]["gate"]["direct_work_allowed_for"]
+            .as_array()
+            .map(|items| items.iter().any(|item| item == "design_explanation"))
+            .unwrap_or(false),
+        "next output: {next}"
+    );
+}
+
+#[test]
+fn task_resolve_auto_records_minimal_aar_when_none_exists() {
+    let project = TestProject::new("resolve-auto-aar");
+
+    let created = run(
+        &project,
+        &[
+            "task",
+            "add",
+            "Explain service scheduler flow",
+            "--category",
+            "feature",
+        ],
+    );
+    let created_value: serde_json::Value = serde_json::from_str(&created).expect("task add json");
+    let task_name = created_value["task"]["name"].as_str().expect("task name");
+
+    let resolved = run(&project, &["task", "resolve", task_name]);
+    let resolved_value: serde_json::Value =
+        serde_json::from_str(&resolved).expect("task resolve json");
+    assert_eq!(resolved_value["status"], "ok", "resolve output: {resolved}");
+    assert_eq!(
+        resolved_value["resolved"], true,
+        "resolve output: {resolved}"
+    );
+    assert_eq!(
+        resolved_value["aar"]["auto_recorded_no_lessons"], true,
+        "resolve output: {resolved}"
+    );
+
+    let shown = run(&project, &["task", "show", task_name]);
+    let task: serde_json::Value = serde_json::from_str(&shown).expect("task show json");
+    assert_eq!(task["status"], "completed", "task show output: {shown}");
+    assert_eq!(
+        task["aar"]["scan_completed"], true,
+        "task show output: {shown}"
+    );
+    assert_eq!(
+        task["aar"]["record_completed"], true,
+        "task show output: {shown}"
+    );
+
+    let aar_md = fs::read_to_string(
+        project
+            .path()
+            .join(".emb-agent")
+            .join("tasks")
+            .join(task_name)
+            .join("aar.md"),
+    )
+    .expect("read aar");
+    assert!(
+        aar_md.contains("auto-recorded a minimal no-lessons AAR"),
+        "aar md: {aar_md}"
     );
 }
 
@@ -1049,22 +1252,38 @@ fn doctor_reports_stale_host_runtime_versions() {
     let project = TestProject::new("stale-runtime");
     fs::write(
         project.path().join(".emb-agent/runtime-version.json"),
-        r#"{"version":"0.5.0","hosts":[{"name":"omp","version":"0.5.0"}]}"#,
+        r#"{"version":"0.5.0","hosts":[{"name":"cursor","version":"0.5.0"}]}"#,
     )
     .expect("write runtime version");
-    let omp_runtime = project.path().join(".omp/emb-agent");
-    fs::create_dir_all(omp_runtime.join("bin")).expect("create omp runtime bin");
-    fs::create_dir_all(project.path().join(".omp/extensions")).expect("create omp extension dir");
-    fs::write(omp_runtime.join("VERSION"), "0.4.0\n").expect("write old version");
-    fs::write(omp_runtime.join("bin/emb-agent.cjs"), "// wrapper\n").expect("write wrapper");
-    fs::write(omp_runtime.join("bin/emb-agent-rs"), "").expect("write rust bin marker");
+    let cursor_runtime = project.path().join(".cursor/emb-agent");
+    fs::create_dir_all(cursor_runtime.join("bin")).expect("create cursor runtime bin");
+    fs::create_dir_all(project.path().join(".cursor/commands")).expect("create cursor commands");
+    fs::create_dir_all(project.path().join(".cursor/rules")).expect("create cursor rules");
+    fs::create_dir_all(project.path().join(".cursor/skills/emb-agent"))
+        .expect("create cursor skill dir");
+    fs::write(cursor_runtime.join("VERSION"), "0.4.0\n").expect("write old version");
+    fs::write(cursor_runtime.join("bin/emb-agent.cjs"), "// wrapper\n").expect("write wrapper");
+    fs::write(cursor_runtime.join("bin/emb-agent-rs"), "").expect("write rust bin marker");
+    fs::write(project.path().join(".cursor/commands/emb-next.md"), "next")
+        .expect("write cursor next command");
     fs::write(
-        project.path().join(".omp/extensions/emb-agent.ts"),
-        "// extension\n",
+        project.path().join(".cursor/commands/emb-onboard.md"),
+        "onboard",
     )
-    .expect("write extension");
+    .expect("write cursor onboard command");
+    fs::write(project.path().join(".cursor/hooks.json"), "{}").expect("write cursor hooks");
+    fs::write(
+        project.path().join(".cursor/rules/emb-agent-workflow.mdc"),
+        "rules",
+    )
+    .expect("write cursor rule");
+    fs::write(
+        project.path().join(".cursor/skills/emb-agent/SKILL.md"),
+        "skill",
+    )
+    .expect("write cursor skill");
 
-    let output = run(&project, &["doctor", "--host", "omp", "--brief"]);
+    let output = run(&project, &["doctor", "--host", "cursor", "--brief"]);
     let value: serde_json::Value = serde_json::from_str(&output).expect("doctor json");
     assert_eq!(value["status"], "warn", "doctor output: {output}");
     assert_eq!(
@@ -1120,6 +1339,37 @@ fn concept_stage_unknowns_route_to_clarification_not_task_creation() {
                 .as_str()
                 .unwrap_or("")
                 .contains("state-machine checklist"),
+        "next output: {next}"
+    );
+}
+
+#[test]
+fn power_risk_clarify_gate_includes_watchdog_and_sleep_checklist() {
+    let project = TestProject::new("power-risk-clarify");
+    fs::remove_dir_all(project.path().join(".emb-agent/tasks/pwm-led")).expect("remove pwm task");
+    fs::remove_dir_all(project.path().join(".emb-agent/tasks/schematic-review"))
+        .expect("remove schematic task");
+    fs::write(
+        project.path().join(".emb-agent/req.yaml"),
+        "goals:\n  - Preserve deep sleep current\nunknowns:\n  - Wake source and watchdog policy\n",
+    )
+    .expect("write req truth");
+
+    let next = run(&project, &["next", "--brief"]);
+    let value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    let checklist = value["agent_protocol"]["gate"]["state_machine_checklist"]
+        .as_array()
+        .expect("checklist array");
+    assert!(
+        checklist
+            .iter()
+            .any(|item| item == "watchdog_policy_awake_vs_sleep"),
+        "next output: {next}"
+    );
+    assert!(
+        checklist
+            .iter()
+            .any(|item| item == "config_bit_dependencies"),
         "next output: {next}"
     );
 }
@@ -1287,35 +1537,12 @@ fn pi_extension_uses_pi_runtime_and_valid_cli_commands() {
     );
 }
 
-#[test]
-fn omp_extension_widget_shows_active_variant() {
-    let root = repo_root();
-    let omp_extension = fs::read_to_string(
-        root.join("runtime")
-            .join("scaffolds")
-            .join("shells")
-            .join(".omp")
-            .join("extensions")
-            .join("emb-agent.ts"),
-    )
-    .expect("read omp extension");
-
-    assert!(
-        omp_extension.contains("active_variant") && omp_extension.contains("var:"),
-        "OMP widget status must show the active variant"
-    );
-}
-
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
         .expect("repo root")
         .to_path_buf()
-}
-
-fn occurrences(haystack: &str, needle: &str) -> usize {
-    haystack.match_indices(needle).count()
 }
 
 fn assert_no_markdown_files(dir: PathBuf) {
@@ -1629,10 +1856,8 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         "Cursor doctor output: {cursor_doctor}"
     );
 
-    // windsurf is disabled in shells.json; skip cleanup assertions
-
     let runtime_commands = root
-        .join(".omp")
+        .join(".codex")
         .join("emb-agent")
         .join("commands")
         .join("emb");
@@ -1657,45 +1882,20 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         "installed runtime must keep board available"
     );
 
-    // pi is disabled in shells.json; only check omp
-    for host in [".omp"] {
-        let commands_dir = root.join(host).join("commands");
+    for disabled_host in [".windsurf", ".pi", ".omp"] {
         assert!(
-            !commands_dir.join("emb-next.md").exists(),
-            "extension host must not duplicate emb-next file for {host}"
-        );
-        assert!(
-            !commands_dir.join("emb-onboard.md").exists(),
-            "extension host must not duplicate emb-onboard file for {host}"
-        );
-        if commands_dir.exists() {
-            for entry in fs::read_dir(&commands_dir).expect("read extension command dir") {
-                let entry = entry.expect("extension command entry");
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                assert!(
-                    !name.ends_with(".md"),
-                    "extension host must not expose native command file {name} for {host}"
-                );
-            }
-        }
-
-        let extension = fs::read_to_string(root.join(host).join("extensions").join("emb-agent.ts"))
-            .expect("read installed extension");
-        assert_eq!(
-            occurrences(&extension, "registerCommand("),
-            2,
-            "extension command count for {host}"
-        );
-        assert!(
-            extension.contains("registerCommand(\"emb-next\""),
-            "missing emb-next registration for {host}"
-        );
-        assert!(
-            extension.contains("registerCommand(\"emb-onboard\""),
-            "missing emb-onboard registration for {host}"
+            !root.join(disabled_host).join("emb-agent").exists(),
+            "disabled host must not receive a runtime: {disabled_host}"
         );
     }
+    assert!(
+        !root
+            .join(".omp")
+            .join("extensions")
+            .join("emb-agent.ts")
+            .exists(),
+        "OMP extension must not be installed when OMP is disabled"
+    );
 
     let _ = fs::remove_dir_all(root);
 }

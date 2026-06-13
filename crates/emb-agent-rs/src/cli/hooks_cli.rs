@@ -3,11 +3,36 @@ use super::util::{
 };
 use emb_agent_core::{
     StatePathConfig, build_context_monitor_output_for_host, build_hooks_diagnostics_json,
-    build_host_session_start_payload, build_project_state_json, build_project_state_paths_json,
-    build_session_context, build_statusline, build_welcome_message, get_project_state_paths,
-    project_state_from_cwd, snapshot_from_cwd,
+    build_host_session_start_payload_for_trigger, build_project_state_json,
+    build_project_state_paths_json, build_session_context_for_trigger, build_statusline,
+    build_welcome_message, get_project_state_paths, project_state_from_cwd, snapshot_from_cwd,
 };
 use std::path::Path;
+
+fn hook_trigger(payload: &str) -> String {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return "startup".to_string();
+    };
+    [
+        "source",
+        "matcher",
+        "session_event",
+        "reason",
+        "hookEvent",
+        "hook_event_name",
+        "event",
+    ]
+    .into_iter()
+    .find_map(|key| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .map(ToOwned::to_owned)
+    })
+    .unwrap_or_else(|| "startup".to_string())
+}
 
 pub fn run_hook(args: &[String]) -> Result<(), String> {
     match args.get(1).map(String::as_str).unwrap_or("") {
@@ -21,16 +46,30 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "session-start" => {
-            let cwd = hook_cwd(args);
+            let raw_payload = stdin_payload_or_cwd(args);
+            let cwd = serde_json::from_str::<serde_json::Value>(&raw_payload)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("cwd")
+                        .and_then(serde_json::Value::as_str)
+                        .map(ToOwned::to_owned)
+                })
+                .unwrap_or_else(|| hook_cwd(args));
+            let trigger = hook_trigger(&raw_payload);
             let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
             let ext_dir = Path::new(&cwd).join(".emb-agent");
             let _ = emb_agent_core::record_session_heartbeat(&ext_dir, Path::new(&cwd), &host);
             let snapshot = snapshot_from_cwd(&cwd);
-            let context = build_session_context(&snapshot);
-            let welcome = build_welcome_message(&snapshot);
+            let context = build_session_context_for_trigger(&snapshot, &trigger);
+            let welcome = if trigger.eq_ignore_ascii_case("startup") {
+                build_welcome_message(&snapshot)
+            } else {
+                String::new()
+            };
             println!(
                 "{}",
-                build_host_session_start_payload(&host, &context, &welcome)
+                build_host_session_start_payload_for_trigger(&host, &context, &welcome, &trigger)
             );
             Ok(())
         }

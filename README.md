@@ -42,8 +42,8 @@ emb-agent sits between the AI assistant and your repository. It does not replace
 | Layer | What it does | Examples |
 |---|---|---|
 | **User** | Describes product-level intent | “Bring up PWM dimming”, “Check the schematic”, “Continue the active task” |
-| **AI assistant** | Converses, writes code, asks for clarification | Codex, Claude Code, Cursor, Pi, OMP, Windsurf |
-| **Host integration** | Starts emb-agent automatically and exposes project-aware actions | Pi extension, Codex hooks, Claude/Cursor command docs |
+| **AI assistant** | Converses, writes code, asks for clarification | Codex, Claude Code, Cursor |
+| **Host integration** | Starts emb-agent automatically and exposes project-aware actions | Codex hooks, Claude/Cursor command docs |
 | **Rust runtime** | Reads project state, routes workflow, analyzes hardware artifacts | session, task, schematic, knowledge, diagnostics |
 | **Project memory** | Stores the facts that should survive across sessions | `.emb-agent/hw.yaml`, `req.yaml`, `tasks/`, `graph/`, `wiki/`, `cache/` |
 
@@ -79,7 +79,7 @@ emb-agent ships a set of workflow-specific sub-agents that the AI assistant can 
 
 ### 1. Open an AI session
 
-Start Codex, Claude Code, Cursor, Pi, OMP, or Windsurf inside your firmware repository.
+Start Codex, Claude Code, or Cursor inside your firmware repository.
 
 If the project has not been initialized yet, or if existing hardware truth is scattered across datasheets, schematics, pin maps, build files, and notes, emb-agent routes the assistant through **onboard** first. Onboard chooses the lightest safe path:
 
@@ -159,15 +159,15 @@ npx emb-agent
 Direct install examples:
 
 ```bash
-npx emb-agent --target omp --local --lang zh
+npx emb-agent --target codex --local --lang zh
 npx emb-agent --target all --local --lang zh
 npx emb-agent --target all --local --dry-run
 ```
-Where `<host>` is one of: `codex`, `claude`, `cursor`, `pi`, `omp`, `windsurf`, or `all`.
+Where `<host>` is one of the enabled targets: `codex`, `claude`, `cursor`, or `all`.
 
 Interactive install scans for `emb-support` (via `EMB_SUPPORT_DIR`, project ancestors, the installer checkout, or the home directory) and prompts for external support specs and skills. Direct installs can select the same support entries with repeatable `--spec <name>` and `--skill <name>` flags.
 
-> **Note:** `pi` and `windsurf` are experimental and disabled by default in development builds. To enable them, remove their entries from `shells.json.disabled`.
+> **Note:** `pi`, `omp`, and `windsurf` are disabled by default in development builds. OMP support is currently off; do not remove it from `shells.json.disabled` unless you are reviving that integration.
 ### Local vs global
 
 - `--local` writes host integration into this project. Use it for project-specific setup and team-visible behavior.
@@ -178,21 +178,18 @@ Interactive install scans for `emb-support` (via `EMB_SUPPORT_DIR`, project ance
 
 ### Host command surface
 
-Every supported host exposes the same two emb-agent entrypoints through its native mechanism:
+Every enabled host exposes the same two emb-agent entrypoints through its native mechanism:
 
 | Host | Surface | Entries |
 |---|---|---|
-| OMP | extension commands | `/emb-next`, `/emb-onboard` |
-| Pi* | extension commands | `/emb-next`, `/emb-onboard` |
 | Claude Code | `.claude/commands/*.md` | `/emb-next`, `/emb-onboard` |
 | Cursor | command files | `/emb-next`, `/emb-onboard` |
-| Windsurf* | `.windsurf/workflows/*.md` | `/emb-next`, `/emb-onboard` |
 | Codex | `.agents/skills/<name>/SKILL.md` | `$emb-next`, `$emb-onboard` |
 
 After install, emb-agent writes `.emb-agent/INSTALL_RESULT.md`, runs an install check, and prints host-specific reload instructions. To diagnose later:
 
 ```bash
-node .omp/emb-agent/bin/emb-agent.cjs doctor --host omp --brief
+node .codex/emb-agent/bin/emb-agent.cjs doctor --host codex --brief
 ```
 
 Or build from source:

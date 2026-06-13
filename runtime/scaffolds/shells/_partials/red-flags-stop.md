@@ -1,3 +1,3 @@
-- "I will skip AAR just this once"
-- "Task is too small to scan"
-- "I will batch them at session end"
+- "I will force a task before explaining the current structure"
+- "I can guess watchdog, sleep, or config-bit behavior later"
+- "I found a durable lesson but I will batch it at session end"

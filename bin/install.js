@@ -298,7 +298,7 @@ function usage() {
 		"  npx emb-agent health                     # Run runtime health directly",
 		"",
 		"Options:",
-		"  --target <name>   Host: codex, cursor, claude, omp, pi*, windsurf*, all (*experimental)",
+		"  --target <name>   Host: codex, cursor, claude, pi*, windsurf*, all (*disabled in development)",
 		"  --developer <name> Developer identity",
 		"  --local, -l        Install to project directory (recommended)",
 		"  --global, -g       Install to global config",
@@ -315,7 +315,7 @@ function usage() {
 		"",
 		"Examples:",
 		"  npx emb-agent                                                    # Interactive",
-		"  npx emb-agent --target omp --developer felix --spec scmcu-space  # Direct",
+		"  npx emb-agent --target codex --developer felix --spec scmcu-space  # Direct",
 		"",
 		"After install:",
 		"  /emb onboard    # Recommended next step for a new project",
@@ -666,7 +666,7 @@ function renderSelectionScreen(title, items, state, options) {
 	var itemPlural = config.itemPlural || "entries";
 	var lines = [];
 	lines.push(C.cyan + C.bold + "emb-agent installer" + C.reset);
-	lines.push(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
+	lines.push(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, Windsurf" + C.reset);
 	lines.push("");
 	lines.push(C.blue + "▶ " + title + C.reset);
 	lines.push(C.dim + "  " + contextLabel + ": " + contextValue + C.reset);
@@ -823,7 +823,7 @@ function renderSingleSelectionScreen(title, items, state, options) {
 	var C = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", blue: "\x1b[34m", white: "\x1b[37m" };
 	var lines = [];
 	lines.push(C.cyan + C.bold + "emb-agent installer" + C.reset);
-	lines.push(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, OMP, Windsurf" + C.reset);
+	lines.push(C.dim + "  Embedded workflow bootstrap for Codex, Claude Code, Cursor, Pi, Windsurf" + C.reset);
 	lines.push("");
 	lines.push(C.blue + "▶ " + title + C.reset);
 	if (options && options.description) lines.push(C.dim + "  " + options.description + C.reset);
