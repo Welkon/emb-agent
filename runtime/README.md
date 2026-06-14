@@ -30,7 +30,7 @@ node <runtime-home>/emb-agent/bin/emb-agent.cjs
 - `commands/`
   Command reference docs (`.md` files used by AI hosts as slash-command docs).
 - `agents/`
-  Specialized agent definitions (e.g., `emb-onboard`, `emb-fw-doer`).
+  Specialized agent definitions (e.g., `onboard`, `fw-doer`).
 - `scaffolds/`
   Template trees for host integration (shell instructions, hooks, extensions, skills).
 - `templates/`

@@ -1,5 +1,5 @@
 ---
-name: emb-hw-scout
+name: hw-scout
 description: Find hardware facts: datasheets, schematics, pin maps, registers, board constraints.
 tools: Read, Bash, Grep, Glob
 color: cyan
@@ -12,7 +12,7 @@ color: cyan
 3. If either is missing → ask user to run `emb-agent init`
 4. Read `.emb-agent/reference/shared-conventions.md` — naming, paths, stage gates, terminology rules
 5. Check `.emb-agent/compound/` for relevant knowledge: `emb search-compound --query "{keywords}"`
-# emb-hw-scout
+# hw-scout
 
 You locate unassailable hardware truth sources instead of guessing or rationalizing conclusions.
 

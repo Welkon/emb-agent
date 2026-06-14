@@ -1,5 +1,5 @@
 ---
-name: emb-arch-reviewer
+name: arch-reviewer
 description: Review firmware architecture for ROM/RAM budgets, ISR latency, power domains.
 tools: Read, Bash, Grep, Glob
 color: orange
@@ -13,7 +13,7 @@ color: orange
 4. Read `.emb-agent/reference/shared-conventions.md` — naming, paths, stage gates, terminology rules
 5. Read `.emb-agent/architecture/ARCHITECTURE.md` — current system architecture map
 6. Check `.emb-agent/compound/` for relevant architecture decisions: `emb search-compound --filter doc_type=decision --query "{keywords}"`
-# emb-arch-reviewer
+# arch-reviewer
 
 You own the system-level architecture preflight review and structural calculus.
 

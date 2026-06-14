@@ -94,13 +94,13 @@ const TOOL_MAP: Record<string, string[]> = {
 };
 
 const DEFAULT_MODEL_ROUTING: Record<string, { model: string; thinking: string }> = {
-  "emb-hw-scout":        { model: "deepseek/deepseek-v4-flash", thinking: "off" },
-  "emb-fw-doer":         { model: "custom/gpt-5.5",           thinking: "xhigh" },
-  "emb-arch-reviewer":   { model: "custom/gpt-5.5",           thinking: "xhigh" },
-  "emb-bug-hunter":      { model: "deepseek/deepseek-v4-pro", thinking: "high" },
-  "emb-sys-reviewer":    { model: "deepseek/deepseek-v4-pro", thinking: "high" },
-  "emb-release-checker": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
-  "emb-onboard":         { model: "custom/gpt-5.5",           thinking: "xhigh" },
+  "hw-scout":        { model: "deepseek/deepseek-v4-flash", thinking: "off" },
+  "fw-doer":         { model: "custom/gpt-5.5",           thinking: "xhigh" },
+  "arch-reviewer":   { model: "custom/gpt-5.5",           thinking: "xhigh" },
+  "bug-hunter":      { model: "deepseek/deepseek-v4-pro", thinking: "high" },
+  "sys-reviewer":    { model: "deepseek/deepseek-v4-pro", thinking: "high" },
+  "release-checker": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
+  "onboard":         { model: "custom/gpt-5.5",           thinking: "xhigh" },
 };
 
 async function syncEmbAgentsToPi(cwd: string) {

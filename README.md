@@ -65,13 +65,13 @@ emb-agent ships a set of workflow-specific sub-agents that the AI assistant can 
 
 | Agent | Role |
 |---|---|
-| **emb-onboard** | Project initialization and migration — scaffolds `.emb-agent/` for empty repos, or audits and maps existing hardware docs |
-| **emb-hw-scout** | Hardware truth investigation — locates datasheets, schematics, pin maps, and register-level facts |
-| **emb-fw-doer** | Minimal code and documentation changes with structure health pre-checks |
-| **emb-arch-reviewer** | Architecture review against embedded constraints (ROM/RAM budgets, ISR latency, power domains) |
-| **emb-bug-hunter** | Root-cause analysis of hardware-software bugs with register-level tracing |
-| **emb-sys-reviewer** | System-level review across firmware, schematic, and requirements |
-| **emb-release-checker** | Pre-release validation of build, tests, and release artifacts |
+| **onboard** | Project initialization and migration — scaffolds `.emb-agent/` for empty repos, or audits and maps existing hardware docs |
+| **hw-scout** | Hardware truth investigation — locates datasheets, schematics, pin maps, and register-level facts |
+| **fw-doer** | Minimal code and documentation changes with structure health pre-checks |
+| **arch-reviewer** | Architecture review against embedded constraints (ROM/RAM budgets, ISR latency, power domains) |
+| **bug-hunter** | Root-cause analysis of hardware-software bugs with register-level tracing |
+| **sys-reviewer** | System-level review across firmware, schematic, and requirements |
+| **release-checker** | Pre-release validation of build, tests, and release artifacts |
 
 ---
 

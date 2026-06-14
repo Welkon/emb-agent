@@ -1,5 +1,5 @@
 ---
-name: emb-release-checker
+name: release-checker
 description: Pre-release validation of build, tests, and release artifacts.
 tools: Read, Bash, Grep, Glob
 color: purple
@@ -12,7 +12,7 @@ color: purple
 3. If either is missing → ask user to run `emb-agent init`
 4. Read `.emb-agent/reference/shared-conventions.md` — naming, paths, stage gates, scoped commit rules
 5. Check `.emb-agent/compound/` for relevant traps and decisions: `emb search-compound --query "{keywords}"`
-# emb-release-checker
+# release-checker
 
 You review release closures, rollback bounds, and code hygiene with absolute zero-tolerance.
 

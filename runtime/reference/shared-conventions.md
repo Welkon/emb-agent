@@ -121,9 +121,9 @@ Between workflow stages, agents MUST stop and ask for user confirmation:
 - Implementation → Acceptance: user confirms implementation complete
 - Acceptance → Close: user confirms acceptance criteria met
 - Knowledge capture: user confirms compound entries before writing
-- Issue Report → Analyze: user confirms report accuracy (see emb-bug-hunter Gate 1)
-- Issue Analyze → Fix: user confirms root cause and fix approach (see emb-bug-hunter Gate 2)
-- Issue Fix → Close: user confirms fix verification (see emb-bug-hunter Gate 3)
+- Issue Report → Analyze: user confirms report accuracy (see bug-hunter Gate 1)
+- Issue Analyze → Fix: user confirms root cause and fix approach (see bug-hunter Gate 2)
+- Issue Fix → Close: user confirms fix verification (see bug-hunter Gate 3)
 
 Recording threshold for compound entries: see `.emb-agent/reference/knowledge-evolution.md`.
 Core rule: record only if repeatable AND (expensive OR not-visible-in-code).

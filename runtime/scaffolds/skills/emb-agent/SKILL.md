@@ -29,7 +29,7 @@ Common host dirs: .cursor (Cursor), .codex (Codex), .claude (Claude), .pi (Pi).
 
 | Need | Command |
 |------|---------|
-| Initialize / migrate project | `emb-onboard` agent |
+| Initialize / migrate project | `onboard` agent |
 | What next? | `next --brief` |
 | Project health | `health` |
 | List active tasks | `task list` |
@@ -89,7 +89,7 @@ Skip routine fixes, generic programming patterns, facts obvious from datasheets,
 - If `graphify` or `markitdown` is missing when first needed and `uv` is available, emb-agent should auto-ensure it globally at user level. Do not install tooling into each project checkout.
 - After editing truth files or PRDs, run `validate` or `health`.
 - Split work into vertical tracer-bullet slices.
-- If `.emb-agent/` is missing or incomplete, route to `emb-onboard` agent first.
+- If `.emb-agent/` is missing or incomplete, route to `onboard` agent first.
 
 For detailed procedures, read command docs on demand:
 - PRD / tasks / bugs / knowledge → `.<host>/emb-agent/commands/emb/`

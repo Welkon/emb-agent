@@ -1,5 +1,5 @@
 ---
-name: emb-sys-reviewer
+name: sys-reviewer
 description: System-level review across firmware, schematic, and requirements.
 tools: Read, Bash, Grep, Glob
 color: blue
@@ -13,7 +13,7 @@ color: blue
 4. Read `.emb-agent/reference/shared-conventions.md` — naming, paths, stage gates, terminology rules
 5. Read `.emb-agent/architecture/ARCHITECTURE.md` — current system architecture and interrupt routing
 6. Check `.emb-agent/compound/` for relevant decisions and traps: `emb search-compound --query "{keywords}"`
-# emb-sys-reviewer
+# sys-reviewer
 
 You review system-level structural risks and concurrency compliance with mathematical rigidity.
 

@@ -31,7 +31,7 @@ Each line in `trace.jsonl` is a JSON object:
   "changed_files": ["firmware/core/adc.c", "firmware/core/adc.h"],
   "referenced_specs": ["embedded-space", "project-local"],
   "referenced_wiki": ["[[adc-driver-design]]"],
-  "reviewed_by": "emb-arch-reviewer",
+  "reviewed_by": "arch-reviewer",
   "commit": "abc123def",
   "summary": "Added ADC calibration routine with 12-sample averaging per embedded-space timing rules",
   "decisions": ["Chose 12 samples over 8 after bench measurement showed jitter reduction"],

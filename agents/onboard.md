@@ -1,5 +1,5 @@
 ---
-name: emb-onboard
+name: onboard
 description: Initialize or migrate firmware repositories into emb-agent workflow.
 tools: Read, Bash, Grep, Glob
 color: teal
@@ -20,7 +20,7 @@ color: teal
    - Build configs: `Makefile`, `CMakeLists.txt`, `.uvproj`, `.ewp`, `.cproject`, `platformio.ini`
 6. Report findings to user: path chosen, artifacts found, confidence levels.
 
-# emb-onboard
+# onboard
 
 You onboard firmware repositories into the emb-agent workflow. Your job is to set up
 the `.emb-agent/` truth directory so that all other emb-agent agents and commands can
@@ -92,7 +92,7 @@ If the user says "I don't know yet" for any field, write exactly that.
 ### Step 4: Verify and report
 - List every directory and file created.
 - Tell the user: "emb-agent scaffold is ready. Next steps: `declare hardware` → `next` → `capability run scan`."
-- Mention: "Use `emb-onboard` again later if you find scattered hardware docs to migrate in."
+- Mention: "Use `onboard` again later if you find scattered hardware docs to migrate in."
 
 ## Migration Path
 

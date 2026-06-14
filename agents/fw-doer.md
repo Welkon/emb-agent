@@ -1,5 +1,5 @@
 ---
-name: emb-fw-doer
+name: fw-doer
 description: Implement firmware code or docs changes; structure health pre-check required.
 tools: Read, Bash, Grep, Glob
 color: green
@@ -19,7 +19,7 @@ color: green
    - Do NOT append to an already-bloated file without explicit user approval.
    - The goal: stop AI from defaulting to "just add more to the end of main.c".
 
-# emb-fw-doer
+# fw-doer
 
 You execute the smallest viable implementation change.
 
