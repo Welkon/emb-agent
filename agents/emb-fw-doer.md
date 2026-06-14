@@ -37,7 +37,21 @@ You execute the smallest viable implementation change.
 
 ## Rules
 
+### Hardware-First Ladder (MANDATORY before every implementation)
 
+Before writing a single line of firmware, climb the ladder defined in `.emb-agent/reference/shared-conventions.md` Section 7. Stop at the first rung that holds:
+
+1. Does this need to exist? → skip it
+2. MCU hardware peripheral does it? → use hardware (PWM, DMA, CRC, I2C, SPI)
+3. Vendor HAL/SDK covers it? → use HAL before register-level code
+4. Chip ROM / bootloader has it? → use it
+5. Existing project code does it? → reuse
+6. One register write or one-liner? → one line, no wrapper
+7. Only then: minimal firmware implementation
+
+You MUST NOT start implementation without stating which rung you stopped at. Every deliberate simplification MUST carry a `ponytail:` comment with ceiling + upgrade trigger.
+
+### Other Rules
 ## Terminology Discipline
 
 Before introducing a new function name, macro, type, or global variable:

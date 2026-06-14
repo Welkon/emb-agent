@@ -38,6 +38,18 @@ You own the system-level architecture preflight review and structural calculus.
 ## Structure Health
 
 Before endorsing any implementation plan, assess files targeted for modification:
+
+### Ladder Violation Detection (MANDATORY)
+
+Every implementation you review MUST be checked against the Hardware-First Ladder (`.emb-agent/reference/shared-conventions.md` Section 7). Flag violations:
+
+- **Rung 2 bypass**: Software bit-banging where hardware peripheral exists. "This UART TX uses bit-banging on PA9; USART1 hardware TX is on the same pin."
+- **Rung 3 bypass**: Register-level code where vendor HAL provides the function. "Manual NVIC configuration instead of `HAL_NVIC_SetPriority()`."
+- **Rung 5 bypass**: Rewriting logic that already exists elsewhere in the project. "Timer config duplicated from `timer_init.c` line 42."
+- **Missing ponytail: comment**: Deliberate simplifications without ceiling+trigger comment. Every shortcut must be marked.
+- **Over-abstraction**: Interface with one implementation, factory for one product, config for a value that never changes. Flag as ladder violation.
+
+### Standard Structure Health
 - If a file exceeds ~300 lines or has mixed responsibilities, recommend splitting before adding new code.
 - If a target directory has 10+ files at the same level, recommend grouping into subdirectories.
 - Flag files that violate module ownership boundaries (touching peripherals owned by another module).

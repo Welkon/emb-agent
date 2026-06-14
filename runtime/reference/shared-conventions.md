@@ -135,3 +135,41 @@ Before introducing a new term (function name, macro, type, variable):
 2. Check `.emb-agent/architecture/` for existing terminology
 3. Check `.emb-agent/compound/` for related decisions
 4. If conflict found → rename or explicitly differentiate in docs
+
+## 7. Hardware-First Ladder (The Embedded Ponytail)
+
+Before writing ANY firmware code, stop at the first rung that holds:
+
+1. **Does this need to exist at all?** Speculative feature = skip it. YAGNI applies to firmware too.
+2. **MCU hardware peripheral does it?** Use hardware PWM instead of bit-banging. Hardware CRC instead of software CRC. Hardware I2C/SPI instead of software protocol. DMA instead of CPU copy loops.
+3. **Vendor HAL/SDK covers it?** Use `HAL_UART_Transmit()` before writing register-level UART code.
+4. **Chip ROM bootloader or built-in routine?** Check if the MCU already has it in ROM.
+5. **Existing project code already solves it?** Reuse. Don't rewrite.
+6. **Can it be a single register write or one-liner?** One line. No wrapper, no abstraction.
+7. **Only then:** the minimum firmware implementation that works.
+
+Climb fast. Two rungs work → take the higher one. Don't research all seven.
+
+### Ladder Marking Convention
+
+Every deliberate simplification MUST carry a `ponytail:` comment naming the ceiling and upgrade path:
+
+```c
+// ponytail: busy-wait polling, switch to DMA+IRQ if CPU load >5%
+while (!(USART1->SR & USART_SR_TXE));
+
+// ponytail: fixed prescaler 8399 for 1kHz, make configurable via #define when multiple PWM freqs needed
+TIM1->PSC = 8399;
+
+// ponytail: global lock, per-peripheral locks if contention measured
+__disable_irq();
+```
+
+Three rules:
+- Every shortcut marked, never silently accepted.
+- Comment names the ceiling (what the "proper" implementation would be).
+- Comment names the trigger (when to upgrade: "if CPU load >5%", "when multiple freqs needed").
+
+### Never Ladder Away
+
+These are NEVER simplified: input validation at hardware boundaries (ADC ranges, pin voltage levels), error handling that prevents data loss (flash write verification, EEPROM wear leveling), safety interlocks (watchdog, brown-out, over-current), anything explicitly required by the datasheet or schematic.
