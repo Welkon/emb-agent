@@ -281,7 +281,8 @@ function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): str
 // ---------------------------------------------------------------------------
 
 export default function (pi: ExtensionAPI) {
-  const lastInjectedContextByCwd = new Map<string, string>();
+  let lastEmbContext = "";
+  let lastEmbContextCwd = "";
 
   async function refreshStatus(ctx: {
     cwd: string;
@@ -295,24 +296,16 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
   }
 
-  async function injectNextContext(ctx: { cwd: string }, force = false, updateResult: EmbAgentResult | null = null) {
-    const nextResult = await runEmbAgent(["next", "--brief"], ctx.cwd);
+  async function prepareEmbContext(cwd: string) {
+    const nextResult = await runEmbAgent(["next", "--brief"], cwd);
     if (!nextResult) return;
 
-    const lines = renderNextLines(nextResult, updateResult);
+    const lines = renderNextLines(nextResult, null);
     const text =
-      `[emb-agent]\n${lines.join("\n")}\n\n` +
+      `\n\n## emb-agent Project State\n${lines.join("\n")}\n` +
       `Read skill://emb-agent for the full CLI surface and workflow rules. Act on the state above.`;
-    if (!force && lastInjectedContextByCwd.get(ctx.cwd) === text) return;
-    lastInjectedContextByCwd.set(ctx.cwd, text);
-    await pi.sendMessage(
-      {
-        customType: "emb-agent",
-        content: text,
-        display: true,
-      },
-      { deliverAs: "nextTurn" },
-    );
+    lastEmbContext = text;
+    lastEmbContextCwd = cwd;
   }
 
   async function onSessionEnter(ctx: {
@@ -323,27 +316,39 @@ export default function (pi: ExtensionAPI) {
   }) {
     const updateResult = await runEmbAgent(["update", "--brief"], ctx.cwd);
     await refreshStatus(ctx, updateResult);
-    await injectNextContext(ctx, false, updateResult);
+    await prepareEmbContext(ctx.cwd);
   }
   async function sendSteer(text: string, cwd: string) {
     const directive = languageDirective(await readProjectLanguage(cwd));
     await pi.sendUserMessage(directive ? text + "\n\n" + directive : text, { deliverAs: "steer" });
   }
 
+  // ── Session lifecycle ─────────────────────────────────────────
 
   pi.on("session_start", async (_event, ctx) => {
-    // Sync emb-agent subagent definitions (non-critical: failure should not block)
     try {
       await syncEmbAgentsToPi(ctx.cwd);
       await ensureSubagentSettings(ctx.cwd);
     } catch {
-      // Agent sync is best-effort; status/next injection is critical.
+      // Agent sync is best-effort.
     }
     await onSessionEnter(ctx);
   });
 
-  // Refresh only the status widget after AI turns; do not re-inject identical
-  // next-turn context after every assistant response.
+  // Inject emb-agent project context into the system prompt before every agent turn.
+  // This is the proper pi harness pattern (see: ponytail, claude-rules extensions).
+  pi.on("before_agent_start", async (event, ctx) => {
+    // Refresh context if cwd changed (session switch)
+    if (ctx.cwd !== lastEmbContextCwd) {
+      await prepareEmbContext(ctx.cwd);
+    }
+    if (!lastEmbContext) return;
+    return {
+      systemPrompt: event.systemPrompt + lastEmbContext,
+    };
+  });
+
+  // Refresh status widget after each turn
   pi.on("turn_end", async (_event, ctx) => {
     await refreshStatus(ctx);
   });
