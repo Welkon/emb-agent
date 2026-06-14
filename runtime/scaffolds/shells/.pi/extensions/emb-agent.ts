@@ -1,16 +1,21 @@
 /**
  * emb-agent Pi extension
  *
- * Hooks session_start / session_switch to surface emb-agent project state
- * in the status bar, injects context on next user turn, and registers
- * slash commands.
+ * Hooks session_start to surface emb-agent project state
+ * in the status bar, injects context on next user turn, registers
+ * slash commands, and auto-syncs emb-agent agents for pi-subagents.
  *
  * Requires: emb-agent installed via `npx emb-agent --target pi`
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import { readFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,17 +46,15 @@ async function runEmbAgent(
   cwd: string,
 ): Promise<EmbAgentResult | null> {
   const binPath = join(cwd, ".pi", "emb-agent", "bin", "emb-agent.cjs");
-  const file = Bun.file(binPath);
-  if (!(await file.exists())) return null;
 
   try {
-    const proc = Bun.spawn({
-      cmd: ["node", binPath, ...args],
+    await access(binPath, constants.R_OK);
+    const { stdout } = await execFileAsync("node", [binPath, ...args], {
       cwd,
-      stdout: "pipe",
-      stderr: "pipe",
+      encoding: "utf8",
+      timeout: 30000,
+      maxBuffer: 1024 * 1024,
     });
-    const stdout = await new Response(proc.stdout).text();
     if (!stdout.trim()) return null;
     return JSON.parse(stdout);
   } catch {
@@ -77,6 +80,105 @@ function languageDirective(language: unknown): string {
 async function readProjectLanguage(cwd: string): Promise<string> {
   try { return normalizeLanguage(await readFile(join(cwd, ".emb-agent", ".language"), "utf8")); }
   catch { return ""; }
+}
+
+// ---------------------------------------------------------------------------
+// Subagent sync — auto-generate pi-subagents compatible agent files
+// ---------------------------------------------------------------------------
+
+const TOOL_MAP: Record<string, string[]> = {
+  Read: ["read"],
+  Bash: ["bash"],
+  Grep: ["grep"],
+  Glob: ["find", "ls"],
+};
+
+const DEFAULT_MODEL_ROUTING: Record<string, { model: string; thinking: string }> = {
+  "emb-hw-scout":        { model: "deepseek/deepseek-v4-flash", thinking: "off" },
+  "emb-fw-doer":         { model: "custom/gpt-5.5",           thinking: "xhigh" },
+  "emb-arch-reviewer":   { model: "custom/gpt-5.5",           thinking: "xhigh" },
+  "emb-bug-hunter":      { model: "deepseek/deepseek-v4-pro", thinking: "high" },
+  "emb-sys-reviewer":    { model: "deepseek/deepseek-v4-pro", thinking: "high" },
+  "emb-release-checker": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
+  "emb-onboard":         { model: "custom/gpt-5.5",           thinking: "xhigh" },
+};
+
+async function syncEmbAgentsToPi(cwd: string) {
+  // Installed path: .emb-agent/agents/ (from npx emb-agent)
+  // Dev path: agents/ (emb-agent repo itself)
+  const candidates = [join(cwd, ".emb-agent", "agents"), join(cwd, "agents")];
+  let agentsDir = "";
+  for (const d of candidates) {
+    try { await access(d, constants.R_OK); agentsDir = d; break; } catch { /* next */ }
+  }
+  if (!agentsDir) return;
+
+  const piAgentsDir = join(cwd, ".pi", "agents");
+
+  await mkdir(piAgentsDir, { recursive: true });
+
+  const files = (await readdir(agentsDir)).filter((f) => f.endsWith(".md"));
+  for (const file of files) {
+    const content = await readFile(join(agentsDir, file), "utf-8");
+    const fm = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    if (!fm) continue;
+
+    const yaml = fm[1], body = fm[2];
+    const name = (yaml.match(/^name:\s*(.+)$/m) || [])[1]?.trim() || "";
+    const desc = (yaml.match(/^description:\s*(.+)$/m) || [])[1]?.trim() || "";
+    const toolsStr = (yaml.match(/^tools:\s*(.+)$/m) || [])[1]?.trim() || "";
+
+    const embTools = toolsStr.split(",").map((t) => t.trim()).filter(Boolean);
+    const piTools = new Set(["read", "grep", "find", "ls"]);
+    for (const t of embTools) {
+      const mapped = TOOL_MAP[t];
+      if (mapped) mapped.forEach((m) => piTools.add(m));
+    }
+    if (embTools.includes("Bash")) { piTools.add("write"); piTools.add("edit"); }
+
+    const out = `---\nname: ${name}\ndescription: ${desc}\ntools: ${[...piTools].join(", ")}\n---\n\n${body}`;
+    await writeFile(join(piAgentsDir, file), out, "utf-8");
+  }
+}
+
+async function ensureSubagentSettings(cwd: string) {
+  const settingsPath = join(cwd, ".pi", "settings.json");
+  let settings: Record<string, unknown> = {};
+  let sourceIsNew = false;
+  try {
+    settings = JSON.parse(await readFile(settingsPath, "utf-8"));
+  } catch {
+    sourceIsNew = true;
+  }
+
+  // Only write pi-subagents to settings if it's a fresh file.
+  // For existing files, packages are user-managed (pi install / install script).
+  if (sourceIsNew) {
+    settings.packages = ["npm:pi-subagents"];
+  }
+
+  // Ensure agent overrides exist (non-destructive: only adds missing entries)
+  if (!settings.subagents) settings.subagents = {};
+  const sub = settings.subagents as Record<string, unknown>;
+  if (!sub.agentOverrides) sub.agentOverrides = {};
+  const overrides = sub.agentOverrides as Record<string, Record<string, string | boolean>>;
+
+  let changed = false;
+  for (const [name, cfg] of Object.entries(DEFAULT_MODEL_ROUTING)) {
+    if (!overrides[name]) {
+      overrides[name] = {
+        model: cfg.model,
+        thinking: cfg.thinking,
+        inheritProjectContext: false,
+      };
+      changed = true;
+    }
+  }
+
+  if (changed || sourceIsNew) {
+    await mkdir(join(cwd, ".pi"), { recursive: true });
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+  }
 }
 
 function isDeclaredChip(value: unknown): boolean {
@@ -205,13 +307,9 @@ export default function (pi: ExtensionAPI) {
     lastInjectedContextByCwd.set(ctx.cwd, text);
     await pi.sendMessage(
       {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text,
-          },
-        ],
+        customType: "emb-agent",
+        content: text,
+        display: true,
       },
       { deliverAs: "nextTurn" },
     );
@@ -234,12 +332,16 @@ export default function (pi: ExtensionAPI) {
 
 
   pi.on("session_start", async (_event, ctx) => {
+    // Sync emb-agent subagent definitions (non-critical: failure should not block)
+    try {
+      await syncEmbAgentsToPi(ctx.cwd);
+      await ensureSubagentSettings(ctx.cwd);
+    } catch {
+      // Agent sync is best-effort; status/next injection is critical.
+    }
     await onSessionEnter(ctx);
   });
 
-  pi.on("session_switch", async (_event, ctx) => {
-    await onSessionEnter(ctx);
-  });
   // Refresh only the status widget after AI turns; do not re-inject identical
   // next-turn context after every assistant response.
   pi.on("turn_end", async (_event, ctx) => {
