@@ -1,24 +1,30 @@
 /**
  * emb-agent Pi extension
  *
- * Hooks session_start to surface emb-agent project state
- * in the status bar, injects context on next user turn, registers
- * slash commands, and auto-syncs emb-agent agents for pi-subagents.
+ * Unified Pi surface for emb-agent: project-state injection, slash commands,
+ * Pi-native tools, PDF/document ingest routing, and pi-subagents sync.
  *
- * Requires: emb-agent installed via `npx emb-agent --target pi`
+ * Requires: emb-agent installed via `npx emb-agent --target pi`.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
+const CONTEXT_TTL_MS = 15_000;
+const FAST_TIMEOUT_MS = 30_000;
+const INGEST_TIMEOUT_MS = 420_000;
+const FAST_MAX_BUFFER = 1024 * 1024;
+const INGEST_MAX_BUFFER = 10 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Types and helpers
 // ---------------------------------------------------------------------------
 
 interface EmbAgentResult {
@@ -29,37 +35,62 @@ interface EmbAgentResult {
   instructions?: string;
   next?: { command?: string; reason?: string; cli?: string };
   open_tasks?: number;
-  agent_protocol?: { gate?: { recommended_command?: string; recommended_agent?: string } };
+  agent_protocol?: { gate?: { recommended_command?: string; recommended_agent?: string; kind?: string } };
   language?: string;
   task_candidates?: Array<{ name: string }>;
-  // From status --brief
-  project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string; active_variant?: string };
-  tasks?: { open?: number; wiki_pages?: number; active?: string | { name?: string; title?: string } | null };
+  prd_task_candidates?: Array<{ name: string }>;
+  local_parse?: { quality?: string; tool?: string; line_count?: number; char_count?: number; status?: string };
+  quality_gate?: string;
+  recommended_action?: string;
+  paths?: Record<string, string>;
+  provider?: string;
+  parsed?: boolean;
+  doc_id?: string;
   update_available?: boolean;
   installed_version?: string | null;
   latest_version?: string | null;
   manual_update_command?: string;
+  project?: { mcu?: string; package?: string; bootstrap?: string; workflow?: string; active_variant?: string };
+  tasks?: { open?: number; wiki_pages?: number; active?: string | { name?: string; title?: string } | null };
 }
 
-async function runEmbAgent(
-  args: string[],
-  cwd: string,
-): Promise<EmbAgentResult | null> {
-  const binPath = join(cwd, ".pi", "emb-agent", "bin", "emb-agent.cjs");
+interface RunOptions {
+  timeoutMs?: number;
+  maxBuffer?: number;
+  allowNonJson?: boolean;
+}
 
-  try {
-    await access(binPath, constants.R_OK);
-    const { stdout } = await execFileAsync("node", [binPath, ...args], {
-      cwd,
-      encoding: "utf8",
-      timeout: 30000,
-      maxBuffer: 1024 * 1024,
-    });
-    if (!stdout.trim()) return null;
-    return JSON.parse(stdout);
-  } catch {
-    return null;
-  }
+interface RunOk {
+  ok: true;
+  value: EmbAgentResult;
+  stdout: string;
+  binPath: string;
+}
+
+interface RunErr {
+  ok: false;
+  code: "missing_runtime" | "spawn_error" | "exit" | "bad_json";
+  message: string;
+  stdout?: string;
+  stderr?: string;
+  binPath?: string;
+  candidates?: string[];
+}
+
+type RunResult = RunOk | RunErr;
+
+interface ContextEntry {
+  text: string;
+  updatedAt: number;
+  dirty: boolean;
+}
+
+function toolTextResult(text: string, details?: unknown) {
+  const payload: { content: { type: "text"; text: string }[]; details?: unknown } = {
+    content: [{ type: "text", text }],
+  };
+  if (details !== undefined) payload.details = details;
+  return payload;
 }
 
 function normalizeLanguage(value: unknown): string {
@@ -82,8 +113,182 @@ async function readProjectLanguage(cwd: string): Promise<string> {
   catch { return ""; }
 }
 
+async function fileExists(path: string): Promise<boolean> {
+  try { await access(path, constants.R_OK); return true; }
+  catch { return false; }
+}
+
+async function resolveEmbAgentBin(cwd: string): Promise<{ binPath: string; candidates: string[] } | null> {
+  const candidates = [
+    join(cwd, ".pi", "emb-agent", "bin", "emb-agent.cjs"),
+    join(cwd, ".pi", "agent", "emb-agent", "bin", "emb-agent.cjs"),
+    join(EXTENSION_DIR, "..", "emb-agent", "bin", "emb-agent.cjs"),
+  ];
+  const piHome = process.env.PI_CODING_AGENT_DIR;
+  if (piHome) candidates.push(join(piHome, "emb-agent", "bin", "emb-agent.cjs"));
+  candidates.push(join(process.env.HOME || "", ".pi", "agent", "emb-agent", "bin", "emb-agent.cjs"));
+
+  for (const binPath of candidates) {
+    if (binPath && await fileExists(binPath)) return { binPath, candidates };
+  }
+  return null;
+}
+
+async function runEmbAgent(args: string[], cwd: string, options: RunOptions = {}): Promise<RunResult> {
+  const resolved = await resolveEmbAgentBin(cwd);
+  if (!resolved) {
+    return {
+      ok: false,
+      code: "missing_runtime",
+      message: "emb-agent runtime not found. Reinstall with `npx emb-agent@latest --target pi --local` or restart Pi after install.",
+      candidates: [
+        join(cwd, ".pi", "emb-agent", "bin", "emb-agent.cjs"),
+        join(cwd, ".pi", "agent", "emb-agent", "bin", "emb-agent.cjs"),
+        join(EXTENSION_DIR, "..", "emb-agent", "bin", "emb-agent.cjs"),
+        process.env.PI_CODING_AGENT_DIR ? join(process.env.PI_CODING_AGENT_DIR, "emb-agent", "bin", "emb-agent.cjs") : "",
+      ].filter(Boolean),
+    };
+  }
+
+  try {
+    const { stdout, stderr } = await execFileAsync("node", [resolved.binPath, ...args], {
+      cwd,
+      encoding: "utf8",
+      timeout: options.timeoutMs ?? FAST_TIMEOUT_MS,
+      maxBuffer: options.maxBuffer ?? FAST_MAX_BUFFER,
+    });
+    const trimmed = stdout.trim();
+    if (options.allowNonJson) {
+      return { ok: true, value: { status: "ok", summary: trimmed }, stdout, binPath: resolved.binPath };
+    }
+    if (!trimmed) return { ok: true, value: { status: "ok" }, stdout, binPath: resolved.binPath };
+    try {
+      return { ok: true, value: JSON.parse(trimmed), stdout, binPath: resolved.binPath };
+    } catch (error: any) {
+      return { ok: false, code: "bad_json", message: `emb-agent returned non-JSON output: ${error.message}`, stdout, stderr, binPath: resolved.binPath };
+    }
+  } catch (error: any) {
+    return {
+      ok: false,
+      code: error?.killed || error?.signal === "SIGTERM" ? "spawn_error" : "exit",
+      message: error?.message || "emb-agent command failed",
+      stdout: error?.stdout,
+      stderr: error?.stderr,
+      binPath: resolved.binPath,
+    };
+  }
+}
+
+function errorText(result: RunErr): string {
+  const pieces = [`emb-agent error (${result.code}): ${result.message}`];
+  if (result.stderr?.trim()) pieces.push(result.stderr.trim());
+  if (result.candidates?.length) pieces.push(`Checked: ${result.candidates.join(", ")}`);
+  return pieces.join("\n");
+}
+
+function isDeclaredChip(value: unknown): boolean {
+  const text = String(value || "").trim();
+  return text.length > 0 && text.toLowerCase() !== "unknown";
+}
+
+function formatActiveTask(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object") {
+    const item = value as { name?: unknown; title?: unknown };
+    return String(item.name || item.title || "").trim();
+  }
+  return "";
+}
+
+function formatRecommendedCommand(r: EmbAgentResult): string {
+  const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
+  let command = String(raw || "").trim();
+  if (!command) return "";
+  if (command.startsWith("/emb:")) command = command.slice("/emb:".length);
+  else if (command.startsWith("/emb-")) command = command.slice("/emb-".length);
+  else if (command.startsWith("/")) return "";
+  command = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").replace(/\s+--brief$/, "").trim();
+  const name = command.split(/\s+/)[0] || "";
+  if (name === "onboard") return "/emb-onboard";
+  if (name === "ingest" || name === "ingest-docs") return "/emb-ingest";
+  return name ? "/emb-next" : "";
+}
+
+function formatRecommendedReason(r: EmbAgentResult): string {
+  return String(r.next?.reason || r.reason || "").trim();
+}
+
+function updateNotice(result: EmbAgentResult | null): { label: string; lines: string[] } {
+  if (!result?.update_available) return { label: "", lines: [] };
+  const installed = String(result.installed_version || "unknown");
+  const available = String(result.latest_version || "latest");
+  const command = String(result.manual_update_command || "npx emb-agent@latest update --target all --local");
+  return {
+    label: `update:${available}`,
+    lines: [`Runtime update available: ${installed} → ${available}`, `Manual update: ${command}`],
+  };
+}
+
+function renderNextLines(result: EmbAgentResult, update?: EmbAgentResult | null): string[] {
+  const lines: string[] = [];
+  for (const line of updateNotice(update || null).lines) lines.push(line);
+  if (result.summary) lines.push(`Project: ${result.summary}`);
+  const command = formatRecommendedCommand(result);
+  if (command) {
+    lines.push(`Next command: ${command}`);
+    const reason = formatRecommendedReason(result);
+    if (reason) lines.push(`  ${reason}`);
+  }
+  if (result.agent_protocol?.gate?.kind) lines.push(`Gate: ${result.agent_protocol.gate.kind}`);
+  if (result.agent_protocol?.gate?.recommended_agent) lines.push(`Recommended agent: ${result.agent_protocol.gate.recommended_agent}`);
+  if (result.reason) lines.push(`State: ${result.reason}`);
+  if (result.action) lines.push(`Action: ${result.action}`);
+  if (result.instructions) lines.push(`\n${result.instructions}`);
+  const taskNames = (result.task_candidates || result.prd_task_candidates || []).map((t) => t.name);
+  if (taskNames.length) lines.push(`Tasks: ${taskNames.join(", ")}`);
+  return lines;
+}
+
+function renderIngestLines(result: EmbAgentResult): string[] {
+  const lines = [
+    `Status: ${result.status || "unknown"}`,
+    `Provider: ${result.provider || "unknown"}`,
+    `Parsed: ${result.parsed === false ? "false" : "true"}`,
+  ];
+  if (result.doc_id) lines.push(`Doc ID: ${result.doc_id}`);
+  if (result.local_parse) {
+    const q = result.local_parse.quality || result.local_parse.status || "unknown";
+    lines.push(`Local parse: ${result.local_parse.tool || "n/a"}, quality=${q}, lines=${result.local_parse.line_count ?? "?"}`);
+  }
+  if (result.quality_gate) lines.push(`Quality gate: ${result.quality_gate}`);
+  if (result.paths?.markdown) lines.push(`Markdown: ${result.paths.markdown}`);
+  if (result.paths?.metadata) lines.push(`Metadata: ${result.paths.metadata}`);
+  if (result.recommended_action) lines.push(`Recommended action: ${result.recommended_action}`);
+  if (result.next) lines.push(`Next: ${String(result.next)}`);
+  return lines;
+}
+
+function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): string {
+  const parts: string[] = [];
+  const notice = updateNotice(update || null);
+  if (notice.label) parts.push(notice.label);
+  if (r.project?.active_variant) parts.push(`var:${r.project.active_variant}`);
+  if (isDeclaredChip(r.project?.mcu)) {
+    const pkg = isDeclaredChip(r.project?.package) ? `/${r.project!.package}` : "";
+    parts.push(`${r.project!.mcu}${pkg}`);
+  }
+  if (r.tasks?.wiki_pages) parts.push(`wiki:${r.tasks.wiki_pages}`);
+  if (r.tasks?.open) parts.push(`tasks:${r.tasks.open}`);
+  const activeTask = formatActiveTask(r.tasks?.active);
+  if (activeTask) parts.push(`▸${activeTask}`);
+  const command = formatRecommendedCommand(r);
+  if (command) parts.push(command);
+  return parts.length > 0 ? `emb: ${parts.join(" · ")}` : "";
+}
+
 // ---------------------------------------------------------------------------
-// Subagent sync — auto-generate pi-subagents compatible agent files
+// Subagent sync
 // ---------------------------------------------------------------------------
 
 const TOOL_MAP: Record<string, string[]> = {
@@ -93,20 +298,14 @@ const TOOL_MAP: Record<string, string[]> = {
   Glob: ["find", "ls"],
 };
 
-const DEFAULT_MODEL_ROUTING: Record<string, { model: string; thinking: string }> = {
-  "hw-scout":        { model: "deepseek/deepseek-v4-flash", thinking: "off" },
-  "fw-doer":         { model: "custom/gpt-5.5",           thinking: "xhigh" },
-  "arch-reviewer":   { model: "custom/gpt-5.5",           thinking: "xhigh" },
-  "bug-hunter":      { model: "deepseek/deepseek-v4-pro", thinking: "high" },
-  "sys-reviewer":    { model: "deepseek/deepseek-v4-pro", thinking: "high" },
-  "release-checker": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
-  "onboard":         { model: "custom/gpt-5.5",           thinking: "xhigh" },
-};
+const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "onboard"]);
 
 async function syncEmbAgentsToPi(cwd: string) {
-  // Installed path: .emb-agent/agents/ (from npx emb-agent)
-  // Dev path: agents/ (emb-agent repo itself)
-  const candidates = [join(cwd, ".emb-agent", "agents"), join(cwd, "agents")];
+  const candidates = [
+    join(cwd, ".pi", "emb-agent", "agents"),
+    join(cwd, ".emb-agent", "agents"),
+    join(cwd, "agents"),
+  ];
   let agentsDir = "";
   for (const d of candidates) {
     try { await access(d, constants.R_OK); agentsDir = d; break; } catch { /* next */ }
@@ -114,7 +313,6 @@ async function syncEmbAgentsToPi(cwd: string) {
   if (!agentsDir) return;
 
   const piAgentsDir = join(cwd, ".pi", "agents");
-
   await mkdir(piAgentsDir, { recursive: true });
 
   const files = (await readdir(agentsDir)).filter((f) => f.endsWith(".md"));
@@ -134,7 +332,7 @@ async function syncEmbAgentsToPi(cwd: string) {
       const mapped = TOOL_MAP[t];
       if (mapped) mapped.forEach((m) => piTools.add(m));
     }
-    if (embTools.includes("Bash")) { piTools.add("write"); piTools.add("edit"); }
+    if (WRITE_CAPABLE_AGENTS.has(name)) { piTools.add("write"); piTools.add("edit"); }
 
     const out = `---\nname: ${name}\ndescription: ${desc}\ntools: ${[...piTools].join(", ")}\n---\n\n${body}`;
     await writeFile(join(piAgentsDir, file), out, "utf-8");
@@ -144,136 +342,143 @@ async function syncEmbAgentsToPi(cwd: string) {
 async function ensureSubagentSettings(cwd: string) {
   const settingsPath = join(cwd, ".pi", "settings.json");
   let settings: Record<string, unknown> = {};
-  let sourceIsNew = false;
-  try {
-    settings = JSON.parse(await readFile(settingsPath, "utf-8"));
-  } catch {
-    sourceIsNew = true;
-  }
-
-  // Only write pi-subagents to settings if it's a fresh file.
-  // For existing files, packages are user-managed (pi install / install script).
-  if (sourceIsNew) {
-    settings.packages = ["npm:pi-subagents"];
-  }
-
-  // Ensure agent overrides exist (non-destructive: only adds missing entries)
-  if (!settings.subagents) settings.subagents = {};
-  const sub = settings.subagents as Record<string, unknown>;
-  if (!sub.agentOverrides) sub.agentOverrides = {};
-  const overrides = sub.agentOverrides as Record<string, Record<string, string | boolean>>;
-
   let changed = false;
-  for (const [name, cfg] of Object.entries(DEFAULT_MODEL_ROUTING)) {
-    if (!overrides[name]) {
-      overrides[name] = {
-        model: cfg.model,
-        thinking: cfg.thinking,
-        inheritProjectContext: false,
-      };
+  try { settings = JSON.parse(await readFile(settingsPath, "utf-8")); }
+  catch { settings = {}; changed = true; }
+
+  const existingPackages = settings.packages;
+  if (Array.isArray(existingPackages)) {
+    if (!existingPackages.includes("npm:pi-subagents")) {
+      settings.packages = [...existingPackages, "npm:pi-subagents"];
       changed = true;
     }
+  } else if (existingPackages === undefined) {
+    settings.packages = ["npm:pi-subagents"];
+    changed = true;
+  } else {
+    settings["embAgentWarning"] = "settings.packages is not an array; emb-agent could not auto-merge npm:pi-subagents.";
+    changed = true;
   }
 
-  if (changed || sourceIsNew) {
+  if (!settings.subagents || typeof settings.subagents !== "object" || Array.isArray(settings.subagents)) {
+    settings.subagents = { agentOverrides: {} };
+    changed = true;
+  }
+  const sub = settings.subagents as Record<string, unknown>;
+  if (!sub.agentOverrides || typeof sub.agentOverrides !== "object" || Array.isArray(sub.agentOverrides)) {
+    sub.agentOverrides = {};
+    changed = true;
+  }
+
+  if (changed) {
     await mkdir(join(cwd, ".pi"), { recursive: true });
     await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
   }
 }
 
-function isDeclaredChip(value: unknown): boolean {
-  const text = String(value || "").trim();
-  return text.length > 0 && text.toLowerCase() !== "unknown";
-}
+// ---------------------------------------------------------------------------
+// CLI argument builders
+// ---------------------------------------------------------------------------
 
-function formatActiveTask(value: unknown): string {
-  if (!value) return "";
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "object") {
-    const item = value as { name?: unknown; title?: unknown };
-    const name = String(item.name || "").trim();
-    if (name) return name;
-    const title = String(item.title || "").trim();
-    if (title) return title;
+function shellSplit(input: string): string[] {
+  const out: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      else if (ch === "\\" && i + 1 < input.length) current += input[++i];
+      else current += ch;
+    } else if (ch === "'" || ch === '"') quote = ch;
+    else if (/\s/.test(ch)) { if (current) { out.push(current); current = ""; } }
+    else current += ch;
   }
-  return "";
-}
-function formatRecommendedCommand(r: EmbAgentResult): string {
-  const raw = r.agent_protocol?.gate?.recommended_command || r.next?.command || r.action || "";
-  let command = String(raw || "").trim();
-  if (!command) return "";
-  if (command.startsWith("/emb:")) command = command.slice("/emb:".length);
-  else if (command.startsWith("/emb-")) command = command.slice("/emb-".length);
-  else if (command.startsWith("/")) return "";
-  command = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").replace(/\s+--brief$/, "").trim();
-  const name = command.split(/\s+/)[0] || "";
-  if (name === "onboard") return "/emb-onboard";
-  return name ? "/emb-next" : "";
+  if (current) out.push(current);
+  return out;
 }
 
-function formatRecommendedReason(r: EmbAgentResult): string {
-  return String(r.next?.reason || r.reason || "").trim();
+function optionValue(args: string[], name: string): string | undefined {
+  const idx = args.indexOf(name);
+  if (idx >= 0 && idx + 1 < args.length) return args[idx + 1];
+  const prefix = `${name}=`;
+  return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
 }
 
-function updateNotice(result: EmbAgentResult | null): { label: string; lines: string[] } {
-  if (!result?.update_available) return { label: "", lines: [] };
-  const installed = String(result.installed_version || "unknown");
-  const available = String(result.latest_version || "latest");
-  const command = String(result.manual_update_command || "npx emb-agent@latest update --target all --local");
+function boolArg(args: string[], name: string): boolean {
+  return args.includes(name);
+}
+
+function buildIngestDocArgs(params: Record<string, unknown>): string[] {
+  const file = String(params.file || "").trim();
+  if (!file) throw new Error("ingest_doc requires file");
+  const args = ["ingest", "doc", "--file", file];
+  const provider = String(params.provider || "auto").trim();
+  if (provider) args.push("--provider", provider);
+  const kind = String(params.kind || "datasheet").trim();
+  if (kind) args.push("--kind", kind);
+  const to = String(params.to || params.intendedTo || "hardware").trim();
+  if (to) args.push("--to", to);
+  const mapping: Array<[string, string]> = [["title", "--title"], ["language", "--language"], ["pages", "--pages"], ["modelVersion", "--model-version"]];
+  for (const [key, flag] of mapping) {
+    const value = String(params[key] || "").trim();
+    if (value) args.push(flag, value);
+  }
+  if (params.force) args.push("--force");
+  if (params.isOcr) args.push("--ocr");
+  if (params.enableTable === false) args.push("--no-table");
+  if (params.enableFormula === false) args.push("--no-formula");
+  const timeoutMs = Number(params.timeoutMs || 0);
+  if (Number.isFinite(timeoutMs) && timeoutMs > 0) args.push("--timeout-ms", String(timeoutMs));
+  return args;
+}
+
+function parseEmbIngestArgs(raw: string): Record<string, unknown> | null {
+  const args = shellSplit(raw);
+  const sub = args[0] === "doc" ? args.shift() : "doc";
+  if (sub !== "doc") return null;
+  const file = optionValue(args, "--file") || args[0];
+  if (!file) return null;
   return {
-    label: `update:${available}`,
-    lines: [
-      `Runtime update available: ${installed} → ${available}`,
-      `Manual update: ${command}`,
-    ],
+    file,
+    provider: optionValue(args, "--provider") || "auto",
+    kind: optionValue(args, "--kind") || "datasheet",
+    to: optionValue(args, "--to") || "hardware",
+    title: optionValue(args, "--title"),
+    language: optionValue(args, "--language"),
+    pages: optionValue(args, "--pages"),
+    modelVersion: optionValue(args, "--model-version"),
+    force: boolArg(args, "--force"),
+    isOcr: boolArg(args, "--ocr") || boolArg(args, "--is-ocr"),
+    enableTable: !boolArg(args, "--no-table"),
+    enableFormula: !boolArg(args, "--no-formula"),
+    timeoutMs: Number(optionValue(args, "--timeout-ms") || 0) || undefined,
   };
 }
 
-function renderNextLines(result: EmbAgentResult, update?: EmbAgentResult | null): string[] {
-  const lines: string[] = [];
-  for (const line of updateNotice(update || null).lines) lines.push(line);
-  if (result.summary) lines.push(`Project: ${result.summary}`);
-  const command = formatRecommendedCommand(result);
-  if (command) {
-    lines.push(`Next command: ${command}`);
-    const reason = formatRecommendedReason(result);
-    if (reason) lines.push(`  ${reason}`);
-  }
-  if (result.agent_protocol?.gate?.recommended_agent) {
-    lines.push(`Recommended agent: ${result.agent_protocol.gate.recommended_agent}`);
-  }
-  if (result.reason) lines.push(`State: ${result.reason}`);
-  if (result.action) lines.push(`Action: ${result.action}`);
-  if (result.instructions) lines.push(`\n${result.instructions}`);
-  if (result.task_candidates?.length) {
-    lines.push(`Tasks: ${result.task_candidates.map((t) => t.name).join(", ")}`);
-  }
-  return lines;
+function isPdfPath(path: string): boolean {
+  return /\.pdf(?:$|[?#])/i.test(String(path || ""));
 }
 
-function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): string {
-  const parts: string[] = [];
-  const notice = updateNotice(update || null);
-  if (notice.label) parts.push(notice.label);
-  if (r.project?.active_variant) parts.push(`var:${r.project.active_variant}`);
+function isRawPdfShellCommand(command: string): boolean {
+  const c = String(command || "");
+  if (!isPdfPath(c)) return false;
+  if (/emb-agent\.cjs\s+ingest\s+doc\b/.test(c) || /\bingest\s+doc\b/.test(c)) return false;
+  return /(^|[;&|\s])(cat|head|tail|less|more|xxd|od|strings|pdftotext|mutool|python3?\s+-c)\b/.test(c);
+}
 
-  // Chip info (from status --brief)
-  if (isDeclaredChip(r.project?.mcu)) {
-    const pkg = isDeclaredChip(r.project?.package) ? `/${r.project!.package}` : "";
-    parts.push(`${r.project!.mcu}${pkg}`);
-  }
+// ---------------------------------------------------------------------------
+// ask_user_question UI
+// ---------------------------------------------------------------------------
 
-  // Wiki + tasks
-  if (r.tasks?.wiki_pages) parts.push(`wiki:${r.tasks.wiki_pages}`);
-  if (r.tasks?.open) parts.push(`tasks:${r.tasks.open}`);
-  const activeTask = formatActiveTask(r.tasks?.active);
-  if (activeTask) parts.push(`▸${activeTask}`);
+interface QuestionOption { label: string; description?: string }
+interface QuestionDef { question: string; header?: string; multiSelect?: boolean; allowCustom?: boolean; options: QuestionOption[] }
+interface QuestionnaireAnswer { question: string; selected: string[]; custom?: string[] }
+interface QuestionnaireResult { answers: QuestionnaireAnswer[]; cancelled: boolean }
 
-  // Workflow stage
-  const command = formatRecommendedCommand(r);
-  if (command) parts.push(command);
-
-  return parts.length > 0 ? `emb: ${parts.join(" · ")}` : "";
+function questionSummary(q: QuestionDef): string {
+  const options = (q.options || []).map((o, i) => `${i + 1}. ${o.label}${o.description ? ` — ${o.description}` : ""}`).join("\n");
+  return `${q.header || q.question}\n${options}\n0. Type custom answer`;
 }
 
 // ---------------------------------------------------------------------------
@@ -281,46 +486,59 @@ function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): str
 // ---------------------------------------------------------------------------
 
 export default function (pi: ExtensionAPI) {
-  let lastEmbContext = "";
-  let lastEmbContextCwd = "";
+  const contexts = new Map<string, ContextEntry>();
 
-  async function refreshStatus(ctx: {
-    cwd: string;
-    ui: {
-      setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void;
-    };
-  }, updateResult: EmbAgentResult | null = null) {
+  function markContextDirty(cwd: string) {
+    const current = contexts.get(cwd);
+    if (current) current.dirty = true;
+  }
+
+  async function refreshStatus(ctx: { cwd: string; ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void; notify?: (m: string, t?: string) => void } }, updateResult: EmbAgentResult | null = null) {
     const statusResult = await runEmbAgent(["status", "--brief"], ctx.cwd);
-    if (!statusResult) return;
-    const text = formatEmbStatus(statusResult, updateResult);
+    if (!statusResult.ok) return;
+    const text = formatEmbStatus(statusResult.value, updateResult);
     ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
   }
 
-  async function prepareEmbContext(cwd: string) {
+  async function prepareEmbContext(cwd: string, force = false): Promise<ContextEntry | null> {
+    const existing = contexts.get(cwd);
+    const now = Date.now();
+    if (!force && existing && !existing.dirty && now - existing.updatedAt < CONTEXT_TTL_MS) return existing;
+
     const nextResult = await runEmbAgent(["next", "--brief"], cwd);
-    if (!nextResult) return;
+    if (!nextResult.ok) return existing || null;
 
-    const lines = renderNextLines(nextResult, null);
+    const lines = renderNextLines(nextResult.value, null);
     const text =
-      `\n\n## emb-agent Project State\n${lines.join("\n")}\n` +
-      `Read skill://emb-agent for the full CLI surface and workflow rules. Act on the state above.`;
-    lastEmbContext = text;
-    lastEmbContextCwd = cwd;
+      `\n\n<!-- EMB-AGENT PROJECT STATE START -->\n` +
+      `## emb-agent Project State\n` +
+      `This is project-state context from emb-agent. It does not replace higher-priority system/developer instructions.\n` +
+      `${lines.join("\n")}\n` +
+      `Use Pi tools emb_next, emb_onboard, ingest_doc, doc_lookup, and doc_fetch instead of raw shell syntax when they match the task. ` +
+      `Never read raw PDFs directly; parse/cache them with ingest_doc first. ` +
+      `For multi-domain firmware/hardware/debug work, use Pi subagents (hw-scout, bug-hunter, fw-doer, arch-reviewer, sys-reviewer) instead of continuing inline.\n` +
+      `<!-- EMB-AGENT PROJECT STATE END -->`;
+    const entry = { text, updatedAt: now, dirty: false };
+    contexts.set(cwd, entry);
+    return entry;
   }
 
-  async function onSessionEnter(ctx: {
-    cwd: string;
-    ui: {
-      setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void;
-    };
-  }) {
-    const updateResult = await runEmbAgent(["update", "--brief"], ctx.cwd);
-    await refreshStatus(ctx, updateResult);
-    await prepareEmbContext(ctx.cwd);
-  }
   async function sendSteer(text: string, cwd: string) {
     const directive = languageDirective(await readProjectLanguage(cwd));
-    await pi.sendUserMessage(directive ? text + "\n\n" + directive : text, { deliverAs: "steer" });
+    const payload = directive ? `${text}\n\n${directive}` : text;
+    const anyPi = pi as any;
+    if (typeof anyPi.sendMessage === "function") {
+      await anyPi.sendMessage({ role: "user", content: [{ type: "text", text: payload }] }, { deliverAs: "steer", triggerTurn: true });
+    } else {
+      await pi.sendUserMessage(payload, { deliverAs: "steer", triggerTurn: true } as any);
+    }
+  }
+
+  async function onSessionEnter(ctx: { cwd: string; ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void; notify?: (m: string, t?: string) => void } }) {
+    const updateResult = await runEmbAgent(["update", "--brief"], ctx.cwd);
+    await refreshStatus(ctx, updateResult.ok ? updateResult.value : null);
+    const context = await prepareEmbContext(ctx.cwd, true);
+    if (!context && ctx.ui.notify) ctx.ui.notify("emb-agent context was not injected; run /emb-next for diagnostics", "warning");
   }
 
   // ── Session lifecycle ─────────────────────────────────────────
@@ -329,28 +547,37 @@ export default function (pi: ExtensionAPI) {
     try {
       await syncEmbAgentsToPi(ctx.cwd);
       await ensureSubagentSettings(ctx.cwd);
-    } catch {
-      // Agent sync is best-effort.
+    } catch (error: any) {
+      ctx.ui.notify?.(`emb-agent Pi setup warning: ${error?.message || error}`, "warning");
     }
     await onSessionEnter(ctx);
   });
 
-  // Inject emb-agent project context into the system prompt before every agent turn.
-  // This is the proper pi harness pattern (see: ponytail, claude-rules extensions).
   pi.on("before_agent_start", async (event, ctx) => {
-    // Refresh context if cwd changed (session switch)
-    if (ctx.cwd !== lastEmbContextCwd) {
-      await prepareEmbContext(ctx.cwd);
-    }
-    if (!lastEmbContext) return;
+    const context = await prepareEmbContext(ctx.cwd);
+    if (!context?.text) return;
     return {
-      systemPrompt: event.systemPrompt + lastEmbContext,
+      message: {
+        customType: "emb-agent-context",
+        content: `emb-agent context injected (${new Date(context.updatedAt).toISOString()})`,
+        display: false,
+      },
+      systemPrompt: event.systemPrompt + context.text,
     };
   });
 
-  // Refresh status widget after each turn
   pi.on("turn_end", async (_event, ctx) => {
     await refreshStatus(ctx);
+    markContextDirty(ctx.cwd);
+  });
+
+  pi.on("tool_call", async (event) => {
+    if (event.toolName === "read" && isPdfPath(String((event.input as any)?.path || ""))) {
+      return { block: true, reason: "Do not read raw PDFs directly. Use the ingest_doc Pi tool or /emb-ingest doc --file <path> so emb-agent parses and caches the document first." };
+    }
+    if (event.toolName === "bash" && isRawPdfShellCommand(String((event.input as any)?.command || ""))) {
+      return { block: true, reason: "Do not inspect raw PDFs with shell tools. Use ingest_doc or /emb-ingest doc --file <path> first, then doc_fetch/doc_lookup on cached markdown." };
+    }
   });
 
   // ── Slash commands ──────────────────────────────────────────────
@@ -359,12 +586,12 @@ export default function (pi: ExtensionAPI) {
     description: "Run emb-agent next and inject result into conversation",
     handler: async (_args, ctx) => {
       const result = await runEmbAgent(["next", "--brief"], ctx.cwd);
-      if (!result) {
-        ctx.ui.notify("emb-agent not found or not initialized", "warning");
-        return;
-      }
+      if (!result.ok) { ctx.ui.notify(errorText(result), "warning"); return; }
+      contexts.set(ctx.cwd, { text: "", updatedAt: 0, dirty: true });
+      await prepareEmbContext(ctx.cwd, true);
+      const lines = renderNextLines(result.value);
       await sendSteer(
-        `[/emb-next]\n${JSON.stringify(result, null, 2)}\n\nRespond to the user from the runtime recommendation above. If the gate is prd-exploration or action is clarify, run a doc-grounded grilling loop: ask one load-bearing question at a time, challenge ambiguous terms against project truth, update PRD/req truth after confirmation, and run validate/health after truth edits. Do not create a task until the user confirms a concrete deliverable or bug and the state-machine checklist is explicit. If the gate is prd-breakdown, read docs/prd/system.md, present prd_task_candidates, create vertical child PRDs, run validate/health, and wait for explicit agreement before task add or activation; do not ask for a blank task while system PRD candidates exist. If the gate is work-selection or open task candidates exist, classify the work, draft/fill a durable agent brief, split large work into vertical tracer-bullet slices, and present existing tasks as options only after checking whether the user wants existing work or new work. Do not auto-activate a task.`,
+        `[/emb-next]\n${lines.length ? lines.join("\n") : JSON.stringify(result.value, null, 2)}\n\nRespond to the user from the runtime recommendation above. Follow agent_protocol.gate allowed/forbidden actions exactly. Use Pi tools for emb-agent actions; use ingest_doc for PDFs/manuals. Do not auto-activate a task without user confirmation.`,
         ctx.cwd,
       );
     },
@@ -374,14 +601,177 @@ export default function (pi: ExtensionAPI) {
     description: "Run emb-agent onboarding handoff",
     handler: async (_args, ctx) => {
       const result = await runEmbAgent(["onboard"], ctx.cwd);
-      if (!result) {
-        ctx.ui.notify("emb-agent onboard failed or not initialized", "warning");
+      if (!result.ok) { ctx.ui.notify(errorText(result), "warning"); return; }
+      markContextDirty(ctx.cwd);
+      const lines = renderNextLines(result.value);
+      await sendSteer(`[/emb-onboard]\n${lines.length ? lines.join("\n") : JSON.stringify(result.value, null, 2)}\n\nAct on the onboarding handoff above.`, ctx.cwd);
+    },
+  });
+
+  pi.registerCommand("emb-ingest", {
+    description: "Parse/cache documents with emb-agent (usage: /emb-ingest doc --file <path> [--provider auto|local|mineru])",
+    handler: async (args, ctx) => {
+      const params = parseEmbIngestArgs(args || "");
+      if (!params) {
+        await sendSteer("[/emb-ingest]\nUsage: /emb-ingest doc --file <path> [--provider auto|local|mineru] [--kind datasheet] [--to hardware]", ctx.cwd);
         return;
       }
-      await sendSteer(
-        `[/emb-onboard]\n${JSON.stringify(result, null, 2)}`,
-        ctx.cwd,
-      );
+      let cliArgs: string[];
+      try { cliArgs = buildIngestDocArgs(params); }
+      catch (error: any) { ctx.ui.notify(error?.message || String(error), "warning"); return; }
+      const result = await runEmbAgent(cliArgs, ctx.cwd, { timeoutMs: Number(params.timeoutMs || 0) || INGEST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER });
+      if (!result.ok) { ctx.ui.notify(errorText(result), "warning"); return; }
+      markContextDirty(ctx.cwd);
+      await sendSteer(`[/emb-ingest]\n${renderIngestLines(result.value).join("\n")}\n\nUse doc_fetch/doc_lookup on the cached artifact, inspect sparse local parses, then rerun /emb-next.`, ctx.cwd);
+    },
+  });
+
+  // ── Pi-native tools ────────────────────────────────────────────
+
+  pi.registerTool({
+    name: "emb_next",
+    label: "emb next",
+    description: "Run emb-agent next --brief and return the current routing gate/project state.",
+    promptSnippet: "Run emb-agent next --brief and return routing gate/project state",
+    promptGuidelines: ["Use emb_next before broad firmware work, task routing, or when emb-agent project state may be stale."],
+    parameters: { type: "object", properties: {}, additionalProperties: false } as Record<string, unknown>,
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const result = await runEmbAgent(["next", "--brief"], ctx.cwd);
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      markContextDirty(ctx.cwd);
+      return toolTextResult(renderNextLines(result.value).join("\n") || JSON.stringify(result.value, null, 2), result.value);
+    },
+  });
+
+  pi.registerTool({
+    name: "emb_onboard",
+    label: "emb onboard",
+    description: "Run emb-agent onboarding handoff for uninitialized or migrated firmware projects.",
+    promptSnippet: "Run emb-agent onboarding handoff",
+    parameters: { type: "object", properties: {}, additionalProperties: false } as Record<string, unknown>,
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const result = await runEmbAgent(["onboard"], ctx.cwd);
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      markContextDirty(ctx.cwd);
+      return toolTextResult(renderNextLines(result.value).join("\n") || JSON.stringify(result.value, null, 2), result.value);
+    },
+  });
+
+  pi.registerTool({
+    name: "ingest_doc",
+    label: "ingest doc",
+    description: "Parse/cache a PDF/manual/datasheet/document through emb-agent ingest doc. Use this instead of reading raw PDFs.",
+    promptSnippet: "Parse/cache a PDF/manual/datasheet/document through emb-agent ingest doc",
+    promptGuidelines: ["Use ingest_doc for PDFs, datasheets, manuals, DOC/PPT/XLS files, and document evidence before reading cached markdown."],
+    parameters: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "Document path relative to the project root" },
+        provider: { type: "string", enum: ["auto", "local", "mineru"], default: "auto" },
+        kind: { type: "string", default: "datasheet" },
+        to: { type: "string", default: "hardware" },
+        title: { type: "string" },
+        language: { type: "string" },
+        pages: { type: "string" },
+        modelVersion: { type: "string" },
+        force: { type: "boolean" },
+        isOcr: { type: "boolean" },
+        enableTable: { type: "boolean" },
+        enableFormula: { type: "boolean" },
+        timeoutMs: { type: "number" },
+      },
+      required: ["file"],
+    } as Record<string, unknown>,
+    async execute(_toolCallId, params: Record<string, unknown>, _signal, onUpdate, ctx) {
+      let cliArgs: string[];
+      try { cliArgs = buildIngestDocArgs(params); }
+      catch (error: any) { return toolTextResult(error?.message || String(error), { status: "error" }); }
+      onUpdate?.(toolTextResult(`Running emb-agent ${cliArgs.join(" ")}`));
+      const timeoutMs = Number(params.timeoutMs || 0) || INGEST_TIMEOUT_MS;
+      const result = await runEmbAgent(cliArgs, ctx.cwd, { timeoutMs, maxBuffer: INGEST_MAX_BUFFER });
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      markContextDirty(ctx.cwd);
+      return toolTextResult(renderIngestLines(result.value).join("\n"), result.value);
+    },
+  });
+
+  pi.registerTool({
+    name: "doc_lookup",
+    label: "doc lookup",
+    description: "Search parsed emb-agent document/manual cache by keyword.",
+    promptSnippet: "Search parsed emb-agent document/manual cache by keyword",
+    parameters: {
+      type: "object",
+      properties: { keyword: { type: "string" }, chip: { type: "string" } },
+      required: ["keyword"],
+    } as Record<string, unknown>,
+    async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
+      const args = ["doc", "lookup", "--keyword", String(params.keyword || "")];
+      if (params.chip) args.push("--chip", String(params.chip));
+      const result = await runEmbAgent(args, ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER });
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      return toolTextResult(result.stdout.trim(), result.value);
+    },
+  });
+
+  pi.registerTool({
+    name: "doc_fetch",
+    label: "doc fetch",
+    description: "Fetch cached parsed markdown for a document path. Use after ingest_doc, not on raw PDFs.",
+    promptSnippet: "Fetch cached parsed markdown for a document path",
+    parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } as Record<string, unknown>,
+    async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
+      const result = await runEmbAgent(["doc", "fetch", "--path", String(params.path || "")], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER, allowNonJson: true });
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      return toolTextResult(result.stdout.trim(), { path: params.path });
+    },
+  });
+
+  pi.registerTool({
+    name: "ask_user_question",
+    label: "Ask User Question",
+    description: "Ask the user structured questions before making ambiguous product, hardware, or migration decisions. Supports option lists and custom answers.",
+    promptSnippet: "Ask the user structured questions before making ambiguous decisions",
+    parameters: {
+      type: "object",
+      properties: {
+        questions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              question: { type: "string" },
+              header: { type: "string" },
+              multiSelect: { type: "boolean" },
+              allowCustom: { type: "boolean" },
+              options: { type: "array", items: { type: "object", properties: { label: { type: "string" }, description: { type: "string" } }, required: ["label"] } },
+            },
+            required: ["question", "options"],
+          },
+        },
+      },
+      required: ["questions"],
+    } as Record<string, unknown>,
+    async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
+      const questions = (params.questions as QuestionDef[]) || [];
+      if (!questions.length) return toolTextResult("Error: no questions provided", { status: "error" });
+      const hasInteractiveUi = (ctx as any).hasUI !== false && !!ctx.ui?.select && !!ctx.ui?.input;
+      if (!hasInteractiveUi) return toolTextResult(`UI not available. Ask these questions in chat:\n${questions.map(questionSummary).join("\n\n")}`, { status: "needs_chat_fallback", questions });
+
+      const answers: QuestionnaireAnswer[] = [];
+      for (const q of questions) {
+        const options = [...(q.options || []).map((o) => o.label), ...(q.allowCustom === false ? [] : ["Type custom answer"]), "Cancel"];
+        const selected = await ctx.ui.select(questionSummary(q), options);
+        if (!selected || selected === "Cancel") return toolTextResult("Cancelled by user", { cancelled: true, answers });
+        if (selected === "Type custom answer") {
+          const custom = await ctx.ui.input(q.question, "Type answer...");
+          answers.push({ question: q.question, selected: [], custom: custom ? [custom] : [] });
+        } else {
+          answers.push({ question: q.question, selected: [selected] });
+        }
+      }
+      const result: QuestionnaireResult = { answers, cancelled: false };
+      return toolTextResult(JSON.stringify(result), result);
     },
   });
 }

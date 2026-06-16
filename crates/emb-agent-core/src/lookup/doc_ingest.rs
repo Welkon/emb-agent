@@ -68,6 +68,7 @@ pub fn ingest_document(
     let language = non_empty(options.language.unwrap_or(""), DEFAULT_LANGUAGE);
     let model_version = non_empty(options.model_version.unwrap_or(""), DEFAULT_MODEL_VERSION);
     let local_tool_order = configured_local_tool_order(project_root);
+    let mut fallback_local_parse: Option<LocalParseSuccess> = None;
     let file_path = resolve_project_path(project_root, options.file);
     let metadata =
         fs::metadata(&file_path).map_err(|e| format!("Cannot read {}: {e}", options.file))?;
@@ -170,24 +171,40 @@ pub fn ingest_document(
                     &rel_parse_json_path,
                     &rel_source_path,
                 )?;
-                let mut result = result_json(
-                    "ok",
-                    &doc_id,
-                    "local",
-                    kind,
-                    intended_to,
-                    &env,
-                    &rel_source_path,
-                    &rel_parse_path,
-                    &rel_parse_json_path,
-                    &rel_summary_path,
-                    None,
-                    json!({"direct": false}),
-                    "Document parsed locally. Inspect parse.md quality; if it is sparse or table-garbled, rerun with --provider mineru.",
-                );
-                attach_local_parse_info(&mut result, &local_tool_order, Some(&local), None);
-                update_doc_index(project_root, &result)?;
-                return Ok(result);
+                if should_fallback_to_mineru(&local, provider.as_str(), env.key_present) {
+                    eprintln!(
+                        "emb-agent ingest doc: local parse is sparse; falling back to MinerU"
+                    );
+                    fallback_local_parse = Some(local.clone());
+                    provider = "mineru".to_string();
+                } else {
+                    let mut result = result_json(
+                        "ok",
+                        &doc_id,
+                        "local",
+                        kind,
+                        intended_to,
+                        &env,
+                        &rel_source_path,
+                        &rel_parse_path,
+                        &rel_parse_json_path,
+                        &rel_summary_path,
+                        None,
+                        json!({"direct": false}),
+                        "Document parsed locally. Inspect parse.md quality; if it is sparse or table-garbled, rerun with --provider mineru.",
+                    );
+                    attach_local_parse_info(&mut result, &local_tool_order, Some(&local), None);
+                    if local_quality(local.line_count, local.char_count)
+                        == "sparse-review-or-fallback"
+                    {
+                        result["quality_gate"] = json!("review_required");
+                        result["recommended_action"] = json!(
+                            "Review cached parse.md quality. If image-heavy or sparse, set MINERU_API_KEY and rerun ingest doc --provider mineru --force."
+                        );
+                    }
+                    update_doc_index(project_root, &result)?;
+                    return Ok(result);
+                }
             }
             Err(local_error) if provider == "local" => {
                 write_json(
@@ -403,7 +420,7 @@ pub fn ingest_document(
         &rel_source_path,
     )?;
 
-    let result = result_json(
+    let mut result = result_json(
         "ok",
         &doc_id,
         &provider,
@@ -418,6 +435,17 @@ pub fn ingest_document(
         json!({"direct": false}),
         "MinerU parse cached. Use doc fetch --path <source> or inspect parse.md and images/ assets.",
     );
+    if let Some(local) = fallback_local_parse.as_ref() {
+        result["fallback_from"] = json!("local");
+        result["local_parse_before_fallback"] = json!({
+            "tool": local.tool,
+            "mode": local.mode,
+            "line_count": local.line_count,
+            "char_count": local.char_count,
+            "quality": local_quality(local.line_count, local.char_count),
+            "fallback_reason": "sparse-review-or-fallback"
+        });
+    }
     update_doc_index(project_root, &result)?;
     Ok(result)
 }
@@ -835,6 +863,12 @@ fn local_quality(line_count: usize, char_count: usize) -> &'static str {
     }
 }
 
+fn should_fallback_to_mineru(local: &LocalParseSuccess, provider: &str, has_key: bool) -> bool {
+    provider == "auto"
+        && has_key
+        && local_quality(local.line_count, local.char_count) == "sparse-review-or-fallback"
+}
+
 fn attach_local_parse_info(
     result: &mut Value,
     tool_order: &[String],
@@ -1067,4 +1101,37 @@ fn doc_id_for(source: &str, pages: &str, size: u64) -> String {
     let digest = hasher.finalize();
     let hex = format!("{digest:x}");
     hex.chars().take(16).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn local(lines: usize, chars: usize) -> LocalParseSuccess {
+        LocalParseSuccess {
+            content: "x".repeat(chars),
+            tool: "fixture".to_string(),
+            mode: "text".to_string(),
+            line_count: lines,
+            char_count: chars,
+        }
+    }
+
+    #[test]
+    fn local_quality_thresholds_are_stable() {
+        assert_eq!(local_quality(500, 10_000), "good");
+        assert_eq!(local_quality(50, 2_000), "review");
+        assert_eq!(local_quality(49, 2_000), "sparse-review-or-fallback");
+        assert_eq!(local_quality(500, 1_999), "sparse-review-or-fallback");
+    }
+
+    #[test]
+    fn auto_sparse_local_parse_falls_back_only_when_mineru_key_exists() {
+        let sparse = local(10, 100);
+        let review = local(60, 3_000);
+        assert!(should_fallback_to_mineru(&sparse, "auto", true));
+        assert!(!should_fallback_to_mineru(&sparse, "auto", false));
+        assert!(!should_fallback_to_mineru(&sparse, "local", true));
+        assert!(!should_fallback_to_mineru(&review, "auto", true));
+    }
 }

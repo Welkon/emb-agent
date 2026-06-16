@@ -19,10 +19,8 @@ allowed-tools:
 
 - Run `$emb-dispatch` when this command matches the current problem.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
-- Use `dispatch run next` or `dispatch run <action>` in runtime CLI when you want to execute the resolved dispatch target immediately.
 - `dispatch next` carries the `knowledge_graph` summary from `next` so wrappers can refresh stale graph artifacts without changing the resolved action.
-- Use `prefs set orchestration_mode <auto|coordinator|fork|swarm>` when the session should prefer a coordinator chain, inherited-context fork workers, or a flat swarm roster.
-- **Auto-runner mode**: `prefs set auto_runner true` — automatically chains task phases (implement → check → finish-work → next task) without manual per-phase confirmation. Stops on review failure, human-gated task, user interrupt, or `prefs set auto_runner false`.
-- Codex installs include a bundled stdio bridge, so dispatch can launch host workers without extra `EMB_AGENT_SUBAGENT_BRIDGE_CMD` setup after install.
-- If host sub-agent bridge support is configured, `dispatch run` also emits self-contained worker launch envelopes and records returned worker results in session diagnostics.
-- If no bridge is configured, `dispatch run` keeps the worker launch envelopes, marks synthesis as `manual-workers-required`, and continues with the inline action path.
+- Treat the returned `next_steps` and `agent_protocol` as authoritative. Do not skip gates just because dispatch returns an executable-looking action.
+- Current Rust runtime status: dispatch worker execution is not yet implemented in emb-agent core; use the host's native subagent surface directly when available.
+- In Pi, prefer the Pi `subagent` tool with generated agents such as `hw-scout`, `bug-hunter`, `fw-doer`, `arch-reviewer`, and `sys-reviewer`.
+- **Auto-runner mode** remains a preference contract only until runtime execution is implemented and verified. Do not promise that `dispatch run` will launch host workers automatically in current builds.

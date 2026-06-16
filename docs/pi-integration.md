@@ -1,121 +1,96 @@
-# emb-agent + pi 集成
+# emb-agent + Pi 集成
 
-## 原理
+## 当前架构
 
-pi-subagents 原生支持从 `.pi/agents/` 读取自定义 agent 定义。  
-emb-agent agent 按 pi-subagents 格式适配后放入该目录，即可直接使用。
+Pi 集成现在是 **extension + tools + pi-subagents agents** 的统一表面，不再只是复制 agent 文件。
 
-**不需要 bridge、不需要扩展。** 就 agent 文件 + pi-subagents。
-
-```
-emb-agent/agents/*.md   →  适配格式  →  .pi/agents/*.md   ← pi-subagents 自动发现
-```
-
-## 安装（2 步）
-
-```bash
-cd emb-agent
-pi install npm:pi-subagents
-```
-
-启动 pi 后直接用：
-
-```
-Use hw-scout to find all PWM channels in this project.
-Run arch-reviewer to check the new ISR for latency issues.
-```
-
-## Agent 模型配置
-
-编辑 `.pi/settings.json` → `subagents.agentOverrides`：
-
-| Agent | 默认模型 | thinking | 场景 |
-|-------|---------|----------|------|
-| `hw-scout` | `claude-haiku-4-5` | off | 快速侦察 |
-| `fw-doer` | `claude-sonnet-4` | medium | 代码实现 |
-| `arch-reviewer` | `claude-sonnet-4` | high | 架构审查 |
-| `bug-hunter` | `claude-sonnet-4` | high | 根因追踪 |
-| `sys-reviewer` | `claude-sonnet-4` | high | 系统审查 |
-| `release-checker` | `claude-haiku-4-5` | off | 发布检查 |
-| `onboard` | `claude-sonnet-4` | medium | 项目初始化 |
-
-**换模型直接改一行**，比如 GPT 写代码 + DeepSeek 审查：
-
-```json
-"fw-doer": { "model": "openai/gpt-4o", "thinking": "medium" },
-"arch-reviewer": { "model": "deepseek/deepseek-chat", "thinking": "high" }
-```
-
-## 使用
-
-### 自然语言
-
-```
-Use hw-scout to find the PWM peripheral config for STM32F407.
-Ask arch-reviewer to review this interrupt handler.
-Run bug-hunter to trace the SPI DMA byte drops.
-After implementing, run parallel reviewers: sys-reviewer and arch-reviewer.
-```
-
-### Slash 命令
-
-```
-/run hw-scout "Locate all timer peripherals in this project"
-/chain hw-scout "Analyze ADC" -> fw-doer "Fix ADC sampling rate"
-/parallel arch-reviewer "review ISR" -> sys-reviewer "cross-check schematic"
-/run fw-doer[model=openai/gpt-4o] "Implement LED dimming driver"
-```
-
-### 工作流
+安装后主要文件：
 
 ```text
-# 嵌入式标准流程：侦察 → 实现 → 并行审查 → 修复 → 发布检查
-Use hw-scout to understand TIM1 PWM registers.
-Then have fw-doer implement the LED driver.
-Then run arch-reviewer and sys-reviewer in parallel.
-Apply fixes, then run release-checker.
+.pi/extensions/emb-agent.ts          # Pi extension：状态栏、上下文注入、slash 命令、工具注册
+.pi/settings.json                    # Pi package/settings；必须包含 npm:pi-subagents
+.pi/agents/*.md                      # pi-subagents 可发现的 emb-agent 子 agent
+.pi/skills/emb-agent/SKILL.md        # Pi 可加载的 emb-agent skill
+.pi/emb-agent/bin/emb-agent.cjs      # 项目本地 runtime wrapper
 ```
 
-## Agent 同步
+全局安装时 runtime 也可能在：
 
-当 `agents/` 中的 emb-agent agent 有更新时，重新生成 pi 格式：
+```text
+~/.pi/agent/emb-agent/bin/emb-agent.cjs
+$PI_CODING_AGENT_DIR/emb-agent/bin/emb-agent.cjs
+```
+
+Pi extension 会按本地、全局、环境变量顺序解析 runtime。
+
+## 安装
 
 ```bash
-node -e "
-const fs=require('fs'),path=require('path');
-const MAP={Read:'read',Bash:'bash',Grep:'grep',Glob:'find'};
-fs.readdirSync('agents').filter(f=>f.endsWith('.md')).forEach(f=>{
-  const c=fs.readFileSync(path.join('agents',f),'utf8');
-  const m=c.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if(!m)return;
-  const y=m[1],b=m[2];
-  const nm=(y.match(/^name:\s*(.+)$/m)||[])[1]?.trim()||'';
-  const ds=(y.match(/^description:\s*(.+)$/m)||[])[1]?.trim()||'';
-  const ts=(y.match(/^tools:\s*(.+)$/m)||[])[1]?.trim()||'';
-  const piTools=new Set(['read','grep','find','ls']);
-  ts.split(',').map(t=>t.trim()).filter(Boolean).forEach(t=>{
-    const m=MAP[t];if(m)piTools.add(m);
-  });
-  if(ts.includes('Bash')){piTools.add('write');piTools.add('edit');}
-  const out='---\nname: '+nm+'\ndescription: '+ds+'\ntools: '+[...piTools].join(', ')+'\n---\n\n'+b;
-  fs.writeFileSync(path.join('.pi','agents',f),out,'utf8');
-});
-console.log('Done.');
-"
+npx emb-agent@latest --target pi --local
 ```
 
-## 目录结构
+安装或更新后重启 Pi 会话，或在支持时执行 `/reload`。
 
+## Pi Slash 命令
+
+| 命令 | 作用 |
+| --- | --- |
+| `/emb-next` | 运行 `next --brief` 并把 routing gate 注入对话 |
+| `/emb-onboard` | 运行 onboarding handoff |
+| `/emb-ingest doc --file <path> ...` | 解析/缓存 PDF、手册、datasheet 或其它文档 |
+
+PDF 示例：
+
+```text
+/emb-ingest doc --file docs/SC8F072用户手册_V1.0.2.pdf --provider auto --kind datasheet --to hardware
 ```
-emb-agent/
-├── agents/                      ← emb-agent 原始 agent 定义（源）
-│   ├── hw-scout.md
-│   ├── fw-doer.md
-│   └── ...
-├── .pi/
-│   ├── settings.json            ← pi-subagents 配置 + agent 模型覆盖
-│   └── agents/                  ← pi 格式 agent（从 agents/ 适配生成）
-│       ├── hw-scout.md
-│       ├── fw-doer.md
-│       └── ...
+
+## Pi 工具层
+
+Pi extension 注册 LLM 可直接调用的工具：
+
+| 工具 | 作用 |
+| --- | --- |
+| `emb_next` | 获取 emb-agent 当前 routing gate |
+| `emb_onboard` | 获取 onboarding handoff |
+| `ingest_doc` | 解析/缓存 PDF、manual、datasheet；不要直接 read 原始 PDF |
+| `doc_lookup` | 查询已解析文档缓存 |
+| `doc_fetch` | 读取已缓存的 parsed markdown |
+| `ask_user_question` | 用 Pi UI 向用户提结构化问题 |
+
+规则：PDF/手册必须先通过 `ingest_doc` 或 `/emb-ingest`，再用 `doc_fetch` / `doc_lookup` 读取缓存结果。Pi extension 会阻止直接 `read *.pdf` 或用 `cat/strings/xxd` 之类 shell 命令读取原始 PDF。
+
+## 子 agent
+
+Pi 通过 `npm:pi-subagents` 发现 `.pi/agents/*.md`。emb-agent 会同步这些 agent：
+
+- `hw-scout`：硬件事实侦察，默认只读
+- `bug-hunter`：根因追踪，默认只读/命令
+- `fw-doer`：实现修改，允许 `edit/write`
+- `arch-reviewer` / `sys-reviewer` / `release-checker`：审查，默认不写项目文件
+- `onboard`：初始化/迁移，允许 `edit/write`
+
+emb-agent 不强制非标准模型别名；模型路由由用户在 `.pi/settings.json` 的 `subagents.agentOverrides` 中管理。
+
+## 设置合并
+
+安装器会非破坏性合并 `.pi/settings.json`：
+
+- 保留已有 packages 和其它 Pi 设置
+- 确保 `npm:pi-subagents` 存在
+- 保留已有 `subagents.agentOverrides`
+- 不默认写入 `custom/gpt-5.5`、`claude/claude-opus-4-8`、`deepseek/deepseek-v4-*` 等可能不可用的模型别名
+
+## 排查
+
+```bash
+node .pi/emb-agent/bin/emb-agent.cjs next --brief
+node .pi/emb-agent/bin/emb-agent.cjs diagnostics hooks --host pi --json
 ```
+
+如果 slash 命令或工具不可见：
+
+1. 确认 `.pi/extensions/emb-agent.ts` 存在。
+2. 确认 `.pi/settings.json` 包含 `npm:pi-subagents`。
+3. 重启 Pi 会话或执行 `/reload`。
+4. 确认 runtime wrapper 存在于 `.pi/emb-agent/bin/emb-agent.cjs` 或全局 Pi runtime 路径。

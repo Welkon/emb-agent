@@ -109,7 +109,7 @@ For every hardware-relevant artifact found outside `.emb-agent/`, create an audi
 
 **Confidence levels**:
 - **High**: Content type clearly maps to one emb-agent structure. Mention in report, do not ask per-item (but list so user can object).
-- **Medium**: Inferred mapping, could go multiple places. Use `AskUserQuestion` with options.
+- **Medium**: Inferred mapping, could go multiple places. Use the `ask_user_question` tool when available; otherwise ask the question in chat with concrete options.
 - **Low**: Unclear whether this is hardware truth or general notes. Ask user "Is this hardware truth, project notes, or can be ignored?"
 
 ### Step 2: User confirmation

@@ -897,6 +897,39 @@ function commandFileNames() {
 	return CANONICAL_SHELL_COMMANDS.map(function (command) { return command.file; });
 }
 
+
+function mergeUniqueArray(existing, additions) {
+	var out = Array.isArray(existing) ? existing.slice() : [];
+	for (var i = 0; i < additions.length; i++) {
+		if (out.indexOf(additions[i]) === -1) out.push(additions[i]);
+	}
+	return out;
+}
+
+function deployPiSettingsJson(projectRoot, srcPath, destPath) {
+	backupManagedFile(projectRoot, destPath);
+	if (!fs.existsSync(srcPath)) return false;
+	var template = {};
+	try { template = JSON.parse(fs.readFileSync(srcPath, "utf8")); } catch (_) { template = {}; }
+	var existing = {};
+	var hadExisting = fs.existsSync(destPath);
+	if (hadExisting) {
+		try { existing = JSON.parse(fs.readFileSync(destPath, "utf8")); }
+		catch (_) { existing = {}; }
+	}
+	var merged = Object.assign({}, template, existing);
+	merged.packages = mergeUniqueArray(Array.isArray(existing.packages) ? existing.packages : template.packages, ["npm:pi-subagents"]);
+	var templateSub = template.subagents && typeof template.subagents === "object" ? template.subagents : {};
+	var existingSub = existing.subagents && typeof existing.subagents === "object" ? existing.subagents : {};
+	merged.subagents = Object.assign({}, templateSub, existingSub);
+	var templateOverrides = templateSub.agentOverrides && typeof templateSub.agentOverrides === "object" ? templateSub.agentOverrides : {};
+	var existingOverrides = existingSub.agentOverrides && typeof existingSub.agentOverrides === "object" ? existingSub.agentOverrides : {};
+	merged.subagents.agentOverrides = Object.assign({}, templateOverrides, existingOverrides);
+	ensureDir(path.dirname(destPath));
+	fs.writeFileSync(destPath, JSON.stringify(merged, null, 2) + "\n", "utf8");
+	return true;
+}
+
 function staleCommandFileNames() {
 	return commandFileNames().concat(["next.md", "onboard.md", "emb-status.md", "emb-scan.md", "emb-init.md"]);
 }
@@ -1036,7 +1069,8 @@ function deployCanonicalShellCommands(projectRoot, host) {
 
 
 function hostSurfaceSummary(projectRoot, host) {
-	if (host.name === "omp" || host.name === "pi") return { kind: "extension", dir: path.join(hostDirFor(projectRoot, host), "extensions"), commands: ["/emb-next", "/emb-onboard"], reload: "Start a new " + host.name + " session after install." };
+	if (host.name === "pi") return { kind: "extension", dir: path.join(hostDirFor(projectRoot, host), "extensions"), commands: ["/emb-next", "/emb-onboard", "/emb-ingest"], reload: "Start a new pi session after install." };
+	if (host.name === "omp") return { kind: "extension", dir: path.join(hostDirFor(projectRoot, host), "extensions"), commands: ["/emb-next", "/emb-onboard"], reload: "Start a new " + host.name + " session after install." };
 	if (host.name === "codex") {
 		var root = hostInstallScope(host) === "global" ? path.join(os.homedir(), ".agents", "skills") : path.join(projectRoot, ".agents", "skills");
 		return { kind: "codex-skills", dir: root, commands: ["$emb-next", "$emb-onboard"], reload: "Restart Codex or run /skills if the new skills are not visible." };
@@ -1115,7 +1149,7 @@ function renderInstallPlan(projectRoot, hosts, options) {
 function writeInstallHistory(projectRoot, hosts, options) {
 	var historyDir = path.join(projectRoot, ".emb-agent");
 	ensureDir(historyDir);
-	var record = { time: new Date().toISOString(), version: VERSION, mode: options.mode || "install", scope: options.scope || "local", language: normalizeLanguage(options.lang || readLanguagePreference(projectRoot)), hosts: hosts.map(function (h) { return h.name; }), commands: ["emb-next", "emb-onboard"] };
+	var record = { time: new Date().toISOString(), version: VERSION, mode: options.mode || "install", scope: options.scope || "local", language: normalizeLanguage(options.lang || readLanguagePreference(projectRoot)), hosts: hosts.map(function (h) { return h.name; }), commands: ["emb-next", "emb-onboard", "emb-ingest"] };
 	fs.appendFileSync(path.join(historyDir, "install-history.jsonl"), JSON.stringify(record) + "\n");
 }
 function writeRuntimeVersionState(projectRoot, hosts, options) {
@@ -1162,6 +1196,20 @@ function cursorSurfaceOk(projectRoot, host, surface) {
 	}
 }
 
+
+function piSurfaceOk(projectRoot, host) {
+	var hostDir = hostDirFor(projectRoot, host);
+	var extOk = fs.existsSync(path.join(hostDir, "extensions", "emb-agent.ts"));
+	var settingsPath = path.join(hostDir, "settings.json");
+	if (!extOk || !fs.existsSync(settingsPath)) return false;
+	try {
+		var settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+		return Array.isArray(settings.packages) && settings.packages.indexOf("npm:pi-subagents") >= 0;
+	} catch (_) {
+		return false;
+	}
+}
+
 function runInstallChecks(projectRoot, hosts) {
 	var results = [];
 	for (var i = 0; i < hosts.length; i++) {
@@ -1173,7 +1221,8 @@ function runInstallChecks(projectRoot, hosts) {
 		var surface = hostSurfaceSummary(projectRoot, host);
 		var runtimeOk = fs.existsSync(wrapper) && fs.existsSync(binPath);
 		var surfaceOk = true;
-		if (host.name === "omp" || host.name === "pi") surfaceOk = fs.existsSync(path.join(hostDirFor(projectRoot, host), "extensions", "emb-agent.ts"));
+		if (host.name === "pi") surfaceOk = piSurfaceOk(projectRoot, host);
+		else if (host.name === "omp") surfaceOk = fs.existsSync(path.join(hostDirFor(projectRoot, host), "extensions", "emb-agent.ts"));
 		else if (host.name === "codex") surfaceOk = fs.existsSync(path.join(surface.dir, "emb-next", "SKILL.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard", "SKILL.md"));
 		else if (host.name === "cursor") surfaceOk = cursorSurfaceOk(projectRoot, host, surface);
 		else surfaceOk = fs.existsSync(path.join(surface.dir, "emb-next.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard.md"));
@@ -1309,6 +1358,8 @@ function installForHost(projectRoot, host, callback) {
 				var cfgDest = path.join(hostDir, cfg);
 				if (host.name === "cursor" && cfg === "hooks.json") {
 					fs.writeFileSync(cfgDest, applyTemplate(normalizeCursorHooksConfig(fs.readFileSync(cfgSrc, "utf8")), templateVars));
+				} else if (host.name === "pi" && cfg === "settings.json") {
+					deployPiSettingsJson(projectRoot, cfgSrc, cfgDest);
 				} else {
 					resolveAndDeploy(projectRoot, cfgSrc, cfgDest, templateVars);
 				}

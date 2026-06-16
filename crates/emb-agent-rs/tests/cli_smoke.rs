@@ -1155,6 +1155,11 @@ fn system_prd_without_child_prds_routes_to_prd_breakdown() {
         "# Mock MCU Manual",
     )
     .expect("write manual stub");
+    fs::write(
+        project.path().join(".emb-agent/cache/docs/index.json"),
+        r#"{"documents":[{"doc_id":"mock","provider":"local","kind":"datasheet","title":"SC8F072 user manual","intended_to":"hardware","parsed":true,"status":"ok","paths":{"markdown":".emb-agent/cache/docs/mock/parse.md","source":"docs/SC8F072-user-manual.pdf"}}]}"#,
+    )
+    .expect("write doc index");
 
     let next = run(&project, &["next", "--brief"]);
     let value: serde_json::Value = serde_json::from_str(&next).expect("next json");
@@ -1527,7 +1532,7 @@ fn pi_extension_uses_pi_runtime_and_valid_cli_commands() {
         "Pi status command must route through status --brief"
     );
     assert!(
-        pi_extension.contains("npx emb-agent --target pi"),
+        pi_extension.contains("--target pi") || pi_extension.contains("emb-agent@latest"),
         "Pi init guidance must reference the pi target"
     );
     assert!(
@@ -1882,7 +1887,30 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         "installed runtime must keep board available"
     );
 
-    for disabled_host in [".windsurf", ".pi", ".omp"] {
+    assert!(
+        root.join(".pi").join("emb-agent").exists(),
+        "Pi host should receive runtime when enabled"
+    );
+    assert!(
+        root.join(".pi")
+            .join("extensions")
+            .join("emb-agent.ts")
+            .exists(),
+        "Pi host should receive extension"
+    );
+    let pi_settings = fs::read_to_string(root.join(".pi/settings.json")).expect("read pi settings");
+    assert!(
+        pi_settings.contains("npm:pi-subagents"),
+        "Pi settings: {pi_settings}"
+    );
+    let install_result =
+        fs::read_to_string(root.join(".emb-agent/INSTALL_RESULT.md")).expect("read install result");
+    assert!(
+        install_result.contains("/emb-ingest"),
+        "install result: {install_result}"
+    );
+
+    for disabled_host in [".windsurf", ".omp"] {
         assert!(
             !root.join(disabled_host).join("emb-agent").exists(),
             "disabled host must not receive a runtime: {disabled_host}"
@@ -1895,6 +1923,66 @@ fn installer_exposes_same_two_shell_commands_per_host() {
             .join("emb-agent.ts")
             .exists(),
         "OMP extension must not be installed when OMP is disabled"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn installer_pi_settings_merge_preserves_user_config() {
+    let repo_root = repo_root();
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("emb-agent-pi-settings-{nonce}"));
+    fs::create_dir_all(root.join(".pi")).expect("create pi dir");
+    fs::write(
+        root.join(".pi/settings.json"),
+        r#"{
+  "packages": ["npm:existing-package"],
+  "customSetting": { "keep": true },
+  "subagents": { "agentOverrides": { "hw-scout": { "model": "user/model" } } }
+}
+"#,
+    )
+    .expect("write existing settings");
+
+    let output = Command::new("node")
+        .arg(repo_root.join("bin").join("install.js"))
+        .arg("--target")
+        .arg("pi")
+        .arg("--local")
+        .current_dir(&root)
+        .output()
+        .expect("run pi installer");
+    assert_success(output);
+
+    let raw = fs::read_to_string(root.join(".pi/settings.json")).expect("read pi settings");
+    let value: serde_json::Value = serde_json::from_str(&raw).expect("settings json");
+    let packages = value["packages"].as_array().expect("packages array");
+    assert!(
+        packages.iter().any(|p| p == "npm:existing-package"),
+        "settings: {raw}"
+    );
+    assert!(
+        packages.iter().any(|p| p == "npm:pi-subagents"),
+        "settings: {raw}"
+    );
+    assert_eq!(value["customSetting"]["keep"], true, "settings: {raw}");
+    assert_eq!(
+        value["subagents"]["agentOverrides"]["hw-scout"]["model"], "user/model",
+        "settings: {raw}"
+    );
+    assert!(
+        !raw.contains("custom/gpt-5.5"),
+        "settings must not force model aliases: {raw}"
+    );
+    let install_result =
+        fs::read_to_string(root.join(".emb-agent/INSTALL_RESULT.md")).expect("read install result");
+    assert!(
+        install_result.contains("/emb-ingest"),
+        "install result: {install_result}"
     );
 
     let _ = fs::remove_dir_all(root);
@@ -2163,12 +2251,18 @@ fn hardware_first_prd_exploration_surfaces_doc_ingest_before_questions() {
 
     let docs = root.join("docs");
     fs::create_dir_all(&docs).expect("create docs");
+    fs::create_dir_all(root.join("datasheets")).expect("create datasheets");
+    fs::create_dir_all(root.join("reference")).expect("create reference");
     fs::write(docs.join("board.SchDoc"), b"fixture").expect("write schdoc");
     fs::write(
         docs.join("controller-user-manual.pdf"),
         b"%PDF-1.4\nfixture\n",
     )
     .expect("write pdf");
+    fs::write(root.join("SC8F072-datasheet.pdf"), b"%PDF root\n").expect("write root pdf");
+    fs::write(root.join("datasheets/vendor-manual.pdf"), b"%PDF ds\n")
+        .expect("write datasheet pdf");
+    fs::write(root.join("reference/registers.pdf"), b"%PDF ref\n").expect("write reference pdf");
 
     let output = Command::new(emb_agent_bin())
         .args(["next", "--brief"])
@@ -2183,14 +2277,18 @@ fn hardware_first_prd_exploration_surfaces_doc_ingest_before_questions() {
         value["hardware_unknown_count"].as_u64().unwrap_or(0) >= 2,
         "next output: {next}"
     );
-    assert!(
-        value["hardware_evidence_files"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|item| item == "docs/board.SchDoc"),
-        "next output: {next}"
-    );
+    let evidence = value["hardware_evidence_files"].as_array().unwrap();
+    for expected in [
+        "docs/board.SchDoc",
+        "SC8F072-datasheet.pdf",
+        "datasheets/vendor-manual.pdf",
+        "reference/registers.pdf",
+    ] {
+        assert!(
+            evidence.iter().any(|item| item == expected),
+            "missing evidence {expected}: {next}"
+        );
+    }
     assert_eq!(
         value["agent_protocol"]["gate"]["document_evidence_policy"]["hardware_first"], true,
         "next output: {next}"

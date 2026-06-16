@@ -745,23 +745,78 @@ fn build_next_agent_protocol_with_policy(
     "{\"gate\":{\"kind\":\"none\",\"blocking\":false}}".to_string()
 }
 
-/// Returns true if any MCU manual markdown or mineru parse.md exists in cache/docs/.
+/// Returns true if cached docs contain parsed hardware MCU manual/datasheet evidence.
 fn manual_cached_or_parsed(snapshot: &ProjectSnapshot) -> bool {
     let cache = Path::new(&snapshot.project_root).join(".emb-agent/cache/docs");
     if !cache.is_dir() {
         return false;
     }
+    let index_path = cache.join("index.json");
+    if let Ok(raw) = std::fs::read_to_string(&index_path)
+        && let Ok(value) = serde_json::from_str::<Value>(&raw)
+        && let Some(docs) = value.get("documents").and_then(Value::as_array)
+        && docs
+            .iter()
+            .any(|doc| is_manual_doc_index_entry(doc, &snapshot.mcu_model))
+    {
+        return true;
+    }
+
     match std::fs::read_dir(&cache) {
         Ok(entries) => entries.filter_map(|e| e.ok()).any(|e| {
             let path = e.path();
-            if path.is_dir() {
-                path.join("parse.md").is_file()
-            } else {
-                path.extension().map_or(false, |ext| ext == "md")
+            if !path.is_dir() || !path.join("parse.md").is_file() {
+                return false;
             }
+            let source = std::fs::read_to_string(path.join("source.json"))
+                .ok()
+                .and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
+            source
+                .as_ref()
+                .is_some_and(|value| is_manual_doc_index_entry(value, &snapshot.mcu_model))
         }),
         Err(_) => false,
     }
+}
+
+fn is_manual_doc_index_entry(doc: &Value, mcu_model: &str) -> bool {
+    let parsed = doc.get("parsed").and_then(Value::as_bool).unwrap_or(true);
+    if !parsed {
+        return false;
+    }
+    let status = doc.get("status").and_then(Value::as_str).unwrap_or("ok");
+    if !matches!(status, "ok" | "cached" | "") {
+        return false;
+    }
+    let intended_to = doc.get("intended_to").and_then(Value::as_str).unwrap_or("");
+    if !intended_to.is_empty() && intended_to != "hardware" {
+        return false;
+    }
+    let kind = doc
+        .get("kind")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if matches!(
+        kind.as_str(),
+        "datasheet" | "manual" | "reference-manual" | "mcu-manual"
+    ) {
+        return true;
+    }
+    let haystack = format!(
+        "{} {} {}",
+        doc.get("title").and_then(Value::as_str).unwrap_or(""),
+        doc.pointer("/paths/source")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
+        doc.get("source").and_then(Value::as_str).unwrap_or("")
+    )
+    .to_ascii_lowercase();
+    let mcu = mcu_model.trim().to_ascii_lowercase();
+    (!mcu.is_empty() && haystack.contains(&mcu))
+        || ["manual", "datasheet", "reference", "手册", "规格书"]
+            .iter()
+            .any(|needle| haystack.contains(needle))
 }
 
 /// Returns true if any source files exist (C, header, Rust, Python, assembly).

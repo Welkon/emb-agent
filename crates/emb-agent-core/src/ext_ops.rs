@@ -805,41 +805,12 @@ pub fn executor_run(_ext_dir: &Path, name: &str) -> String {
         json_quote(name)
     )
 }
-/// Ingest doc (registers PDF in cache index)
-pub fn ingest_doc(ext_dir: &Path, file: &str, kind: &str) -> String {
-    let cache_dir = ext_dir.join("cache").join("docs");
-    let _ = fs::create_dir_all(&cache_dir);
-    let index_path = cache_dir.join("index.json");
-    let mut index: serde_json::Value = if index_path.exists() {
-        let content = fs::read_to_string(&index_path).unwrap_or_default();
-        serde_json::from_str(&content).unwrap_or_default()
-    } else {
-        serde_json::json!({"documents": []})
-    };
-    // Generate doc ID from file path hash
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    file.hash(&mut hasher);
-    let doc_id = format!("{:016x}", hasher.finish());
-    let doc_dir = cache_dir.join(&doc_id);
-    let _ = fs::create_dir_all(&doc_dir);
-    let entry = serde_json::json!({
-        "doc_id": doc_id,
-        "title": std::path::Path::new(file).file_name().unwrap_or_default().to_string_lossy(),
-        "source": file,
-        "kind": kind,
-        "parsed": false
-    });
-    if let Some(docs) = index.get_mut("documents").and_then(|d| d.as_array_mut()) {
-        docs.push(entry);
-    }
-    let _ = fs::write(
-        &index_path,
-        serde_json::to_string_pretty(&index).unwrap_or_default(),
-    );
+/// Legacy ext_ops ingest doc entry. Real parsing lives in the top-level `ingest doc` CLI.
+pub fn ingest_doc(_ext_dir: &Path, file: &str, kind: &str) -> String {
     format!(
-        "{{\"status\":\"ok\",\"ingested\":true,\"doc_id\":{},\"note\":\"Document registered in cache index. Full MinerU parsing not yet in Rust.\"}}",
-        json_quote(&doc_id)
+        "{{\"status\":\"error\",\"error\":{{\"code\":\"use-top-level-ingest-doc\",\"message\":\"Use the top-level command: ingest doc --file <path> --provider auto --kind <kind> --to hardware\"}},\"requested\":{{\"file\":{},\"kind\":{}}}}}",
+        json_quote(file),
+        json_quote(kind)
     )
 }
 /// Support/adapter status

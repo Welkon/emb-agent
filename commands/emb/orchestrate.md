@@ -19,8 +19,7 @@ allowed-tools:
 
 - Run `$emb-orchestrate` when this command matches the current problem.
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
-- Use `orchestrate run` in runtime CLI when you want the orchestrator recommendation to execute immediately instead of returning only the contract.
-- Use `prefs set orchestration_mode <auto|coordinator|fork|swarm>` when the session should stay on a coordinator pattern, fork inherited-context workers, or run a flat swarm roster.
-- Codex installs include a bundled stdio bridge, so orchestration can launch host workers without extra `EMB_AGENT_SUBAGENT_BRIDGE_CMD` setup after install.
-- If host sub-agent bridge support is configured, `orchestrate run` will forward self-contained worker prompts through the bridge and persist returned worker results, synthesis status, and integration status.
-- If no bridge is configured, `orchestrate run` keeps the worker launch envelopes, marks synthesis as `manual-workers-required`, and continues with the inline action path.
+- Current Rust runtime status: orchestration execution is not yet implemented in emb-agent core; use the host's native subagent surface directly when available.
+- In Pi, prefer the Pi `subagent` tool with generated agents such as `hw-scout`, `bug-hunter`, `fw-doer`, `arch-reviewer`, and `sys-reviewer`.
+- Use this command doc as a planning contract only until runtime bridge execution is implemented and verified.
+- Do not promise that `orchestrate run` will launch host workers automatically in current builds.

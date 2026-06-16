@@ -1,42 +1,6 @@
 {
   "packages": ["npm:pi-subagents"],
   "subagents": {
-    "agentOverrides": {
-      "hw-scout": {
-        "model": "deepseek/deepseek-v4-flash",
-        "thinking": "off",
-        "inheritProjectContext": false
-      },
-      "fw-doer": {
-        "model": "custom/gpt-5.5",
-        "thinking": "xhigh",
-        "inheritProjectContext": false
-      },
-      "arch-reviewer": {
-        "model": "custom/gpt-5.5",
-        "thinking": "xhigh",
-        "inheritProjectContext": false
-      },
-      "bug-hunter": {
-        "model": "deepseek/deepseek-v4-pro",
-        "thinking": "high",
-        "inheritProjectContext": false
-      },
-      "sys-reviewer": {
-        "model": "deepseek/deepseek-v4-pro",
-        "thinking": "high",
-        "inheritProjectContext": false
-      },
-      "release-checker": {
-        "model": "deepseek/deepseek-v4-flash",
-        "thinking": "off",
-        "inheritProjectContext": false
-      },
-      "onboard": {
-        "model": "custom/gpt-5.5",
-        "thinking": "xhigh",
-        "inheritProjectContext": false
-      }
-    }
+    "agentOverrides": {}
   }
 }

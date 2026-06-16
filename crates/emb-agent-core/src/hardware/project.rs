@@ -339,12 +339,48 @@ fn child_prd_count(project_root: &Path) -> usize {
 }
 
 fn hardware_evidence_files(project_root: &Path) -> Vec<String> {
-    let docs_dir = project_root.join("docs");
     let mut files = Vec::new();
-    collect_hardware_evidence_files(project_root, &docs_dir, &mut files);
+    collect_root_hardware_evidence_files(project_root, &mut files);
+    for dir in [
+        "docs",
+        "datasheet",
+        "datasheets",
+        "reference",
+        "references",
+        "hardware",
+        "schematic",
+        "schematics",
+        "board",
+    ] {
+        collect_hardware_evidence_files(project_root, &project_root.join(dir), &mut files);
+    }
     files.sort();
     files.dedup();
     files
+}
+
+fn collect_root_hardware_evidence_files(project_root: &Path, files: &mut Vec<String>) {
+    let Ok(entries) = fs::read_dir(project_root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() && is_root_hardware_evidence_file(&path) {
+            push_hardware_evidence_file(project_root, &path, files);
+        }
+    }
+}
+
+fn is_root_hardware_evidence_file(path: &Path) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if matches!(ext.as_str(), "schdoc" | "pcbdoc" | "pdf" | "csv" | "net") {
+        return true;
+    }
+    is_hardware_named_text_or_data_file(path)
 }
 
 fn collect_hardware_evidence_files(project_root: &Path, dir: &Path, files: &mut Vec<String>) {
@@ -354,19 +390,48 @@ fn collect_hardware_evidence_files(project_root: &Path, dir: &Path, files: &mut 
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
+            if should_skip_hardware_evidence_dir(&path) {
+                continue;
+            }
             collect_hardware_evidence_files(project_root, &path, files);
             continue;
         }
-        if !is_hardware_evidence_file(&path) {
-            continue;
+        if is_hardware_evidence_file(&path) {
+            push_hardware_evidence_file(project_root, &path, files);
         }
-        let rel = path
-            .strip_prefix(project_root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        files.push(rel);
     }
+}
+
+fn should_skip_hardware_evidence_dir(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    matches!(
+        name,
+        ".git"
+            | ".emb-agent"
+            | ".pi"
+            | ".codex"
+            | ".cursor"
+            | ".claude"
+            | ".omp"
+            | ".windsurf"
+            | "target"
+            | "node_modules"
+            | "build"
+            | "dist"
+            | "out"
+    )
+}
+
+fn push_hardware_evidence_file(project_root: &Path, path: &Path, files: &mut Vec<String>) {
+    let rel = path
+        .strip_prefix(project_root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    files.push(rel);
 }
 
 fn is_hardware_evidence_file(path: &Path) -> bool {
@@ -381,23 +446,38 @@ fn is_hardware_evidence_file(path: &Path) -> bool {
     ) {
         return true;
     }
+    matches!(ext.as_str(), "md" | "txt") && is_hardware_named_text_or_data_file(path)
+}
+
+fn is_hardware_named_text_or_data_file(path: &Path) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !matches!(ext.as_str(), "md" | "txt" | "json" | "yaml" | "yml") {
+        return false;
+    }
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    matches!(ext.as_str(), "md" | "txt")
-        && [
-            "schematic",
-            "sch",
-            "datasheet",
-            "manual",
-            "芯片",
-            "手册",
-            "原理图",
-        ]
-        .iter()
-        .any(|needle| name.contains(needle))
+    [
+        "schematic",
+        "sch",
+        "datasheet",
+        "manual",
+        "hardware",
+        "pinmap",
+        "pin-map",
+        "board",
+        "芯片",
+        "手册",
+        "原理图",
+    ]
+    .iter()
+    .any(|needle| name.contains(needle))
 }
 
 fn is_child_prd_markdown(path: &Path) -> bool {
