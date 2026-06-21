@@ -4,6 +4,7 @@
 
 var childProcess = require("child_process");
 var fs = require("fs");
+var os = require("os");
 var path = require("path");
 
 var https = require("https");
@@ -60,6 +61,15 @@ function spawnRustWithRetry(rustBin, args, opts, maxRetries) {
 		}
 	}
 
+	if (lastError && (lastError.code === "EPERM" || lastError.code === "EACCES") && process.platform !== "win32" && rustBin.indexOf("/mnt/") === 0) {
+		var cachedBin = cachedExecutableCopy(rustBin);
+		if (cachedBin) {
+			var cachedResult = childProcess.spawnSync(cachedBin, args, opts);
+			if (!cachedResult.error) return cachedResult;
+			lastError = cachedResult.error;
+		}
+	}
+
 	// All retries exhausted
 	var wslHint = "";
 	if (rustBin.indexOf("/mnt/") === 0) {
@@ -70,6 +80,32 @@ function spawnRustWithRetry(rustBin, args, opts, maxRetries) {
 	);
 	finalError.code = lastError.code;
 	return { error: finalError };
+}
+
+function simpleHash(value) {
+	var hash = 2166136261;
+	for (var i = 0; i < value.length; i++) {
+		hash ^= value.charCodeAt(i);
+		hash = Math.imul(hash, 16777619);
+	}
+	return (hash >>> 0).toString(16);
+}
+
+function cachedExecutableCopy(rustBin) {
+	try {
+		var stat = fs.statSync(rustBin);
+		var cacheDir = path.join(os.tmpdir(), "emb-agent-bin-cache");
+		fs.mkdirSync(cacheDir, { recursive: true });
+		var cacheKey = simpleHash(rustBin + ":" + stat.size + ":" + Math.floor(stat.mtimeMs));
+		var cachedBin = path.join(cacheDir, path.basename(rustBin) + "-" + cacheKey);
+		if (!fs.existsSync(cachedBin) || fs.statSync(cachedBin).size !== stat.size) {
+			fs.copyFileSync(rustBin, cachedBin);
+		}
+		fs.chmodSync(cachedBin, 0o755);
+		return cachedBin;
+	} catch (_) {
+		return "";
+	}
 }
 
 function readInstalledVersion() {
