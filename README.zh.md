@@ -1,178 +1,220 @@
+# emb-agent
+
 <p align="center">
-  <strong>AI 驱动的嵌入式固件开发工作流</strong><br/>
-  <sub>把芯片规格、引脚分配、硬件约束写进仓库 — 让 AI 直接读懂你的硬件。</sub>
+  <strong>面向 AI 编码助手的嵌入式固件项目记忆</strong><br>
+  <sub>硬件信息只描述一次。之后每次 AI 会话都自动带着正确的板级上下文开始。</sub>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/emb-agent"><img alt="npm" src="https://img.shields.io/npm/v/emb-agent?color=00d4ff"></a>
-  <a href="https://github.com"><img alt="license" src="https://img.shields.io/badge/license-MIT-00d4ff"></a>
-  <a href="./docs/README.md"><img alt="docs" src="https://img.shields.io/badge/docs-emb--agent-00d4ff"></a>
-</p>
-
-<p align="center">
-  <a href="./README.md">English</a> ·
-  <a href="./docs/quick-start.md">快速开始</a> ·
-  <a href="./docs/platforms.md">平台说明</a> ·
-  <a href="./commands/emb/help.md">命令参考</a>
+  <a href="./README.md">English</a>
+  ·
+  <a href="docs/scenarios.md">使用场景</a>
+  ·
+  <a href="docs/task-model.md">任务模型</a>
+  ·
+  <a href="docs/chip-support-model.md">芯片支持</a>
 </p>
 
 ---
 
-## emb-agent 是什么？
+## 为什么需要它
 
-用 AI 写嵌入式固件时，你经常要反复告诉 AI 同一件事：用的什么 MCU、引脚怎么接的、外设有哪些、时序约束是什么。emb-agent 的解决思路很简单：**把这些硬件信息写成文件放在仓库里**。
+嵌入式固件开发里，AI 最大的问题是：**它记不住你的板子**。
 
-一旦硬件信息写进文件，AI 在每次会话开始时自动读取。不用再在聊天里反复解释你的板子配置。
+你会反复解释同样的信息：
 
-支持 **Claude Code**、**Codex**、**Cursor** 和 **Pi** — 同一套 `.emb-agent/` 目录驱动所有受支持平台。
+- 用的是什么 MCU 和封装
+- 哪个信号接到哪个引脚
+- 哪些外设已经被占用
+- 原理图里有什么约束
+- 当前任务到底要做到什么程度
 
-### 核心功能
+**emb-agent 把这些信息变成项目记忆。**
 
-| 功能 | 解决了什么问题 |
-|---|---|
-| **硬件信息文件** | MCU 型号、封装、引脚、外设写一次到 `.emb-agent/hw.yaml`，每次会话 AI 自动读取。 |
-| **需求文件** | 在 `.emb-agent/req.yaml` 中记录项目目标、接口和约束，AI 时刻知道你要做什么。 |
-| **简洁的命令流** | 大多数项目跑 `scan → plan → do → verify`。快捷命令如 `emb-agent scan` / `debug` / `do` 省去 `capability run` 前缀。 |
-| **内建任务追踪** | `task add` 创建任务，跟踪在 `.emb-agent/tasks/` 中；默认直接在主工程工作，需要隔离时再关联 worktree 和 PR。 |
-| **文档提取** | 喂入数据手册和原理图，AI 通过 MinerU 提取芯片信息（agent 限额自动 fallback 到 v4 API）。 |
-| **芯片专属逻辑** | PWM、定时器、ADC、比较器计算工具以可搜索参数形式生成在 adapter 中。 |
-| **内建验证** | 每个任务以 `review → verify` 关闭，不只是"编译通过就行"。 |
-| **知识图谱 + Wiki** | 自动生成知识图谱连接芯片、寄存器、公式、任务。Wiki 在 graph build 时自动生成 stub 页面。 |
-| **自动启动 + 状态栏** | Host hooks 或 Pi extension 自动注入上下文。状态栏实时显示硬件状态、任务数、wiki 页面、图谱新鲜度。 |
-| **回复语言** | `--lang zh` 安装参数，自动写入 AGENTS.md 控制 AI 回复语言。 |
-
-### 支持的 AI 工具
-
-| 平台 | 安装位置 | 自动启动 | 活动追踪 |
-|---|---|---|---|
-| **Claude Code** | `~/.claude/` 或 `.claude/` | ✅ | ✅ |
-| **Codex** | `~/.codex/` 或 `.codex/` | ✅ | ✅ |
-| **Cursor** | `~/.cursor/` 或 `.cursor/` | ✅ | ✅ |
-| **Pi** | `~/.pi/agent/` 或 `.pi/` | ✅ | ✅ |
-
----
-
-## 快速开始
-
-### 1. 安装到项目中
-
-```bash
-npx emb-agent
-```
-
-这会打开交互式安装向导，问清楚你用哪个 AI 工具后自动配置好一切。一行命令直接安装（以 Claude Code 为例）：
-
-```bash
-npx emb-agent --claude --local --developer "你的名字" --lang zh
-```
-
-### 2. 打开新会话
-
-在你的 AI 工具里打开新会话。emb-agent 自动注入项目上下文 — 不需要手动跑任何命令。首次会话会自动初始化项目并告诉你下一步做什么。
-
-### 3. 告诉它你的硬件信息
-
-**已知 MCU：**
-```bash
-declare hardware --mcu SC8F072 --package SOP8
-bootstrap run --confirm
-next run
-```
-
-**还没选好芯片：**
-```text
-在 .emb-agent/req.yaml 里写清楚项目目标和约束，然后运行 "next"
-```
-
-**信息在数据手册或原理图里：**
-```bash
-ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware
-# 原理图
-ingest schematic --file schematic.pdf
-```
-
-**能力快捷命令（bootstrap 完成后）：**
-```bash
-emb-agent scan      # 分诊/分析
-emb-agent plan      # 制定方案
-emb-agent do        # 执行修改（需先创建 task）
-emb-agent debug     # 调试定位
-emb-agent review    # 代码审查
-emb-agent verify    # 验证闭合
-```
-
-[完整上手指南 →](./docs/quick-start.md)
-
----
-
-## 安装程序创建了什么
-
-```text
-your-project/
-├── AGENTS.md                    ← AI 会话启动时自动读取
-├── .emb-agent/
-│   ├── project.json             ← 项目设置
-│   ├── hw.yaml                  ← 芯片型号、引脚、信号、外设
-│   ├── req.yaml                 ← 目标、接口、验收规则
-│   ├── graph/                   ← 自动生成的知识图谱
-│   ├── wiki/                    ← 长期知识存储
-│   ├── tasks/                   ← 任务定义和上下文
-│   ├── specs/                   ← 项目专属工作流规则
-│   └── formulas/                ← 芯片公式注册表
-└── .claude/  (或 .codex/, .cursor/, .pi/)
-    ├── settings.json             ← 支持 hooks 的宿主使用
-    ├── commands/emb/             ← 斜杠命令，如 /emb:next
-    ├── extensions/emb-agent.ts    ← Pi 启动/命令集成
-    └── agents/                   ← 专用智能体（emb-fw-doer 等）
-```
-
----
-
-## 自动化集成
-
-如果你在写脚本或工具对接 emb-agent，使用这些机器可读的接口：
-
-| 命令 | 返回内容 |
-|---|---|
-| `next --brief` | 紧凑 JSON，包含推荐的下一步操作 |
-| `external status` | 稳定的信封格式，包含项目健康摘要 |
-| `external health` | 硬件和工作流健康报告 |
-| `task worktree status` | 隔离任务工作空间的状态 |
-
-每个响应都包含**运行时事件级别**（`clear`、`ok`、`pending`、`blocked`、`failed`），方便脚本判断是否可以安全继续。
+AI 助手在每次会话开始时自动读取这些记忆。你可以直接说产品需求，而不是每次重新解释硬件上下文。
 
 ---
 
 ## 架构
 
-emb-agent 分三层：
+emb-agent 位于 AI 助手和你的代码仓库之间。它不替代 AI 助手，而是为 AI 助手提供可靠的嵌入式项目记忆。
 
-1. **工作流层** — 你日常使用的命令：`start`、`declare hardware`、`next`、`task`、`ingest`。引导 AI 按硬件优先的方式开发。
-2. **芯片支持层** — 芯片专属的公式、寄存器映射和工具逻辑。独立维护，保持核心精简。
-3. **宿主层** — 技能、hooks、extensions 和命令，让 emb-agent 适配 Claude Code、Codex、Cursor 或 Pi。
+| 层级 | 作用 | 示例 |
+|---|---|---|
+| **用户** | 描述产品级意图 | “实现 PWM 调光”、“检查原理图”、“继续当前任务” |
+| **AI 助手** | 对话、写代码、澄清需求 | Codex、Claude Code、Cursor |
+| **宿主集成** | 自动启动 emb-agent，并暴露项目感知能力 | Codex hooks、Claude/Cursor 命令文档 |
+| **Rust Runtime** | 读取项目状态、路由工作流、分析硬件材料 | session、task、schematic、knowledge、diagnostics |
+| **项目记忆** | 保存跨会话长期存在的事实 | `.emb-agent/hw.yaml`、`req.yaml`、`tasks/`、`graph/`、`wiki/`、`cache/` |
 
-芯片支持在报告中出现时，按就绪程度分类：
-- `reusable` — 已可跨项目复用
-- `reusable-candidate` — 接近可复用，需审查
-- `project-only` — 暂且只在当前项目中使用
+### Runtime 模块
+
+| 模块 | 作用 |
+|---|---|
+| **Session** | 识别项目状态并推荐下一步 |
+| **Task** | 跟踪当前工作、决策、评审和关闭状态 |
+| **Schematic** | 解析并总结原理图 / 板文件 |
+| **Hardware** | 保持芯片、板卡、引脚和外设上下文一致 |
+| **Knowledge** | 通过知识图谱和 Wiki 形成项目记忆 |
+| **Workflow** | 引导工作经过扫描、计划、实现、评审、验证 |
+| **Diagnostics** | 报告 hook、项目状态和路径健康度 |
+
+### 专用子代理
+
+emb-agent 内置一组面向特定工作流的子代理，AI 助手可将任务委派给它们。每个代理职责单一、边界清晰。
+
+| 代理 | 职责 |
+|---|---|
+| **onboard** | 项目初始化与迁移 — 空仓库时创建 `.emb-agent/`，或审计已有硬件文档并映射到 emb-agent 结构 |
+| **hw-scout** | 硬件事实调查 — 定位数据手册、原理图、引脚映射和寄存器级信息 |
+| **fw-doer** | 最小化代码和文档变更，附带结构健康预检 |
+| **arch-reviewer** | 面向嵌入式约束的架构评审（ROM/RAM 预算、ISR 延迟、电源域） |
+| **bug-hunter** | 软硬件缺陷根因分析，支持寄存器级追踪 |
+| **sys-reviewer** | 跨固件、原理图和需求的系统级评审 |
+| **release-checker** | 发布前验证：构建、测试和发布产物检查 |
 
 ---
 
-## 更多文档
+## 使用流程
 
-- [快速开始](./docs/quick-start.md)
-- [平台差异说明](./docs/platforms.md)
-- [实际场景示例](./docs/scenarios.md)
-- [各层职责划分](./docs/product-boundaries.md)
-- [芯片支持模型](./docs/chip-support-model.md)
-- [任务生命周期](./docs/task-model.md)
-- [自动化输出格式](./docs/automation-contract.md)
-- [工作流定制](./docs/workflow-layering.md)
-- [完整命令参考](./commands/emb/help.md)
-- [发布说明](./RELEASE.md)
+### 1. 打开 AI 会话
+
+在固件仓库中打开 Codex、Claude Code 或 Cursor。
+
+如果项目还没有初始化，emb-agent 会检测到这一点，并引导 AI 自动创建 `.emb-agent/` 工作区。
+
+### 2. 确认硬件事实
+
+AI 会帮助收集那些不能靠猜的信息：
+
+- MCU / 封装
+- 引脚分配
+- 电源与时钟假设
+- 外设归属
+- 原理图约束
+- 产品需求
+
+确认之后，这些事实会成为项目记忆。
+
+### 3. 直接说产品需求
+
+你不需要记命令。
+
+直接说：
+
+> “实现 LED 驱动。”
+>
+> “检查一下原理图有没有明显风险。”
+>
+> “继续当前任务。”
+>
+> “下一步该做什么？”
+
+emb-agent 会在幕后给 AI 提供上下文和路由信息。
+
+### 4. 按受控流程推进
+
+典型的嵌入式工作会走同一个闭环：
+
+1. 理解当前状态
+2. 制定修改计划
+3. 实现功能
+4. 评审结果
+5. 对照硬件和需求进行验证
+6. 记录经验教训
+
+用户看到的是正常的 AI 对话。emb-agent 在项目里维护任务状态、证据和复盘记录。
+
+### 5. 让项目持续学习
+
+原理图发现、数据手册事实、调试笔记、任务决策、验证结果都会沉淀到知识图谱和 Wiki。
+
+项目使用 emb-agent 越久，你需要重复的上下文越少。
+
+---
+
+## 用户通常需要记住什么
+
+几乎什么都不用记。
+
+在项目里打开 AI 助手，然后直接描述你要做的事情。如果需要手动推动，只要问：
+
+> "下一步该做什么？"
+
+AI 会通过 emb-agent 读取当前状态并继续推进。
+
+---
+
+## 安装
+
+推荐使用交互式安装：
+
+```bash
+npx emb-agent
+```
+
+直接安装示例：
+
+```bash
+npx emb-agent --target codex --local --lang zh
+npx emb-agent --target all --local --lang zh
+npx emb-agent --target all --local --dry-run
+```
+
+其中 `<host>` 可选当前启用目标：`codex`、`claude`、`cursor`、`all`。
+
+> **注意：** `pi`、`omp`、`windsurf` 在开发构建中默认禁用。OMP 支持当前已关闭，除非要恢复该集成，否则不要从 `shells.json.disabled` 中移除它。
+
+### Local / Global
+
+- `--local` 写入当前项目，适合项目级配置和团队共享。
+- `--global` 写入用户级 host 配置目录，适合个人跨项目默认配置。
+- `--dry-run` 只打印安装计划，不写文件。
+- `repair --target <host|all>` 重建 host 集成，不重置 `.emb-agent` 项目事实。
+- `uninstall --target <host|all>` 移除托管的 host 集成，保留 `.emb-agent` 项目事实。
+
+### Host 命令入口
+
+所有当前启用的 host 都暴露同一组 emb-agent 入口，只是使用各自原生机制：
+
+| Host | 暴露方式 | 入口 |
+|---|---|---|
+| Claude Code | `.claude/commands/*.md` | `/emb-next`, `/emb-onboard` |
+| Cursor | command files | `/emb-next`, `/emb-onboard` |
+| Codex | `.agents/skills/<name>/SKILL.md` | `$emb-next`, `$emb-onboard` |
+
+安装后会写入 `.emb-agent/INSTALL_RESULT.md`，自动运行安装检查，并打印每个 host 的 reload 提示。后续诊断可运行：
+
+```bash
+node .codex/emb-agent/bin/emb-agent.cjs doctor --host codex --brief
+```
+
+或从源码构建：
+
+```bash
+git clone <repo>
+cd emb-agent
+cargo build --release
+```
+
+---
+
+## 文档
+
+| 文档 | 用途 |
+|---|---|
+| [产品边界](docs/product-boundaries.md) | emb-agent 是什么、不是什么 — 产品范围和层次边界 |
+| [命令文档](command-docs/emb/) | 人类可读的命令参考（chip 等） |
+| [使用场景](docs/scenarios.md) | emb-agent 适合哪些项目情况 |
+| [任务模型](docs/task-model.md) | 工作如何被跟踪和关闭 |
+| [芯片支持模型](docs/chip-support-model.md) | 可复用芯片知识如何组织 |
+| [AI 宿主协议](docs/ai-host-contract.md) | AI Runtime 的集成规则 |
+| [自动化协议](docs/automation-contract.md) | 稳定的机器可读输出 |
+| [工作流分层](docs/workflow-layering.md) | 核心能力与项目定制的边界 |
+| [命令参考](commands/emb/help.md) | 默认命令流 + 完整已安装命令文档；host 斜杠命令仍只暴露 `/emb-next` 和 `/emb-onboard` |
 
 ---
 
 <p align="center">
-  <sub>MIT · <a href="https://www.npmjs.com/package/emb-agent">npm</a> · <a href="./README.md">English</a></sub>
+  <sub>MIT</sub>
 </p>

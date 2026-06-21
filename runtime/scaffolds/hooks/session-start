@@ -141,13 +141,21 @@ if (!content.trim()) {
   process.exit(0);
 }
 
-const message = [
-  `SessionStart skill reinjection triggered by: ${trigger}`,
-  relativeSkillPath ? `Skill path: ${relativeSkillPath}` : '',
-  'Re-read and follow the skill below before continuing after startup, clear, or compact.',
-  '',
-  content
-].filter(Boolean).join('\n');
+const compactTrigger = trigger === 'compact' || trigger === 'clear';
+const message = compactTrigger
+  ? [
+      `SessionStart skill refresh triggered by: ${trigger}`,
+      relativeSkillPath ? `Skill path: ${relativeSkillPath}` : '',
+      'Do not replay the full skill blindly after re-entry.',
+      'Re-open the skill only if the current gate or host integration behavior is unclear.'
+    ].filter(Boolean).join('\n')
+  : [
+      `SessionStart skill reinjection triggered by: ${trigger}`,
+      relativeSkillPath ? `Skill path: ${relativeSkillPath}` : '',
+      'Re-read and follow the skill below before continuing after startup.',
+      '',
+      content
+    ].filter(Boolean).join('\n');
 
 let payload;
 if (harness === 'claude' || harness === 'codex') {

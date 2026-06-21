@@ -11,6 +11,8 @@
   "assignee": "{{ASSIGNEE}}",
   "createdAt": "{{DATE}}T00:00:00.000Z",
   "completedAt": null,
+  "deletedAt": null,
+  "blockedBy": [],
   "branch": "{{BRANCH}}",
   "base_branch": "{{BASE_BRANCH}}",
   "worktree_path": "{{WORKTREE_PATH}}",

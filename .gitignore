@@ -1,10 +1,28 @@
 .tmp/
+target/
 emb-agent-*.tgz
-state/emb-agent/projects/*
-runtime/state/projects/*
+node_modules/
+
+# Rust build artifacts
+bin/emb-agent-rs
+bin/emb-agent-rs.exe
+
+# Project-local emb-agent data
 .emb-agent/
-!examples/project-extensions/smart-pillbox/.emb-agent/
-!examples/project-extensions/smart-pillbox/.emb-agent/**
-!tests/fixtures/emb-support/workflows/.emb-agent/
-!tests/fixtures/emb-support/workflows/.emb-agent/**
 .emb-agent/.developer
+
+# Pi lens cache
+.pi-lens/
+**/.pi-lens/
+
+# Old top-level state dirs (cleaned up)
+/src/
+/state/
+/memory/
+/examples/
+/runtime/lib/
+/runtime/scripts/
+/scripts/
+.emb-agent/sessions/
+.pi-lens/
+.ace-tool/

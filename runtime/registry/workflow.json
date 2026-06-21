@@ -20,12 +20,6 @@
       "default_output": ".emb-agent/extensions/chips/profiles/{{SLUG}}.json"
     },
     {
-      "name": "connectivity",
-      "source": "templates/connectivity.md.tpl",
-      "description": "Generate the connectivity document.",
-      "default_output": "docs/CONNECTIVITY.md"
-    },
-    {
       "name": "debug-notes",
       "source": "templates/debug-notes.md.tpl",
       "description": "Generate the debug notes document.",
@@ -56,22 +50,10 @@
       "default_output": "docs/MCU-FOUNDATION-CHECKLIST.md"
     },
     {
-      "name": "motor-control",
-      "source": "templates/motor-control.md.tpl",
-      "description": "Generate the motor control working note.",
-      "default_output": "docs/MOTOR-CONTROL.md"
-    },
-    {
       "name": "power-charging",
       "source": "templates/power-charging.md.tpl",
       "description": "Generate the power and charging document.",
       "default_output": "docs/POWER-CHARGING.md"
-    },
-    {
-      "name": "power-stage",
-      "source": "templates/power-stage.md.tpl",
-      "description": "Generate the motor power-stage document.",
-      "default_output": "docs/POWER-STAGE.md"
     },
     {
       "name": "profile",

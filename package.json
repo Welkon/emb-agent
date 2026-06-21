@@ -1,29 +1,16 @@
 {
   "name": "emb-agent",
-  "version": "0.3.1",
-  "description": "A lightweight embedded workflow system for Codex and other AI runtimes, optimized for MCU, RTOS, and IoT repositories.",
+  "version": "0.6.0",
+  "description": "A lightweight embedded workflow system for Codex, Cursor, Claude, Pi and other AI runtimes, optimized for MCU, RTOS, and IoT repositories.",
   "bin": {
     "emb-agent": "bin/install.js"
   },
   "files": [
     "bin",
     "commands",
+    "command-docs",
     "agents",
-    "runtime/bin",
-    "runtime/config.json",
-    "runtime/hooks",
-    "runtime/lib",
-    "runtime/registry",
-    "runtime/scaffolds",
-    "runtime/schemas",
-    "runtime/specs",
-    "runtime/profiles",
-    "runtime/README.md",
-    "runtime/scripts",
-    "runtime/state/default-session.json",
-    "runtime/templates",
-    "runtime/tools",
-    "scripts"
+    "runtime"
   ],
   "keywords": [
     "embedded",
@@ -37,17 +24,13 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "scripts": {
-    "test": "node scripts/run-tests.cjs",
-    "test:behavior": "node scripts/behavior-drift-check.cjs",
-    "test:ci": "npm test && npm run test:behavior",
-    "bench:brief": "node benchmarks/brief-benchmark.cjs",
-    "pack:dry-run": "npm pack --dry-run",
-    "release:check": "node scripts/release-check.cjs"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Welkon/emb-agent"
   },
-  "dependencies": {
-    "chalk": "^4.1.2",
-    "giget": "^3.2.0",
-    "ora": "^5.4.1"
+  "scripts": {
+    "test": "cargo test --workspace",
+    "build": "cargo build --release",
+    "release:check": "cargo build --release && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings"
   }
 }

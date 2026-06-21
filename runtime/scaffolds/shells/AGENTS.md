@@ -1,5 +1,6 @@
 # AGENTS.md
 
+<!-- EMB-AGENT:START -->
 ## Quick Routing
 
 {{INCLUDE:_partials/quick-routing-table.md}}
@@ -17,15 +18,25 @@
 
 ## Human-Readable Defaults
 
-- Keep guidance hardware-first and name the real blocker.
-- Give the exact next command or file before adding extra structure.
-- Treat skills, hooks, extensions, and wrappers as integration surfaces; they must not override emb-agent runtime gates.
-- Avoid generic AI or project-management wording when a concrete board action, artifact, or truth file is known.
+{{INCLUDE:_partials/human-readable-defaults.md}}
+
+{{LANGUAGE_INSTRUCTION}}
 
 ## Local Rules
 
-- <!-- FILL: default response language -->
-- <!-- FILL: mandatory search tool order -->
-- <!-- FILL: project-specific git workflow or review rule -->
-- <!-- FILL: exact project constraint 1 -->
-- <!-- FILL: exact project constraint 2 -->
+Add project-specific rules here. For embedded defaults, see `.emb-agent/rules/local.md`.
+
+## emb-agent
+
+Start: `.emb-agent/` missing → `onboard`. Otherwise → `next --brief`. Use `help` for full command list.
+
+Core rules:
+- Never guess hardware facts. Read `.emb-agent/hw.yaml` and `.emb-agent/req.yaml`.
+- Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
+- After editing truth files or PRDs, run `validate` or `health`.
+- Split work into vertical tracer-bullet slices.
+
+For detailed procedures, read command docs on demand:
+- PRD / tasks / bugs / knowledge → `.<host>/emb-agent/commands/emb/`
+- Project truth files → `.emb-agent/`
+<!-- EMB-AGENT:END -->

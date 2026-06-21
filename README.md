@@ -1,179 +1,223 @@
+# emb-agent
+
 <p align="center">
-  <strong>AI-powered embedded firmware development workflow</strong><br/>
-  <sub>Put your chip specs, pin assignments, and hardware constraints into the repo — let AI work with them directly.</sub>
+  <strong>Embedded firmware workflow memory for AI coding assistants</strong><br>
+  <sub>Describe your hardware once. Every future AI session starts with the right board context.</sub>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/emb-agent"><img alt="npm" src="https://img.shields.io/npm/v/emb-agent?color=00d4ff"></a>
-  <a href="https://github.com"><img alt="license" src="https://img.shields.io/badge/license-MIT-00d4ff"></a>
-  <a href="./docs/README.md"><img alt="docs" src="https://img.shields.io/badge/docs-emb--agent-00d4ff"></a>
-</p>
-
-<p align="center">
-  <a href="./README.zh.md">中文文档</a> ·
-  <a href="./docs/quick-start.md">Quick Start</a> ·
-  <a href="./docs/platforms.md">Platforms</a> ·
-  <a href="./commands/emb/help.md">Commands</a>
+  <a href="./README.zh.md">中文</a>
+  ·
+  <a href="docs/scenarios.md">Scenarios</a>
+  ·
+  <a href="docs/task-model.md">Task Model</a>
+  ·
+  <a href="docs/chip-support-model.md">Chip Support</a>
 </p>
 
 ---
 
-## What is emb-agent?
+## Why it exists
 
-When you work on embedded firmware with an AI assistant, you spend a lot of time repeating the same information: which MCU you're using, what pins are connected, what peripherals matter, what the timing constraints are. emb-agent fixes this by putting all that hardware knowledge into files inside your repo.
+Embedded firmware work has a problem: the AI forgets the board.
 
-Once the hardware truth is written down, the AI reads it automatically at the start of every session. No more re-explaining your board setup in chat.
+You keep repeating the same facts:
 
-emb-agent works with **Claude Code**, **Codex**, **Cursor**, and **Pi**. The same `.emb-agent/` folder drives all supported hosts.
+- which MCU and package the product uses
+- which signal is connected to which pin
+- which peripherals are already reserved
+- what the schematic says
+- what the current task is supposed to achieve
 
-### What you get
+**emb-agent turns those facts into project memory.**
 
-| Feature | How it helps |
+The AI assistant reads that memory at the start of each session, so you can talk in product terms instead of restating hardware context.
+
+---
+
+## Architecture
+
+emb-agent sits between the AI assistant and your repository. It does not replace the assistant; it gives the assistant reliable embedded project memory.
+
+| Layer | What it does | Examples |
+|---|---|---|
+| **User** | Describes product-level intent | “Bring up PWM dimming”, “Check the schematic”, “Continue the active task” |
+| **AI assistant** | Converses, writes code, asks for clarification | Codex, Claude Code, Cursor |
+| **Host integration** | Starts emb-agent automatically and exposes project-aware actions | Codex hooks, Claude/Cursor command docs |
+| **Rust runtime** | Reads project state, routes workflow, analyzes hardware artifacts | session, task, schematic, knowledge, diagnostics |
+| **Project memory** | Stores the facts that should survive across sessions | `.emb-agent/hw.yaml`, `req.yaml`, `tasks/`, `graph/`, `wiki/`, `cache/` |
+
+### Runtime modules
+
+| Module | Purpose |
 |---|---|
-| **Hardware truth files** | Write your MCU model, package, pins, and peripherals once in `.emb-agent/hw.yaml`. The AI reads them every session. |
-| **Requirements file** | Keep project goals, interfaces, and constraints in `.emb-agent/req.yaml` so the AI knows what you're building. |
-| **Simple command flow** | Most projects run `scan → plan → do → verify`. Shortcuts like `emb-agent scan` / `debug` / `do` skip the `capability run` prefix. |
-| **Built-in task tracking** | Tasks are created with `task add` and tracked in `.emb-agent/tasks/`; work stays in the main workspace by default and links to worktrees/PRs only when isolation is needed. |
-| **Document ingestion** | Feed in datasheets and schematics — AI extracts chip facts using MinerU (auto-fallback from agent to v4 API). |
-| **Chip-specific logic** | PWM, timer, ADC, comparator calculators live in generated adapters with machine-searchable register params. |
-| **Built-in verification** | Every task closes with `review → verify`, not just "code compiles and looks right." |
-| **Knowledge graph + Wiki** | Auto-generated graph connects chips, registers, formulas, and tasks. Wiki pages auto-populate stubs on graph build. |
-| **Auto-startup** | Host hooks or the Pi extension inject project state automatically. Statusline shows hardware state, task count, wiki pages, graph freshness. |
-| **Reply language** | `--lang zh` flag sets the AI's reply language in AGENTS.md. |
+| **Session** | Detect project state and recommend the next step |
+| **Task** | Track active work, decisions, reviews, and closure |
+| **Schematic** | Parse and summarize schematic / board artifacts |
+| **Hardware** | Keep chip, board, pin, and peripheral context aligned |
+| **Knowledge** | Build project memory through graph and wiki records |
+| **Workflow** | Guide work through scan, plan, implement, review, and verify |
+| **Diagnostics** | Report hook, project, and state-path health |
 
-### Supported AI tools
+### Specialized agents
 
-| Platform | Where it installs | Auto-startup | Activity tracking |
-|---|---|---|---|
-| **Claude Code** | `~/.claude/` or `.claude/` | ✅ | ✅ |
-| **Codex** | `~/.codex/` or `.codex/` | ✅ | ✅ |
-| **Cursor** | `~/.cursor/` or `.cursor/` | ✅ | ✅ |
-| **Pi** | `~/.pi/agent/` or `.pi/` | ✅ | ✅ |
+emb-agent ships a set of workflow-specific sub-agents that the AI assistant can delegate to. Each agent has a narrow scope and clear acceptance criteria.
+
+| Agent | Role |
+|---|---|
+| **onboard** | Project initialization and migration — scaffolds `.emb-agent/` for empty repos, or audits and maps existing hardware docs |
+| **hw-scout** | Hardware truth investigation — locates datasheets, schematics, pin maps, and register-level facts |
+| **fw-doer** | Minimal code and documentation changes with structure health pre-checks |
+| **arch-reviewer** | Architecture review against embedded constraints (ROM/RAM budgets, ISR latency, power domains) |
+| **bug-hunter** | Root-cause analysis of hardware-software bugs with register-level tracing |
+| **sys-reviewer** | System-level review across firmware, schematic, and requirements |
+| **release-checker** | Pre-release validation of build, tests, and release artifacts |
 
 ---
 
-## Quick Start
+## User flow
 
-### 1. Install into your project
+### 1. Open an AI session
+
+Start Codex, Claude Code, or Cursor inside your firmware repository.
+
+If the project has not been initialized yet, or if existing hardware truth is scattered across datasheets, schematics, pin maps, build files, and notes, emb-agent routes the assistant through **onboard** first. Onboard chooses the lightest safe path:
+
+1. empty repo scaffold
+2. partial `.emb-agent/` repair
+3. migration audit for existing firmware repos
+
+### 2. Confirm the hardware truth
+
+The assistant helps collect the facts that should not be guessed:
+
+- MCU / package
+- pin assignments
+- power and clock assumptions
+- peripheral ownership
+- schematic-derived constraints
+- product requirements
+
+Once confirmed, those facts become project memory.
+### 3. Ask for product-level work
+
+You do not need to think in tool commands.
+
+Say things like:
+
+> “Bring up the LED driver.”
+>
+> “Check whether the schematic has obvious risks.”
+>
+> “Continue the active task.”
+>
+> “What should we do next?”
+
+emb-agent supplies the context and routing information the AI needs behind the scenes.
+
+### 4. Work through a controlled loop
+
+Typical embedded work follows the same shape:
+
+1. understand the current state
+2. plan the change
+3. implement the work
+4. review the result
+5. verify against hardware and requirements
+6. record what was learned
+
+The user sees a normal AI conversation. emb-agent keeps the task state, evidence, and review trail organized in the project.
+
+### 5. Let the project learn
+
+Schematic findings, datasheet facts, debugging notes, task decisions, and verification outcomes accumulate into the knowledge graph and wiki.
+
+The longer the project runs with emb-agent, the less context you need to repeat.
+
+---
+
+## What users usually need to remember
+
+Almost nothing.
+
+Open the AI assistant in the project and ask for work. If you ever need a manual nudge, ask:
+
+> “What should we do next?”
+
+The assistant will route that through emb-agent and continue from the current project state.
+
+---
+
+## Install
+
+Recommended interactive install:
 
 ```bash
 npx emb-agent
 ```
 
-This opens an interactive installer. It asks which AI tool you use, then sets everything up. For a one-command install with Claude Code:
+Direct install examples:
 
 ```bash
-npx emb-agent --claude --local --developer "Your Name" --lang zh
+npx emb-agent --target codex --local --lang zh
+npx emb-agent --target all --local --lang zh
+npx emb-agent --target all --local --dry-run
 ```
+Where `<host>` is one of the enabled targets: `codex`, `claude`, `cursor`, or `all`.
 
-### 2. Open a new session
+Interactive install scans for `emb-support` (via `EMB_SUPPORT_DIR`, project ancestors, the installer checkout, or the home directory) and prompts for external support specs and skills. Direct installs can select the same support entries with repeatable `--spec <name>` and `--skill <name>` flags.
 
-Start a new session in your AI tool. emb-agent automatically injects the project context — you don't need to run any command. On the first session, it initializes the project and tells you what to do next.
+> **Note:** `pi`, `omp`, and `windsurf` are disabled by default in development builds. OMP support is currently off; do not remove it from `shells.json.disabled` unless you are reviving that integration.
+### Local vs global
 
-### 3. Tell it about your hardware
+- `--local` writes host integration into this project. Use it for project-specific setup and team-visible behavior.
+- `--global` writes into the host's user config directory. Use it for personal defaults across projects.
+- `--dry-run` prints the install plan without writing files.
+- `repair --target <host|all>` rebuilds managed host integrations without resetting project truth.
+- `uninstall --target <host|all>` removes managed host integrations and preserves `.emb-agent` project truth.
 
-**If you know your MCU:**
+### Host command surface
+
+Every enabled host exposes the same two emb-agent entrypoints through its native mechanism:
+
+| Host | Surface | Entries |
+|---|---|---|
+| Claude Code | `.claude/commands/*.md` | `/emb-next`, `/emb-onboard` |
+| Cursor | command files | `/emb-next`, `/emb-onboard` |
+| Codex | `.agents/skills/<name>/SKILL.md` | `$emb-next`, `$emb-onboard` |
+
+After install, emb-agent writes `.emb-agent/INSTALL_RESULT.md`, runs an install check, and prints host-specific reload instructions. To diagnose later:
+
 ```bash
-declare hardware --mcu SC8F072 --package SOP8
-bootstrap run --confirm
-next run
+node .codex/emb-agent/bin/emb-agent.cjs doctor --host codex --brief
 ```
 
-**If you haven't chosen a chip yet:**
-```text
-Describe your goals and constraints in .emb-agent/req.yaml, then run "next"
-```
+Or build from source:
 
-**If the truth is in a datasheet or schematic:**
 ```bash
-ingest doc --file docs/PMS150G.pdf --kind datasheet --to hardware
-# or for schematics
-ingest schematic --file schematic.pdf
-```
-
-**Capability shortcuts (after bootstrap):**
-```bash
-emb-agent scan      # analyze / triage
-emb-agent plan      # plan the approach
-emb-agent do        # implement (needs active task)
-emb-agent debug     # debug / investigate
-emb-agent review    # code review
-emb-agent verify    # close and verify
-```
-
-[Full onboarding guide →](./docs/quick-start.md)
-
----
-
-## What the installer creates
-
-```text
-your-project/
-├── AGENTS.md                    ← AI reads this on session start
-├── .emb-agent/
-│   ├── project.json             ← project settings
-│   ├── hw.yaml                  ← chip model, pins, signals, peripherals
-│   ├── req.yaml                 ← goals, interfaces, acceptance rules
-│   ├── board-truth/             ← real-board validation pass/fail records
-│   ├── graph/                   ← auto-generated knowledge graph
-│   ├── wiki/                    ← long-term knowledge storage
-│   ├── tasks/                   ← task definitions and context
-│   ├── specs/                   ← project-specific workflow rules
-│   └── formulas/                ← chip formula registries
-└── .claude/  (or .codex/, .cursor/, .pi/)
-    ├── settings.json             ← hooks where the host supports them
-    ├── commands/emb/             ← slash commands like /emb:next
-    ├── extensions/emb-agent.ts    ← Pi startup/command integration
-    └── agents/                   ← specialized agents (emb-fw-doer, etc.)
+git clone <repo>
+cd emb-agent
+cargo build --release
 ```
 
 ---
 
-## Automating with emb-agent
+## Documentation
 
-If you're building scripts or tooling around emb-agent, use these machine-readable surfaces:
-
-| Command | Returns |
+| Document | Purpose |
 |---|---|
-| `next --brief` | Compact JSON with the recommended next action |
-| `external status` | Stable envelope with project health summary |
-| `external health` | Hardware and workflow health report |
-| `task worktree status` | Status of isolated task workspaces |
-
-Every response includes a **runtime event** level (`clear`, `ok`, `pending`, `blocked`, `failed`) that tells your script whether it's safe to proceed.
-
----
-
-## How it's built
-
-emb-agent has three layers:
-
-1. **Workflow layer** — the commands you run: `start`, `declare hardware`, `next`, `task`, `ingest`. These guide the AI through hardware-first development.
-2. **Chip-support layer** — chip-specific formulas, register maps, and tool logic. Kept separate so the core stays lean.
-3. **Host layer** — skills, hooks, extensions, and commands that adapt emb-agent to Claude Code, Codex, Cursor, or Pi.
-
-When chip support shows up in a report, it's labeled by readiness:
-- `reusable` — ready for any project using that chip
-- `reusable-candidate` — nearly ready, needs review
-- `project-only` — keep it local for now
-
----
-
-## More docs
-
-- [Quick Start](./docs/quick-start.md)
-- [Platform-specific Setup](./docs/platforms.md)
-- [Real-world Scenarios](./docs/scenarios.md)
-- [What Belongs Where](./docs/product-boundaries.md)
-- [Chip Support Model](./docs/chip-support-model.md)
-- [Task Lifecycle](./docs/task-model.md)
-- [Automation Output Format](./docs/automation-contract.md)
-- [Workflow Customization](./docs/workflow-layering.md)
-- [Full Command Reference](./commands/emb/help.md)
-- [Release Notes](./RELEASE.md)
+| [Product Boundaries](docs/product-boundaries.md) | What emb-agent is and is not — product scope and layer boundaries |
+| [Command Docs](command-docs/emb/) | Human-readable command reference (chip, etc.) |
+| [Scenarios](docs/scenarios.md) | How emb-agent fits common project situations |
+| [Task Model](docs/task-model.md) | How work is tracked and closed |
+| [Chip Support Model](docs/chip-support-model.md) | How reusable chip knowledge is structured |
+| [AI Host Contract](docs/ai-host-contract.md) | Integration rules for AI runtimes |
+| [Automation Contract](docs/automation-contract.md) | Stable machine-readable outputs |
+| [Workflow Layering](docs/workflow-layering.md) | Core vs project-specific workflow boundaries |
+| [Command Reference](commands/emb/help.md) | Default command flow plus full installed command docs; host slash surfaces still expose `/emb-next` and `/emb-onboard` |
 
 ---
 
 <p align="center">
-  <sub>MIT · <a href="https://www.npmjs.com/package/emb-agent">npm</a> · <a href="./README.zh.md">中文文档</a></sub>
+  <sub>MIT</sub>
 </p>

@@ -22,16 +22,16 @@ Command outputs are enriched with `agent_protocol` when emb-agent can infer a ro
       "human_output_owner": "host-ai"
     },
     "gate": {
-      "kind": "prd-confirmation",
+      "kind": "prd-breakdown",
       "blocking": true,
-      "allowed_actions": ["prd status", "prd confirm --create-tasks"],
-      "forbidden_actions": ["scan", "plan", "do"]
+      "allowed_actions": ["read_system_prd", "present_prd_task_candidates", "create_vertical_child_prds", "run_validate_or_health_after_prd_edits"],
+      "forbidden_actions": ["ask_user_for_blank_task_when_system_prd_has_candidates", "scan", "plan", "do"]
     },
     "recommendation": {
-      "command": "prd confirm --create-tasks"
+      "command": "/emb-next"
     },
     "ai_instruction": {
-      "ask_user": "请确认当前 docs/prd 是否可以作为实现基线。",
+      "ask_user": "我会先把现有系统 PRD 拆成可执行任务 PRD，并在验证后请你确认。",
       "raw_output_policy": "Machine output is for AI routing only; do not paste it verbatim to the human."
     }
   }
@@ -45,11 +45,21 @@ AI hosts and command wrappers must:
 1. Treat emb-agent output as machine protocol.
 2. Respect `agent_protocol.gate.allowed_actions` and `agent_protocol.gate.forbidden_actions`.
 3. Ask the human only for the next needed confirmation or input.
-4. If `agent_protocol.gate.kind` is `alignment`, stop after PRD/task creation, ask the user about unclear items, update the PRD/task truth, and repeat until explicit agreement before activation, planning, or implementation.
-5. If `agent_protocol.gate.kind` is `execution`, treat the payload as an execution brief: perform the requested repository change now, then verify after implementation evidence exists.
-6. If the user embeds an unconfirmed technical choice, route through `decision review` / `decision record` before implementation instead of silently validating the premise.
-7. Avoid showing raw JSON, full command transcripts, or long `node .../emb-agent.cjs ...` paths unless explicitly requested.
-8. Keep direct CLI/human-readable output available for debugging and automation only.
+4. If `agent_protocol.gate.kind` is `prd-exploration`, do not confirm PRD, create/activate tasks, or create child execution PRDs yet: ask detailed exploratory questions, update `docs/prd/system.md` and `.emb-agent/req.yaml`, run `validate` or `health` after truth edits, then stop until explicit agreement.
+5. If `agent_protocol.gate.kind` is `prd-breakdown`, read `docs/prd/system.md`, present `prd_task_candidates`, create vertical child PRDs under `docs/prd/tasks`, `features`, `modules`, `components`, or `subsystems`, run `validate` or `health`, and wait for explicit agreement before `task add`, activation, scan, plan, or implementation.
+6. If `agent_protocol.gate.kind` is `alignment`, stop after PRD/task creation, ask the user about unclear items, update the PRD/task truth, and repeat until explicit agreement before activation, planning, or implementation.
+7. If `agent_protocol.gate.kind` is `execution`, treat the payload as an execution brief: perform the requested repository change now, then verify after implementation evidence exists.
+8. If the user embeds an unconfirmed technical choice, route through `decision review` / `decision record` before implementation instead of silently validating the premise.
+9. Avoid showing raw JSON, full command transcripts, or long `node .../emb-agent.cjs ...` paths unless explicitly requested.
+10. Keep direct CLI/human-readable output available for debugging and automation only.
+
+## PRD exploration gate
+
+Before a system PRD can be confirmed, `agent_protocol.gate.kind = "prd-exploration"` means the host should run a doc-grounded requirement exploration loop first. If `document_evidence_policy.hardware_first=true`, the host must scan and ingest the listed schematics, datasheets, and manuals before asking the first behavior question; PDF/manual parsing should use the configured local tool order before MinerU fallback. The host should ask what behavior, interactions, defaults, abnormal cases, power/reset behavior, constraints, and acceptance evidence the user actually wants; mark schematic/manual inference separately from confirmed facts; update `docs/prd/system.md`; mirror structured truth into `.emb-agent/req.yaml`; and stop until explicit user agreement. Child execution PRDs are created only after the later `prd-breakdown` gate asks for system-PRD breakdown.
+
+## PRD breakdown gate
+
+After a substantive system PRD exists but no child execution PRDs or open tasks exist, `agent_protocol.gate.kind = "prd-breakdown"` means the host should not ask the user for a blank new task. It must read `docs/prd/system.md`, present the runtime's `prd_task_candidates`, create vertical child PRDs, run `validate` or `health` after edits, and stop for explicit user agreement before task creation or activation.
 
 ## Alignment gate
 

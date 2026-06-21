@@ -1,1 +1,1 @@
-- Any non-trivial task must run Task Closure Protocol before completion.
+- Before closing substantial work, decide whether a durable lesson actually emerged. Run Task Closure Protocol only when hardware, firmware, debugging, or workflow knowledge should be kept for reuse.

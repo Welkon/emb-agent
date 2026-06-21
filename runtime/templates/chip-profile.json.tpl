@@ -12,6 +12,35 @@
   "capabilities": [],
   "packages": [],
   "pins": {},
+  "peripherals": {
+    "PERIPHERAL_NAME": {
+      "description": "Peripheral description",
+      "base_address": "0x0000",
+      "instances": [
+        {
+          "name": "INSTANCE0",
+          "pins": ["PA0"]
+        }
+      ],
+      "registers": {
+        "REGNAME": {
+          "offset": "0x00",
+          "description": "Register purpose",
+          "access": "R/W",
+          "reset_value": "0x00"
+        }
+      }
+    }
+  },
+  "interrupts": [
+    {
+      "vector": 0,
+      "source": "PeripheralName",
+      "flag": "XXIF",
+      "enable": "XXIE",
+      "priority": null
+    }
+  ],
   "docs": [],
   "related_tools": [
     "{{TOOL_NAME}}"

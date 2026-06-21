@@ -6,6 +6,8 @@ function createInstallTargets(deps) {
     /~\/\.(?:codex|claude|cursor)\/emb-agent\//g,
     /~\/\.pi\/agent\/emb-agent\//g,
     /\$HOME\/\.(?:codex|claude|cursor)\/emb-agent\//g,
+    /~\/\.omp\/emb-agent\//g,
+    /~\/\.windsurf\/emb-agent\//g,
     /\$HOME\/\.pi\/agent\/emb-agent\//g,
     /\.\/\.(?:codex|claude|cursor|pi)\/emb-agent\//g
   ];
@@ -80,13 +82,30 @@ function createInstallTargets(deps) {
       managesHostConfig: false,
       managedRuntimePathPatterns: managedRuntimePathPatterns.slice()
     },
+    omp: {
+      order: 5,
+      name: 'omp',
+      label: 'Oh My Pi',
+      supported: false,
+      notSupportedReason: 'OMP integration is disabled',
+      localDirName: '.omp',
+      defaultGlobalDirParts: ['.omp'],
+      globalEnvVar: 'OMP_CONFIG_DIR',
+      runtimeDirName: 'emb-agent',
+      configFileName: 'settings.json',
+      agentLabel: 'OMP integration',
+      restartLabel: 'OMP',
+      agentMode: 'none',
+      hookMode: 'pi-extension',
+      managesHostConfig: false,
+      managedRuntimePathPatterns: managedRuntimePathPatterns.slice()
+    },
     windsurf: {
       order: 40,
       name: 'windsurf',
       label: 'Windsurf',
-      supported: false,
-      notSupportedReason: 'installer target adapter is not implemented yet',
       localDirName: '.windsurf',
+      supported: true,
       defaultGlobalDirParts: ['.windsurf'],
       globalEnvVar: 'WINDSURF_CONFIG_DIR',
       runtimeDirName: 'emb-agent'

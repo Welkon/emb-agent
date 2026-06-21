@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node {{RUNTIME_COMMAND_ARG}} hook session-start --host cursor",
+        "timeout": 15
+      }
+    ],
+    "postToolUse": [
+      {
+        "matcher": "Shell|Bash|Write|Edit|MultiEdit|ApplyPatch|Task|Agent|Read|ReadFile|Glob|Search|rg|Grep|List|LS|EditNotebook|NotebookEdit|Delete|MultiToolUse",
+        "command": "node {{RUNTIME_COMMAND_ARG}} hook context-monitor --host cursor",
+        "timeout": 10
+      }
+    ]
+  }
+}

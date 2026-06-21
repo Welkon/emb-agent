@@ -49,7 +49,7 @@ declare hardware -> next
 Example:
 
 ```bash
-<runtime-cli> declare hardware \
+declare hardware \
   --signal KEY_IN --pin PA4 --dir input \
   --signal PWM_OUT --pin PA3 --dir output \
   --peripheral PWM --usage "LED dimming"
@@ -90,14 +90,14 @@ declare hardware -> next -> scan/plan/do/debug
 Directionally, keep the same staged path:
 
 ```text
-declare hardware -> next -> capability run scan/plan/do/debug -> capability run review -> capability run verify
+declare hardware -> next -> scan/plan/do/debug -> review -> verify
 ```
 
 Typical pattern:
 
 - record the relevant signals and peripheral ownership first
 - use `next` for routing
-- if the work becomes more structured, move to `capability run scan`, `capability run plan`, `capability run debug`, or `capability run verify`
+- if the work becomes more structured, move to `scan`, `plan`, `debug`, or `verify`
 
 ## 6. Long-running debug session
 

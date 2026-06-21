@@ -15,6 +15,7 @@ allowed-tools:
 
 - Show the staged bootstrap sequence for the current project.
 - Use `$emb-bootstrap` when you need the shortest dependency-ordered path from `init` to `next`.
+- `bootstrap` is not the first human-facing step for unknown repositories. If `.emb-agent/` is missing, partial, or hardware truth is scattered in docs, route to `onboard` first.
 
 ## Usage
 

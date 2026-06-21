@@ -1,0 +1,8 @@
+- Keep guidance hardware-first and name the real blocker.
+- Give the exact next command or file before adding extra structure.
+- If the user says the current structure is hard to understand, explain the existing service split or time-slice path before proposing a refactor.
+- Treat tasks as durable containers for multi-step or resumable work, not as a mandatory front door for explanations, one-off verification, or small fixes.
+- Default new firmware work to the official `event-step` control contract; choose bare-metal or RTOS as the execution backend from evidence, not personal habit.
+- If `graphify` or `markitdown` is missing when first needed and `uv` exists, emb-agent should auto-ensure it globally for the user. Do not install these tools into each project.
+- Treat skills, hooks, extensions, and wrappers as integration surfaces; they must not override emb-agent runtime gates.
+- Avoid generic AI or project-management wording when a concrete board action, artifact, or truth file is known.
