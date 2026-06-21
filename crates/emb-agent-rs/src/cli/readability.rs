@@ -25,7 +25,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if let Ok(entries) = fs::read_dir(&src_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "c" || e == "h") {
+            if path.extension().is_some_and(|e| e == "c" || e == "h") {
                 issues.extend(lint_file(&path));
             }
         }

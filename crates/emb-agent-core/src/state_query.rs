@@ -18,14 +18,29 @@ pub fn load_impl_status(project_root: &Path) -> ImplStatusSummary {
 
     let mut summary = ImplStatusSummary::default();
     let mut current_slug = String::new();
-    let mut current_status = String::new();
+    let mut in_decisions = false;
 
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("slug: ") {
+
+        // Track when we enter the decisions array
+        if trimmed == "decisions:" {
+            in_decisions = true;
+            continue;
+        }
+
+        // Only parse within decisions section
+        if !in_decisions {
+            continue;
+        }
+
+        // Parse slug (YAML list item format: "- slug: value" or just "slug: value")
+        if trimmed.starts_with("- slug: ") {
+            current_slug = trimmed.strip_prefix("- slug: ").unwrap_or("").trim().to_string();
+        } else if trimmed.starts_with("slug: ") && current_slug.is_empty() {
             current_slug = trimmed.strip_prefix("slug: ").unwrap_or("").trim().to_string();
         } else if trimmed.starts_with("status: ") {
-            current_status = trimmed.strip_prefix("status: ").unwrap_or("").trim().to_string();
+            let current_status = trimmed.strip_prefix("status: ").unwrap_or("").trim().to_string();
             if !current_slug.is_empty() {
                 summary.entries.push(ImplStatusEntry {
                     slug: current_slug.clone(),
@@ -63,19 +78,16 @@ pub fn load_recent_compound_decisions(project_root: &Path, days: u64) -> Vec<Com
     if let Ok(entries) = fs::read_dir(&compound_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.is_file() || path.extension().map_or(true, |e| e != "md") {
+            if !path.is_file() || path.extension().is_none_or(|e| e != "md") {
                 continue;
             }
 
-            if let Ok(metadata) = entry.metadata() {
-                if let Ok(modified) = metadata.modified() {
-                    if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
-                        if duration.as_secs() < cutoff {
+            if let Ok(metadata) = entry.metadata()
+                && let Ok(modified) = metadata.modified()
+                    && let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH)
+                        && duration.as_secs() < cutoff {
                             continue;
                         }
-                    }
-                }
-            }
 
             let slug = path
                 .file_stem()
@@ -109,7 +121,7 @@ pub fn load_recent_compound_decisions(project_root: &Path, days: u64) -> Vec<Com
 }
 
 pub fn build_state_answer(
-    project_root: &Path,
+    _project_root: &Path,
     query: &str,
     impl_status: &ImplStatusSummary,
     recent_decisions: &[CompoundDecision],

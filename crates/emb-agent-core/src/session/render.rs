@@ -505,11 +505,10 @@ pub fn build_next_json_with_tasks_and_policy(
         "hardware_evidence_files": snapshot.hardware_evidence_files,
         "graph_health": build_graph_health(snapshot),
     });
-    if let Some(policy) = worktree_policy {
-        if let Some(obj) = payload.as_object_mut() {
+    if let Some(policy) = worktree_policy
+        && let Some(obj) = payload.as_object_mut() {
             obj.insert("worktree_policy".to_string(), worktree_policy_json(policy));
         }
-    }
     serde_json::to_string(&payload).unwrap_or_default()
 }
 
@@ -874,8 +873,8 @@ fn build_graph_health(snapshot: &ProjectSnapshot) -> Value {
     };
     let tv_dir = Path::new(&snapshot.project_root).join(".emb-agent/cache/turbovec");
     let has_turbovec = tv_dir.is_dir()
-        && std::fs::read_dir(&tv_dir).map_or(false, |mut d| {
-            d.any(|e| e.map_or(false, |e| e.path().extension().map_or(false, |x| x == "tq")))
+        && std::fs::read_dir(&tv_dir).is_ok_and(|mut d| {
+            d.any(|e| e.is_ok_and(|e| e.path().extension().is_some_and(|x| x == "tq")))
         });
     json!({
         "status": if noise_pct > 50 { "noisy" } else if nodes == 0 { "empty" } else { "clean" },
@@ -903,7 +902,7 @@ fn walkdir_first_file(root: &Path, ext: &str) -> bool {
             if walkdir_first_file(&path, ext) {
                 return true;
             }
-        } else if path.extension().map_or(false, |e| e == ext) {
+        } else if path.extension().is_some_and(|e| e == ext) {
             return true;
         }
     }
