@@ -55,6 +55,8 @@ fn run(args: &[String]) -> Result<(), String> {
         "diagnostics" => cli::hooks_cli::run_diagnostics(args),
         // Task
         "task" => cli::task::run(args),
+        // Implementation status
+        "impl" => cli::impl_status::run(args),
         // Variant
         "variant" | "workspace" => cli::variant::run(args),
         // Misc small commands

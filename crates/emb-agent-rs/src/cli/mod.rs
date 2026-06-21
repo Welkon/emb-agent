@@ -5,6 +5,7 @@ pub mod component;
 pub mod compound;
 pub mod doc;
 pub mod hooks_cli;
+pub mod impl_status;
 pub mod ingest;
 pub mod knowledge;
 pub mod memory;

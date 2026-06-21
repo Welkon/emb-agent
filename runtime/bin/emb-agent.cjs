@@ -9,8 +9,8 @@ var path = require("path");
 var https = require("https");
 function findRustBinary() {
 	var names = process.platform === "win32"
-		? ["emb-agent-rs.exe", "emb-agent-rs"]
-		: ["emb-agent-rs", "emb-agent-rs.exe"];
+		? ["emb-agent-rs.exe", "emb-agent-rs-windows-x86_64.exe", "emb-agent-rs"]
+		: ["emb-agent-rs", "emb-agent-rs-linux-x86_64", "emb-agent-rs.exe"];
 	var dirs = [
 		__dirname,
 		path.join(process.cwd(), ".cursor", "emb-agent", "bin"),
@@ -27,6 +27,49 @@ function findRustBinary() {
 		}
 	}
 	return "";
+}
+
+function spawnRustWithRetry(rustBin, args, opts, maxRetries) {
+	if (!maxRetries) maxRetries = 3;
+	var lastError = null;
+
+	for (var attempt = 1; attempt <= maxRetries; attempt++) {
+		// Attempt 2: self-heal exec bit if EPERM on attempt 1
+		if (attempt === 2 && lastError && lastError.code === "EPERM" && process.platform !== "win32") {
+			try {
+				fs.chmodSync(rustBin, 0o755);
+			} catch (_) {
+				// chmod failed, proceed to retry spawn anyway
+			}
+		}
+
+		var result = childProcess.spawnSync(rustBin, args, opts);
+
+		// Success or non-retryable error
+		if (!result.error) return result;
+		if (result.error.code !== "EPERM" && result.error.code !== "EACCES") {
+			return result;
+		}
+
+		lastError = result.error;
+
+		// Backoff before next retry (50ms busy-wait)
+		if (attempt < maxRetries) {
+			var start = Date.now();
+			while (Date.now() - start < 50) { /* busy wait */ }
+		}
+	}
+
+	// All retries exhausted
+	var wslHint = "";
+	if (rustBin.indexOf("/mnt/") === 0) {
+		wslHint = " WSL workaround: move repo to ~/ (ext4), or disable Windows Defender realtime scan on /mnt/d.";
+	}
+	var finalError = new Error(
+		"emb-agent spawn failed after " + maxRetries + " attempts: " + lastError.message + "." + wslHint
+	);
+	finalError.code = lastError.code;
+	return { error: finalError };
 }
 
 function readInstalledVersion() {
@@ -145,7 +188,7 @@ function main(argv) {
 		process.exit(1);
 	}
 
-	var result = childProcess.spawnSync(rustBin, args, {
+	var result = spawnRustWithRetry(rustBin, args, {
 		encoding: "utf8",
 		input: readStdinPayload(),
 		maxBuffer: 1024 * 1024,
