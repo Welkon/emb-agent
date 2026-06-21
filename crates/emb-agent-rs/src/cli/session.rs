@@ -43,7 +43,30 @@ pub fn run(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "status" => {
-            println!("{}", build_status_json(&snapshot));
+            // Check for --query flag for state query mode
+            if let Some(query_pos) = args.iter().position(|a| a == "--query") {
+                let query = args.get(query_pos + 1)
+                    .map(String::as_str)
+                    .unwrap_or("");
+
+                if query.is_empty() {
+                    return Err("--query requires a question (e.g., --query \"is watchdog enabled?\")".to_string());
+                }
+
+                let project_root = Path::new(&cwd);
+                let impl_status = emb_agent_core::load_impl_status(project_root);
+                let recent_decisions = emb_agent_core::load_recent_compound_decisions(project_root, 7);
+                let answer = emb_agent_core::build_state_answer(
+                    project_root,
+                    query,
+                    &impl_status,
+                    &recent_decisions,
+                );
+
+                println!("{}", answer);
+            } else {
+                println!("{}", build_status_json(&snapshot));
+            }
             Ok(())
         }
         "health" => {

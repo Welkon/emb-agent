@@ -15,6 +15,7 @@ pub mod knowledge;
 pub mod lookup;
 pub mod schematic;
 pub mod session;
+pub mod state_query;
 pub mod task;
 
 pub mod actions;
@@ -44,5 +45,6 @@ pub use meta_ops::*;
 pub use prd_ops::*;
 pub use schematic::*;
 pub use session::*;
+pub use state_query::*;
 pub use task::*;
 pub use variant_ops::*;

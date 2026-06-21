@@ -10,6 +10,7 @@ pub mod ingest;
 pub mod knowledge;
 pub mod memory;
 pub mod misc;
+pub mod readability;
 pub mod schematic;
 pub mod session;
 pub mod task;
