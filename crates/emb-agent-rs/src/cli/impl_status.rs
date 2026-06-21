@@ -155,16 +155,18 @@ fn run_verify(args: &[String]) -> Result<(), String> {
     let slug_line = format!("slug: {}", decision);
     if let Some(slug_pos) = content.find(&slug_line) {
         // Find the status line after this slug
-        let after_slug = &content[slug_pos..];
-        if let Some(status_offset) = after_slug.find("status: ") {
-            let status_start = slug_pos + status_offset + "status: ".len();
+        let status_offset = content[slug_pos..].find("status: ");
+        let verified_offset = content[slug_pos..].find("verified_at: ");
+
+        if let Some(offset) = status_offset {
+            let status_start = slug_pos + offset + "status: ".len();
             let status_end = content[status_start..].find('\n').map(|i| status_start + i).unwrap_or(content.len());
             content.replace_range(status_start..status_end, "verified");
         }
 
         // Set verified_at
-        if let Some(verified_offset) = after_slug.find("verified_at: ") {
-            let verified_start = slug_pos + verified_offset + "verified_at: ".len();
+        if let Some(offset) = verified_offset {
+            let verified_start = slug_pos + offset + "verified_at: ".len();
             let verified_end = content[verified_start..].find('\n').map(|i| verified_start + i).unwrap_or(content.len());
             let now = chrono::Utc::now().to_rfc3339();
             content.replace_range(verified_start..verified_end, &now);

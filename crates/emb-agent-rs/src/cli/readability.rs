@@ -101,7 +101,7 @@ fn lint_file(path: &Path) -> Vec<ReadabilityIssue> {
     let mut func_start = 0;
     let mut func_name = String::new();
     let mut brace_depth = 0;
-    let mut func_lines = Vec::new();
+    let mut func_lines: Vec<&str> = Vec::new();
 
     for (i, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
@@ -145,11 +145,11 @@ fn lint_file(path: &Path) -> Vec<ReadabilityIssue> {
                 in_function = false;
 
                 // Check if it's a forwarding wrapper
-                let non_empty: Vec<_> = func_lines.iter().filter(|l| !l.trim().is_empty() && !l.trim().starts_with("//")).collect();
+                let non_empty: Vec<&&str> = func_lines.iter().filter(|l| !l.trim().is_empty() && !l.trim().starts_with("//")).collect();
 
                 if non_empty.len() <= 2 {
                     // Check if it contains a single function call
-                    let body = non_empty.join(" ");
+                    let body: String = non_empty.iter().map(|s| **s).collect::<Vec<&str>>().join(" ");
                     if body.contains('(') && body.contains(')') && body.contains(';') {
                         issues.push(ReadabilityIssue {
                             file: filename.clone(),
