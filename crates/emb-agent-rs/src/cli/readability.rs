@@ -127,7 +127,11 @@ fn lint_file(path: &Path) -> Vec<ReadabilityIssue> {
             // Extract function name
             if let Some(paren_pos) = trimmed.find('(') {
                 let before_paren = &trimmed[..paren_pos];
-                func_name = before_paren.split_whitespace().last().unwrap_or("").to_string();
+                func_name = before_paren
+                    .split_whitespace()
+                    .last()
+                    .unwrap_or("")
+                    .to_string();
             }
             continue;
         }
@@ -145,11 +149,18 @@ fn lint_file(path: &Path) -> Vec<ReadabilityIssue> {
                 in_function = false;
 
                 // Check if it's a forwarding wrapper
-                let non_empty: Vec<&&str> = func_lines.iter().filter(|l| !l.trim().is_empty() && !l.trim().starts_with("//")).collect();
+                let non_empty: Vec<&&str> = func_lines
+                    .iter()
+                    .filter(|l| !l.trim().is_empty() && !l.trim().starts_with("//"))
+                    .collect();
 
                 if non_empty.len() <= 2 {
                     // Check if it contains a single function call
-                    let body: String = non_empty.iter().map(|s| **s).collect::<Vec<&str>>().join(" ");
+                    let body: String = non_empty
+                        .iter()
+                        .map(|s| **s)
+                        .collect::<Vec<&str>>()
+                        .join(" ");
                     if body.contains('(') && body.contains(')') && body.contains(';') {
                         issues.push(ReadabilityIssue {
                             file: filename.clone(),
@@ -190,7 +201,9 @@ fn lint_file(path: &Path) -> Vec<ReadabilityIssue> {
                 file: filename.clone(),
                 line: i + 1,
                 issue_type: "misleading".to_string(),
-                description: "Name suggests abstraction but may only forward (review actual behavior)".to_string(),
+                description:
+                    "Name suggests abstraction but may only forward (review actual behavior)"
+                        .to_string(),
             });
         }
     }

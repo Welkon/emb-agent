@@ -36,11 +36,23 @@ pub fn load_impl_status(project_root: &Path) -> ImplStatusSummary {
 
         // Parse slug (YAML list item format: "- slug: value" or just "slug: value")
         if trimmed.starts_with("- slug: ") {
-            current_slug = trimmed.strip_prefix("- slug: ").unwrap_or("").trim().to_string();
+            current_slug = trimmed
+                .strip_prefix("- slug: ")
+                .unwrap_or("")
+                .trim()
+                .to_string();
         } else if trimmed.starts_with("slug: ") && current_slug.is_empty() {
-            current_slug = trimmed.strip_prefix("slug: ").unwrap_or("").trim().to_string();
+            current_slug = trimmed
+                .strip_prefix("slug: ")
+                .unwrap_or("")
+                .trim()
+                .to_string();
         } else if trimmed.starts_with("status: ") {
-            let current_status = trimmed.strip_prefix("status: ").unwrap_or("").trim().to_string();
+            let current_status = trimmed
+                .strip_prefix("status: ")
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if !current_slug.is_empty() {
                 summary.entries.push(ImplStatusEntry {
                     slug: current_slug.clone(),
@@ -84,10 +96,11 @@ pub fn load_recent_compound_decisions(project_root: &Path, days: u64) -> Vec<Com
 
             if let Ok(metadata) = entry.metadata()
                 && let Ok(modified) = metadata.modified()
-                    && let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH)
-                        && duration.as_secs() < cutoff {
-                            continue;
-                        }
+                && let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH)
+                && duration.as_secs() < cutoff
+            {
+                continue;
+            }
 
             let slug = path
                 .file_stem()
@@ -131,7 +144,10 @@ pub fn build_state_answer(
     // Try to match query to specific topics
     let query_lower = query.to_lowercase();
 
-    if query_lower.contains("watchdog") || query_lower.contains("wdt") || query_lower.contains("看门狗") {
+    if query_lower.contains("watchdog")
+        || query_lower.contains("wdt")
+        || query_lower.contains("看门狗")
+    {
         answer.push_str("**Watchdog status:**\n");
         let wdt_entries: Vec<_> = impl_status
             .entries
@@ -160,7 +176,11 @@ pub fn build_state_answer(
         }
     }
 
-    if query_lower.contains("sleep") || query_lower.contains("休眠") || query_lower.contains("wake") || query_lower.contains("唤醒") {
+    if query_lower.contains("sleep")
+        || query_lower.contains("休眠")
+        || query_lower.contains("wake")
+        || query_lower.contains("唤醒")
+    {
         answer.push_str("\n**Sleep/wake status:**\n");
         let sleep_entries: Vec<_> = impl_status
             .entries
@@ -194,7 +214,10 @@ pub fn build_state_answer(
             impl_status.implemented, impl_status.verified, impl_status.planned
         ));
 
-        answer.push_str(&format!("**Recent decisions ({}):**\n", recent_decisions.len()));
+        answer.push_str(&format!(
+            "**Recent decisions ({}):**\n",
+            recent_decisions.len()
+        ));
         for d in recent_decisions.iter().take(10) {
             answer.push_str(&format!("- {} ({})\n", d.slug, d.decision_type));
         }

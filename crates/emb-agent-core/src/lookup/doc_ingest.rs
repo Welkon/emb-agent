@@ -659,9 +659,10 @@ pub(crate) fn configured_local_tool_order(project_root: &Path) -> Vec<String> {
         }
     }
     if let Some(tools) = project_local_tool_order(project_root)
-        && !tools.is_empty() {
-            return tools;
-        }
+        && !tools.is_empty()
+    {
+        return tools;
+    }
     vec![
         "markitdown".to_string(),
         "pdftotext".to_string(),

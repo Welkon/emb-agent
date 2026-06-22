@@ -11,7 +11,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
         "mark" => run_mark(args),
         "list" => run_list(args),
         "verify" => run_verify(args),
-        _ => Err(format!("Unknown impl subcommand: {subcommand}. Use: mark, list, verify")),
+        _ => Err(format!(
+            "Unknown impl subcommand: {subcommand}. Use: mark, list, verify"
+        )),
     }
 }
 
@@ -43,7 +45,9 @@ fn run_mark(args: &[String]) -> Result<(), String> {
     let status = status.ok_or("--status required (planned|implemented|verified)")?;
 
     if !matches!(status, "planned" | "implemented" | "verified") {
-        return Err(format!("Invalid status: {status}. Use: planned, implemented, verified"));
+        return Err(format!(
+            "Invalid status: {status}. Use: planned, implemented, verified"
+        ));
     }
 
     let impl_status_path = Path::new(".emb-agent/impl_status.yaml");
@@ -60,7 +64,9 @@ fn run_mark(args: &[String]) -> Result<(), String> {
     // TODO: use proper YAML parsing/editing
     if content.contains(&format!("slug: {decision}")) {
         // Update existing
-        return Err(format!("Decision {decision} already tracked. Manual edit .emb-agent/impl_status.yaml to update."));
+        return Err(format!(
+            "Decision {decision} already tracked. Manual edit .emb-agent/impl_status.yaml to update."
+        ));
     } else {
         // Append new
         if !content.contains("decisions: []") {
@@ -131,7 +137,8 @@ fn run_list(args: &[String]) -> Result<(), String> {
 }
 
 fn run_verify(args: &[String]) -> Result<(), String> {
-    let decision = args.iter()
+    let decision = args
+        .iter()
         .position(|a| a == "--decision")
         .and_then(|i| args.get(i + 1))
         .map(String::as_str)
@@ -140,14 +147,20 @@ fn run_verify(args: &[String]) -> Result<(), String> {
     let impl_status_path = Path::new(".emb-agent/impl_status.yaml");
 
     if !impl_status_path.exists() {
-        return Err(format!("No impl_status.yaml found. Mark {} first with `emb impl mark`.", decision));
+        return Err(format!(
+            "No impl_status.yaml found. Mark {} first with `emb impl mark`.",
+            decision
+        ));
     }
 
     let mut content = fs::read_to_string(impl_status_path)
         .map_err(|e| format!("Failed to read impl_status.yaml: {e}"))?;
 
     if !content.contains(&format!("slug: {decision}")) {
-        return Err(format!("Decision {} not tracked. Mark it first with `emb impl mark`.", decision));
+        return Err(format!(
+            "Decision {} not tracked. Mark it first with `emb impl mark`.",
+            decision
+        ));
     }
 
     // Update status to verified and set timestamp
@@ -160,14 +173,20 @@ fn run_verify(args: &[String]) -> Result<(), String> {
 
         if let Some(offset) = status_offset {
             let status_start = slug_pos + offset + "status: ".len();
-            let status_end = content[status_start..].find('\n').map(|i| status_start + i).unwrap_or(content.len());
+            let status_end = content[status_start..]
+                .find('\n')
+                .map(|i| status_start + i)
+                .unwrap_or(content.len());
             content.replace_range(status_start..status_end, "verified");
         }
 
         // Set verified_at
         if let Some(offset) = verified_offset {
             let verified_start = slug_pos + offset + "verified_at: ".len();
-            let verified_end = content[verified_start..].find('\n').map(|i| verified_start + i).unwrap_or(content.len());
+            let verified_end = content[verified_start..]
+                .find('\n')
+                .map(|i| verified_start + i)
+                .unwrap_or(content.len());
             let now = chrono::Utc::now().to_rfc3339();
             content.replace_range(verified_start..verified_end, &now);
         }

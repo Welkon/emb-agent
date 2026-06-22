@@ -506,9 +506,10 @@ pub fn build_next_json_with_tasks_and_policy(
         "graph_health": build_graph_health(snapshot),
     });
     if let Some(policy) = worktree_policy
-        && let Some(obj) = payload.as_object_mut() {
-            obj.insert("worktree_policy".to_string(), worktree_policy_json(policy));
-        }
+        && let Some(obj) = payload.as_object_mut()
+    {
+        obj.insert("worktree_policy".to_string(), worktree_policy_json(policy));
+    }
     serde_json::to_string(&payload).unwrap_or_default()
 }
 
