@@ -166,10 +166,24 @@ pub fn run_ext_ops(args: &[String]) -> Result<(), String> {
         },
         "capability" => {
             let name = args.get(2).map(|s| s.as_str()).unwrap_or("");
-            println!(
-                "{}",
-                emb_agent_core::ext_ops::capability_run(&ext_dir, name)
-            );
+            if args.get(1).map(String::as_str) == Some("run") {
+                let snapshot = emb_agent_core::snapshot_from_cwd(&cwd);
+                let output = match name {
+                    "scan" => emb_agent_core::build_scan_output_json(&snapshot),
+                    "plan" => emb_agent_core::build_plan_output_json(&snapshot),
+                    "do" => emb_agent_core::build_do_output_json(&snapshot),
+                    "review" => emb_agent_core::build_review_output_json(&snapshot),
+                    "verify" => emb_agent_core::build_verify_output_json(&snapshot),
+                    "debug" => emb_agent_core::build_debug_output_json(&snapshot),
+                    _ => emb_agent_core::ext_ops::capability_run(&ext_dir, name),
+                };
+                println!("{output}");
+            } else {
+                println!(
+                    "{}",
+                    emb_agent_core::ext_ops::capability_run(&ext_dir, name)
+                );
+            }
             Ok(())
         }
         "executor" => {

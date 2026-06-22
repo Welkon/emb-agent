@@ -1115,6 +1115,54 @@ fn task_resolve_auto_records_minimal_aar_when_none_exists() {
 }
 
 #[test]
+fn active_task_defaults_cover_aar_and_resolve_commands() {
+    let project = TestProject::new("active-task-defaults");
+    let created = run(&project, &["task", "add", "Implement timed key run"]);
+    let created_value: serde_json::Value = serde_json::from_str(&created).expect("task add json");
+    let task_name = created_value["task"]["name"].as_str().expect("task name");
+    let activated = run(&project, &["task", "activate", task_name]);
+    let activated_value: serde_json::Value =
+        serde_json::from_str(&activated).expect("task activate json");
+    assert_eq!(
+        activated_value["activated"], true,
+        "activate output: {activated}"
+    );
+
+    let aar = run(&project, &["task", "aar", "scan", "--no-lessons"]);
+    let aar_value: serde_json::Value = serde_json::from_str(&aar).expect("task aar json");
+    assert_eq!(aar_value["status"], "ok", "aar output: {aar}");
+    assert_eq!(aar_value["task"]["name"], task_name, "aar output: {aar}");
+
+    let resolved = run(&project, &["task", "resolve"]);
+    let resolved_value: serde_json::Value =
+        serde_json::from_str(&resolved).expect("task resolve json");
+    assert_eq!(
+        resolved_value["resolved"], true,
+        "resolve output: {resolved}"
+    );
+    assert_eq!(
+        resolved_value["task"]["name"], task_name,
+        "resolve output: {resolved}"
+    );
+}
+
+#[test]
+fn capability_run_executes_action_directly() {
+    let project = TestProject::new("capability-run-direct");
+    let output = run(&project, &["capability", "run", "scan"]);
+    let value: serde_json::Value = serde_json::from_str(&output).expect("capability scan json");
+    assert!(value["key_facts"].is_array(), "capability output: {output}");
+    assert!(
+        value["workflow_stage"]["stage"] == "scan",
+        "capability output: {output}"
+    );
+    assert!(
+        !output.contains("Run `node .<host>/emb-agent/bin/emb-agent.cjs scan`"),
+        "capability run should not return a second command hop: {output}"
+    );
+}
+
+#[test]
 fn system_prd_without_child_prds_routes_to_prd_breakdown() {
     let project = TestProject::new("prd-breakdown");
     fs::remove_dir_all(project.path().join(".emb-agent/tasks/pwm-led")).expect("remove pwm task");
@@ -1390,6 +1438,15 @@ fn concept_stage_unknowns_route_to_clarification_not_task_creation() {
                 .as_str()
                 .unwrap_or("")
                 .contains("state-machine checklist"),
+        "next output: {next}"
+    );
+    assert!(
+        next_value["agent_protocol"]["gate"]["allowed_actions"]
+            .as_array()
+            .map(|items| items.iter().any(|item| {
+                item == "trigger_task_add_after_user_confirms_concrete_deliverable_or_bug"
+            }))
+            .unwrap_or(false),
         "next output: {next}"
     );
 }

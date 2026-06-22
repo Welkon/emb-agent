@@ -1130,7 +1130,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         || !state.hardware.unknowns.is_empty()
         || !has_hardware
     {
-        let mut summary = "Continue requirement exploration/brainstorming as a doc-grounded grilling loop. Clarify behavior, interaction, power, LED, mechanical, hardware constraints, and the state-machine checklist; update docs/prd/system.md and .emb-agent/req.yaml; run the installed emb-agent runtime's validate or health command after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug.".to_string();
+        let mut summary = "Continue requirement exploration/brainstorming as a doc-grounded grilling loop. Clarify behavior, interaction, power, LED, mechanical, hardware constraints, and the state-machine checklist; update docs/prd/system.md and .emb-agent/req.yaml; run the installed emb-agent runtime's validate or health command after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug. If the latest user request already confirms a concrete deliverable or bug, record that scope, fill the task brief from the confirmed facts, and create/activate the implementation task after health passes instead of asking for another confirmation.".to_string();
         if power_management_risk {
             summary.push_str(" For battery or low-power behavior, explicitly close watchdog, sleep/wake, config-bit, and idle-current unknowns early.");
         }
@@ -1176,7 +1176,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     {
         (
             "clarify".to_string(),
-            "Project is still in concept/requirements exploration. Clarify the listed blockers, state-machine behavior, and acceptance evidence before task creation or implementation.".to_string(),
+            "Project is still in concept/requirements exploration. Clarify the listed blockers, state-machine behavior, and acceptance evidence before implementation; if the user has already confirmed a concrete deliverable or bug, record it and create/activate a scoped task after health passes.".to_string(),
         )
     } else if explanation_only_path {
         (

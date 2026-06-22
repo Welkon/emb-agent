@@ -1,6 +1,6 @@
 use super::util::{current_dir_string, option_value};
 use emb_agent_core::{build_task_list_json, read_all_tasks, read_task};
-use std::path::Path;
+use std::{fs, path::Path};
 
 pub fn run(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -82,11 +82,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         Some("resolve") => {
-            let name = args.get(2).ok_or("task resolve requires <name>")?;
+            let name = args
+                .get(2)
+                .filter(|arg| !arg.starts_with("--"))
+                .cloned()
+                .or_else(|| active_task_name(&ext_dir))
+                .ok_or("task resolve requires <name> or an active task")?;
             let note = args.get(3).map(|s| s.as_str()).unwrap_or("");
             println!(
                 "{}",
-                emb_agent_core::task::task_ops::task_resolve(&ext_dir, name, note)
+                emb_agent_core::task::task_ops::task_resolve(&ext_dir, &name, note)
             );
             Ok(())
         }
@@ -100,15 +105,25 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         Some("aar") => match args.get(2).map(String::as_str) {
             Some("status") => {
-                let name = args.get(3).ok_or("task aar status requires <name>")?;
+                let name = args
+                    .get(3)
+                    .filter(|arg| !arg.starts_with("--"))
+                    .cloned()
+                    .or_else(|| active_task_name(&ext_dir))
+                    .ok_or("task aar status requires <name> or an active task")?;
                 println!(
                     "{}",
-                    emb_agent_core::task::task_ops::task_aar_status(&ext_dir, name)
+                    emb_agent_core::task::task_ops::task_aar_status(&ext_dir, &name)
                 );
                 Ok(())
             }
             Some("scan") => {
-                let name = args.get(3).ok_or("task aar scan requires <name>")?;
+                let name = args
+                    .get(3)
+                    .filter(|arg| !arg.starts_with("--"))
+                    .cloned()
+                    .or_else(|| active_task_name(&ext_dir))
+                    .ok_or("task aar scan requires <name> or an active task")?;
                 let lessons = if args.iter().any(|a| a == "--lessons") {
                     Some(true)
                 } else if args.iter().any(|a| a == "--no-lessons") {
@@ -118,18 +133,25 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 };
                 println!(
                     "{}",
-                    emb_agent_core::task::task_ops::task_aar_scan(&ext_dir, name, lessons)
+                    emb_agent_core::task::task_ops::task_aar_scan(&ext_dir, &name, lessons)
                 );
                 Ok(())
             }
             Some("record") => {
                 let name = args
                     .get(3)
-                    .ok_or("task aar record requires <name> <note>")?;
-                let note = args.get(4).map(|s| s.as_str()).unwrap_or("");
+                    .filter(|arg| !arg.starts_with("--"))
+                    .cloned()
+                    .or_else(|| active_task_name(&ext_dir))
+                    .ok_or("task aar record requires <name> or an active task")?;
+                let note = if args.get(3).map(|arg| arg.starts_with("--")).unwrap_or(true) {
+                    args.get(3).map(|s| s.as_str()).unwrap_or("")
+                } else {
+                    args.get(4).map(|s| s.as_str()).unwrap_or("")
+                };
                 println!(
                     "{}",
-                    emb_agent_core::task::task_ops::task_aar_record(&ext_dir, name, note)
+                    emb_agent_core::task::task_ops::task_aar_record(&ext_dir, &name, note)
                 );
                 Ok(())
             }
@@ -249,6 +271,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
             "task: expected list, show, add, activate, resolve, delete, aar, worktree, or bug"
                 .to_string(),
         ),
+    }
+}
+
+fn active_task_name(ext_dir: &Path) -> Option<String> {
+    let state_dir = emb_agent_core::variant_ops::active_state_dir(ext_dir);
+    let name = fs::read_to_string(state_dir.join(".current-task")).ok()?;
+    let name = name.trim();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
     }
 }
 
