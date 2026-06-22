@@ -9,6 +9,17 @@ use emb_agent_core::{
 };
 use std::path::Path;
 
+fn default_runtime_dir() -> String {
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(bin_dir) = exe.parent()
+        && bin_dir.file_name().and_then(|name| name.to_str()) == Some("bin")
+        && let Some(runtime_dir) = bin_dir.parent()
+    {
+        return runtime_dir.to_string_lossy().to_string();
+    }
+    "runtime".to_string()
+}
+
 fn hook_trigger(payload: &str) -> String {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
         return "startup".to_string();
@@ -40,7 +51,7 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
             let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
             let hook = positional_after(args, 2).unwrap_or_else(|| "session-start".to_string());
             let runtime_dir =
-                option_value(args, "--runtime-dir").unwrap_or_else(|| "runtime".to_string());
+                option_value(args, "--runtime-dir").unwrap_or_else(default_runtime_dir);
             let plan = emb_agent_core::build_hook_plan(&host, &hook, Path::new(&runtime_dir), None);
             println!("{}", emb_agent_core::build_hook_plan_json(&plan));
             Ok(())
@@ -111,7 +122,7 @@ pub fn run_diagnostics(args: &[String]) -> Result<(), String> {
         "hooks" => {
             let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
             let runtime_dir =
-                option_value(args, "--runtime-dir").unwrap_or_else(|| "runtime".to_string());
+                option_value(args, "--runtime-dir").unwrap_or_else(default_runtime_dir);
             println!(
                 "{}",
                 build_hooks_diagnostics_json(&host, Path::new(&runtime_dir))
@@ -127,7 +138,7 @@ pub fn run_diagnostics(args: &[String]) -> Result<(), String> {
         "state-paths" => {
             let cwd = option_value(args, "--cwd").unwrap_or_else(current_dir_string);
             let runtime_dir =
-                option_value(args, "--runtime-dir").unwrap_or_else(|| "runtime".to_string());
+                option_value(args, "--runtime-dir").unwrap_or_else(default_runtime_dir);
             let paths = get_project_state_paths(
                 Path::new(&runtime_dir),
                 Path::new(&cwd),

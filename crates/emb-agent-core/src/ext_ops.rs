@@ -347,6 +347,14 @@ fn manual_update_command() -> &'static str {
     "npx emb-agent@latest update --target all --local"
 }
 
+fn hooks_config_has_runtime_entries(host_dir: &Path, host: &str) -> bool {
+    let hooks = fs::read_to_string(host_dir.join("hooks.json")).unwrap_or_default();
+    !hooks.contains("{{")
+        && hooks.contains(&format!("hook session-start --host {host}"))
+        && hooks.contains(&format!("hook context-monitor --host {host}"))
+        && hooks.contains("ApplyPatch")
+}
+
 pub fn install_doctor(cwd: &Path, host: &str) -> String {
     let host = host.trim();
     let hosts: Vec<String> = if host.is_empty() || host == "all" {
@@ -428,13 +436,18 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
                         .join("emb-onboard")
                         .join("SKILL.md")
                         .exists(),
-                true,
+                hooks_config_has_runtime_entries(&host_dir, "codex")
+                    && host_dir
+                        .join("skills")
+                        .join("emb-agent")
+                        .join("SKILL.md")
+                        .exists(),
             ),
             "cursor" => (
                 "cursor-command-files",
                 host_dir.join("commands").join("emb-next.md").exists()
                     && host_dir.join("commands").join("emb-onboard.md").exists(),
-                host_dir.join("hooks.json").exists()
+                hooks_config_has_runtime_entries(&host_dir, "cursor")
                     && host_dir
                         .join("rules")
                         .join("emb-agent-workflow.mdc")

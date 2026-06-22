@@ -1303,6 +1303,52 @@ fn doctor_reports_stale_host_runtime_versions() {
 }
 
 #[test]
+fn doctor_reports_stale_codex_hook_config() {
+    let project = TestProject::new("stale-codex-hooks");
+    let version = env!("CARGO_PKG_VERSION");
+    fs::write(
+        project.path().join(".emb-agent/runtime-version.json"),
+        format!(r#"{{"version":"{version}","hosts":[{{"name":"codex","version":"{version}"}}]}}"#),
+    )
+    .expect("write runtime version");
+    let codex_runtime = project.path().join(".codex/emb-agent");
+    fs::create_dir_all(codex_runtime.join("bin")).expect("create codex runtime bin");
+    fs::create_dir_all(project.path().join(".agents/skills/emb-next"))
+        .expect("create codex next skill dir");
+    fs::create_dir_all(project.path().join(".agents/skills/emb-onboard"))
+        .expect("create codex onboard skill dir");
+    fs::create_dir_all(project.path().join(".codex/skills/emb-agent"))
+        .expect("create codex emb-agent skill dir");
+    fs::write(codex_runtime.join("VERSION"), format!("{version}\n")).expect("write version");
+    fs::write(codex_runtime.join("bin/emb-agent.cjs"), "// wrapper\n").expect("write wrapper");
+    fs::write(codex_runtime.join("bin/emb-agent-rs"), "").expect("write rust bin marker");
+    fs::write(
+        project.path().join(".agents/skills/emb-next/SKILL.md"),
+        "next",
+    )
+    .expect("write codex next skill");
+    fs::write(
+        project.path().join(".agents/skills/emb-onboard/SKILL.md"),
+        "onboard",
+    )
+    .expect("write codex onboard skill");
+    fs::write(
+        project.path().join(".codex/skills/emb-agent/SKILL.md"),
+        "skill",
+    )
+    .expect("write codex emb-agent skill");
+    fs::write(project.path().join(".codex/hooks.json"), "{}").expect("write stale codex hooks");
+
+    let output = run(&project, &["doctor", "--host", "codex", "--brief"]);
+    let value: serde_json::Value = serde_json::from_str(&output).expect("doctor json");
+    assert_eq!(value["status"], "warn", "doctor output: {output}");
+    assert_eq!(
+        value["hosts"][0]["host_config_ok"], false,
+        "doctor output: {output}"
+    );
+}
+
+#[test]
 fn concept_stage_unknowns_route_to_clarification_not_task_creation() {
     let project = TestProject::new("concept-clarify");
     fs::write(
@@ -1811,6 +1857,21 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     );
     assert_no_markdown_files(root.join(".codex").join("commands"));
 
+    let codex_hooks = fs::read_to_string(root.join(".codex").join("hooks.json"))
+        .expect("read Codex hooks config");
+    assert!(
+        codex_hooks.contains("hook session-start --host codex")
+            && codex_hooks.contains("hook context-monitor --host codex")
+            && codex_hooks.contains("ApplyPatch")
+            && codex_hooks.contains("apply_patch")
+            && codex_hooks.contains("Bash"),
+        "Codex hooks config: {codex_hooks}"
+    );
+    assert!(
+        !codex_hooks.contains("{{"),
+        "Codex hooks config must not contain unresolved template placeholders: {codex_hooks}"
+    );
+
     for host in [".cursor", ".claude"] {
         assert_two_command_files(root.join(host).join("commands"), host);
     }
@@ -1859,6 +1920,39 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     assert!(
         cursor_doctor.contains("\"host_config_ok\": true"),
         "Cursor doctor output: {cursor_doctor}"
+    );
+
+    let codex_doctor = Command::new(emb_agent_bin())
+        .arg("doctor")
+        .arg("--host")
+        .arg("codex")
+        .arg("--cwd")
+        .arg(&root)
+        .output()
+        .expect("run codex install doctor");
+    let codex_doctor = assert_success(codex_doctor);
+    assert!(
+        codex_doctor.contains("\"host_config_ok\": true"),
+        "Codex doctor output: {codex_doctor}"
+    );
+
+    let codex_hook_diag = Command::new("node")
+        .arg(root.join(".codex/emb-agent/bin/emb-agent.cjs"))
+        .arg("diagnostics")
+        .arg("hooks")
+        .arg("--host")
+        .arg("codex")
+        .current_dir(&root)
+        .output()
+        .expect("run installed codex hook diagnostics");
+    let codex_hook_diag = assert_success(codex_hook_diag);
+    assert!(
+        codex_hook_diag.contains("\"rust_binary_exists\":true"),
+        "Codex hook diagnostics output: {codex_hook_diag}"
+    );
+    assert!(
+        codex_hook_diag.contains(".codex/emb-agent"),
+        "Codex hook diagnostics output: {codex_hook_diag}"
     );
 
     let runtime_commands = root

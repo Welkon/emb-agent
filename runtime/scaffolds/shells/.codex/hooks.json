@@ -14,7 +14,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|Task",
+        "matcher": "Bash|Shell|Exec|exec_command|Edit|Write|MultiEdit|ApplyPatch|apply_patch|Task",
         "hooks": [
           {
             "type": "command",

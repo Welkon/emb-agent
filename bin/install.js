@@ -54,8 +54,18 @@ function isRuntimeCommand(argv) {
 	return argv && argv.length > 0 && RUNTIME_COMMANDS[argv[0]] && argv[0] !== "update";
 }
 
+function localRustBinaryCandidates() {
+	var exe = "emb-agent-rs" + (process.platform === "win32" ? ".exe" : "");
+	return [
+		process.env["CARGO_BIN_EXE_emb-agent-rs"],
+		path.join(REPO_ROOT, "target", "debug", exe),
+		path.join(REPO_ROOT, "target", "release", exe),
+		binarySrc()
+	].filter(Boolean);
+}
+
 function findBundledRustBinary() {
-	var candidates = [process.env["CARGO_BIN_EXE_emb-agent-rs"], binarySrc(), path.join(REPO_ROOT, "target", "debug", "emb-agent-rs" + (process.platform === "win32" ? ".exe" : "")), path.join(REPO_ROOT, "target", "release", "emb-agent-rs" + (process.platform === "win32" ? ".exe" : ""))].filter(Boolean);
+	var candidates = localRustBinaryCandidates();
 	for (var i = 0; i < candidates.length; i++) {
 		try { if (fs.existsSync(candidates[i])) return candidates[i]; } catch (_) {}
 	}
@@ -257,13 +267,16 @@ function downloadBinary(dest, callback) {
 
 function deployRustBinary(embDir, callback) {
 	var dest = path.join(embDir, "bin", "emb-agent-rs" + (process.platform === "win32" ? ".exe" : ""));
-	// 1. Try local build artifact
-	var src = binarySrc();
-	if (fs.existsSync(src)) {
-		fs.copyFileSync(src, dest);
-		logDetail("    Rust binary deployed (" + binaryName() + ")");
-		callback();
-		return;
+	// 1. Try the current local build first, then packaged binary artifact.
+	var localCandidates = localRustBinaryCandidates();
+	for (var li = 0; li < localCandidates.length; li++) {
+		var src = localCandidates[li];
+		if (fs.existsSync(src)) {
+			fs.copyFileSync(src, dest);
+			logDetail("    Rust binary deployed (" + path.basename(src) + ")");
+			callback();
+			return;
+		}
 	}
 	// 2. Try generic fallback names
 	var genericNames = ["emb-agent-rs-linux-x86_64", "emb-agent-rs-macos-x86_64", "emb-agent-rs-windows-x86_64.exe"];
@@ -1106,7 +1119,10 @@ function planEntries(projectRoot, hosts) {
 		entries.push(path.join(hostDir, "skills", "emb-agent"));
 		var surface = hostSurfaceSummary(projectRoot, host);
 		if (surface.dir) entries.push(surface.dir);
-		if (host.name === "codex") entries.push(path.join(hostDir, "instructions.md"));
+		if (host.name === "codex") {
+			entries.push(path.join(hostDir, "hooks.json"));
+			entries.push(path.join(hostDir, "instructions.md"));
+		}
 		if (host.name === "cursor") {
 			entries.push(path.join(hostDir, "hooks.json"));
 			entries.push(path.join(hostDir, "rules", "emb-agent-workflow.mdc"));
@@ -1178,22 +1194,34 @@ function writeInstallResult(projectRoot, hosts, options) {
 	fs.writeFileSync(path.join(projectRoot, ".emb-agent", "INSTALL_RESULT.md"), lines.join("\n") + "\n");
 }
 
+function hooksFileHasRuntimeEntries(hooksPath, hostName) {
+	if (!fs.existsSync(hooksPath)) return false;
+	try {
+		var hooks = fs.readFileSync(hooksPath, "utf8");
+		return hooks.indexOf("{{") === -1
+			&& hooks.indexOf("hook session-start --host " + hostName) >= 0
+			&& hooks.indexOf("hook context-monitor --host " + hostName) >= 0
+			&& hooks.indexOf("ApplyPatch") >= 0;
+	} catch (_) {
+		return false;
+	}
+}
+
+function codexSurfaceOk(projectRoot, host, surface) {
+	var hostDir = hostDirFor(projectRoot, host);
+	var hooksPath = path.join(hostDir, "hooks.json");
+	var skillsOk = fs.existsSync(path.join(surface.dir, "emb-next", "SKILL.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard", "SKILL.md"));
+	var skillPath = path.join(hostDir, "skills", "emb-agent", "SKILL.md");
+	return skillsOk && fs.existsSync(skillPath) && hooksFileHasRuntimeEntries(hooksPath, "codex");
+}
+
 function cursorSurfaceOk(projectRoot, host, surface) {
 	var hostDir = hostDirFor(projectRoot, host);
 	var hooksPath = path.join(hostDir, "hooks.json");
 	var rulePath = path.join(hostDir, "rules", "emb-agent-workflow.mdc");
 	var skillPath = path.join(hostDir, "skills", "emb-agent", "SKILL.md");
 	var commandsOk = fs.existsSync(path.join(surface.dir, "emb-next.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard.md"));
-	if (!commandsOk || !fs.existsSync(hooksPath) || !fs.existsSync(rulePath) || !fs.existsSync(skillPath)) return false;
-	try {
-		var hooks = fs.readFileSync(hooksPath, "utf8");
-		return hooks.indexOf("{{") === -1
-			&& hooks.indexOf("hook session-start --host cursor") >= 0
-			&& hooks.indexOf("hook context-monitor --host cursor") >= 0
-			&& hooks.indexOf("ApplyPatch") >= 0;
-	} catch (_) {
-		return false;
-	}
+	return commandsOk && fs.existsSync(rulePath) && fs.existsSync(skillPath) && hooksFileHasRuntimeEntries(hooksPath, "cursor");
 }
 
 
@@ -1223,7 +1251,7 @@ function runInstallChecks(projectRoot, hosts) {
 		var surfaceOk = true;
 		if (host.name === "pi") surfaceOk = piSurfaceOk(projectRoot, host);
 		else if (host.name === "omp") surfaceOk = fs.existsSync(path.join(hostDirFor(projectRoot, host), "extensions", "emb-agent.ts"));
-		else if (host.name === "codex") surfaceOk = fs.existsSync(path.join(surface.dir, "emb-next", "SKILL.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard", "SKILL.md"));
+		else if (host.name === "codex") surfaceOk = codexSurfaceOk(projectRoot, host, surface);
 		else if (host.name === "cursor") surfaceOk = cursorSurfaceOk(projectRoot, host, surface);
 		else surfaceOk = fs.existsSync(path.join(surface.dir, "emb-next.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard.md"));
 		var doctor = "";
