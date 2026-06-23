@@ -30,6 +30,12 @@ fn pi_extension_exposes_unified_tool_layer() {
         "INGEST_TIMEOUT_MS",
         "INGEST_MAX_BUFFER",
         "EMB-AGENT PROJECT STATE START",
+        "subagents:rpc:${name}",
+        "\"ping\" | \"spawn\"",
+        "spawnAutoSubagent",
+        "npm:@tintinweb/pi-subagents",
+        "LEGACY_SUBAGENTS_PACKAGE",
+        "autoDispatchSubagents",
         "tool_call",
     ] {
         assert!(ext.contains(expected), "Pi extension missing {expected}");
@@ -45,7 +51,8 @@ fn pi_extension_exposes_unified_tool_layer() {
 #[test]
 fn pi_settings_are_safe_by_default() {
     let settings = read_repo("runtime/scaffolds/shells/.pi/settings.json");
-    assert!(settings.contains("npm:pi-subagents"));
+    assert!(settings.contains("npm:@tintinweb/pi-subagents"));
+    assert!(!settings.contains("npm:pi-subagents"));
     for forbidden in [
         "custom/gpt-5.5",
         "claude/claude-opus-4-8",

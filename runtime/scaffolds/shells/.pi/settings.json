@@ -1,6 +1,3 @@
 {
-  "packages": ["npm:pi-subagents"],
-  "subagents": {
-    "agentOverrides": {}
-  }
+  "packages": ["npm:@tintinweb/pi-subagents"]
 }

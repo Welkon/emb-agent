@@ -931,13 +931,8 @@ function deployPiSettingsJson(projectRoot, srcPath, destPath) {
 		catch (_) { existing = {}; }
 	}
 	var merged = Object.assign({}, template, existing);
-	merged.packages = mergeUniqueArray(Array.isArray(existing.packages) ? existing.packages : template.packages, ["npm:pi-subagents"]);
-	var templateSub = template.subagents && typeof template.subagents === "object" ? template.subagents : {};
-	var existingSub = existing.subagents && typeof existing.subagents === "object" ? existing.subagents : {};
-	merged.subagents = Object.assign({}, templateSub, existingSub);
-	var templateOverrides = templateSub.agentOverrides && typeof templateSub.agentOverrides === "object" ? templateSub.agentOverrides : {};
-	var existingOverrides = existingSub.agentOverrides && typeof existingSub.agentOverrides === "object" ? existingSub.agentOverrides : {};
-	merged.subagents.agentOverrides = Object.assign({}, templateOverrides, existingOverrides);
+	var basePackages = Array.isArray(existing.packages) ? existing.packages : template.packages;
+	merged.packages = mergeUniqueArray(basePackages, ["npm:@tintinweb/pi-subagents"]).filter(function (pkg) { return pkg !== "npm:pi-subagents"; });
 	ensureDir(path.dirname(destPath));
 	fs.writeFileSync(destPath, JSON.stringify(merged, null, 2) + "\n", "utf8");
 	return true;
@@ -1235,7 +1230,7 @@ function piSurfaceOk(projectRoot, host) {
 	if (!extOk || !fs.existsSync(settingsPath)) return false;
 	try {
 		var settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-		return Array.isArray(settings.packages) && settings.packages.indexOf("npm:pi-subagents") >= 0;
+		return Array.isArray(settings.packages) && settings.packages.indexOf("npm:@tintinweb/pi-subagents") >= 0 && settings.packages.indexOf("npm:pi-subagents") === -1;
 	} catch (_) {
 		return false;
 	}

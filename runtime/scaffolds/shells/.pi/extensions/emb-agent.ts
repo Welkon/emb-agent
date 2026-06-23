@@ -2,13 +2,14 @@
  * emb-agent Pi extension
  *
  * Unified Pi surface for emb-agent: project-state injection, slash commands,
- * Pi-native tools, PDF/document ingest routing, and pi-subagents sync.
+ * Pi-native tools, PDF/document ingest routing, and Tintinweb Agent subagent sync.
  *
  * Requires: emb-agent installed via `npx emb-agent --target pi`.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join, dirname } from "node:path";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -27,6 +28,15 @@ const INGEST_MAX_BUFFER = 10 * 1024 * 1024;
 // Types and helpers
 // ---------------------------------------------------------------------------
 
+interface DelegationPolicy {
+  applies_when_host_exposes_subagent_tool?: boolean;
+  required_before_broad_work?: boolean;
+  broad_work_triggers?: string[];
+  first_step?: string;
+  recommended_roles?: string[];
+  prd_exploration_scope?: string;
+}
+
 interface EmbAgentResult {
   action?: string;
   status?: string;
@@ -35,7 +45,7 @@ interface EmbAgentResult {
   instructions?: string;
   next?: { command?: string; reason?: string; cli?: string };
   open_tasks?: number;
-  agent_protocol?: { gate?: { recommended_command?: string; recommended_agent?: string; kind?: string } };
+  agent_protocol?: { gate?: { recommended_command?: string; recommended_agent?: string; kind?: string; delegation_policy?: DelegationPolicy } };
   language?: string;
   task_candidates?: Array<{ name: string }>;
   prd_task_candidates?: Array<{ name: string }>;
@@ -47,6 +57,7 @@ interface EmbAgentResult {
   parsed?: boolean;
   doc_id?: string;
   update_available?: boolean;
+  delegation_policy?: DelegationPolicy;
   installed_version?: string | null;
   latest_version?: string | null;
   manual_update_command?: string;
@@ -81,8 +92,21 @@ type RunResult = RunOk | RunErr;
 
 interface ContextEntry {
   text: string;
+  result?: EmbAgentResult;
   updatedAt: number;
   dirty: boolean;
+}
+
+interface SubagentsRpcReply<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+interface AutoDispatchResult {
+  attempted: boolean;
+  launched: Array<{ type: string; id?: string; description: string }>;
+  errors: string[];
 }
 
 function toolTextResult(text: string, details?: unknown) {
@@ -288,8 +312,11 @@ function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): str
 }
 
 // ---------------------------------------------------------------------------
-// Subagent sync
+// Tintinweb Agent subagent sync and auto-dispatch
 // ---------------------------------------------------------------------------
+
+const TINTINWEB_SUBAGENTS_PACKAGE = "npm:@tintinweb/pi-subagents";
+const LEGACY_SUBAGENTS_PACKAGE = "npm:pi-subagents";
 
 const TOOL_MAP: Record<string, string[]> = {
   Read: ["read"],
@@ -299,6 +326,8 @@ const TOOL_MAP: Record<string, string[]> = {
 };
 
 const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "onboard"]);
+const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"]);
+const DEFAULT_BACKGROUND_AGENT_NAMES = new Set(["hw-scout", "arch-reviewer", "sys-reviewer"]);
 
 async function syncEmbAgentsToPi(cwd: string) {
   const candidates = [
@@ -333,8 +362,11 @@ async function syncEmbAgentsToPi(cwd: string) {
       if (mapped) mapped.forEach((m) => piTools.add(m));
     }
     if (WRITE_CAPABLE_AGENTS.has(name)) { piTools.add("write"); piTools.add("edit"); }
+    const runInBackground = DEFAULT_BACKGROUND_AGENT_NAMES.has(name) ? "\nrun_in_background: true" : "";
+    const maxTurns = WRITE_CAPABLE_AGENTS.has(name) ? 40 : 25;
+    const promptMode = WRITE_CAPABLE_AGENTS.has(name) ? "append" : "replace";
 
-    const out = `---\nname: ${name}\ndescription: ${desc}\ntools: ${[...piTools].join(", ")}\n---\n\n${body}`;
+    const out = `---\nname: ${name}\ndescription: ${desc}\ntools: ${[...piTools].join(", ")}\nextensions: false\nskills: false\nmodel: inherit\nthinking: high\nmax_turns: ${maxTurns}\nprompt_mode: ${promptMode}${runInBackground}\n---\n\n${body}`;
     await writeFile(join(piAgentsDir, file), out, "utf-8");
   }
 }
@@ -348,25 +380,17 @@ async function ensureSubagentSettings(cwd: string) {
 
   const existingPackages = settings.packages;
   if (Array.isArray(existingPackages)) {
-    if (!existingPackages.includes("npm:pi-subagents")) {
-      settings.packages = [...existingPackages, "npm:pi-subagents"];
+    const filtered = existingPackages.filter((pkg) => pkg !== LEGACY_SUBAGENTS_PACKAGE);
+    if (!filtered.includes(TINTINWEB_SUBAGENTS_PACKAGE)) filtered.push(TINTINWEB_SUBAGENTS_PACKAGE);
+    if (JSON.stringify(filtered) !== JSON.stringify(existingPackages)) {
+      settings.packages = filtered;
       changed = true;
     }
   } else if (existingPackages === undefined) {
-    settings.packages = ["npm:pi-subagents"];
+    settings.packages = [TINTINWEB_SUBAGENTS_PACKAGE];
     changed = true;
   } else {
-    settings["embAgentWarning"] = "settings.packages is not an array; emb-agent could not auto-merge npm:pi-subagents.";
-    changed = true;
-  }
-
-  if (!settings.subagents || typeof settings.subagents !== "object" || Array.isArray(settings.subagents)) {
-    settings.subagents = { agentOverrides: {} };
-    changed = true;
-  }
-  const sub = settings.subagents as Record<string, unknown>;
-  if (!sub.agentOverrides || typeof sub.agentOverrides !== "object" || Array.isArray(sub.agentOverrides)) {
-    sub.agentOverrides = {};
+    settings["embAgentWarning"] = `settings.packages is not an array; emb-agent could not auto-merge ${TINTINWEB_SUBAGENTS_PACKAGE}.`;
     changed = true;
   }
 
@@ -374,6 +398,125 @@ async function ensureSubagentSettings(cwd: string) {
     await mkdir(join(cwd, ".pi"), { recursive: true });
     await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
   }
+}
+
+function onceEvent<T>(pi: ExtensionAPI, channel: string, timeoutMs = 1_500): Promise<SubagentsRpcReply<T>> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let off: unknown;
+    const finish = (reply: SubagentsRpcReply<T>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (typeof off === "function") (off as () => void)();
+      resolve(reply);
+    };
+    const timer = setTimeout(() => finish({ success: false, error: `timeout waiting for ${channel}` }), timeoutMs);
+    off = (pi.events as any).on(channel, (reply: SubagentsRpcReply<T>) => finish(reply));
+  });
+}
+
+async function subagentsRpc<T>(pi: ExtensionAPI, name: "ping" | "spawn", payload: Record<string, unknown> = {}, timeoutMs = 1_500): Promise<SubagentsRpcReply<T>> {
+  const requestId = randomUUID();
+  const reply = onceEvent<T>(pi, `subagents:rpc:${name}:reply:${requestId}`, timeoutMs);
+  pi.events.emit(`subagents:rpc:${name}`, { requestId, ...payload });
+  return reply;
+}
+
+function promptLooksBroadFirmwareWork(prompt: string): boolean {
+  const text = String(prompt || "").toLowerCase();
+  return /系统框架|框架|架构|重构|整体|全局|梳理|迁移|移植|sdk|toolchain|工具链|bsp|hal|驱动|外设|多个|多路|睡眠|唤醒|低功耗|watchdog|看门狗|lvd|brownout|bootloader|升级|调度|scheduler|framework|architecture|refactor|migration|porting|peripheral|power|sleep|wake|timer|pwm|adc|uart|i2c|spi/.test(text);
+}
+
+function isPrdExploration(result: EmbAgentResult): boolean {
+  const gate = String(result.agent_protocol?.gate?.kind || "").toLowerCase();
+  const action = String(result.action || "").toLowerCase();
+  return gate.includes("prd") || action === "clarify" || action === "prd-exploration";
+}
+
+function shouldAutoDispatchSubagents(prompt: string, result: EmbAgentResult): boolean {
+  const policy = result.delegation_policy || result.agent_protocol?.gate?.delegation_policy;
+  if (!policy?.applies_when_host_exposes_subagent_tool) return false;
+  if (!promptLooksBroadFirmwareWork(prompt)) return false;
+  return Boolean(policy.required_before_broad_work || isPrdExploration(result));
+}
+
+function rolePrompt(role: string, userPrompt: string, nextLines: string[]): string {
+  const common = [
+    "You are an emb-agent firmware subagent spawned automatically by the Pi integration.",
+    "Work from the real repository files, not from parent chat memory. Keep output concise and evidence-backed.",
+    "Do not modify files. This automatic pass is read-only reconnaissance/review before the parent agent edits.",
+    "If the scope is unclear, report the missing evidence/questions instead of guessing.",
+    "",
+    "emb-agent runtime state:",
+    nextLines.join("\n") || "(no emb-agent next lines)",
+    "",
+    "User request:",
+    userPrompt,
+  ].join("\n");
+  if (role === "hw-scout") {
+    return `${common}\n\nRole focus: locate hardware/register/manual/schematic/pin-map facts relevant to this broad work. Return source paths, exact facts, gaps, and risks that must constrain implementation.`;
+  }
+  if (role === "arch-reviewer") {
+    return `${common}\n\nRole focus: review architecture/framework boundaries, scheduler/timing implications, ROM/RAM/ISR risks, and split the work into safe vertical slices. Return a practical plan and blockers.`;
+  }
+  return `${common}\n\nRole focus: system-level review across firmware, requirements, concurrency, power, and verification. Return concrete findings, validation routes, and risks before implementation.`;
+}
+
+function fallbackAgentType(role: string): string {
+  if (role === "hw-scout") return "Explore";
+  return "Plan";
+}
+
+async function spawnAutoSubagent(pi: ExtensionAPI, type: string, cwd: string, prompt: string, description: string): Promise<SubagentsRpcReply<{ id?: string }>> {
+  return subagentsRpc<{ id?: string }>(pi, "spawn", {
+    type,
+    prompt,
+    options: { description, run_in_background: true, cwd },
+  }, 2_500);
+}
+
+async function autoDispatchSubagents(pi: ExtensionAPI, cwd: string, userPrompt: string, result: EmbAgentResult): Promise<AutoDispatchResult> {
+  if (!shouldAutoDispatchSubagents(userPrompt, result)) return { attempted: false, launched: [], errors: [] };
+
+  const ping = await subagentsRpc<{ version?: string }>(pi, "ping", {}, 1_000);
+  if (!ping.success) return { attempted: true, launched: [], errors: [`Tintinweb subagents RPC unavailable: ${ping.error || "no reply"}`] };
+
+  const nextLines = renderNextLines(result);
+  const roles = isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
+  const launched: Array<{ type: string; id?: string; description: string }> = [];
+  const errors: string[] = [];
+  for (const type of roles) {
+    if (!READ_ONLY_AGENT_NAMES.has(type)) continue;
+    const description = `${type} broad preflight`;
+    const prompt = rolePrompt(type, userPrompt, nextLines);
+    let reply = await spawnAutoSubagent(pi, type, cwd, prompt, description);
+    let launchedType = type;
+    if (!reply.success) {
+      const fallback = fallbackAgentType(type);
+      reply = await spawnAutoSubagent(pi, fallback, cwd, prompt, `${description} (${fallback} fallback)`);
+      launchedType = fallback;
+    }
+    if (reply.success) launched.push({ type: launchedType, id: reply.data?.id, description });
+    else errors.push(`${type}: ${reply.error || "spawn failed"}`);
+  }
+  return { attempted: true, launched, errors };
+}
+
+function renderAutoDispatch(dispatch: AutoDispatchResult | null): string {
+  if (!dispatch?.attempted) return "";
+  const lines = ["\n## emb-agent Automatic Subagent Dispatch"];
+  if (dispatch.launched.length) {
+    lines.push("Launched read-only Tintinweb Agent subagents before broad firmware work:");
+    for (const item of dispatch.launched) lines.push(`- ${item.type}${item.id ? ` (${item.id})` : ""}: ${item.description}`);
+  }
+  if (dispatch.errors.length) {
+    lines.push("Subagent dispatch warnings:");
+    for (const error of dispatch.errors) lines.push(`- ${error}`);
+    lines.push(`If needed, install with: pi install ${TINTINWEB_SUBAGENTS_PACKAGE}`);
+  }
+  if (dispatch.launched.length) lines.push("Continue only with safe read-only parent work until subagent results arrive; use their findings before implementation.");
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -518,7 +661,7 @@ export default function (pi: ExtensionAPI) {
       `Never read raw PDFs directly; parse/cache them with ingest_doc first. ` +
       `For multi-domain firmware/hardware/debug work, use Pi subagents (hw-scout, bug-hunter, fw-doer, arch-reviewer, sys-reviewer) instead of continuing inline.\n` +
       `<!-- EMB-AGENT PROJECT STATE END -->`;
-    const entry = { text, updatedAt: now, dirty: false };
+    const entry = { text, result: nextResult.value, updatedAt: now, dirty: false };
     contexts.set(cwd, entry);
     return entry;
   }
@@ -556,13 +699,15 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, ctx) => {
     const context = await prepareEmbContext(ctx.cwd);
     if (!context?.text) return;
+    const dispatch = context.result ? await autoDispatchSubagents(pi, ctx.cwd, String((event as any).prompt || ""), context.result) : null;
+    const dispatchText = renderAutoDispatch(dispatch);
     return {
       message: {
         customType: "emb-agent-context",
-        content: `emb-agent context injected (${new Date(context.updatedAt).toISOString()})`,
+        content: `emb-agent context injected (${new Date(context.updatedAt).toISOString()})${dispatchText}`,
         display: false,
       },
-      systemPrompt: event.systemPrompt + context.text,
+      systemPrompt: event.systemPrompt + context.text + (dispatchText ? `\n${dispatchText}` : ""),
     };
   });
 

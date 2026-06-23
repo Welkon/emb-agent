@@ -2051,8 +2051,12 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     );
     let pi_settings = fs::read_to_string(root.join(".pi/settings.json")).expect("read pi settings");
     assert!(
-        pi_settings.contains("npm:pi-subagents"),
+        pi_settings.contains("npm:@tintinweb/pi-subagents"),
         "Pi settings: {pi_settings}"
+    );
+    assert!(
+        !pi_settings.contains("npm:pi-subagents"),
+        "Pi settings should not keep legacy package: {pi_settings}"
     );
     let install_result =
         fs::read_to_string(root.join(".emb-agent/INSTALL_RESULT.md")).expect("read install result");
@@ -2091,7 +2095,7 @@ fn installer_pi_settings_merge_preserves_user_config() {
     fs::write(
         root.join(".pi/settings.json"),
         r#"{
-  "packages": ["npm:existing-package"],
+  "packages": ["npm:existing-package", "npm:pi-subagents"],
   "customSetting": { "keep": true },
   "subagents": { "agentOverrides": { "hw-scout": { "model": "user/model" } } }
 }
@@ -2117,8 +2121,12 @@ fn installer_pi_settings_merge_preserves_user_config() {
         "settings: {raw}"
     );
     assert!(
-        packages.iter().any(|p| p == "npm:pi-subagents"),
+        packages.iter().any(|p| p == "npm:@tintinweb/pi-subagents"),
         "settings: {raw}"
+    );
+    assert!(
+        !packages.iter().any(|p| p == "npm:pi-subagents"),
+        "settings should remove legacy package: {raw}"
     );
     assert_eq!(value["customSetting"]["keep"], true, "settings: {raw}");
     assert_eq!(
