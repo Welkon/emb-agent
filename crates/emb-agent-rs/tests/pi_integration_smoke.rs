@@ -45,6 +45,8 @@ fn pi_extension_exposes_unified_tool_layer() {
         "EMB_AUTO_DISPATCH_MARKER",
         "pi.on(\"input\"",
         "action: \"transform\"",
+        "visibleAgentDispatchInstructions",
+        "你作为主 agent 的第一步必须调用 Tintinweb \\`Agent\\` 工具",
         "spawn reply timed out; not retrying",
         "Parent agent must not continue inline file/code exploration now",
         "tool_call",

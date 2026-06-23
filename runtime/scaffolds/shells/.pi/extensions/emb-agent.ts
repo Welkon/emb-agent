@@ -120,6 +120,24 @@ interface DispatchGuard {
   reason: string;
 }
 
+interface AutoDispatchRecord {
+  type?: string;
+  description?: string;
+  result?: string;
+  status?: string;
+  error?: string;
+}
+
+interface AutoDispatchBatch {
+  cwd: string;
+  userPrompt: string;
+  expected: Set<string>;
+  records: Map<string, AutoDispatchRecord>;
+  completed: Map<string, AutoDispatchRecord>;
+  startedAt: number;
+  notified: boolean;
+}
+
 function toolTextResult(text: string, details?: unknown) {
   const payload: { content: { type: "text"; text: string }[]; details?: unknown } = {
     content: [{ type: "text", text }],
@@ -345,7 +363,7 @@ const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer"
 const DEFAULT_BACKGROUND_AGENT_NAMES = new Set(["hw-scout", "arch-reviewer", "sys-reviewer"]);
 const PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS = 180_000;
 const PARENT_BLOCKED_TOOLS = new Set(["read", "bash", "write", "edit", "grep", "find", "ls", "emb_next", "doc_lookup", "doc_fetch"]);
-const EMB_AUTO_DISPATCH_MARKER = "[emb-agent:auto-subagents-dispatched]";
+const EMB_AUTO_DISPATCH_MARKER = "[emb-agent:visible-agent-dispatch-required]";
 
 const DEFAULT_AUTO_AGENT_MODEL_ROUTES: Record<string, ModelRoute> = {
   "hw-scout": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
@@ -762,6 +780,8 @@ function questionSummary(q: QuestionDef): string {
 export default function (pi: ExtensionAPI) {
   const contexts = new Map<string, ContextEntry>();
   const dispatchGuards = new Map<string, DispatchGuard>();
+  const dispatchBatches = new Map<string, AutoDispatchBatch>();
+  const uiByCwd = new Map<string, { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void }>();
 
   function markContextDirty(cwd: string) {
     const current = contexts.get(cwd);
@@ -809,6 +829,35 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  function visibleAgentDispatchInstructions(cwd: string, userPrompt: string, result: EmbAgentResult, routes: Record<string, ModelRoute>): string {
+    const nextLines = renderNextLines(result);
+    const roles = isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
+    const blocks = roles.map((role) => {
+      const route = routes[role] || {};
+      const args: Record<string, unknown> = {
+        subagent_type: role,
+        description: `${role} broad preflight`,
+        run_in_background: true,
+        prompt: rolePrompt(role, userPrompt, nextLines),
+      };
+      if (route.model && route.model !== "inherit") args.model = route.model;
+      if (route.thinking) args.thinking = route.thinking;
+      return `- Agent(${JSON.stringify(args, null, 2)})`;
+    });
+    return [
+      `${EMB_AUTO_DISPATCH_MARKER}`,
+      `用户原始请求：${userPrompt}`,
+      ``,
+      `emb-agent 判定这是 broad firmware/system-framework 请求。为了让 Tintinweb 插件自己的 TUI/widget/通知链可见，本轮不要由 emb-agent RPC 隐式 spawn。`,
+      ``,
+      `你作为主 agent 的第一步必须调用 Tintinweb \`Agent\` 工具，而不是 read/bash/find/doc_lookup/edit/write。请在同一条 assistant 工具消息里启动以下 read-only background agents：`,
+      blocks.join("\n"),
+      ``,
+      `启动这些 Agent 工具后，立即用中文简短告诉用户：已启动可见的 Tintinweb Agent 子代理，等待它们在插件 TUI/通知中返回结果后再汇总架构建议。`,
+      `在本轮不要继续 inline 文件/代码探索。`,
+    ].join("\n");
+  }
+
   async function onSessionEnter(ctx: { cwd: string; ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void; notify?: (m: string, t?: string) => void } }) {
     const updateResult = await runEmbAgent(["update", "--brief"], ctx.cwd);
     await refreshStatus(ctx, updateResult.ok ? updateResult.value : null);
@@ -819,6 +868,7 @@ export default function (pi: ExtensionAPI) {
   // ── Session lifecycle ─────────────────────────────────────────
 
   pi.on("session_start", async (_event, ctx) => {
+    uiByCwd.set(ctx.cwd, ctx.ui);
     try {
       await syncEmbAgentsToPi(ctx.cwd);
       await ensureSubagentSettings(ctx.cwd);
@@ -834,42 +884,27 @@ export default function (pi: ExtensionAPI) {
     if (!promptLooksBroadFirmwareWork(text) || text.includes(EMB_AUTO_DISPATCH_MARKER)) return { action: "continue" };
     const context = await prepareEmbContext(ctx.cwd);
     if (!context?.result || !shouldAutoDispatchSubagents(text, context.result)) return { action: "continue" };
-    const dispatch = await autoDispatchSubagents(pi, ctx.cwd, text, context.result);
-    const dispatchText = renderAutoDispatch(dispatch);
-    if (!shouldPauseParent(dispatch)) return { action: "continue" };
+    const routes = await loadModelRoutes(ctx.cwd);
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
-      reason: "emb-agent auto-dispatched read-only subagents for this broad firmware/framework request. The parent agent must pause inline exploration and wait for Agent results before reading files, running shell commands, or editing.",
+      reason: "emb-agent requires visible Tintinweb Agent tool delegation for this broad firmware/framework request. The parent agent must start Agent subagents first and must not read files, run shell commands, or edit inline before Agent results arrive.",
     });
     return {
       action: "transform",
-      text:
-        `${EMB_AUTO_DISPATCH_MARKER}\n` +
-        `${text}\n\n` +
-        `${dispatchText}\n\n` +
-        `Important: Do not call read, bash, grep, find, doc_lookup, doc_fetch, edit, or write in this turn. ` +
-        `Do not continue inline system-framework exploration. Respond briefly in Chinese that emb-agent has started read-only subagents and will wait for their Agent notifications/results before giving the architecture整理建议.`,
+      text: visibleAgentDispatchInstructions(ctx.cwd, text, context.result, routes),
     };
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
     const context = await prepareEmbContext(ctx.cwd);
     if (!context?.text) return;
-    const dispatch = context.result ? await autoDispatchSubagents(pi, ctx.cwd, String((event as any).prompt || ""), context.result) : null;
-    const dispatchText = renderAutoDispatch(dispatch);
-    if (dispatch?.attempted && (dispatch.launched.length > 0 || dispatch.mayHavePendingSpawns)) {
-      dispatchGuards.set(ctx.cwd, {
-        until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
-        reason: "emb-agent auto-dispatched read-only subagents for this broad firmware/framework request. The parent agent must pause inline exploration and wait for Agent results before reading files, running shell commands, or editing.",
-      });
-    }
     return {
       message: {
         customType: "emb-agent-context",
-        content: `emb-agent context injected (${new Date(context.updatedAt).toISOString()})${dispatchText}`,
+        content: `emb-agent context injected (${new Date(context.updatedAt).toISOString()})`,
         display: false,
       },
-      systemPrompt: event.systemPrompt + context.text + (dispatchText ? `\n${dispatchText}` : ""),
+      systemPrompt: event.systemPrompt + context.text,
     };
   });
 
