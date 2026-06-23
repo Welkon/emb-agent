@@ -112,6 +112,12 @@ interface AutoDispatchResult {
   attempted: boolean;
   launched: Array<{ type: string; id?: string; description: string; model?: string; thinking?: string; fallback?: boolean }>;
   errors: string[];
+  mayHavePendingSpawns?: boolean;
+}
+
+interface DispatchGuard {
+  until: number;
+  reason: string;
 }
 
 function toolTextResult(text: string, details?: unknown) {
@@ -337,6 +343,8 @@ const TOOL_MAP: Record<string, string[]> = {
 const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "onboard"]);
 const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"]);
 const DEFAULT_BACKGROUND_AGENT_NAMES = new Set(["hw-scout", "arch-reviewer", "sys-reviewer"]);
+const PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS = 180_000;
+const PARENT_BLOCKED_TOOLS = new Set(["read", "bash", "write", "edit", "grep", "find", "ls", "emb_next", "doc_lookup", "doc_fetch"]);
 
 const DEFAULT_AUTO_AGENT_MODEL_ROUTES: Record<string, ModelRoute> = {
   "hw-scout": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
@@ -558,6 +566,10 @@ async function spawnAutoSubagent(pi: ExtensionAPI, type: string, cwd: string, pr
   }, 2_500);
 }
 
+function isRpcTimeout(reply: SubagentsRpcReply<unknown>): boolean {
+  return !reply.success && /timeout waiting for subagents:rpc:spawn/.test(String(reply.error || ""));
+}
+
 async function autoDispatchSubagents(pi: ExtensionAPI, cwd: string, userPrompt: string, result: EmbAgentResult): Promise<AutoDispatchResult> {
   if (!shouldAutoDispatchSubagents(userPrompt, result)) return { attempted: false, launched: [], errors: [] };
 
@@ -569,6 +581,7 @@ async function autoDispatchSubagents(pi: ExtensionAPI, cwd: string, userPrompt: 
   const roles = isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
   const launched: Array<{ type: string; id?: string; description: string; model?: string; thinking?: string; fallback?: boolean }> = [];
   const errors: string[] = [];
+  let mayHavePendingSpawns = false;
   for (const type of roles) {
     if (!READ_ONLY_AGENT_NAMES.has(type)) continue;
     const description = `${type} broad preflight`;
@@ -578,6 +591,11 @@ async function autoDispatchSubagents(pi: ExtensionAPI, cwd: string, userPrompt: 
     let launchedType = type;
     let launchedRoute = route;
     let usedFallback = false;
+    if (isRpcTimeout(reply)) {
+      mayHavePendingSpawns = true;
+      errors.push(`${type}: spawn reply timed out; not retrying to avoid duplicate agents`);
+      continue;
+    }
     if (!reply.success) {
       const fallback = fallbackAgentType(type);
       launchedRoute = routes[fallback] || route;
@@ -585,15 +603,25 @@ async function autoDispatchSubagents(pi: ExtensionAPI, cwd: string, userPrompt: 
       launchedType = fallback;
       usedFallback = true;
     }
+    if (isRpcTimeout(reply)) {
+      mayHavePendingSpawns = true;
+      errors.push(`${type}: fallback spawn reply timed out; not retrying again`);
+      continue;
+    }
     if (!reply.success && (launchedRoute?.model || launchedRoute?.thinking)) {
       reply = await spawnAutoSubagent(pi, launchedType, cwd, prompt, `${description} (inherit-model fallback)`, { model: "inherit" });
       launchedRoute = { model: "inherit" };
       usedFallback = true;
     }
+    if (isRpcTimeout(reply)) {
+      mayHavePendingSpawns = true;
+      errors.push(`${type}: inherit-model fallback reply timed out; not retrying again`);
+      continue;
+    }
     if (reply.success) launched.push({ type: launchedType, id: reply.data?.id, description, model: launchedRoute?.model, thinking: launchedRoute?.thinking, fallback: usedFallback });
     else errors.push(`${type}: ${reply.error || "spawn failed"}`);
   }
-  return { attempted: true, launched, errors };
+  return { attempted: true, launched, errors, mayHavePendingSpawns };
 }
 
 function renderAutoDispatch(dispatch: AutoDispatchResult | null): string {
@@ -611,7 +639,8 @@ function renderAutoDispatch(dispatch: AutoDispatchResult | null): string {
     for (const error of dispatch.errors) lines.push(`- ${error}`);
     lines.push(`If needed, install with: pi install ${TINTINWEB_SUBAGENTS_PACKAGE}`);
   }
-  if (dispatch.launched.length) lines.push("Continue only with safe read-only parent work until subagent results arrive; use their findings before implementation.");
+  if (dispatch.mayHavePendingSpawns) lines.push("Some spawn replies timed out; they may still be running. Do not retry automatically. Wait for Agent notifications or inspect /agents.");
+  if (dispatch.launched.length || dispatch.mayHavePendingSpawns) lines.push("Parent agent must not continue inline file/code exploration now. Stop and tell the user that read-only subagents are running; wait for their results before implementation or deeper analysis.");
   return lines.join("\n");
 }
 
@@ -726,6 +755,7 @@ function questionSummary(q: QuestionDef): string {
 
 export default function (pi: ExtensionAPI) {
   const contexts = new Map<string, ContextEntry>();
+  const dispatchGuards = new Map<string, DispatchGuard>();
 
   function markContextDirty(cwd: string) {
     const current = contexts.get(cwd);
@@ -797,6 +827,12 @@ export default function (pi: ExtensionAPI) {
     if (!context?.text) return;
     const dispatch = context.result ? await autoDispatchSubagents(pi, ctx.cwd, String((event as any).prompt || ""), context.result) : null;
     const dispatchText = renderAutoDispatch(dispatch);
+    if (dispatch?.attempted && (dispatch.launched.length > 0 || dispatch.mayHavePendingSpawns)) {
+      dispatchGuards.set(ctx.cwd, {
+        until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
+        reason: "emb-agent auto-dispatched read-only subagents for this broad firmware/framework request. The parent agent must pause inline exploration and wait for Agent results before reading files, running shell commands, or editing.",
+      });
+    }
     return {
       message: {
         customType: "emb-agent-context",
@@ -812,7 +848,13 @@ export default function (pi: ExtensionAPI) {
     markContextDirty(ctx.cwd);
   });
 
-  pi.on("tool_call", async (event) => {
+  pi.on("tool_call", async (event, ctx) => {
+    const guard = dispatchGuards.get(ctx.cwd);
+    if (guard && Date.now() < guard.until && PARENT_BLOCKED_TOOLS.has(event.toolName)) {
+      return { block: true, reason: guard.reason };
+    }
+    if (guard && Date.now() >= guard.until) dispatchGuards.delete(ctx.cwd);
+
     if (event.toolName === "read" && isPdfPath(String((event.input as any)?.path || ""))) {
       return { block: true, reason: "Do not read raw PDFs directly. Use the ingest_doc Pi tool or /emb-ingest doc --file <path> so emb-agent parses and caches the document first." };
     }

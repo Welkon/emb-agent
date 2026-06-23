@@ -41,6 +41,9 @@ fn pi_extension_exposes_unified_tool_layer() {
         "yamlScalar",
         "description: ${yamlScalar(desc)}",
         "inherit-model fallback",
+        "PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS",
+        "spawn reply timed out; not retrying",
+        "Parent agent must not continue inline file/code exploration now",
         "tool_call",
     ] {
         assert!(ext.contains(expected), "Pi extension missing {expected}");
