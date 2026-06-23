@@ -933,6 +933,13 @@ function deployPiSettingsJson(projectRoot, srcPath, destPath) {
 	var merged = Object.assign({}, template, existing);
 	var basePackages = Array.isArray(existing.packages) ? existing.packages : template.packages;
 	merged.packages = mergeUniqueArray(basePackages, ["npm:@tintinweb/pi-subagents"]).filter(function (pkg) { return pkg !== "npm:pi-subagents"; });
+	var templateEmb = template.embAgent && typeof template.embAgent === "object" ? template.embAgent : {};
+	var existingEmb = existing.embAgent && typeof existing.embAgent === "object" ? existing.embAgent : {};
+	merged.embAgent = Object.assign({}, templateEmb, existingEmb);
+	var templateRoutes = templateEmb.subagentModelRoutes && typeof templateEmb.subagentModelRoutes === "object" ? templateEmb.subagentModelRoutes : {};
+	var existingRoutes = existingEmb.subagentModelRoutes && typeof existingEmb.subagentModelRoutes === "object" ? existingEmb.subagentModelRoutes : {};
+	merged.embAgent.subagentModelRoutes = Object.assign({}, templateRoutes, existingRoutes);
+	delete merged.subagents;
 	ensureDir(path.dirname(destPath));
 	fs.writeFileSync(destPath, JSON.stringify(merged, null, 2) + "\n", "utf8");
 	return true;

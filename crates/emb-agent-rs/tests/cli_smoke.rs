@@ -2097,7 +2097,8 @@ fn installer_pi_settings_merge_preserves_user_config() {
         r#"{
   "packages": ["npm:existing-package", "npm:pi-subagents"],
   "customSetting": { "keep": true },
-  "subagents": { "agentOverrides": { "hw-scout": { "model": "user/model" } } }
+  "embAgent": { "subagentModelRoutes": { "hw-scout": { "model": "user/model", "thinking": "low" } } },
+  "subagents": { "agentOverrides": { "legacy": { "model": "legacy/model" } } }
 }
 "#,
     )
@@ -2130,12 +2131,21 @@ fn installer_pi_settings_merge_preserves_user_config() {
     );
     assert_eq!(value["customSetting"]["keep"], true, "settings: {raw}");
     assert_eq!(
-        value["subagents"]["agentOverrides"]["hw-scout"]["model"], "user/model",
+        value["embAgent"]["subagentModelRoutes"]["hw-scout"]["model"], "user/model",
         "settings: {raw}"
     );
+    assert_eq!(
+        value["embAgent"]["subagentModelRoutes"]["hw-scout"]["thinking"], "low",
+        "settings: {raw}"
+    );
+    assert_eq!(
+        value["embAgent"]["subagentModelRoutes"]["sys-reviewer"]["model"],
+        "deepseek/deepseek-v4-pro",
+        "settings should merge default routes with user overrides: {raw}"
+    );
     assert!(
-        !raw.contains("custom/gpt-5.5"),
-        "settings must not force model aliases: {raw}"
+        value.get("subagents").is_none(),
+        "legacy pi-subagents settings should be removed after switching to Tintinweb: {raw}"
     );
     let install_result =
         fs::read_to_string(root.join(".emb-agent/INSTALL_RESULT.md")).expect("read install result");

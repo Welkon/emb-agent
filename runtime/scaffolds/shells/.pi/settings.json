@@ -1,3 +1,16 @@
 {
-  "packages": ["npm:@tintinweb/pi-subagents"]
+  "packages": ["npm:@tintinweb/pi-subagents"],
+  "embAgent": {
+    "subagentModelRoutes": {
+      "hw-scout": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
+      "release-checker": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
+      "Explore": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
+      "arch-reviewer": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
+      "bug-hunter": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
+      "sys-reviewer": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
+      "Plan": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
+      "fw-doer": { "model": "custom/gpt-5.5", "thinking": "xhigh" },
+      "onboard": { "model": "custom/gpt-5.5", "thinking": "xhigh" }
+    }
+  }
 }

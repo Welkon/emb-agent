@@ -103,9 +103,14 @@ interface SubagentsRpcReply<T = unknown> {
   error?: string;
 }
 
+interface ModelRoute {
+  model?: string;
+  thinking?: string;
+}
+
 interface AutoDispatchResult {
   attempted: boolean;
-  launched: Array<{ type: string; id?: string; description: string }>;
+  launched: Array<{ type: string; id?: string; description: string; model?: string; thinking?: string; fallback?: boolean }>;
   errors: string[];
 }
 
@@ -329,6 +334,18 @@ const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "onboard"]);
 const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"]);
 const DEFAULT_BACKGROUND_AGENT_NAMES = new Set(["hw-scout", "arch-reviewer", "sys-reviewer"]);
 
+const DEFAULT_AUTO_AGENT_MODEL_ROUTES: Record<string, ModelRoute> = {
+  "hw-scout": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
+  "release-checker": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
+  "Explore": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
+  "arch-reviewer": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
+  "bug-hunter": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
+  "sys-reviewer": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
+  "Plan": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
+  "fw-doer": { model: "custom/gpt-5.5", thinking: "xhigh" },
+  "onboard": { model: "custom/gpt-5.5", thinking: "xhigh" },
+};
+
 async function syncEmbAgentsToPi(cwd: string) {
   const candidates = [
     join(cwd, ".pi", "emb-agent", "agents"),
@@ -344,6 +361,7 @@ async function syncEmbAgentsToPi(cwd: string) {
   const piAgentsDir = join(cwd, ".pi", "agents");
   await mkdir(piAgentsDir, { recursive: true });
 
+  const routes = await loadModelRoutes(cwd);
   const files = (await readdir(agentsDir)).filter((f) => f.endsWith(".md"));
   for (const file of files) {
     const content = await readFile(join(agentsDir, file), "utf-8");
@@ -366,9 +384,47 @@ async function syncEmbAgentsToPi(cwd: string) {
     const maxTurns = WRITE_CAPABLE_AGENTS.has(name) ? 40 : 25;
     const promptMode = WRITE_CAPABLE_AGENTS.has(name) ? "append" : "replace";
 
-    const out = `---\nname: ${name}\ndescription: ${desc}\ntools: ${[...piTools].join(", ")}\nextensions: false\nskills: false\nmodel: inherit\nthinking: high\nmax_turns: ${maxTurns}\nprompt_mode: ${promptMode}${runInBackground}\n---\n\n${body}`;
+    const route = routes[name] || { model: "inherit", thinking: "high" };
+    const modelLine = route.model ? `\nmodel: ${route.model}` : "";
+    const thinkingLine = route.thinking ? `\nthinking: ${route.thinking}` : "";
+    const out = `---\nname: ${name}\ndescription: ${desc}\ntools: ${[...piTools].join(", ")}\nextensions: false\nskills: false${modelLine}${thinkingLine}\nmax_turns: ${maxTurns}\nprompt_mode: ${promptMode}${runInBackground}\n---\n\n${body}`;
     await writeFile(join(piAgentsDir, file), out, "utf-8");
   }
+}
+
+async function readPiSettings(cwd: string): Promise<Record<string, unknown>> {
+  try { return JSON.parse(await readFile(join(cwd, ".pi", "settings.json"), "utf-8")); }
+  catch { return {}; }
+}
+
+function normalizeModelRoute(value: unknown): ModelRoute | null {
+  if (typeof value === "string") return value.trim() ? { model: value.trim() } : null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const route: ModelRoute = {};
+  if (typeof raw.model === "string" && raw.model.trim()) route.model = raw.model.trim();
+  if (typeof raw.thinking === "string" && raw.thinking.trim()) route.thinking = raw.thinking.trim();
+  return route.model || route.thinking ? route : null;
+}
+
+function configuredModelRoutes(settings: Record<string, unknown>): Record<string, ModelRoute> {
+  const routes: Record<string, ModelRoute> = { ...DEFAULT_AUTO_AGENT_MODEL_ROUTES };
+  const embAgent = settings.embAgent && typeof settings.embAgent === "object" && !Array.isArray(settings.embAgent)
+    ? settings.embAgent as Record<string, unknown>
+    : {};
+  const userRoutes = embAgent.subagentModelRoutes && typeof embAgent.subagentModelRoutes === "object" && !Array.isArray(embAgent.subagentModelRoutes)
+    ? embAgent.subagentModelRoutes as Record<string, unknown>
+    : {};
+  for (const [name, value] of Object.entries(userRoutes)) {
+    const normalized = normalizeModelRoute(value);
+    if (normalized) routes[name] = normalized;
+    else if (value === null || value === false || value === "inherit") routes[name] = { model: "inherit" };
+  }
+  return routes;
+}
+
+async function loadModelRoutes(cwd: string): Promise<Record<string, ModelRoute>> {
+  return configuredModelRoutes(await readPiSettings(cwd));
 }
 
 async function ensureSubagentSettings(cwd: string) {
@@ -391,6 +447,21 @@ async function ensureSubagentSettings(cwd: string) {
     changed = true;
   } else {
     settings["embAgentWarning"] = `settings.packages is not an array; emb-agent could not auto-merge ${TINTINWEB_SUBAGENTS_PACKAGE}.`;
+    changed = true;
+  }
+
+  if (settings.subagents && typeof settings.subagents === "object" && !Array.isArray(settings.subagents)) {
+    delete settings.subagents;
+    changed = true;
+  }
+
+  if (!settings.embAgent || typeof settings.embAgent !== "object" || Array.isArray(settings.embAgent)) {
+    settings.embAgent = {};
+    changed = true;
+  }
+  const embAgent = settings.embAgent as Record<string, unknown>;
+  if (!embAgent.subagentModelRoutes || typeof embAgent.subagentModelRoutes !== "object" || Array.isArray(embAgent.subagentModelRoutes)) {
+    embAgent.subagentModelRoutes = DEFAULT_AUTO_AGENT_MODEL_ROUTES;
     changed = true;
   }
 
@@ -468,11 +539,18 @@ function fallbackAgentType(role: string): string {
   return "Plan";
 }
 
-async function spawnAutoSubagent(pi: ExtensionAPI, type: string, cwd: string, prompt: string, description: string): Promise<SubagentsRpcReply<{ id?: string }>> {
+function spawnOptions(description: string, cwd: string, route?: ModelRoute): Record<string, unknown> {
+  const options: Record<string, unknown> = { description, run_in_background: true, cwd };
+  if (route?.model && route.model !== "inherit") options.model = route.model;
+  if (route?.thinking) options.thinking = route.thinking;
+  return options;
+}
+
+async function spawnAutoSubagent(pi: ExtensionAPI, type: string, cwd: string, prompt: string, description: string, route?: ModelRoute): Promise<SubagentsRpcReply<{ id?: string }>> {
   return subagentsRpc<{ id?: string }>(pi, "spawn", {
     type,
     prompt,
-    options: { description, run_in_background: true, cwd },
+    options: spawnOptions(description, cwd, route),
   }, 2_500);
 }
 
@@ -482,22 +560,33 @@ async function autoDispatchSubagents(pi: ExtensionAPI, cwd: string, userPrompt: 
   const ping = await subagentsRpc<{ version?: string }>(pi, "ping", {}, 1_000);
   if (!ping.success) return { attempted: true, launched: [], errors: [`Tintinweb subagents RPC unavailable: ${ping.error || "no reply"}`] };
 
+  const routes = await loadModelRoutes(cwd);
   const nextLines = renderNextLines(result);
   const roles = isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
-  const launched: Array<{ type: string; id?: string; description: string }> = [];
+  const launched: Array<{ type: string; id?: string; description: string; model?: string; thinking?: string; fallback?: boolean }> = [];
   const errors: string[] = [];
   for (const type of roles) {
     if (!READ_ONLY_AGENT_NAMES.has(type)) continue;
     const description = `${type} broad preflight`;
     const prompt = rolePrompt(type, userPrompt, nextLines);
-    let reply = await spawnAutoSubagent(pi, type, cwd, prompt, description);
+    const route = routes[type];
+    let reply = await spawnAutoSubagent(pi, type, cwd, prompt, description, route);
     let launchedType = type;
+    let launchedRoute = route;
+    let usedFallback = false;
     if (!reply.success) {
       const fallback = fallbackAgentType(type);
-      reply = await spawnAutoSubagent(pi, fallback, cwd, prompt, `${description} (${fallback} fallback)`);
+      launchedRoute = routes[fallback] || route;
+      reply = await spawnAutoSubagent(pi, fallback, cwd, prompt, `${description} (${fallback} fallback)`, launchedRoute);
       launchedType = fallback;
+      usedFallback = true;
     }
-    if (reply.success) launched.push({ type: launchedType, id: reply.data?.id, description });
+    if (!reply.success && (launchedRoute?.model || launchedRoute?.thinking)) {
+      reply = await spawnAutoSubagent(pi, launchedType, cwd, prompt, `${description} (inherit-model fallback)`, { model: "inherit" });
+      launchedRoute = { model: "inherit" };
+      usedFallback = true;
+    }
+    if (reply.success) launched.push({ type: launchedType, id: reply.data?.id, description, model: launchedRoute?.model, thinking: launchedRoute?.thinking, fallback: usedFallback });
     else errors.push(`${type}: ${reply.error || "spawn failed"}`);
   }
   return { attempted: true, launched, errors };
@@ -508,7 +597,10 @@ function renderAutoDispatch(dispatch: AutoDispatchResult | null): string {
   const lines = ["\n## emb-agent Automatic Subagent Dispatch"];
   if (dispatch.launched.length) {
     lines.push("Launched read-only Tintinweb Agent subagents before broad firmware work:");
-    for (const item of dispatch.launched) lines.push(`- ${item.type}${item.id ? ` (${item.id})` : ""}: ${item.description}`);
+    for (const item of dispatch.launched) {
+      const model = item.model && item.model !== "inherit" ? ` model=${item.model}${item.thinking ? `:${item.thinking}` : ""}` : " model=inherit";
+      lines.push(`- ${item.type}${item.id ? ` (${item.id})` : ""}: ${item.description}${model}${item.fallback ? " fallback=true" : ""}`);
+    }
   }
   if (dispatch.errors.length) {
     lines.push("Subagent dispatch warnings:");

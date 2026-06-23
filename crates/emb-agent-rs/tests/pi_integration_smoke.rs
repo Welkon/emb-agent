@@ -36,6 +36,9 @@ fn pi_extension_exposes_unified_tool_layer() {
         "npm:@tintinweb/pi-subagents",
         "LEGACY_SUBAGENTS_PACKAGE",
         "autoDispatchSubagents",
+        "DEFAULT_AUTO_AGENT_MODEL_ROUTES",
+        "subagentModelRoutes",
+        "inherit-model fallback",
         "tool_call",
     ] {
         assert!(ext.contains(expected), "Pi extension missing {expected}");
@@ -51,19 +54,31 @@ fn pi_extension_exposes_unified_tool_layer() {
 #[test]
 fn pi_settings_are_safe_by_default() {
     let settings = read_repo("runtime/scaffolds/shells/.pi/settings.json");
-    assert!(settings.contains("npm:@tintinweb/pi-subagents"));
-    assert!(!settings.contains("npm:pi-subagents"));
-    for forbidden in [
-        "custom/gpt-5.5",
-        "claude/claude-opus-4-8",
-        "deepseek/deepseek-v4-pro",
-        "deepseek/deepseek-v4-flash",
-    ] {
-        assert!(
-            !settings.contains(forbidden),
-            "Pi settings must not force model alias {forbidden}"
-        );
-    }
+    let value: serde_json::Value = serde_json::from_str(&settings).expect("settings json");
+    let packages = value["packages"].as_array().expect("packages array");
+    assert!(packages.iter().any(|p| p == "npm:@tintinweb/pi-subagents"));
+    assert!(!packages.iter().any(|p| p == "npm:pi-subagents"));
+    assert!(value["embAgent"]["subagentModelRoutes"].is_object());
+    assert_eq!(
+        value["embAgent"]["subagentModelRoutes"]["sys-reviewer"]["model"],
+        "deepseek/deepseek-v4-pro"
+    );
+    assert_eq!(
+        value["embAgent"]["subagentModelRoutes"]["hw-scout"]["model"],
+        "deepseek/deepseek-v4-flash"
+    );
+    assert_eq!(
+        value["embAgent"]["subagentModelRoutes"]["fw-doer"]["model"],
+        "custom/gpt-5.5"
+    );
+    assert!(
+        !settings.contains("claude/claude-opus-4-8"),
+        "Pi settings must not force unavailable stale Claude aliases"
+    );
+    assert!(
+        value.get("subagents").is_none(),
+        "Tintinweb routing should use embAgent.subagentModelRoutes, not legacy subagents.agentOverrides"
+    );
 }
 
 #[test]

@@ -70,7 +70,7 @@ Pi 通过 `npm:@tintinweb/pi-subagents` 提供 Claude Code 风格 `Agent` 工具
 - `arch-reviewer` / `sys-reviewer` / `release-checker`：审查，默认不写项目文件
 - `onboard`：初始化/迁移，允许 `edit/write`
 
-emb-agent 不强制非标准模型别名；模型路由由 Tintinweb Agent frontmatter、Pi 当前模型或用户的 Pi settings 管理。
+emb-agent 会在 `.pi/settings.json` 的 `embAgent.subagentModelRoutes` 中写入可编辑的默认模型路由；用户可以按项目覆盖。生成 `.pi/agents/*.md` 和自动 `subagents:rpc:spawn` 时都会使用这些路由；如果指定模型不可用，自动 spawn 会不带模型重试并继承主会话模型。
 
 ## 设置合并
 
@@ -79,7 +79,31 @@ emb-agent 不强制非标准模型别名；模型路由由 Tintinweb Agent front
 - 保留已有 packages 和其它 Pi 设置
 - 确保 `npm:@tintinweb/pi-subagents` 存在
 - 移除旧的 `npm:pi-subagents`，避免两套 subagent 工具同时暴露
-- 不默认写入 `custom/gpt-5.5`、`claude/claude-opus-4-8`、`deepseek/deepseek-v4-*` 等可能不可用的模型别名
+- 合并 `embAgent.subagentModelRoutes` 默认值，同时保留用户覆盖
+- 不写入旧 `subagents.agentOverrides`；Tintinweb Agent 读取 `.pi/agents/*.md` frontmatter 和 RPC spawn 参数
+
+## 子 agent 模型路由
+
+用户可编辑 `.pi/settings.json`：
+
+```json
+{
+  "embAgent": {
+    "subagentModelRoutes": {
+      "hw-scout": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
+      "arch-reviewer": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
+      "sys-reviewer": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
+      "fw-doer": { "model": "custom/gpt-5.5", "thinking": "xhigh" }
+    }
+  }
+}
+```
+
+把某个 agent 设为继承主会话模型：
+
+```json
+{ "embAgent": { "subagentModelRoutes": { "hw-scout": "inherit" } } }
+```
 
 ## 排查
 
