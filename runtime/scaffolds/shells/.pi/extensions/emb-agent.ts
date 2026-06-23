@@ -298,6 +298,10 @@ function renderIngestLines(result: EmbAgentResult): string[] {
   return lines;
 }
 
+function yamlScalar(value: unknown): string {
+  return JSON.stringify(String(value ?? ""));
+}
+
 function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): string {
   const parts: string[] = [];
   const notice = updateNotice(update || null);
@@ -385,9 +389,9 @@ async function syncEmbAgentsToPi(cwd: string) {
     const promptMode = WRITE_CAPABLE_AGENTS.has(name) ? "append" : "replace";
 
     const route = routes[name] || { model: "inherit", thinking: "high" };
-    const modelLine = route.model ? `\nmodel: ${route.model}` : "";
-    const thinkingLine = route.thinking ? `\nthinking: ${route.thinking}` : "";
-    const out = `---\nname: ${name}\ndescription: ${desc}\ntools: ${[...piTools].join(", ")}\nextensions: false\nskills: false${modelLine}${thinkingLine}\nmax_turns: ${maxTurns}\nprompt_mode: ${promptMode}${runInBackground}\n---\n\n${body}`;
+    const modelLine = route.model ? `\nmodel: ${yamlScalar(route.model)}` : "";
+    const thinkingLine = route.thinking ? `\nthinking: ${yamlScalar(route.thinking)}` : "";
+    const out = `---\nname: ${yamlScalar(name)}\ndescription: ${yamlScalar(desc)}\ntools: ${yamlScalar([...piTools].join(", "))}\nextensions: false\nskills: false${modelLine}${thinkingLine}\nmax_turns: ${maxTurns}\nprompt_mode: ${yamlScalar(promptMode)}${runInBackground}\n---\n\n${body}`;
     await writeFile(join(piAgentsDir, file), out, "utf-8");
   }
 }

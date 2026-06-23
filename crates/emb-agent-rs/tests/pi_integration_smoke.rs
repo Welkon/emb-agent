@@ -38,6 +38,8 @@ fn pi_extension_exposes_unified_tool_layer() {
         "autoDispatchSubagents",
         "DEFAULT_AUTO_AGENT_MODEL_ROUTES",
         "subagentModelRoutes",
+        "yamlScalar",
+        "description: ${yamlScalar(desc)}",
         "inherit-model fallback",
         "tool_call",
     ] {
