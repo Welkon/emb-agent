@@ -55,6 +55,7 @@ fn pi_extension_exposes_unified_tool_layer() {
         "at most 1200 characters",
         "event.toolName === \"get_subagent_result\"",
         "Hidden subagent results will be injected automatically",
+        "triggerTurn: false",
         "spawn reply timed out; not retrying",
         "Parent agent must not continue inline file/code exploration now",
         "tool_call",

@@ -470,6 +470,10 @@ async function patchTintinwebSubagentNotifications(cwd: string) {
       /resultPreview: record\.result\s*\? record\.result\.length > resultMaxLen\s*\? record\.result\.slice\(0, resultMaxLen\) \+ "…"\s*:\s*record\.result\s*:\s*"No output\."/m,
       "resultPreview: record.outputFile ? `Result saved to ${record.outputFile}.` : \"Result saved.\"",
     ],
+    [
+      /\}, \{ deliverAs: "followUp", triggerTurn: true \}\);/g,
+      "}, { deliverAs: \"followUp\", triggerTurn: false });",
+    ],
   ];
   for (const root of roots) {
     for (const rel of [join("src", "index.ts"), join("dist", "index.js")]) {
