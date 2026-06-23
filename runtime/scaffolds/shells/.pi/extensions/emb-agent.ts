@@ -345,6 +345,7 @@ const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer"
 const DEFAULT_BACKGROUND_AGENT_NAMES = new Set(["hw-scout", "arch-reviewer", "sys-reviewer"]);
 const PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS = 180_000;
 const PARENT_BLOCKED_TOOLS = new Set(["read", "bash", "write", "edit", "grep", "find", "ls", "emb_next", "doc_lookup", "doc_fetch"]);
+const EMB_AUTO_DISPATCH_MARKER = "[emb-agent:auto-subagents-dispatched]";
 
 const DEFAULT_AUTO_AGENT_MODEL_ROUTES: Record<string, ModelRoute> = {
   "hw-scout": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
@@ -518,6 +519,7 @@ function isPrdExploration(result: EmbAgentResult): boolean {
 }
 
 function shouldAutoDispatchSubagents(prompt: string, result: EmbAgentResult): boolean {
+  if (String(prompt || "").includes(EMB_AUTO_DISPATCH_MARKER)) return false;
   const policy = result.delegation_policy || result.agent_protocol?.gate?.delegation_policy;
   if (!policy?.applies_when_host_exposes_subagent_tool) return false;
   if (!promptLooksBroadFirmwareWork(prompt)) return false;
@@ -622,6 +624,10 @@ async function autoDispatchSubagents(pi: ExtensionAPI, cwd: string, userPrompt: 
     else errors.push(`${type}: ${reply.error || "spawn failed"}`);
   }
   return { attempted: true, launched, errors, mayHavePendingSpawns };
+}
+
+function shouldPauseParent(dispatch: AutoDispatchResult | null): boolean {
+  return Boolean(dispatch?.attempted && ((dispatch.launched?.length || 0) > 0 || dispatch.mayHavePendingSpawns));
 }
 
 function renderAutoDispatch(dispatch: AutoDispatchResult | null): string {
@@ -820,6 +826,30 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify?.(`emb-agent Pi setup warning: ${error?.message || error}`, "warning");
     }
     await onSessionEnter(ctx);
+  });
+
+  pi.on("input", async (event, ctx) => {
+    if ((event as any).source === "extension") return { action: "continue" };
+    const text = String((event as any).text || "");
+    if (!promptLooksBroadFirmwareWork(text) || text.includes(EMB_AUTO_DISPATCH_MARKER)) return { action: "continue" };
+    const context = await prepareEmbContext(ctx.cwd);
+    if (!context?.result || !shouldAutoDispatchSubagents(text, context.result)) return { action: "continue" };
+    const dispatch = await autoDispatchSubagents(pi, ctx.cwd, text, context.result);
+    const dispatchText = renderAutoDispatch(dispatch);
+    if (!shouldPauseParent(dispatch)) return { action: "continue" };
+    dispatchGuards.set(ctx.cwd, {
+      until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
+      reason: "emb-agent auto-dispatched read-only subagents for this broad firmware/framework request. The parent agent must pause inline exploration and wait for Agent results before reading files, running shell commands, or editing.",
+    });
+    return {
+      action: "transform",
+      text:
+        `${EMB_AUTO_DISPATCH_MARKER}\n` +
+        `${text}\n\n` +
+        `${dispatchText}\n\n` +
+        `Important: Do not call read, bash, grep, find, doc_lookup, doc_fetch, edit, or write in this turn. ` +
+        `Do not continue inline system-framework exploration. Respond briefly in Chinese that emb-agent has started read-only subagents and will wait for their Agent notifications/results before giving the architecture整理建议.`,
+    };
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
