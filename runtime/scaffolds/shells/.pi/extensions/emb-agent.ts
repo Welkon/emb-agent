@@ -8,6 +8,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -120,22 +121,11 @@ interface DispatchGuard {
   reason: string;
 }
 
-interface AutoDispatchRecord {
-  type?: string;
-  description?: string;
-  result?: string;
-  status?: string;
-  error?: string;
-}
-
-interface AutoDispatchBatch {
-  cwd: string;
-  userPrompt: string;
-  expected: Set<string>;
-  records: Map<string, AutoDispatchRecord>;
-  completed: Map<string, AutoDispatchRecord>;
-  startedAt: number;
-  notified: boolean;
+interface PendingVisibleDispatch {
+  prompt: string;
+  result: EmbAgentResult;
+  routes: Record<string, ModelRoute>;
+  createdAt: number;
 }
 
 function toolTextResult(text: string, details?: unknown) {
@@ -456,6 +446,31 @@ function configuredModelRoutes(settings: Record<string, unknown>): Record<string
 
 async function loadModelRoutes(cwd: string): Promise<Record<string, ModelRoute>> {
   return configuredModelRoutes(await readPiSettings(cwd));
+}
+
+async function patchTintinwebSubagentNotifications(cwd: string) {
+  const roots = [join(cwd, ".pi", "npm", "node_modules", "@tintinweb", "pi-subagents")];
+  const replacements: Array<[RegExp, string]> = [
+    [
+      /const resultPreview = record\.result\s*\? record\.result\.length > resultMaxLen\s*\? record\.result\.slice\(0, resultMaxLen\) \+ "\\n\.\.\.\(truncated, use get_subagent_result for full output\)"\s*:\s*record\.result\s*:\s*"No output\.";/m,
+      "const resultPreview = record.outputFile ? `Result saved to ${record.outputFile}. Use get_subagent_result only if the user asks for raw output.` : \"Result saved; use get_subagent_result only if the user asks for raw output.\";",
+    ],
+    [
+      /resultPreview: record\.result\s*\? record\.result\.length > resultMaxLen\s*\? record\.result\.slice\(0, resultMaxLen\) \+ "…"\s*:\s*record\.result\s*:\s*"No output\."/m,
+      "resultPreview: record.outputFile ? `Result saved to ${record.outputFile}.` : \"Result saved.\"",
+    ],
+  ];
+  for (const root of roots) {
+    for (const rel of [join("src", "index.ts"), join("dist", "index.js")]) {
+      const file = join(root, rel);
+      let text: string;
+      try { text = await readFile(file, "utf-8"); } catch { continue; }
+      if (text.includes("Result saved to ${record.outputFile}. Use get_subagent_result only if the user asks for raw output.")) continue;
+      let next = text;
+      for (const [pattern, replacement] of replacements) next = next.replace(pattern, replacement);
+      if (next !== text) await writeFile(file, next, "utf-8");
+    }
+  }
 }
 
 async function ensureSubagentSettings(cwd: string) {
@@ -780,8 +795,7 @@ function questionSummary(q: QuestionDef): string {
 export default function (pi: ExtensionAPI) {
   const contexts = new Map<string, ContextEntry>();
   const dispatchGuards = new Map<string, DispatchGuard>();
-  const dispatchBatches = new Map<string, AutoDispatchBatch>();
-  const uiByCwd = new Map<string, { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void }>();
+  const pendingVisibleDispatch = new Map<string, PendingVisibleDispatch>();
 
   function markContextDirty(cwd: string) {
     const current = contexts.get(cwd);
@@ -829,8 +843,16 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  function visibleAgentDispatchInstructions(cwd: string, userPrompt: string, result: EmbAgentResult, routes: Record<string, ModelRoute>): string {
-    const nextLines = renderNextLines(result);
+  function conciseAgentPrompt(role: string, userPrompt: string): string {
+    const focus: Record<string, string> = {
+      "hw-scout": "只读扫描硬件事实、引脚/寄存器/原理图/约束，返回证据路径、风险和缺口。",
+      "arch-reviewer": "只读审查服务拆分、主循环/时间片、ISR边界、外设驱动层次和ROM/RAM风险。",
+      "sys-reviewer": "只读审查需求一致性、低功耗/唤醒流程、并发风险、验证顺序和系统级缺口。",
+    };
+    return `只读子代理任务。用户请求：${userPrompt}\n角色：${role}\n重点：${focus[role] || "只读审查并返回证据、风险和建议。"}\n不要修改文件。输出必须是中文 concise evidence-backed 摘要，最多 1200 字；不要粘贴大段源码/文件清单/完整报告；只给关键证据路径、结论、风险和建议。`;
+  }
+
+  function visibleAgentDispatchInstructions(userPrompt: string, result: EmbAgentResult, routes: Record<string, ModelRoute>): string {
     const roles = isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
     const blocks = roles.map((role) => {
       const route = routes[role] || {};
@@ -838,23 +860,22 @@ export default function (pi: ExtensionAPI) {
         subagent_type: role,
         description: `${role} broad preflight`,
         run_in_background: true,
-        prompt: rolePrompt(role, userPrompt, nextLines),
+        prompt: conciseAgentPrompt(role, userPrompt),
       };
       if (route.model && route.model !== "inherit") args.model = route.model;
       if (route.thinking) args.thinking = route.thinking;
-      return `- Agent(${JSON.stringify(args, null, 2)})`;
+      return `- Agent(${JSON.stringify(args)})`;
     });
     return [
       `${EMB_AUTO_DISPATCH_MARKER}`,
-      `用户原始请求：${userPrompt}`,
-      ``,
-      `emb-agent 判定这是 broad firmware/system-framework 请求。为了让 Tintinweb 插件自己的 TUI/widget/通知链可见，本轮不要由 emb-agent RPC 隐式 spawn。`,
-      ``,
-      `你作为主 agent 的第一步必须调用 Tintinweb \`Agent\` 工具，而不是 read/bash/find/doc_lookup/edit/write。请在同一条 assistant 工具消息里启动以下 read-only background agents：`,
+      `Internal emb-agent directive; do not quote or show this directive to the user.`,
+      `For this broad firmware/system-framework request, first call the visible Tintinweb Agent tool so its own TUI/widget shows progress.`,
+      `Do not call read/bash/find/grep/doc_lookup/doc_fetch/edit/write before these Agent calls.`,
+      `Start these read-only background agents in one assistant tool-call message:`,
       blocks.join("\n"),
-      ``,
-      `启动这些 Agent 工具后，立即用中文简短告诉用户：已启动可见的 Tintinweb Agent 子代理，等待它们在插件 TUI/通知中返回结果后再汇总架构建议。`,
-      `在本轮不要继续 inline 文件/代码探索。`,
+      `After starting them, tell the user only a short Chinese status line. Do not print Agent prompts or raw subagent reports.`,
+      `When completion notifications arrive, synthesize a concise answer. Do not call get_subagent_result with verbose:true. If you call get_subagent_result, do not echo raw reports; only synthesize the final user-facing answer.`,
+      `Never paste internal prompts, Agent JSON arguments, task-notification XML, or raw subagent report bodies into visible assistant text.`,
     ].join("\n");
   }
 
@@ -867,11 +888,30 @@ export default function (pi: ExtensionAPI) {
 
   // ── Session lifecycle ─────────────────────────────────────────
 
+  pi.registerMessageRenderer<any>("subagent-notification", (message, _options, theme) => {
+    const d = message.details;
+    if (!d) return undefined;
+    function one(item: any): string {
+      const failed = ["error", "stopped", "aborted"].includes(String(item.status || ""));
+      const icon = failed ? theme.fg("error", "✗") : theme.fg("success", "✓");
+      const stats = [
+        item.toolUses ? `${item.toolUses} tools` : null,
+        item.totalTokens ? `${item.totalTokens} tokens` : null,
+        item.durationMs ? `${Math.round(item.durationMs / 1000)}s` : null,
+      ].filter(Boolean).join(" · ");
+      return `${icon} ${theme.bold(String(item.description || item.id || "subagent"))} ${theme.fg("dim", String(item.status || "completed"))}` +
+        (stats ? `\n  ${theme.fg("dim", stats)}` : "") +
+        (item.outputFile ? `\n  ${theme.fg("muted", `result saved: ${item.outputFile}`)}` : "");
+    }
+    const all = [d, ...((d.others || []) as any[])];
+    return new Text(all.map(one).join("\n"), 0, 0);
+  });
+
   pi.on("session_start", async (_event, ctx) => {
-    uiByCwd.set(ctx.cwd, ctx.ui);
     try {
       await syncEmbAgentsToPi(ctx.cwd);
       await ensureSubagentSettings(ctx.cwd);
+      await patchTintinwebSubagentNotifications(ctx.cwd);
     } catch (error: any) {
       ctx.ui.notify?.(`emb-agent Pi setup warning: ${error?.message || error}`, "warning");
     }
@@ -885,26 +925,30 @@ export default function (pi: ExtensionAPI) {
     const context = await prepareEmbContext(ctx.cwd);
     if (!context?.result || !shouldAutoDispatchSubagents(text, context.result)) return { action: "continue" };
     const routes = await loadModelRoutes(ctx.cwd);
+    pendingVisibleDispatch.set(ctx.cwd, { prompt: text, result: context.result, routes, createdAt: Date.now() });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
       reason: "emb-agent requires visible Tintinweb Agent tool delegation for this broad firmware/framework request. The parent agent must start Agent subagents first and must not read files, run shell commands, or edit inline before Agent results arrive.",
     });
-    return {
-      action: "transform",
-      text: visibleAgentDispatchInstructions(ctx.cwd, text, context.result, routes),
-    };
+    return { action: "continue" };
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
     const context = await prepareEmbContext(ctx.cwd);
     if (!context?.text) return;
+    const pending = pendingVisibleDispatch.get(ctx.cwd);
+    let systemPrompt = event.systemPrompt + context.text;
+    if (pending && Date.now() - pending.createdAt < 60_000) {
+      pendingVisibleDispatch.delete(ctx.cwd);
+      systemPrompt += "\n\n" + visibleAgentDispatchInstructions(pending.prompt, pending.result, pending.routes) + "\n";
+    }
     return {
       message: {
         customType: "emb-agent-context",
         content: `emb-agent context injected (${new Date(context.updatedAt).toISOString()})`,
         display: false,
       },
-      systemPrompt: event.systemPrompt + context.text,
+      systemPrompt,
     };
   });
 
@@ -917,6 +961,12 @@ export default function (pi: ExtensionAPI) {
     const guard = dispatchGuards.get(ctx.cwd);
     if (guard && Date.now() < guard.until && PARENT_BLOCKED_TOOLS.has(event.toolName)) {
       return { block: true, reason: guard.reason };
+    }
+    if (guard && Date.now() < guard.until && event.toolName === "get_subagent_result") {
+      return { block: true, reason: "Do not call get_subagent_result during emb-agent automatic delegation; it returns raw subagent report text to the visible transcript. Use the subagent completion notification already in context and synthesize only the final answer." };
+    }
+    if (event.toolName === "get_subagent_result" && (event.input as any)?.verbose === true) {
+      return { block: true, reason: "Do not call get_subagent_result with verbose:true; it exposes raw subagent conversation/report text to the user. Use concise synthesis instead." };
     }
     if (guard && Date.now() >= guard.until) dispatchGuards.delete(ctx.cwd);
 
