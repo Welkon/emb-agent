@@ -119,6 +119,7 @@ interface AutoDispatchResult {
 interface DispatchGuard {
   until: number;
   reason: string;
+  phase: "waiting" | "results-injected";
 }
 
 interface PendingVisibleDispatch {
@@ -363,6 +364,7 @@ const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "onboard"]);
 const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"]);
 const DEFAULT_BACKGROUND_AGENT_NAMES = new Set(["hw-scout", "arch-reviewer", "sys-reviewer"]);
 const PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS = 180_000;
+const RAW_SUBAGENT_OUTPUT_GUARD_MS = 60_000;
 const PARENT_BLOCKED_TOOLS = new Set(["read", "bash", "write", "edit", "grep", "find", "ls", "emb_next", "doc_lookup", "doc_fetch"]);
 const EMB_AUTO_DISPATCH_MARKER = "[emb-agent:visible-agent-dispatch-required]";
 
@@ -950,6 +952,12 @@ export default function (pi: ExtensionAPI) {
     if (batch.finalSent) return;
     if (batch.completedByType.size < batch.expectedTypes.size) return;
     batch.finalSent = true;
+    const guard = dispatchGuards.get(batch.cwd);
+    if (guard) {
+      guard.phase = "results-injected";
+      guard.until = Date.now() + RAW_SUBAGENT_OUTPUT_GUARD_MS;
+      guard.reason = "emb-agent subagent results have been injected as hidden context. Do not retrieve raw subagent output; synthesize the final answer or continue normal workflow commands.";
+    }
     const sections: string[] = [];
     for (const role of batch.expectedTypes) {
       const item = batch.completedByType.get(role);
@@ -1011,7 +1019,8 @@ export default function (pi: ExtensionAPI) {
     });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
-      reason: "emb-agent visible Tintinweb Agent delegation is active for this broad firmware/framework request. The parent agent must not read files, run shell commands, edit, or retrieve raw subagent output; wait for hidden subagent results and synthesize the final answer."
+      reason: "emb-agent visible Tintinweb Agent delegation is active for this broad firmware/framework request. The parent agent must not read files, run shell commands, edit, or retrieve raw subagent output; wait for hidden subagent results and synthesize the final answer.",
+      phase: "waiting"
     });
     return { action: "continue" };
   });
@@ -1042,11 +1051,19 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("tool_call", async (event, ctx) => {
     const guard = dispatchGuards.get(ctx.cwd);
-    if (guard && Date.now() < guard.until && PARENT_BLOCKED_TOOLS.has(event.toolName)) {
+    if (guard && Date.now() < guard.until && guard.phase === "waiting" && PARENT_BLOCKED_TOOLS.has(event.toolName)) {
       return { block: true, reason: guard.reason };
     }
     if (guard && Date.now() < guard.until && event.toolName === "get_subagent_result") {
-      return { block: true, reason: "Do not call get_subagent_result during emb-agent automatic delegation; it returns raw subagent report text to the visible transcript. Hidden subagent results will be injected automatically; synthesize only the final answer." };
+      return { block: true, reason: guard.phase === "waiting"
+        ? "Do not call get_subagent_result during emb-agent automatic delegation; it returns raw subagent report text to the visible transcript. Hidden subagent results will be injected automatically; synthesize only the final answer."
+        : "Do not call get_subagent_result for completed emb-agent automatic delegation; results were injected as hidden context and raw reports should not be shown in the transcript." };
+    }
+    if (guard && Date.now() < guard.until && guard.phase === "results-injected" && event.toolName === "read" && String((event.input as any)?.path || "").includes("/pi-subagents-")) {
+      return { block: true, reason: "Do not read raw subagent output files into the visible transcript; use the hidden injected results." };
+    }
+    if (guard && Date.now() < guard.until && guard.phase === "results-injected" && event.toolName === "bash" && String((event.input as any)?.command || "").includes("pi-subagents-")) {
+      return { block: true, reason: "Do not cat/read raw subagent output files into the visible transcript; use the hidden injected results." };
     }
     if (event.toolName === "get_subagent_result" && (event.input as any)?.verbose === true) {
       return { block: true, reason: "Do not call get_subagent_result with verbose:true; it exposes raw subagent conversation/report text to the user. Use concise synthesis instead." };
