@@ -1015,6 +1015,8 @@ function renderShellCommandShim(projectRoot, host, command) {
 		"",
 		"- Treat stdout as AI routing context, not as user-facing transcript.",
 		"- Follow `agent_protocol.gate` allowed and forbidden actions exactly.",
+		"- Follow `delegation_policy`: for broad firmware work (system framework, multi-peripheral, power/sleep/watchdog/LVD/config bits, toolchain/SDK integration, or implementation plus review), list available subagents first and delegate scouts/reviewers or focused workers when the host exposes them.",
+		"- During PRD exploration, use subagents only for read-only evidence scouting/review; implementation workers wait for an active concrete task.",
 		"- Do not ask the user to run emb-agent manually when this command can run it.",
 	];
 	if (language) lines.push("- " + language);
@@ -1041,6 +1043,7 @@ function renderCodexSkillShim(projectRoot, host, command) {
 		"```",
 		"",
 		"Treat stdout as AI routing context and follow `agent_protocol.gate` exactly.",
+		"Follow `delegation_policy`: for broad firmware work, list available subagents first and delegate scouts/reviewers or focused workers when the host exposes them. During PRD exploration, delegate only read-only evidence scouting/review.",
 	];
 	if (language) lines.push(language);
 	return lines.join("\n") + "\n";

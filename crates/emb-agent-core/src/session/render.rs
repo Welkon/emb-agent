@@ -78,6 +78,33 @@ fn work_selection_instructions() -> &'static str {
     "Present `task_candidates` as existing-task or child-PRD work options, and classify the desired path as bug, feature, board-bringup, power, timing, or toolchain. Use a durable agent brief and a vertical tracer-bullet slice when the work is multi-step, cross-cutting, or likely to need resume/handoff. For a narrow explanation, structure walkthrough, evidence lookup, one-off verification run, or small scoped fix, direct bounded execution is allowed without creating or activating a task once the scope and verification surface are explicit. If the user says they do not understand the current service split or time-slice flow, explain the existing structure and tradeoffs before proposing refactors."
 }
 
+fn subagent_delegation_policy(action: &str) -> Value {
+    let required_before_broad_work = matches!(
+        action,
+        "do" | "prd-breakdown" | "choose-work" | "task-or-direct"
+    );
+    json!({
+        "applies_when_host_exposes_subagent_tool": true,
+        "required_before_broad_work": required_before_broad_work,
+        "broad_work_triggers": [
+            "system_framework_or_scheduler_design",
+            "multiple_peripherals_or_power_domains",
+            "sleep_wake_watchdog_lvd_or_config_bit_risk",
+            "toolchain_migration_or_sdk_library_integration",
+            "implementation_plus_independent_review",
+            "large_context_recon_before_editing"
+        ],
+        "first_step": "list_available_subagents_before_broad_execution",
+        "recommended_roles": [
+            "hardware/register evidence scout",
+            "context/planning scout",
+            "focused implementation worker",
+            "architecture/system reviewer"
+        ],
+        "prd_exploration_scope": "read-only evidence scouts and reviewers are allowed during PRD exploration; implementation workers wait until a concrete task is active"
+    })
+}
+
 fn clarify_state_machine_checklist(snapshot: &ProjectSnapshot) -> Vec<&'static str> {
     let mut checklist = vec![
         "boot_state",
@@ -240,6 +267,7 @@ You are the user's embedded development assistant. Start with onboarding, not im
         "Routing gate — before implementation or broad file exploration:".to_string(),
         "Run the current host's emb-next entry (for example `/emb-next`, `$emb-next`, or the installed runtime command `node .<host>/emb-agent/bin/emb-agent.cjs next --brief`) and follow `agent_protocol.gate` exactly.".to_string(),
         "Do not manually explore files or decide next steps on your own until you have that routing recommendation.".to_string(),
+        "Subagent policy: if the host exposes a subagent/delegation tool and the work spans system framework design, multiple peripherals, power/sleep/watchdog/LVD/config-bit risk, toolchain migration, SDK/library integration, or implementation plus review, list available subagents first and dispatch read-only scouts/reviewers or focused workers instead of doing the whole job inline. During PRD exploration, read-only evidence scouts are allowed; implementation workers wait for an active concrete task.".to_string(),
         "When the user explicitly asks what a service split, scheduler path, or time-slice call chain means, treat explanation-first as a valid direct route; do not force task creation just to answer that question.".to_string(),
         String::new(),
         "Rules:".to_string(),
@@ -497,6 +525,7 @@ pub fn build_next_json_with_tasks_and_policy(
         },
         "instructions": instructions,
         "agent_protocol": agent_protocol,
+        "delegation_policy": subagent_delegation_policy(&action),
         "requirements_unknown_count": snapshot.requirements_unknown_count,
         "hardware_unknown_count": snapshot.hardware_unknown_count,
         "truth_validation_errors": snapshot.truth_validation_errors,
@@ -575,6 +604,7 @@ fn build_next_agent_protocol_with_policy(
                 "kind": "prd-exploration",
                 "blocking": true,
                 "method": "grill-with-docs",
+                "delegation_policy": subagent_delegation_policy(action),
                 "document_evidence_policy": {
                     "hardware_first": hardware_docs_pending,
                     "evidence_files": snapshot.hardware_evidence_files,
@@ -587,8 +617,8 @@ fn build_next_agent_protocol_with_policy(
                     "fallback": "Use MinerU only when local conversion is missing, low-quality, image-heavy, or explicitly requested."
                 },
                 "state_machine_checklist": checklist,
-                "allowed_actions": ["scan_docs_for_hardware_evidence", "ingest_schematic", "ingest_datasheet_or_manual", "read_cached_schematic_and_manual_artifacts", "record_unconfirmed_hardware_conflicts", "brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "trigger_task_add_after_user_confirms_concrete_deliverable_or_bug", "draft_agent_brief_from_confirmed_scope", "activate_task_after_agent_brief_ready", "extract_and_record_exact_timing_percent_times_from_captures", "verify_watchdog_and_sleep_policy", "verify_config_bit_dependencies", "record_current_measurement_acceptance"],
-                "forbidden_actions": ["skip_existing_docs_before_question_when_hardware_first", "create_implementation_task_without_confirmed_scope", "start_implementation", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params", "assume_watchdog_behavior_without_config_truth", "assume_sleep_current_without_shutdown_plan"],
+                "allowed_actions": ["scan_docs_for_hardware_evidence", "ingest_schematic", "ingest_datasheet_or_manual", "read_cached_schematic_and_manual_artifacts", "delegate_read_only_hardware_evidence_scout", "delegate_read_only_toolchain_or_sdk_feasibility_scout", "delegate_read_only_architecture_reviewer", "record_unconfirmed_hardware_conflicts", "brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "trigger_task_add_after_user_confirms_concrete_deliverable_or_bug", "draft_agent_brief_from_confirmed_scope", "activate_task_after_agent_brief_ready", "extract_and_record_exact_timing_percent_times_from_captures", "verify_watchdog_and_sleep_policy", "verify_config_bit_dependencies", "record_current_measurement_acceptance"],
+                "forbidden_actions": ["skip_existing_docs_before_question_when_hardware_first", "create_implementation_task_without_confirmed_scope", "start_implementation", "delegate_implementation_worker_before_confirmed_scope", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params", "assume_watchdog_behavior_without_config_truth", "assume_sleep_current_without_shutdown_plan"],
                 "recommended_command": "/emb-next"
             }
         })
@@ -634,12 +664,13 @@ fn build_next_agent_protocol_with_policy(
                 "kind": "work-selection",
                 "blocking": true,
                 "method": "triage-brief-slice-or-direct-bounded-work",
+                "delegation_policy": subagent_delegation_policy(action),
                 "categories": ["bug", "feature", "board-bringup", "power", "timing", "toolchain"],
                 "triage_states": ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"],
                 "required_brief_fields": ["current_behavior", "desired_behavior", "hardware_facts", "firmware_interfaces", "acceptance_criteria", "out_of_scope", "required_verification"],
                 "slice_rule": "Use vertical tracer-bullet slices: each slice must deliver one narrow but complete observable path across firmware, hardware truth, docs, and verification surfaces.",
                 "direct_work_allowed_for": ["design_explanation", "explanation_only", "narrow_read_only_analysis", "one_off_verification_run", "small_scoped_fix"],
-                "allowed_actions": ["present_existing_task_candidates", "present_child_prd_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear", "create_task_from_selected_child_prd", "explain_existing_structure_before_refactor", "walk_service_and_time_slice_flow", "perform_direct_bounded_analysis_without_task", "perform_direct_bounded_fix_without_task", "run_one_off_verification_without_task"],
+                "allowed_actions": ["present_existing_task_candidates", "present_child_prd_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "list_available_subagents_before_broad_execution", "delegate_read_only_recon_or_review", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear", "create_task_from_selected_child_prd", "explain_existing_structure_before_refactor", "walk_service_and_time_slice_flow", "perform_direct_bounded_analysis_without_task", "perform_direct_bounded_fix_without_task", "run_one_off_verification_without_task"],
                 "forbidden_actions": ["force_existing_task_activation", "ask_user_to_run_task_list", "ask_user_to_run_task_activate", "invent_task_name", "start_broad_or_multi_area_implementation_without_selected_or_created_ready_task", "run_shell_command_for_emb_slash_command", "create_horizontal_layer_tasks", "ignore_child_prd_candidates"],
             }
         })
@@ -651,9 +682,10 @@ fn build_next_agent_protocol_with_policy(
                 "kind": "task-or-direct-intake",
                 "blocking": false,
                 "method": "classify-then-direct-or-durable",
+                "delegation_policy": subagent_delegation_policy(action),
                 "categories": ["bug", "feature", "board-bringup", "power", "timing", "toolchain"],
                 "direct_work_allowed_for": ["design_explanation", "explanation_only", "narrow_read_only_analysis", "one_off_verification_run", "small_scoped_fix"],
-                "allowed_actions": ["classify_work_category", "answer_design_or_structure_question_directly", "walk_service_and_time_slice_flow", "perform_direct_bounded_analysis_without_task", "perform_direct_bounded_fix_without_task", "run_one_off_verification_without_task", "trigger_task_add_after_scope_clear"],
+                "allowed_actions": ["classify_work_category", "answer_design_or_structure_question_directly", "walk_service_and_time_slice_flow", "list_available_subagents_before_broad_execution", "delegate_read_only_recon_or_review", "perform_direct_bounded_analysis_without_task", "perform_direct_bounded_fix_without_task", "run_one_off_verification_without_task", "trigger_task_add_after_scope_clear"],
                 "forbidden_actions": ["force_task_creation_for_explanation", "force_task_creation_for_small_fix", "start_broad_multi_area_implementation_without_agreed_scope"],
                 "recommended_command": "/emb-next"
             }
@@ -665,7 +697,8 @@ fn build_next_agent_protocol_with_policy(
             "gate": {
                 "kind": "task-execution",
                 "blocking": false,
-                "allowed_actions": ["explain_existing_structure_in_task_scope", "walk_time_slice_or_service_call_graph", "refine_brief_in_scope", "implement_within_task_scope", "verify_within_task_scope"],
+                "delegation_policy": subagent_delegation_policy(action),
+                "allowed_actions": ["explain_existing_structure_in_task_scope", "walk_time_slice_or_service_call_graph", "refine_brief_in_scope", "list_available_subagents_before_broad_execution", "delegate_read_only_recon_or_review", "delegate_focused_implementation_worker", "implement_within_task_scope", "verify_within_task_scope"],
                 "preferred_first_step_when_user_signals_confusion": ["explain_existing_structure_in_task_scope", "walk_time_slice_or_service_call_graph", "propose_refactor_only_after_shared_understanding"],
                 "forbidden_actions": ["broad_file_scan_outside_task_scope", "invent_new_cross_project_scope_without_updating_task"]
             }
@@ -710,6 +743,7 @@ fn build_next_agent_protocol_with_policy(
             "gate": {
                 "kind": "prd-breakdown",
                 "blocking": true,
+                "delegation_policy": subagent_delegation_policy(action),
                 "method": "analyze-constraints-validate-official-framework-then-slice",
                 "system_prd_path": "docs/prd/system.md",
                 "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"],
@@ -736,7 +770,7 @@ fn build_next_agent_protocol_with_policy(
                     "6. create P0 framework task PRD under docs/prd/tasks/.",
                     "7. present P2 vertical slice candidates; create only after user confirms."
                 ],
-                "allowed_actions": ["read_system_prd", "read_hardware_truth", "query_graphify_for_architecture", "analyze_constraints", "validate_official_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
+                "allowed_actions": ["read_system_prd", "read_hardware_truth", "query_graphify_for_architecture", "delegate_hardware_or_manual_evidence_scout", "delegate_architecture_or_framework_reviewer", "analyze_constraints", "validate_official_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
                 "forbidden_actions": ["create_any_files_before_user_agreement", "start_functional_implementation_before_framework", "present_functional_slices_before_framework_agreement", "guess_framework_without_analyzing_constraints", "ask_user_to_choose_framework_without_recommendation", "ask_user_for_blank_task_when_system_prd_has_candidates", "present_multiple_default_frameworks_without_exception_evidence", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health"],
             }
         })
@@ -1417,5 +1451,70 @@ mod tests {
         assert!(context.contains("not a bare shell literal"));
         assert!(!context.contains("Trigger the Pi slash command"));
         assert!(!context.contains("pi-coding-agent dist/index.js"));
+    }
+
+    #[test]
+    fn session_context_prompts_subagent_delegation_for_broad_firmware_work() {
+        let context = build_session_context(&sample_snapshot());
+        assert!(context.contains("Subagent policy"));
+        assert!(context.contains("system framework design"));
+        assert!(context.contains("toolchain migration"));
+        assert!(context.contains("read-only evidence scouts are allowed"));
+    }
+
+    #[test]
+    fn next_json_exposes_delegation_policy_for_active_task_execution() {
+        let next: serde_json::Value =
+            serde_json::from_str(&build_next_json(&sample_snapshot())).unwrap();
+        assert_eq!(next["action"], "do");
+        assert_eq!(
+            next["delegation_policy"]["required_before_broad_work"],
+            true
+        );
+        assert!(
+            next["delegation_policy"]["broad_work_triggers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item == "toolchain_migration_or_sdk_library_integration")
+        );
+        assert_eq!(
+            next["agent_protocol"]["gate"]["delegation_policy"]["first_step"],
+            "list_available_subagents_before_broad_execution"
+        );
+        assert!(
+            next["agent_protocol"]["gate"]["allowed_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item == "delegate_focused_implementation_worker")
+        );
+    }
+
+    #[test]
+    fn prd_exploration_allows_read_only_delegation_but_forbids_workers() {
+        let mut snapshot = sample_snapshot();
+        snapshot.recommended_command = "clarify".to_string();
+        let next: serde_json::Value = serde_json::from_str(&build_next_json(&snapshot)).unwrap();
+        let gate = &next["agent_protocol"]["gate"];
+        assert_eq!(gate["kind"], "prd-exploration");
+        assert_eq!(
+            gate["delegation_policy"]["prd_exploration_scope"],
+            "read-only evidence scouts and reviewers are allowed during PRD exploration; implementation workers wait until a concrete task is active"
+        );
+        assert!(
+            gate["allowed_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item == "delegate_read_only_toolchain_or_sdk_feasibility_scout")
+        );
+        assert!(
+            gate["forbidden_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item == "delegate_implementation_worker_before_confirmed_scope")
+        );
     }
 }
