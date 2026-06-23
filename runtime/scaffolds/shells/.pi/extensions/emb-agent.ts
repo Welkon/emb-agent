@@ -1007,7 +1007,7 @@ export default function (pi: ExtensionAPI) {
     });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
-      reason: "emb-agent visible Tintinweb Agent delegation is active for this broad firmware/framework request. The parent agent must not read files, run shell commands, edit, retrieve raw subagent output, or launch extra agents; wait for hidden subagent results and synthesize the final answer."
+      reason: "emb-agent visible Tintinweb Agent delegation is active for this broad firmware/framework request. The parent agent must not read files, run shell commands, edit, or retrieve raw subagent output; wait for hidden subagent results and synthesize the final answer."
     });
     return { action: "continue" };
   });
@@ -1043,9 +1043,6 @@ export default function (pi: ExtensionAPI) {
     }
     if (guard && Date.now() < guard.until && event.toolName === "get_subagent_result") {
       return { block: true, reason: "Do not call get_subagent_result during emb-agent automatic delegation; it returns raw subagent report text to the visible transcript. Hidden subagent results will be injected automatically; synthesize only the final answer." };
-    }
-    if (guard && Date.now() < guard.until && event.toolName === "Agent") {
-      return { block: true, reason: "emb-agent automatic delegation is already running or completed for this request. Do not launch more subagents; wait for hidden results and synthesize the final answer." };
     }
     if (event.toolName === "get_subagent_result" && (event.input as any)?.verbose === true) {
       return { block: true, reason: "Do not call get_subagent_result with verbose:true; it exposes raw subagent conversation/report text to the user. Use concise synthesis instead." };
