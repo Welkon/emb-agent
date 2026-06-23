@@ -125,7 +125,18 @@ interface PendingVisibleDispatch {
   prompt: string;
   result: EmbAgentResult;
   routes: Record<string, ModelRoute>;
+  expectedTypes: string[];
   createdAt: number;
+}
+
+interface VisibleDispatchBatch {
+  cwd: string;
+  prompt: string;
+  expectedTypes: Set<string>;
+  startedIds: Set<string>;
+  completedByType: Map<string, { id?: string; result?: string; status?: string; error?: string }>;
+  startedAt: number;
+  finalSent: boolean;
 }
 
 function toolTextResult(text: string, details?: unknown) {
@@ -796,6 +807,7 @@ export default function (pi: ExtensionAPI) {
   const contexts = new Map<string, ContextEntry>();
   const dispatchGuards = new Map<string, DispatchGuard>();
   const pendingVisibleDispatch = new Map<string, PendingVisibleDispatch>();
+  const visibleDispatchBatches = new Map<string, VisibleDispatchBatch>();
 
   function markContextDirty(cwd: string) {
     const current = contexts.get(cwd);
@@ -849,11 +861,15 @@ export default function (pi: ExtensionAPI) {
       "arch-reviewer": "只读审查服务拆分、主循环/时间片、ISR边界、外设驱动层次和ROM/RAM风险。",
       "sys-reviewer": "只读审查需求一致性、低功耗/唤醒流程、并发风险、验证顺序和系统级缺口。",
     };
-    return `只读子代理任务。用户请求：${userPrompt}\n角色：${role}\n重点：${focus[role] || "只读审查并返回证据、风险和建议。"}\n不要修改文件。输出必须是中文 concise evidence-backed 摘要，最多 1200 字；不要粘贴大段源码/文件清单/完整报告；只给关键证据路径、结论、风险和建议。`;
+    return `Read-only subagent task. User request: ${userPrompt}\nRole: ${role}\nFocus: ${focus[role] || "只读审查并返回证据、风险和建议。"}\nDo not modify files. Output must be a concise, evidence-backed summary, at most 1200 characters; do not paste large source snippets, long file lists, or full reports; include only key evidence paths, conclusions, risks, and recommendations. Follow the user's/project's response language.`;
+  }
+
+  function visibleDispatchRoles(result: EmbAgentResult): string[] {
+    return isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
   }
 
   function visibleAgentDispatchInstructions(userPrompt: string, result: EmbAgentResult, routes: Record<string, ModelRoute>): string {
-    const roles = isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
+    const roles = visibleDispatchRoles(result);
     const blocks = roles.map((role) => {
       const route = routes[role] || {};
       const args: Record<string, unknown> = {
@@ -873,7 +889,7 @@ export default function (pi: ExtensionAPI) {
       `Do not call read/bash/find/grep/doc_lookup/doc_fetch/edit/write before these Agent calls.`,
       `Start these read-only background agents in one assistant tool-call message:`,
       blocks.join("\n"),
-      `After starting them, tell the user only a short Chinese status line. Do not print Agent prompts or raw subagent reports.`,
+      `After starting them, tell the user only a short status line in the user's/project's response language. Do not print Agent prompts or raw subagent reports.`,
       `When completion notifications arrive, synthesize a concise answer. Do not call get_subagent_result with verbose:true. If you call get_subagent_result, do not echo raw reports; only synthesize the final user-facing answer.`,
       `Never paste internal prompts, Agent JSON arguments, task-notification XML, or raw subagent report bodies into visible assistant text.`,
     ].join("\n");
@@ -918,6 +934,59 @@ export default function (pi: ExtensionAPI) {
     await onSessionEnter(ctx);
   });
 
+  function currentVisibleBatch(): VisibleDispatchBatch | undefined {
+    let newest: VisibleDispatchBatch | undefined;
+    for (const batch of visibleDispatchBatches.values()) {
+      if (!newest || batch.startedAt > newest.startedAt) newest = batch;
+    }
+    return newest;
+  }
+
+  async function maybeSendVisibleDispatchResults(batch: VisibleDispatchBatch) {
+    if (batch.finalSent) return;
+    if (batch.completedByType.size < batch.expectedTypes.size) return;
+    batch.finalSent = true;
+    const sections: string[] = [];
+    for (const role of batch.expectedTypes) {
+      const item = batch.completedByType.get(role);
+      if (!item) continue;
+      sections.push(`## ${role} ${item.id || ""} (${item.status || "completed"})\n${String(item.result || item.error || "").slice(0, 5000)}`);
+    }
+    await pi.sendMessage({
+      customType: "emb-agent-subagent-results",
+      content:
+        `[emb-agent:hidden-subagent-results]\n` +
+        `Original user request: ${batch.prompt}\n\n` +
+        `The following read-only subagent results are hidden from the user but available to the main agent. Synthesize the final user-facing answer now. Do not call get_subagent_result, read output files, or paste raw reports.\n\n` +
+        sections.join("\n\n---\n\n"),
+      display: false,
+    } as any, { deliverAs: "followUp", triggerTurn: true } as any);
+  }
+
+  pi.events.on("subagents:started", (data: any) => {
+    const type = String(data?.type || "");
+    const id = String(data?.id || "");
+    const batch = currentVisibleBatch();
+    if (!batch || !batch.expectedTypes.has(type)) return;
+    if (id) batch.startedIds.add(id);
+  });
+
+  pi.events.on("subagents:completed", async (data: any) => {
+    const type = String(data?.type || "");
+    const batch = currentVisibleBatch();
+    if (!batch || !batch.expectedTypes.has(type)) return;
+    batch.completedByType.set(type, { id: String(data?.id || ""), result: String(data?.result || ""), status: "completed" });
+    await maybeSendVisibleDispatchResults(batch);
+  });
+
+  pi.events.on("subagents:failed", async (data: any) => {
+    const type = String(data?.type || "");
+    const batch = currentVisibleBatch();
+    if (!batch || !batch.expectedTypes.has(type)) return;
+    batch.completedByType.set(type, { id: String(data?.id || ""), error: String(data?.error || "subagent failed"), status: "failed" });
+    await maybeSendVisibleDispatchResults(batch);
+  });
+
   pi.on("input", async (event, ctx) => {
     if ((event as any).source === "extension") return { action: "continue" };
     const text = String((event as any).text || "");
@@ -925,10 +994,20 @@ export default function (pi: ExtensionAPI) {
     const context = await prepareEmbContext(ctx.cwd);
     if (!context?.result || !shouldAutoDispatchSubagents(text, context.result)) return { action: "continue" };
     const routes = await loadModelRoutes(ctx.cwd);
-    pendingVisibleDispatch.set(ctx.cwd, { prompt: text, result: context.result, routes, createdAt: Date.now() });
+    const expectedTypes = visibleDispatchRoles(context.result);
+    pendingVisibleDispatch.set(ctx.cwd, { prompt: text, result: context.result, routes, expectedTypes, createdAt: Date.now() });
+    visibleDispatchBatches.set(ctx.cwd, {
+      cwd: ctx.cwd,
+      prompt: text,
+      expectedTypes: new Set(expectedTypes),
+      startedIds: new Set(),
+      completedByType: new Map(),
+      startedAt: Date.now(),
+      finalSent: false,
+    });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
-      reason: "emb-agent requires visible Tintinweb Agent tool delegation for this broad firmware/framework request. The parent agent must start Agent subagents first and must not read files, run shell commands, or edit inline before Agent results arrive.",
+      reason: "emb-agent visible Tintinweb Agent delegation is active for this broad firmware/framework request. The parent agent must not read files, run shell commands, edit, retrieve raw subagent output, or launch extra agents; wait for hidden subagent results and synthesize the final answer."
     });
     return { action: "continue" };
   });
@@ -963,7 +1042,10 @@ export default function (pi: ExtensionAPI) {
       return { block: true, reason: guard.reason };
     }
     if (guard && Date.now() < guard.until && event.toolName === "get_subagent_result") {
-      return { block: true, reason: "Do not call get_subagent_result during emb-agent automatic delegation; it returns raw subagent report text to the visible transcript. Use the subagent completion notification already in context and synthesize only the final answer." };
+      return { block: true, reason: "Do not call get_subagent_result during emb-agent automatic delegation; it returns raw subagent report text to the visible transcript. Hidden subagent results will be injected automatically; synthesize only the final answer." };
+    }
+    if (guard && Date.now() < guard.until && event.toolName === "Agent") {
+      return { block: true, reason: "emb-agent automatic delegation is already running or completed for this request. Do not launch more subagents; wait for hidden results and synthesize the final answer." };
     }
     if (event.toolName === "get_subagent_result" && (event.input as any)?.verbose === true) {
       return { block: true, reason: "Do not call get_subagent_result with verbose:true; it exposes raw subagent conversation/report text to the user. Use concise synthesis instead." };
