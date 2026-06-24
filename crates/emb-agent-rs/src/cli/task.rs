@@ -1,6 +1,10 @@
 use super::util::{current_dir_string, option_value};
 use emb_agent_core::{build_task_list_json, read_all_tasks, read_task};
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub fn run(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -56,29 +60,29 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     .filter(|s| !s.is_empty())
                     .collect()
             };
-            println!(
-                "{}",
-                emb_agent_core::task::task_ops::task_add_with_deps(
-                    &ext_dir,
-                    summary,
-                    &task_type,
-                    &priority,
-                    &blocked_by,
-                )
+            let output = emb_agent_core::task::task_ops::task_add_with_deps(
+                &ext_dir,
+                summary,
+                &task_type,
+                &priority,
+                &blocked_by,
             );
+            println!("{}", output);
+            if let Some(name) = json_string_field(&output, "name") {
+                run_lifecycle_hooks(Path::new(&cwd), &ext_dir, "after_create", &name);
+            }
             Ok(())
         }
         Some("activate") => {
             let name = args.get(2).ok_or("task activate requires <name>")?;
             let use_worktree = args.iter().any(|a| a == "--worktree");
-            println!(
-                "{}",
-                emb_agent_core::task::task_ops::task_activate_with_options(
-                    &ext_dir,
-                    name,
-                    use_worktree,
-                )
+            let output = emb_agent_core::task::task_ops::task_activate_with_options(
+                &ext_dir,
+                name,
+                use_worktree,
             );
+            println!("{}", output);
+            run_lifecycle_hooks(Path::new(&cwd), &ext_dir, "after_start", name);
             Ok(())
         }
         Some("resolve") => {
@@ -89,18 +93,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 .or_else(|| active_task_name(&ext_dir))
                 .ok_or("task resolve requires <name> or an active task")?;
             let note = args.get(3).map(|s| s.as_str()).unwrap_or("");
-            println!(
-                "{}",
-                emb_agent_core::task::task_ops::task_resolve(&ext_dir, &name, note)
-            );
+            let output = emb_agent_core::task::task_ops::task_resolve(&ext_dir, &name, note);
+            println!("{}", output);
+            run_lifecycle_hooks(Path::new(&cwd), &ext_dir, "after_finish", &name);
             Ok(())
         }
         Some("delete") => {
             let name = args.get(2).ok_or("task delete requires <name>")?;
-            println!(
-                "{}",
-                emb_agent_core::task::task_ops::task_delete(&ext_dir, name)
-            );
+            let output = emb_agent_core::task::task_ops::task_delete(&ext_dir, name);
+            println!("{}", output);
+            run_lifecycle_hooks(Path::new(&cwd), &ext_dir, "after_archive", name);
             Ok(())
         }
         Some("aar") => match args.get(2).map(String::as_str) {
@@ -272,6 +274,90 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 .to_string(),
         ),
     }
+}
+
+fn json_string_field(raw: &str, key: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(raw).ok()?;
+    value
+        .get("task")
+        .and_then(|task| task.get(key))
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| value.get(key).and_then(serde_json::Value::as_str))
+        .map(str::to_string)
+}
+
+fn run_lifecycle_hooks(project_root: &Path, ext_dir: &Path, hook: &str, task_name: &str) {
+    let commands = configured_hook_commands(&ext_dir.join("config.yaml"), hook);
+    if commands.is_empty() {
+        return;
+    }
+    let task_json = task_json_path(ext_dir, task_name);
+    for command in commands {
+        let status = Command::new(shell_binary())
+            .arg(shell_arg())
+            .arg(&command)
+            .current_dir(project_root)
+            .env("TASK_JSON_PATH", task_json.to_string_lossy().to_string())
+            .status();
+        match status {
+            Ok(status) if status.success() => {}
+            Ok(status) => {
+                eprintln!("emb-agent lifecycle hook {hook} exited with {status}: {command}")
+            }
+            Err(error) => eprintln!("emb-agent lifecycle hook {hook} failed: {error}: {command}"),
+        }
+    }
+}
+
+fn configured_hook_commands(config_path: &Path, hook: &str) -> Vec<String> {
+    let Ok(text) = fs::read_to_string(config_path) else {
+        return Vec::new();
+    };
+    let mut in_hooks = false;
+    let mut in_target = false;
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if !line.starts_with(' ') && trimmed.ends_with(':') {
+            in_hooks = trimmed == "hooks:";
+            in_target = false;
+            continue;
+        }
+        if !in_hooks {
+            continue;
+        }
+        if line.starts_with("  ") && !line.starts_with("    ") && trimmed.ends_with(':') {
+            in_target = trimmed.trim_end_matches(':') == hook;
+            continue;
+        }
+        if in_target && trimmed.starts_with('-') {
+            let command = trimmed
+                .trim_start_matches('-')
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+            if !command.is_empty() {
+                out.push(command);
+            }
+        }
+    }
+    out
+}
+
+fn task_json_path(ext_dir: &Path, task_name: &str) -> PathBuf {
+    ext_dir.join("tasks").join(task_name).join("task.json")
+}
+
+fn shell_binary() -> &'static str {
+    if cfg!(windows) { "cmd" } else { "sh" }
+}
+
+fn shell_arg() -> &'static str {
+    if cfg!(windows) { "/C" } else { "-c" }
 }
 
 fn active_task_name(ext_dir: &Path) -> Option<String> {

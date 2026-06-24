@@ -86,14 +86,26 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
 
 ## Session Insight
 
-`emb_session_search` 和 `emb_session_extract` 提供轻量本地记忆，不依赖 workspace runtime：
+`mem` 是本地 CLI 跨会话记忆底座；`emb_session_search` 和 `emb_session_extract` 是 Pi 内的快捷工具，不依赖 workspace runtime：
 
-- 搜索根：`$PI_CODING_AGENT_SESSION_DIR`、`~/.pi/agent/sessions`、`~/.codex/sessions`
+- CLI：`mem list`、`mem projects`、`mem search`、`mem context`、`mem extract`
+- 搜索根：`~/.claude/projects`、`~/.codex/sessions`、`$PI_CODING_AGENT_SESSION_DIR`、`~/.pi/agent/sessions`
 - 输入：关键字或 session id/path
 - 输出：清理后的对话片段，默认限制大小，避免把超大 session 直接灌入上下文
 - phase：`brainstorm`/`implement` 使用 emb-agent/task 命令和 PRD/implementation 关键词做粗切片
 
 适用场景：恢复上次排查、查找某项目之前的架构风险、对照历史 hook/CI 问题、找之前子 agent 给出的证据路径。
+
+## 配置与 Hooks
+
+安装/初始化会创建 `.emb-agent/config.yaml`，用于本地行为开关：
+
+- `session_commit_message`、`max_journal_lines`、`session_auto_commit`
+- `hooks.after_create` / `after_start` / `after_finish` / `after_archive`
+- `channel.worker_guard.idle_timeout` 与 `max_live_workers`
+- `codex.dispatch_mode: inline | sub-agent`
+
+生命周期 hooks 会收到 `TASK_JSON_PATH` 环境变量；hook 失败只打印警告，不阻塞主命令。
 
 ## 设置合并
 

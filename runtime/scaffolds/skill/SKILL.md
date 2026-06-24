@@ -29,6 +29,22 @@ allowed-tools:
 3. Read the workflow file that matches the current task.
 4. Run `rg -n "FILL:" .` inside this skill directory and close every required field before claiming the scaffold is complete.
 
+## Session Insight
+
+When prior local AI work may matter, use `mem` before re-discovering: old fixes,
+decision archaeology, cross-session continuation, similar bugs, finish-work review, or
+agent self-pattern analysis. `mem` is local-only and reads existing Claude Code / Codex /
+Pi JSONL sessions on this machine.
+
+Useful commands:
+- `mem search --query "..." --cwd <project>`
+- `mem context --query "..." --cwd <project>`
+- `mem extract <session-id> --phase brainstorm|implement|all --cwd <project>`
+- `mem projects --platform all`
+
+Do not automatically write session memory to a fixed file. Use it according to context:
+inline citation, PRD/design update, task note, spec update workflow, or background only.
+
 ## Template Guarantees
 
 - Treat the scaffold structure as load-bearing infrastructure, not optional prose.

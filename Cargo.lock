@@ -172,6 +172,7 @@ version = "0.6.0"
 dependencies = [
  "chrono",
  "emb-agent-core",
+ "serde",
  "serde_json",
 ]
 

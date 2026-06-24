@@ -592,6 +592,121 @@ fn doc_ingest_local_tool_priority_is_project_configurable() {
 }
 
 #[test]
+fn init_writes_config_and_task_lifecycle_hooks_run() {
+    let project = TestProject::new("config-hooks");
+    let config = fs::read_to_string(project.path().join(".emb-agent/config.yaml"))
+        .expect("read emb-agent config");
+    assert!(config.contains("session_auto_commit"), "config: {config}");
+    assert!(config.contains("after_create"), "config: {config}");
+    assert!(config.contains("worker_guard"), "config: {config}");
+    assert!(config.contains("dispatch_mode: inline"), "config: {config}");
+
+    fs::write(
+        project.path().join(".emb-agent/config.yaml"),
+        r#"hooks:
+  after_create:
+    - "printf '%s' \"$TASK_JSON_PATH\" > .emb-agent/hook-created.txt"
+"#,
+    )
+    .expect("write hook config");
+
+    assert_success(
+        Command::new(emb_agent_bin())
+            .arg("task")
+            .arg("add")
+            .arg("Hook lifecycle task")
+            .arg("--cwd")
+            .arg(project.path())
+            .output()
+            .expect("run task add"),
+    );
+    let hook_output = fs::read_to_string(project.path().join(".emb-agent/hook-created.txt"))
+        .expect("read hook output");
+    assert!(
+        hook_output.contains("task.json"),
+        "hook should receive TASK_JSON_PATH, got {hook_output}"
+    );
+}
+
+#[test]
+fn mem_cli_searches_and_extracts_local_sessions() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("emb-agent-mem-{nonce}"));
+    let project = root.join("firmware-demo");
+    let pi_sessions = root
+        .join(".pi")
+        .join("agent")
+        .join("sessions")
+        .join("--firmware-demo--");
+    fs::create_dir_all(&pi_sessions).expect("create pi sessions");
+    let session = pi_sessions.join("2026-06-24T00-00-00Z_demo.jsonl");
+    fs::write(
+        &session,
+        [
+            r#"{"message":{"role":"user","content":"task.py create --slug pwm-led brainstorm watchdog sleep"}}"#,
+            r#"{"message":{"role":"assistant","content":"Brainstorm: watchdog must stay enabled during low-power exploration."}}"#,
+            r#"{"message":{"role":"user","content":"task.py start pwm-led implementation"}}"#,
+            r#"{"message":{"role":"assistant","content":"Implement: configure timer PWM and verify sleep wake path."}}"#,
+        ]
+        .join("\n"),
+    )
+    .expect("write session");
+
+    let list = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("list")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .output()
+        .expect("run mem list");
+    let list = assert_success(list);
+    assert!(list.contains("firmware-demo"), "list output: {list}");
+
+    let search = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("search")
+        .arg("--query")
+        .arg("watchdog sleep")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .output()
+        .expect("run mem search");
+    let search = assert_success(search);
+    assert!(search.contains("watchdog"), "search output: {search}");
+
+    let extract = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("extract")
+        .arg("demo")
+        .arg("--phase")
+        .arg("brainstorm")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .output()
+        .expect("run mem extract");
+    let extract = assert_success(extract);
+    assert!(extract.contains("Brainstorm"), "extract output: {extract}");
+    assert!(
+        !extract.contains("Implement:"),
+        "brainstorm slice leaked implementation: {extract}"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn installer_bin_dispatches_runtime_validate_command() {
     let project = TestProject::new("installer-dispatch");
     let output = Command::new("node")
@@ -2056,6 +2171,14 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     assert!(
         !pi_settings.contains("pi-subagents"),
         "Pi settings should not require third-party subagent packages: {pi_settings}"
+    );
+    let installed_config = fs::read_to_string(root.join(".emb-agent/config.yaml"))
+        .expect("read installed emb-agent config");
+    assert!(
+        installed_config.contains("dispatch_mode: inline")
+            && installed_config.contains("after_create")
+            && installed_config.contains("worker_guard"),
+        "installed config: {installed_config}"
     );
     let install_result =
         fs::read_to_string(root.join(".emb-agent/INSTALL_RESULT.md")).expect("read install result");

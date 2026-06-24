@@ -145,6 +145,39 @@ function appendEnvExampleBlockIfMissing(filePath, key, block) {
 	fs.writeFileSync(filePath, updated, "utf8");
 }
 
+function defaultEmbAgentConfigYaml() {
+	return [
+		"# emb-agent project configuration",
+		"# All keys are local-only. Hooks run on this machine and never upload session data.",
+		"",
+		"session_commit_message: \"chore: record emb-agent session\"",
+		"max_journal_lines: 2000",
+		"session_auto_commit: false",
+		"",
+		"hooks:",
+		"  after_create: []",
+		"  after_start: []",
+		"  after_finish: []",
+		"  after_archive: []",
+		"",
+		"channel:",
+		"  worker_guard:",
+		"    idle_timeout: 5m",
+		"    max_live_workers: 6",
+		"",
+		"codex:",
+		"  dispatch_mode: inline  # inline | sub-agent",
+		""
+	].join("\n");
+}
+
+function ensureEmbAgentProjectConfig(projectRoot) {
+	var configPath = path.join(projectRoot, ".emb-agent", "config.yaml");
+	if (fs.existsSync(configPath)) return;
+	ensureDir(path.dirname(configPath));
+	fs.writeFileSync(configPath, defaultEmbAgentConfigYaml(), "utf8");
+}
+
 function ensureProjectEnvFiles(projectRoot) {
 	var envExample = path.join(projectRoot, ".env.example");
 	if (!fs.existsSync(envExample)) {
@@ -1333,6 +1366,7 @@ function installForHost(projectRoot, host, callback) {
 	logDetail("  Installing for " + host.name + " → " + hostDir);
 
 	ensureProjectEnvFiles(projectRoot);
+	ensureEmbAgentProjectConfig(projectRoot);
 	ensureDir(path.join(projectRoot, "docs"));
 	ensureDir(path.join(projectRoot, "docs", "prd"));
 	ensureDir(path.join(embDir, "bin"));

@@ -9,19 +9,24 @@ allowed-tools:
 
 # emb-memory
 
-Use `memory` to inspect the layered instruction stack and manage durable emb auto-memory.
+Use `memory` for durable emb auto-memory, and `mem` for local AI session recall.
 
-## Commands
+## Durable Project Memory
 
-- `memory stack`
 - `memory list`
-- `memory show <entry>`
-- `memory remember [--confirm] --type <user|feedback|project|reference> <summary> [--detail <text>]`
-- `memory extract [--confirm] [note]`
-- `memory audit`
-- `memory promote [--confirm] <entry> --to <organization|user|project|local>`
+- `memory remember --type <user|feedback|project|reference> --summary <summary> [--detail <text>]`
+
+## Local Session Memory
+
+- `mem list [--platform claude|codex|pi|all] [--limit N]`
+- `mem projects [--platform claude|codex|pi|all]`
+- `mem search --query <text> [--cwd DIR] [--platform claude|codex|pi|all]`
+- `mem context --query <text> [--window N] [--session ID]`
+- `mem extract <session-id> [--phase brainstorm|implement|all] [--grep <text>]`
+
+`mem` reads existing local Claude Code / Codex / Pi JSONL sessions and never uploads content.
 
 ## Notes
 
-- Auto-memory is for cross-session conclusions, not temporary scratch notes.
-- `memory audit` only proposes promotions; `memory promote` performs the write.
+- Auto-memory is for durable conclusions, not temporary scratch notes.
+- Session memory is evidence, not an automatic write-back target: cite inline, update PRD/design/task notes, or keep it as background depending on the current task.

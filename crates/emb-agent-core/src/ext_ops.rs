@@ -44,6 +44,10 @@ pub fn init_project(cwd: &Path) -> String {
     let _ = fs::create_dir_all(ext_dir.join("roadmap"));
     let _ = fs::create_dir_all(ext_dir.join("audits"));
     let _ = fs::create_dir_all(ext_dir.join("extensions").join("chips").join("profiles"));
+    let config_path = ext_dir.join("config.yaml");
+    if !config_path.exists() {
+        let _ = fs::write(&config_path, default_config_yaml());
+    }
     let project = serde_json::json!({
         "project_profile": "",
         "active_specs": ["embedded-space"],
@@ -529,6 +533,29 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
         "next": "Use emb-next for initialized projects or emb-onboard for new/migrated projects. Run the manual update command when any host reports version_status=stale."
     }))
     .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
+}
+
+fn default_config_yaml() -> &'static str {
+    "# emb-agent project configuration\n\
+# All keys are local-only. Hooks run on this machine and never upload session data.\n\
+\n\
+session_commit_message: \"chore: record emb-agent session\"\n\
+max_journal_lines: 2000\n\
+session_auto_commit: false\n\
+\n\
+hooks:\n\
+  after_create: []\n\
+  after_start: []\n\
+  after_finish: []\n\
+  after_archive: []\n\
+\n\
+channel:\n\
+  worker_guard:\n\
+    idle_timeout: 5m\n\
+    max_live_workers: 6\n\
+\n\
+codex:\n\
+  dispatch_mode: inline  # inline | sub-agent\n"
 }
 
 /// Migration status. The current Rust runtime does not require a separate project migration step.

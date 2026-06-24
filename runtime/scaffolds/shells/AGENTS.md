@@ -37,6 +37,7 @@ Core rules:
 - After editing truth files or PRDs, run `validate` or `health`.
 - Split work into vertical tracer-bullet slices.
 - Prefer subagent orchestration for multi-domain embedded work: hardware/register evidence scout, implementation worker, and architecture/system reviewer when those agents are available.
+- Use `mem search/context/extract` when prior local Claude Code / Codex / Pi sessions may contain relevant decisions, fixes, or brainstorm context; decide case-by-case whether to cite, update PRD/design/task notes, or keep it as background.
 
 For detailed procedures, read command docs on demand:
 - PRD / tasks / bugs / knowledge → `.<host>/emb-agent/commands/emb/`

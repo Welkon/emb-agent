@@ -65,6 +65,26 @@ Common host dirs: .cursor (Cursor), .codex (Codex), .claude (Claude), .pi (Pi).
    one top-level sample → update → apply step. Bare-metal tick loops and RTOS task/timer
    dispatch are backend choices under the same contract, not peer default frameworks.
 
+## Session Insight
+
+Use local session memory when the user asks to resume prior work, recall an old fix,
+explain why a decision was made, compare a bug with something seen before, review how
+this project usually finishes work, or when you suspect the current failure pattern is
+repeating. This is local-only: `mem` reads existing Claude Code / Codex / Pi session logs
+from the user's machine and does not upload content.
+
+Prefer these commands:
+
+```bash
+node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem search --query "keyword" --cwd <project>
+node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem context --query "keyword" --cwd <project>
+node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem extract <session-id> --phase brainstorm --cwd <project>
+```
+
+Do not blindly write memory output into a file. Decide from the current context whether
+to cite it inline, update `prd.md` / design notes, append task notes, call a spec-update
+workflow, or only use it as background understanding.
+
 ## Post-Flow Knowledge Capture (only when a durable lesson emerged)
 
 Before recording post-flow knowledge, check:
@@ -89,6 +109,7 @@ Skip routine fixes, generic programming patterns, facts obvious from datasheets,
 - If `graphify` or `markitdown` is missing when first needed and `uv` is available, emb-agent should auto-ensure it globally at user level. Do not install tooling into each project checkout.
 - After editing truth files or PRDs, run `validate` or `health`.
 - Split work into vertical tracer-bullet slices.
+- Use `mem search/context/extract` when cross-session recall would prevent rediscovery or preserve a past decision.
 - If `.emb-agent/` is missing or incomplete, route to `onboard` agent first.
 
 For detailed procedures, read command docs on demand:

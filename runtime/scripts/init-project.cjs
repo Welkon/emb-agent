@@ -979,6 +979,45 @@ function ensureProjectAgentsGuide(projectRoot, force, language, runtimeTarget) {
   };
 }
 
+function buildDefaultEmbAgentConfig() {
+  return [
+    '# emb-agent project configuration',
+    '# All keys are local-only. Hooks run on this machine and never upload session data.',
+    '',
+    'session_commit_message: "chore: record emb-agent session"',
+    'max_journal_lines: 2000',
+    'session_auto_commit: false',
+    '',
+    'hooks:',
+    '  after_create: []',
+    '  after_start: []',
+    '  after_finish: []',
+    '  after_archive: []',
+    '',
+    'channel:',
+    '  worker_guard:',
+    '    idle_timeout: 5m',
+    '    max_live_workers: 6',
+    '',
+    'codex:',
+    '  dispatch_mode: inline  # inline | sub-agent',
+    ''
+  ].join('\n');
+}
+
+function ensureEmbAgentConfig(projectRoot, force) {
+  const filePath = path.join(projectRoot, '.emb-agent', 'config.yaml');
+  const existedBefore = fs.existsSync(filePath);
+
+  if (existedBefore && !force) {
+    return { path: '.emb-agent/config.yaml', created: false, updated: false, reused: true };
+  }
+
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, buildDefaultEmbAgentConfig(), 'utf8');
+  return { path: '.emb-agent/config.yaml', created: !existedBefore, updated: existedBefore && force, reused: false };
+}
+
 function buildDefaultWorktreeConfig() {
   return [
     '# emb-agent task worktree configuration',
@@ -1332,6 +1371,7 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     goal: initOptions.goal
   });
   const projectAgentsGuide = ensureProjectAgentsGuide(projectRoot, force, initOptions.language, initOptions.runtime);
+  const embAgentConfig = ensureEmbAgentConfig(projectRoot, force);
   const worktreeConfig = ensureWorktreeConfig(projectRoot, force);
   let workflowRegistryImport = null;
 
@@ -1358,6 +1398,14 @@ function scaffoldProject(projectRoot, projectConfig, force, options) {
     updated.push(projectAgentsGuide.path);
   } else {
     reused.push(projectAgentsGuide.path);
+  }
+
+  if (embAgentConfig.created) {
+    created.push(embAgentConfig.path);
+  } else if (embAgentConfig.updated) {
+    updated.push(embAgentConfig.path);
+  } else {
+    reused.push(embAgentConfig.path);
   }
 
   if (worktreeConfig.created) {
