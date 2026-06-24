@@ -3,6 +3,7 @@ pub mod board_cli;
 pub mod chip;
 pub mod component;
 pub mod compound;
+pub mod config;
 pub mod doc;
 pub mod hooks_cli;
 pub mod impl_status;

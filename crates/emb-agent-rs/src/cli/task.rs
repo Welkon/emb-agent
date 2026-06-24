@@ -1,10 +1,7 @@
+use super::config::run_configured_hooks;
 use super::util::{current_dir_string, option_value};
 use emb_agent_core::{build_task_list_json, read_all_tasks, read_task};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{fs, path::Path};
 
 pub fn run(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -287,77 +284,12 @@ fn json_string_field(raw: &str, key: &str) -> Option<String> {
 }
 
 fn run_lifecycle_hooks(project_root: &Path, ext_dir: &Path, hook: &str, task_name: &str) {
-    let commands = configured_hook_commands(&ext_dir.join("config.yaml"), hook);
-    if commands.is_empty() {
-        return;
-    }
-    let task_json = task_json_path(ext_dir, task_name);
-    for command in commands {
-        let status = Command::new(shell_binary())
-            .arg(shell_arg())
-            .arg(&command)
-            .current_dir(project_root)
-            .env("TASK_JSON_PATH", task_json.to_string_lossy().to_string())
-            .status();
-        match status {
-            Ok(status) if status.success() => {}
-            Ok(status) => {
-                eprintln!("emb-agent lifecycle hook {hook} exited with {status}: {command}")
-            }
-            Err(error) => eprintln!("emb-agent lifecycle hook {hook} failed: {error}: {command}"),
-        }
-    }
-}
-
-fn configured_hook_commands(config_path: &Path, hook: &str) -> Vec<String> {
-    let Ok(text) = fs::read_to_string(config_path) else {
-        return Vec::new();
-    };
-    let mut in_hooks = false;
-    let mut in_target = false;
-    let mut out = Vec::new();
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        if !line.starts_with(' ') && trimmed.ends_with(':') {
-            in_hooks = trimmed == "hooks:";
-            in_target = false;
-            continue;
-        }
-        if !in_hooks {
-            continue;
-        }
-        if line.starts_with("  ") && !line.starts_with("    ") && trimmed.ends_with(':') {
-            in_target = trimmed.trim_end_matches(':') == hook;
-            continue;
-        }
-        if in_target && trimmed.starts_with('-') {
-            let command = trimmed
-                .trim_start_matches('-')
-                .trim()
-                .trim_matches('"')
-                .trim_matches('\'')
-                .to_string();
-            if !command.is_empty() {
-                out.push(command);
-            }
-        }
-    }
-    out
-}
-
-fn task_json_path(ext_dir: &Path, task_name: &str) -> PathBuf {
-    ext_dir.join("tasks").join(task_name).join("task.json")
-}
-
-fn shell_binary() -> &'static str {
-    if cfg!(windows) { "cmd" } else { "sh" }
-}
-
-fn shell_arg() -> &'static str {
-    if cfg!(windows) { "/C" } else { "-c" }
+    let task_json = ext_dir.join("tasks").join(task_name).join("task.json");
+    run_configured_hooks(
+        project_root,
+        hook,
+        &[("TASK_JSON_PATH", task_json.to_string_lossy().to_string())],
+    );
 }
 
 fn active_task_name(ext_dir: &Path) -> Option<String> {

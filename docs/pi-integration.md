@@ -88,11 +88,13 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
 
 `mem` 是本地 CLI 跨会话记忆底座；`emb_session_search` 和 `emb_session_extract` 是 Pi 内的快捷工具，不依赖 workspace runtime：
 
-- CLI：`mem list`、`mem projects`、`mem search`、`mem context`、`mem extract`
+- CLI：`mem list`、`mem projects`、`mem search`、`mem context`、`mem extract`、`mem show`、`mem timeline`、`mem related`、`mem summary`、`mem reindex`、`mem stats`、`mem doctor`、`mem prune`
+- 索引：`.emb-agent/cache/mem/index.json`，本地增量检查，搜索/上下文/show/related 自动重建 stale index
 - 搜索根：`~/.claude/projects`、`~/.codex/sessions`、`$PI_CODING_AGENT_SESSION_DIR`、`~/.pi/agent/sessions`
 - 输入：关键字或 session id/path
 - 输出：清理后的对话片段，默认限制大小，避免把超大 session 直接灌入上下文
-- phase：`brainstorm`/`implement` 使用 emb-agent/task 命令和 PRD/implementation 关键词做粗切片
+- phase：`brainstorm`/`implement`/`review` 使用 emb-agent/task 命令和 PRD/implementation/review 关键词做切片
+- Pi：`emb_session_search` / `emb_session_extract` 直接调用 Rust `mem`，不再维护独立 TS 搜索逻辑
 
 适用场景：恢复上次排查、查找某项目之前的架构风险、对照历史 hook/CI 问题、找之前子 agent 给出的证据路径。
 
@@ -101,11 +103,13 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
 安装/初始化会创建 `.emb-agent/config.yaml`，用于本地行为开关：
 
 - `session_commit_message`、`max_journal_lines`、`session_auto_commit`
-- `hooks.after_create` / `after_start` / `after_finish` / `after_archive`
+- `hooks.session_start` / `after_create` / `after_start` / `after_finish` / `after_archive`
 - `channel.worker_guard.idle_timeout` 与 `max_live_workers`
 - `codex.dispatch_mode: inline | sub-agent`
 
-生命周期 hooks 会收到 `TASK_JSON_PATH` 环境变量；hook 失败只打印警告，不阻塞主命令。
+生命周期 hooks 会收到 `TASK_JSON_PATH` 环境变量；session hooks 会收到 `EMB_AGENT_SESSION_EVENT`。hook 失败只打印警告，不阻塞主命令。
+
+`max_journal_lines` 限制 `.emb-agent/sessions/journal.jsonl`，`session_auto_commit` 会本地提交 session journal/index，不上传。
 
 ## 设置合并
 

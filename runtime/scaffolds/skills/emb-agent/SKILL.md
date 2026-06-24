@@ -78,7 +78,9 @@ Prefer these commands:
 ```bash
 node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem search --query "keyword" --cwd <project>
 node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem context --query "keyword" --cwd <project>
-node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem extract <session-id> --phase brainstorm --cwd <project>
+node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem show <session-id> --cwd <project>
+node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem related <session-id> --cwd <project>
+node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem extract <session-id> --phase brainstorm|implement|review --cwd <project>
 ```
 
 Do not blindly write memory output into a file. Decide from the current context whether
@@ -109,7 +111,7 @@ Skip routine fixes, generic programming patterns, facts obvious from datasheets,
 - If `graphify` or `markitdown` is missing when first needed and `uv` is available, emb-agent should auto-ensure it globally at user level. Do not install tooling into each project checkout.
 - After editing truth files or PRDs, run `validate` or `health`.
 - Split work into vertical tracer-bullet slices.
-- Use `mem search/context/extract` when cross-session recall would prevent rediscovery or preserve a past decision.
+- Use `mem search/context/show/related/extract` when cross-session recall would prevent rediscovery or preserve a past decision. Use `mem reindex`/`mem stats`/`mem doctor` if results look stale.
 - If `.emb-agent/` is missing or incomplete, route to `onboard` agent first.
 
 For detailed procedures, read command docs on demand:

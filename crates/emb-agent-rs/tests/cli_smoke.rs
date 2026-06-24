@@ -597,6 +597,7 @@ fn init_writes_config_and_task_lifecycle_hooks_run() {
     let config = fs::read_to_string(project.path().join(".emb-agent/config.yaml"))
         .expect("read emb-agent config");
     assert!(config.contains("session_auto_commit"), "config: {config}");
+    assert!(config.contains("session_start"), "config: {config}");
     assert!(config.contains("after_create"), "config: {config}");
     assert!(config.contains("worker_guard"), "config: {config}");
     assert!(config.contains("dispatch_mode: inline"), "config: {config}");
@@ -625,6 +626,51 @@ fn init_writes_config_and_task_lifecycle_hooks_run() {
     assert!(
         hook_output.contains("task.json"),
         "hook should receive TASK_JSON_PATH, got {hook_output}"
+    );
+
+    fs::write(
+        project.path().join(".emb-agent/config.yaml"),
+        r#"codex:
+  dispatch_mode: sub-agent
+"#,
+    )
+    .expect("write dispatch config");
+    let dispatch = run(&project, &["dispatch", "implement pwm"]);
+    let dispatch_value: serde_json::Value = serde_json::from_str(&dispatch).expect("dispatch json");
+    assert_eq!(dispatch_value["codex"]["dispatch_mode"], "sub-agent");
+    assert_eq!(dispatch_value["dispatch"]["subagent_allowed"], true);
+
+    fs::write(
+        project.path().join(".emb-agent/config.yaml"),
+        r#"max_journal_lines: 1
+hooks:
+  session_start:
+    - "printf '%s' \"$EMB_AGENT_SESSION_EVENT\" > .emb-agent/session-hook.txt"
+"#,
+    )
+    .expect("write session hook config");
+    let session_start = Command::new(emb_agent_bin())
+        .arg("hook")
+        .arg("session-start")
+        .arg("--host")
+        .arg("codex")
+        .arg("--cwd")
+        .arg(project.path())
+        .output()
+        .expect("run session-start hook");
+    assert_success(session_start);
+    let session_hook = fs::read_to_string(project.path().join(".emb-agent/session-hook.txt"))
+        .expect("read session hook output");
+    assert!(
+        session_hook.contains("startup"),
+        "session hook output: {session_hook}"
+    );
+    let journal = fs::read_to_string(project.path().join(".emb-agent/sessions/journal.jsonl"))
+        .expect("read session journal");
+    assert_eq!(
+        journal.lines().count(),
+        1,
+        "journal should obey max_journal_lines"
     );
 }
 
@@ -702,6 +748,50 @@ fn mem_cli_searches_and_extracts_local_sessions() {
         !extract.contains("Implement:"),
         "brainstorm slice leaked implementation: {extract}"
     );
+
+    let reindex = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("reindex")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .output()
+        .expect("run mem reindex");
+    let reindex = assert_success(reindex);
+    assert!(reindex.contains("index_path"), "reindex output: {reindex}");
+    assert!(
+        project.join(".emb-agent/cache/mem/index.json").exists(),
+        "mem reindex should create local index"
+    );
+
+    let show = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("show")
+        .arg("demo")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .output()
+        .expect("run mem show");
+    let show = assert_success(show);
+    assert!(show.contains("keywords"), "show output: {show}");
+
+    let stats = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("stats")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .output()
+        .expect("run mem stats");
+    let stats = assert_success(stats);
+    assert!(stats.contains("by_platform"), "stats output: {stats}");
 
     let _ = fs::remove_dir_all(root);
 }
@@ -2176,6 +2266,7 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         .expect("read installed emb-agent config");
     assert!(
         installed_config.contains("dispatch_mode: inline")
+            && installed_config.contains("session_start")
             && installed_config.contains("after_create")
             && installed_config.contains("worker_guard"),
         "installed config: {installed_config}"

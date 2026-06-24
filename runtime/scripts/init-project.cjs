@@ -989,6 +989,7 @@ function buildDefaultEmbAgentConfig() {
     'session_auto_commit: false',
     '',
     'hooks:',
+    '  session_start: []',
     '  after_create: []',
     '  after_start: []',
     '  after_finish: []',
@@ -1010,6 +1011,18 @@ function ensureEmbAgentConfig(projectRoot, force) {
   const existedBefore = fs.existsSync(filePath);
 
   if (existedBefore && !force) {
+    const original = fs.readFileSync(filePath, 'utf8');
+    let updated = original;
+    if (!/^[ \t]*session_start[ \t]*:/m.test(updated) && /^hooks:[ \t]*$/m.test(updated)) {
+      updated = updated.replace(/^hooks:[ \t]*$/m, 'hooks:\n  session_start: []');
+    }
+    if (!/^codex:[ \t]*$/m.test(updated)) {
+      updated = updated.replace(/\s*$/, '\n\ncodex:\n  dispatch_mode: inline  # inline | sub-agent\n');
+    }
+    if (updated !== original) {
+      fs.writeFileSync(filePath, updated, 'utf8');
+      return { path: '.emb-agent/config.yaml', created: false, updated: true, reused: false };
+    }
     return { path: '.emb-agent/config.yaml', created: false, updated: false, reused: true };
   }
 

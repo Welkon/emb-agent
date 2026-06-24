@@ -39,8 +39,10 @@ Pi JSONL sessions on this machine.
 Useful commands:
 - `mem search --query "..." --cwd <project>`
 - `mem context --query "..." --cwd <project>`
-- `mem extract <session-id> --phase brainstorm|implement|all --cwd <project>`
+- `mem show <session-id> --cwd <project>` / `mem related <session-id> --cwd <project>`
+- `mem extract <session-id> --phase brainstorm|implement|review|all --cwd <project>`
 - `mem projects --platform all`
+- `mem reindex` / `mem stats` / `mem doctor`
 
 Do not automatically write session memory to a fixed file. Use it according to context:
 inline citation, PRD/design update, task note, spec update workflow, or background only.

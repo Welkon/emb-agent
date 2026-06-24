@@ -155,6 +155,7 @@ function defaultEmbAgentConfigYaml() {
 		"session_auto_commit: false",
 		"",
 		"hooks:",
+		"  session_start: []",
 		"  after_create: []",
 		"  after_start: []",
 		"  after_finish: []",
@@ -173,9 +174,20 @@ function defaultEmbAgentConfigYaml() {
 
 function ensureEmbAgentProjectConfig(projectRoot) {
 	var configPath = path.join(projectRoot, ".emb-agent", "config.yaml");
-	if (fs.existsSync(configPath)) return;
-	ensureDir(path.dirname(configPath));
-	fs.writeFileSync(configPath, defaultEmbAgentConfigYaml(), "utf8");
+	if (!fs.existsSync(configPath)) {
+		ensureDir(path.dirname(configPath));
+		fs.writeFileSync(configPath, defaultEmbAgentConfigYaml(), "utf8");
+		return;
+	}
+	var text = fs.readFileSync(configPath, "utf8");
+	var updated = text;
+	if (!/^[ \t]*session_start[ \t]*:/m.test(updated) && /^hooks:[ \t]*$/m.test(updated)) {
+		updated = updated.replace(/^hooks:[ \t]*$/m, "hooks:\n  session_start: []");
+	}
+	if (!/^codex:[ \t]*$/m.test(updated)) {
+		updated = updated.replace(/\s*$/, "\n\ncodex:\n  dispatch_mode: inline  # inline | sub-agent\n");
+	}
+	if (updated !== text) fs.writeFileSync(configPath, updated, "utf8");
 }
 
 function ensureProjectEnvFiles(projectRoot) {

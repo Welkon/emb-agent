@@ -1,13 +1,17 @@
 use super::util::{current_dir_string, option_value, positional_after};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Clone, Debug, Serialize)]
+const INDEX_VERSION: u32 = 1;
+const INDEX_TEXT_LIMIT: usize = 96_000;
+const SUMMARY_LIMIT: usize = 1_200;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct MemSessionInfo {
     id: String,
     platform: String,
@@ -19,10 +23,28 @@ struct MemSessionInfo {
     turns: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct DialogueTurn {
     role: String,
     text: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct IndexedSession {
+    session: MemSessionInfo,
+    mtime_ms: u128,
+    size: u64,
+    summary: String,
+    keywords: Vec<String>,
+    text_tail: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct MemIndex {
+    version: u32,
+    generated_ms: u128,
+    root: String,
+    sessions: Vec<IndexedSession>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -30,6 +52,7 @@ struct SearchHit {
     session: MemSessionInfo,
     score: usize,
     preview: String,
+    keywords: Vec<String>,
 }
 
 pub fn run(args: &[String]) -> Result<(), String> {
@@ -39,7 +62,20 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let subcmd = args.get(1).map(String::as_str).unwrap_or("list");
     if matches!(
         subcmd,
-        "projects" | "sessions" | "search" | "context" | "extract"
+        "projects"
+            | "sessions"
+            | "search"
+            | "context"
+            | "extract"
+            | "show"
+            | "timeline"
+            | "related"
+            | "summary"
+            | "summarize"
+            | "reindex"
+            | "stats"
+            | "doctor"
+            | "prune"
     ) {
         return run_session_mem(args);
     }
@@ -90,16 +126,19 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
     let limit = option_value(args, "--limit")
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(20);
+    let force = args
+        .iter()
+        .any(|arg| arg == "--refresh" || arg == "--force");
     match subcmd {
         "list" | "sessions" => {
             let sessions = list_mem_sessions(&cwd, &platform, limit)?;
             print_json(&serde_json::json!({"sessions": sessions, "count": sessions.len()}))
         }
         "projects" => {
-            let sessions = list_mem_sessions(&cwd, &platform, usize::MAX)?;
+            let index = load_or_build_index(&cwd, &platform, force)?;
             let mut projects: BTreeMap<String, usize> = BTreeMap::new();
-            for session in sessions {
-                *projects.entry(session.project).or_insert(0) += 1;
+            for session in index.sessions {
+                *projects.entry(session.session.project).or_insert(0) += 1;
             }
             let rows: Vec<Value> = projects
                 .into_iter()
@@ -111,7 +150,7 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
             let query = option_value(args, "--query")
                 .or_else(|| positional_after(args, 2))
                 .ok_or("mem search requires --query <text> or positional query")?;
-            let hits = search_mem_sessions(&cwd, &platform, &query, limit)?;
+            let hits = search_mem_sessions(&cwd, &platform, &query, limit, force)?;
             print_json(&serde_json::json!({"query": query, "hits": hits, "count": hits.len()}))
         }
         "context" => {
@@ -121,7 +160,7 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(3);
             let session =
-                resolve_session(&cwd, &platform, session_id.as_deref(), query.as_deref())?;
+                resolve_session(&cwd, &platform, session_id.as_deref(), query.as_deref(), force)?;
             let turns = read_dialogue(&session.path)?;
             let idx = query
                 .as_deref()
@@ -144,7 +183,7 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
             let session_id = option_value(args, "--session")
                 .or_else(|| option_value(args, "--id"))
                 .or_else(|| positional_after(args, 2));
-            let session = resolve_session(&cwd, &platform, session_id.as_deref(), grep.as_deref())?;
+            let session = resolve_session(&cwd, &platform, session_id.as_deref(), grep.as_deref(), force)?;
             let turns = read_dialogue(&session.path)?;
             let sliced = slice_phase(&turns, &phase);
             let filtered: Vec<&DialogueTurn> = match grep.as_deref() {
@@ -162,7 +201,76 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
             println!("{text}");
             Ok(())
         }
-        _ => Err("mem: expected list|projects|search|context|extract".to_string()),
+        "show" => {
+            let id = option_value(args, "--session")
+                .or_else(|| option_value(args, "--id"))
+                .or_else(|| positional_after(args, 2));
+            let session = resolve_session(&cwd, &platform, id.as_deref(), None, force)?;
+            let indexed = indexed_session(&cwd, &platform, &session.id, force)?;
+            print_json(&serde_json::json!({"session": session, "summary": indexed.summary, "keywords": indexed.keywords}))
+        }
+        "timeline" => {
+            let mut sessions = list_mem_sessions(&cwd, &platform, limit)?;
+            sessions.sort_by_key(|s| s.created_ms);
+            let rows: Vec<Value> = sessions
+                .into_iter()
+                .map(|s| serde_json::json!({"time_ms": s.created_ms, "platform": s.platform, "project": s.project, "id": s.id, "path": s.path, "turns": s.turns}))
+                .collect();
+            print_json(&serde_json::json!({"timeline": rows, "count": rows.len()}))
+        }
+        "related" => {
+            let id = option_value(args, "--session")
+                .or_else(|| option_value(args, "--id"))
+                .or_else(|| positional_after(args, 2))
+                .ok_or("mem related requires <session-id> or --session <id>")?;
+            let base = indexed_session(&cwd, &platform, &id, force)?;
+            let query = base.keywords.join(" ");
+            let mut hits = search_mem_sessions(&cwd, &platform, &query, limit + 1, force)?;
+            hits.retain(|hit| hit.session.path != base.session.path);
+            if hits.len() > limit {
+                hits.truncate(limit);
+            }
+            print_json(&serde_json::json!({"session": base.session, "related": hits, "count": hits.len()}))
+        }
+        "summary" | "summarize" => {
+            let id = option_value(args, "--session")
+                .or_else(|| option_value(args, "--id"))
+                .or_else(|| positional_after(args, 2));
+            let session = resolve_session(&cwd, &platform, id.as_deref(), None, force)?;
+            let indexed = indexed_session(&cwd, &platform, &session.id, force)?;
+            println!("{}", indexed.summary);
+            Ok(())
+        }
+        "reindex" => {
+            let index = build_and_save_index(&cwd, &platform)?;
+            print_json(&serde_json::json!({"status":"ok", "index_path": index_path(&cwd).to_string_lossy(), "sessions": index.sessions.len(), "generated_ms": index.generated_ms}))
+        }
+        "stats" => {
+            let index = load_or_build_index(&cwd, &platform, force)?;
+            let bytes: u64 = index.sessions.iter().map(|s| s.session.bytes).sum();
+            let turns: usize = index.sessions.iter().map(|s| s.session.turns).sum();
+            let mut by_platform: BTreeMap<String, usize> = BTreeMap::new();
+            for item in &index.sessions {
+                *by_platform.entry(item.session.platform.clone()).or_insert(0) += 1;
+            }
+            print_json(&serde_json::json!({"index_path": index_path(&cwd), "sessions": index.sessions.len(), "bytes": bytes, "turns": turns, "by_platform": by_platform, "generated_ms": index.generated_ms}))
+        }
+        "doctor" => {
+            let roots: Vec<Value> = session_roots()
+                .into_iter()
+                .map(|(root, platform)| serde_json::json!({"platform": platform, "path": root, "exists": root.exists()}))
+                .collect();
+            let idx = index_path(&cwd);
+            print_json(&serde_json::json!({"status":"ok", "index_path": idx, "index_exists": idx.exists(), "roots": roots}))
+        }
+        "prune" => {
+            let path = index_path(&cwd);
+            if path.exists() {
+                fs::remove_file(&path).map_err(|e| format!("remove {}: {e}", path.display()))?;
+            }
+            print_json(&serde_json::json!({"status":"ok", "removed": path}))
+        }
+        _ => Err("mem: expected list|projects|search|context|extract|show|timeline|related|summary|reindex|stats|doctor|prune".to_string()),
     }
 }
 
@@ -378,29 +486,144 @@ fn content_part_to_text(value: &Value) -> Option<String> {
     }
 }
 
+fn index_path(cwd: &str) -> PathBuf {
+    Path::new(cwd)
+        .join(".emb-agent")
+        .join("cache")
+        .join("mem")
+        .join("index.json")
+}
+
+fn now_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or_default()
+}
+
+fn load_or_build_index(cwd: &str, platform: &str, force: bool) -> Result<MemIndex, String> {
+    if !force
+        && let Some(index) = read_index(cwd)
+        && index.version == INDEX_VERSION
+        && index_is_fresh(&index, platform)
+    {
+        return Ok(filter_index(index, platform));
+    }
+    build_and_save_index(cwd, platform)
+}
+
+fn read_index(cwd: &str) -> Option<MemIndex> {
+    let path = index_path(cwd);
+    let text = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+fn index_is_fresh(index: &MemIndex, platform: &str) -> bool {
+    let sessions = list_mem_sessions(&index.root, platform, usize::MAX).unwrap_or_default();
+    if sessions.len()
+        != index
+            .sessions
+            .iter()
+            .filter(|s| platform == "all" || s.session.platform == platform)
+            .count()
+    {
+        return false;
+    }
+    for session in sessions {
+        let Some(existing) = index
+            .sessions
+            .iter()
+            .find(|item| item.session.path == session.path)
+        else {
+            return false;
+        };
+        if existing.mtime_ms != session.updated_ms || existing.size != session.bytes {
+            return false;
+        }
+    }
+    true
+}
+
+fn filter_index(mut index: MemIndex, platform: &str) -> MemIndex {
+    if platform != "all" {
+        index
+            .sessions
+            .retain(|item| item.session.platform == platform);
+    }
+    index
+}
+
+fn build_and_save_index(cwd: &str, platform: &str) -> Result<MemIndex, String> {
+    let sessions = list_mem_sessions(cwd, platform, usize::MAX)?;
+    let mut indexed = Vec::new();
+    for session in sessions {
+        let turns = read_dialogue(&session.path).unwrap_or_default();
+        let text = turns
+            .iter()
+            .map(|turn| format!("{}: {}", turn.role, turn.text))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        indexed.push(IndexedSession {
+            mtime_ms: session.updated_ms,
+            size: session.bytes,
+            summary: summarize_text(&text),
+            keywords: keywords(&text),
+            text_tail: tail_chars(&text, INDEX_TEXT_LIMIT),
+            session,
+        });
+    }
+    indexed.sort_by_key(|item| Reverse(item.session.updated_ms));
+    let index = MemIndex {
+        version: INDEX_VERSION,
+        generated_ms: now_ms(),
+        root: cwd.to_string(),
+        sessions: indexed,
+    };
+    let path = index_path(cwd);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&index).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("write {}: {e}", path.display()))?;
+    Ok(index)
+}
+
+fn indexed_session(
+    cwd: &str,
+    platform: &str,
+    id: &str,
+    force: bool,
+) -> Result<IndexedSession, String> {
+    let index = load_or_build_index(cwd, platform, force)?;
+    index
+        .sessions
+        .into_iter()
+        .find(|item| item.session.id.contains(id) || item.session.path.contains(id))
+        .ok_or_else(|| format!("session not found: {id}"))
+}
+
 fn search_mem_sessions(
     cwd: &str,
     platform: &str,
     query: &str,
     limit: usize,
+    force: bool,
 ) -> Result<Vec<SearchHit>, String> {
-    let sessions = list_mem_sessions(cwd, platform, usize::MAX)?;
+    let index = load_or_build_index(cwd, platform, force)?;
     let mut hits = Vec::new();
-    for session in sessions {
-        let turns = read_dialogue(&session.path).unwrap_or_default();
-        let haystack = turns
-            .iter()
-            .map(|t| t.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
-        let score = score_text(&haystack, query);
+    for item in index.sessions {
+        let score = score_text(&item.text_tail, query) + keyword_score(&item.keywords, query);
         if score == 0 {
             continue;
         }
         hits.push(SearchHit {
-            session,
+            session: item.session,
             score,
-            preview: preview(&haystack, query),
+            preview: preview(&item.text_tail, query),
+            keywords: item.keywords,
         });
     }
     hits.sort_by(|a, b| {
@@ -415,10 +638,30 @@ fn search_mem_sessions(
 }
 
 fn score_text(text: &str, query: &str) -> usize {
+    let lower = text.to_lowercase();
     query
         .split_whitespace()
-        .filter(|token| text.to_lowercase().contains(&token.to_lowercase()))
+        .map(|token| {
+            let token = token.to_lowercase();
+            if token.is_empty() {
+                0
+            } else {
+                lower
+                    .matches(&token)
+                    .count()
+                    .max(usize::from(lower.contains(&token)))
+            }
+        })
+        .sum()
+}
+
+fn keyword_score(keywords: &[String], query: &str) -> usize {
+    let set = keywords.iter().map(|s| s.as_str()).collect::<BTreeSet<_>>();
+    query
+        .split_whitespace()
+        .filter(|token| set.contains(token.to_lowercase().as_str()))
         .count()
+        * 3
 }
 
 fn contains_all_tokens(text: &str, query: &str) -> bool {
@@ -449,25 +692,19 @@ fn resolve_session(
     platform: &str,
     id: Option<&str>,
     query: Option<&str>,
+    force: bool,
 ) -> Result<MemSessionInfo, String> {
-    let sessions = list_mem_sessions(cwd, platform, usize::MAX)?;
     if let Some(id) = id {
-        if let Some(session) = sessions
-            .iter()
-            .find(|s| s.id.contains(id) || s.path.contains(id))
-        {
-            return Ok(session.clone());
-        }
-        return Err(format!("session not found: {id}"));
+        return indexed_session(cwd, platform, id, force).map(|item| item.session);
     }
     if let Some(query) = query {
-        return search_mem_sessions(cwd, platform, query, 1)?
+        return search_mem_sessions(cwd, platform, query, 1, force)?
             .into_iter()
             .next()
             .map(|hit| hit.session)
             .ok_or_else(|| format!("no session matched query: {query}"));
     }
-    sessions
+    list_mem_sessions(cwd, platform, 1)?
         .into_iter()
         .next()
         .ok_or_else(|| "no local sessions found".to_string())
@@ -483,19 +720,40 @@ fn slice_phase(turns: &[DialogueTurn], phase: &str) -> Vec<DialogueTurn> {
     if phase == "all" {
         return turns.to_vec();
     }
-    let create = turns.iter().position(|turn| is_create_boundary(&turn.text));
-    let start = turns.iter().position(|turn| is_start_boundary(&turn.text));
+    let boundaries = phase_boundaries(turns);
     match phase {
-        "brainstorm" => match (create, start) {
-            (Some(c), Some(s)) if s > c => turns[c..s].to_vec(),
-            (Some(c), _) => turns[c..].to_vec(),
-            _ => turns.to_vec(),
-        },
-        "implement" => match start {
-            Some(s) => turns[s..].to_vec(),
-            None => Vec::new(),
-        },
+        "brainstorm" => {
+            let start = boundaries.create.unwrap_or(0);
+            let end = boundaries.start.unwrap_or(turns.len());
+            if end > start {
+                turns[start..end].to_vec()
+            } else {
+                turns.to_vec()
+            }
+        }
+        "implement" => boundaries
+            .start
+            .map(|start| turns[start..boundaries.finish.unwrap_or(turns.len())].to_vec())
+            .unwrap_or_default(),
+        "review" | "finish" => boundaries
+            .finish
+            .map(|start| turns[start..].to_vec())
+            .unwrap_or_default(),
         _ => turns.to_vec(),
+    }
+}
+
+struct PhaseBoundaries {
+    create: Option<usize>,
+    start: Option<usize>,
+    finish: Option<usize>,
+}
+
+fn phase_boundaries(turns: &[DialogueTurn]) -> PhaseBoundaries {
+    PhaseBoundaries {
+        create: turns.iter().position(|turn| is_create_boundary(&turn.text)),
+        start: turns.iter().position(|turn| is_start_boundary(&turn.text)),
+        finish: turns.iter().position(|turn| is_finish_boundary(&turn.text)),
     }
 }
 
@@ -515,3 +773,80 @@ fn is_start_boundary(text: &str) -> bool {
         || t.contains("implementation")
         || text.contains("开始实现")
 }
+
+fn is_finish_boundary(text: &str) -> bool {
+    let t = text.to_lowercase();
+    (t.contains("task.py") && (t.contains(" finish") || t.contains(" archive")))
+        || (t.contains("emb-agent")
+            && t.contains("task")
+            && (t.contains("resolve") || t.contains("delete")))
+        || t.contains("aar")
+        || t.contains("review")
+        || text.contains("完成")
+}
+
+fn summarize_text(text: &str) -> String {
+    let mut out = Vec::new();
+    for paragraph in text.split("\n\n") {
+        let p = paragraph.trim().replace('\n', " ");
+        if p.len() < 20 {
+            continue;
+        }
+        out.push(p);
+        if out.join("\n").chars().count() > SUMMARY_LIMIT {
+            break;
+        }
+    }
+    tail_chars(&out.join("\n"), SUMMARY_LIMIT)
+}
+
+fn keywords(text: &str) -> Vec<String> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for token in text
+        .split(|ch: char| !ch.is_alphanumeric() && ch != '_' && ch != '-')
+        .map(|token| token.trim().to_lowercase())
+        .filter(|token| token.len() >= 4 && !STOP_WORDS.contains(&token.as_str()))
+    {
+        *counts.entry(token).or_insert(0) += 1;
+    }
+    let mut rows = counts.into_iter().collect::<Vec<_>>();
+    rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    rows.into_iter().take(24).map(|(token, _)| token).collect()
+}
+
+fn tail_chars(text: &str, max_chars: usize) -> String {
+    let len = text.chars().count();
+    if len <= max_chars {
+        return text.to_string();
+    }
+    text.chars().skip(len - max_chars).collect()
+}
+
+const STOP_WORDS: &[&str] = &[
+    "about",
+    "after",
+    "agent",
+    "assistant",
+    "before",
+    "code",
+    "content",
+    "could",
+    "from",
+    "have",
+    "into",
+    "message",
+    "need",
+    "should",
+    "task",
+    "that",
+    "this",
+    "user",
+    "with",
+    "would",
+    "your",
+    "进行",
+    "已经",
+    "这个",
+    "需要",
+    "实现",
+];

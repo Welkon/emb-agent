@@ -126,6 +126,7 @@ pub fn prune_stale_sessions(ext_dir: &Path) {
         return;
     };
     let now = now_ms();
+    let ttl_ms = worker_guard_idle_timeout_ms(ext_dir);
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) != Some("json") {
@@ -134,7 +135,7 @@ pub fn prune_stale_sessions(ext_dir: &Path) {
         let stale = fs::read_to_string(&path)
             .ok()
             .and_then(|content| serde_json::from_str::<SessionHeartbeat>(&content).ok())
-            .map(|session| now.saturating_sub(session.updated_at_ms) > SESSION_TTL_MS)
+            .map(|session| now.saturating_sub(session.updated_at_ms) > ttl_ms)
             .unwrap_or(true);
         if stale {
             let _ = fs::remove_file(path);
@@ -146,12 +147,13 @@ pub fn active_sessions(ext_dir: &Path) -> Vec<SessionHeartbeat> {
     prune_stale_sessions(ext_dir);
     let sessions_dir = ext_dir.join("sessions");
     let now = now_ms();
+    let ttl_ms = worker_guard_idle_timeout_ms(ext_dir);
     let mut sessions = Vec::new();
     if let Ok(entries) = fs::read_dir(&sessions_dir) {
         for entry in entries.flatten() {
             if let Ok(content) = fs::read_to_string(entry.path())
                 && let Ok(session) = serde_json::from_str::<SessionHeartbeat>(&content)
-                && now.saturating_sub(session.updated_at_ms) <= SESSION_TTL_MS
+                && now.saturating_sub(session.updated_at_ms) <= ttl_ms
             {
                 sessions.push(session);
             }
@@ -195,6 +197,7 @@ pub fn evaluate_worktree_policy(
                 && (task_name.is_empty() || session.task.is_empty() || session.task != task_name)
         })
         .count();
+    let max_live_workers = worker_guard_max_live_workers(&registry_ext_dir);
 
     let (decision, reason) = if workspace.kind == "non-git" {
         (
@@ -211,6 +214,11 @@ pub fn evaluate_worktree_policy(
             || workspace.branch == format!("task/{task_name}"))
     {
         ("not-needed", "already inside this task worktree")
+    } else if max_live_workers > 0 && sessions.len() > max_live_workers {
+        (
+            "required",
+            "active AI session count exceeds channel.worker_guard.max_live_workers",
+        )
     } else if workspace.kind == "main" && other_main_sessions > 0 {
         (
             "required",
@@ -362,6 +370,67 @@ fn safe_file_stem(value: &str) -> String {
     } else {
         safe
     }
+}
+
+fn worker_guard_idle_timeout_ms(ext_dir: &Path) -> u128 {
+    config_scalar(ext_dir, "channel", "worker_guard", "idle_timeout")
+        .and_then(|value| parse_duration_ms(&value))
+        .unwrap_or(SESSION_TTL_MS)
+}
+
+fn worker_guard_max_live_workers(ext_dir: &Path) -> usize {
+    config_scalar(ext_dir, "channel", "worker_guard", "max_live_workers")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(6)
+}
+
+fn config_scalar(ext_dir: &Path, section: &str, sub_section: &str, key: &str) -> Option<String> {
+    let text = fs::read_to_string(ext_dir.join("config.yaml")).ok()?;
+    let mut current = "";
+    let mut sub = "";
+    for raw in text.lines() {
+        let line = raw.split('#').next().unwrap_or("");
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !line.starts_with(' ') && trimmed.ends_with(':') {
+            current = trimmed.trim_end_matches(':');
+            sub = "";
+            continue;
+        }
+        if line.starts_with("  ") && !line.starts_with("    ") && trimmed.ends_with(':') {
+            sub = trimmed.trim_end_matches(':');
+            continue;
+        }
+        if current == section
+            && sub == sub_section
+            && let Some((k, v)) = trimmed.split_once(':')
+            && k.trim() == key
+        {
+            return Some(v.trim().trim_matches('"').trim_matches('\'').to_string());
+        }
+    }
+    None
+}
+
+fn parse_duration_ms(value: &str) -> Option<u128> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let (number, multiplier) = if let Some(v) = trimmed.strip_suffix("ms") {
+        (v, 1)
+    } else if let Some(v) = trimmed.strip_suffix('s') {
+        (v, 1_000)
+    } else if let Some(v) = trimmed.strip_suffix('m') {
+        (v, 60_000)
+    } else if let Some(v) = trimmed.strip_suffix('h') {
+        (v, 60 * 60_000)
+    } else {
+        (trimmed, 1)
+    };
+    number.trim().parse::<u128>().ok().map(|n| n * multiplier)
 }
 
 fn now_ms() -> u128 {

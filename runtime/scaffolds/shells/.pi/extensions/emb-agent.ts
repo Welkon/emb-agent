@@ -1280,10 +1280,13 @@ export default function (pi: ExtensionAPI) {
       additionalProperties: false,
     } as Record<string, unknown>,
     async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
-      const hits = await searchSessions(ctx.cwd, String(params.query || ""), Number(params.limit || 8));
-      if (!hits.length) return toolTextResult("No matching local Pi/Codex sessions found.", { hits: [] });
-      const text = hits.map((hit, index) => `${index + 1}. ${hit.platform} ${hit.id}\n   ${hit.path}\n   ${hit.preview}`).join("\n");
-      return toolTextResult(text, { hits });
+      const limit = String(Number(params.limit || 8));
+      const result = await runEmbAgent(["mem", "search", "--query", String(params.query || ""), "--limit", limit], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      const hits = Array.isArray((result.value as any).hits) ? (result.value as any).hits : [];
+      if (!hits.length) return toolTextResult("No matching local Claude/Codex/Pi sessions found.", { hits: [] });
+      const text = hits.map((hit: any, index: number) => `${index + 1}. ${hit.session?.platform || "session"} ${hit.session?.id || ""}\n   ${hit.session?.path || ""}\n   ${(hit.preview || "").slice(0, 500)}`).join("\n");
+      return toolTextResult(text, { hits, source: "emb-agent-rs mem search" });
     },
   });
 
@@ -1302,17 +1305,14 @@ export default function (pi: ExtensionAPI) {
       additionalProperties: false,
     } as Record<string, unknown>,
     async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
-      let sessionPath = String(params.path || "").trim();
-      if (!sessionPath && params.id) {
-        const id = String(params.id);
-        const files = await discoverSessionFiles(ctx.cwd);
-        const match = files.find((file) => file.id.includes(id) || file.path.includes(id));
-        if (match) sessionPath = match.path;
-      }
-      if (!sessionPath) return toolTextResult("emb_session_extract error: provide path or id", { status: "error" });
       const phase = (["all", "brainstorm", "implement"].includes(String(params.phase)) ? String(params.phase) : "all") as "all" | "brainstorm" | "implement";
-      const dialogue = await readSessionDialogue(sessionPath, phase);
-      return toolTextResult(dialogue.slice(0, MAX_SUBAGENT_OUTPUT) || "(empty session slice)", { path: sessionPath, phase });
+      const args = ["mem", "extract", "--phase", phase];
+      const id = String(params.id || params.path || "").trim();
+      if (id) args.push(id);
+      const result = await runEmbAgent(args, ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER, allowNonJson: true });
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      const dialogue = (result.stdout || String((result.value as any).summary || "")).slice(0, MAX_SUBAGENT_OUTPUT);
+      return toolTextResult(dialogue || "(empty session slice)", { phase, source: "emb-agent-rs mem extract", id });
     },
   });
 

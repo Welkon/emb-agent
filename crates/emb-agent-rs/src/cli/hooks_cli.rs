@@ -1,3 +1,4 @@
+use super::config::{record_session_journal, run_configured_hooks};
 use super::util::{
     current_dir_string, hook_cwd, option_value, positional_after, stdin_payload_or_cwd,
 };
@@ -69,8 +70,15 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
                 .unwrap_or_else(|| hook_cwd(args));
             let trigger = hook_trigger(&raw_payload);
             let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
-            let ext_dir = Path::new(&cwd).join(".emb-agent");
-            let _ = emb_agent_core::record_session_heartbeat(&ext_dir, Path::new(&cwd), &host);
+            let project_root = Path::new(&cwd);
+            let ext_dir = project_root.join(".emb-agent");
+            let _ = emb_agent_core::record_session_heartbeat(&ext_dir, project_root, &host);
+            record_session_journal(project_root, &host, &trigger, &raw_payload);
+            run_configured_hooks(
+                project_root,
+                "session_start",
+                &[("EMB_AGENT_SESSION_EVENT", trigger.clone())],
+            );
             let snapshot = snapshot_from_cwd(&cwd);
             let context = build_session_context_for_trigger(&snapshot, &trigger);
             let welcome = if trigger.eq_ignore_ascii_case("startup") {
@@ -87,8 +95,10 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
         "statusline" => {
             let cwd = hook_cwd(args);
             let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
-            let ext_dir = Path::new(&cwd).join(".emb-agent");
-            let _ = emb_agent_core::record_session_heartbeat(&ext_dir, Path::new(&cwd), &host);
+            let project_root = Path::new(&cwd);
+            let ext_dir = project_root.join(".emb-agent");
+            let _ = emb_agent_core::record_session_heartbeat(&ext_dir, project_root, &host);
+            record_session_journal(project_root, &host, "statusline", "");
             let snapshot = snapshot_from_cwd(&cwd);
             println!("{}", build_statusline(&snapshot));
             Ok(())
@@ -103,8 +113,10 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
                     .get("host")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or(&host_arg);
-                let ext_dir = Path::new(cwd).join(".emb-agent");
-                let _ = emb_agent_core::record_session_heartbeat(&ext_dir, Path::new(cwd), host);
+                let project_root = Path::new(cwd);
+                let ext_dir = project_root.join(".emb-agent");
+                let _ = emb_agent_core::record_session_heartbeat(&ext_dir, project_root, host);
+                record_session_journal(project_root, host, "context-monitor", &raw_payload);
             }
             let output = build_context_monitor_output_for_host(&raw_payload, &host_arg);
             if !output.is_empty() {

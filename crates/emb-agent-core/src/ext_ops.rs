@@ -9,6 +9,7 @@ pub fn init_project(cwd: &Path) -> String {
     let project_json = ext_dir.join("project.json");
     if project_json.exists() {
         let env = crate::lookup::ensure_project_env(cwd);
+        ensure_default_config(&ext_dir);
         return serde_json::json!({
             "status": "ok",
             "initialized": true,
@@ -44,10 +45,7 @@ pub fn init_project(cwd: &Path) -> String {
     let _ = fs::create_dir_all(ext_dir.join("roadmap"));
     let _ = fs::create_dir_all(ext_dir.join("audits"));
     let _ = fs::create_dir_all(ext_dir.join("extensions").join("chips").join("profiles"));
-    let config_path = ext_dir.join("config.yaml");
-    if !config_path.exists() {
-        let _ = fs::write(&config_path, default_config_yaml());
-    }
+    ensure_default_config(&ext_dir);
     let project = serde_json::json!({
         "project_profile": "",
         "active_specs": ["embedded-space"],
@@ -535,6 +533,31 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
     .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
 }
 
+fn ensure_default_config(ext_dir: &Path) {
+    let config_path = ext_dir.join("config.yaml");
+    if !config_path.exists() {
+        let _ = fs::write(&config_path, default_config_yaml());
+        return;
+    }
+    let Ok(text) = fs::read_to_string(&config_path) else {
+        return;
+    };
+    let mut updated = text.clone();
+    if !updated
+        .lines()
+        .any(|line| line.trim_start().starts_with("session_start:"))
+        && updated.lines().any(|line| line.trim() == "hooks:")
+    {
+        updated = updated.replace("hooks:\n", "hooks:\n  session_start: []\n");
+    }
+    if !updated.lines().any(|line| line.trim() == "codex:") {
+        updated.push_str("\n\ncodex:\n  dispatch_mode: inline  # inline | sub-agent\n");
+    }
+    if updated != text {
+        let _ = fs::write(&config_path, updated);
+    }
+}
+
 fn default_config_yaml() -> &'static str {
     "# emb-agent project configuration\n\
 # All keys are local-only. Hooks run on this machine and never upload session data.\n\
@@ -544,6 +567,7 @@ max_journal_lines: 2000\n\
 session_auto_commit: false\n\
 \n\
 hooks:\n\
+  session_start: []\n\
   after_create: []\n\
   after_start: []\n\
   after_finish: []\n\
@@ -859,8 +883,53 @@ pub fn support_status(_ext_dir: &Path) -> String {
         .to_string()
 }
 /// Dispatch orchestrate
-pub fn dispatch_orchestrate(_ext_dir: &Path, _job: &str) -> String {
-    r#"{"status":"unsupported","error":{"code":"not-implemented","message":"Dispatch orchestration not yet implemented"}}"#.to_string()
+pub fn dispatch_orchestrate(ext_dir: &Path, job: &str) -> String {
+    let mode = config_scalar(&ext_dir.join("config.yaml"), "codex", "dispatch_mode")
+        .unwrap_or_else(|| "inline".to_string());
+    let normalized = match mode.as_str() {
+        "sub-agent" | "sub_agent" | "subagent" => "sub-agent",
+        _ => "inline",
+    };
+    let worker_required = normalized == "sub-agent";
+    serde_json::json!({
+        "status": "ok",
+        "job": job,
+        "codex": {"dispatch_mode": normalized},
+        "dispatch": {
+            "mode": normalized,
+            "inline_allowed": normalized == "inline",
+            "subagent_allowed": worker_required,
+            "worker_envelope": if worker_required { serde_json::json!({
+                "agent": "fw-doer",
+                "task": job,
+                "instructions": "Run as a scoped Codex sub-agent if the host exposes one; otherwise fall back to inline execution."
+            }) } else { serde_json::Value::Null }
+        }
+    })
+    .to_string()
+}
+
+fn config_scalar(config_path: &Path, section: &str, key: &str) -> Option<String> {
+    let text = fs::read_to_string(config_path).ok()?;
+    let mut current = "";
+    for raw in text.lines() {
+        let line = raw.split('#').next().unwrap_or("");
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !line.starts_with(' ') && trimmed.ends_with(':') {
+            current = trimmed.trim_end_matches(':');
+            continue;
+        }
+        if current == section
+            && let Some((k, v)) = trimmed.split_once(':')
+            && k.trim() == key
+        {
+            return Some(v.trim().trim_matches('"').trim_matches('\'').to_string());
+        }
+    }
+    None
 }
 /// Scaffold generate
 pub fn scaffold_generate(_ext_dir: &Path, _name: &str) -> String {
