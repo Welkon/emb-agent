@@ -92,6 +92,28 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
             );
             Ok(())
         }
+        "session-end" => {
+            let raw_payload = stdin_payload_or_cwd(args);
+            let cwd = serde_json::from_str::<serde_json::Value>(&raw_payload)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("cwd")
+                        .and_then(serde_json::Value::as_str)
+                        .map(ToOwned::to_owned)
+                })
+                .unwrap_or_else(|| hook_cwd(args));
+            let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
+            let project_root = Path::new(&cwd);
+            record_session_journal(project_root, &host, "session_end", &raw_payload);
+            run_configured_hooks(
+                project_root,
+                "session_end",
+                &[("EMB_AGENT_SESSION_EVENT", "session_end".to_string())],
+            );
+            println!("{{\"status\":\"ok\",\"event\":\"session_end\"}}");
+            Ok(())
+        }
         "statusline" => {
             let cwd = hook_cwd(args);
             let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
@@ -117,6 +139,11 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
                 let ext_dir = project_root.join(".emb-agent");
                 let _ = emb_agent_core::record_session_heartbeat(&ext_dir, project_root, host);
                 record_session_journal(project_root, host, "context-monitor", &raw_payload);
+                run_configured_hooks(
+                    project_root,
+                    "after_tool",
+                    &[("EMB_AGENT_SESSION_EVENT", "after_tool".to_string())],
+                );
             }
             let output = build_context_monitor_output_for_host(&raw_payload, &host_arg);
             if !output.is_empty() {

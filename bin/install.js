@@ -156,6 +156,8 @@ function defaultEmbAgentConfigYaml() {
 		"",
 		"hooks:",
 		"  session_start: []",
+		"  session_end: []",
+		"  after_tool: []",
 		"  after_create: []",
 		"  after_start: []",
 		"  after_finish: []",
@@ -181,8 +183,12 @@ function ensureEmbAgentProjectConfig(projectRoot) {
 	}
 	var text = fs.readFileSync(configPath, "utf8");
 	var updated = text;
-	if (!/^[ \t]*session_start[ \t]*:/m.test(updated) && /^hooks:[ \t]*$/m.test(updated)) {
-		updated = updated.replace(/^hooks:[ \t]*$/m, "hooks:\n  session_start: []");
+	if (/^hooks:[ \t]*$/m.test(updated)) {
+		var hookLines = [];
+		if (!/^[ \t]*session_start[ \t]*:/m.test(updated)) hookLines.push("  session_start: []");
+		if (!/^[ \t]*session_end[ \t]*:/m.test(updated)) hookLines.push("  session_end: []");
+		if (!/^[ \t]*after_tool[ \t]*:/m.test(updated)) hookLines.push("  after_tool: []");
+		if (hookLines.length) updated = updated.replace(/^hooks:[ \t]*$/m, "hooks:\n" + hookLines.join("\n"));
 	}
 	if (!/^codex:[ \t]*$/m.test(updated)) {
 		updated = updated.replace(/\s*$/, "\n\ncodex:\n  dispatch_mode: inline  # inline | sub-agent\n");

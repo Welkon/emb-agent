@@ -76,6 +76,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
             | "stats"
             | "doctor"
             | "prune"
+            | "open"
+            | "explain"
+            | "export"
+            | "diff"
+            | "writeback"
     ) {
         return run_session_mem(args);
     }
@@ -270,7 +275,97 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
             }
             print_json(&serde_json::json!({"status":"ok", "removed": path}))
         }
-        _ => Err("mem: expected list|projects|search|context|extract|show|timeline|related|summary|reindex|stats|doctor|prune".to_string()),
+        "open" => {
+            let id = option_value(args, "--session")
+                .or_else(|| option_value(args, "--id"))
+                .or_else(|| positional_after(args, 2));
+            let session = resolve_session(&cwd, &platform, id.as_deref(), None, force)?;
+            print_json(&serde_json::json!({"session": session, "open": {"path": session.path, "hint": "Open this local JSONL transcript with your editor; emb-agent never uploads it."}}))
+        }
+        "explain" => {
+            let query = option_value(args, "--query")
+                .or_else(|| positional_after(args, 2))
+                .ok_or("mem explain requires --query <text> or positional query")?;
+            let hits = search_mem_sessions(&cwd, &platform, &query, limit, force)?;
+            let explanation: Vec<Value> = hits
+                .into_iter()
+                .map(|hit| serde_json::json!({
+                    "session": hit.session,
+                    "score": hit.score,
+                    "matched_keywords": hit.keywords.into_iter().filter(|kw| query.to_lowercase().contains(kw) || hit.preview.to_lowercase().contains(kw)).collect::<Vec<_>>(),
+                    "preview": hit.preview
+                }))
+                .collect();
+            print_json(&serde_json::json!({"query": query, "explanation": explanation, "count": explanation.len()}))
+        }
+        "export" => {
+            let format = option_value(args, "--format").unwrap_or_else(|| "json".to_string());
+            let index = load_or_build_index(&cwd, &platform, force)?;
+            if format == "markdown" || format == "md" {
+                for item in index.sessions.into_iter().take(limit) {
+                    println!("## {} {}\n\nPath: `{}`\n\nKeywords: {}\n\n{}\n", item.session.platform, item.session.id, item.session.path, item.keywords.join(", "), item.summary);
+                }
+                Ok(())
+            } else {
+                print_json(&serde_json::json!({"sessions": index.sessions, "count": index.sessions.len()}))
+            }
+        }
+        "diff" => {
+            let left = option_value(args, "--left").or_else(|| positional_after(args, 2)).ok_or("mem diff requires --left <session> or two positional ids")?;
+            let right = option_value(args, "--right").or_else(|| positional_after(args, 3)).ok_or("mem diff requires --right <session> or two positional ids")?;
+            let a = indexed_session(&cwd, &platform, &left, force)?;
+            let b = indexed_session(&cwd, &platform, &right, force)?;
+            let ka: BTreeSet<String> = a.keywords.iter().cloned().collect();
+            let kb: BTreeSet<String> = b.keywords.iter().cloned().collect();
+            let shared = ka.intersection(&kb).cloned().collect::<Vec<_>>();
+            let only_left = ka.difference(&kb).cloned().collect::<Vec<_>>();
+            let only_right = kb.difference(&ka).cloned().collect::<Vec<_>>();
+            print_json(&serde_json::json!({"left": a.session, "right": b.session, "shared_keywords": shared, "left_only_keywords": only_left, "right_only_keywords": only_right}))
+        }
+        "writeback" => {
+            let target = option_value(args, "--target").unwrap_or_else(|| "memory".to_string());
+            let summary = option_value(args, "--summary").or_else(|| positional_after(args, 2)).ok_or("mem writeback requires --summary <text>")?;
+            let detail = option_value(args, "--detail").unwrap_or_default();
+            writeback_memory(Path::new(&cwd), &target, &summary, &detail)
+        }
+        _ => Err("mem: expected list|projects|search|context|extract|show|timeline|related|summary|reindex|stats|doctor|prune|open|explain|export|diff|writeback".to_string()),
+    }
+}
+
+fn writeback_memory(
+    project_root: &Path,
+    target: &str,
+    summary: &str,
+    detail: &str,
+) -> Result<(), String> {
+    match target {
+        "memory" | "durable" => {
+            let id = emb_agent_core::knowledge::graph::memory_remember(
+                project_root,
+                "session-insight",
+                summary,
+                detail,
+            )?;
+            print_json(
+                &serde_json::json!({"status":"ok", "target":"memory", "memory_type":"session-insight", "id": id}),
+            )
+        }
+        "attention" => {
+            let ext_dir = project_root.join(".emb-agent");
+            println!(
+                "{}",
+                emb_agent_core::compound::attention_note(&ext_dir, summary, "Session Insight")
+            );
+            Ok(())
+        }
+        "decision" | "task" | "prd" => print_json(&serde_json::json!({
+            "status": "manual",
+            "target": target,
+            "summary": summary,
+            "detail": detail,
+            "next": "Use this insight in the current PRD/task/decision update; emb-agent will not guess the durable destination automatically."
+        })),
+        other => Err(format!("mem writeback unknown target: {other}")),
     }
 }
 

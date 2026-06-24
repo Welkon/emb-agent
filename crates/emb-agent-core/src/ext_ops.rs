@@ -543,12 +543,29 @@ fn ensure_default_config(ext_dir: &Path) {
         return;
     };
     let mut updated = text.clone();
-    if !updated
-        .lines()
-        .any(|line| line.trim_start().starts_with("session_start:"))
-        && updated.lines().any(|line| line.trim() == "hooks:")
-    {
-        updated = updated.replace("hooks:\n", "hooks:\n  session_start: []\n");
+    if updated.lines().any(|line| line.trim() == "hooks:") {
+        let mut hook_lines = Vec::new();
+        if !updated
+            .lines()
+            .any(|line| line.trim_start().starts_with("session_start:"))
+        {
+            hook_lines.push("  session_start: []");
+        }
+        if !updated
+            .lines()
+            .any(|line| line.trim_start().starts_with("session_end:"))
+        {
+            hook_lines.push("  session_end: []");
+        }
+        if !updated
+            .lines()
+            .any(|line| line.trim_start().starts_with("after_tool:"))
+        {
+            hook_lines.push("  after_tool: []");
+        }
+        if !hook_lines.is_empty() {
+            updated = updated.replace("hooks:\n", &format!("hooks:\n{}\n", hook_lines.join("\n")));
+        }
     }
     if !updated.lines().any(|line| line.trim() == "codex:") {
         updated.push_str("\n\ncodex:\n  dispatch_mode: inline  # inline | sub-agent\n");
@@ -568,6 +585,8 @@ session_auto_commit: false\n\
 \n\
 hooks:\n\
   session_start: []\n\
+  session_end: []\n\
+  after_tool: []\n\
   after_create: []\n\
   after_start: []\n\
   after_finish: []\n\

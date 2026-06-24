@@ -43,6 +43,7 @@ Useful commands:
 - `mem extract <session-id> --phase brainstorm|implement|review|all --cwd <project>`
 - `mem projects --platform all`
 - `mem reindex` / `mem stats` / `mem doctor`
+- `mem explain --query "..."`, `mem export`, `mem diff`, `mem writeback --target memory|attention --summary "..."`
 
 Do not automatically write session memory to a fixed file. Use it according to context:
 inline citation, PRD/design update, task note, spec update workflow, or background only.

@@ -672,6 +672,43 @@ hooks:
         1,
         "journal should obey max_journal_lines"
     );
+
+    let session_end = Command::new(emb_agent_bin())
+        .arg("hook")
+        .arg("session-end")
+        .arg("--host")
+        .arg("codex")
+        .arg("--cwd")
+        .arg(project.path())
+        .output()
+        .expect("run session-end hook");
+    let session_end = assert_success(session_end);
+    assert!(
+        session_end.contains("session_end"),
+        "session end: {session_end}"
+    );
+
+    fs::write(
+        project.path().join(".emb-agent/config.yaml"),
+        r#"codex:
+  dispatch_mode: sub-agent
+"#,
+    )
+    .expect("write dispatch config again");
+    let dispatch_run = Command::new(emb_agent_bin())
+        .arg("dispatch")
+        .arg("run")
+        .arg("verify")
+        .arg("--inline")
+        .arg("--cwd")
+        .arg(project.path())
+        .output()
+        .expect("run dispatch inline fallback");
+    let dispatch_run = assert_success(dispatch_run);
+    assert!(
+        dispatch_run.contains("sub-agent"),
+        "dispatch run: {dispatch_run}"
+    );
 }
 
 #[test]
@@ -792,6 +829,54 @@ fn mem_cli_searches_and_extracts_local_sessions() {
         .expect("run mem stats");
     let stats = assert_success(stats);
     assert!(stats.contains("by_platform"), "stats output: {stats}");
+
+    let explain = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("explain")
+        .arg("--query")
+        .arg("watchdog")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .output()
+        .expect("run mem explain");
+    let explain = assert_success(explain);
+    assert!(explain.contains("explanation"), "explain output: {explain}");
+
+    let export = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("export")
+        .arg("--format")
+        .arg("markdown")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .output()
+        .expect("run mem export");
+    let export = assert_success(export);
+    assert!(export.contains("Keywords:"), "export output: {export}");
+
+    let writeback = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("writeback")
+        .arg("--target")
+        .arg("memory")
+        .arg("--summary")
+        .arg("watchdog session insight")
+        .arg("--cwd")
+        .arg(&project)
+        .env("HOME", &root)
+        .output()
+        .expect("run mem writeback");
+    let writeback = assert_success(writeback);
+    assert!(
+        writeback.contains("session-insight"),
+        "writeback output: {writeback}"
+    );
 
     let _ = fs::remove_dir_all(root);
 }

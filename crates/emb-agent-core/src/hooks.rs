@@ -136,6 +136,7 @@ pub fn build_hook_plan(
 pub fn normalize_hook_name(hook: &str) -> String {
     match hook.trim() {
         "emb-session-start.js" | "SessionStart" | "session_start" => "session-start".to_string(),
+        "SessionEnd" | "session_end" | "session-end" => "session-end".to_string(),
         "emb-statusline.js" | "statusLine" | "status_line" => "statusline".to_string(),
         "emb-context-monitor.js" | "PostToolUse" | "context_monitor" => {
             "context-monitor".to_string()
@@ -146,7 +147,10 @@ pub fn normalize_hook_name(hook: &str) -> String {
 }
 
 pub fn is_rust_hook_supported(hook: &str) -> bool {
-    matches!(hook, "session-start" | "statusline" | "context-monitor")
+    matches!(
+        hook,
+        "session-start" | "session-end" | "statusline" | "context-monitor"
+    )
 }
 
 pub fn hook_file_name(hook: &str) -> &'static str {
