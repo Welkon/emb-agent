@@ -954,6 +954,31 @@ fn mem_cli_searches_and_extracts_local_sessions() {
         "auto writeback output: {auto_writeback}"
     );
 
+    fs::write(
+        project.join(".env"),
+        "EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\nEMB_AGENT_EMBEDDING_API_KEY=fake-test-key\nEMB_AGENT_EMBEDDING_MODEL=text-embedding-3-large\n",
+    )
+    .expect("write dotenv embedding config");
+    let dotenv_doctor = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("doctor")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .output()
+        .expect("run dotenv mem doctor");
+    let dotenv_doctor = assert_success(dotenv_doctor);
+    assert!(
+        dotenv_doctor.contains("text-embedding-3-large"),
+        "dotenv doctor output: {dotenv_doctor}"
+    );
+    assert!(
+        dotenv_doctor.contains("api_key_present"),
+        "dotenv doctor output: {dotenv_doctor}"
+    );
+
     let _ = fs::remove_dir_all(root);
 }
 

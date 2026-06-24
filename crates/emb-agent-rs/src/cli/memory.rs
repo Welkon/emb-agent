@@ -290,7 +290,7 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
                 .map(|(root, platform)| serde_json::json!({"platform": platform, "path": root, "exists": root.exists()}))
                 .collect();
             let idx = index_path(&cwd);
-            let embedding = embedding_config();
+            let embedding = embedding_config(&cwd);
             print_json(&serde_json::json!({"status":"ok", "index_path": idx, "index_exists": idx.exists(), "roots": roots, "embedding": embedding.diagnostic()}))
         }
         "prune" => {
@@ -911,20 +911,77 @@ struct EmbeddingCache {
     entries: BTreeMap<String, Vec<f32>>,
 }
 
-fn embedding_config() -> EmbeddingConfig {
-    let provider = std::env::var("EMB_AGENT_EMBEDDING_PROVIDER")
-        .unwrap_or_else(|_| "local-hash".to_string())
+fn embedding_config(cwd: &str) -> EmbeddingConfig {
+    let provider = env_or_dotenv(cwd, "EMB_AGENT_EMBEDDING_PROVIDER")
+        .unwrap_or_else(|| "local-hash".to_string())
         .to_ascii_lowercase();
     EmbeddingConfig {
         provider,
-        model: std::env::var("EMB_AGENT_EMBEDDING_MODEL")
-            .unwrap_or_else(|_| "text-embedding-3-small".to_string()),
-        api_base: std::env::var("EMB_AGENT_EMBEDDING_API_BASE")
-            .unwrap_or_else(|_| "https://api.openai.com/v1".to_string()),
-        api_key: std::env::var("EMB_AGENT_EMBEDDING_API_KEY").unwrap_or_default(),
-        upload: std::env::var("EMB_AGENT_EMBEDDING_UPLOAD")
-            .unwrap_or_else(|_| "summary-only".to_string())
+        model: env_or_dotenv(cwd, "EMB_AGENT_EMBEDDING_MODEL")
+            .unwrap_or_else(|| "text-embedding-3-small".to_string()),
+        api_base: env_or_dotenv(cwd, "EMB_AGENT_EMBEDDING_API_BASE")
+            .unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
+        api_key: env_or_dotenv(cwd, "EMB_AGENT_EMBEDDING_API_KEY").unwrap_or_default(),
+        upload: env_or_dotenv(cwd, "EMB_AGENT_EMBEDDING_UPLOAD")
+            .unwrap_or_else(|| "summary-only".to_string())
             .to_ascii_lowercase(),
+    }
+}
+
+fn env_or_dotenv(cwd: &str, key: &str) -> Option<String> {
+    if let Ok(value) = std::env::var(key)
+        && !value.trim().is_empty()
+    {
+        return Some(value);
+    }
+    for path in dotenv_paths(cwd) {
+        if let Some(value) = read_dotenv_value(&path, key) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn dotenv_paths(cwd: &str) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(path) = std::env::var("EMB_AGENT_ENV_FILE")
+        && !path.trim().is_empty()
+    {
+        paths.push(PathBuf::from(path));
+    }
+    let root = Path::new(cwd);
+    paths.push(root.join(".env"));
+    paths.push(root.join(".emb-agent").join(".env"));
+    paths
+}
+
+fn read_dotenv_value(path: &Path, key: &str) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line).trim();
+        let Some((name, value)) = line.split_once('=') else {
+            continue;
+        };
+        if name.trim() == key {
+            return Some(unquote_dotenv(value.trim()));
+        }
+    }
+    None
+}
+
+fn unquote_dotenv(value: &str) -> String {
+    let value = value.trim();
+    if value.len() >= 2
+        && ((value.starts_with('"') && value.ends_with('"'))
+            || (value.starts_with('\'') && value.ends_with('\'')))
+    {
+        value[1..value.len() - 1].to_string()
+    } else {
+        value.to_string()
     }
 }
 
@@ -1052,7 +1109,7 @@ fn external_embedding_vector(cfg: &EmbeddingConfig, text: &str) -> Option<Vec<f3
 }
 
 fn load_or_build_index(cwd: &str, platform: &str, force: bool) -> Result<MemIndex, String> {
-    let cfg = embedding_config();
+    let cfg = embedding_config(cwd);
     if !force
         && let Some(index) = read_index(cwd)
         && index.version == INDEX_VERSION
@@ -1107,7 +1164,7 @@ fn filter_index(mut index: MemIndex, platform: &str) -> MemIndex {
 }
 
 fn build_and_save_index(cwd: &str, platform: &str) -> Result<MemIndex, String> {
-    let cfg = embedding_config();
+    let cfg = embedding_config(cwd);
     let mut embedding_cache = load_embedding_cache(cwd, &cfg);
     let sessions = list_mem_sessions(cwd, platform, usize::MAX)?;
     let mut indexed = Vec::new();
@@ -1174,7 +1231,7 @@ fn search_mem_sessions(
 ) -> Result<Vec<SearchHit>, String> {
     let index = load_or_build_index(cwd, platform, force)?;
     let query_expanded = expand_query(query);
-    let cfg = embedding_config();
+    let cfg = embedding_config(cwd);
     let query_vector = embedding_vector_for_text(&cfg, &query_expanded);
     let mut hits = Vec::new();
     for item in index.sessions {

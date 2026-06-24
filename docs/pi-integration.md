@@ -109,7 +109,7 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
 
 生命周期 hooks 会收到 `TASK_JSON_PATH` 环境变量；session/tool/agent-turn hooks 会收到 `EMB_AGENT_SESSION_EVENT`。任意事件也可通过 `hook event --name <event>` 触发。hook 失败只打印警告，不阻塞主命令。
 
-`max_journal_lines` 限制 `.emb-agent/sessions/journal.jsonl`，`session_auto_commit` 会本地提交 session journal/index，不上传。session memory 默认使用本地 exact + keyword + semantic-hash hybrid scorer；如需外部 embedding，可通过 `EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible`、`EMB_AGENT_EMBEDDING_API_KEY`、`EMB_AGENT_EMBEDDING_MODEL`、`EMB_AGENT_EMBEDDING_API_BASE`、`EMB_AGENT_EMBEDDING_UPLOAD=summary-only|chunks` 显式启用，失败会回落本地 hash。`mem writeback --target auto` 会按 trap/decision/trick/blocker/requirement 规则晋升到 compound、attention、memory 或手动 PRD/task 指引；`mem promote --query ...` 提供候选晋升 dry-run，只有显式 `--apply` 才写入。`codex.dispatch_mode: sub-agent` 会通过 emb-agent 启动本地 `codex exec` worker；不具备 Codex CLI 时返回 manual worker envelope。
+`max_journal_lines` 限制 `.emb-agent/sessions/journal.jsonl`，`session_auto_commit` 会本地提交 session journal/index，不上传。session memory 默认使用本地 exact + keyword + semantic-hash hybrid scorer；如需外部 embedding，可通过 `EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible`、`EMB_AGENT_EMBEDDING_API_KEY`、`EMB_AGENT_EMBEDDING_MODEL`、`EMB_AGENT_EMBEDDING_API_BASE`、`EMB_AGENT_EMBEDDING_UPLOAD=summary-only|chunks` 显式启用，这些值可来自 shell env、项目 `.env`、`.emb-agent/.env` 或 `EMB_AGENT_ENV_FILE`，失败会回落本地 hash。`mem writeback --target auto` 会按 trap/decision/trick/blocker/requirement 规则晋升到 compound、attention、memory 或手动 PRD/task 指引；`mem promote --query ...` 提供候选晋升 dry-run，只有显式 `--apply` 才写入。`codex.dispatch_mode: sub-agent` 会通过 emb-agent 启动本地 `codex exec` worker；不具备 Codex CLI 时返回 manual worker envelope。
 
 ## 设置合并
 

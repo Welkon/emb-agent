@@ -32,7 +32,7 @@ Use `memory` for durable emb auto-memory, and `mem` for local AI session recall.
 - `mem diff --left <session-id> --right <session-id>`
 - `mem writeback --target auto|memory|attention|trap|trick|decision|learn|task|prd --summary <text> [--detail <text>]`
 
-`mem` reads existing local Claude Code / Codex / Pi JSONL sessions and never uploads content. Search/context/show/related use `.emb-agent/cache/mem/index.json` and rebuild it when stale. The default semantic-hash vector is deterministic/local. To opt in to an external OpenAI-compatible embeddings API, set `EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible`, `EMB_AGENT_EMBEDDING_API_KEY`, and optionally `EMB_AGENT_EMBEDDING_MODEL`, `EMB_AGENT_EMBEDDING_API_BASE`, `EMB_AGENT_EMBEDDING_UPLOAD=summary-only|chunks`.
+`mem` reads existing local Claude Code / Codex / Pi JSONL sessions and never uploads content. Search/context/show/related use `.emb-agent/cache/mem/index.json` and rebuild it when stale. The default semantic-hash vector is deterministic/local. To opt in to an external OpenAI-compatible embeddings API, set `EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible`, `EMB_AGENT_EMBEDDING_API_KEY`, and optionally `EMB_AGENT_EMBEDDING_MODEL`, `EMB_AGENT_EMBEDDING_API_BASE`, `EMB_AGENT_EMBEDDING_UPLOAD=summary-only|chunks`. Values may come from shell env, project `.env`, `.emb-agent/.env`, or `EMB_AGENT_ENV_FILE`; shell env wins.
 
 ## Notes
 
