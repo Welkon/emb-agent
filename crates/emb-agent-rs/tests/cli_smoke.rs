@@ -2143,6 +2143,19 @@ fn is_leap_year(year: i64) -> bool {
 fn knowledge_query_and_explain_accept_named_options_after_cwd() {
     let project = TestProject::new("knowledge");
 
+    fs::create_dir_all(project.path().join(".emb-agent/cache/docs/manual"))
+        .expect("create doc cache");
+    fs::write(
+        project.path().join(".emb-agent/cache/docs/manual/parse.md"),
+        "# Native Parsed Manual\n\nU1 watchdog register evidence and low-power notes from parsed PDF.\n",
+    )
+    .expect("write parsed doc cache");
+    fs::write(
+        project.path().join(".emb-agent/cache/docs/index.json"),
+        r#"{"documents":[{"doc_id":"manual","provider":"mineru","kind":"datasheet","title":"Native Parsed Manual","intended_to":"hardware","parsed":true,"status":"ok","paths":{"markdown":".emb-agent/cache/docs/manual/parse.md","source":"docs/manual.pdf"}}]}"#,
+    )
+    .expect("write doc index");
+
     let refresh = run(&project, &["knowledge", "graph", "refresh"]);
     assert!(refresh.contains("native"), "refresh output: {refresh}");
     let index = run(&project, &["knowledge", "index", "--rebuild"]);
@@ -2152,6 +2165,25 @@ fn knowledge_query_and_explain_accept_named_options_after_cwd() {
         &["knowledge", "search", "--query", "U1", "--rerank"],
     );
     assert!(search.contains("hits"), "search output: {search}");
+    assert!(
+        search.contains("rerank_provider"),
+        "search output: {search}"
+    );
+    let doc_search = run(
+        &project,
+        &[
+            "knowledge",
+            "search",
+            "--query",
+            "watchdog low-power parsed PDF",
+            "--limit",
+            "1",
+        ],
+    );
+    assert!(
+        doc_search.contains("Native Parsed Manual") && doc_search.contains("doc-parse"),
+        "doc cache search output: {doc_search}"
+    );
     assert!(refresh.contains("\"nodes\""), "refresh output: {refresh}");
 
     let query = run(&project, &["knowledge", "graph", "query", "--q", "U1"]);

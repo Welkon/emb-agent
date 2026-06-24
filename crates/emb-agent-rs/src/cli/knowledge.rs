@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const KNOWLEDGE_INDEX_VERSION: u32 = 1;
+const KNOWLEDGE_INDEX_VERSION: u32 = 2;
+const KNOWLEDGE_CHUNK_CHARS: usize = 6_000;
+const KNOWLEDGE_CHUNK_OVERLAP: usize = 500;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct KnowledgeChunk {
@@ -44,6 +46,13 @@ struct RerankConfig {
     model: String,
     api_base: String,
     api_key: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct KnowledgeSearchResult {
+    hits: Vec<KnowledgeHit>,
+    rerank_provider: String,
+    rerank_model: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -85,8 +94,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 .iter()
                 .any(|arg| arg == "--refresh" || arg == "--rebuild");
             let rerank = args.iter().any(|arg| arg == "--rerank");
-            let hits = search_index(project_root, &query, limit, force, rerank)?;
-            print_json(&serde_json::json!({"query": query, "count": hits.len(), "hits": hits}))
+            let result = search_index(project_root, &query, limit, force, rerank)?;
+            print_json(&serde_json::json!({
+                "query": query,
+                "count": result.hits.len(),
+                "rerank_provider": result.rerank_provider,
+                "rerank_model": result.rerank_model,
+                "hits": result.hits
+            }))
         }
         "rerank" => {
             let query = option_value(args, "--query")
@@ -96,8 +111,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
             let limit = option_value(args, "--limit")
                 .and_then(|value| value.parse::<usize>().ok())
                 .unwrap_or(10);
-            let hits = search_index(project_root, &query, limit, false, true)?;
-            print_json(&serde_json::json!({"query": query, "count": hits.len(), "hits": hits}))
+            let result = search_index(project_root, &query, limit, false, true)?;
+            print_json(&serde_json::json!({
+                "query": query,
+                "count": result.hits.len(),
+                "rerank_provider": result.rerank_provider,
+                "rerank_model": result.rerank_model,
+                "hits": result.hits
+            }))
         }
         "graph" => match args.get(2).map(String::as_str).unwrap_or("report") {
             "refresh" | "build" => {
@@ -187,22 +208,22 @@ fn build_and_save_index(project_root: &Path) -> Result<KnowledgeIndex, String> {
     let docs = collect_knowledge_docs(project_root);
     let chunks = docs
         .into_iter()
-        .map(|(source_type, path, title, text)| {
-            let id = format!(
-                "{}:{}",
-                source_type,
-                stable_hash(&format!("{path}:{title}"))
-            );
-            let summary_text = text.chars().take(8_000).collect::<String>();
-            KnowledgeChunk {
-                id,
-                source_type,
-                path,
-                title,
-                keywords: keywords(&text),
-                vector: embedding_vector(&cfg, &summary_text),
-                text,
-            }
+        .flat_map(|(source_type, path, title, text)| {
+            split_knowledge_doc(&source_type, &path, &title, &text)
+                .into_iter()
+                .map(|chunk| {
+                    let summary_text = chunk.text.chars().take(8_000).collect::<String>();
+                    KnowledgeChunk {
+                        id: chunk.id,
+                        source_type: chunk.source_type,
+                        path: chunk.path,
+                        title: chunk.title,
+                        keywords: keywords(&chunk.text),
+                        vector: embedding_vector(&cfg, &summary_text),
+                        text: chunk.text,
+                    }
+                })
+                .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
     let index = KnowledgeIndex {
@@ -230,7 +251,7 @@ fn search_index(
     limit: usize,
     force: bool,
     rerank: bool,
-) -> Result<Vec<KnowledgeHit>, String> {
+) -> Result<KnowledgeSearchResult, String> {
     let index = load_or_build_index(project_root, force)?;
     let cfg = embedding_config(project_root);
     let query_vector = embedding_vector(&cfg, query);
@@ -257,9 +278,11 @@ fn search_index(
     if hits.len() > limit.saturating_mul(3).max(limit) {
         hits.truncate(limit.saturating_mul(3).max(limit));
     }
-    if rerank {
-        apply_rerank(project_root, query, &mut hits);
-    }
+    let (rerank_provider, rerank_model) = if rerank {
+        apply_rerank(project_root, query, &mut hits)
+    } else {
+        ("none".to_string(), "none".to_string())
+    };
     hits.sort_by(|a, b| {
         b.rerank_score
             .unwrap_or(b.score)
@@ -269,7 +292,99 @@ fn search_index(
     if hits.len() > limit {
         hits.truncate(limit);
     }
-    Ok(hits)
+    Ok(KnowledgeSearchResult {
+        hits,
+        rerank_provider,
+        rerank_model,
+    })
+}
+
+#[derive(Clone, Debug)]
+struct RawKnowledgeChunk {
+    id: String,
+    source_type: String,
+    path: String,
+    title: String,
+    text: String,
+}
+
+fn split_knowledge_doc(
+    source_type: &str,
+    path: &str,
+    title: &str,
+    text: &str,
+) -> Vec<RawKnowledgeChunk> {
+    let chars = text.chars().collect::<Vec<_>>();
+    if chars.len() <= KNOWLEDGE_CHUNK_CHARS {
+        return vec![raw_knowledge_chunk(
+            source_type,
+            path,
+            title,
+            text.to_string(),
+            0,
+        )];
+    }
+
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    let mut ordinal = 0;
+    while start < chars.len() {
+        let mut end = (start + KNOWLEDGE_CHUNK_CHARS).min(chars.len());
+        if end < chars.len()
+            && let Some(split_at) = chars[start..end]
+                .iter()
+                .rposition(|c| *c == '\n' || *c == '。' || *c == '.')
+        {
+            let candidate = start + split_at + 1;
+            if candidate > start + (KNOWLEDGE_CHUNK_CHARS / 2) {
+                end = candidate;
+            }
+        }
+        let chunk_text = chars[start..end].iter().collect::<String>();
+        chunks.push(raw_knowledge_chunk(
+            source_type,
+            path,
+            title,
+            chunk_text,
+            ordinal,
+        ));
+        ordinal += 1;
+        if end >= chars.len() {
+            break;
+        }
+        start = end.saturating_sub(KNOWLEDGE_CHUNK_OVERLAP);
+    }
+    chunks
+}
+
+fn raw_knowledge_chunk(
+    source_type: &str,
+    path: &str,
+    title: &str,
+    text: String,
+    ordinal: usize,
+) -> RawKnowledgeChunk {
+    let chunk_path = if ordinal == 0 {
+        path.to_string()
+    } else {
+        format!("{path}#chunk-{ordinal}")
+    };
+    let chunk_title = if ordinal == 0 {
+        title.to_string()
+    } else {
+        format!("{title} · chunk {ordinal}")
+    };
+    RawKnowledgeChunk {
+        id: format!(
+            "{}:{}",
+            source_type,
+            stable_hash(&format!("{chunk_path}:{chunk_title}"))
+        ),
+        source_type: source_type.to_string(),
+        path: chunk_path,
+        title: chunk_title,
+        text,
+    }
 }
 
 fn collect_knowledge_docs(project_root: &Path) -> Vec<(String, String, String, String)> {
@@ -290,6 +405,7 @@ fn collect_knowledge_docs(project_root: &Path) -> Vec<(String, String, String, S
     ] {
         collect_markdown(&mut docs, &root.1, root.0, project_root);
     }
+    collect_cached_doc_parses(&mut docs, project_root);
     let tasks = ext.join("tasks");
     for path in walk_files(&tasks) {
         if path.file_name().and_then(|s| s.to_str()) == Some("task.json")
@@ -308,6 +424,86 @@ fn collect_knowledge_docs(project_root: &Path) -> Vec<(String, String, String, S
         }
     }
     docs
+}
+
+fn collect_cached_doc_parses(
+    docs: &mut Vec<(String, String, String, String)>,
+    project_root: &Path,
+) {
+    let docs_cache = project_root.join(".emb-agent").join("cache").join("docs");
+    let index_path = docs_cache.join("index.json");
+    let mut seen = BTreeMap::<String, bool>::new();
+    if let Ok(text) = fs::read_to_string(&index_path)
+        && let Ok(value) = serde_json::from_str::<Value>(&text)
+        && let Some(items) = value.get("documents").and_then(Value::as_array)
+    {
+        for item in items {
+            if item.get("parsed").and_then(Value::as_bool) == Some(false) {
+                continue;
+            }
+            let Some(markdown) = item
+                .pointer("/paths/markdown")
+                .and_then(Value::as_str)
+                .filter(|path| !path.trim().is_empty())
+            else {
+                continue;
+            };
+            let title = item
+                .get("title")
+                .and_then(Value::as_str)
+                .or_else(|| item.pointer("/paths/source").and_then(Value::as_str))
+                .unwrap_or("parsed document");
+            push_cached_doc_parse(docs, project_root, markdown, title, &mut seen);
+        }
+    }
+
+    for path in walk_files(&docs_cache) {
+        if path.file_name().and_then(|name| name.to_str()) == Some("parse.md") {
+            let rel = rel_path(project_root, &path);
+            if !seen.contains_key(&rel) {
+                let title = path
+                    .parent()
+                    .and_then(|parent| parent.file_name())
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("parsed document");
+                push_cached_doc_parse(docs, project_root, &rel, title, &mut seen);
+            }
+        }
+    }
+}
+
+fn push_cached_doc_parse(
+    docs: &mut Vec<(String, String, String, String)>,
+    project_root: &Path,
+    markdown: &str,
+    title: &str,
+    seen: &mut BTreeMap<String, bool>,
+) {
+    let rel = markdown.trim().replace('\\', "/");
+    if seen.contains_key(&rel) {
+        return;
+    }
+    let path = resolve_relative_project_path(project_root, &rel);
+    if let Ok(text) = fs::read_to_string(&path)
+        && !text.trim().is_empty()
+    {
+        docs.push((
+            "doc-parse".to_string(),
+            rel.clone(),
+            title.to_string(),
+            text,
+        ));
+        seen.insert(rel, true);
+    }
+}
+
+fn resolve_relative_project_path(project_root: &Path, rel: &str) -> PathBuf {
+    let path = Path::new(rel);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        project_root.join(path)
+    }
 }
 
 fn collect_markdown(
@@ -403,6 +599,31 @@ fn embedding_config(project_root: &Path) -> EmbeddingConfig {
             .unwrap_or_else(|| "text-embedding-3-small".to_string()),
         api_base: env_or_dotenv(project_root, "EMB_AGENT_EMBEDDING_API_BASE").unwrap_or_default(),
         api_key: env_or_dotenv(project_root, "EMB_AGENT_EMBEDDING_API_KEY").unwrap_or_default(),
+    }
+}
+
+impl RerankConfig {
+    fn external_enabled(&self) -> bool {
+        self.provider == "openai-compatible"
+            && !self.api_key.is_empty()
+            && !self.api_base.is_empty()
+            && !self.model.is_empty()
+    }
+
+    fn effective_provider(&self, external_used: bool) -> String {
+        if external_used {
+            self.provider.clone()
+        } else {
+            "local-fallback".to_string()
+        }
+    }
+
+    fn effective_model(&self, external_used: bool) -> String {
+        if external_used {
+            self.model.clone()
+        } else {
+            "lexical-semantic-v1".to_string()
+        }
     }
 }
 
@@ -513,19 +734,18 @@ fn external_embedding_vector(cfg: &EmbeddingConfig, text: &str) -> Option<Vec<f3
         .filter(|vector| !vector.is_empty())
 }
 
-fn apply_rerank(project_root: &Path, query: &str, hits: &mut [KnowledgeHit]) {
+fn apply_rerank(project_root: &Path, query: &str, hits: &mut [KnowledgeHit]) -> (String, String) {
     let cfg = rerank_config(project_root);
-    if cfg.provider == "openai-compatible"
-        && !cfg.api_key.is_empty()
-        && !cfg.api_base.is_empty()
-        && !cfg.model.is_empty()
-        && external_rerank(&cfg, query, hits)
-    {
-        return;
+    let external_used = cfg.external_enabled() && external_rerank(&cfg, query, hits);
+    if !external_used {
+        for hit in hits {
+            hit.rerank_score = Some(hit.score + lexical_score(&hit.preview, query) as f32);
+        }
     }
-    for hit in hits {
-        hit.rerank_score = Some(hit.score + lexical_score(&hit.preview, query) as f32);
-    }
+    (
+        cfg.effective_provider(external_used),
+        cfg.effective_model(external_used),
+    )
 }
 
 fn external_rerank(cfg: &RerankConfig, query: &str, hits: &mut [KnowledgeHit]) -> bool {
