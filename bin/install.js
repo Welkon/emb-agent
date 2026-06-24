@@ -114,6 +114,10 @@ var ENV_EMBEDDING_BLOCK = [
 	"# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>",
 	"# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>",
 	"# EMB_AGENT_EMBEDDING_UPLOAD=summary-only",
+	"# EMB_AGENT_RERANK_PROVIDER=openai-compatible",
+	"# EMB_AGENT_RERANK_API_KEY=",
+	"# EMB_AGENT_RERANK_API_BASE=<openai-compatible-base-url>",
+	"# EMB_AGENT_RERANK_MODEL=<rerank-model>",
 	""
 ].join("\n");
 var ENV_TEMPLATE = [
@@ -1450,14 +1454,6 @@ function installForHost(projectRoot, host, callback) {
 			templateVars
 		)) {
 			logDetail("    AGENTS.md deployed to project root");
-		}
-
-		if (resolveAndDeploy(projectRoot,
-			path.join(RUNTIME_SRC, "scaffolds", "shells", ".graphifyignore"),
-			path.join(projectRoot, ".graphifyignore"),
-			templateVars
-		)) {
-			logDetail("    .graphifyignore deployed to project root");
 		}
 
 		var hostRootFiles = { claude: "CLAUDE.md", codex: "CODEX.md" };

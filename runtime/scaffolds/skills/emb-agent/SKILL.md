@@ -110,7 +110,7 @@ Skip routine fixes, generic programming patterns, facts obvious from datasheets,
 - Never guess hardware facts. Read `.emb-agent/hw.yaml` and `.emb-agent/req.yaml`.
 - Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
 - In `prd-exploration`, if `document_evidence_policy.hardware_first=true`, ingest listed schematics and parse datasheets/manuals before asking the first behavior question. PDF parsing uses the configured local tool order, with MinerU as fallback.
-- If `graphify` or `markitdown` is missing when first needed and `uv` is available, emb-agent should auto-ensure it globally at user level. Do not install tooling into each project checkout.
+- If `markitdown` is missing when first needed and `uv` is available, emb-agent should auto-ensure it globally at user level. Do not install tooling into each project checkout.
 - After editing truth files or PRDs, run `validate` or `health`.
 - Split work into vertical tracer-bullet slices.
 - Use `mem search/context/show/related/extract` when cross-session recall would prevent rediscovery or preserve a past decision. Use `mem reindex`/`mem stats`/`mem doctor` if results look stale.

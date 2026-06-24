@@ -15,13 +15,6 @@ struct ToolSpec {
     reason: &'static str,
 }
 
-const GRAPHIFY: ToolSpec = ToolSpec {
-    key: "graphify",
-    binary: "graphify",
-    package: "graphifyy",
-    reason: "PRD breakdown needs a project knowledge graph.",
-};
-
 const MARKITDOWN: ToolSpec = ToolSpec {
     key: "markitdown",
     binary: "markitdown",
@@ -35,35 +28,6 @@ pub fn maybe_auto_ensure_markitdown(provider: &str, cwd: &str) {
         return;
     }
     let _ = auto_ensure_global_tool(&MARKITDOWN, Some(Path::new(cwd)));
-}
-
-pub fn maybe_auto_ensure_graphify_from_next_json(cwd: &str, json_text: &str) {
-    if !next_json_needs_graphify(json_text) {
-        return;
-    }
-    let _ = auto_ensure_global_tool(&GRAPHIFY, Some(Path::new(cwd)));
-}
-
-fn next_json_needs_graphify(json_text: &str) -> bool {
-    let Ok(value) = serde_json::from_str::<Value>(json_text) else {
-        return false;
-    };
-    let action = value.get("action").and_then(Value::as_str).unwrap_or("");
-    let graph_status = value
-        .get("graph_health")
-        .and_then(|v| v.get("status"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    let graph_required = value
-        .get("agent_protocol")
-        .and_then(|v| v.get("gate"))
-        .and_then(|v| v.get("checks"))
-        .and_then(|v| v.get("graphify_graph"))
-        .and_then(Value::as_bool)
-        .map(|ready| !ready)
-        .unwrap_or(false);
-
-    (action == "prd-breakdown" && graph_status == "missing") || graph_required
 }
 
 fn auto_ensure_global_tool(spec: &ToolSpec, project_root: Option<&Path>) -> Result<(), String> {
@@ -326,44 +290,7 @@ fn unix_now() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{FAILURE_BACKOFF_SECS, install_backoff_active, next_json_needs_graphify};
-
-    #[test]
-    fn next_json_detects_missing_graphify_for_prd_breakdown() {
-        let payload = serde_json::json!({
-            "action": "prd-breakdown",
-            "graph_health": {
-                "status": "missing"
-            }
-        });
-        assert!(next_json_needs_graphify(&payload.to_string()));
-    }
-
-    #[test]
-    fn next_json_detects_preflight_graph_requirement() {
-        let payload = serde_json::json!({
-            "action": "prd-breakdown",
-            "agent_protocol": {
-                "gate": {
-                    "checks": {
-                        "graphify_graph": false
-                    }
-                }
-            }
-        });
-        assert!(next_json_needs_graphify(&payload.to_string()));
-    }
-
-    #[test]
-    fn next_json_ignores_other_actions() {
-        let payload = serde_json::json!({
-            "action": "clarify",
-            "graph_health": {
-                "status": "missing"
-            }
-        });
-        assert!(!next_json_needs_graphify(&payload.to_string()));
-    }
+    use super::{FAILURE_BACKOFF_SECS, install_backoff_active};
 
     #[test]
     fn recent_failed_attempt_enables_backoff() {

@@ -39,8 +39,9 @@ Every wiki page SHOULD include frontmatter with `title`, `kind`, `date`, `expire
 ## Commands
 
 - `knowledge init`
-- `knowledge index [--rebuild]`
-- `knowledge log [--tail <n>]`
+- `knowledge index [--rebuild]` builds `.emb-agent/cache/knowledge/index.json` from hw/req, PRDs, tasks, attention, architecture, wiki, and compound entries using emb-agent native embedding providers.
+- `knowledge search --query <text> [--rerank] [--limit <n>]`
+- `knowledge rerank --query <text> [--limit <n>]`
 - `knowledge lint`
 - `knowledge show <wiki/path>`
 - `knowledge graph build`
@@ -60,12 +61,12 @@ Every wiki page SHOULD include frontmatter with `title`, `kind`, `date`, `expire
 1. Run `knowledge init` to create the wiki scaffold.
 2. After ingesting a datasheet, schematic, board file, or useful analysis, run `knowledge ingest <source-title>` to draft a durable source synthesis page.
 3. When a question produces a reusable engineering answer, run `knowledge save-query <title>` to preview the page, then re-run with `--confirm` after checking the content.
-4. Run `knowledge graph refresh` after wiki/truth/task/tool/snippet changes to rebuild `.emb-agent/graph/graph.json`, `.emb-agent/graph/GRAPH_REPORT.md`, and `.emb-agent/graph/cache/manifest.json` only when missing or stale.
+4. Run `knowledge graph refresh` after wiki/truth/task/tool/snippet changes to rebuild `.emb-agent/graph/graph.json` and `.emb-agent/graph/GRAPH_REPORT.md` from emb-agent native sources.
 5. After saving a tool run with register writes, run `knowledge formula draft --from-tool-output <file>` to preview a structured formula registry, then re-run with `--confirm` after checking the source evidence.
 6. For formulas that must be reused by agents, keep a JSON registry under `.emb-agent/formulas/` with `chip`, `formulas[].expression`, `variables`, `registers`, and `evidence` fields before rebuilding the graph.
 7. Run `knowledge graph report` or `knowledge graph lint` to detect stale graph manifests after tracked files change.
 8. Use report Suggested Explanations to inspect hot graph nodes, especially tool-run, register, formula, and snippet nodes created by recent work.
-9. Run `knowledge graph query <term>`, `knowledge graph explain <term>`, or `knowledge graph path <from> <to>` before broad searches when you need relationship-oriented context.
+9. Run `knowledge search --query <term> --rerank` before broad searches when you need semantic project context, then use `knowledge graph query <term>` or `knowledge graph explain <term>` for relationship-oriented context.
 10. Run `knowledge lint` and `knowledge graph lint` periodically to find missing control files, orphan pages, unindexed pages, chip truth with no matching chip wiki page, stale graph manifests, and ambiguous graph relationships.
 11. After `task finish-work`, run `insight extract --confirm` (see emb-insight) to push durable learnings from this task into wiki. Then run `knowledge graph refresh`.
 12. Use `insight stale-check` to surface wiki pages past their `stale_after` date.

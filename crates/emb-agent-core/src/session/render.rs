@@ -468,7 +468,7 @@ pub fn build_next_json_with_tasks_and_policy(
     } else if snapshot.recommended_command == "prd-breakdown" {
         (
             "prd-breakdown".to_string(),
-            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until user confirms. TOOL USE: read docs/prd/system.md, hw.yaml, req.yaml, graphify-out/GRAPH_REPORT.md. For MCU specs, use targeted evidence only: first use `doc lookup --keyword <register/peripheral>` or a semantic/turbovec query when `graph_health.turbovec_index=true`; otherwise search cached manual markdown for exact headings/register names and read only narrow line ranges. NEVER read the full cached manual. Step 1: analyze constraints (ROM/RAM/real-time/peripheral/power) using graph/manual evidence; validate the official `event-step` control contract with register-level citations and name any evidence-backed exception. State whether the backend should stay bare-metal or move onto RTOS, and why. Wait for agreement. Step 2: create a P0 framework PRD around that official mode. Step 3: present P2 slices; create after confirm. Output must cite graph entities and register names — no fabricating.".to_string(),
+            "System PRD exists but no child execution PRDs or open tasks exist. Do NOT create any files until user confirms. TOOL USE: read docs/prd/system.md, hw.yaml, req.yaml, and .emb-agent/graph/GRAPH_REPORT.md if present. For MCU specs, use targeted evidence only: first use `doc lookup --keyword <register/peripheral>` or `knowledge search --query <term>`; otherwise search cached manual markdown for exact headings/register names and read only narrow line ranges. NEVER read the full cached manual. Step 1: analyze constraints (ROM/RAM/real-time/peripheral/power) using native graph/manual evidence; validate the official `event-step` control contract with register-level citations and name any evidence-backed exception. State whether the backend should stay bare-metal or move onto RTOS, and why. Wait for agreement. Step 2: create a P0 framework PRD around that official mode. Step 3: present P2 slices; create after confirm. Output must cite graph entities and register names — no fabricating.".to_string(),
         )
     } else if snapshot.recommended_command == "choose-work" || snapshot.open_tasks > 0 {
         (
@@ -707,7 +707,7 @@ fn build_next_agent_protocol_with_policy(
     }
     if action == "prd-breakdown" {
         let project_root = Path::new(&snapshot.project_root);
-        let graph_path = project_root.join("graphify-out/graph.json");
+        let graph_path = project_root.join(".emb-agent/graph/graph.json");
         let graph_exists = graph_path.is_file();
         let manual_parsed = manual_cached_or_parsed(snapshot);
         let has_code = has_source_files(project_root);
@@ -717,7 +717,7 @@ fn build_next_agent_protocol_with_policy(
         if graph_required || manual_required {
             let mut required: Vec<&str> = Vec::new();
             if graph_required {
-                required.push("build knowledge graph: `uv tool upgrade graphifyy 2>/dev/null; uv tool list | grep -q graphifyy || uv tool install graphifyy; graphify install --project; /graphify .`");
+                required.push("build native knowledge graph: `knowledge graph refresh` and optionally `knowledge index --rebuild`");
             }
             if manual_required {
                 required.push("parse MCU manual: `ingest doc --provider auto --file <manual.pdf> --kind datasheet --to hardware` — local conversion tries markitdown first, then pdftotext/mutool, then MinerU fallback when configured");
@@ -726,15 +726,15 @@ fn build_next_agent_protocol_with_policy(
                 "gate": {
                     "kind": "preflight-tools",
                     "blocking": true,
-                    "method": "ensure-external-tools-ready-before-prd-breakdown",
+                    "method": "ensure-native-knowledge-ready-before-prd-breakdown",
                     "checks": {
-                        "graphify_graph": graph_exists || !has_code,
+                        "native_knowledge_graph": graph_exists || !has_code,
                         "mcum_manual_parsed": manual_parsed,
                         "has_source_code": has_code
                     },
                     "required_actions": required,
                     "forbidden_actions": ["proceed_to_prd_breakdown_without_tools_ready", "skip_graph_build", "skip_manual_parsing", "read_raw_pdf_without_conversion"],
-                    "completion_condition": if has_code { "graphify-out/graph.json and cached MCU manual markdown exist. Then re-run `emb next`." } else { "Cached MCU manual markdown exists. Then re-run `emb next`." },
+                    "completion_condition": if has_code { ".emb-agent/graph/graph.json and cached MCU manual markdown exist. Then re-run `emb next`." } else { "Cached MCU manual markdown exists. Then re-run `emb next`." },
                 }
             })
             .to_string();
@@ -754,23 +754,19 @@ fn build_next_agent_protocol_with_policy(
                     "legacy_project_policy": "grandfather-existing-layouts-do-not-rewrite-by-default"
                 },
                 "preprocessing": [
-                    "0a. ensure graphify installed with LLM backend support: `emb next --brief` will auto-ensure missing `graphify` globally on first need when `uv` is available; manual fallback remains `uv tool install 'graphifyy[openai]'` and `uv tool upgrade graphifyy 2>/dev/null`.",
+                    "0a. build/refresh emb-agent native knowledge graph: `knowledge graph refresh`; for semantic retrieval also run `knowledge index --rebuild` after configuring embedding env if desired.",
                     "0b. parse the MCU manual with `ingest doc --provider auto --file <manual.pdf> --kind datasheet --to hardware`; emb-agent auto-ensures missing `markitdown` globally on first local-ingest need, then local conversion tries markitdown, then pdftotext/mutool, then MinerU fallback when configured.",
-                    "0c. load API keys and build/refresh graph: `cd <project> && set -a && source .env && set +a && graphify . --update` (sources .env so graphify sees GEMINI_API_KEY/DEEPSEEK_API_KEY). If no graph exists: `graphify . ; graphify cluster-only .`.",
-                    "0d. if .graphifyignore is missing, one was deployed at init — check `ls .graphifyignore`. If missing, create one excluding .emb-agent/, .codex/, backup/, graphify-out/, build/.",
-                    "0e. [optional] headroom MCP: `uv tool list | grep -q headroom-ai || uv tool install 'headroom-ai[all]'; headroom mcp install`. Use `headroom_compress` before feeding large outputs to LLM.",
+                    "0c. read system PRD, hw.yaml, req.yaml, and .emb-agent/graph/GRAPH_REPORT.md if present.",
+                    "0d. for MCU manual/register evidence, use targeted lookup only: `doc lookup --keyword <register/peripheral>` or `knowledge search --query <term>`; if no semantic index is available, search cached manual markdown for exact headings/register names and read only narrow line ranges. NEVER read the full cached manual.",
                 ],
                 "workflow_steps": [
-                    "1. read system PRD, hw.yaml, req.yaml, and graphify-out/GRAPH_REPORT.md.",
-                    "1a. for MCU manual/register evidence, use targeted lookup only: `doc lookup --keyword <register/peripheral>` or semantic/turbovec query when graph_health.turbovec_index=true; if no semantic query tool is available, search cached manual markdown for exact headings/register names and read only narrow line ranges. NEVER read the full cached manual.",
-                    "2. query graphify for code architecture. OUTPUT REQUIREMENT: cite at least 3 specific code entities (function names, file paths, module names) that graphify surfaced. Do NOT fabricate — if graphify found nothing useful, state that explicitly.",
-                    "3. analyze constraints: ROM/RAM, real-time, peripheral complexity, power/sleep. OUTPUT REQUIREMENT: cite specific register names or bit fields from targeted manual evidence (step 1a) for each constraint.",
-                    "4. validate the official `event-step` control contract against those constraints. OUTPUT REQUIREMENT: either confirm it fits, or name the exact evidence-backed exception that forces deviation. Also state whether the execution backend should be bare-metal or RTOS while preserving the same control contract. Do not present multiple peer frameworks as equal defaults.",
-                    "5. present analysis + recommendation with trade-offs; wait for user agreement.",
-                    "6. create P0 framework task PRD under docs/prd/tasks/.",
-                    "7. present P2 vertical slice candidates; create only after user confirms."
+                    "1. analyze constraints: ROM/RAM, real-time, peripheral complexity, power/sleep. OUTPUT REQUIREMENT: cite specific register names or bit fields from targeted manual evidence for each constraint.",
+                    "2. validate the official `event-step` control contract against those constraints. OUTPUT REQUIREMENT: either confirm it fits, or name the exact evidence-backed exception that forces deviation. Also state whether the execution backend should be bare-metal or RTOS while preserving the same control contract. Do not present multiple peer frameworks as equal defaults.",
+                    "3. present analysis + recommendation with trade-offs; wait for user agreement.",
+                    "4. create P0 framework task PRD under docs/prd/tasks/.",
+                    "5. present P2 vertical slice candidates; create only after user confirms."
                 ],
-                "allowed_actions": ["read_system_prd", "read_hardware_truth", "query_graphify_for_architecture", "delegate_hardware_or_manual_evidence_scout", "delegate_architecture_or_framework_reviewer", "analyze_constraints", "validate_official_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
+                "allowed_actions": ["read_system_prd", "read_hardware_truth", "query_native_knowledge_graph", "delegate_hardware_or_manual_evidence_scout", "delegate_architecture_or_framework_reviewer", "analyze_constraints", "validate_official_framework_with_reasoning", "present_prd_task_candidates", "create_framework_task_prd_after_agreement", "create_functional_child_prds_after_user_confirms_slice_list", "mirror_confirmed_truth_to_req_yaml", "run_validate_or_health_after_prd_edits"],
                 "forbidden_actions": ["create_any_files_before_user_agreement", "start_functional_implementation_before_framework", "present_functional_slices_before_framework_agreement", "guess_framework_without_analyzing_constraints", "ask_user_to_choose_framework_without_recommendation", "ask_user_for_blank_task_when_system_prd_has_candidates", "present_multiple_default_frameworks_without_exception_evidence", "start_implementation", "activate_task", "scan", "plan", "do", "create_horizontal_layer_tasks", "declare_prd_complete_without_validate_or_health"],
             }
         })
@@ -865,9 +861,9 @@ fn has_source_files(project_root: &Path) -> bool {
 }
 
 fn build_graph_health(snapshot: &ProjectSnapshot) -> Value {
-    let graph_path = Path::new(&snapshot.project_root).join("graphify-out/graph.json");
+    let graph_path = Path::new(&snapshot.project_root).join(".emb-agent/graph/graph.json");
     if !graph_path.is_file() {
-        return json!({"status": "missing", "hint": "run `graphify .` to build"});
+        return json!({"status": "missing", "hint": "run `knowledge graph refresh` to build native graph"});
     }
     let Ok(content) = std::fs::read_to_string(&graph_path) else {
         return json!({"status": "unreadable"});
@@ -880,45 +876,21 @@ fn build_graph_health(snapshot: &ProjectSnapshot) -> Value {
         .and_then(|n| n.as_array())
         .map(|a| a.len())
         .unwrap_or(0);
-    let communities = g
-        .get("graph")
-        .and_then(|g| g.as_object())
-        .map(|o| o.len())
+    let edges = g
+        .get("edges")
+        .and_then(|n| n.as_array())
+        .map(|a| a.len())
         .unwrap_or(0);
-    let mut noise = 0u64;
-    if let Some(arr) = g.get("nodes").and_then(|n| n.as_array()) {
-        for n in arr {
-            let sf = n.get("source_file").and_then(|v| v.as_str()).unwrap_or("");
-            if sf.starts_with(".emb-agent/bin")
-                || sf.starts_with(".emb-agent/command-docs")
-                || sf.starts_with(".emb-agent/agents")
-                || sf.starts_with(".codex/")
-                || sf.starts_with(".claude/")
-                || sf.starts_with(".cursor/")
-                || sf.starts_with(".omp/")
-            {
-                noise += 1;
-            }
-        }
-    }
-    let noise_pct = if nodes > 0 {
-        noise * 100 / nodes as u64
-    } else {
-        0
-    };
-    let tv_dir = Path::new(&snapshot.project_root).join(".emb-agent/cache/turbovec");
-    let has_turbovec = tv_dir.is_dir()
-        && std::fs::read_dir(&tv_dir).is_ok_and(|mut d| {
-            d.any(|e| e.is_ok_and(|e| e.path().extension().is_some_and(|x| x == "tq")))
-        });
+    let knowledge_index = Path::new(&snapshot.project_root)
+        .join(".emb-agent/cache/knowledge/index.json")
+        .is_file();
     json!({
-        "status": if noise_pct > 50 { "noisy" } else if nodes == 0 { "empty" } else { "clean" },
+        "status": if nodes == 0 { "empty" } else { "ready" },
         "nodes": nodes,
-        "noise_nodes": noise,
-        "noise_pct": noise_pct,
-        "communities": communities,
-        "turbovec_index": has_turbovec,
-        "hint": if noise_pct > 50 { ".graphifyignore may be missing — run `emb init` or create one excluding .emb-agent/ runtime" } else { "" }
+        "edges": edges,
+        "native_graph": true,
+        "knowledge_index": knowledge_index,
+        "hint": if knowledge_index { "" } else { "optional: run `knowledge index --rebuild` for semantic retrieval" }
     })
 }
 

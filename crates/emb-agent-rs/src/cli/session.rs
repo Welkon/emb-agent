@@ -1,4 +1,3 @@
-use super::tooling::maybe_auto_ensure_graphify_from_next_json;
 use super::util::{current_dir_string, option_value};
 use emb_agent_core::{
     build_external_dispatch_next_json, build_external_health_json, build_external_next_json,
@@ -35,7 +34,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     .map(|task| task.name.as_str());
                 let policy = evaluate_worktree_policy(&ext_dir, Path::new(&cwd), target_task);
                 let json = build_next_json_with_tasks_and_policy(&snapshot, &tasks, Some(&policy));
-                maybe_auto_ensure_graphify_from_next_json(&cwd, &json);
                 println!("{json}");
             } else {
                 println!("{}", build_session_context(&snapshot));
@@ -110,7 +108,6 @@ pub fn run_external(args: &[String]) -> Result<(), String> {
         }
         "next" => {
             let json = build_external_next_json(&snapshot, &tasks);
-            maybe_auto_ensure_graphify_from_next_json(&cwd, &json);
             println!("{json}");
             Ok(())
         }

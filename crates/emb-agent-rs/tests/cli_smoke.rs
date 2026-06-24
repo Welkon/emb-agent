@@ -1580,10 +1580,10 @@ fn system_prd_without_child_prds_routes_to_prd_breakdown() {
         "# System PRD\n\n## Behaviors\n\n- Firmware controls the motor with PWM soft-start.\n- SKEY is a continuous safety interlock.\n- Low-voltage cutoff stops the motor and flashes red.\n\n## Acceptance Evidence\n\n- Verify boot, run, stop, and fault states.\n",
     )
     .expect("write system prd");
-    // Hard constraint: preflight-tools gate checks for graphify graph and parsed MCU manual.
-    fs::create_dir_all(project.path().join("graphify-out")).expect("create graphify-out");
+    // Hard constraint: preflight-tools gate checks for native graph and parsed MCU manual.
+    fs::create_dir_all(project.path().join(".emb-agent/graph")).expect("create native graph dir");
     fs::write(
-        project.path().join("graphify-out/graph.json"),
+        project.path().join(".emb-agent/graph/graph.json"),
         r#"{"nodes":[],"edges":[]}"#,
     )
     .expect("write graph stub");
@@ -2144,6 +2144,14 @@ fn knowledge_query_and_explain_accept_named_options_after_cwd() {
     let project = TestProject::new("knowledge");
 
     let refresh = run(&project, &["knowledge", "graph", "refresh"]);
+    assert!(refresh.contains("native"), "refresh output: {refresh}");
+    let index = run(&project, &["knowledge", "index", "--rebuild"]);
+    assert!(index.contains("chunks"), "index output: {index}");
+    let search = run(
+        &project,
+        &["knowledge", "search", "--query", "U1", "--rerank"],
+    );
+    assert!(search.contains("hits"), "search output: {search}");
     assert!(refresh.contains("\"nodes\""), "refresh output: {refresh}");
 
     let query = run(&project, &["knowledge", "graph", "query", "--q", "U1"]);
@@ -2271,6 +2279,8 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         "EMB_AGENT_EMBEDDING_PROVIDER",
         "EMB_AGENT_EMBEDDING_API_BASE",
         "EMB_AGENT_EMBEDDING_MODEL",
+        "EMB_AGENT_RERANK_PROVIDER",
+        "EMB_AGENT_RERANK_MODEL",
     ] {
         assert!(
             env_example.contains(expected),
