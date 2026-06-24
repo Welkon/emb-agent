@@ -114,6 +114,11 @@ var ENV_EMBEDDING_BLOCK = [
 	"# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>",
 	"# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>",
 	"# EMB_AGENT_EMBEDDING_UPLOAD=summary-only",
+	""
+].join("\n");
+var ENV_RERANK_BLOCK = [
+	"# emb-agent knowledge rerank - optional, opt-in",
+	"# Leave these blank/commented to use local rerank scoring.",
 	"# EMB_AGENT_RERANK_PROVIDER=openai-compatible",
 	"# EMB_AGENT_RERANK_API_KEY=",
 	"# EMB_AGENT_RERANK_API_BASE=<openai-compatible-base-url>",
@@ -122,7 +127,8 @@ var ENV_EMBEDDING_BLOCK = [
 ].join("\n");
 var ENV_TEMPLATE = [
 	ENV_MINERU_BLOCK,
-	ENV_EMBEDDING_BLOCK
+	ENV_EMBEDDING_BLOCK,
+	ENV_RERANK_BLOCK
 ].join("\n");
 
 function appendEnvExampleBlockIfMissing(filePath, key, block) {
@@ -201,6 +207,7 @@ function ensureProjectEnvFiles(projectRoot) {
 	} else {
 		appendEnvExampleBlockIfMissing(envExample, "MINERU_API_KEY", ENV_MINERU_BLOCK);
 		appendEnvExampleBlockIfMissing(envExample, "EMB_AGENT_EMBEDDING_PROVIDER", ENV_EMBEDDING_BLOCK);
+		appendEnvExampleBlockIfMissing(envExample, "EMB_AGENT_RERANK_PROVIDER", ENV_RERANK_BLOCK);
 	}
 	var gitignore = path.join(projectRoot, ".gitignore");
 	var existing = "";

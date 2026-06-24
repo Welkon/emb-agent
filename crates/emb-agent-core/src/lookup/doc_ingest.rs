@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const MINERU_BASE_URL: &str = "https://mineru.net";
-const ENV_EXAMPLE: &str = "# emb-agent integration secrets\n#\n# MinerU — optional PDF parsing API\nMINERU_API_KEY=\n#\n# emb-agent session memory embeddings — optional, opt-in.\n# Leave these blank/commented for fully local semantic-hash recall.\n# EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\n# EMB_AGENT_EMBEDDING_API_KEY=\n# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>\n# EMB_AGENT_EMBEDDING_UPLOAD=summary-only\n# EMB_AGENT_RERANK_PROVIDER=openai-compatible\n# EMB_AGENT_RERANK_API_KEY=\n# EMB_AGENT_RERANK_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_RERANK_MODEL=<rerank-model>\n";
+const ENV_EXAMPLE: &str = "# emb-agent integration secrets\n#\n# MinerU — optional PDF parsing API\nMINERU_API_KEY=\n#\n# emb-agent session memory embeddings — optional, opt-in.\n# Leave these blank/commented for fully local semantic-hash recall.\n# EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\n# EMB_AGENT_EMBEDDING_API_KEY=\n# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>\n# EMB_AGENT_EMBEDDING_UPLOAD=summary-only\n#\n# emb-agent knowledge rerank — optional, opt-in.\n# Leave these blank/commented to use local rerank scoring.\n# EMB_AGENT_RERANK_PROVIDER=openai-compatible\n# EMB_AGENT_RERANK_API_KEY=\n# EMB_AGENT_RERANK_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_RERANK_MODEL=<rerank-model>\n";
 const DEFAULT_LANGUAGE: &str = "ch";
 const DEFAULT_MODEL_VERSION: &str = "vlm";
 const DEFAULT_POLL_INTERVAL_MS: u64 = 3_000;
@@ -1057,7 +1057,11 @@ fn ensure_env_example(path: &Path) -> bool {
         ),
         (
             "EMB_AGENT_EMBEDDING_PROVIDER",
-            "# emb-agent session memory embeddings — optional, opt-in.\n# Leave these blank/commented for fully local semantic-hash recall.\n# EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\n# EMB_AGENT_EMBEDDING_API_KEY=\n# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>\n# EMB_AGENT_EMBEDDING_UPLOAD=summary-only\n# EMB_AGENT_RERANK_PROVIDER=openai-compatible\n# EMB_AGENT_RERANK_API_KEY=\n# EMB_AGENT_RERANK_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_RERANK_MODEL=<rerank-model>\n",
+            "# emb-agent session memory embeddings — optional, opt-in.\n# Leave these blank/commented for fully local semantic-hash recall.\n# EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\n# EMB_AGENT_EMBEDDING_API_KEY=\n# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>\n# EMB_AGENT_EMBEDDING_UPLOAD=summary-only\n",
+        ),
+        (
+            "EMB_AGENT_RERANK_PROVIDER",
+            "# emb-agent knowledge rerank — optional, opt-in.\n# Leave these blank/commented to use local rerank scoring.\n# EMB_AGENT_RERANK_PROVIDER=openai-compatible\n# EMB_AGENT_RERANK_API_KEY=\n# EMB_AGENT_RERANK_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_RERANK_MODEL=<rerank-model>\n",
         ),
     ] {
         if !existing.contains(key) {

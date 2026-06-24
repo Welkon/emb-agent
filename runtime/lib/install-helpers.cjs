@@ -2922,22 +2922,78 @@ function createInstallHelpers(deps) {
     return runtimeDir;
   }
 
-  function buildEnvExampleContent() {
+  function envExampleBlocks() {
     return [
-      '# emb-agent integration secrets',
-      '# Optional: set MinerU API token here, then copy to .env if needed.',
-      'MINERU_API_KEY=',
-      ''
-    ].join('\n');
+      {
+        key: 'MINERU_API_KEY',
+        content: [
+          '# emb-agent integration secrets',
+          '# Optional: set MinerU API token here, then copy to .env if needed.',
+          'MINERU_API_KEY=',
+          ''
+        ].join('\n')
+      },
+      {
+        key: 'EMB_AGENT_EMBEDDING_PROVIDER',
+        content: [
+          '# emb-agent session memory embeddings - optional, opt-in',
+          '# Leave these blank/commented for fully local semantic-hash recall.',
+          '# EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible',
+          '# EMB_AGENT_EMBEDDING_API_KEY=',
+          '# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>',
+          '# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>',
+          '# EMB_AGENT_EMBEDDING_UPLOAD=summary-only',
+          ''
+        ].join('\n')
+      },
+      {
+        key: 'EMB_AGENT_RERANK_PROVIDER',
+        content: [
+          '# emb-agent knowledge rerank - optional, opt-in',
+          '# Leave these blank/commented to use local rerank scoring.',
+          '# EMB_AGENT_RERANK_PROVIDER=openai-compatible',
+          '# EMB_AGENT_RERANK_API_KEY=',
+          '# EMB_AGENT_RERANK_API_BASE=<openai-compatible-base-url>',
+          '# EMB_AGENT_RERANK_MODEL=<rerank-model>',
+          ''
+        ].join('\n')
+      }
+    ];
+  }
+
+  function buildEnvExampleContent() {
+    return envExampleBlocks().map(block => block.content).join('\n');
+  }
+
+  function appendEnvExampleBlockIfMissing(filePath, key, block) {
+    let existing = '';
+    try {
+      existing = fs.readFileSync(filePath, 'utf8');
+    } catch (_) {
+      existing = '';
+    }
+    if (existing.includes(key)) {
+      return false;
+    }
+    let updated = existing.replace(/\s+$/, '');
+    if (updated) {
+      updated += '\n\n';
+    }
+    updated += block.replace(/\s+$/, '') + '\n';
+    fs.writeFileSync(filePath, updated, 'utf8');
+    return true;
   }
 
   function installEnvExample(filePath) {
-    if (fs.existsSync(filePath)) {
-      return false;
+    if (!fs.existsSync(filePath)) {
+      fs.writeFileSync(filePath, buildEnvExampleContent(), 'utf8');
+      return true;
     }
 
-    fs.writeFileSync(filePath, buildEnvExampleContent(), 'utf8');
-    return true;
+    for (const block of envExampleBlocks()) {
+      appendEnvExampleBlockIfMissing(filePath, block.key, block.content);
+    }
+    return false;
   }
 
   function bootstrapProjectIfNeeded(args) {
