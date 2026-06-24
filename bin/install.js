@@ -157,6 +157,10 @@ function defaultEmbAgentConfigYaml() {
 		"hooks:",
 		"  session_start: []",
 		"  session_end: []",
+		"  session_compact: []",
+		"  before_agent_turn: []",
+		"  after_agent_turn: []",
+		"  before_tool: []",
 		"  after_tool: []",
 		"  after_create: []",
 		"  after_start: []",
@@ -187,6 +191,10 @@ function ensureEmbAgentProjectConfig(projectRoot) {
 		var hookLines = [];
 		if (!/^[ \t]*session_start[ \t]*:/m.test(updated)) hookLines.push("  session_start: []");
 		if (!/^[ \t]*session_end[ \t]*:/m.test(updated)) hookLines.push("  session_end: []");
+		if (!/^[ \t]*session_compact[ \t]*:/m.test(updated)) hookLines.push("  session_compact: []");
+		if (!/^[ \t]*before_agent_turn[ \t]*:/m.test(updated)) hookLines.push("  before_agent_turn: []");
+		if (!/^[ \t]*after_agent_turn[ \t]*:/m.test(updated)) hookLines.push("  after_agent_turn: []");
+		if (!/^[ \t]*before_tool[ \t]*:/m.test(updated)) hookLines.push("  before_tool: []");
 		if (!/^[ \t]*after_tool[ \t]*:/m.test(updated)) hookLines.push("  after_tool: []");
 		if (hookLines.length) updated = updated.replace(/^hooks:[ \t]*$/m, "hooks:\n" + hookLines.join("\n"));
 	}

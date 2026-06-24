@@ -29,7 +29,7 @@ Use `memory` for durable emb auto-memory, and `mem` for local AI session recall.
 - `mem reindex` / `mem stats` / `mem doctor` / `mem prune`
 - `mem open <session-id>` / `mem explain --query <text>` / `mem export --format json|markdown`
 - `mem diff --left <session-id> --right <session-id>`
-- `mem writeback --target memory|attention|decision|task|prd --summary <text> [--detail <text>]`
+- `mem writeback --target auto|memory|attention|trap|trick|decision|learn|task|prd --summary <text> [--detail <text>]`
 
 `mem` reads existing local Claude Code / Codex / Pi JSONL sessions and never uploads content. Search/context/show/related use `.emb-agent/cache/mem/index.json` and rebuild it when stale.
 

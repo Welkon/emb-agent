@@ -81,7 +81,7 @@ node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem context --query "keyword"
 node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem show <session-id> --cwd <project>
 node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem related <session-id> --cwd <project>
 node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem explain --query "keyword" --cwd <project>
-node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem writeback --target memory|attention --summary "lesson" --cwd <project>
+node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem writeback --target auto|memory|attention|trap|trick|decision|learn --summary "lesson" --cwd <project>
 node <project>/.<host>/emb-agent/bin/emb-agent.cjs mem extract <session-id> --phase brainstorm|implement|review --cwd <project>
 ```
 

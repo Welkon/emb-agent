@@ -103,13 +103,13 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
 安装/初始化会创建 `.emb-agent/config.yaml`，用于本地行为开关：
 
 - `session_commit_message`、`max_journal_lines`、`session_auto_commit`
-- `hooks.session_start` / `session_end` / `after_tool` / `after_create` / `after_start` / `after_finish` / `after_archive`
+- `hooks.session_start` / `session_end` / `session_compact` / `before_agent_turn` / `after_agent_turn` / `before_tool` / `after_tool` / `after_create` / `after_start` / `after_finish` / `after_archive`
 - `channel.worker_guard.idle_timeout` 与 `max_live_workers`
 - `codex.dispatch_mode: inline | sub-agent`
 
-生命周期 hooks 会收到 `TASK_JSON_PATH` 环境变量；session/tool hooks 会收到 `EMB_AGENT_SESSION_EVENT`。hook 失败只打印警告，不阻塞主命令。
+生命周期 hooks 会收到 `TASK_JSON_PATH` 环境变量；session/tool/agent-turn hooks 会收到 `EMB_AGENT_SESSION_EVENT`。任意事件也可通过 `hook event --name <event>` 触发。hook 失败只打印警告，不阻塞主命令。
 
-`max_journal_lines` 限制 `.emb-agent/sessions/journal.jsonl`，`session_auto_commit` 会本地提交 session journal/index，不上传。`codex.dispatch_mode: sub-agent` 会通过 emb-agent 启动本地 `codex exec` worker；不具备 Codex CLI 时返回 manual worker envelope。
+`max_journal_lines` 限制 `.emb-agent/sessions/journal.jsonl`，`session_auto_commit` 会本地提交 session journal/index，不上传。`mem writeback --target auto` 会按 trap/decision/trick/blocker/requirement 规则晋升到 compound、attention、memory 或手动 PRD/task 指引。`codex.dispatch_mode: sub-agent` 会通过 emb-agent 启动本地 `codex exec` worker；不具备 Codex CLI 时返回 manual worker envelope。
 
 ## 设置合并
 

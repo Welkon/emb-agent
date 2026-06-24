@@ -48,6 +48,31 @@ fn hook_trigger(payload: &str) -> String {
 
 pub fn run_hook(args: &[String]) -> Result<(), String> {
     match args.get(1).map(String::as_str).unwrap_or("") {
+        "event" => {
+            let name = option_value(args, "--name")
+                .or_else(|| positional_after(args, 2))
+                .ok_or("hook event requires --name <event>")?;
+            let raw_payload = stdin_payload_or_cwd(args);
+            let cwd = serde_json::from_str::<serde_json::Value>(&raw_payload)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("cwd")
+                        .and_then(serde_json::Value::as_str)
+                        .map(ToOwned::to_owned)
+                })
+                .unwrap_or_else(|| hook_cwd(args));
+            let host = option_value(args, "--host").unwrap_or_else(|| "external".to_string());
+            let project_root = Path::new(&cwd);
+            record_session_journal(project_root, &host, &name, &raw_payload);
+            run_configured_hooks(
+                project_root,
+                &name,
+                &[("EMB_AGENT_SESSION_EVENT", name.clone())],
+            );
+            println!("{}", serde_json::json!({"status":"ok","event":name}));
+            Ok(())
+        }
         "resolve" => {
             let host = option_value(args, "--host").unwrap_or_else(|| "pi".to_string());
             let hook = positional_after(args, 2).unwrap_or_else(|| "session-start".to_string());

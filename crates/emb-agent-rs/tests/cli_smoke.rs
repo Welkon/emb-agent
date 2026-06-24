@@ -598,6 +598,7 @@ fn init_writes_config_and_task_lifecycle_hooks_run() {
         .expect("read emb-agent config");
     assert!(config.contains("session_auto_commit"), "config: {config}");
     assert!(config.contains("session_start"), "config: {config}");
+    assert!(config.contains("before_tool"), "config: {config}");
     assert!(config.contains("after_create"), "config: {config}");
     assert!(config.contains("worker_guard"), "config: {config}");
     assert!(config.contains("dispatch_mode: inline"), "config: {config}");
@@ -671,6 +672,22 @@ hooks:
         journal.lines().count(),
         1,
         "journal should obey max_journal_lines"
+    );
+
+    let custom_event = Command::new(emb_agent_bin())
+        .arg("hook")
+        .arg("event")
+        .arg("before_tool")
+        .arg("--host")
+        .arg("codex")
+        .arg("--cwd")
+        .arg(project.path())
+        .output()
+        .expect("run custom hook event");
+    let custom_event = assert_success(custom_event);
+    assert!(
+        custom_event.contains("before_tool"),
+        "custom event: {custom_event}"
     );
 
     let session_end = Command::new(emb_agent_bin())
@@ -876,6 +893,22 @@ fn mem_cli_searches_and_extracts_local_sessions() {
     assert!(
         writeback.contains("session-insight"),
         "writeback output: {writeback}"
+    );
+
+    let auto_writeback = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("writeback")
+        .arg("--summary")
+        .arg("trap watchdog reset quirk")
+        .arg("--cwd")
+        .arg(&project)
+        .env("HOME", &root)
+        .output()
+        .expect("run mem auto writeback");
+    let auto_writeback = assert_success(auto_writeback);
+    assert!(
+        auto_writeback.contains("trap"),
+        "auto writeback output: {auto_writeback}"
     );
 
     let _ = fs::remove_dir_all(root);

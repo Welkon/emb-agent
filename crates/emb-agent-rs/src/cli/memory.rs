@@ -323,7 +323,7 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
             print_json(&serde_json::json!({"left": a.session, "right": b.session, "shared_keywords": shared, "left_only_keywords": only_left, "right_only_keywords": only_right}))
         }
         "writeback" => {
-            let target = option_value(args, "--target").unwrap_or_else(|| "memory".to_string());
+            let target = option_value(args, "--target").unwrap_or_else(|| "auto".to_string());
             let summary = option_value(args, "--summary").or_else(|| positional_after(args, 2)).ok_or("mem writeback requires --summary <text>")?;
             let detail = option_value(args, "--detail").unwrap_or_default();
             writeback_memory(Path::new(&cwd), &target, &summary, &detail)
@@ -338,7 +338,12 @@ fn writeback_memory(
     summary: &str,
     detail: &str,
 ) -> Result<(), String> {
-    match target {
+    let target = if target == "auto" {
+        auto_writeback_target(summary, detail)
+    } else {
+        target.to_string()
+    };
+    match target.as_str() {
         "memory" | "durable" => {
             let id = emb_agent_core::knowledge::graph::memory_remember(
                 project_root,
@@ -347,7 +352,7 @@ fn writeback_memory(
                 detail,
             )?;
             print_json(
-                &serde_json::json!({"status":"ok", "target":"memory", "memory_type":"session-insight", "id": id}),
+                &serde_json::json!({"status":"ok", "target":"memory", "memory_type":"session-insight", "id": id, "strategy":"auto-or-explicit"}),
             )
         }
         "attention" => {
@@ -358,14 +363,88 @@ fn writeback_memory(
             );
             Ok(())
         }
-        "decision" | "task" | "prd" => print_json(&serde_json::json!({
+        "trap" | "trick" | "decision" | "learn" => {
+            let doc_type = if target == "learn" {
+                "learn"
+            } else {
+                target.as_str()
+            };
+            let ext_dir = project_root.join(".emb-agent");
+            let slug = safe_slug(summary);
+            let compound_summary = if detail.is_empty() { summary } else { detail };
+            let output = emb_agent_core::compound::compound_add(
+                &ext_dir,
+                emb_agent_core::compound::CompoundAdd {
+                    doc_type,
+                    slug: &slug,
+                    title: summary,
+                    summary: compound_summary,
+                    chip: "",
+                    peripheral: "",
+                    extra: &[("source", "mem-writeback")],
+                },
+            );
+            println!("{output}");
+            Ok(())
+        }
+        "task" | "prd" => print_json(&serde_json::json!({
             "status": "manual",
             "target": target,
             "summary": summary,
             "detail": detail,
-            "next": "Use this insight in the current PRD/task/decision update; emb-agent will not guess the durable destination automatically."
+            "next": "Use this insight in the current PRD/task update. emb-agent does not invent exact requirement/task wording without local context."
         })),
         other => Err(format!("mem writeback unknown target: {other}")),
+    }
+}
+
+fn auto_writeback_target(summary: &str, detail: &str) -> String {
+    let text = format!("{} {}", summary, detail).to_lowercase();
+    if ["trap", "quirk", "errata", "gotcha", "坑", "陷阱"]
+        .iter()
+        .any(|token| text.contains(token))
+    {
+        "trap".to_string()
+    } else if ["decision", "tradeoff", "decide", "选择", "决策"]
+        .iter()
+        .any(|token| text.contains(token))
+    {
+        "decision".to_string()
+    } else if ["pattern", "trick", "sequence", "recipe", "技巧", "套路"]
+        .iter()
+        .any(|token| text.contains(token))
+    {
+        "trick".to_string()
+    } else if ["blocker", "urgent", "must remember", "注意", "阻塞"]
+        .iter()
+        .any(|token| text.contains(token))
+    {
+        "attention".to_string()
+    } else if ["requirement", "prd", "acceptance", "需求"]
+        .iter()
+        .any(|token| text.contains(token))
+    {
+        "prd".to_string()
+    } else {
+        "memory".to_string()
+    }
+}
+
+fn safe_slug(value: &str) -> String {
+    let slug = value
+        .to_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .take(8)
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        "session-insight".to_string()
+    } else {
+        slug
     }
 }
 

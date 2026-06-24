@@ -557,11 +557,25 @@ fn ensure_default_config(ext_dir: &Path) {
         {
             hook_lines.push("  session_end: []");
         }
-        if !updated
-            .lines()
-            .any(|line| line.trim_start().starts_with("after_tool:"))
-        {
-            hook_lines.push("  after_tool: []");
+        for hook in [
+            "session_compact",
+            "before_agent_turn",
+            "after_agent_turn",
+            "before_tool",
+            "after_tool",
+        ] {
+            if !updated
+                .lines()
+                .any(|line| line.trim_start().starts_with(&format!("{hook}:")))
+            {
+                hook_lines.push(match hook {
+                    "session_compact" => "  session_compact: []",
+                    "before_agent_turn" => "  before_agent_turn: []",
+                    "after_agent_turn" => "  after_agent_turn: []",
+                    "before_tool" => "  before_tool: []",
+                    _ => "  after_tool: []",
+                });
+            }
         }
         if !hook_lines.is_empty() {
             updated = updated.replace("hooks:\n", &format!("hooks:\n{}\n", hook_lines.join("\n")));
@@ -586,6 +600,10 @@ session_auto_commit: false\n\
 hooks:\n\
   session_start: []\n\
   session_end: []\n\
+  session_compact: []\n\
+  before_agent_turn: []\n\
+  after_agent_turn: []\n\
+  before_tool: []\n\
   after_tool: []\n\
   after_create: []\n\
   after_start: []\n\
