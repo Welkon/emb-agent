@@ -102,37 +102,23 @@ function readStdinIfAny() {
 var ENV_MINERU_BLOCK = [
 	"# emb-agent integration secrets",
 	"#",
-	"# MinerU - PDF parsing API",
+	"# MinerU - optional PDF parsing API",
 	"MINERU_API_KEY=",
 	""
 ].join("\n");
-var ENV_GRAPHIFY_BLOCK = [
-	"# Graphify - optional LLM backend for doc/PDF semantic extraction.",
-	"# Code-only graph extraction is local and needs no key.",
-	"# Pick one backend; if unset, graphify can still work code-only:",
-	"# GEMINI_API_KEY=       # free tier available",
-	"# DEEPSEEK_API_KEY=     # alternative for Chinese datasheets",
-	"# OLLAMA_BASE_URL=http://localhost:11434  # fully local, no API key",
-	""
-].join("\n");
-var ENV_HEADROOM_BLOCK = [
-	"# headroom - optional local context compression",
-	"# HEADROOM_PORT=8787",
-	"# HEADROOM_MODEL=kompress-base",
-	""
-].join("\n");
-var ENV_TURBOVEC_BLOCK = [
-	"# turbovec - experimental semantic vector search (opt-in)",
-	"TURBOVEC_ENABLED=false",
-	"# TURBOVEC_MODEL=BAAI/bge-small-en-v1.5",
-	"# TURBOVEC_INDEX_DIR=.emb-agent/cache/turbovec",
+var ENV_EMBEDDING_BLOCK = [
+	"# emb-agent session memory embeddings - optional, opt-in",
+	"# Leave these blank/commented for fully local semantic-hash recall.",
+	"# EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible",
+	"# EMB_AGENT_EMBEDDING_API_KEY=",
+	"# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>",
+	"# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>",
+	"# EMB_AGENT_EMBEDDING_UPLOAD=summary-only",
 	""
 ].join("\n");
 var ENV_TEMPLATE = [
 	ENV_MINERU_BLOCK,
-	ENV_GRAPHIFY_BLOCK,
-	ENV_HEADROOM_BLOCK,
-	ENV_TURBOVEC_BLOCK
+	ENV_EMBEDDING_BLOCK
 ].join("\n");
 
 function appendEnvExampleBlockIfMissing(filePath, key, block) {
@@ -210,9 +196,7 @@ function ensureProjectEnvFiles(projectRoot) {
 		fs.writeFileSync(envExample, ENV_TEMPLATE, "utf8");
 	} else {
 		appendEnvExampleBlockIfMissing(envExample, "MINERU_API_KEY", ENV_MINERU_BLOCK);
-		appendEnvExampleBlockIfMissing(envExample, "GEMINI_API_KEY", ENV_GRAPHIFY_BLOCK);
-		appendEnvExampleBlockIfMissing(envExample, "HEADROOM_PORT", ENV_HEADROOM_BLOCK);
-		appendEnvExampleBlockIfMissing(envExample, "TURBOVEC_ENABLED", ENV_TURBOVEC_BLOCK);
+		appendEnvExampleBlockIfMissing(envExample, "EMB_AGENT_EMBEDDING_PROVIDER", ENV_EMBEDDING_BLOCK);
 	}
 	var gitignore = path.join(projectRoot, ".gitignore");
 	var existing = "";
@@ -223,14 +207,6 @@ function ensureProjectEnvFiles(projectRoot) {
 		updated += ".env\n";
 		fs.writeFileSync(gitignore, updated, "utf8");
 	}
-}
-
-function removeInstallerGeneratedEnv(projectRoot, hadEnvBeforeInstall) {
-	if (hadEnvBeforeInstall) return;
-	var env = path.join(projectRoot, ".env");
-	try {
-		if (fs.existsSync(env)) fs.unlinkSync(env);
-	} catch (_) {}
 }
 
 
@@ -1387,8 +1363,6 @@ function completeInstallBatch(projectRoot, hosts, options) {
 function installForHost(projectRoot, host, callback) {
 	var hostDir = hostDirFor(projectRoot, host);
 	var embDir = path.join(hostDir, "emb-agent");
-	var hadEnvBeforeInstall = fs.existsSync(path.join(projectRoot, ".env"));
-
 	logDetail("  Installing for " + host.name + " → " + hostDir);
 
 	ensureProjectEnvFiles(projectRoot);
@@ -1522,7 +1496,6 @@ function installForHost(projectRoot, host, callback) {
 					if (j.initialized) logDetail("    Project workspace initialized (.emb-agent/)");
 				}
 			} catch (_) {}
-			removeInstallerGeneratedEnv(projectRoot, hadEnvBeforeInstall);
 		}
 		function finishDone() {
 			logDetail("Done. emb-agent is now installed for your AI runtime.");

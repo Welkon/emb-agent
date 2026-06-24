@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const MINERU_BASE_URL: &str = "https://mineru.net";
-const ENV_EXAMPLE: &str = "# emb-agent integration secrets\n#\n# MinerU — PDF parsing API\nMINERU_API_KEY=\n#\n# Graphify — only needed if you want LLM-powered doc/PDF semantic extraction.\n# Code-only graph extraction is free (AST, local) and needs no key.\n# Pick one backend; if unset, graphify skips doc extraction and works code-only:\n# GEMINI_API_KEY=       # free tier available\n# DEEPSEEK_API_KEY=     # alternative for Chinese datasheets\n# OLLAMA_BASE_URL=http://localhost:11434  # fully local, no API key\n#\n# headroom — context compression (60-95% fewer tokens, local)\n# HEADROOM_PORT=8787        # proxy port, default: 8787\n# HEADROOM_MODEL=kompress-base  # compression model, default: kompress-base\n#\n# turbovec — experimental semantic vector search (emb-agent 0.x, opt-in)\nTURBOVEC_ENABLED=false\n# TURBOVEC_MODEL=BAAI/bge-small-en-v1.5   # embedding model (fastembed), default: BAAI/bge-small-en-v1.5\n# TURBOVEC_INDEX_DIR=.emb-agent/cache/turbovec  # where to persist the index\n";
+const ENV_EXAMPLE: &str = "# emb-agent integration secrets\n#\n# MinerU — optional PDF parsing API\nMINERU_API_KEY=\n#\n# emb-agent session memory embeddings — optional, opt-in.\n# Leave these blank/commented for fully local semantic-hash recall.\n# EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\n# EMB_AGENT_EMBEDDING_API_KEY=\n# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>\n# EMB_AGENT_EMBEDDING_UPLOAD=summary-only\n";
 const DEFAULT_LANGUAGE: &str = "ch";
 const DEFAULT_MODEL_VERSION: &str = "vlm";
 const DEFAULT_POLL_INTERVAL_MS: u64 = 3_000;
@@ -45,8 +45,8 @@ pub struct EnvSetup {
 pub fn ensure_project_env(project_root: &Path) -> EnvSetup {
     let env_path = project_root.join(".env");
     let env_example_path = project_root.join(".env.example");
-    let env_example_created = write_if_missing(&env_example_path, ENV_EXAMPLE);
-    let env_created = write_if_missing(&env_path, ENV_EXAMPLE);
+    let env_example_created = ensure_env_example(&env_example_path);
+    let env_created = false;
     ensure_gitignore_entry(project_root, ".env");
     EnvSetup {
         key_present: read_mineru_api_key(project_root).is_some(),
@@ -1040,14 +1040,39 @@ fn read_mineru_api_key(project_root: &Path) -> Option<String> {
     None
 }
 
-fn write_if_missing(path: &Path, content: &str) -> bool {
-    if path.exists() {
-        return false;
+fn ensure_env_example(path: &Path) -> bool {
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        return fs::write(path, ENV_EXAMPLE).is_ok();
     }
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+    let existing = fs::read_to_string(path).unwrap_or_default();
+    let mut updated = existing.trim_end().to_string();
+    let mut changed = false;
+    for (key, block) in [
+        (
+            "MINERU_API_KEY",
+            "# emb-agent integration secrets\n#\n# MinerU — optional PDF parsing API\nMINERU_API_KEY=\n",
+        ),
+        (
+            "EMB_AGENT_EMBEDDING_PROVIDER",
+            "# emb-agent session memory embeddings — optional, opt-in.\n# Leave these blank/commented for fully local semantic-hash recall.\n# EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\n# EMB_AGENT_EMBEDDING_API_KEY=\n# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>\n# EMB_AGENT_EMBEDDING_UPLOAD=summary-only\n",
+        ),
+    ] {
+        if !existing.contains(key) {
+            if !updated.is_empty() {
+                updated.push_str("\n\n");
+            }
+            updated.push_str(block.trim_end());
+            changed = true;
+        }
     }
-    fs::write(path, content).is_ok()
+    if changed {
+        updated.push('\n');
+        let _ = fs::write(path, updated);
+    }
+    false
 }
 
 fn ensure_gitignore_entry(project_root: &Path, entry: &str) {

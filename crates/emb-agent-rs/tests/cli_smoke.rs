@@ -453,11 +453,11 @@ fn common_user_paths_smoke() {
 }
 
 #[test]
-fn doc_ingest_creates_env_and_blocks_until_mineru_key_exists() {
+fn doc_ingest_creates_env_example_and_blocks_until_mineru_key_exists() {
     let project = TestProject::new("doc-env");
     assert!(
-        project.path().join(".env").exists(),
-        "init should create .env"
+        !project.path().join(".env").exists(),
+        "init should not create real .env"
     );
     assert!(
         project.path().join(".env.example").exists(),
@@ -956,7 +956,7 @@ fn mem_cli_searches_and_extracts_local_sessions() {
 
     fs::write(
         project.join(".env"),
-        "EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\nEMB_AGENT_EMBEDDING_API_KEY=fake-test-key\nEMB_AGENT_EMBEDDING_MODEL=text-embedding-3-large\n",
+        "EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\nEMB_AGENT_EMBEDDING_API_KEY=fake-test-key\nEMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>\nEMB_AGENT_EMBEDDING_MODEL=text-embedding-3-large\n",
     )
     .expect("write dotenv embedding config");
     let dotenv_doctor = Command::new(emb_agent_bin())
@@ -2268,18 +2268,27 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         fs::read_to_string(root.join(".env.example")).expect("read installer env example");
     for expected in [
         "MINERU_API_KEY=",
-        "GEMINI_API_KEY",
-        "DEEPSEEK_API_KEY",
-        "OLLAMA_BASE_URL",
-        "HEADROOM_PORT",
-        "TURBOVEC_ENABLED=false",
-        "TURBOVEC_INDEX_DIR",
+        "EMB_AGENT_EMBEDDING_PROVIDER",
+        "EMB_AGENT_EMBEDDING_API_BASE",
+        "EMB_AGENT_EMBEDDING_MODEL",
     ] {
         assert!(
             env_example.contains(expected),
             "installer .env.example missing {expected}: {env_example}"
         );
     }
+    assert!(
+        !env_example.contains("GEMINI_API_KEY")
+            && !env_example.contains("DEEPSEEK_API_KEY")
+            && !env_example.contains("OLLAMA_BASE_URL")
+            && !env_example.contains("HEADROOM_PORT")
+            && !env_example.contains("TURBOVEC_ENABLED"),
+        "installer .env.example should not include unused legacy env keys: {env_example}"
+    );
+    assert!(
+        !env_example.contains("router.tumuer") && !env_example.contains("api.openai.com"),
+        "installer .env.example should not include real embedding URLs: {env_example}"
+    );
     assert!(
         !root.join(".env").exists(),
         "installer should create .env.example only, not .env"

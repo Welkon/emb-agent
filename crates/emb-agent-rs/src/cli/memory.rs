@@ -887,6 +887,7 @@ impl EmbeddingConfig {
             self.provider.as_str(),
             "openai" | "openai-compatible" | "custom-http"
         ) && !self.api_key.is_empty()
+            && !self.api_base.is_empty()
     }
 
     fn diagnostic(&self) -> Value {
@@ -919,8 +920,7 @@ fn embedding_config(cwd: &str) -> EmbeddingConfig {
         provider,
         model: env_or_dotenv(cwd, "EMB_AGENT_EMBEDDING_MODEL")
             .unwrap_or_else(|| "text-embedding-3-small".to_string()),
-        api_base: env_or_dotenv(cwd, "EMB_AGENT_EMBEDDING_API_BASE")
-            .unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
+        api_base: env_or_dotenv(cwd, "EMB_AGENT_EMBEDDING_API_BASE").unwrap_or_default(),
         api_key: env_or_dotenv(cwd, "EMB_AGENT_EMBEDDING_API_KEY").unwrap_or_default(),
         upload: env_or_dotenv(cwd, "EMB_AGENT_EMBEDDING_UPLOAD")
             .unwrap_or_else(|| "summary-only".to_string())
