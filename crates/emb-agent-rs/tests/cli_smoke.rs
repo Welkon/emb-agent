@@ -772,7 +772,7 @@ fn mem_cli_searches_and_extracts_local_sessions() {
         .arg("mem")
         .arg("search")
         .arg("--query")
-        .arg("watchdog sleep")
+        .arg("看门狗 低功耗")
         .arg("--cwd")
         .arg(&project)
         .arg("--platform")
@@ -782,6 +782,7 @@ fn mem_cli_searches_and_extracts_local_sessions() {
         .expect("run mem search");
     let search = assert_success(search);
     assert!(search.contains("watchdog"), "search output: {search}");
+    assert!(search.contains("semantic_score"), "search output: {search}");
 
     let extract = Command::new(emb_agent_bin())
         .arg("mem")
@@ -833,6 +834,7 @@ fn mem_cli_searches_and_extracts_local_sessions() {
         .expect("run mem show");
     let show = assert_success(show);
     assert!(show.contains("keywords"), "show output: {show}");
+    assert!(show.contains("phases"), "show output: {show}");
 
     let stats = Command::new(emb_agent_bin())
         .arg("mem")
@@ -861,6 +863,26 @@ fn mem_cli_searches_and_extracts_local_sessions() {
         .expect("run mem explain");
     let explain = assert_success(explain);
     assert!(explain.contains("explanation"), "explain output: {explain}");
+    assert!(
+        explain.contains("semantic_score"),
+        "explain output: {explain}"
+    );
+
+    let promote = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("promote")
+        .arg("--query")
+        .arg("看门狗")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .output()
+        .expect("run mem promote");
+    let promote = assert_success(promote);
+    assert!(promote.contains("dry-run"), "promote output: {promote}");
+    assert!(promote.contains("candidates"), "promote output: {promote}");
 
     let export = Command::new(emb_agent_bin())
         .arg("mem")

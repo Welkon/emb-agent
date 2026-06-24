@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const INDEX_VERSION: u32 = 1;
+const INDEX_VERSION: u32 = 2;
 const INDEX_TEXT_LIMIT: usize = 96_000;
 const SUMMARY_LIMIT: usize = 1_200;
 
@@ -37,6 +37,18 @@ struct IndexedSession {
     summary: String,
     keywords: Vec<String>,
     text_tail: String,
+    #[serde(default)]
+    semantic_vector: Vec<f32>,
+    #[serde(default)]
+    phases: Vec<PhaseSpan>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PhaseSpan {
+    phase: String,
+    start_turn: usize,
+    end_turn: usize,
+    preview: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -51,8 +63,12 @@ struct MemIndex {
 struct SearchHit {
     session: MemSessionInfo,
     score: usize,
+    exact_score: usize,
+    keyword_score: usize,
+    semantic_score: f32,
     preview: String,
     keywords: Vec<String>,
+    matched_aliases: Vec<String>,
 }
 
 pub fn run(args: &[String]) -> Result<(), String> {
@@ -81,6 +97,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             | "export"
             | "diff"
             | "writeback"
+            | "promote"
     ) {
         return run_session_mem(args);
     }
@@ -212,7 +229,7 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
                 .or_else(|| positional_after(args, 2));
             let session = resolve_session(&cwd, &platform, id.as_deref(), None, force)?;
             let indexed = indexed_session(&cwd, &platform, &session.id, force)?;
-            print_json(&serde_json::json!({"session": session, "summary": indexed.summary, "keywords": indexed.keywords}))
+            print_json(&serde_json::json!({"session": session, "summary": indexed.summary, "keywords": indexed.keywords, "phases": indexed.phases}))
         }
         "timeline" => {
             let mut sessions = list_mem_sessions(&cwd, &platform, limit)?;
@@ -292,7 +309,11 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
                 .map(|hit| serde_json::json!({
                     "session": hit.session,
                     "score": hit.score,
+                    "exact_score": hit.exact_score,
+                    "keyword_score": hit.keyword_score,
+                    "semantic_score": hit.semantic_score,
                     "matched_keywords": hit.keywords.into_iter().filter(|kw| query.to_lowercase().contains(kw) || hit.preview.to_lowercase().contains(kw)).collect::<Vec<_>>(),
+                    "matched_aliases": hit.matched_aliases,
                     "preview": hit.preview
                 }))
                 .collect();
@@ -303,7 +324,7 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
             let index = load_or_build_index(&cwd, &platform, force)?;
             if format == "markdown" || format == "md" {
                 for item in index.sessions.into_iter().take(limit) {
-                    println!("## {} {}\n\nPath: `{}`\n\nKeywords: {}\n\n{}\n", item.session.platform, item.session.id, item.session.path, item.keywords.join(", "), item.summary);
+                    println!("## {} {}\n\nPath: `{}`\n\nKeywords: {}\n\nPhases: {}\n\n{}\n", item.session.platform, item.session.id, item.session.path, item.keywords.join(", "), item.phases.iter().map(|p| p.phase.as_str()).collect::<Vec<_>>().join(", "), item.summary);
                 }
                 Ok(())
             } else {
@@ -328,7 +349,15 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
             let detail = option_value(args, "--detail").unwrap_or_default();
             writeback_memory(Path::new(&cwd), &target, &summary, &detail)
         }
-        _ => Err("mem: expected list|projects|search|context|extract|show|timeline|related|summary|reindex|stats|doctor|prune|open|explain|export|diff|writeback".to_string()),
+        "promote" => {
+            let query = option_value(args, "--query")
+                .or_else(|| positional_after(args, 2))
+                .ok_or("mem promote requires --query <text> or positional query")?;
+            let target = option_value(args, "--target").unwrap_or_else(|| "auto".to_string());
+            let apply = args.iter().any(|arg| arg == "--apply");
+            promote_memory(Path::new(&cwd), &cwd, &platform, &query, &target, limit, force, apply)
+        }
+        _ => Err("mem: expected list|projects|search|context|extract|show|timeline|related|summary|reindex|stats|doctor|prune|open|explain|export|diff|writeback|promote".to_string()),
     }
 }
 
@@ -396,6 +425,148 @@ fn writeback_memory(
         })),
         other => Err(format!("mem writeback unknown target: {other}")),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn promote_memory(
+    project_root: &Path,
+    cwd: &str,
+    platform: &str,
+    query: &str,
+    target: &str,
+    limit: usize,
+    force: bool,
+    apply: bool,
+) -> Result<(), String> {
+    let hits = search_mem_sessions(cwd, platform, query, limit, force)?;
+    let mut candidates = Vec::new();
+    let mut applied = Vec::new();
+    for hit in hits {
+        let summary = promotion_summary(query, &hit);
+        let detail = promotion_detail(&hit);
+        let chosen_target = if target == "auto" {
+            auto_writeback_target(&summary, &detail)
+        } else {
+            target.to_string()
+        };
+        let candidate = serde_json::json!({
+            "target": chosen_target,
+            "summary": summary,
+            "detail": detail,
+            "session": hit.session,
+            "score": hit.score,
+            "semantic_score": hit.semantic_score,
+            "matched_aliases": hit.matched_aliases,
+            "apply_command": format!("mem promote --query {} --target {} --apply", shell_quote(query), shell_quote(target)),
+        });
+        if apply {
+            applied.push(apply_promotion(
+                project_root,
+                &chosen_target,
+                &summary,
+                &detail,
+            )?);
+        }
+        candidates.push(candidate);
+    }
+    print_json(&serde_json::json!({
+        "status": if apply { "applied" } else { "dry-run" },
+        "query": query,
+        "apply": apply,
+        "candidates": candidates,
+        "applied": applied,
+        "note": "Default is dry-run. Re-run with --apply to write selected insights locally."
+    }))
+}
+
+fn promotion_summary(query: &str, hit: &SearchHit) -> String {
+    let preview = hit
+        .preview
+        .split('.')
+        .next()
+        .unwrap_or(&hit.preview)
+        .trim()
+        .chars()
+        .take(140)
+        .collect::<String>();
+    if preview.is_empty() {
+        format!("Session insight for {query}")
+    } else {
+        format!("Session insight for {query}: {preview}")
+    }
+}
+
+fn promotion_detail(hit: &SearchHit) -> String {
+    format!(
+        "Source: {} {}\nPath: {}\nScore: {} exact={} keyword={} semantic={:.3}\nKeywords: {}\nPreview: {}",
+        hit.session.platform,
+        hit.session.id,
+        hit.session.path,
+        hit.score,
+        hit.exact_score,
+        hit.keyword_score,
+        hit.semantic_score,
+        hit.keywords.join(", "),
+        hit.preview
+    )
+}
+
+fn apply_promotion(
+    project_root: &Path,
+    target: &str,
+    summary: &str,
+    detail: &str,
+) -> Result<Value, String> {
+    match target {
+        "memory" | "durable" => {
+            let id = emb_agent_core::knowledge::graph::memory_remember(
+                project_root,
+                "session-insight",
+                summary,
+                detail,
+            )?;
+            Ok(serde_json::json!({"target":"memory", "id": id}))
+        }
+        "attention" => {
+            let ext_dir = project_root.join(".emb-agent");
+            let output =
+                emb_agent_core::compound::attention_note(&ext_dir, summary, "Session Insight");
+            Ok(
+                serde_json::json!({"target":"attention", "output": serde_json::from_str::<Value>(&output).unwrap_or(Value::String(output))}),
+            )
+        }
+        "trap" | "trick" | "decision" | "learn" => {
+            let doc_type = if target == "learn" { "learn" } else { target };
+            let ext_dir = project_root.join(".emb-agent");
+            let slug = safe_slug(summary);
+            let output = emb_agent_core::compound::compound_add(
+                &ext_dir,
+                emb_agent_core::compound::CompoundAdd {
+                    doc_type,
+                    slug: &slug,
+                    title: summary,
+                    summary: detail,
+                    chip: "",
+                    peripheral: "",
+                    extra: &[("source", "mem-promote")],
+                },
+            );
+            Ok(
+                serde_json::json!({"target":target, "output": serde_json::from_str::<Value>(&output).unwrap_or(Value::String(output))}),
+            )
+        }
+        "task" | "prd" => Ok(serde_json::json!({
+            "target": target,
+            "status": "manual",
+            "summary": summary,
+            "next": "Copy this candidate into the active task/PRD after human review."
+        })),
+        other => Err(format!("mem promote unknown target: {other}")),
+    }
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn auto_writeback_target(summary: &str, detail: &str) -> String {
@@ -737,12 +908,15 @@ fn build_and_save_index(cwd: &str, platform: &str) -> Result<MemIndex, String> {
             .map(|turn| format!("{}: {}", turn.role, turn.text))
             .collect::<Vec<_>>()
             .join("\n\n");
+        let text_tail = tail_chars(&text, INDEX_TEXT_LIMIT);
         indexed.push(IndexedSession {
             mtime_ms: session.updated_ms,
             size: session.bytes,
             summary: summarize_text(&text),
             keywords: keywords(&text),
-            text_tail: tail_chars(&text, INDEX_TEXT_LIMIT),
+            semantic_vector: semantic_vector(&text_tail),
+            phases: phase_spans(&turns),
+            text_tail,
             session,
         });
     }
@@ -787,17 +961,27 @@ fn search_mem_sessions(
     force: bool,
 ) -> Result<Vec<SearchHit>, String> {
     let index = load_or_build_index(cwd, platform, force)?;
+    let query_expanded = expand_query(query);
+    let query_vector = semantic_vector(&query_expanded);
     let mut hits = Vec::new();
     for item in index.sessions {
-        let score = score_text(&item.text_tail, query) + keyword_score(&item.keywords, query);
-        if score == 0 {
+        let exact_score = score_text(&item.text_tail, &query_expanded);
+        let keyword_score = keyword_score(&item.keywords, &query_expanded);
+        let semantic_score = cosine_similarity(&item.semantic_vector, &query_vector);
+        let semantic_points = (semantic_score * 24.0).round().max(0.0) as usize;
+        let score = exact_score + keyword_score + semantic_points;
+        if score == 0 || (exact_score == 0 && keyword_score == 0 && semantic_score < 0.08) {
             continue;
         }
         hits.push(SearchHit {
             session: item.session,
             score,
-            preview: preview(&item.text_tail, query),
+            exact_score,
+            keyword_score,
+            semantic_score,
+            preview: preview(&item.text_tail, &query_expanded),
             keywords: item.keywords,
+            matched_aliases: matched_aliases(query),
         });
     }
     hits.sort_by(|a, b| {
@@ -836,6 +1020,131 @@ fn keyword_score(keywords: &[String], query: &str) -> usize {
         .filter(|token| set.contains(token.to_lowercase().as_str()))
         .count()
         * 3
+}
+
+fn expand_query(query: &str) -> String {
+    let mut parts = query
+        .split_whitespace()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let lower = query.to_lowercase();
+    for group in SEMANTIC_ALIASES {
+        if group
+            .iter()
+            .any(|token| lower.contains(&token.to_lowercase()))
+        {
+            parts.extend(group.iter().map(|token| token.to_string()));
+        }
+    }
+    parts.join(" ")
+}
+
+fn matched_aliases(query: &str) -> Vec<String> {
+    let lower = query.to_lowercase();
+    let mut out = Vec::new();
+    for group in SEMANTIC_ALIASES {
+        if group
+            .iter()
+            .any(|token| lower.contains(&token.to_lowercase()))
+        {
+            out.push(group.join("|"));
+        }
+    }
+    out
+}
+
+fn semantic_vector(text: &str) -> Vec<f32> {
+    const DIM: usize = 64;
+    let expanded = expand_query(text);
+    let mut vector = vec![0.0_f32; DIM];
+    for token in tokenize_terms(&expanded) {
+        let hash = stable_hash(&token);
+        let idx = (hash as usize) % DIM;
+        let sign = if hash & 1 == 0 { 1.0 } else { -1.0 };
+        vector[idx] += sign;
+    }
+    normalize_vector(vector)
+}
+
+fn tokenize_terms(text: &str) -> Vec<String> {
+    text.split(|ch: char| !ch.is_alphanumeric() && ch != '_' && ch != '-')
+        .map(|token| token.trim().to_lowercase())
+        .filter(|token| token.len() >= 2 && !STOP_WORDS.contains(&token.as_str()))
+        .collect()
+}
+
+fn stable_hash(value: &str) -> u64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in value.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+fn normalize_vector(mut vector: Vec<f32>) -> Vec<f32> {
+    let norm = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        for value in &mut vector {
+            *value /= norm;
+        }
+    }
+    vector
+}
+
+fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {
+    left.iter()
+        .zip(right.iter())
+        .map(|(a, b)| a * b)
+        .sum::<f32>()
+        .max(0.0)
+}
+
+fn phase_spans(turns: &[DialogueTurn]) -> Vec<PhaseSpan> {
+    let boundaries = phase_boundaries(turns);
+    let mut spans = Vec::new();
+    let brainstorm_start = boundaries.create.unwrap_or(0);
+    let brainstorm_end = boundaries.start.unwrap_or(turns.len());
+    if brainstorm_end > brainstorm_start {
+        spans.push(make_phase_span(
+            "brainstorm",
+            brainstorm_start,
+            brainstorm_end,
+            turns,
+        ));
+    }
+    if let Some(start) = boundaries.start {
+        let end = boundaries.finish.unwrap_or(turns.len());
+        if end > start {
+            spans.push(make_phase_span("implement", start, end, turns));
+        }
+    }
+    if let Some(start) = boundaries.finish
+        && turns.len() > start
+    {
+        spans.push(make_phase_span("review", start, turns.len(), turns));
+    }
+    if spans.is_empty() && !turns.is_empty() {
+        spans.push(make_phase_span("all", 0, turns.len(), turns));
+    }
+    spans
+}
+
+fn make_phase_span(phase: &str, start: usize, end: usize, turns: &[DialogueTurn]) -> PhaseSpan {
+    let preview = turns[start..end]
+        .iter()
+        .map(|turn| format!("{}: {}", turn.role, turn.text))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .chars()
+        .take(360)
+        .collect::<String>();
+    PhaseSpan {
+        phase: phase.to_string(),
+        start_turn: start,
+        end_turn: end,
+        preview,
+    }
 }
 
 fn contains_all_tokens(text: &str, query: &str) -> bool {
@@ -995,6 +1304,29 @@ fn tail_chars(text: &str, max_chars: usize) -> String {
     }
     text.chars().skip(len - max_chars).collect()
 }
+
+const SEMANTIC_ALIASES: &[&[&str]] = &[
+    &["watchdog", "wdt", "iwdg", "wwdg", "看门狗"],
+    &[
+        "sleep",
+        "low-power",
+        "lowpower",
+        "standby",
+        "stop",
+        "休眠",
+        "低功耗",
+    ],
+    &["timer", "pwm", "capture", "compare", "定时器", "脉宽"],
+    &["uart", "usart", "serial", "串口"],
+    &["i2c", "twi", "smbus", "eeprom"],
+    &["spi", "qspi", "flash"],
+    &["adc", "sampling", "采样"],
+    &["gpio", "pin", "io", "引脚"],
+    &["interrupt", "irq", "isr", "中断"],
+    &["boot", "bootloader", "startup", "启动"],
+    &["trap", "quirk", "errata", "gotcha", "坑", "陷阱"],
+    &["decision", "tradeoff", "choice", "选择", "决策"],
+];
 
 const STOP_WORDS: &[&str] = &[
     "about",

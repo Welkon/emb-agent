@@ -88,7 +88,7 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
 
 `mem` 是本地 CLI 跨会话记忆底座；`emb_session_search` 和 `emb_session_extract` 是 Pi 内的快捷工具，不依赖 workspace runtime：
 
-- CLI：`mem list`、`mem projects`、`mem search`、`mem context`、`mem extract`、`mem show`、`mem timeline`、`mem related`、`mem summary`、`mem reindex`、`mem stats`、`mem doctor`、`mem prune`、`mem open`、`mem explain`、`mem export`、`mem diff`、`mem writeback`
+- CLI：`mem list`、`mem projects`、`mem search`、`mem context`、`mem extract`、`mem show`、`mem timeline`、`mem related`、`mem summary`、`mem reindex`、`mem stats`、`mem doctor`、`mem prune`、`mem open`、`mem explain`、`mem export`、`mem diff`、`mem writeback`、`mem promote`
 - 索引：`.emb-agent/cache/mem/index.json`，本地增量检查，搜索/上下文/show/related 自动重建 stale index
 - 搜索根：`~/.claude/projects`、`~/.codex/sessions`、`$PI_CODING_AGENT_SESSION_DIR`、`~/.pi/agent/sessions`
 - 输入：关键字或 session id/path
@@ -109,7 +109,7 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
 
 生命周期 hooks 会收到 `TASK_JSON_PATH` 环境变量；session/tool/agent-turn hooks 会收到 `EMB_AGENT_SESSION_EVENT`。任意事件也可通过 `hook event --name <event>` 触发。hook 失败只打印警告，不阻塞主命令。
 
-`max_journal_lines` 限制 `.emb-agent/sessions/journal.jsonl`，`session_auto_commit` 会本地提交 session journal/index，不上传。`mem writeback --target auto` 会按 trap/decision/trick/blocker/requirement 规则晋升到 compound、attention、memory 或手动 PRD/task 指引。`codex.dispatch_mode: sub-agent` 会通过 emb-agent 启动本地 `codex exec` worker；不具备 Codex CLI 时返回 manual worker envelope。
+`max_journal_lines` 限制 `.emb-agent/sessions/journal.jsonl`，`session_auto_commit` 会本地提交 session journal/index，不上传。session memory 召回使用本地 exact + keyword + semantic-hash hybrid scorer，不调用外部 embedding API。`mem writeback --target auto` 会按 trap/decision/trick/blocker/requirement 规则晋升到 compound、attention、memory 或手动 PRD/task 指引；`mem promote --query ...` 提供候选晋升 dry-run，只有显式 `--apply` 才写入。`codex.dispatch_mode: sub-agent` 会通过 emb-agent 启动本地 `codex exec` worker；不具备 Codex CLI 时返回 manual worker envelope。
 
 ## 设置合并
 
