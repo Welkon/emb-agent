@@ -42,6 +42,8 @@ Every wiki page SHOULD include frontmatter with `title`, `kind`, `date`, `expire
 - `knowledge index [--rebuild]` builds `.emb-agent/cache/knowledge/index.json` from hw/req, PRDs, tasks, attention, architecture, wiki, and compound entries using emb-agent native embedding providers.
 - `knowledge search --query <text> [--rerank] [--limit <n>]`
 - `knowledge rerank --query <text> [--limit <n>]`
+- `knowledge diagnose` reports native index, manifest, source counts, cache size, and stale state.
+- `knowledge promote --query <text> [--apply]` drafts or writes a wiki page under `.emb-agent/wiki/promoted/` using ranked evidence.
 - `knowledge lint`
 - `knowledge show <wiki/path>`
 - `knowledge graph build`
@@ -66,7 +68,7 @@ Every wiki page SHOULD include frontmatter with `title`, `kind`, `date`, `expire
 6. For formulas that must be reused by agents, keep a JSON registry under `.emb-agent/formulas/` with `chip`, `formulas[].expression`, `variables`, `registers`, and `evidence` fields before rebuilding the graph.
 7. Run `knowledge graph report` or `knowledge graph lint` to detect stale graph manifests after tracked files change.
 8. Use report Suggested Explanations to inspect hot graph nodes, especially tool-run, register, formula, and snippet nodes created by recent work.
-9. Run `knowledge search --query <term> --rerank` before broad searches when you need semantic project context, then use `knowledge graph query <term>` or `knowledge graph explain <term>` for relationship-oriented context.
+9. Run `knowledge search --query <term> --rerank` before broad searches when you need semantic project context, then use `knowledge promote --query <term> --apply` to create a reviewed wiki draft from high-value evidence and `knowledge graph query <term>` or `knowledge graph explain <term>` for relationship-oriented context.
 10. Run `knowledge lint` and `knowledge graph lint` periodically to find missing control files, orphan pages, unindexed pages, chip truth with no matching chip wiki page, stale graph manifests, and ambiguous graph relationships.
 11. After `task finish-work`, run `insight extract --confirm` (see emb-insight) to push durable learnings from this task into wiki. Then run `knowledge graph refresh`.
 12. Use `insight stale-check` to surface wiki pages past their `stale_after` date.

@@ -456,7 +456,20 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                 let markdown = doc
                     .pointer("/paths/markdown")
                     .and_then(serde_json::Value::as_str)
-                    .unwrap_or("");
+                    .filter(|path| !path.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| {
+                        let parse_path = ext_dir
+                            .join("cache")
+                            .join("docs")
+                            .join(doc_id)
+                            .join("parse.md");
+                        parse_path
+                            .strip_prefix(project_root)
+                            .unwrap_or(&parse_path)
+                            .to_string_lossy()
+                            .replace('\\', "/")
+                    });
                 let id = format!("doc_parse:{doc_id}");
                 nodes.push(GraphNode {
                     id: id.clone(),
@@ -474,11 +487,77 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                     && !source.is_empty()
                 {
                     edges.push(GraphEdge {
-                        from: id,
+                        from: id.clone(),
                         to: format!("file:{source}"),
                         edge_type: "parsed_from".to_string(),
                         label: provider.to_string(),
                     });
+                }
+
+                if !markdown.is_empty() {
+                    let parse_text =
+                        fs::read_to_string(project_root.join(&markdown)).unwrap_or_default();
+                    for symbol in extract_register_like_symbols(&parse_text)
+                        .into_iter()
+                        .take(80)
+                    {
+                        let symbol_id = format!("register:{}", symbol.to_lowercase());
+                        if !nodes.iter().any(|node| node.id == symbol_id) {
+                            nodes.push(GraphNode {
+                                id: symbol_id.clone(),
+                                node_type: "register".to_string(),
+                                label: symbol.clone(),
+                                summary: format!("Register-like symbol extracted from {title}"),
+                                status: "extracted".to_string(),
+                                category: provider.to_string(),
+                            });
+                            *by_type.entry("register".to_string()).or_default() += 1;
+                        }
+                        edges.push(GraphEdge {
+                            from: id.clone(),
+                            to: symbol_id,
+                            edge_type: "mentions".to_string(),
+                            label: "register".to_string(),
+                        });
+                    }
+                    for formula in extract_formula_like_lines(&parse_text).into_iter().take(30) {
+                        let formula_id = format!("formula:{}", stable_hash(&formula));
+                        nodes.push(GraphNode {
+                            id: formula_id.clone(),
+                            node_type: "formula".to_string(),
+                            label: formula.chars().take(60).collect::<String>(),
+                            summary: formula,
+                            status: "extracted".to_string(),
+                            category: provider.to_string(),
+                        });
+                        *by_type.entry("formula".to_string()).or_default() += 1;
+                        edges.push(GraphEdge {
+                            from: id.clone(),
+                            to: formula_id,
+                            edge_type: "mentions".to_string(),
+                            label: "formula".to_string(),
+                        });
+                    }
+                    for keyword in extract_domain_keywords(&parse_text).into_iter().take(40) {
+                        let keyword_id = format!("concept:{}", keyword.to_lowercase());
+                        if !nodes.iter().any(|node| node.id == keyword_id) {
+                            nodes.push(GraphNode {
+                                id: keyword_id.clone(),
+                                node_type: "concept".to_string(),
+                                label: keyword.clone(),
+                                summary: format!("Domain concept extracted from {title}"),
+                                status: "extracted".to_string(),
+                                category: provider.to_string(),
+                            });
+                            *by_type.entry("concept".to_string()).or_default() += 1;
+                        }
+                        edges.push(GraphEdge {
+                            from: id.clone(),
+                            to: keyword_id,
+                            edge_type: "mentions".to_string(),
+                            label: "concept".to_string(),
+                        });
+                    }
                 }
             }
         }
@@ -513,6 +592,74 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
     fs::write(&graph_path, json).map_err(|e| format!("write error: {e}"))?;
 
     Ok(graph)
+}
+
+fn extract_register_like_symbols(text: &str) -> Vec<String> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for token in text.split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_') {
+        let token = token.trim();
+        if token.len() < 3 || token.len() > 24 {
+            continue;
+        }
+        let has_upper = token.chars().any(|ch| ch.is_ascii_uppercase());
+        let has_digit = token.chars().any(|ch| ch.is_ascii_digit());
+        if has_upper && (has_digit || token.chars().all(|ch| ch.is_ascii_uppercase() || ch == '_'))
+        {
+            *counts.entry(token.to_string()).or_default() += 1;
+        }
+    }
+    let mut rows = counts.into_iter().collect::<Vec<_>>();
+    rows.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+    rows.into_iter().map(|(token, _)| token).collect()
+}
+
+fn extract_formula_like_lines(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| {
+            line.len() >= 8
+                && line.len() <= 180
+                && line.contains('=')
+                && line
+                    .chars()
+                    .any(|ch| matches!(ch, '+' | '-' | '*' | '/' | '×' | '÷'))
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+fn extract_domain_keywords(text: &str) -> Vec<String> {
+    let keywords = [
+        "watchdog",
+        "WDT",
+        "IWDG",
+        "WWDG",
+        "看门狗",
+        "STOP",
+        "IDLE",
+        "低功耗",
+        "PWM",
+        "ADC",
+        "UART",
+        "I2C",
+        "SPI",
+        "GPIO",
+        "EEPROM",
+        "复位",
+        "中断",
+    ];
+    keywords
+        .into_iter()
+        .filter(|keyword| text.contains(keyword))
+        .map(str::to_string)
+        .collect()
+}
+
+fn stable_hash(value: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
 }
 
 // === Memory Management ===

@@ -34,6 +34,8 @@ struct KnowledgeEvidence {
     quality: String,
     line_start: usize,
     line_end: usize,
+    page_start: Option<usize>,
+    page_end: Option<usize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -153,6 +155,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 "hits": result.hits
             }))
         }
+        "promote" => {
+            let query = option_value(args, "--query")
+                .or_else(|| option_value(args, "--q"))
+                .or_else(|| positional_after(args, 2))
+                .ok_or("knowledge promote requires --query <text>")?;
+            let apply = args
+                .iter()
+                .any(|arg| arg == "--apply" || arg == "--confirm");
+            promote_knowledge(project_root, &query, apply)
+        }
+        "diagnose" | "doctor" => diagnose_knowledge(project_root),
         "graph" => match args.get(2).map(String::as_str).unwrap_or("report") {
             "refresh" | "build" => {
                 match emb_agent_core::knowledge::graph::refresh_graph(project_root) {
@@ -203,7 +216,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
             Err(e) => Err(e),
         },
-        _ => Err("knowledge: expected index|search|rerank|graph|wiki".to_string()),
+        _ => Err("knowledge: expected index|search|rerank|promote|diagnose|graph|wiki".to_string()),
     }
 }
 
@@ -359,6 +372,115 @@ fn search_index(
     })
 }
 
+fn diagnose_knowledge(project_root: &Path) -> Result<(), String> {
+    let docs = collect_knowledge_docs(project_root);
+    let manifest = source_manifest(&docs);
+    let index = fs::read_to_string(knowledge_index_path(project_root))
+        .ok()
+        .and_then(|text| serde_json::from_str::<KnowledgeIndex>(&text).ok());
+    let cache = fs::read_to_string(knowledge_embedding_cache_path(project_root))
+        .ok()
+        .and_then(|text| serde_json::from_str::<KnowledgeEmbeddingCache>(&text).ok());
+    let stale = index
+        .as_ref()
+        .map(|index| index.version != KNOWLEDGE_INDEX_VERSION || index.manifest != manifest)
+        .unwrap_or(true);
+    let source_counts = docs
+        .iter()
+        .fold(BTreeMap::<String, usize>::new(), |mut counts, doc| {
+            *counts.entry(doc.source_type.clone()).or_default() += 1;
+            counts
+        });
+    print_json(&serde_json::json!({
+        "status": if stale { "stale" } else { "ok" },
+        "index_version": index.as_ref().map(|idx| idx.version).unwrap_or(0),
+        "expected_version": KNOWLEDGE_INDEX_VERSION,
+        "sources": manifest.len(),
+        "source_counts": source_counts,
+        "chunks": index.as_ref().map(|idx| idx.chunks.len()).unwrap_or(0),
+        "embedding_provider": index.as_ref().map(|idx| idx.embedding_provider.as_str()).unwrap_or("none"),
+        "embedding_model": index.as_ref().map(|idx| idx.embedding_model.as_str()).unwrap_or("none"),
+        "embedding_cache_vectors": cache.as_ref().map(|cache| cache.vectors.len()).unwrap_or(0),
+        "stale": stale,
+        "index_path": knowledge_index_path(project_root),
+        "manifest_path": knowledge_manifest_path(project_root),
+        "embedding_cache_path": knowledge_embedding_cache_path(project_root)
+    }))
+}
+
+fn promote_knowledge(project_root: &Path, query: &str, apply: bool) -> Result<(), String> {
+    let result = search_index(project_root, query, 5, false, true)?;
+    let slug = slugify(query);
+    let target = project_root
+        .join(".emb-agent")
+        .join("wiki")
+        .join("promoted")
+        .join(format!("{slug}.md"));
+    let mut body = String::new();
+    body.push_str(&format!("# {query}\n\n"));
+    body.push_str("## Summary\n\nReview and refine this promoted knowledge draft before treating it as authoritative.\n\n");
+    body.push_str("## Evidence\n\n");
+    for hit in &result.hits {
+        body.push_str(&format!(
+            "- `{}` `{}` score={:.3} rerank={:.3} lines {}-{} pages {}-{}\n",
+            hit.source_type,
+            hit.path,
+            hit.score,
+            hit.rerank_score.unwrap_or(hit.score),
+            hit.evidence.line_start,
+            hit.evidence.line_end,
+            hit.evidence
+                .page_start
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "?".to_string()),
+            hit.evidence
+                .page_end
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "?".to_string())
+        ));
+    }
+    body.push_str("\n## Draft Notes\n\n");
+    for hit in &result.hits {
+        body.push_str(&format!("- {}\n", hit.preview.replace('\n', " ")));
+    }
+    if apply {
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+        }
+        fs::write(&target, &body).map_err(|e| format!("write {}: {e}", target.display()))?;
+    }
+    print_json(&serde_json::json!({
+        "status": if apply { "applied" } else { "dry-run" },
+        "target": target,
+        "query": query,
+        "rerank_provider": result.rerank_provider,
+        "hits": result.hits,
+        "preview": body
+    }))
+}
+
+fn slugify(value: &str) -> String {
+    let slug = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        format!("knowledge-{}", now_ms())
+    } else {
+        slug.chars().take(80).collect()
+    }
+}
+
 #[derive(Clone, Debug)]
 struct KnowledgeDoc {
     source_type: String,
@@ -412,6 +534,10 @@ fn split_knowledge_doc(doc: KnowledgeDoc) -> Vec<RawKnowledgeChunk> {
         let mut evidence = doc.evidence.clone();
         evidence.line_start = line_start;
         evidence.line_end = line_start + line_count.saturating_sub(1);
+        if doc.source_type == "doc-parse" {
+            evidence.page_start = Some(line_to_page(evidence.line_start));
+            evidence.page_end = Some(line_to_page(evidence.line_end));
+        }
         chunks.push(raw_knowledge_chunk(
             &doc.source_type,
             &doc.path,
@@ -434,6 +560,10 @@ fn split_knowledge_doc(doc: KnowledgeDoc) -> Vec<RawKnowledgeChunk> {
     chunks
 }
 
+fn line_to_page(line: usize) -> usize {
+    ((line.saturating_sub(1)) / 50) + 1
+}
+
 fn raw_knowledge_chunk(
     source_type: &str,
     path: &str,
@@ -453,6 +583,10 @@ fn raw_knowledge_chunk(
         format!("{title} · chunk {ordinal}")
     };
     evidence.path = chunk_path.clone();
+    if source_type == "doc-parse" && evidence.page_start.is_none() {
+        evidence.page_start = Some(line_to_page(evidence.line_start));
+        evidence.page_end = Some(line_to_page(evidence.line_end));
+    }
     RawKnowledgeChunk {
         id: format!(
             "{}:{}",
@@ -693,6 +827,8 @@ fn push_cached_doc_parse(
                 quality: meta.quality,
                 line_start: 1,
                 line_end: text.lines().count().max(1),
+                page_start: None,
+                page_end: None,
             },
             text,
         });
@@ -757,6 +893,8 @@ fn default_evidence(path: &str, source_type: &str) -> KnowledgeEvidence {
         quality: "source".to_string(),
         line_start: 1,
         line_end: 1,
+        page_start: None,
+        page_end: None,
     }
 }
 

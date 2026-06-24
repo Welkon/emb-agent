@@ -2198,6 +2198,25 @@ fn knowledge_query_and_explain_accept_named_options_after_cwd() {
         doc_search.contains("Native Parsed Manual") && doc_search.contains("doc-parse"),
         "doc cache search output: {doc_search}"
     );
+    assert!(
+        doc_search.contains("page_start"),
+        "doc cache search output: {doc_search}"
+    );
+    let diagnose = run(&project, &["knowledge", "diagnose"]);
+    assert!(
+        diagnose.contains("embedding_cache_vectors"),
+        "diagnose output: {diagnose}"
+    );
+    let promote = run(
+        &project,
+        &[
+            "knowledge",
+            "promote",
+            "--query",
+            "watchdog low-power parsed PDF",
+        ],
+    );
+    assert!(promote.contains("dry-run"), "promote output: {promote}");
     assert!(refresh.contains("\"nodes\""), "refresh output: {refresh}");
 
     let query = run(&project, &["knowledge", "graph", "query", "--q", "U1"]);
