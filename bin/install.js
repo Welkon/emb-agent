@@ -932,10 +932,14 @@ function deployPiSettingsJson(projectRoot, srcPath, destPath) {
 	}
 	var merged = Object.assign({}, template, existing);
 	var basePackages = Array.isArray(existing.packages) ? existing.packages : template.packages;
-	merged.packages = mergeUniqueArray(basePackages, ["npm:@tintinweb/pi-subagents"]).filter(function (pkg) { return pkg !== "npm:pi-subagents"; });
+	var legacyPiSubagentPackages = ["npm:pi-subagents", "npm:" + "@tintinweb/pi-subagents"];
+	merged.packages = mergeUniqueArray(basePackages, []).filter(function (pkg) { return legacyPiSubagentPackages.indexOf(String(pkg)) === -1; });
 	var templateEmb = template.embAgent && typeof template.embAgent === "object" ? template.embAgent : {};
 	var existingEmb = existing.embAgent && typeof existing.embAgent === "object" ? existing.embAgent : {};
 	merged.embAgent = Object.assign({}, templateEmb, existingEmb);
+	var templateSubagents = templateEmb.subagents && typeof templateEmb.subagents === "object" ? templateEmb.subagents : {};
+	var existingSubagents = existingEmb.subagents && typeof existingEmb.subagents === "object" ? existingEmb.subagents : {};
+	merged.embAgent.subagents = Object.assign({}, templateSubagents, existingSubagents);
 	var templateRoutes = templateEmb.subagentModelRoutes && typeof templateEmb.subagentModelRoutes === "object" ? templateEmb.subagentModelRoutes : {};
 	var existingRoutes = existingEmb.subagentModelRoutes && typeof existingEmb.subagentModelRoutes === "object" ? existingEmb.subagentModelRoutes : {};
 	merged.embAgent.subagentModelRoutes = Object.assign({}, templateRoutes, existingRoutes);
@@ -1237,7 +1241,12 @@ function piSurfaceOk(projectRoot, host) {
 	if (!extOk || !fs.existsSync(settingsPath)) return false;
 	try {
 		var settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-		return Array.isArray(settings.packages) && settings.packages.indexOf("npm:@tintinweb/pi-subagents") >= 0 && settings.packages.indexOf("npm:pi-subagents") === -1;
+		return Array.isArray(settings.packages)
+			&& settings.packages.indexOf("npm:pi-subagents") === -1
+			&& settings.packages.indexOf("npm:" + "@tintinweb/pi-subagents") === -1
+			&& settings.embAgent
+			&& settings.embAgent.subagents
+			&& settings.embAgent.subagents.runner === "native-pi";
 	} catch (_) {
 		return false;
 	}

@@ -2,7 +2,7 @@
  * emb-agent Pi extension
  *
  * Unified Pi surface for emb-agent: project-state injection, slash commands,
- * Pi-native tools, PDF/document ingest routing, and Tintinweb Agent subagent sync.
+ * Pi-native tools, PDF/document ingest routing, native subagent dispatch, and session insight.
  *
  * Requires: emb-agent installed via `npx emb-agent --target pi`.
  */
@@ -13,8 +13,8 @@ import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { constants } from "node:fs";
-import { execFile } from "node:child_process";
+import { accessSync, constants } from "node:fs";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -98,22 +98,53 @@ interface ContextEntry {
   dirty: boolean;
 }
 
-interface SubagentsRpcReply<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
-
 interface ModelRoute {
   model?: string;
   thinking?: string;
 }
 
+interface EmbSubagentProgress {
+  kind: "emb-agent-subagent-progress";
+  batchId: string;
+  mode: "single" | "parallel" | "chain";
+  roles: SubagentRunState[];
+  final: boolean;
+  startedAt: number;
+  updatedAt: number;
+}
+
+interface SubagentRunState {
+  id: string;
+  role: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+  task: string;
+  model?: string;
+  thinking?: string;
+  startedAt?: number;
+  finishedAt?: number;
+  tools: Array<{ id: string; name: string; args?: string; status: "running" | "succeeded" | "failed" }>;
+  textTail: string;
+  thinkingTail: string;
+  stderrTail: string;
+  finalText: string;
+  errorMessage?: string;
+  usage: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number; turns: number; ctxTokens: number };
+}
+
+interface EmbSubagentResult {
+  role: string;
+  status: string;
+  output: string;
+  model?: string;
+  thinking?: string;
+  error?: string;
+}
+
 interface AutoDispatchResult {
   attempted: boolean;
-  launched: Array<{ type: string; id?: string; description: string; model?: string; thinking?: string; fallback?: boolean }>;
+  batchId?: string;
+  roles: string[];
   errors: string[];
-  mayHavePendingSpawns?: boolean;
 }
 
 interface DispatchGuard {
@@ -122,22 +153,21 @@ interface DispatchGuard {
   phase: "waiting" | "results-injected";
 }
 
-interface PendingVisibleDispatch {
-  prompt: string;
-  result: EmbAgentResult;
-  routes: Record<string, ModelRoute>;
-  expectedTypes: string[];
-  createdAt: number;
-}
-
-interface VisibleDispatchBatch {
+interface NativeDispatchBatch {
   cwd: string;
   prompt: string;
-  expectedTypes: Set<string>;
-  startedIds: Set<string>;
-  completedByType: Map<string, { id?: string; result?: string; status?: string; error?: string }>;
-  startedAt: number;
+  result: EmbAgentResult;
+  progress: EmbSubagentProgress;
   finalSent: boolean;
+}
+
+interface SessionSearchHit {
+  id: string;
+  platform: "pi" | "codex";
+  path: string;
+  updatedAt: number;
+  preview: string;
+  score: number;
 }
 
 function toolTextResult(text: string, details?: unknown) {
@@ -347,35 +377,27 @@ function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): str
 }
 
 // ---------------------------------------------------------------------------
-// Tintinweb Agent subagent sync and auto-dispatch
+// Native emb-agent subagent dispatch and session insight
 // ---------------------------------------------------------------------------
 
-const TINTINWEB_SUBAGENTS_PACKAGE = "npm:@tintinweb/pi-subagents";
-const LEGACY_SUBAGENTS_PACKAGE = "npm:pi-subagents";
-
-const TOOL_MAP: Record<string, string[]> = {
-  Read: ["read"],
-  Bash: ["bash"],
-  Grep: ["grep"],
-  Glob: ["find", "ls"],
-};
-
-const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "onboard"]);
 const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"]);
-const DEFAULT_BACKGROUND_AGENT_NAMES = new Set(["hw-scout", "arch-reviewer", "sys-reviewer"]);
+const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "onboard"]);
 const PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS = 180_000;
 const RAW_SUBAGENT_OUTPUT_GUARD_MS = 60_000;
 const PARENT_BLOCKED_TOOLS = new Set(["read", "bash", "write", "edit", "grep", "find", "ls", "emb_next", "doc_lookup", "doc_fetch"]);
-const EMB_AUTO_DISPATCH_MARKER = "[emb-agent:visible-agent-dispatch-required]";
+const EMB_AUTO_DISPATCH_MARKER = "[emb-agent:native-subagent-dispatch-active]";
+const EMB_HIDDEN_RESULTS_MARKER = "[emb-agent:hidden-subagent-results]";
+const EMB_CHILD_ENV = "EMB_AGENT_SUBAGENT_CHILD";
+const MAX_SUBAGENT_OUTPUT = 50_000;
+const MAX_TAIL = 4_000;
+const MAX_SESSION_BYTES = 2 * 1024 * 1024;
 
 const DEFAULT_AUTO_AGENT_MODEL_ROUTES: Record<string, ModelRoute> = {
   "hw-scout": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
   "release-checker": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
-  "Explore": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
   "arch-reviewer": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
   "bug-hunter": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
   "sys-reviewer": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
-  "Plan": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
   "fw-doer": { model: "custom/gpt-5.5", thinking: "xhigh" },
   "onboard": { model: "custom/gpt-5.5", thinking: "xhigh" },
 };
@@ -395,34 +417,10 @@ async function syncEmbAgentsToPi(cwd: string) {
   const piAgentsDir = join(cwd, ".pi", "agents");
   await mkdir(piAgentsDir, { recursive: true });
 
-  const routes = await loadModelRoutes(cwd);
   const files = (await readdir(agentsDir)).filter((f) => f.endsWith(".md"));
   for (const file of files) {
     const content = await readFile(join(agentsDir, file), "utf-8");
-    const fm = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-    if (!fm) continue;
-
-    const yaml = fm[1], body = fm[2];
-    const name = (yaml.match(/^name:\s*(.+)$/m) || [])[1]?.trim() || "";
-    const desc = (yaml.match(/^description:\s*(.+)$/m) || [])[1]?.trim() || "";
-    const toolsStr = (yaml.match(/^tools:\s*(.+)$/m) || [])[1]?.trim() || "";
-
-    const embTools = toolsStr.split(",").map((t) => t.trim()).filter(Boolean);
-    const piTools = new Set(["read", "grep", "find", "ls"]);
-    for (const t of embTools) {
-      const mapped = TOOL_MAP[t];
-      if (mapped) mapped.forEach((m) => piTools.add(m));
-    }
-    if (WRITE_CAPABLE_AGENTS.has(name)) { piTools.add("write"); piTools.add("edit"); }
-    const runInBackground = DEFAULT_BACKGROUND_AGENT_NAMES.has(name) ? "\nrun_in_background: true" : "";
-    const maxTurns = WRITE_CAPABLE_AGENTS.has(name) ? 40 : 25;
-    const promptMode = WRITE_CAPABLE_AGENTS.has(name) ? "append" : "replace";
-
-    const route = routes[name] || { model: "inherit", thinking: "high" };
-    const modelLine = route.model ? `\nmodel: ${yamlScalar(route.model)}` : "";
-    const thinkingLine = route.thinking ? `\nthinking: ${yamlScalar(route.thinking)}` : "";
-    const out = `---\nname: ${yamlScalar(name)}\ndescription: ${yamlScalar(desc)}\ntools: ${yamlScalar([...piTools].join(", "))}\nextensions: false\nskills: false${modelLine}${thinkingLine}\nmax_turns: ${maxTurns}\nprompt_mode: ${yamlScalar(promptMode)}${runInBackground}\n---\n\n${body}`;
-    await writeFile(join(piAgentsDir, file), out, "utf-8");
+    await writeFile(join(piAgentsDir, file), content, "utf-8");
   }
 }
 
@@ -461,35 +459,6 @@ async function loadModelRoutes(cwd: string): Promise<Record<string, ModelRoute>>
   return configuredModelRoutes(await readPiSettings(cwd));
 }
 
-async function patchTintinwebSubagentNotifications(cwd: string) {
-  const roots = [join(cwd, ".pi", "npm", "node_modules", "@tintinweb", "pi-subagents")];
-  const replacements: Array<[RegExp, string]> = [
-    [
-      /const resultPreview = record\.result\s*\? record\.result\.length > resultMaxLen\s*\? record\.result\.slice\(0, resultMaxLen\) \+ "\\n\.\.\.\(truncated, use get_subagent_result for full output\)"\s*:\s*record\.result\s*:\s*"No output\.";/m,
-      "const resultPreview = record.outputFile ? `Result saved to ${record.outputFile}. Use get_subagent_result only if the user asks for raw output.` : \"Result saved; use get_subagent_result only if the user asks for raw output.\";",
-    ],
-    [
-      /resultPreview: record\.result\s*\? record\.result\.length > resultMaxLen\s*\? record\.result\.slice\(0, resultMaxLen\) \+ "…"\s*:\s*record\.result\s*:\s*"No output\."/m,
-      "resultPreview: record.outputFile ? `Result saved to ${record.outputFile}.` : \"Result saved.\"",
-    ],
-    [
-      /\}, \{ deliverAs: "followUp", triggerTurn: true \}\);/g,
-      "}, { deliverAs: \"followUp\", triggerTurn: false });",
-    ],
-  ];
-  for (const root of roots) {
-    for (const rel of [join("src", "index.ts"), join("dist", "index.js")]) {
-      const file = join(root, rel);
-      let text: string;
-      try { text = await readFile(file, "utf-8"); } catch { continue; }
-      if (text.includes("Result saved to ${record.outputFile}. Use get_subagent_result only if the user asks for raw output.")) continue;
-      let next = text;
-      for (const [pattern, replacement] of replacements) next = next.replace(pattern, replacement);
-      if (next !== text) await writeFile(file, next, "utf-8");
-    }
-  }
-}
-
 async function ensureSubagentSettings(cwd: string) {
   const settingsPath = join(cwd, ".pi", "settings.json");
   let settings: Record<string, unknown> = {};
@@ -497,19 +466,12 @@ async function ensureSubagentSettings(cwd: string) {
   try { settings = JSON.parse(await readFile(settingsPath, "utf-8")); }
   catch { settings = {}; changed = true; }
 
-  const existingPackages = settings.packages;
-  if (Array.isArray(existingPackages)) {
-    const filtered = existingPackages.filter((pkg) => pkg !== LEGACY_SUBAGENTS_PACKAGE);
-    if (!filtered.includes(TINTINWEB_SUBAGENTS_PACKAGE)) filtered.push(TINTINWEB_SUBAGENTS_PACKAGE);
-    if (JSON.stringify(filtered) !== JSON.stringify(existingPackages)) {
-      settings.packages = filtered;
-      changed = true;
-    }
-  } else if (existingPackages === undefined) {
-    settings.packages = [TINTINWEB_SUBAGENTS_PACKAGE];
-    changed = true;
-  } else {
-    settings["embAgentWarning"] = `settings.packages is not an array; emb-agent could not auto-merge ${TINTINWEB_SUBAGENTS_PACKAGE}.`;
+  if (Array.isArray(settings.packages)) {
+    const legacyPackages = ["npm:pi-subagents", "npm:" + "@tintinweb/pi-subagents"];
+    const filtered = settings.packages.filter((pkg) => !legacyPackages.includes(String(pkg)));
+    if (JSON.stringify(filtered) !== JSON.stringify(settings.packages)) { settings.packages = filtered; changed = true; }
+  } else if (settings.packages === undefined) {
+    settings.packages = [];
     changed = true;
   }
 
@@ -527,34 +489,21 @@ async function ensureSubagentSettings(cwd: string) {
     embAgent.subagentModelRoutes = DEFAULT_AUTO_AGENT_MODEL_ROUTES;
     changed = true;
   }
+  if (!embAgent.subagents || typeof embAgent.subagents !== "object" || Array.isArray(embAgent.subagents)) {
+    embAgent.subagents = {
+      dispatchMode: "auto",
+      runner: "native-pi",
+      maxParallel: 3,
+      resultVisibility: "hidden-summary",
+      rawResultGuardMs: RAW_SUBAGENT_OUTPUT_GUARD_MS,
+    };
+    changed = true;
+  }
 
   if (changed) {
     await mkdir(join(cwd, ".pi"), { recursive: true });
     await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
   }
-}
-
-function onceEvent<T>(pi: ExtensionAPI, channel: string, timeoutMs = 1_500): Promise<SubagentsRpcReply<T>> {
-  return new Promise((resolve) => {
-    let settled = false;
-    let off: unknown;
-    const finish = (reply: SubagentsRpcReply<T>) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (typeof off === "function") (off as () => void)();
-      resolve(reply);
-    };
-    const timer = setTimeout(() => finish({ success: false, error: `timeout waiting for ${channel}` }), timeoutMs);
-    off = (pi.events as any).on(channel, (reply: SubagentsRpcReply<T>) => finish(reply));
-  });
-}
-
-async function subagentsRpc<T>(pi: ExtensionAPI, name: "ping" | "spawn", payload: Record<string, unknown> = {}, timeoutMs = 1_500): Promise<SubagentsRpcReply<T>> {
-  const requestId = randomUUID();
-  const reply = onceEvent<T>(pi, `subagents:rpc:${name}:reply:${requestId}`, timeoutMs);
-  pi.events.emit(`subagents:rpc:${name}`, { requestId, ...payload });
-  return reply;
 }
 
 function promptLooksBroadFirmwareWork(prompt: string): boolean {
@@ -568,136 +517,372 @@ function isPrdExploration(result: EmbAgentResult): boolean {
   return gate.includes("prd") || action === "clarify" || action === "prd-exploration";
 }
 
-function shouldAutoDispatchSubagents(prompt: string, result: EmbAgentResult): boolean {
+function shouldAutoDispatchSubagents(prompt: string, result: EmbAgentResult, settings: Record<string, unknown>): boolean {
   if (String(prompt || "").includes(EMB_AUTO_DISPATCH_MARKER)) return false;
+  const embAgent = settings.embAgent && typeof settings.embAgent === "object" && !Array.isArray(settings.embAgent) ? settings.embAgent as Record<string, unknown> : {};
+  const subagents = embAgent.subagents && typeof embAgent.subagents === "object" && !Array.isArray(embAgent.subagents) ? embAgent.subagents as Record<string, unknown> : {};
+  if (subagents.dispatchMode === "off" || subagents.dispatchMode === "inline") return false;
   const policy = result.delegation_policy || result.agent_protocol?.gate?.delegation_policy;
   if (!policy?.applies_when_host_exposes_subagent_tool) return false;
   if (!promptLooksBroadFirmwareWork(prompt)) return false;
   return Boolean(policy.required_before_broad_work || isPrdExploration(result));
 }
 
-function rolePrompt(role: string, userPrompt: string, nextLines: string[]): string {
-  const common = [
-    "You are an emb-agent firmware subagent spawned automatically by the Pi integration.",
-    "Work from the real repository files, not from parent chat memory. Keep output concise and evidence-backed.",
-    "Do not modify files. This automatic pass is read-only reconnaissance/review before the parent agent edits.",
-    "If the scope is unclear, report the missing evidence/questions instead of guessing.",
+function autoDispatchRoles(result: EmbAgentResult): string[] {
+  return isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
+}
+
+function appendTail(current: string, chunk: string, limit = MAX_TAIL): string {
+  const next = `${current || ""}${chunk || ""}`;
+  return next.length <= limit ? next : next.slice(next.length - limit);
+}
+
+function textFromContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part) => {
+    if (typeof part === "string") return part;
+    if (part && typeof part === "object") {
+      const raw = part as Record<string, unknown>;
+      return String(raw.text || raw.content || raw.thinking || "");
+    }
+    return "";
+  }).filter(Boolean).join("\n");
+}
+
+function parseJsonEvent(line: string): Record<string, unknown> | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  const start = trimmed.indexOf("{");
+  if (start < 0) return null;
+  try {
+    const parsed = JSON.parse(trimmed.slice(start));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch { return null; }
+}
+
+function newRunState(role: string, task: string, route?: ModelRoute): SubagentRunState {
+  return {
+    id: `${role}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    role,
+    status: "pending",
+    task,
+    model: route?.model && route.model !== "inherit" ? route.model : undefined,
+    thinking: route?.thinking,
+    tools: [],
+    textTail: "",
+    thinkingTail: "",
+    stderrTail: "",
+    finalText: "",
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, ctxTokens: 0 },
+  };
+}
+
+function applyPiEvent(state: SubagentRunState, evt: Record<string, unknown>): boolean {
+  const type = String(evt.type || "");
+  if (type === "agent_start" || type === "turn_start") {
+    state.status = "running";
+    state.startedAt ??= Date.now();
+    return true;
+  }
+  if (type === "message_update") {
+    const assistantEvent = evt.assistantMessageEvent && typeof evt.assistantMessageEvent === "object" ? evt.assistantMessageEvent as Record<string, unknown> : null;
+    const delta = String(assistantEvent?.delta || "");
+    if (!delta) return false;
+    if (assistantEvent?.type === "thinking_delta") state.thinkingTail = appendTail(state.thinkingTail, delta);
+    else if (assistantEvent?.type === "text_delta") state.textTail = appendTail(state.textTail, delta);
+    else return false;
+    return true;
+  }
+  if (type === "message_end" && evt.message && typeof evt.message === "object") {
+    const msg = evt.message as Record<string, unknown>;
+    if (msg.role !== "assistant") return false;
+    state.usage.turns += 1;
+    const usage = msg.usage && typeof msg.usage === "object" ? msg.usage as Record<string, any> : {};
+    const cost = usage.cost && typeof usage.cost === "object" ? usage.cost as Record<string, any> : {};
+    state.usage.input += Number(usage.input || 0);
+    state.usage.output += Number(usage.output || 0);
+    state.usage.cacheRead += Number(usage.cacheRead || 0);
+    state.usage.cacheWrite += Number(usage.cacheWrite || 0);
+    state.usage.cost += Number(cost.total || 0);
+    state.usage.ctxTokens = Number(usage.totalTokens || state.usage.ctxTokens || 0);
+    const text = textFromContent(msg.content);
+    if (text) {
+      state.finalText = text;
+      state.textTail = appendTail("", text);
+    }
+    if (typeof msg.model === "string") state.model = msg.model;
+    if (typeof msg.errorMessage === "string") state.errorMessage = msg.errorMessage;
+    return true;
+  }
+  if (type === "tool_execution_start") {
+    const id = String(evt.toolCallId || `${Date.now()}`);
+    const name = String(evt.toolName || "tool");
+    const args = typeof evt.args === "string" ? evt.args : JSON.stringify(evt.args || {});
+    const existing = state.tools.find((tool) => tool.id === id);
+    if (existing) Object.assign(existing, { name, args, status: "running" });
+    else state.tools.push({ id, name, args: args.length > 160 ? `${args.slice(0, 160)}…` : args, status: "running" });
+    if (state.tools.length > 16) state.tools.splice(0, state.tools.length - 16);
+    return true;
+  }
+  if (type === "tool_execution_end") {
+    const id = String(evt.toolCallId || "");
+    const item = state.tools.find((tool) => tool.id === id);
+    if (item) item.status = evt.isError ? "failed" : "succeeded";
+    return Boolean(item);
+  }
+  if (type === "agent_end") {
+    state.finishedAt = Date.now();
+    if (state.status === "running" || state.status === "pending") state.status = "succeeded";
+    return true;
+  }
+  return false;
+}
+
+function getPiInvocation(args: string[]): { command: string; args: string[] } {
+  const currentScript = process.argv[1];
+  if (currentScript && !currentScript.startsWith("/$bunfs/root/") && requireExists(currentScript)) {
+    return { command: process.execPath, args: [currentScript, ...args] };
+  }
+  const execName = process.execPath.split(/[\\/]/).pop()?.toLowerCase() || "";
+  if (!/^(node|bun)(\.exe)?$/.test(execName)) return { command: process.execPath, args };
+  return { command: "pi", args };
+}
+
+function requireExists(path: string): boolean {
+  try { accessSync(path, constants.R_OK); return true; }
+  catch { return false; }
+}
+
+function buildSubagentPrompt(role: string, userPrompt: string, result?: EmbAgentResult): string {
+  const nextLines = result ? renderNextLines(result) : [];
+  const focus: Record<string, string> = {
+    "hw-scout": "Locate hardware/register/manual/schematic/pin-map facts. Return evidence paths, exact constraints, gaps, and firmware risks.",
+    "arch-reviewer": "Review architecture/framework boundaries, scheduler/timing implications, ISR boundaries, RAM/ROM risk, and safe vertical slices.",
+    "sys-reviewer": "Review requirements, concurrency, power/sleep/wakeup behavior, verification order, and system-level failure modes.",
+    "bug-hunter": "Find likely root causes, risky assumptions, regression vectors, and minimal validation steps.",
+    "release-checker": "Check readiness risks, missing validation, changelog/user-impact concerns, and rollback notes.",
+  };
+  return [
+    "You are an emb-agent firmware subagent running in an isolated Pi session.",
+    `Role: ${role}`,
+    `Focus: ${focus[role] || "Perform focused firmware analysis."}`,
+    "Work from repository files and emb-agent project truth. Do not rely on parent chat memory.",
+    READ_ONLY_AGENT_NAMES.has(role) ? "Do not modify files; this pass is read-only reconnaissance/review." : "Keep edits minimal and scoped to the delegated task.",
+    `Do not spawn additional emb-agent subagents. ${EMB_CHILD_ENV}=1 is set for recursion prevention.`,
+    "Return concise, evidence-backed findings. Include file paths and concrete risks; avoid raw large snippets.",
+    "Follow the user's/project's response language.",
     "",
-    "emb-agent runtime state:",
-    nextLines.join("\n") || "(no emb-agent next lines)",
+    "emb-agent project state:",
+    nextLines.join("\n") || "(no emb-agent next context)",
     "",
     "User request:",
     userPrompt,
   ].join("\n");
-  if (role === "hw-scout") {
-    return `${common}\n\nRole focus: locate hardware/register/manual/schematic/pin-map facts relevant to this broad work. Return source paths, exact facts, gaps, and risks that must constrain implementation.`;
-  }
-  if (role === "arch-reviewer") {
-    return `${common}\n\nRole focus: review architecture/framework boundaries, scheduler/timing implications, ROM/RAM/ISR risks, and split the work into safe vertical slices. Return a practical plan and blockers.`;
-  }
-  return `${common}\n\nRole focus: system-level review across firmware, requirements, concurrency, power, and verification. Return concrete findings, validation routes, and risks before implementation.`;
 }
 
-function fallbackAgentType(role: string): string {
-  if (role === "hw-scout") return "Explore";
-  return "Plan";
+async function runPiSubagent(cwd: string, role: string, prompt: string, route: ModelRoute | undefined, state: SubagentRunState, emit: () => void, signal?: AbortSignal): Promise<EmbSubagentResult> {
+  const args = ["--mode", "json", "-p", "--no-session"];
+  if (route?.model && route.model !== "inherit") args.push("--model", route.model);
+  if (route?.thinking) args.push("--thinking", route.thinking);
+  const tools = READ_ONLY_AGENT_NAMES.has(role) ? "read,grep,find,ls,doc_lookup,doc_fetch" : "read,grep,find,ls,bash,edit,write,doc_lookup,doc_fetch";
+  args.push("--tools", tools);
+  args.push(prompt);
+
+  return new Promise((resolve) => {
+    const inv = getPiInvocation(args);
+    const child = spawn(inv.command, inv.args, {
+      cwd,
+      env: { ...process.env, [EMB_CHILD_ENV]: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let buffer = "";
+    let stdout = "";
+    let settled = false;
+    const done = (result: EmbSubagentResult) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener("abort", abort);
+      emit();
+      resolve(result);
+    };
+    const abort = () => {
+      state.status = "cancelled";
+      state.errorMessage = "cancelled";
+      state.finishedAt = Date.now();
+      child.kill();
+      done({ role, status: state.status, output: state.finalText || "cancelled", model: state.model, thinking: state.thinking, error: "cancelled" });
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    state.status = "running";
+    state.startedAt = Date.now();
+    emit();
+    const processLine = (line: string) => {
+      const evt = parseJsonEvent(line);
+      if (evt && applyPiEvent(state, evt)) emit();
+    };
+    child.stdout?.on("data", (data: Buffer) => {
+      const chunk = data.toString("utf8");
+      stdout = appendTail(stdout, chunk, MAX_SUBAGENT_OUTPUT);
+      buffer += chunk;
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || "";
+      for (const line of lines) processLine(line);
+    });
+    child.stderr?.on("data", (data: Buffer) => {
+      state.stderrTail = appendTail(state.stderrTail, data.toString("utf8"));
+      emit();
+    });
+    child.on("error", (error) => {
+      state.status = "failed";
+      state.errorMessage = error instanceof Error ? error.message : String(error);
+      state.finishedAt = Date.now();
+      done({ role, status: state.status, output: state.finalText || state.errorMessage, model: state.model, thinking: state.thinking, error: state.errorMessage });
+    });
+    child.on("close", (code) => {
+      if (buffer.trim()) processLine(buffer);
+      state.finishedAt = Date.now();
+      if (state.status === "cancelled") return;
+      if (code === 0) {
+        if (state.status === "pending" || state.status === "running") state.status = "succeeded";
+      } else {
+        state.status = "failed";
+        state.errorMessage = state.stderrTail || `pi exited with ${code ?? "unknown"}`;
+      }
+      const output = state.finalText || stdout || state.stderrTail || state.errorMessage || "(no output)";
+      done({ role, status: state.status, output, model: state.model, thinking: state.thinking, error: state.errorMessage });
+    });
+  });
 }
 
-function spawnOptions(description: string, cwd: string, route?: ModelRoute): Record<string, unknown> {
-  const options: Record<string, unknown> = { description, run_in_background: true, cwd };
-  if (route?.model && route.model !== "inherit") options.model = route.model;
-  if (route?.thinking) options.thinking = route.thinking;
-  return options;
-}
-
-async function spawnAutoSubagent(pi: ExtensionAPI, type: string, cwd: string, prompt: string, description: string, route?: ModelRoute): Promise<SubagentsRpcReply<{ id?: string }>> {
-  return subagentsRpc<{ id?: string }>(pi, "spawn", {
-    type,
-    prompt,
-    options: spawnOptions(description, cwd, route),
-  }, 2_500);
-}
-
-function isRpcTimeout(reply: SubagentsRpcReply<unknown>): boolean {
-  return !reply.success && /timeout waiting for subagents:rpc:spawn/.test(String(reply.error || ""));
-}
-
-async function autoDispatchSubagents(pi: ExtensionAPI, cwd: string, userPrompt: string, result: EmbAgentResult): Promise<AutoDispatchResult> {
-  if (!shouldAutoDispatchSubagents(userPrompt, result)) return { attempted: false, launched: [], errors: [] };
-
-  const ping = await subagentsRpc<{ version?: string }>(pi, "ping", {}, 1_000);
-  if (!ping.success) return { attempted: true, launched: [], errors: [`Tintinweb subagents RPC unavailable: ${ping.error || "no reply"}`] };
-
+async function runEmbSubagentBatch(cwd: string, userPrompt: string, roles: string[], result: EmbAgentResult | undefined, signal: AbortSignal | undefined, onUpdate?: (r: any) => void): Promise<{ output: string; details: EmbSubagentProgress; failed: boolean; results: EmbSubagentResult[] }> {
   const routes = await loadModelRoutes(cwd);
-  const nextLines = renderNextLines(result);
-  const roles = isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
-  const launched: Array<{ type: string; id?: string; description: string; model?: string; thinking?: string; fallback?: boolean }> = [];
-  const errors: string[] = [];
-  let mayHavePendingSpawns = false;
-  for (const type of roles) {
-    if (!READ_ONLY_AGENT_NAMES.has(type)) continue;
-    const description = `${type} broad preflight`;
-    const prompt = rolePrompt(type, userPrompt, nextLines);
-    const route = routes[type];
-    let reply = await spawnAutoSubagent(pi, type, cwd, prompt, description, route);
-    let launchedType = type;
-    let launchedRoute = route;
-    let usedFallback = false;
-    if (isRpcTimeout(reply)) {
-      mayHavePendingSpawns = true;
-      errors.push(`${type}: spawn reply timed out; not retrying to avoid duplicate agents`);
-      continue;
-    }
-    if (!reply.success) {
-      const fallback = fallbackAgentType(type);
-      launchedRoute = routes[fallback] || route;
-      reply = await spawnAutoSubagent(pi, fallback, cwd, prompt, `${description} (${fallback} fallback)`, launchedRoute);
-      launchedType = fallback;
-      usedFallback = true;
-    }
-    if (isRpcTimeout(reply)) {
-      mayHavePendingSpawns = true;
-      errors.push(`${type}: fallback spawn reply timed out; not retrying again`);
-      continue;
-    }
-    if (!reply.success && (launchedRoute?.model || launchedRoute?.thinking)) {
-      reply = await spawnAutoSubagent(pi, launchedType, cwd, prompt, `${description} (inherit-model fallback)`, { model: "inherit" });
-      launchedRoute = { model: "inherit" };
-      usedFallback = true;
-    }
-    if (isRpcTimeout(reply)) {
-      mayHavePendingSpawns = true;
-      errors.push(`${type}: inherit-model fallback reply timed out; not retrying again`);
-      continue;
-    }
-    if (reply.success) launched.push({ type: launchedType, id: reply.data?.id, description, model: launchedRoute?.model, thinking: launchedRoute?.thinking, fallback: usedFallback });
-    else errors.push(`${type}: ${reply.error || "spawn failed"}`);
+  const startedAt = Date.now();
+  const details: EmbSubagentProgress = { kind: "emb-agent-subagent-progress", batchId: randomUUID(), mode: roles.length > 1 ? "parallel" : "single", roles: [], final: false, startedAt, updatedAt: startedAt };
+  let lastKey = "";
+  const emit = (force = false) => {
+    details.updatedAt = Date.now();
+    const key = JSON.stringify(details.roles.map((r) => [r.role, r.status, r.tools.length, r.textTail, r.stderrTail]));
+    if (!force && key === lastKey) return;
+    lastKey = key;
+    onUpdate?.({ content: [{ type: "text", text: renderSubagentProgress(details, false) }], details: clone(details) });
+  };
+  details.roles = roles.map((role) => newRunState(role, userPrompt, routes[role]));
+  emit(true);
+  const results = await Promise.all(details.roles.map((state) => runPiSubagent(cwd, state.role, buildSubagentPrompt(state.role, userPrompt, result), routes[state.role], state, () => emit(), signal)));
+  details.final = true;
+  details.updatedAt = Date.now();
+  emit(true);
+  const output = results.map((item) => `## ${item.role} (${item.status})\n${item.output.slice(0, MAX_SUBAGENT_OUTPUT)}`).join("\n\n---\n\n");
+  return { output, details: clone(details), failed: results.some((r) => r.status !== "succeeded"), results };
+}
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function renderSubagentProgress(details: EmbSubagentProgress, includeOutput = true): string {
+  const lines = [`emb-agent native subagents · ${details.final ? "done" : "running"}`];
+  for (const role of details.roles) {
+    const icon = role.status === "succeeded" ? "✓" : role.status === "failed" ? "✗" : role.status === "cancelled" ? "!" : "⠸";
+    const stats = [role.tools.length ? `${role.tools.length} tools` : null, role.model || null, role.thinking ? `thinking=${role.thinking}` : null].filter(Boolean).join(" · ");
+    lines.push(`${icon} ${role.role} ${role.status}${stats ? ` · ${stats}` : ""}`);
+    if (includeOutput && role.textTail) lines.push(`  ${role.textTail.slice(-300).replace(/\s+/g, " ")}`);
+    if (role.errorMessage) lines.push(`  error: ${role.errorMessage}`);
   }
-  return { attempted: true, launched, errors, mayHavePendingSpawns };
+  return lines.join("\n");
+}
+
+async function autoDispatchSubagents(cwd: string, userPrompt: string, result: EmbAgentResult, signal: AbortSignal | undefined, onUpdate?: (r: any) => void): Promise<AutoDispatchResult & { output?: string; details?: EmbSubagentProgress }> {
+  const settings = await readPiSettings(cwd);
+  if (!shouldAutoDispatchSubagents(userPrompt, result, settings)) return { attempted: false, roles: [], errors: [] };
+  const roles = autoDispatchRoles(result).filter((role) => READ_ONLY_AGENT_NAMES.has(role));
+  try {
+    const batch = await runEmbSubagentBatch(cwd, userPrompt, roles, result, signal, onUpdate);
+    return { attempted: true, batchId: batch.details.batchId, roles, errors: batch.failed ? ["one or more subagents failed"] : [], output: batch.output, details: batch.details };
+  } catch (error: any) {
+    return { attempted: true, roles, errors: [error?.message || String(error)] };
+  }
 }
 
 function shouldPauseParent(dispatch: AutoDispatchResult | null): boolean {
-  return Boolean(dispatch?.attempted && ((dispatch.launched?.length || 0) > 0 || dispatch.mayHavePendingSpawns));
+  return Boolean(dispatch?.attempted && dispatch.roles.length > 0);
 }
 
 function renderAutoDispatch(dispatch: AutoDispatchResult | null): string {
   if (!dispatch?.attempted) return "";
-  const lines = ["\n## emb-agent Automatic Subagent Dispatch"];
-  if (dispatch.launched.length) {
-    lines.push("Launched read-only Tintinweb Agent subagents before broad firmware work:");
-    for (const item of dispatch.launched) {
-      const model = item.model && item.model !== "inherit" ? ` model=${item.model}${item.thinking ? `:${item.thinking}` : ""}` : " model=inherit";
-      lines.push(`- ${item.type}${item.id ? ` (${item.id})` : ""}: ${item.description}${model}${item.fallback ? " fallback=true" : ""}`);
+  const lines = ["\n## emb-agent Native Subagent Dispatch"];
+  if (dispatch.roles.length) lines.push(`Launched native read-only Pi subagents: ${dispatch.roles.join(", ")}.`);
+  if (dispatch.errors.length) lines.push(`Warnings: ${dispatch.errors.join("; ")}`);
+  lines.push("Parent agent must wait for hidden subagent results before inline file/code exploration.");
+  return lines.join("\n");
+}
+
+async function listSessionFiles(root: string, platform: "pi" | "codex", max = 400): Promise<SessionSearchHit[]> {
+  const out: SessionSearchHit[] = [];
+  async function walk(dir: string) {
+    let entries: any[];
+    try { entries = await readdir(dir, { withFileTypes: true } as any); } catch { return; }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory?.()) await walk(path);
+      else if (entry.isFile?.() && entry.name.endsWith(".jsonl")) out.push({ id: entry.name.replace(/\.jsonl$/, ""), platform, path, updatedAt: 0, preview: "", score: 0 });
+      if (out.length >= max) return;
     }
   }
-  if (dispatch.errors.length) {
-    lines.push("Subagent dispatch warnings:");
-    for (const error of dispatch.errors) lines.push(`- ${error}`);
-    lines.push(`If needed, install with: pi install ${TINTINWEB_SUBAGENTS_PACKAGE}`);
+  await walk(root);
+  return out;
+}
+
+async function discoverSessionFiles(cwd: string): Promise<SessionSearchHit[]> {
+  const home = process.env.HOME || "";
+  const roots: Array<[string, "pi" | "codex"]> = [
+    [process.env.PI_CODING_AGENT_SESSION_DIR || join(home, ".pi", "agent", "sessions"), "pi"],
+    [join(home, ".codex", "sessions"), "codex"],
+  ];
+  const all = (await Promise.all(roots.map(([root, platform]) => listSessionFiles(root, platform)))).flat();
+  return all.filter((item) => item.path.includes(cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "") || item.platform === "codex" || item.platform === "pi");
+}
+
+function extractSessionText(line: string): string {
+  const evt = parseJsonEvent(line);
+  if (!evt) return "";
+  const direct = textFromContent((evt as any).content || (evt as any).message?.content || (evt as any).delta);
+  if (direct) return direct;
+  if ((evt as any).type === "user_message" || (evt as any).type === "agent_message") return String((evt as any).text || "");
+  return "";
+}
+
+async function readSessionDialogue(path: string, phase: "all" | "brainstorm" | "implement" = "all"): Promise<string> {
+  const raw = await readFile(path, "utf-8");
+  const slice = raw.length > MAX_SESSION_BYTES ? raw.slice(raw.length - MAX_SESSION_BYTES) : raw;
+  const lines = slice.split(/\r?\n/);
+  const turns = lines.map(extractSessionText).filter(Boolean);
+  const text = turns.join("\n\n");
+  if (phase === "all") return text;
+  const createIdx = text.search(/\b(emb-agent|task\.py)\s+(task\s+)?(add|create)\b|PRD|需求探索|brainstorm/i);
+  const startIdx = text.search(/\b(emb-agent|task\.py)\s+(task\s+)?(activate|start)\b|开始实现|implementation/i);
+  if (phase === "brainstorm") return createIdx >= 0 && startIdx > createIdx ? text.slice(createIdx, startIdx) : text;
+  if (phase === "implement") return startIdx >= 0 ? text.slice(startIdx) : "";
+  return text;
+}
+
+async function searchSessions(cwd: string, query: string, limit = 8): Promise<SessionSearchHit[]> {
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const files = await discoverSessionFiles(cwd);
+  const hits: SessionSearchHit[] = [];
+  for (const file of files) {
+    let text = "";
+    try { text = await readSessionDialogue(file.path, "all"); } catch { continue; }
+    const lower = text.toLowerCase();
+    const score = tokens.reduce((sum, token) => sum + (lower.includes(token) ? 1 : 0), 0);
+    if (score === 0) continue;
+    file.score = score;
+    file.preview = text.slice(Math.max(0, lower.indexOf(tokens[0] || "") - 120), Math.max(300, lower.indexOf(tokens[0] || "") + 300)).replace(/\s+/g, " ").trim();
+    hits.push(file);
   }
-  if (dispatch.mayHavePendingSpawns) lines.push("Some spawn replies timed out; they may still be running. Do not retry automatically. Wait for Agent notifications or inspect /agents.");
-  if (dispatch.launched.length || dispatch.mayHavePendingSpawns) lines.push("Parent agent must not continue inline file/code exploration now. Stop and tell the user that read-only subagents are running; wait for their results before implementation or deeper analysis.");
-  return lines.join("\n");
+  return hits.sort((a, b) => b.score - a.score || b.path.localeCompare(a.path)).slice(0, limit);
 }
 
 // ---------------------------------------------------------------------------
@@ -812,8 +997,7 @@ function questionSummary(q: QuestionDef): string {
 export default function (pi: ExtensionAPI) {
   const contexts = new Map<string, ContextEntry>();
   const dispatchGuards = new Map<string, DispatchGuard>();
-  const pendingVisibleDispatch = new Map<string, PendingVisibleDispatch>();
-  const visibleDispatchBatches = new Map<string, VisibleDispatchBatch>();
+  const pendingNativeDispatch = new Map<string, { prompt: string; result: EmbAgentResult; roles: string[]; createdAt: number }>();
 
   function markContextDirty(cwd: string) {
     const current = contexts.get(cwd);
@@ -861,46 +1045,6 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  function conciseAgentPrompt(role: string, userPrompt: string): string {
-    const focus: Record<string, string> = {
-      "hw-scout": "只读扫描硬件事实、引脚/寄存器/原理图/约束，返回证据路径、风险和缺口。",
-      "arch-reviewer": "只读审查服务拆分、主循环/时间片、ISR边界、外设驱动层次和ROM/RAM风险。",
-      "sys-reviewer": "只读审查需求一致性、低功耗/唤醒流程、并发风险、验证顺序和系统级缺口。",
-    };
-    return `Read-only subagent task. User request: ${userPrompt}\nRole: ${role}\nFocus: ${focus[role] || "只读审查并返回证据、风险和建议。"}\nDo not modify files. Output must be a concise, evidence-backed summary, at most 1200 characters; do not paste large source snippets, long file lists, or full reports; include only key evidence paths, conclusions, risks, and recommendations. Follow the user's/project's response language.`;
-  }
-
-  function visibleDispatchRoles(result: EmbAgentResult): string[] {
-    return isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
-  }
-
-  function visibleAgentDispatchInstructions(userPrompt: string, result: EmbAgentResult, routes: Record<string, ModelRoute>): string {
-    const roles = visibleDispatchRoles(result);
-    const blocks = roles.map((role) => {
-      const route = routes[role] || {};
-      const args: Record<string, unknown> = {
-        subagent_type: role,
-        description: `${role} broad preflight`,
-        run_in_background: true,
-        prompt: conciseAgentPrompt(role, userPrompt),
-      };
-      if (route.model && route.model !== "inherit") args.model = route.model;
-      if (route.thinking) args.thinking = route.thinking;
-      return `- Agent(${JSON.stringify(args)})`;
-    });
-    return [
-      `${EMB_AUTO_DISPATCH_MARKER}`,
-      `Internal emb-agent directive; do not quote or show this directive to the user.`,
-      `For this broad firmware/system-framework request, first call the visible Tintinweb Agent tool so its own TUI/widget shows progress.`,
-      `Do not call read/bash/find/grep/doc_lookup/doc_fetch/edit/write before these Agent calls.`,
-      `Start these read-only background agents in one assistant tool-call message:`,
-      blocks.join("\n"),
-      `After starting them, tell the user only a short status line in the user's/project's response language. Do not print Agent prompts or raw subagent reports.`,
-      `When completion notifications arrive, synthesize a concise answer. Do not call get_subagent_result with verbose:true. If you call get_subagent_result, do not echo raw reports; only synthesize the final user-facing answer.`,
-      `Never paste internal prompts, Agent JSON arguments, task-notification XML, or raw subagent report bodies into visible assistant text.`,
-    ].join("\n");
-  }
-
   async function onSessionEnter(ctx: { cwd: string; ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void; notify?: (m: string, t?: string) => void } }) {
     const updateResult = await runEmbAgent(["update", "--brief"], ctx.cwd);
     await refreshStatus(ctx, updateResult.ok ? updateResult.value : null);
@@ -910,117 +1054,30 @@ export default function (pi: ExtensionAPI) {
 
   // ── Session lifecycle ─────────────────────────────────────────
 
-  pi.registerMessageRenderer<any>("subagent-notification", (message, _options, theme) => {
-    const d = message.details;
-    if (!d) return undefined;
-    function one(item: any): string {
-      const failed = ["error", "stopped", "aborted"].includes(String(item.status || ""));
-      const icon = failed ? theme.fg("error", "✗") : theme.fg("success", "✓");
-      const stats = [
-        item.toolUses ? `${item.toolUses} tools` : null,
-        item.totalTokens ? `${item.totalTokens} tokens` : null,
-        item.durationMs ? `${Math.round(item.durationMs / 1000)}s` : null,
-      ].filter(Boolean).join(" · ");
-      return `${icon} ${theme.bold(String(item.description || item.id || "subagent"))} ${theme.fg("dim", String(item.status || "completed"))}` +
-        (stats ? `\n  ${theme.fg("dim", stats)}` : "") +
-        (item.outputFile ? `\n  ${theme.fg("muted", `result saved: ${item.outputFile}`)}` : "");
-    }
-    const all = [d, ...((d.others || []) as any[])];
-    return new Text(all.map(one).join("\n"), 0, 0);
-  });
-
   pi.on("session_start", async (_event, ctx) => {
     try {
       await syncEmbAgentsToPi(ctx.cwd);
       await ensureSubagentSettings(ctx.cwd);
-      await patchTintinwebSubagentNotifications(ctx.cwd);
     } catch (error: any) {
       ctx.ui.notify?.(`emb-agent Pi setup warning: ${error?.message || error}`, "warning");
     }
     await onSessionEnter(ctx);
   });
 
-  function currentVisibleBatch(): VisibleDispatchBatch | undefined {
-    let newest: VisibleDispatchBatch | undefined;
-    for (const batch of visibleDispatchBatches.values()) {
-      if (!newest || batch.startedAt > newest.startedAt) newest = batch;
-    }
-    return newest;
-  }
-
-  async function maybeSendVisibleDispatchResults(batch: VisibleDispatchBatch) {
-    if (batch.finalSent) return;
-    if (batch.completedByType.size < batch.expectedTypes.size) return;
-    batch.finalSent = true;
-    const guard = dispatchGuards.get(batch.cwd);
-    if (guard) {
-      guard.phase = "results-injected";
-      guard.until = Date.now() + RAW_SUBAGENT_OUTPUT_GUARD_MS;
-      guard.reason = "emb-agent subagent results have been injected as hidden context. Do not retrieve raw subagent output; synthesize the final answer or continue normal workflow commands.";
-    }
-    const sections: string[] = [];
-    for (const role of batch.expectedTypes) {
-      const item = batch.completedByType.get(role);
-      if (!item) continue;
-      sections.push(`## ${role} ${item.id || ""} (${item.status || "completed"})\n${String(item.result || item.error || "").slice(0, 5000)}`);
-    }
-    await pi.sendMessage({
-      customType: "emb-agent-subagent-results",
-      content:
-        `[emb-agent:hidden-subagent-results]\n` +
-        `Original user request: ${batch.prompt}\n\n` +
-        `The following read-only subagent results are hidden from the user but available to the main agent. Synthesize the final user-facing answer now. Do not call get_subagent_result, read output files, or paste raw reports.\n\n` +
-        sections.join("\n\n---\n\n"),
-      display: false,
-    } as any, { deliverAs: "followUp", triggerTurn: true } as any);
-  }
-
-  pi.events.on("subagents:started", (data: any) => {
-    const type = String(data?.type || "");
-    const id = String(data?.id || "");
-    const batch = currentVisibleBatch();
-    if (!batch || !batch.expectedTypes.has(type)) return;
-    if (id) batch.startedIds.add(id);
-  });
-
-  pi.events.on("subagents:completed", async (data: any) => {
-    const type = String(data?.type || "");
-    const batch = currentVisibleBatch();
-    if (!batch || !batch.expectedTypes.has(type)) return;
-    batch.completedByType.set(type, { id: String(data?.id || ""), result: String(data?.result || ""), status: "completed" });
-    await maybeSendVisibleDispatchResults(batch);
-  });
-
-  pi.events.on("subagents:failed", async (data: any) => {
-    const type = String(data?.type || "");
-    const batch = currentVisibleBatch();
-    if (!batch || !batch.expectedTypes.has(type)) return;
-    batch.completedByType.set(type, { id: String(data?.id || ""), error: String(data?.error || "subagent failed"), status: "failed" });
-    await maybeSendVisibleDispatchResults(batch);
-  });
-
   pi.on("input", async (event, ctx) => {
+    if (process.env[EMB_CHILD_ENV] === "1") return { action: "continue" };
     if ((event as any).source === "extension") return { action: "continue" };
     const text = String((event as any).text || "");
     if (!promptLooksBroadFirmwareWork(text) || text.includes(EMB_AUTO_DISPATCH_MARKER)) return { action: "continue" };
     const context = await prepareEmbContext(ctx.cwd);
-    if (!context?.result || !shouldAutoDispatchSubagents(text, context.result)) return { action: "continue" };
-    const routes = await loadModelRoutes(ctx.cwd);
-    const expectedTypes = visibleDispatchRoles(context.result);
-    pendingVisibleDispatch.set(ctx.cwd, { prompt: text, result: context.result, routes, expectedTypes, createdAt: Date.now() });
-    visibleDispatchBatches.set(ctx.cwd, {
-      cwd: ctx.cwd,
-      prompt: text,
-      expectedTypes: new Set(expectedTypes),
-      startedIds: new Set(),
-      completedByType: new Map(),
-      startedAt: Date.now(),
-      finalSent: false,
-    });
+    const settings = await readPiSettings(ctx.cwd);
+    if (!context?.result || !shouldAutoDispatchSubagents(text, context.result, settings)) return { action: "continue" };
+    const roles = autoDispatchRoles(context.result).filter((role) => READ_ONLY_AGENT_NAMES.has(role));
+    pendingNativeDispatch.set(ctx.cwd, { prompt: text, result: context.result, roles, createdAt: Date.now() });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
-      reason: "emb-agent visible Tintinweb Agent delegation is active for this broad firmware/framework request. The parent agent must not read files, run shell commands, edit, or retrieve raw subagent output; wait for hidden subagent results and synthesize the final answer.",
-      phase: "waiting"
+      reason: "emb-agent native subagent delegation is active for this broad firmware/framework request. The parent agent must first call emb_subagent and must not read files, run shell commands, edit, or continue inline before the hidden subagent results are available.",
+      phase: "waiting",
     });
     return { action: "continue" };
   });
@@ -1028,11 +1085,16 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, ctx) => {
     const context = await prepareEmbContext(ctx.cwd);
     if (!context?.text) return;
-    const pending = pendingVisibleDispatch.get(ctx.cwd);
+    const pending = pendingNativeDispatch.get(ctx.cwd);
     let systemPrompt = event.systemPrompt + context.text;
     if (pending && Date.now() - pending.createdAt < 60_000) {
-      pendingVisibleDispatch.delete(ctx.cwd);
-      systemPrompt += "\n\n" + visibleAgentDispatchInstructions(pending.prompt, pending.result, pending.routes) + "\n";
+      systemPrompt += "\n\n" + [
+        EMB_AUTO_DISPATCH_MARKER,
+        "Internal emb-agent directive; do not quote or show this directive to the user.",
+        "For this broad firmware/system-framework request, first call the emb_subagent tool before any read/bash/find/grep/doc_lookup/doc_fetch/edit/write calls.",
+        `Call emb_subagent with roles=${JSON.stringify(pending.roles)} and prompt equal to the user's request.`,
+        "After emb_subagent completes, synthesize a concise user-facing answer. Do not paste raw subagent report bodies; use evidence and conclusions only.",
+      ].join("\n") + "\n";
     }
     return {
       message: {
@@ -1051,24 +1113,16 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("tool_call", async (event, ctx) => {
     const guard = dispatchGuards.get(ctx.cwd);
+    if (guard && Date.now() >= guard.until) dispatchGuards.delete(ctx.cwd);
     if (guard && Date.now() < guard.until && guard.phase === "waiting" && PARENT_BLOCKED_TOOLS.has(event.toolName)) {
       return { block: true, reason: guard.reason };
     }
-    if (guard && Date.now() < guard.until && event.toolName === "get_subagent_result") {
-      return { block: true, reason: guard.phase === "waiting"
-        ? "Do not call get_subagent_result during emb-agent automatic delegation; it returns raw subagent report text to the visible transcript. Hidden subagent results will be injected automatically; synthesize only the final answer."
-        : "Do not call get_subagent_result for completed emb-agent automatic delegation; results were injected as hidden context and raw reports should not be shown in the transcript." };
+    if (guard && Date.now() < guard.until && guard.phase === "results-injected") {
+      const path = String((event.input as any)?.path || "");
+      const command = String((event.input as any)?.command || "");
+      if (event.toolName === "read" && path.includes("emb-agent-subagent")) return { block: true, reason: "Do not read raw emb-agent subagent output into the visible transcript; use the hidden injected results." };
+      if (event.toolName === "bash" && command.includes("emb-agent-subagent")) return { block: true, reason: "Do not cat/read raw emb-agent subagent output into the visible transcript; use the hidden injected results." };
     }
-    if (guard && Date.now() < guard.until && guard.phase === "results-injected" && event.toolName === "read" && String((event.input as any)?.path || "").includes("/pi-subagents-")) {
-      return { block: true, reason: "Do not read raw subagent output files into the visible transcript; use the hidden injected results." };
-    }
-    if (guard && Date.now() < guard.until && guard.phase === "results-injected" && event.toolName === "bash" && String((event.input as any)?.command || "").includes("pi-subagents-")) {
-      return { block: true, reason: "Do not cat/read raw subagent output files into the visible transcript; use the hidden injected results." };
-    }
-    if (event.toolName === "get_subagent_result" && (event.input as any)?.verbose === true) {
-      return { block: true, reason: "Do not call get_subagent_result with verbose:true; it exposes raw subagent conversation/report text to the user. Use concise synthesis instead." };
-    }
-    if (guard && Date.now() >= guard.until) dispatchGuards.delete(ctx.cwd);
 
     if (event.toolName === "read" && isPdfPath(String((event.input as any)?.path || ""))) {
       return { block: true, reason: "Do not read raw PDFs directly. Use the ingest_doc Pi tool or /emb-ingest doc --file <path> so emb-agent parses and caches the document first." };
@@ -1152,6 +1206,113 @@ export default function (pi: ExtensionAPI) {
       if (!result.ok) return toolTextResult(errorText(result), result);
       markContextDirty(ctx.cwd);
       return toolTextResult(renderNextLines(result.value).join("\n") || JSON.stringify(result.value, null, 2), result.value);
+    },
+  });
+
+  pi.registerTool({
+    name: "emb_subagent",
+    label: "emb subagent",
+    description: "Run emb-agent native firmware subagents in isolated headless Pi sessions. Use before broad firmware/system-framework work.",
+    promptSnippet: "Run emb-agent native firmware subagents before broad work",
+    promptGuidelines: ["Use emb_subagent before broad firmware work that spans hardware, architecture, power, drivers, framework, or verification."],
+    parameters: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "Original user request or focused delegated task" },
+        roles: { type: "array", items: { type: "string", enum: ["hw-scout", "arch-reviewer", "sys-reviewer", "bug-hunter", "release-checker"] } },
+      },
+      additionalProperties: false,
+    } as Record<string, unknown>,
+    renderCall(args: Record<string, unknown>, theme: any) {
+      const roles = Array.isArray(args.roles) ? args.roles.join(", ") : "auto";
+      return new Text(`${theme.bold("emb_subagent")} ${theme.fg("dim", roles)}`, 0, 0);
+    },
+    renderResult(result: any, { isPartial }: any, theme: any) {
+      const details = result?.details as EmbSubagentProgress | undefined;
+      if (details?.kind === "emb-agent-subagent-progress") {
+        return new Text(renderSubagentProgress(details, !isPartial), 0, 0);
+      }
+      const text = result?.content?.[0]?.text || "emb-agent subagents complete";
+      return new Text(theme.fg("muted", String(text)), 0, 0);
+    },
+    async execute(_toolCallId, params: Record<string, unknown>, signal, onUpdate, ctx) {
+      const pending = pendingNativeDispatch.get(ctx.cwd);
+      const context = await prepareEmbContext(ctx.cwd);
+      const prompt = String(params.prompt || pending?.prompt || "").trim();
+      if (!prompt) return toolTextResult("emb_subagent error: missing prompt", { status: "error" });
+      const requestedRoles = Array.isArray(params.roles) ? params.roles.map(String) : pending?.roles;
+      const roles = (requestedRoles && requestedRoles.length ? requestedRoles : autoDispatchRoles(context?.result || pending?.result || {})).filter((role) => READ_ONLY_AGENT_NAMES.has(role));
+      if (!roles.length) return toolTextResult("emb_subagent error: no supported read-only roles", { status: "error" });
+      const batch = await runEmbSubagentBatch(ctx.cwd, prompt, roles, context?.result || pending?.result, signal, onUpdate);
+      pendingNativeDispatch.delete(ctx.cwd);
+      const guard = dispatchGuards.get(ctx.cwd);
+      if (guard) {
+        guard.phase = "results-injected";
+        guard.until = Date.now() + RAW_SUBAGENT_OUTPUT_GUARD_MS;
+        guard.reason = "emb-agent native subagent results have been injected as hidden context. Synthesize the final answer; do not retrieve or print raw subagent output.";
+      }
+      await pi.sendMessage({
+        customType: "emb-agent-subagent-results",
+        content:
+          `${EMB_HIDDEN_RESULTS_MARKER}\n` +
+          `Original user request: ${prompt}\n\n` +
+          "The following native emb-agent subagent results are hidden from the user but available to the main agent. Synthesize the final user-facing answer now. Do not paste raw reports.\n\n" +
+          batch.output,
+        display: false,
+      } as any, { deliverAs: "followUp", triggerTurn: true } as any);
+      const summary = batch.results.map((r) => `${r.role}:${r.status}`).join(", ");
+      return toolTextResult(`Native emb-agent subagents finished (${summary}). Results were injected as hidden context for synthesis.`, batch.details);
+    },
+  });
+
+  pi.registerTool({
+    name: "emb_session_search",
+    label: "emb session search",
+    description: "Search local Pi/Codex session transcripts for cross-session emb-agent memory without external runtime dependencies.",
+    promptSnippet: "Search local Pi/Codex sessions for previous context",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        limit: { type: "number", default: 8 },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    } as Record<string, unknown>,
+    async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
+      const hits = await searchSessions(ctx.cwd, String(params.query || ""), Number(params.limit || 8));
+      if (!hits.length) return toolTextResult("No matching local Pi/Codex sessions found.", { hits: [] });
+      const text = hits.map((hit, index) => `${index + 1}. ${hit.platform} ${hit.id}\n   ${hit.path}\n   ${hit.preview}`).join("\n");
+      return toolTextResult(text, { hits });
+    },
+  });
+
+  pi.registerTool({
+    name: "emb_session_extract",
+    label: "emb session extract",
+    description: "Extract cleaned local Pi/Codex session dialogue by path or id, optionally sliced by phase.",
+    promptSnippet: "Extract local session dialogue for session insight",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        id: { type: "string" },
+        phase: { type: "string", enum: ["all", "brainstorm", "implement"], default: "all" },
+      },
+      additionalProperties: false,
+    } as Record<string, unknown>,
+    async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
+      let sessionPath = String(params.path || "").trim();
+      if (!sessionPath && params.id) {
+        const id = String(params.id);
+        const files = await discoverSessionFiles(ctx.cwd);
+        const match = files.find((file) => file.id.includes(id) || file.path.includes(id));
+        if (match) sessionPath = match.path;
+      }
+      if (!sessionPath) return toolTextResult("emb_session_extract error: provide path or id", { status: "error" });
+      const phase = (["all", "brainstorm", "implement"].includes(String(params.phase)) ? String(params.phase) : "all") as "all" | "brainstorm" | "implement";
+      const dialogue = await readSessionDialogue(sessionPath, phase);
+      return toolTextResult(dialogue.slice(0, MAX_SUBAGENT_OUTPUT) || "(empty session slice)", { path: sessionPath, phase });
     },
   });
 

@@ -2050,13 +2050,12 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         "Pi host should receive extension"
     );
     let pi_settings = fs::read_to_string(root.join(".pi/settings.json")).expect("read pi settings");
+    let pi_value: serde_json::Value = serde_json::from_str(&pi_settings).expect("pi settings json");
+    assert_eq!(pi_value["embAgent"]["subagents"]["runner"], "native-pi");
+    assert_eq!(pi_value["embAgent"]["subagents"]["dispatchMode"], "auto");
     assert!(
-        pi_settings.contains("npm:@tintinweb/pi-subagents"),
-        "Pi settings: {pi_settings}"
-    );
-    assert!(
-        !pi_settings.contains("npm:pi-subagents"),
-        "Pi settings should not keep legacy package: {pi_settings}"
+        !pi_settings.contains("pi-subagents"),
+        "Pi settings should not require third-party subagent packages: {pi_settings}"
     );
     let install_result =
         fs::read_to_string(root.join(".emb-agent/INSTALL_RESULT.md")).expect("read install result");
@@ -2095,9 +2094,12 @@ fn installer_pi_settings_merge_preserves_user_config() {
     fs::write(
         root.join(".pi/settings.json"),
         r#"{
-  "packages": ["npm:existing-package", "npm:pi-subagents"],
+  "packages": ["npm:existing-package", "npm:pi-subagents", "npm:@tintinweb/pi-subagents"],
   "customSetting": { "keep": true },
-  "embAgent": { "subagentModelRoutes": { "hw-scout": { "model": "user/model", "thinking": "low" } } },
+  "embAgent": {
+    "subagents": { "dispatchMode": "off" },
+    "subagentModelRoutes": { "hw-scout": { "model": "user/model", "thinking": "low" } }
+  },
   "subagents": { "agentOverrides": { "legacy": { "model": "legacy/model" } } }
 }
 "#,
@@ -2122,14 +2124,22 @@ fn installer_pi_settings_merge_preserves_user_config() {
         "settings: {raw}"
     );
     assert!(
-        packages.iter().any(|p| p == "npm:@tintinweb/pi-subagents"),
-        "settings: {raw}"
-    );
-    assert!(
         !packages.iter().any(|p| p == "npm:pi-subagents"),
         "settings should remove legacy package: {raw}"
     );
+    assert!(
+        !packages.iter().any(|p| p == "npm:@tintinweb/pi-subagents"),
+        "settings should remove old third-party subagent package: {raw}"
+    );
     assert_eq!(value["customSetting"]["keep"], true, "settings: {raw}");
+    assert_eq!(
+        value["embAgent"]["subagents"]["runner"], "native-pi",
+        "settings should keep native runner default: {raw}"
+    );
+    assert_eq!(
+        value["embAgent"]["subagents"]["dispatchMode"], "off",
+        "settings should preserve user dispatch mode override: {raw}"
+    );
     assert_eq!(
         value["embAgent"]["subagentModelRoutes"]["hw-scout"]["model"], "user/model",
         "settings: {raw}"
@@ -2145,7 +2155,7 @@ fn installer_pi_settings_merge_preserves_user_config() {
     );
     assert!(
         value.get("subagents").is_none(),
-        "legacy pi-subagents settings should be removed after switching to Tintinweb: {raw}"
+        "legacy subagent settings should be removed after switching to native emb-agent dispatch: {raw}"
     );
     let install_result =
         fs::read_to_string(root.join(".emb-agent/INSTALL_RESULT.md")).expect("read install result");

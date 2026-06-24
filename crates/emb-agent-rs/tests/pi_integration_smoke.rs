@@ -26,44 +26,54 @@ fn pi_extension_exposes_unified_tool_layer() {
         "name: \"doc_lookup\"",
         "name: \"doc_fetch\"",
         "name: \"ask_user_question\"",
+        "name: \"emb_subagent\"",
+        "name: \"emb_session_search\"",
+        "name: \"emb_session_extract\"",
         "triggerTurn: true",
         "INGEST_TIMEOUT_MS",
         "INGEST_MAX_BUFFER",
         "EMB-AGENT PROJECT STATE START",
-        "subagents:rpc:${name}",
-        "\"ping\" | \"spawn\"",
-        "spawnAutoSubagent",
-        "npm:@tintinweb/pi-subagents",
-        "LEGACY_SUBAGENTS_PACKAGE",
-        "autoDispatchSubagents",
+        "EMB_AGENT_SUBAGENT_CHILD",
+        "runEmbSubagentBatch",
+        "runPiSubagent",
+        "--mode",
+        "json",
+        "-p",
+        "--no-session",
         "DEFAULT_AUTO_AGENT_MODEL_ROUTES",
         "subagentModelRoutes",
-        "yamlScalar",
-        "description: ${yamlScalar(desc)}",
-        "inherit-model fallback",
+        "native-pi",
         "PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS",
         "RAW_SUBAGENT_OUTPUT_GUARD_MS",
         "EMB_AUTO_DISPATCH_MARKER",
+        "EMB_HIDDEN_RESULTS_MARKER",
         "pi.on(\"input\"",
-        "pendingVisibleDispatch",
-        "visibleDispatchBatches",
-        "subagents:completed",
+        "pendingNativeDispatch",
         "emb-agent:hidden-subagent-results",
         "return { action: \"continue\" }",
-        "visibleAgentDispatchInstructions",
-        "first call the visible Tintinweb Agent tool",
-        "registerMessageRenderer<any>(\"subagent-notification\"",
-        "at most 1200 characters",
-        "event.toolName === \"get_subagent_result\"",
+        "first call the emb_subagent tool",
         "phase: \"waiting\"",
         "phase === \"results-injected\"",
-        "Hidden subagent results will be injected automatically",
-        "triggerTurn: false",
-        "spawn reply timed out; not retrying",
-        "Parent agent must not continue inline file/code exploration now",
+        "Search local Pi/Codex session transcripts",
+        "readSessionDialogue",
+        "searchSessions",
         "tool_call",
     ] {
         assert!(ext.contains(expected), "Pi extension missing {expected}");
+    }
+    for forbidden in [
+        "npm:@tintinweb/pi-subagents",
+        "subagents:rpc",
+        "patchTintinwebSubagentNotifications",
+        "visibleAgentDispatchInstructions",
+        "pendingVisibleDispatch",
+        "get_subagent_result",
+        "first call the visible Tintinweb Agent tool",
+    ] {
+        assert!(
+            !ext.contains(forbidden),
+            "Pi extension still contains legacy {forbidden}"
+        );
     }
     assert!(
         ext.contains("\".pi\", \"emb-agent\"")
@@ -78,8 +88,13 @@ fn pi_settings_are_safe_by_default() {
     let settings = read_repo("runtime/scaffolds/shells/.pi/settings.json");
     let value: serde_json::Value = serde_json::from_str(&settings).expect("settings json");
     let packages = value["packages"].as_array().expect("packages array");
-    assert!(packages.iter().any(|p| p == "npm:@tintinweb/pi-subagents"));
-    assert!(!packages.iter().any(|p| p == "npm:pi-subagents"));
+    assert!(
+        packages.is_empty(),
+        "native emb-agent dispatch must not require subagent packages"
+    );
+    assert!(value["embAgent"]["subagents"].is_object());
+    assert_eq!(value["embAgent"]["subagents"]["runner"], "native-pi");
+    assert_eq!(value["embAgent"]["subagents"]["dispatchMode"], "auto");
     assert!(value["embAgent"]["subagentModelRoutes"].is_object());
     assert_eq!(
         value["embAgent"]["subagentModelRoutes"]["sys-reviewer"]["model"],
@@ -99,7 +114,7 @@ fn pi_settings_are_safe_by_default() {
     );
     assert!(
         value.get("subagents").is_none(),
-        "Tintinweb routing should use embAgent.subagentModelRoutes, not legacy subagents.agentOverrides"
+        "native routing should use embAgent.subagents and embAgent.subagentModelRoutes"
     );
 }
 
@@ -110,8 +125,15 @@ fn pi_docs_match_extension_surface() {
     assert!(docs.contains("/emb-ingest"));
     assert!(docs.contains("ingest_doc"));
     assert!(docs.contains("ask_user_question"));
+    assert!(docs.contains("emb_subagent"));
+    assert!(docs.contains("emb_session_search"));
+    assert!(docs.contains("native-pi"));
     assert!(
         !docs.contains("不需要扩展"),
         "Pi docs must not claim no extension is needed"
+    );
+    assert!(
+        !docs.contains("npm:@tintinweb/pi-subagents"),
+        "Pi docs must not require Tintinweb for automatic dispatch"
     );
 }
