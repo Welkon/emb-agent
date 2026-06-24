@@ -848,6 +848,27 @@ fn mem_cli_searches_and_extracts_local_sessions() {
         .expect("run mem stats");
     let stats = assert_success(stats);
     assert!(stats.contains("by_platform"), "stats output: {stats}");
+    assert!(
+        stats.contains("local-hash"),
+        "stats should show local embedding fallback: {stats}"
+    );
+
+    let doctor = Command::new(emb_agent_bin())
+        .arg("mem")
+        .arg("doctor")
+        .arg("--cwd")
+        .arg(&project)
+        .arg("--platform")
+        .arg("pi")
+        .env("HOME", &root)
+        .env("EMB_AGENT_EMBEDDING_PROVIDER", "openai-compatible")
+        .output()
+        .expect("run mem doctor");
+    let doctor = assert_success(doctor);
+    assert!(
+        doctor.contains("api_key_present"),
+        "doctor output: {doctor}"
+    );
 
     let explain = Command::new(emb_agent_bin())
         .arg("mem")

@@ -5,9 +5,10 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const INDEX_VERSION: u32 = 2;
+const INDEX_VERSION: u32 = 3;
 const INDEX_TEXT_LIMIT: usize = 96_000;
 const SUMMARY_LIMIT: usize = 1_200;
 
@@ -56,6 +57,10 @@ struct MemIndex {
     version: u32,
     generated_ms: u128,
     root: String,
+    #[serde(default)]
+    embedding_provider: String,
+    #[serde(default)]
+    embedding_model: String,
     sessions: Vec<IndexedSession>,
 }
 
@@ -69,6 +74,8 @@ struct SearchHit {
     preview: String,
     keywords: Vec<String>,
     matched_aliases: Vec<String>,
+    embedding_provider: String,
+    embedding_model: String,
 }
 
 pub fn run(args: &[String]) -> Result<(), String> {
@@ -275,7 +282,7 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
             for item in &index.sessions {
                 *by_platform.entry(item.session.platform.clone()).or_insert(0) += 1;
             }
-            print_json(&serde_json::json!({"index_path": index_path(&cwd), "sessions": index.sessions.len(), "bytes": bytes, "turns": turns, "by_platform": by_platform, "generated_ms": index.generated_ms}))
+            print_json(&serde_json::json!({"index_path": index_path(&cwd), "sessions": index.sessions.len(), "bytes": bytes, "turns": turns, "by_platform": by_platform, "generated_ms": index.generated_ms, "embedding_provider": index.embedding_provider, "embedding_model": index.embedding_model}))
         }
         "doctor" => {
             let roots: Vec<Value> = session_roots()
@@ -283,7 +290,8 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
                 .map(|(root, platform)| serde_json::json!({"platform": platform, "path": root, "exists": root.exists()}))
                 .collect();
             let idx = index_path(&cwd);
-            print_json(&serde_json::json!({"status":"ok", "index_path": idx, "index_exists": idx.exists(), "roots": roots}))
+            let embedding = embedding_config();
+            print_json(&serde_json::json!({"status":"ok", "index_path": idx, "index_exists": idx.exists(), "roots": roots, "embedding": embedding.diagnostic()}))
         }
         "prune" => {
             let path = index_path(&cwd);
@@ -314,6 +322,8 @@ fn run_session_mem(args: &[String]) -> Result<(), String> {
                     "semantic_score": hit.semantic_score,
                     "matched_keywords": hit.keywords.into_iter().filter(|kw| query.to_lowercase().contains(kw) || hit.preview.to_lowercase().contains(kw)).collect::<Vec<_>>(),
                     "matched_aliases": hit.matched_aliases,
+                    "embedding_provider": hit.embedding_provider,
+                    "embedding_model": hit.embedding_model,
                     "preview": hit.preview
                 }))
                 .collect();
@@ -846,10 +856,208 @@ fn now_ms() -> u128 {
         .unwrap_or_default()
 }
 
+#[derive(Clone, Debug)]
+struct EmbeddingConfig {
+    provider: String,
+    model: String,
+    api_base: String,
+    api_key: String,
+    upload: String,
+}
+
+impl EmbeddingConfig {
+    fn effective_provider(&self) -> String {
+        if self.external_enabled() {
+            self.provider.clone()
+        } else {
+            "local-hash".to_string()
+        }
+    }
+
+    fn effective_model(&self) -> String {
+        if self.external_enabled() {
+            self.model.clone()
+        } else {
+            "semantic-hash-v1".to_string()
+        }
+    }
+
+    fn external_enabled(&self) -> bool {
+        matches!(
+            self.provider.as_str(),
+            "openai" | "openai-compatible" | "custom-http"
+        ) && !self.api_key.is_empty()
+    }
+
+    fn diagnostic(&self) -> Value {
+        serde_json::json!({
+            "provider": self.effective_provider(),
+            "model": self.effective_model(),
+            "requested_provider": self.provider,
+            "api_base": if self.api_base.is_empty() { Value::Null } else { Value::String(self.api_base.clone()) },
+            "api_key_env": "EMB_AGENT_EMBEDDING_API_KEY",
+            "api_key_present": !self.api_key.is_empty(),
+            "upload": self.upload,
+            "fallback": "local-hash"
+        })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct EmbeddingCache {
+    version: u32,
+    provider: String,
+    model: String,
+    entries: BTreeMap<String, Vec<f32>>,
+}
+
+fn embedding_config() -> EmbeddingConfig {
+    let provider = std::env::var("EMB_AGENT_EMBEDDING_PROVIDER")
+        .unwrap_or_else(|_| "local-hash".to_string())
+        .to_ascii_lowercase();
+    EmbeddingConfig {
+        provider,
+        model: std::env::var("EMB_AGENT_EMBEDDING_MODEL")
+            .unwrap_or_else(|_| "text-embedding-3-small".to_string()),
+        api_base: std::env::var("EMB_AGENT_EMBEDDING_API_BASE")
+            .unwrap_or_else(|_| "https://api.openai.com/v1".to_string()),
+        api_key: std::env::var("EMB_AGENT_EMBEDDING_API_KEY").unwrap_or_default(),
+        upload: std::env::var("EMB_AGENT_EMBEDDING_UPLOAD")
+            .unwrap_or_else(|_| "summary-only".to_string())
+            .to_ascii_lowercase(),
+    }
+}
+
+fn embedding_cache_path(cwd: &str) -> PathBuf {
+    Path::new(cwd)
+        .join(".emb-agent")
+        .join("cache")
+        .join("mem")
+        .join("embeddings.json")
+}
+
+fn load_embedding_cache(cwd: &str, cfg: &EmbeddingConfig) -> EmbeddingCache {
+    let path = embedding_cache_path(cwd);
+    let cache = fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<EmbeddingCache>(&text).ok())
+        .unwrap_or_default();
+    if cache.version == 1
+        && cache.provider == cfg.effective_provider()
+        && cache.model == cfg.effective_model()
+    {
+        cache
+    } else {
+        EmbeddingCache {
+            version: 1,
+            provider: cfg.effective_provider(),
+            model: cfg.effective_model(),
+            entries: BTreeMap::new(),
+        }
+    }
+}
+
+fn save_embedding_cache(cwd: &str, cache: &EmbeddingCache) {
+    let path = embedding_cache_path(cwd);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(text) = serde_json::to_string_pretty(cache) {
+        let _ = fs::write(path, text);
+    }
+}
+
+fn cached_embedding_vector(
+    cwd: &str,
+    cfg: &EmbeddingConfig,
+    cache: &mut EmbeddingCache,
+    text: &str,
+) -> Vec<f32> {
+    let upload_text = embedding_upload_text(cfg, text);
+    let key = format!(
+        "{}:{}:{}:{}",
+        cfg.effective_provider(),
+        cfg.effective_model(),
+        cfg.upload,
+        stable_hash(&upload_text)
+    );
+    if let Some(vector) = cache.entries.get(&key) {
+        return vector.clone();
+    }
+    let vector = embedding_vector_for_text(cfg, &upload_text);
+    cache.entries.insert(key, vector.clone());
+    save_embedding_cache(cwd, cache);
+    vector
+}
+
+fn embedding_vector_for_text(cfg: &EmbeddingConfig, text: &str) -> Vec<f32> {
+    if cfg.external_enabled()
+        && let Some(vector) = external_embedding_vector(cfg, text)
+    {
+        return normalize_vector(vector);
+    }
+    semantic_vector(text)
+}
+
+fn embedding_upload_text(cfg: &EmbeddingConfig, text: &str) -> String {
+    let source = if cfg.upload == "chunks" {
+        text
+    } else {
+        &summarize_text(text)
+    };
+    source.chars().take(8_000).collect()
+}
+
+fn external_embedding_vector(cfg: &EmbeddingConfig, text: &str) -> Option<Vec<f32>> {
+    let url = format!(
+        "{}/embeddings",
+        cfg.api_base.trim_end_matches('/').trim_end_matches("/v1")
+    );
+    let url = if cfg.api_base.trim_end_matches('/').ends_with("/v1") {
+        format!("{}/embeddings", cfg.api_base.trim_end_matches('/'))
+    } else {
+        url
+    };
+    let payload = serde_json::json!({"model": cfg.model, "input": text});
+    let output = Command::new("curl")
+        .arg("-fsS")
+        .arg("--max-time")
+        .arg("30")
+        .arg("-H")
+        .arg(format!("Authorization: Bearer {}", cfg.api_key))
+        .arg("-H")
+        .arg("Content-Type: application/json")
+        .arg("-d")
+        .arg(payload.to_string())
+        .arg(url)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value: Value = serde_json::from_slice(&output.stdout).ok()?;
+    value
+        .get("data")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("embedding"))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|value| value.as_f64().map(|v| v as f32))
+                .collect::<Vec<_>>()
+        })
+        .filter(|vector| !vector.is_empty())
+}
+
 fn load_or_build_index(cwd: &str, platform: &str, force: bool) -> Result<MemIndex, String> {
+    let cfg = embedding_config();
     if !force
         && let Some(index) = read_index(cwd)
         && index.version == INDEX_VERSION
+        && index.embedding_provider == cfg.effective_provider()
+        && index.embedding_model == cfg.effective_model()
         && index_is_fresh(&index, platform)
     {
         return Ok(filter_index(index, platform));
@@ -899,6 +1107,8 @@ fn filter_index(mut index: MemIndex, platform: &str) -> MemIndex {
 }
 
 fn build_and_save_index(cwd: &str, platform: &str) -> Result<MemIndex, String> {
+    let cfg = embedding_config();
+    let mut embedding_cache = load_embedding_cache(cwd, &cfg);
     let sessions = list_mem_sessions(cwd, platform, usize::MAX)?;
     let mut indexed = Vec::new();
     for session in sessions {
@@ -914,7 +1124,7 @@ fn build_and_save_index(cwd: &str, platform: &str) -> Result<MemIndex, String> {
             size: session.bytes,
             summary: summarize_text(&text),
             keywords: keywords(&text),
-            semantic_vector: semantic_vector(&text_tail),
+            semantic_vector: cached_embedding_vector(cwd, &cfg, &mut embedding_cache, &text_tail),
             phases: phase_spans(&turns),
             text_tail,
             session,
@@ -925,6 +1135,8 @@ fn build_and_save_index(cwd: &str, platform: &str) -> Result<MemIndex, String> {
         version: INDEX_VERSION,
         generated_ms: now_ms(),
         root: cwd.to_string(),
+        embedding_provider: cfg.effective_provider(),
+        embedding_model: cfg.effective_model(),
         sessions: indexed,
     };
     let path = index_path(cwd);
@@ -962,7 +1174,8 @@ fn search_mem_sessions(
 ) -> Result<Vec<SearchHit>, String> {
     let index = load_or_build_index(cwd, platform, force)?;
     let query_expanded = expand_query(query);
-    let query_vector = semantic_vector(&query_expanded);
+    let cfg = embedding_config();
+    let query_vector = embedding_vector_for_text(&cfg, &query_expanded);
     let mut hits = Vec::new();
     for item in index.sessions {
         let exact_score = score_text(&item.text_tail, &query_expanded);
@@ -982,6 +1195,8 @@ fn search_mem_sessions(
             preview: preview(&item.text_tail, &query_expanded),
             keywords: item.keywords,
             matched_aliases: matched_aliases(query),
+            embedding_provider: index.embedding_provider.clone(),
+            embedding_model: index.embedding_model.clone(),
         });
     }
     hits.sort_by(|a, b| {
