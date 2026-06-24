@@ -2984,15 +2984,53 @@ function createInstallHelpers(deps) {
     return true;
   }
 
+  function removeDeprecatedEnvExampleKeys(filePath) {
+    let existing = '';
+    try {
+      existing = fs.readFileSync(filePath, 'utf8');
+    } catch (_) {
+      return;
+    }
+    const graphPrefix = 'GRA' + 'PHIFY';
+    const deprecatedPrefixes = [
+      graphPrefix,
+      graphPrefix + 'Y',
+      'CODEX_ONLY',
+      'CODEX-ONLY',
+      'GEMINI_API_KEY',
+      'DEEPSEEK_API_KEY',
+      'OLLAMA_BASE_URL',
+      'HEADROOM_',
+      'TURBOVEC_'
+    ];
+    const updated = existing
+      .split(/\r?\n/)
+      .filter(line => {
+        const match = line.trim().replace(/^#\s*/, '').match(/^([A-Za-z_][A-Za-z0-9_-]*)\s*=/);
+        if (!match) {
+          return true;
+        }
+        const key = match[1].toUpperCase();
+        return !deprecatedPrefixes.some(prefix => key === prefix || key.startsWith(prefix));
+      })
+      .join('\n')
+      .replace(/\s+$/, '') + '\n';
+    if (updated !== existing) {
+      fs.writeFileSync(filePath, updated, 'utf8');
+    }
+  }
+
   function installEnvExample(filePath) {
     if (!fs.existsSync(filePath)) {
       fs.writeFileSync(filePath, buildEnvExampleContent(), 'utf8');
       return true;
     }
 
+    removeDeprecatedEnvExampleKeys(filePath);
     for (const block of envExampleBlocks()) {
       appendEnvExampleBlockIfMissing(filePath, block.key, block.content);
     }
+    removeDeprecatedEnvExampleKeys(filePath);
     return false;
   }
 

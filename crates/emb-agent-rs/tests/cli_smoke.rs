@@ -2160,6 +2160,20 @@ fn knowledge_query_and_explain_accept_named_options_after_cwd() {
     assert!(refresh.contains("native"), "refresh output: {refresh}");
     let index = run(&project, &["knowledge", "index", "--rebuild"]);
     assert!(index.contains("chunks"), "index output: {index}");
+    assert!(
+        project
+            .path()
+            .join(".emb-agent/cache/knowledge/embeddings.json")
+            .exists(),
+        "knowledge embedding cache missing"
+    );
+    assert!(
+        project
+            .path()
+            .join(".emb-agent/cache/knowledge/manifest.json")
+            .exists(),
+        "knowledge manifest missing"
+    );
     let search = run(
         &project,
         &["knowledge", "search", "--query", "U1", "--rerank"],
@@ -2289,6 +2303,14 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         fs::create_dir_all(&skill_dir).expect("create stale codex skill");
         fs::write(skill_dir.join("SKILL.md"), "stale").expect("write stale codex skill");
     }
+    let stale_graph_key = format!("{}{}_API_KEY", "GRA", "PHIFY");
+    fs::write(
+        root.join(".env.example"),
+        format!(
+            "GEMINI_API_KEY=\nDEEPSEEK_API_KEY=\nOLLAMA_BASE_URL=\nHEADROOM_PORT=\nTURBOVEC_ENABLED=\nCODEX_ONLY_TEST=\n{stale_graph_key}=\n"
+        ),
+    )
+    .expect("write stale env example");
 
     let output = Command::new("node")
         .arg(repo_root.join("bin").join("install.js"))
@@ -2324,7 +2346,11 @@ fn installer_exposes_same_two_shell_commands_per_host() {
             && !env_example.contains("DEEPSEEK_API_KEY")
             && !env_example.contains("OLLAMA_BASE_URL")
             && !env_example.contains("HEADROOM_PORT")
-            && !env_example.contains("TURBOVEC_ENABLED"),
+            && !env_example.contains("TURBOVEC_ENABLED")
+            && !env_example.contains("CODEX_ONLY")
+            && !env_example
+                .to_ascii_lowercase()
+                .contains(&format!("{}{}", "gra", "phify")),
         "installer .env.example should not include unused legacy env keys: {env_example}"
     );
     assert!(

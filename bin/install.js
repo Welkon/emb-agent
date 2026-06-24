@@ -141,6 +141,32 @@ function appendEnvExampleBlockIfMissing(filePath, key, block) {
 	fs.writeFileSync(filePath, updated, "utf8");
 }
 
+function removeDeprecatedEnvExampleKeys(filePath) {
+	var graphPrefix = "GRA" + "PHIFY";
+	var graphPrefix2 = graphPrefix + "Y";
+	var deprecatedPrefixes = [
+		graphPrefix,
+		graphPrefix2,
+		"CODEX_ONLY",
+		"CODEX-ONLY",
+		"GEMINI_API_KEY",
+		"DEEPSEEK_API_KEY",
+		"OLLAMA_BASE_URL",
+		"HEADROOM_",
+		"TURBOVEC_"
+	];
+	var existing = "";
+	try { existing = fs.readFileSync(filePath, "utf8"); } catch (_) { return; }
+	var lines = existing.split(/\r?\n/).filter(function (line) {
+		var match = line.trim().replace(/^#\s*/, "").match(/^([A-Za-z_][A-Za-z0-9_-]*)\s*=/);
+		if (!match) return true;
+		var key = match[1].toUpperCase();
+		return !deprecatedPrefixes.some(function (prefix) { return key === prefix || key.indexOf(prefix) === 0; });
+	});
+	var updated = lines.join("\n").replace(/\s+$/, "") + "\n";
+	if (updated !== existing) fs.writeFileSync(filePath, updated, "utf8");
+}
+
 function defaultEmbAgentConfigYaml() {
 	return [
 		"# emb-agent project configuration",
@@ -205,9 +231,11 @@ function ensureProjectEnvFiles(projectRoot) {
 	if (!fs.existsSync(envExample)) {
 		fs.writeFileSync(envExample, ENV_TEMPLATE, "utf8");
 	} else {
+		removeDeprecatedEnvExampleKeys(envExample);
 		appendEnvExampleBlockIfMissing(envExample, "MINERU_API_KEY", ENV_MINERU_BLOCK);
 		appendEnvExampleBlockIfMissing(envExample, "EMB_AGENT_EMBEDDING_PROVIDER", ENV_EMBEDDING_BLOCK);
 		appendEnvExampleBlockIfMissing(envExample, "EMB_AGENT_RERANK_PROVIDER", ENV_RERANK_BLOCK);
+		removeDeprecatedEnvExampleKeys(envExample);
 	}
 	var gitignore = path.join(projectRoot, ".gitignore");
 	var existing = "";

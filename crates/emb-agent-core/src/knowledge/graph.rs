@@ -426,6 +426,64 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
         }
     }
 
+    // Scan parsed document cache (MinerU/local PDF parses)
+    let docs_cache = ext_dir.join("cache").join("docs");
+    let doc_index_path = docs_cache.join("index.json");
+    if doc_index_path.exists() {
+        let content = fs::read_to_string(&doc_index_path).unwrap_or_default();
+        let index: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
+        if let Some(documents) = index.get("documents").and_then(serde_json::Value::as_array) {
+            for doc in documents {
+                if doc.get("parsed").and_then(serde_json::Value::as_bool) == Some(false) {
+                    continue;
+                }
+                let doc_id = doc
+                    .get("doc_id")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("unknown");
+                let title = doc
+                    .get("title")
+                    .and_then(serde_json::Value::as_str)
+                    .or_else(|| {
+                        doc.pointer("/paths/source")
+                            .and_then(serde_json::Value::as_str)
+                    })
+                    .unwrap_or("parsed document");
+                let provider = doc
+                    .get("provider")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("cache");
+                let markdown = doc
+                    .pointer("/paths/markdown")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                let id = format!("doc_parse:{doc_id}");
+                nodes.push(GraphNode {
+                    id: id.clone(),
+                    node_type: "doc_parse".to_string(),
+                    label: title.to_string(),
+                    summary: markdown.to_string(),
+                    status: "parsed".to_string(),
+                    category: provider.to_string(),
+                });
+                *by_type.entry("doc_parse".to_string()).or_default() += 1;
+
+                if let Some(source) = doc
+                    .pointer("/paths/source")
+                    .and_then(serde_json::Value::as_str)
+                    && !source.is_empty()
+                {
+                    edges.push(GraphEdge {
+                        from: id,
+                        to: format!("file:{source}"),
+                        edge_type: "parsed_from".to_string(),
+                        label: provider.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
     // Count ambiguous edges (edges without explicit types)
     let ambiguous = edges.iter().filter(|e| e.edge_type.is_empty()).count();
 

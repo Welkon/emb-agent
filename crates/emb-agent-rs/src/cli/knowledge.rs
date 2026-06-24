@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const KNOWLEDGE_INDEX_VERSION: u32 = 2;
+const KNOWLEDGE_INDEX_VERSION: u32 = 3;
+const KNOWLEDGE_EMBEDDING_CACHE_VERSION: u32 = 1;
 const KNOWLEDGE_CHUNK_CHARS: usize = 6_000;
 const KNOWLEDGE_CHUNK_OVERLAP: usize = 500;
 
@@ -21,6 +22,35 @@ struct KnowledgeChunk {
     text: String,
     keywords: Vec<String>,
     vector: Vec<f32>,
+    evidence: KnowledgeEvidence,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct KnowledgeEvidence {
+    path: String,
+    source_path: String,
+    doc_id: String,
+    provider: String,
+    quality: String,
+    line_start: usize,
+    line_end: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct KnowledgeSourceManifest {
+    source_type: String,
+    path: String,
+    title: String,
+    hash: u64,
+    bytes: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct KnowledgeEmbeddingCache {
+    version: u32,
+    provider: String,
+    model: String,
+    vectors: BTreeMap<String, Vec<f32>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -29,6 +59,7 @@ struct KnowledgeIndex {
     generated_ms: u128,
     embedding_provider: String,
     embedding_model: String,
+    manifest: Vec<KnowledgeSourceManifest>,
     chunks: Vec<KnowledgeChunk>,
 }
 
@@ -64,6 +95,7 @@ struct KnowledgeHit {
     score: f32,
     rerank_score: Option<f32>,
     keywords: Vec<String>,
+    evidence: KnowledgeEvidence,
     preview: String,
 }
 
@@ -78,6 +110,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 "status": "ok",
                 "index_path": knowledge_index_path(project_root),
                 "chunks": index.chunks.len(),
+                "sources": index.manifest.len(),
                 "embedding_provider": index.embedding_provider,
                 "embedding_model": index.embedding_model
             }))
@@ -190,12 +223,29 @@ fn knowledge_index_path(project_root: &Path) -> PathBuf {
         .join("index.json")
 }
 
+fn knowledge_embedding_cache_path(project_root: &Path) -> PathBuf {
+    project_root
+        .join(".emb-agent")
+        .join("cache")
+        .join("knowledge")
+        .join("embeddings.json")
+}
+
+fn knowledge_manifest_path(project_root: &Path) -> PathBuf {
+    project_root
+        .join(".emb-agent")
+        .join("cache")
+        .join("knowledge")
+        .join("manifest.json")
+}
+
 fn load_or_build_index(project_root: &Path, force: bool) -> Result<KnowledgeIndex, String> {
     if !force {
         let path = knowledge_index_path(project_root);
         if let Ok(text) = fs::read_to_string(&path)
             && let Ok(index) = serde_json::from_str::<KnowledgeIndex>(&text)
             && index.version == KNOWLEDGE_INDEX_VERSION
+            && index.manifest == source_manifest(&collect_knowledge_docs(project_root))
         {
             return Ok(index);
         }
@@ -206,24 +256,24 @@ fn load_or_build_index(project_root: &Path, force: bool) -> Result<KnowledgeInde
 fn build_and_save_index(project_root: &Path) -> Result<KnowledgeIndex, String> {
     let cfg = embedding_config(project_root);
     let docs = collect_knowledge_docs(project_root);
+    let manifest = source_manifest(&docs);
+    let mut cache = load_embedding_cache(project_root, &cfg);
     let chunks = docs
         .into_iter()
-        .flat_map(|(source_type, path, title, text)| {
-            split_knowledge_doc(&source_type, &path, &title, &text)
-                .into_iter()
-                .map(|chunk| {
-                    let summary_text = chunk.text.chars().take(8_000).collect::<String>();
-                    KnowledgeChunk {
-                        id: chunk.id,
-                        source_type: chunk.source_type,
-                        path: chunk.path,
-                        title: chunk.title,
-                        keywords: keywords(&chunk.text),
-                        vector: embedding_vector(&cfg, &summary_text),
-                        text: chunk.text,
-                    }
-                })
-                .collect::<Vec<_>>()
+        .flat_map(split_knowledge_doc)
+        .map(|chunk| {
+            let summary_text = chunk.text.chars().take(8_000).collect::<String>();
+            let vector = cached_embedding_vector(&cfg, &mut cache, &summary_text);
+            KnowledgeChunk {
+                id: chunk.id,
+                source_type: chunk.source_type,
+                path: chunk.path,
+                title: chunk.title,
+                keywords: keywords(&chunk.text),
+                vector,
+                evidence: chunk.evidence,
+                text: chunk.text,
+            }
         })
         .collect::<Vec<_>>();
     let index = KnowledgeIndex {
@@ -231,6 +281,7 @@ fn build_and_save_index(project_root: &Path) -> Result<KnowledgeIndex, String> {
         generated_ms: now_ms(),
         embedding_provider: cfg.effective_provider(),
         embedding_model: cfg.effective_model(),
+        manifest,
         chunks,
     };
     let path = knowledge_index_path(project_root);
@@ -242,6 +293,12 @@ fn build_and_save_index(project_root: &Path) -> Result<KnowledgeIndex, String> {
         serde_json::to_string_pretty(&index).map_err(|e| e.to_string())?,
     )
     .map_err(|e| format!("write {}: {e}", path.display()))?;
+    save_embedding_cache(project_root, &cache)?;
+    fs::write(
+        knowledge_manifest_path(project_root),
+        serde_json::to_string_pretty(&index.manifest).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("write manifest: {e}"))?;
     Ok(index)
 }
 
@@ -254,7 +311,9 @@ fn search_index(
 ) -> Result<KnowledgeSearchResult, String> {
     let index = load_or_build_index(project_root, force)?;
     let cfg = embedding_config(project_root);
-    let query_vector = embedding_vector(&cfg, query);
+    let mut cache = load_embedding_cache(project_root, &cfg);
+    let query_vector = cached_embedding_vector(&cfg, &mut cache, query);
+    let _ = save_embedding_cache(project_root, &cache);
     let mut hits = index
         .chunks
         .iter()
@@ -269,6 +328,7 @@ fn search_index(
                 score: semantic + lexical,
                 rerank_score: None,
                 keywords: chunk.keywords.clone(),
+                evidence: chunk.evidence.clone(),
                 preview: preview(&chunk.text, query),
             }
         })
@@ -300,34 +360,41 @@ fn search_index(
 }
 
 #[derive(Clone, Debug)]
+struct KnowledgeDoc {
+    source_type: String,
+    path: String,
+    title: String,
+    text: String,
+    evidence: KnowledgeEvidence,
+}
+
+#[derive(Clone, Debug)]
 struct RawKnowledgeChunk {
     id: String,
     source_type: String,
     path: String,
     title: String,
     text: String,
+    evidence: KnowledgeEvidence,
 }
 
-fn split_knowledge_doc(
-    source_type: &str,
-    path: &str,
-    title: &str,
-    text: &str,
-) -> Vec<RawKnowledgeChunk> {
-    let chars = text.chars().collect::<Vec<_>>();
+fn split_knowledge_doc(doc: KnowledgeDoc) -> Vec<RawKnowledgeChunk> {
+    let chars = doc.text.chars().collect::<Vec<_>>();
     if chars.len() <= KNOWLEDGE_CHUNK_CHARS {
         return vec![raw_knowledge_chunk(
-            source_type,
-            path,
-            title,
-            text.to_string(),
+            &doc.source_type,
+            &doc.path,
+            &doc.title,
+            doc.text,
             0,
+            doc.evidence,
         )];
     }
 
     let mut chunks = Vec::new();
     let mut start = 0;
     let mut ordinal = 0;
+    let mut line_start = doc.evidence.line_start.max(1);
     while start < chars.len() {
         let mut end = (start + KNOWLEDGE_CHUNK_CHARS).min(chars.len());
         if end < chars.len()
@@ -341,17 +408,27 @@ fn split_knowledge_doc(
             }
         }
         let chunk_text = chars[start..end].iter().collect::<String>();
+        let line_count = chunk_text.matches('\n').count().max(1);
+        let mut evidence = doc.evidence.clone();
+        evidence.line_start = line_start;
+        evidence.line_end = line_start + line_count.saturating_sub(1);
         chunks.push(raw_knowledge_chunk(
-            source_type,
-            path,
-            title,
+            &doc.source_type,
+            &doc.path,
+            &doc.title,
             chunk_text,
             ordinal,
+            evidence,
         ));
         ordinal += 1;
         if end >= chars.len() {
             break;
         }
+        line_start += chars[start..end]
+            .iter()
+            .filter(|character| **character == '\n')
+            .count()
+            .saturating_sub(KNOWLEDGE_CHUNK_OVERLAP / 80);
         start = end.saturating_sub(KNOWLEDGE_CHUNK_OVERLAP);
     }
     chunks
@@ -363,6 +440,7 @@ fn raw_knowledge_chunk(
     title: &str,
     text: String,
     ordinal: usize,
+    mut evidence: KnowledgeEvidence,
 ) -> RawKnowledgeChunk {
     let chunk_path = if ordinal == 0 {
         path.to_string()
@@ -374,6 +452,7 @@ fn raw_knowledge_chunk(
     } else {
         format!("{title} · chunk {ordinal}")
     };
+    evidence.path = chunk_path.clone();
     RawKnowledgeChunk {
         id: format!(
             "{}:{}",
@@ -384,10 +463,11 @@ fn raw_knowledge_chunk(
         path: chunk_path,
         title: chunk_title,
         text,
+        evidence,
     }
 }
 
-fn collect_knowledge_docs(project_root: &Path) -> Vec<(String, String, String, String)> {
+fn collect_knowledge_docs(project_root: &Path) -> Vec<KnowledgeDoc> {
     let mut docs = Vec::new();
     let ext = project_root.join(".emb-agent");
     for (source_type, rel) in [
@@ -415,21 +495,23 @@ fn collect_knowledge_docs(project_root: &Path) -> Vec<(String, String, String, S
                 .ok()
                 .and_then(|v| v.get("title").and_then(Value::as_str).map(str::to_string))
                 .unwrap_or_else(|| "task".to_string());
-            docs.push((
-                "task".to_string(),
-                rel_path(project_root, &path),
+            docs.push(KnowledgeDoc {
+                source_type: "task".to_string(),
+                path: rel_path(project_root, &path),
                 title,
+                evidence: {
+                    let mut evidence = default_evidence(&rel_path(project_root, &path), "task");
+                    evidence.line_end = text.lines().count().max(1);
+                    evidence
+                },
                 text,
-            ));
+            });
         }
     }
     docs
 }
 
-fn collect_cached_doc_parses(
-    docs: &mut Vec<(String, String, String, String)>,
-    project_root: &Path,
-) {
+fn collect_cached_doc_parses(docs: &mut Vec<KnowledgeDoc>, project_root: &Path) {
     let docs_cache = project_root.join(".emb-agent").join("cache").join("docs");
     let index_path = docs_cache.join("index.json");
     let mut seen = BTreeMap::<String, bool>::new();
@@ -453,7 +535,31 @@ fn collect_cached_doc_parses(
                 .and_then(Value::as_str)
                 .or_else(|| item.pointer("/paths/source").and_then(Value::as_str))
                 .unwrap_or("parsed document");
-            push_cached_doc_parse(docs, project_root, markdown, title, &mut seen);
+            let doc_id = item.get("doc_id").and_then(Value::as_str).unwrap_or("");
+            let provider = item.get("provider").and_then(Value::as_str).unwrap_or("");
+            let quality = item
+                .pointer("/local_parse/quality")
+                .or_else(|| item.pointer("/paths/quality"))
+                .and_then(Value::as_str)
+                .unwrap_or("parsed");
+            let source_path = item
+                .pointer("/paths/source")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            push_cached_doc_parse(
+                docs,
+                project_root,
+                markdown,
+                title,
+                &mut seen,
+                CachedDocMeta {
+                    doc_id: doc_id.to_string(),
+                    provider: provider.to_string(),
+                    quality: quality.to_string(),
+                    source_path: source_path.to_string(),
+                    title: Some(title.to_string()),
+                },
+            );
         }
     }
 
@@ -466,18 +572,106 @@ fn collect_cached_doc_parses(
                     .and_then(|parent| parent.file_name())
                     .and_then(|name| name.to_str())
                     .unwrap_or("parsed document");
-                push_cached_doc_parse(docs, project_root, &rel, title, &mut seen);
+                let meta = cached_doc_meta_from_dir(path.parent(), "", "cache", "parsed", "");
+                let fallback_title = meta
+                    .title
+                    .clone()
+                    .filter(|title| !title.trim().is_empty())
+                    .unwrap_or_else(|| title.to_string());
+                push_cached_doc_parse(docs, project_root, &rel, &fallback_title, &mut seen, meta);
             }
         }
     }
 }
 
+#[derive(Clone, Debug)]
+struct CachedDocMeta {
+    doc_id: String,
+    provider: String,
+    quality: String,
+    source_path: String,
+    title: Option<String>,
+}
+
+fn cached_doc_meta_from_dir(
+    dir: Option<&Path>,
+    fallback_doc_id: &str,
+    fallback_provider: &str,
+    fallback_quality: &str,
+    fallback_source_path: &str,
+) -> CachedDocMeta {
+    let Some(dir) = dir else {
+        return CachedDocMeta {
+            doc_id: fallback_doc_id.to_string(),
+            provider: fallback_provider.to_string(),
+            quality: fallback_quality.to_string(),
+            source_path: fallback_source_path.to_string(),
+            title: None,
+        };
+    };
+    let source = fs::read_to_string(dir.join("source.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    let parse = fs::read_to_string(dir.join("parse.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    let fallback_doc_id = if fallback_doc_id.is_empty() {
+        dir.file_name().and_then(|name| name.to_str()).unwrap_or("")
+    } else {
+        fallback_doc_id
+    };
+    CachedDocMeta {
+        doc_id: source
+            .as_ref()
+            .and_then(|value| value.get("doc_id"))
+            .and_then(Value::as_str)
+            .unwrap_or(fallback_doc_id)
+            .to_string(),
+        provider: parse
+            .as_ref()
+            .and_then(|value| value.get("provider"))
+            .and_then(Value::as_str)
+            .or_else(|| {
+                source
+                    .as_ref()
+                    .and_then(|value| value.get("provider"))
+                    .and_then(Value::as_str)
+            })
+            .unwrap_or(fallback_provider)
+            .to_string(),
+        quality: parse
+            .as_ref()
+            .and_then(|value| value.get("quality"))
+            .and_then(Value::as_str)
+            .unwrap_or(fallback_quality)
+            .to_string(),
+        source_path: source
+            .as_ref()
+            .and_then(|value| value.get("source"))
+            .and_then(Value::as_str)
+            .or_else(|| {
+                source
+                    .as_ref()
+                    .and_then(|value| value.get("source_abs"))
+                    .and_then(Value::as_str)
+            })
+            .unwrap_or(fallback_source_path)
+            .to_string(),
+        title: source
+            .as_ref()
+            .and_then(|value| value.get("title"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    }
+}
+
 fn push_cached_doc_parse(
-    docs: &mut Vec<(String, String, String, String)>,
+    docs: &mut Vec<KnowledgeDoc>,
     project_root: &Path,
     markdown: &str,
     title: &str,
     seen: &mut BTreeMap<String, bool>,
+    meta: CachedDocMeta,
 ) {
     let rel = markdown.trim().replace('\\', "/");
     if seen.contains_key(&rel) {
@@ -487,12 +681,21 @@ fn push_cached_doc_parse(
     if let Ok(text) = fs::read_to_string(&path)
         && !text.trim().is_empty()
     {
-        docs.push((
-            "doc-parse".to_string(),
-            rel.clone(),
-            title.to_string(),
+        docs.push(KnowledgeDoc {
+            source_type: "doc-parse".to_string(),
+            path: rel.clone(),
+            title: title.to_string(),
+            evidence: KnowledgeEvidence {
+                path: rel.clone(),
+                source_path: meta.source_path,
+                doc_id: meta.doc_id,
+                provider: meta.provider,
+                quality: meta.quality,
+                line_start: 1,
+                line_end: text.lines().count().max(1),
+            },
             text,
-        ));
+        });
         seen.insert(rel, true);
     }
 }
@@ -507,7 +710,7 @@ fn resolve_relative_project_path(project_root: &Path, rel: &str) -> PathBuf {
 }
 
 fn collect_markdown(
-    docs: &mut Vec<(String, String, String, String)>,
+    docs: &mut Vec<KnowledgeDoc>,
     root: &Path,
     source_type: &str,
     project_root: &Path,
@@ -520,12 +723,7 @@ fn collect_markdown(
     }
 }
 
-fn push_file_doc(
-    docs: &mut Vec<(String, String, String, String)>,
-    path: &Path,
-    source_type: &str,
-    rel: &str,
-) {
+fn push_file_doc(docs: &mut Vec<KnowledgeDoc>, path: &Path, source_type: &str, rel: &str) {
     if let Ok(text) = fs::read_to_string(path) {
         let title = text
             .lines()
@@ -536,8 +734,42 @@ fn push_file_doc(
                     .to_string_lossy()
                     .to_string()
             });
-        docs.push((source_type.to_string(), rel.to_string(), title, text));
+        docs.push(KnowledgeDoc {
+            source_type: source_type.to_string(),
+            path: rel.to_string(),
+            title,
+            evidence: {
+                let mut evidence = default_evidence(rel, source_type);
+                evidence.line_end = text.lines().count().max(1);
+                evidence
+            },
+            text,
+        });
     }
+}
+
+fn default_evidence(path: &str, source_type: &str) -> KnowledgeEvidence {
+    KnowledgeEvidence {
+        path: path.to_string(),
+        source_path: path.to_string(),
+        doc_id: String::new(),
+        provider: source_type.to_string(),
+        quality: "source".to_string(),
+        line_start: 1,
+        line_end: 1,
+    }
+}
+
+fn source_manifest(docs: &[KnowledgeDoc]) -> Vec<KnowledgeSourceManifest> {
+    docs.iter()
+        .map(|doc| KnowledgeSourceManifest {
+            source_type: doc.source_type.clone(),
+            path: doc.path.clone(),
+            title: doc.title.clone(),
+            hash: stable_hash(&doc.text),
+            bytes: doc.text.len(),
+        })
+        .collect()
 }
 
 fn walk_files(root: &Path) -> Vec<PathBuf> {
@@ -688,6 +920,60 @@ fn unquote(value: &str) -> String {
     } else {
         value.to_string()
     }
+}
+
+fn cached_embedding_vector(
+    cfg: &EmbeddingConfig,
+    cache: &mut KnowledgeEmbeddingCache,
+    text: &str,
+) -> Vec<f32> {
+    let key = format!(
+        "{}:{}:{}",
+        cfg.effective_provider(),
+        cfg.effective_model(),
+        stable_hash(text)
+    );
+    if let Some(vector) = cache.vectors.get(&key)
+        && !vector.is_empty()
+    {
+        return vector.clone();
+    }
+    let vector = embedding_vector(cfg, text);
+    cache.vectors.insert(key, vector.clone());
+    vector
+}
+
+fn load_embedding_cache(project_root: &Path, cfg: &EmbeddingConfig) -> KnowledgeEmbeddingCache {
+    let path = knowledge_embedding_cache_path(project_root);
+    if let Ok(text) = fs::read_to_string(&path)
+        && let Ok(cache) = serde_json::from_str::<KnowledgeEmbeddingCache>(&text)
+        && cache.version == KNOWLEDGE_EMBEDDING_CACHE_VERSION
+        && cache.provider == cfg.effective_provider()
+        && cache.model == cfg.effective_model()
+    {
+        return cache;
+    }
+    KnowledgeEmbeddingCache {
+        version: KNOWLEDGE_EMBEDDING_CACHE_VERSION,
+        provider: cfg.effective_provider(),
+        model: cfg.effective_model(),
+        vectors: BTreeMap::new(),
+    }
+}
+
+fn save_embedding_cache(
+    project_root: &Path,
+    cache: &KnowledgeEmbeddingCache,
+) -> Result<(), String> {
+    let path = knowledge_embedding_cache_path(project_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(cache).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 fn embedding_vector(cfg: &EmbeddingConfig, text: &str) -> Vec<f32> {

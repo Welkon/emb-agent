@@ -28,7 +28,7 @@ allowed-tools:
 - In Pi, users can run `/emb-ingest doc --file <path> --provider auto --kind datasheet --to hardware`; Pi agents should call the `ingest_doc` tool instead of reading raw PDFs or inventing shell syntax.
 - Direct CLI fallback in Pi is `node .pi/emb-agent/bin/emb-agent.cjs ingest doc --file <path> --provider auto --kind datasheet --to hardware`.
 - `--provider auto` tries local conversion first using `.emb-agent/project.json` `integrations.doc_ingest.local_tool_priority` or `EMB_AGENT_DOC_LOCAL_TOOLS`; the default project policy is `markitdown`, then `pdftotext`, then `mutool`. Sparse local conversion falls back to MinerU automatically only when `MINERU_API_KEY` is configured; otherwise the local artifact is returned with a review-required quality gate.
-- `ingest doc` creates `.env.example` and `.env` when missing; put `MINERU_API_KEY=` in `.env` for MinerU precise API parsing and rerun with `--provider mineru --force` when the PDF is image-heavy or local output is sparse.
+- `ingest doc` creates `.env.example` when missing and never creates a real `.env`; copy only the keys you need into `.env`, set `MINERU_API_KEY=`, and rerun with `--provider mineru --force` when the PDF is image-heavy or local output is sparse.
 - MinerU API ZIP results are cached with `images/...` assets under `.emb-agent/cache/docs/<doc-id>/`; if `parse.md` references an image, inspect that cached asset or trigger `/emb:ingest doc --force` before trying PDF rendering or web image workarounds.
 - If the PDF is still missing but the chip or schematic already hints at it, use:
   `/emb:doc lookup --chip <name> --vendor <name>`

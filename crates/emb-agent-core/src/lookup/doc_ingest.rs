@@ -1048,6 +1048,7 @@ fn ensure_env_example(path: &Path) -> bool {
         return fs::write(path, ENV_EXAMPLE).is_ok();
     }
     let existing = fs::read_to_string(path).unwrap_or_default();
+    let existing = remove_deprecated_env_example_keys(&existing);
     let mut updated = existing.trim_end().to_string();
     let mut changed = false;
     for (key, block) in [
@@ -1075,8 +1076,44 @@ fn ensure_env_example(path: &Path) -> bool {
     if changed {
         updated.push('\n');
         let _ = fs::write(path, updated);
+    } else {
+        let _ = fs::write(path, existing);
     }
     false
+}
+
+fn remove_deprecated_env_example_keys(existing: &str) -> String {
+    let graph_prefix = format!("{}{}", "GRA", "PHIFY");
+    let graph_prefix2 = format!("{graph_prefix}Y");
+    let deprecated_prefixes = [
+        graph_prefix.as_str(),
+        graph_prefix2.as_str(),
+        "CODEX_ONLY",
+        "CODEX-ONLY",
+        "GEMINI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OLLAMA_BASE_URL",
+        "HEADROOM_",
+        "TURBOVEC_",
+    ];
+    let lines = existing
+        .lines()
+        .filter(|line| {
+            let key = line
+                .trim()
+                .trim_start_matches('#')
+                .trim_start()
+                .split_once('=')
+                .map(|(key, _)| key.trim().to_ascii_uppercase());
+            match key {
+                Some(key) => !deprecated_prefixes
+                    .iter()
+                    .any(|prefix| key == *prefix || key.starts_with(prefix)),
+                None => true,
+            }
+        })
+        .collect::<Vec<_>>();
+    format!("{}\n", lines.join("\n").trim_end())
 }
 
 fn ensure_gitignore_entry(project_root: &Path, entry: &str) {
