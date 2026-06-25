@@ -264,6 +264,24 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
             });
             *by_type.entry("task".to_string()).or_default() += 1;
 
+            let mut task_text = content.clone();
+            for related in ["prd.md", "aar.md", "review.md", "validation.md"] {
+                let related_path = entry.join(related);
+                if related_path.exists() {
+                    task_text.push('\n');
+                    task_text.push_str(&fs::read_to_string(&related_path).unwrap_or_default());
+                }
+            }
+            add_text_mentions(
+                &mut nodes,
+                &mut edges,
+                &mut by_type,
+                &id,
+                &task_text,
+                title,
+                "task",
+            );
+
             // Edge: task → related files
             if let Some(refs) = task["references"].as_array() {
                 for r in refs {
@@ -380,6 +398,25 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
     let hw_path = ext_dir.join("hw.yaml");
     if hw_path.exists() {
         let content = fs::read_to_string(&hw_path).unwrap_or_default();
+        let hw_id = "truth:hw".to_string();
+        nodes.push(GraphNode {
+            id: hw_id.clone(),
+            node_type: "truth".to_string(),
+            label: "hw.yaml".to_string(),
+            summary: "Hardware truth file".to_string(),
+            status: "active".to_string(),
+            category: String::new(),
+        });
+        *by_type.entry("truth".to_string()).or_default() += 1;
+        add_text_mentions(
+            &mut nodes,
+            &mut edges,
+            &mut by_type,
+            &hw_id,
+            &content,
+            "hw.yaml",
+            "truth",
+        );
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.starts_with("- name:") {
@@ -405,6 +442,25 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
     let req_path = ext_dir.join("req.yaml");
     if req_path.exists() {
         let content = fs::read_to_string(&req_path).unwrap_or_default();
+        let req_id = "truth:req".to_string();
+        nodes.push(GraphNode {
+            id: req_id.clone(),
+            node_type: "truth".to_string(),
+            label: "req.yaml".to_string(),
+            summary: "Requirement truth file".to_string(),
+            status: "active".to_string(),
+            category: String::new(),
+        });
+        *by_type.entry("truth".to_string()).or_default() += 1;
+        add_text_mentions(
+            &mut nodes,
+            &mut edges,
+            &mut by_type,
+            &req_id,
+            &content,
+            "req.yaml",
+            "truth",
+        );
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.starts_with("- goal:") {
@@ -594,11 +650,62 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
     Ok(graph)
 }
 
+fn add_text_mentions(
+    nodes: &mut Vec<GraphNode>,
+    edges: &mut Vec<GraphEdge>,
+    by_type: &mut HashMap<String, usize>,
+    from_id: &str,
+    text: &str,
+    title: &str,
+    category: &str,
+) {
+    for symbol in extract_register_like_symbols(text).into_iter().take(40) {
+        let symbol_id = format!("register:{}", symbol.to_lowercase());
+        if !nodes.iter().any(|node| node.id == symbol_id) {
+            nodes.push(GraphNode {
+                id: symbol_id.clone(),
+                node_type: "register".to_string(),
+                label: symbol.clone(),
+                summary: format!("Register-like symbol extracted from {title}"),
+                status: "extracted".to_string(),
+                category: category.to_string(),
+            });
+            *by_type.entry("register".to_string()).or_default() += 1;
+        }
+        edges.push(GraphEdge {
+            from: from_id.to_string(),
+            to: symbol_id,
+            edge_type: "mentions".to_string(),
+            label: "register".to_string(),
+        });
+    }
+    for keyword in extract_domain_keywords(text).into_iter().take(20) {
+        let keyword_id = format!("concept:{}", keyword.to_lowercase());
+        if !nodes.iter().any(|node| node.id == keyword_id) {
+            nodes.push(GraphNode {
+                id: keyword_id.clone(),
+                node_type: "concept".to_string(),
+                label: keyword.clone(),
+                summary: format!("Domain concept extracted from {title}"),
+                status: "extracted".to_string(),
+                category: category.to_string(),
+            });
+            *by_type.entry("concept".to_string()).or_default() += 1;
+        }
+        edges.push(GraphEdge {
+            from: from_id.to_string(),
+            to: keyword_id,
+            edge_type: "mentions".to_string(),
+            label: "concept".to_string(),
+        });
+    }
+}
+
 fn extract_register_like_symbols(text: &str) -> Vec<String> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     for token in text.split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_') {
         let token = token.trim();
-        if token.len() < 3 || token.len() > 24 {
+        if token.len() < 2 || token.len() > 24 {
             continue;
         }
         let has_upper = token.chars().any(|ch| ch.is_ascii_uppercase());
@@ -644,6 +751,12 @@ fn extract_domain_keywords(text: &str) -> Vec<String> {
         "I2C",
         "SPI",
         "GPIO",
+        "IOCA",
+        "RA4",
+        "WPUA",
+        "消抖",
+        "按键",
+        "唤醒",
         "EEPROM",
         "复位",
         "中断",

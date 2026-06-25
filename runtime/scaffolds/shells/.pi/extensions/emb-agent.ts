@@ -135,6 +135,12 @@ interface SubagentRunState {
   routeHistory: string[];
 }
 
+interface KnowledgePrimingState {
+  tool: string;
+  query: string;
+  createdAt: number;
+}
+
 interface EmbSubagentResult {
   role: string;
   status: string;
@@ -422,6 +428,7 @@ const MAX_TAIL = 4_000;
 const MAX_SESSION_BYTES = 2 * 1024 * 1024;
 const SUBAGENT_MODEL_RETRIES = 3;
 const TUI_HEARTBEAT_MS = 200;
+const KNOWLEDGE_PRIMING_TTL_MS = 10 * 60_000;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 const INHERIT_MODEL_ROUTES: Record<string, ModelRoute> = {
@@ -1360,6 +1367,52 @@ function isLikelyMutationShellCommand(command: string): boolean {
   return mutationCommand || scriptWrite || outputRedirect;
 }
 
+function dispatchRequiresKnowledgePriming(plan?: SubagentDispatchPlan): boolean {
+  return Boolean(
+    plan &&
+    (plan.phase === "work-selection" || plan.phase === "task-execution") &&
+    plan.runs.some((run) => run.role === "fw-doer" || run.writable || run.intent === "implementation")
+  );
+}
+
+function hasFreshKnowledgePriming(cwd: string, pending?: { createdAt: number }, priming?: Map<string, KnowledgePrimingState>): boolean {
+  const state = priming?.get(cwd);
+  if (!state) return false;
+  if (Date.now() - state.createdAt > KNOWLEDGE_PRIMING_TTL_MS) return false;
+  if (pending && state.createdAt + 5_000 < pending.createdAt) return false;
+  return true;
+}
+
+function knowledgePrimingRequiredReason(targetTask?: string | null): string {
+  return [
+    "Before implementation dispatch or broad source inspection, call knowledge_search once for the target task first.",
+    targetTask ? `Target task: ${targetTask}.` : "Target task: unknown.",
+    "Search project knowledge for PRD/task context, prior notes, manual/register evidence, and known traps; then continue with emb_subagent or source reads.",
+    "This guard is structured by emb-agent task-execution/work-selection state, not natural-language keyword guessing.",
+  ].join(" ");
+}
+
+function isSourceInspectionPath(path: string): boolean {
+  const p = String(path || "").replace(/\\/g, "/");
+  if (!p || p.includes("/.emb-agent/") || p.includes("/docs/") || /(^|\/)README\.md$/i.test(p)) return false;
+  return Boolean(
+    /(^|\/)firmware\//i.test(p) ||
+    /(^|\/)(src|include|drivers?|app|hal|bsp)\/.*\.(c|h|cc|cpp|hpp|s|asm|inc)$/i.test(p) ||
+    /\.(c|h|cc|cpp|hpp|s|asm|inc|scw|mcw|uvprojx?|ioc|ld|lds|mk)$/i.test(p) ||
+    /(^|\/)(Makefile|CMakeLists\.txt)$/i.test(p)
+  );
+}
+
+function isSourceInspectionShellCommand(command: string): boolean {
+  const c = stripBenignShellRedirections(String(command || "")).replace(/\\/g, "/");
+  if (!/(^|[;&|\s])(find|rg|grep|cat|head|tail|sed\s+-n|awk|ls)\b/i.test(c)) return false;
+  return Boolean(
+    /(^|[\s'\"])(firmware|src|include|drivers?|app|hal|bsp)(\/|[\s'\"]|$)/i.test(c) ||
+    /\.(c|h|cc|cpp|hpp|s|asm|inc|scw|mcw|uvprojx?|ioc|ld|lds|mk)\b/i.test(c) ||
+    /\b(Makefile|CMakeLists\.txt)\b/i.test(c)
+  );
+}
+
 function isParentClosureDocPath(path: string): boolean {
   const p = String(path || "").replace(/\\/g, "/");
   return Boolean(
@@ -1401,6 +1454,7 @@ export default function (pi: ExtensionAPI) {
   const contexts = new Map<string, ContextEntry>();
   const dispatchGuards = new Map<string, DispatchGuard>();
   const pendingNativeDispatch = new Map<string, { prompt: string; result: EmbAgentResult; plan: SubagentDispatchPlan; createdAt: number }>();
+  const knowledgePriming = new Map<string, KnowledgePrimingState>();
 
   function markContextDirty(cwd: string) {
     const current = contexts.get(cwd);
@@ -1505,8 +1559,8 @@ export default function (pi: ExtensionAPI) {
           `Dispatch mode: ${pending.plan.mode}`,
           `Dispatch roles: ${roles.join(", ")}`,
           `Dispatch reason: ${pending.plan.reason}`,
-          "If the user's request is to implement/start/continue candidate work, call emb_subagent before parent-side source/build file mutation. If the user's request is only a question, clarification, task closure, AAR, or knowledge/documentation writeback, answer or write the closure docs normally without calling subagents.",
-          "Do not write/edit source/build files in the parent turn before emb_subagent finishes when implementation is intended. AAR/task status/attention/architecture/compound/wiki markdown closure writes are allowed.",
+          "If the user's request is to implement/start/continue candidate work, call knowledge_search first for the target task, then call emb_subagent before parent-side source/build file mutation. If the user's request is only a question, clarification, task closure, AAR, or knowledge/documentation writeback, answer or write the closure docs normally without calling subagents.",
+          "Do not perform broad source reads or write/edit source/build files before the implementation knowledge_search has run. AAR/task status/attention/architecture/compound/wiki markdown closure writes are allowed.",
         ].join("\n") + "\n";
         messageContent += `; dispatch plan ready (${roles.join(", ")})`;
       }
@@ -1528,6 +1582,13 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_call", async (event, ctx) => {
+    const pending = pendingNativeDispatch.get(ctx.cwd);
+    if (pending && dispatchRequiresKnowledgePriming(pending.plan) && !hasFreshKnowledgePriming(ctx.cwd, pending, knowledgePriming)) {
+      const reason = knowledgePrimingRequiredReason(pending.plan.targetTask);
+      if (event.toolName === "emb_subagent") return { block: true, reason };
+      if (event.toolName === "read" && isSourceInspectionPath(String((event.input as any)?.path || ""))) return { block: true, reason };
+      if (event.toolName === "bash" && isSourceInspectionShellCommand(String((event.input as any)?.command || ""))) return { block: true, reason };
+    }
     const guard = dispatchGuards.get(ctx.cwd);
     if (guard && Date.now() >= guard.until) dispatchGuards.delete(ctx.cwd);
     if (guard && Date.now() < guard.until && guard.phase === "waiting") {
@@ -1660,6 +1721,9 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params: Record<string, unknown>, signal, onUpdate, ctx) {
       const pending = pendingNativeDispatch.get(ctx.cwd);
+      if (pending && dispatchRequiresKnowledgePriming(pending.plan) && !hasFreshKnowledgePriming(ctx.cwd, pending, knowledgePriming)) {
+        return toolTextResult(`emb_subagent blocked: ${knowledgePrimingRequiredReason(pending.plan.targetTask)}`, { status: "blocked", reason: "knowledge_search_required" });
+      }
       const context = await prepareEmbContext(ctx.cwd);
       const prompt = String(params.prompt || pending?.prompt || "").trim();
       if (!prompt) return toolTextResult("emb_subagent error: missing prompt", { status: "error" });
@@ -1706,7 +1770,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "knowledge_search",
     label: "knowledge search",
-    description: "Search emb-agent native project knowledge index across truth files, PRDs, tasks, wiki, compound notes, and parsed document chunks. Prefer this before broad manual/file searches.",
+    description: "Search emb-agent native project knowledge index across truth files, PRDs, tasks, wiki, compound notes, and parsed document chunks. The tool auto-diagnoses and refreshes stale/missing native indexes before searching. Prefer this before broad manual/file searches.",
     promptSnippet: "Search emb-agent native project knowledge",
     promptGuidelines: ["Use knowledge_search for project knowledge, design rationale, PRD/task context, register/peripheral/manual evidence, and wiki-backed answers before broad file scans."],
     parameters: {
@@ -1723,10 +1787,25 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
       const args = ["knowledge", "search", "--query", String(params.query || ""), "--limit", String(Number(params.limit || 8))];
       if (params.rerank !== false) args.push("--rerank");
-      if (params.refresh) args.push("--refresh");
-      const result = await runEmbAgent(args, ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER });
+      const diagnose = await runEmbAgent(["knowledge", "diagnose"], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
+      const diag = diagnose.ok ? (diagnose.value as any) : undefined;
+      const shouldRefresh = Boolean(params.refresh) || !diagnose.ok || diag?.status === "missing" || diag?.status === "stale" || diag?.stale === true || Number(diag?.chunks || 0) === 0 || Number(diag?.sources || 0) === 0;
+      if (shouldRefresh) args.push("--refresh");
+      const result = await runEmbAgent(args, ctx.cwd, { timeoutMs: INGEST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER });
       if (!result.ok) return toolTextResult(errorText(result), result);
-      return toolTextResult(result.stdout.trim(), result.value);
+      const graphReport = await runEmbAgent(["knowledge", "graph", "report"], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER, allowNonJson: true });
+      const graphReportText = graphReport.ok ? graphReport.stdout : `${graphReport.message}\n${graphReport.stdout || ""}\n${graphReport.stderr || ""}`;
+      const graphNeedsRefresh = !graphReport.ok || /stale\s*[:=]\s*true|graph-stale|graph\.json not found|Trigger .*graph refresh/i.test(graphReportText);
+      let graphRefreshed = false;
+      if (shouldRefresh || graphNeedsRefresh) {
+        const graph = await runEmbAgent(["knowledge", "graph", "refresh"], ctx.cwd, { timeoutMs: INGEST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
+        graphRefreshed = graph.ok;
+      }
+      knowledgePriming.set(ctx.cwd, { tool: "knowledge_search", query: String(params.query || ""), createdAt: Date.now() });
+      const prefix = shouldRefresh || graphNeedsRefresh
+        ? `[knowledge ${shouldRefresh ? "index refreshed" : "index current"}; graph ${graphRefreshed ? "refreshed" : "refresh skipped/failed"} before search]\n`
+        : "";
+      return toolTextResult(prefix + result.stdout.trim(), result.value);
     },
   });
 
@@ -1756,9 +1835,11 @@ export default function (pi: ExtensionAPI) {
     } as Record<string, unknown>,
     async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
       const sub = params.explain ? "explain" : "query";
+      const refresh = await runEmbAgent(["knowledge", "graph", "refresh"], ctx.cwd, { timeoutMs: INGEST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
+      if (!refresh.ok) return toolTextResult(errorText(refresh), refresh);
       const result = await runEmbAgent(["knowledge", "graph", sub, String(params.query || "")], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
       if (!result.ok) return toolTextResult(errorText(result), result);
-      return toolTextResult(result.stdout.trim(), result.value);
+      return toolTextResult("[knowledge graph refreshed before query]\n" + result.stdout.trim(), result.value);
     },
   });
   pi.registerTool({
