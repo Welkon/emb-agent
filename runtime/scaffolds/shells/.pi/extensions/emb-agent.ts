@@ -222,6 +222,24 @@ function summarizeKnowledgeGraph(value: any): string {
   return `Project knowledge graph queried; ${nodes} node hit(s), ${edges} edge hit(s). Raw graph results were injected as hidden context.`;
 }
 
+function summarizeIngestResult(value: any): string {
+  const status = String(value?.status || (value?.parsed ? "ok" : "done"));
+  const provider = value?.provider ? `, provider=${value.provider}` : "";
+  const mode = value?.parser_mode ? `, parser=${value.parser_mode}` : "";
+  return `Document/schematic ingest completed: ${status}${provider}${mode}. Detailed ingest result was injected as hidden context.`;
+}
+
+function summarizeDocLookup(value: any, stdout: string): string {
+  const count = Number(value?.count ?? value?.hits?.length ?? value?.results?.length ?? 0);
+  const suffix = count > 0 ? `; ${count} hit(s)` : stdout.trim() ? "; result available" : "; no visible hits";
+  return `Document cache lookup completed${suffix}. Raw lookup result was injected as hidden context.`;
+}
+
+function summarizeDocFetch(stdout: string): string {
+  const bytes = Buffer.byteLength(stdout || "", "utf8");
+  return `Cached document content fetched (${bytes} byte(s)). Raw content was injected as hidden context.`;
+}
+
 function toolTextResult(text: string, details?: unknown) {
   const payload: { content: { type: "text"; text: string }[]; details?: unknown } = {
     content: [{ type: "text", text }],
@@ -446,6 +464,7 @@ const PARENT_MUTATION_TOOLS = new Set(["write", "edit"]);
 const EMB_AUTO_DISPATCH_MARKER = "[emb-agent:native-subagent-dispatch-active]";
 const EMB_HIDDEN_RESULTS_MARKER = "[emb-agent:hidden-subagent-results]";
 const EMB_HIDDEN_KNOWLEDGE_MARKER = "[emb-agent:hidden-knowledge-results]";
+const EMB_HIDDEN_DOC_MARKER = "[emb-agent:hidden-doc-results]";
 const EMB_CHILD_ENV = "EMB_AGENT_SUBAGENT_CHILD";
 const MAX_SUBAGENT_OUTPUT = 50_000;
 const MAX_TAIL = 4_000;
@@ -1988,16 +2007,31 @@ export default function (pi: ExtensionAPI) {
       },
       required: ["file"],
     } as Record<string, unknown>,
+    renderCall(_args: Record<string, unknown>, theme: any) {
+      return new Text(`${theme.bold("ingest_doc")} ${theme.fg("dim", "hidden")}`, 0, 0);
+    },
+    renderResult(result: any, _ctx: any, theme: any) {
+      const text = result?.content?.[0]?.text || "Document/schematic ingest completed. Detailed result was injected as hidden context.";
+      return new Text(theme.fg("muted", String(text)), 0, 0);
+    },
     async execute(_toolCallId, params: Record<string, unknown>, _signal, onUpdate, ctx) {
       let cliArgs: string[];
       try { cliArgs = buildIngestDocArgs(params); }
       catch (error: any) { return toolTextResult(error?.message || String(error), { status: "error" }); }
-      onUpdate?.(toolTextResult(`Running emb-agent ${cliArgs.join(" ")}`));
+      onUpdate?.(toolTextResult("Running emb-agent document ingest."));
       const timeoutMs = Number(params.timeoutMs || 0) || INGEST_TIMEOUT_MS;
       const result = await runEmbAgent(cliArgs, ctx.cwd, { timeoutMs, maxBuffer: INGEST_MAX_BUFFER });
       if (!result.ok) return toolTextResult(errorText(result), result);
       markContextDirty(ctx.cwd);
-      return toolTextResult(renderIngestLines(result.value).join("\n"), result.value);
+      await pi.sendMessage({
+        customType: "emb-agent-doc-ingest",
+        content:
+          `${EMB_HIDDEN_DOC_MARKER}\n` +
+          "Hidden document/schematic ingest result for the parent agent. Do not paste raw JSON, cached paths, parsed content, or ingest internals to the user. Use only concise conclusions.\n\n" +
+          result.stdout.trim(),
+        display: false,
+      } as any);
+      return toolTextResult(summarizeIngestResult(result.value as any), result.value);
     },
   });
 
@@ -2011,12 +2045,27 @@ export default function (pi: ExtensionAPI) {
       properties: { keyword: { type: "string" }, chip: { type: "string" } },
       required: ["keyword"],
     } as Record<string, unknown>,
+    renderCall(_args: Record<string, unknown>, theme: any) {
+      return new Text(`${theme.bold("doc_lookup")} ${theme.fg("dim", "hidden")}`, 0, 0);
+    },
+    renderResult(result: any, _ctx: any, theme: any) {
+      const text = result?.content?.[0]?.text || "Document cache lookup completed. Raw result was injected as hidden context.";
+      return new Text(theme.fg("muted", String(text)), 0, 0);
+    },
     async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
       const args = ["doc", "lookup", "--keyword", String(params.keyword || "")];
       if (params.chip) args.push("--chip", String(params.chip));
       const result = await runEmbAgent(args, ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER });
       if (!result.ok) return toolTextResult(errorText(result), result);
-      return toolTextResult(result.stdout.trim(), result.value);
+      await pi.sendMessage({
+        customType: "emb-agent-doc-lookup",
+        content:
+          `${EMB_HIDDEN_DOC_MARKER}\n` +
+          "Hidden document lookup result for the parent agent. Do not paste raw JSON, full snippets, cached paths, scores, or lookup internals to the user. Use only concise source-backed conclusions.\n\n" +
+          result.stdout.trim(),
+        display: false,
+      } as any);
+      return toolTextResult(summarizeDocLookup(result.value as any, result.stdout), result.value);
     },
   });
 
@@ -2026,10 +2075,25 @@ export default function (pi: ExtensionAPI) {
     description: "Fetch cached parsed markdown for a document path, or cached parsed schematic JSON for SchDoc/schematic paths. Use after ingest_doc/ingest schematic, not on raw PDFs before ingest.",
     promptSnippet: "Fetch cached parsed markdown or schematic parse for a source path",
     parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } as Record<string, unknown>,
+    renderCall(_args: Record<string, unknown>, theme: any) {
+      return new Text(`${theme.bold("doc_fetch")} ${theme.fg("dim", "hidden")}`, 0, 0);
+    },
+    renderResult(result: any, _ctx: any, theme: any) {
+      const text = result?.content?.[0]?.text || "Cached document content fetched. Raw content was injected as hidden context.";
+      return new Text(theme.fg("muted", String(text)), 0, 0);
+    },
     async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
       const result = await runEmbAgent(["doc", "fetch", "--path", String(params.path || "")], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER, allowNonJson: true });
       if (!result.ok) return toolTextResult(errorText(result), result);
-      return toolTextResult(result.stdout.trim(), { path: params.path });
+      await pi.sendMessage({
+        customType: "emb-agent-doc-fetch",
+        content:
+          `${EMB_HIDDEN_DOC_MARKER}\n` +
+          "Hidden cached document/schematic content for the parent agent. Do not paste raw parsed markdown, schematic JSON, cached paths, or large excerpts to the user. Use only concise source-backed conclusions.\n\n" +
+          result.stdout.trim(),
+        display: false,
+      } as any);
+      return toolTextResult(summarizeDocFetch(result.stdout), { path: params.path, bytes: Buffer.byteLength(result.stdout || "", "utf8") });
     },
   });
 
