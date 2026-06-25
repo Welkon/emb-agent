@@ -1102,7 +1102,7 @@ function deployPiSettingsJson(projectRoot, srcPath, destPath) {
 	var existingSubagents = existingEmb.subagents && typeof existingEmb.subagents === "object" ? existingEmb.subagents : {};
 	merged.embAgent.subagents = Object.assign({}, templateSubagents, existingSubagents);
 	var templateRoutes = templateEmb.subagentModelRoutes && typeof templateEmb.subagentModelRoutes === "object" ? templateEmb.subagentModelRoutes : {};
-	var existingRoutes = existingEmb.subagentModelRoutes && typeof existingEmb.subagentModelRoutes === "object" ? stripLegacyGeneratedSubagentModelRouteEntries(existingEmb.subagentModelRoutes) : {};
+	var existingRoutes = existingEmb.subagentModelRoutes && typeof existingEmb.subagentModelRoutes === "object" ? existingEmb.subagentModelRoutes : {};
 	merged.embAgent.subagentModelRoutes = Object.assign({}, templateRoutes, existingRoutes);
 	delete merged.subagents;
 	ensureDir(path.dirname(destPath));

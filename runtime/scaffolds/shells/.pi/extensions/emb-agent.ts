@@ -129,6 +129,10 @@ interface SubagentRunState {
   finalText: string;
   errorMessage?: string;
   usage: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number; turns: number; ctxTokens: number };
+  usageMessageIds: string[];
+  attempt: number;
+  attemptsMax: number;
+  routeHistory: string[];
 }
 
 interface EmbSubagentResult {
@@ -416,6 +420,9 @@ const EMB_CHILD_ENV = "EMB_AGENT_SUBAGENT_CHILD";
 const MAX_SUBAGENT_OUTPUT = 50_000;
 const MAX_TAIL = 4_000;
 const MAX_SESSION_BYTES = 2 * 1024 * 1024;
+const SUBAGENT_MODEL_RETRIES = 3;
+const TUI_HEARTBEAT_MS = 1000;
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 const INHERIT_MODEL_ROUTES: Record<string, ModelRoute> = {
   "hw-scout": { model: "inherit" },
@@ -484,6 +491,7 @@ function stripLegacyGeneratedModelRouteEntries(value: unknown): Record<string, u
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const routes = { ...(value as Record<string, unknown>) };
   for (const [name, legacy] of Object.entries(LEGACY_AUTO_AGENT_MODEL_ROUTES)) {
+    if (WRITE_CAPABLE_AGENTS.has(name)) continue;
     if (sameModelRoute(routes[name], legacy)) delete routes[name];
   }
   return routes;
@@ -499,7 +507,9 @@ function configuredModelRoutes(settings: Record<string, unknown>): Record<string
     ? settings.embAgent as Record<string, unknown>
     : {};
   const rawRoutes = embAgent.subagentModelRoutes;
-  const userRoutes = stripLegacyGeneratedModelRouteEntries(rawRoutes);
+  const userRoutes = rawRoutes && typeof rawRoutes === "object" && !Array.isArray(rawRoutes)
+    ? rawRoutes as Record<string, unknown>
+    : {};
   for (const [name, value] of Object.entries(userRoutes)) {
     const normalized = normalizeModelRoute(value);
     if (normalized) routes[name] = normalized;
@@ -542,8 +552,7 @@ async function ensureSubagentSettings(cwd: string) {
     embAgent.subagentModelRoutes = DEFAULT_AUTO_AGENT_MODEL_ROUTES;
     changed = true;
   } else {
-    const cleanedRoutes = stripLegacyGeneratedModelRouteEntries(embAgent.subagentModelRoutes);
-    const mergedRoutes = { ...DEFAULT_AUTO_AGENT_MODEL_ROUTES, ...cleanedRoutes };
+    const mergedRoutes = { ...DEFAULT_AUTO_AGENT_MODEL_ROUTES, ...(embAgent.subagentModelRoutes as Record<string, unknown>) };
     if (JSON.stringify(embAgent.subagentModelRoutes) !== JSON.stringify(mergedRoutes)) {
       embAgent.subagentModelRoutes = mergedRoutes;
       changed = true;
@@ -761,11 +770,61 @@ function newRunState(role: string, task: string, route?: ModelRoute): SubagentRu
     stderrTail: "",
     finalText: "",
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, ctxTokens: 0 },
+    usageMessageIds: [],
+    attempt: 0,
+    attemptsMax: route?.model && route.model !== "inherit" ? SUBAGENT_MODEL_RETRIES + 1 : 1,
+    routeHistory: [],
   };
+}
+
+function addUsage(state: SubagentRunState, usageValue: unknown): boolean {
+  if (!usageValue || typeof usageValue !== "object" || Array.isArray(usageValue)) return false;
+  const usage = usageValue as Record<string, any>;
+  const cost = usage.cost && typeof usage.cost === "object" ? usage.cost as Record<string, any> : {};
+  const input = Number(usage.input ?? usage.inputTokens ?? usage.promptTokens ?? 0);
+  const output = Number(usage.output ?? usage.outputTokens ?? usage.completionTokens ?? 0);
+  const cacheRead = Number(usage.cacheRead ?? usage.cache_read ?? usage.cachedTokens ?? 0);
+  const cacheWrite = Number(usage.cacheWrite ?? usage.cache_write ?? 0);
+  const totalTokens = Number(usage.totalTokens ?? usage.total_tokens ?? 0);
+  const totalCost = Number(cost.total ?? usage.costTotal ?? usage.totalCost ?? 0);
+  const before = JSON.stringify(state.usage);
+  state.usage.input += Number.isFinite(input) ? input : 0;
+  state.usage.output += Number.isFinite(output) ? output : 0;
+  state.usage.cacheRead += Number.isFinite(cacheRead) ? cacheRead : 0;
+  state.usage.cacheWrite += Number.isFinite(cacheWrite) ? cacheWrite : 0;
+  state.usage.cost += Number.isFinite(totalCost) ? totalCost : 0;
+  if (Number.isFinite(totalTokens) && totalTokens > 0) state.usage.ctxTokens = totalTokens;
+  else state.usage.ctxTokens = Math.max(state.usage.ctxTokens, state.usage.input + state.usage.output + state.usage.cacheRead + state.usage.cacheWrite);
+  return JSON.stringify(state.usage) !== before;
+}
+
+function applyAssistantMessage(state: SubagentRunState, msg: Record<string, unknown>, messageId = ""): boolean {
+  if (msg.role !== "assistant") return false;
+  const id = String(messageId || msg.id || msg.responseId || "");
+  const alreadyCounted = Boolean(id && state.usageMessageIds.includes(id));
+  if (id && !alreadyCounted) state.usageMessageIds.push(id);
+  if (state.usageMessageIds.length > 100) state.usageMessageIds.splice(0, state.usageMessageIds.length - 100);
+  let usageChanged = false;
+  if (!alreadyCounted) {
+    state.usage.turns += 1;
+    usageChanged = addUsage(state, msg.usage);
+  }
+  const text = textFromContent(msg.content);
+  const textChanged = Boolean(text);
+  if (textChanged) {
+    state.finalText = text;
+    state.textTail = appendTail("", text);
+  }
+  const modelChanged = typeof msg.model === "string" && msg.model !== state.model;
+  if (typeof msg.model === "string") state.model = msg.model;
+  const errorChanged = typeof msg.errorMessage === "string" && msg.errorMessage !== state.errorMessage;
+  if (typeof msg.errorMessage === "string") state.errorMessage = msg.errorMessage;
+  return usageChanged || textChanged || modelChanged || errorChanged;
 }
 
 function applyPiEvent(state: SubagentRunState, evt: Record<string, unknown>): boolean {
   const type = String(evt.type || "");
+  const topLevelUsageChanged = addUsage(state, evt.usage);
   if (type === "agent_start" || type === "turn_start") {
     state.status = "running";
     state.startedAt ??= Date.now();
@@ -780,26 +839,8 @@ function applyPiEvent(state: SubagentRunState, evt: Record<string, unknown>): bo
     else return false;
     return true;
   }
-  if (type === "message_end" && evt.message && typeof evt.message === "object") {
-    const msg = evt.message as Record<string, unknown>;
-    if (msg.role !== "assistant") return false;
-    state.usage.turns += 1;
-    const usage = msg.usage && typeof msg.usage === "object" ? msg.usage as Record<string, any> : {};
-    const cost = usage.cost && typeof usage.cost === "object" ? usage.cost as Record<string, any> : {};
-    state.usage.input += Number(usage.input || 0);
-    state.usage.output += Number(usage.output || 0);
-    state.usage.cacheRead += Number(usage.cacheRead || 0);
-    state.usage.cacheWrite += Number(usage.cacheWrite || 0);
-    state.usage.cost += Number(cost.total || 0);
-    state.usage.ctxTokens = Number(usage.totalTokens || state.usage.ctxTokens || 0);
-    const text = textFromContent(msg.content);
-    if (text) {
-      state.finalText = text;
-      state.textTail = appendTail("", text);
-    }
-    if (typeof msg.model === "string") state.model = msg.model;
-    if (typeof msg.errorMessage === "string") state.errorMessage = msg.errorMessage;
-    return true;
+  if ((type === "message_end" || type === "message") && evt.message && typeof evt.message === "object") {
+    return applyAssistantMessage(state, evt.message as Record<string, unknown>, String(evt.id || evt.messageId || "")) || topLevelUsageChanged;
   }
   if (type === "tool_execution_start") {
     const id = String(evt.toolCallId || `${Date.now()}`);
@@ -822,7 +863,7 @@ function applyPiEvent(state: SubagentRunState, evt: Record<string, unknown>): bo
     if (state.status === "running" || state.status === "pending") state.status = "succeeded";
     return true;
   }
-  return false;
+  return topLevelUsageChanged;
 }
 
 function getPiInvocation(args: string[]): { command: string; args: string[] } {
@@ -868,7 +909,7 @@ function buildSubagentPrompt(role: string, userPrompt: string, result?: EmbAgent
   ].join("\n");
 }
 
-async function runPiSubagent(cwd: string, role: string, prompt: string, route: ModelRoute | undefined, state: SubagentRunState, emit: () => void, signal?: AbortSignal): Promise<EmbSubagentResult> {
+function buildPiSubagentArgs(prompt: string, role: string, route: ModelRoute | undefined): string[] {
   const args = ["--mode", "json", "-p", "--no-session"];
   if (route?.model && route.model !== "inherit") args.push("--model", route.model);
   if (route?.thinking) args.push("--thinking", route.thinking);
@@ -877,6 +918,25 @@ async function runPiSubagent(cwd: string, role: string, prompt: string, route: M
     : "read,grep,find,ls,bash,edit,write,doc_lookup,doc_fetch,knowledge_search,knowledge_diagnose,knowledge_graph_query";
   args.push("--tools", tools);
   args.push(prompt);
+  return args;
+}
+
+function shouldRetrySubagentFailure(state: SubagentRunState): boolean {
+  if (state.status === "cancelled") return false;
+  if (state.finalText || state.textTail || state.tools.length > 0) return false;
+  const text = `${state.errorMessage || ""}\n${state.stderrTail || ""}`.toLowerCase();
+  if (/model|provider|auth|unauthori[sz]ed|not found|unavailable|invalid|404|429|rate limit|quota|api key|spawn|exit/.test(text)) return true;
+  return true;
+}
+
+async function runPiSubagentOnce(cwd: string, role: string, prompt: string, route: ModelRoute | undefined, state: SubagentRunState, emit: () => void, signal?: AbortSignal): Promise<EmbSubagentResult> {
+  const args = buildPiSubagentArgs(prompt, role, route);
+  state.model = route?.model && route.model !== "inherit" ? route.model : undefined;
+  state.thinking = route?.thinking;
+  state.routeHistory.push(route?.model && route.model !== "inherit" ? route.model : "inherit");
+  state.status = "running";
+  state.startedAt = Date.now();
+  emit();
 
   return new Promise((resolve) => {
     const inv = getPiInvocation(args);
@@ -904,9 +964,6 @@ async function runPiSubagent(cwd: string, role: string, prompt: string, route: M
       done({ role, status: state.status, output: state.finalText || "cancelled", model: state.model, thinking: state.thinking, error: "cancelled" });
     };
     signal?.addEventListener("abort", abort, { once: true });
-    state.status = "running";
-    state.startedAt = Date.now();
-    emit();
     const processLine = (line: string) => {
       const evt = parseJsonEvent(line);
       if (evt && applyPiEvent(state, evt)) emit();
@@ -945,6 +1002,27 @@ async function runPiSubagent(cwd: string, role: string, prompt: string, route: M
   });
 }
 
+async function runPiSubagent(cwd: string, role: string, prompt: string, route: ModelRoute | undefined, state: SubagentRunState, emit: () => void, signal?: AbortSignal): Promise<EmbSubagentResult> {
+  const explicitModel = route?.model && route.model !== "inherit";
+  const routes: ModelRoute[] = explicitModel
+    ? [...Array(SUBAGENT_MODEL_RETRIES).fill(route), { model: "inherit" }]
+    : [route || { model: "inherit" }];
+  state.attemptsMax = routes.length;
+  let last: EmbSubagentResult | null = null;
+  for (let i = 0; i < routes.length; i++) {
+    state.attempt = i + 1;
+    state.errorMessage = undefined;
+    state.stderrTail = "";
+    last = await runPiSubagentOnce(cwd, role, prompt, routes[i], state, emit, signal);
+    if (last.status === "succeeded" || last.status === "cancelled") return last;
+    if (i >= routes.length - 1 || !shouldRetrySubagentFailure(state)) return last;
+    state.status = "pending";
+    state.errorMessage = `retrying after ${last.error || last.status}`;
+    emit();
+  }
+  return last || { role, status: "failed", output: "subagent failed before start", model: state.model, thinking: state.thinking, error: "subagent failed before start" };
+}
+
 async function runEmbSubagentBatch(cwd: string, userPrompt: string, planOrRoles: SubagentDispatchPlan | string[], result: EmbAgentResult | undefined, signal: AbortSignal | undefined, onUpdate?: (r: any) => void): Promise<{ output: string; details: EmbSubagentProgress; failed: boolean; results: EmbSubagentResult[]; plan: SubagentDispatchPlan }> {
   const plan: SubagentDispatchPlan = Array.isArray(planOrRoles)
     ? {
@@ -961,28 +1039,33 @@ async function runEmbSubagentBatch(cwd: string, userPrompt: string, planOrRoles:
   let lastKey = "";
   const emit = (force = false) => {
     details.updatedAt = Date.now();
-    const key = JSON.stringify(details.roles.map((r) => [r.role, r.status, r.tools.length, r.textTail, r.stderrTail]));
+    const key = JSON.stringify(details.roles.map((r) => [r.role, r.status, r.tools.length, r.textTail, r.stderrTail, r.usage]));
     if (!force && key === lastKey) return;
     lastKey = key;
     onUpdate?.({ content: [{ type: "text", text: renderSubagentProgress(details, false) }], details: clone(details) });
   };
   details.roles = runs.map((run) => newRunState(run.role, run.prompt, routes[run.role]));
   emit(true);
+  const heartbeat = setInterval(() => emit(true), TUI_HEARTBEAT_MS);
   const runOne = (run: SubagentDispatchRun, state: SubagentRunState, previousOutput?: string) => {
     const delegatedPrompt = previousOutput ? rolePrompt(run.role, run.intent, userPrompt, result || {}, run.targetTask || plan.targetTask, previousOutput) : run.prompt;
     return runPiSubagent(cwd, run.role, buildSubagentPrompt(run.role, delegatedPrompt, result), routes[run.role], state, () => emit(), signal);
   };
   let results: EmbSubagentResult[] = [];
-  if (plan.mode === "chain") {
-    let previous = "";
-    for (let i = 0; i < runs.length; i++) {
-      const item = await runOne(runs[i]!, details.roles[i]!, previous);
-      results.push(item);
-      previous = [previous, `## ${item.role} (${item.status})\n${item.output}`].filter(Boolean).join("\n\n---\n\n");
-      if (item.status !== "succeeded") break;
+  try {
+    if (plan.mode === "chain") {
+      let previous = "";
+      for (let i = 0; i < runs.length; i++) {
+        const item = await runOne(runs[i]!, details.roles[i]!, previous);
+        results.push(item);
+        previous = [previous, `## ${item.role} (${item.status})\n${item.output}`].filter(Boolean).join("\n\n---\n\n");
+        if (item.status !== "succeeded") break;
+      }
+    } else {
+      results = await Promise.all(runs.map((run, index) => runOne(run, details.roles[index]!)));
     }
-  } else {
-    results = await Promise.all(runs.map((run, index) => runOne(run, details.roles[index]!)));
+  } finally {
+    clearInterval(heartbeat);
   }
   details.final = true;
   details.updatedAt = Date.now();
@@ -996,11 +1079,65 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
 
+function formatTokenCount(value: number): string {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(Math.round(n));
+}
+
+function formatCost(value: number): string {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  if (n < 0.001) return `$${n.toFixed(6)}`;
+  return `$${n.toFixed(4)}`;
+}
+
+function usageTotal(usage: SubagentRunState["usage"]): number {
+  return Number(usage.input || 0) + Number(usage.output || 0) + Number(usage.cacheRead || 0) + Number(usage.cacheWrite || 0);
+}
+
+function formatUsage(usage: SubagentRunState["usage"]): string {
+  const total = usageTotal(usage);
+  if (!total && !usage.ctxTokens && !usage.cost) return "";
+  const parts = [
+    `tok ${formatTokenCount(total)}`,
+    usage.input ? `in ${formatTokenCount(usage.input)}` : null,
+    usage.output ? `out ${formatTokenCount(usage.output)}` : null,
+    usage.cacheRead ? `cache ${formatTokenCount(usage.cacheRead)}` : null,
+    usage.ctxTokens ? `ctx ${formatTokenCount(usage.ctxTokens)}` : null,
+    formatCost(usage.cost) || null,
+  ].filter(Boolean);
+  return parts.join("/");
+}
+
+function aggregateUsage(roles: SubagentRunState[]): SubagentRunState["usage"] {
+  return roles.reduce((acc, role) => {
+    acc.input += Number(role.usage?.input || 0);
+    acc.output += Number(role.usage?.output || 0);
+    acc.cacheRead += Number(role.usage?.cacheRead || 0);
+    acc.cacheWrite += Number(role.usage?.cacheWrite || 0);
+    acc.cost += Number(role.usage?.cost || 0);
+    acc.turns += Number(role.usage?.turns || 0);
+    acc.ctxTokens = Math.max(acc.ctxTokens, Number(role.usage?.ctxTokens || 0));
+    return acc;
+  }, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, ctxTokens: 0 });
+}
+
 function renderSubagentProgress(details: EmbSubagentProgress, includeOutput = true): string {
-  const lines = [`emb-agent native subagents · ${details.final ? "done" : "running"}`];
+  const totalUsage = aggregateUsage(details.roles);
+  const usageSummary = formatUsage(totalUsage);
+  const lines = [`emb-agent native subagents · ${details.final ? "done" : "running"}${usageSummary ? ` · total ${usageSummary}` : ""}`];
   for (const role of details.roles) {
-    const icon = role.status === "succeeded" ? "✓" : role.status === "failed" ? "✗" : role.status === "cancelled" ? "!" : "⠸";
-    const stats = [role.tools.length ? `${role.tools.length} tools` : null, role.model || null, role.thinking ? `thinking=${role.thinking}` : null].filter(Boolean).join(" · ");
+    const running = role.status === "running" || role.status === "pending";
+    const frame = SPINNER_FRAMES[Math.floor((Date.now() - details.startedAt) / 120) % SPINNER_FRAMES.length] || "⠸";
+    const icon = role.status === "succeeded" ? "✓" : role.status === "failed" ? "✗" : role.status === "cancelled" ? "!" : running ? frame : "⠸";
+    const roleUsage = formatUsage(role.usage);
+    const attempt = role.attempt ? `try ${role.attempt}/${role.attemptsMax || 1}` : null;
+    const route = role.routeHistory.length > 1 ? `route ${role.routeHistory.join("→")}` : null;
+    const stats = [attempt, role.tools.length ? `${role.tools.length} tools` : null, role.model || null, route, role.thinking ? `thinking=${role.thinking}` : null, roleUsage || null].filter(Boolean).join(" · ");
     lines.push(`${icon} ${role.role} ${role.status}${stats ? ` · ${stats}` : ""}`);
     if (includeOutput && role.textTail) lines.push(`  ${role.textTail.slice(-300).replace(/\s+/g, " ")}`);
     if (role.errorMessage) lines.push(`  error: ${role.errorMessage}`);
