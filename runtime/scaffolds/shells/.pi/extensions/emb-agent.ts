@@ -421,7 +421,7 @@ const MAX_SUBAGENT_OUTPUT = 50_000;
 const MAX_TAIL = 4_000;
 const MAX_SESSION_BYTES = 2 * 1024 * 1024;
 const SUBAGENT_MODEL_RETRIES = 3;
-const TUI_HEARTBEAT_MS = 1000;
+const TUI_HEARTBEAT_MS = 200;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 const INHERIT_MODEL_ROUTES: Record<string, ModelRoute> = {
@@ -1127,7 +1127,7 @@ function renderSubagentProgress(details: EmbSubagentProgress, includeOutput = tr
   const lines = [`emb-agent native subagents · ${details.final ? "done" : "running"}${usageSummary ? ` · total ${usageSummary}` : ""}`];
   for (const role of details.roles) {
     const running = role.status === "running" || role.status === "pending";
-    const frame = SPINNER_FRAMES[Math.floor((Date.now() - details.startedAt) / 120) % SPINNER_FRAMES.length] || "⠸";
+    const frame = SPINNER_FRAMES[Math.floor((Date.now() - details.startedAt) / TUI_HEARTBEAT_MS) % SPINNER_FRAMES.length] || "⠸";
     const icon = role.status === "succeeded" ? "✓" : role.status === "failed" ? "✗" : role.status === "cancelled" ? "!" : running ? frame : "⠸";
     const roleUsage = formatContextUsage(role.usage);
     const attempt = role.attempt ? `try ${role.attempt}/${role.attemptsMax || 1}` : null;
