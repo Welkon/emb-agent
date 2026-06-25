@@ -387,6 +387,7 @@ function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): str
 
 const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"]);
 const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "onboard"]);
+const SUPPORTED_AGENT_NAMES = new Set([...READ_ONLY_AGENT_NAMES, ...WRITE_CAPABLE_AGENTS]);
 const PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS = 180_000;
 const RAW_SUBAGENT_OUTPUT_GUARD_MS = 60_000;
 const PARENT_BLOCKED_TOOLS = new Set(["read", "bash", "write", "edit", "grep", "find", "ls", "emb_next", "doc_lookup", "doc_fetch"]);
@@ -513,7 +514,18 @@ async function ensureSubagentSettings(cwd: string) {
 
 function promptLooksBroadFirmwareWork(prompt: string): boolean {
   const text = String(prompt || "").toLowerCase();
-  return /系统框架|框架|架构|重构|整体|全局|梳理|迁移|移植|sdk|toolchain|工具链|bsp|hal|驱动|外设|多个|多路|睡眠|唤醒|低功耗|watchdog|看门狗|lvd|brownout|bootloader|升级|调度|scheduler|framework|architecture|refactor|migration|porting|peripheral|power|sleep|wake|timer|pwm|adc|uart|i2c|spi/.test(text);
+  return /全部执行|全部做|执行全部|执行所有|开始执行|直接执行|实现全部|全部实现|写代码|编码|开发|完成所有|所有任务|all tasks|execute all|implement all|implement|code|系统框架|框架|架构|重构|整体|全局|梳理|迁移|移植|sdk|toolchain|工具链|bsp|hal|驱动|外设|多个|多路|睡眠|唤醒|低功耗|watchdog|看门狗|lvd|brownout|bootloader|升级|调度|scheduler|framework|architecture|refactor|migration|porting|peripheral|power|sleep|wake|timer|pwm|adc|uart|i2c|spi/.test(text);
+}
+
+function promptLooksImplementationWork(prompt: string): boolean {
+  const text = String(prompt || "").toLowerCase();
+  return /全部执行|全部做|执行全部|执行所有|开始执行|直接执行|实现全部|全部实现|写代码|编码|开发|完成所有|所有任务|all tasks|execute all|implement all|implement|code/.test(text);
+}
+
+function isWorkSelection(result: EmbAgentResult): boolean {
+  const gate = String(result.agent_protocol?.gate?.kind || "").toLowerCase();
+  const action = String(result.action || "").toLowerCase();
+  return gate.includes("work-selection") || action === "choose-work";
 }
 
 function isPrdExploration(result: EmbAgentResult): boolean {
@@ -530,10 +542,13 @@ function shouldAutoDispatchSubagents(prompt: string, result: EmbAgentResult, set
   const policy = result.delegation_policy || result.agent_protocol?.gate?.delegation_policy;
   if (!policy?.applies_when_host_exposes_subagent_tool) return false;
   if (!promptLooksBroadFirmwareWork(prompt)) return false;
+  if (promptLooksImplementationWork(prompt) && isWorkSelection(result)) return true;
   return Boolean(policy.required_before_broad_work || isPrdExploration(result));
 }
 
-function autoDispatchRoles(result: EmbAgentResult): string[] {
+function autoDispatchRoles(prompt: string, result: EmbAgentResult): string[] {
+  if (promptLooksImplementationWork(prompt) && isWorkSelection(result)) return ["fw-doer"];
+  if (promptLooksImplementationWork(prompt) && !isPrdExploration(result)) return ["fw-doer"];
   return isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
 }
 
@@ -663,6 +678,7 @@ function buildSubagentPrompt(role: string, userPrompt: string, result?: EmbAgent
   const nextLines = result ? renderNextLines(result) : [];
   const focus: Record<string, string> = {
     "hw-scout": "Locate hardware/register/manual/schematic/pin-map facts. Return evidence paths, exact constraints, gaps, and firmware risks.",
+    "fw-doer": "Implement focused firmware changes in the repository. Keep edits scoped, preserve project conventions, and report changed files plus validation evidence.",
     "arch-reviewer": "Review architecture/framework boundaries, scheduler/timing implications, ISR boundaries, RAM/ROM risk, and safe vertical slices.",
     "sys-reviewer": "Review requirements, concurrency, power/sleep/wakeup behavior, verification order, and system-level failure modes.",
     "bug-hunter": "Find likely root causes, risky assumptions, regression vectors, and minimal validation steps.",
@@ -802,7 +818,7 @@ function renderSubagentProgress(details: EmbSubagentProgress, includeOutput = tr
 async function autoDispatchSubagents(cwd: string, userPrompt: string, result: EmbAgentResult, signal: AbortSignal | undefined, onUpdate?: (r: any) => void): Promise<AutoDispatchResult & { output?: string; details?: EmbSubagentProgress }> {
   const settings = await readPiSettings(cwd);
   if (!shouldAutoDispatchSubagents(userPrompt, result, settings)) return { attempted: false, roles: [], errors: [] };
-  const roles = autoDispatchRoles(result).filter((role) => READ_ONLY_AGENT_NAMES.has(role));
+  const roles = autoDispatchRoles(userPrompt, result).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
   try {
     const batch = await runEmbSubagentBatch(cwd, userPrompt, roles, result, signal, onUpdate);
     return { attempted: true, batchId: batch.details.batchId, roles, errors: batch.failed ? ["one or more subagents failed"] : [], output: batch.output, details: batch.details };
@@ -1098,7 +1114,7 @@ export default function (pi: ExtensionAPI) {
     const context = await prepareEmbContext(ctx.cwd);
     const settings = await readPiSettings(ctx.cwd);
     if (!context?.result || !shouldAutoDispatchSubagents(text, context.result, settings)) return { action: "continue" };
-    const roles = autoDispatchRoles(context.result).filter((role) => READ_ONLY_AGENT_NAMES.has(role));
+    const roles = autoDispatchRoles(text, context.result).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
     pendingNativeDispatch.set(ctx.cwd, { prompt: text, result: context.result, roles, createdAt: Date.now() });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
@@ -1116,7 +1132,7 @@ export default function (pi: ExtensionAPI) {
     let messageContent = `emb-agent context injected (${new Date(context.updatedAt).toISOString()})`;
 
     if (pending && Date.now() - pending.createdAt < 60_000) {
-      const roles = pending.roles.filter((role) => READ_ONLY_AGENT_NAMES.has(role));
+      const roles = pending.roles.filter((role) => SUPPORTED_AGENT_NAMES.has(role));
       if (roles.length) {
         let hiddenResults = "";
         try {
@@ -1269,7 +1285,7 @@ export default function (pi: ExtensionAPI) {
       type: "object",
       properties: {
         prompt: { type: "string", description: "Original user request or focused delegated task" },
-        roles: { type: "array", items: { type: "string", enum: ["hw-scout", "arch-reviewer", "sys-reviewer", "bug-hunter", "release-checker"] } },
+        roles: { type: "array", items: { type: "string", enum: ["hw-scout", "fw-doer", "arch-reviewer", "sys-reviewer", "bug-hunter", "release-checker"] } },
       },
       additionalProperties: false,
     } as Record<string, unknown>,
@@ -1291,7 +1307,7 @@ export default function (pi: ExtensionAPI) {
       const prompt = String(params.prompt || pending?.prompt || "").trim();
       if (!prompt) return toolTextResult("emb_subagent error: missing prompt", { status: "error" });
       const requestedRoles = Array.isArray(params.roles) ? params.roles.map(String) : pending?.roles;
-      const roles = (requestedRoles && requestedRoles.length ? requestedRoles : autoDispatchRoles(context?.result || pending?.result || {})).filter((role) => READ_ONLY_AGENT_NAMES.has(role));
+      const roles = (requestedRoles && requestedRoles.length ? requestedRoles : autoDispatchRoles(prompt, context?.result || pending?.result || {})).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
       if (!roles.length) return toolTextResult("emb_subagent error: no supported read-only roles", { status: "error" });
       const batch = await runEmbSubagentBatch(ctx.cwd, prompt, roles, context?.result || pending?.result, signal, onUpdate);
       pendingNativeDispatch.delete(ctx.cwd);

@@ -82,7 +82,7 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
 - `bug-hunter`：根因与回归风险追踪
 - `release-checker`：发布前验证、回滚和用户影响检查
 
-`fw-doer` 和 `onboard` 仍保留模型路由，但自动 broad-work 预检默认只派发只读角色。
+`fw-doer` 和 `onboard` 仍保留模型路由。PRD 探索阶段默认只派发只读角色；当会话进入 work-selection/实现类请求（例如“全部执行”“写代码”“实现全部”）时，自动派发会选择 `fw-doer`。
 
 ## Session Insight
 
