@@ -65,16 +65,17 @@ Pi extension 注册 LLM 可直接调用的工具：
 
 ## 原生子 agent 派发
 
-emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现。核心不是只选 roles，而是先生成 `SubagentDispatchPlan`：
+emb-agent 的 Pi 分发层由 `.pi/extensions/emb-agent.ts` 自己实现。它不靠中文/英文关键词猜用户意图，而是先根据 emb-agent runtime 的结构化协议生成 `SubagentDispatchPlan`，再让父 AI 决定是否调用 `emb_subagent`：
 
-1. `pi.on("input")` 识别 broad firmware/system-framework 请求。
-2. extension 按 `agent_protocol.gate.kind`、`action`、`task_candidates`、用户意图生成 dispatch plan：`phase`、`targetTask`、`mode`、`runs[]`。
-3. `work-selection` / `task-execution` 下的“全部执行/写代码/实现全部”会先从候选任务中选择第一个可执行目标（优先 P0/`01-*`/framework，避开 integration），再派发到目标 task；不会一次吞掉全部任务。
-4. `prd-exploration` 和 `prd-breakdown` 默认只派只读证据/审查子代；实现子代等到具体 target task 后再运行。
-5. 自动派发和 `emb_subagent` 都使用 `pi --mode json -p --no-session` 启动隔离 headless Pi 子进程。
-6. 子进程设置 `EMB_AGENT_SUBAGENT_CHILD=1`，防止递归触发自动派发。
-7. extension 解析 JSON event stream，显示 native progress card。
-8. 全部结果通过 `display:false` hidden context 注入，父 agent 只综合结论，不展示原始报告。
+1. extension 读取 `agent_protocol.gate.kind`、`action`、`task_candidates`、`delegation_policy` 生成 dispatch plan：`phase`、`targetTask`、`mode`、`runs[]`。
+2. `work-selection` / `task-execution` 的候选任务会先被排序成具体目标（优先 P0/`01-*`/framework，避开 integration），而不是一次吞掉全部任务。
+3. `prd-exploration` 和 `prd-breakdown` 默认只给出只读证据/审查计划；实现子代等到具体 target task 后再运行。
+4. 父 AI 根据用户当前话语判断是否是实现/继续/启动意图；若是，则必须先调用 `emb_subagent`，不能父线程直接写文件。
+5. extension 在需要 delegation 的结构化 gate 下会拦截父线程的 `write`/`edit` 以及明显写入型 shell 命令，防止绕过子代。
+6. `emb_subagent` 使用 `pi --mode json -p --no-session` 启动隔离 headless Pi 子进程。
+7. 子进程设置 `EMB_AGENT_SUBAGENT_CHILD=1`，防止递归触发。
+8. extension 解析 JSON event stream，显示 native progress card。
+9. 子代结果通过 `display:false` hidden context 注入，父 agent 只综合结论，不展示原始报告。
 
 默认只读预检角色：
 
@@ -84,7 +85,7 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现。核
 - `bug-hunter`：根因与回归风险追踪
 - `release-checker`：发布前验证、回滚和用户影响检查
 
-`fw-doer` 和 `onboard` 仍保留模型路由。PRD 探索阶段默认只派发只读角色；当会话进入 work-selection/task-execution 且用户提出实现类请求（例如“全部执行”“写代码”“实现全部”）时，自动派发会生成链式计划：可选 `hw-scout` 先做目标任务证据确认，`fw-doer` 只实现选中的目标 task，`release-checker` 做验收/缺口检查。
+`fw-doer` 和 `onboard` 仍保留模型路由。PRD 探索阶段默认只给出只读角色计划；当父 AI 判断用户意图是实现/继续/启动候选任务时，调用 `emb_subagent` 会使用链式计划：可选 `hw-scout` 先做目标任务证据确认，`fw-doer` 只实现选中的目标 task，`release-checker` 做验收/缺口检查。
 
 ## Session Insight
 
@@ -119,7 +120,7 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现。核
 
 - 保留已有 Pi 设置
 - 移除旧的第三方 subagent packages
-- 确保 `packages` 默认为空数组，自动派发不依赖 package
+- 确保 `packages` 默认为空数组，原生分发不依赖 package
 - 合并 `embAgent.subagents` 默认值，同时保留用户覆盖
 - 合并 `embAgent.subagentModelRoutes` 默认值，同时保留用户覆盖
 - 不写入旧 `subagents.agentOverrides`
@@ -149,7 +150,7 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现。核
 }
 ```
 
-关闭自动派发：
+关闭分发守卫：
 
 ```json
 { "embAgent": { "subagents": { "dispatchMode": "off" } } }

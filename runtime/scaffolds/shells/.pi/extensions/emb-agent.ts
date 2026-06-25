@@ -409,7 +409,7 @@ const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "onboard"]);
 const SUPPORTED_AGENT_NAMES = new Set([...READ_ONLY_AGENT_NAMES, ...WRITE_CAPABLE_AGENTS]);
 const PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS = 180_000;
 const RAW_SUBAGENT_OUTPUT_GUARD_MS = 60_000;
-const PARENT_BLOCKED_TOOLS = new Set(["read", "bash", "write", "edit", "grep", "find", "ls", "emb_next", "doc_lookup", "doc_fetch"]);
+const PARENT_MUTATION_TOOLS = new Set(["write", "edit"]);
 const EMB_AUTO_DISPATCH_MARKER = "[emb-agent:native-subagent-dispatch-active]";
 const EMB_HIDDEN_RESULTS_MARKER = "[emb-agent:hidden-subagent-results]";
 const EMB_CHILD_ENV = "EMB_AGENT_SUBAGENT_CHILD";
@@ -531,16 +531,6 @@ async function ensureSubagentSettings(cwd: string) {
   }
 }
 
-function promptLooksBroadFirmwareWork(prompt: string): boolean {
-  const text = String(prompt || "").toLowerCase();
-  return /全部执行|全部做|执行全部|执行所有|开始执行|直接执行|实现全部|全部实现|写代码|编码|开发|完成所有|所有任务|all tasks|execute all|implement all|implement|code|系统框架|框架|架构|重构|整体|全局|梳理|迁移|移植|sdk|toolchain|工具链|bsp|hal|驱动|外设|多个|多路|睡眠|唤醒|低功耗|watchdog|看门狗|lvd|brownout|bootloader|升级|调度|scheduler|framework|architecture|refactor|migration|porting|peripheral|power|sleep|wake|timer|pwm|adc|uart|i2c|spi/.test(text);
-}
-
-function promptLooksImplementationWork(prompt: string): boolean {
-  const text = String(prompt || "").toLowerCase();
-  return /全部执行|全部做|执行全部|执行所有|开始执行|直接执行|实现全部|全部实现|写代码|编码|开发|完成所有|所有任务|all tasks|execute all|implement all|implement|code/.test(text);
-}
-
 function isWorkSelection(result: EmbAgentResult): boolean {
   const gate = String(result.agent_protocol?.gate?.kind || "").toLowerCase();
   const action = String(result.action || "").toLowerCase();
@@ -553,16 +543,18 @@ function isPrdExploration(result: EmbAgentResult): boolean {
   return gate.includes("prd") || action === "clarify" || action === "prd-exploration";
 }
 
-function shouldAutoDispatchSubagents(prompt: string, result: EmbAgentResult, settings: Record<string, unknown>): boolean {
-  if (String(prompt || "").includes(EMB_AUTO_DISPATCH_MARKER)) return false;
+function subagentDispatchEnabled(result: EmbAgentResult, settings: Record<string, unknown>): boolean {
   const embAgent = settings.embAgent && typeof settings.embAgent === "object" && !Array.isArray(settings.embAgent) ? settings.embAgent as Record<string, unknown> : {};
   const subagents = embAgent.subagents && typeof embAgent.subagents === "object" && !Array.isArray(embAgent.subagents) ? embAgent.subagents as Record<string, unknown> : {};
   if (subagents.dispatchMode === "off" || subagents.dispatchMode === "inline") return false;
   const policy = result.delegation_policy || result.agent_protocol?.gate?.delegation_policy;
-  if (!policy?.applies_when_host_exposes_subagent_tool) return false;
-  if (!promptLooksBroadFirmwareWork(prompt)) return false;
-  if (promptLooksImplementationWork(prompt) && isWorkSelection(result)) return true;
-  return Boolean(policy.required_before_broad_work || isPrdExploration(result));
+  return Boolean(policy?.applies_when_host_exposes_subagent_tool && (policy.required_before_broad_work || isPrdExploration(result) || isWorkSelection(result)));
+}
+
+function shouldAutoDispatchSubagents(prompt: string, result: EmbAgentResult, settings: Record<string, unknown>): boolean {
+  // Backward-compatible helper name: this no longer interprets natural language.
+  if (String(prompt || "").includes(EMB_AUTO_DISPATCH_MARKER)) return false;
+  return subagentDispatchEnabled(result, settings);
 }
 
 function candidateTasks(result: EmbAgentResult): Array<{ name: string; title?: string; status?: string; priority?: string }> {
@@ -605,7 +597,9 @@ function rolePrompt(role: string, intent: DispatchIntent, userPrompt: string, re
   const previous = previousOutput ? `\n\nPrevious subagent output to use as context:\n${previousOutput.slice(0, MAX_SUBAGENT_OUTPUT)}` : "";
   const directives: Record<string, string> = {
     "hw-scout": "Collect only hardware/manual/schematic evidence needed for the target work. Cite exact cached document paths, registers, pins, nets, config bits, and uncertainty. Do not edit files.",
-    "fw-doer": "Implement only the target task. Make minimal source edits, preserve project conventions, and stop after the scoped implementation plus local validation evidence. Do not implement downstream dependent tasks unless explicitly targeted.",
+    "fw-doer": targetTask
+      ? "Implement only the target task. You MUST create or edit the required repository files for that target when implementation is requested. Make minimal source edits, preserve project conventions, and stop after the scoped implementation plus local validation evidence. Do not implement downstream dependent tasks unless explicitly targeted."
+      : "Implementation was requested but no target task was selected. Do not make broad edits; report the missing target and ask for scope.",
     "arch-reviewer": "Review architecture, ISR/main-loop boundaries, timing, RAM/ROM, scheduler/event-step fit, and vertical-slice boundaries for this target work. Do not edit files.",
     "sys-reviewer": "Review behavior requirements, state-machine consistency, power/sleep/wakeup, WDT/LVD/reset behavior, and acceptance evidence. Do not edit files.",
     "bug-hunter": "Find root cause hypotheses, regression vectors, and minimal reproduction/verification steps for the target bug. Do not edit unless explicitly asked as fw-doer.",
@@ -649,7 +643,7 @@ function buildDispatchPlan(prompt: string, result: EmbAgentResult): SubagentDisp
       ],
     };
   }
-  if (promptLooksImplementationWork(prompt) && (phase === "work-selection" || phase === "task-execution" || phase === "general")) {
+  if (phase === "work-selection" || phase === "task-execution") {
     const runs: SubagentDispatchRun[] = [];
     if (targetTask) runs.push({ role: "hw-scout", intent: "evidence", writable: false, targetTask, prompt: rolePrompt("hw-scout", "evidence", prompt, result, targetTask) });
     runs.push({ role: "fw-doer", intent: "implementation", writable: true, targetTask, prompt: rolePrompt("fw-doer", "implementation", prompt, result, targetTask) });
@@ -1170,6 +1164,11 @@ function isRawPdfShellCommand(command: string): boolean {
   return /(^|[;&|\s])(cat|head|tail|less|more|xxd|od|strings|pdftotext|mutool|python3?\s+-c)\b/.test(c);
 }
 
+function isLikelyMutationShellCommand(command: string): boolean {
+  const c = String(command || "").toLowerCase();
+  return /(^|[;&|\s])(cat\s+>\s*|tee\b|mkdir\b|touch\b|rm\b|mv\b|cp\b|python3?\b.*\b(open\(|write_text|write\()|node\b.*\bwritefilesync\b|perl\s+-pi|sed\s+-i)\b|>>|>/.test(c);
+}
+
 // ---------------------------------------------------------------------------
 // ask_user_question UI
 // ---------------------------------------------------------------------------
@@ -1262,16 +1261,15 @@ export default function (pi: ExtensionAPI) {
     if (process.env[EMB_CHILD_ENV] === "1") return { action: "continue" };
     if ((event as any).source === "extension") return { action: "continue" };
     const text = String((event as any).text || "");
-    if (!promptLooksBroadFirmwareWork(text) || text.includes(EMB_AUTO_DISPATCH_MARKER)) return { action: "continue" };
+    if (text.includes(EMB_AUTO_DISPATCH_MARKER)) return { action: "continue" };
     const context = await prepareEmbContext(ctx.cwd);
     const settings = await readPiSettings(ctx.cwd);
-    if (!context?.result || !shouldAutoDispatchSubagents(text, context.result, settings)) return { action: "continue" };
+    if (!context?.result || !subagentDispatchEnabled(context.result, settings)) return { action: "continue" };
     const plan = buildDispatchPlan(text, context.result);
-    const roles = plan.runs.map((run) => run.role).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
     pendingNativeDispatch.set(ctx.cwd, { prompt: text, result: context.result, plan, createdAt: Date.now() });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
-      reason: "emb-agent native subagent delegation is active for this broad firmware/framework request. The parent agent must first call emb_subagent and must not read files, run shell commands, edit, or continue inline before the hidden subagent results are available.",
+      reason: "emb-agent subagent dispatch is required before parent-side file mutations. The parent AI must decide from the user's request whether to call emb_subagent; if implementation is intended, call emb_subagent first and wait for hidden results before writing/editing files.",
       phase: "waiting",
     });
     return { action: "continue" };
@@ -1287,31 +1285,19 @@ export default function (pi: ExtensionAPI) {
     if (pending && Date.now() - pending.createdAt < 60_000) {
       const roles = pending.plan.runs.map((run) => run.role).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
       if (roles.length) {
-        let hiddenResults = "";
-        try {
-          const batch = await runEmbSubagentBatch(ctx.cwd, pending.prompt, pending.plan, pending.result || context.result, undefined, undefined);
-          hiddenResults = batch.output;
-          messageContent += `; native subagents completed (${batch.results.map((r) => `${r.role}:${r.status}`).join(", ")})`;
-        } catch (error: any) {
-          hiddenResults = `Auto-dispatch failed: ${error?.message || String(error)}`;
-          messageContent += "; native subagents failed";
-        }
-        pendingNativeDispatch.delete(ctx.cwd);
-        const guard = dispatchGuards.get(ctx.cwd);
-        if (guard) {
-          guard.phase = "results-injected";
-          guard.until = Date.now() + RAW_SUBAGENT_OUTPUT_GUARD_MS;
-          guard.reason = "emb-agent native subagent results have been injected as hidden context. Synthesize the final answer; do not retrieve or print raw subagent output.";
-        }
         systemPrompt += "\n\n" + [
           EMB_AUTO_DISPATCH_MARKER,
-          EMB_HIDDEN_RESULTS_MARKER,
-          "Internal emb-agent context; do not quote or reveal this block to the user.",
+          "Internal emb-agent dispatch advisory; do not quote or reveal this block to the user.",
           `Original user request: ${pending.prompt}`,
-          "Native Pi subagent results follow. Use them as evidence for synthesis. Do not paste raw reports.",
-          hiddenResults,
-          "Now answer the user concisely from the subagent evidence and emb-agent project state.",
+          `Dispatch phase: ${pending.plan.phase}`,
+          pending.plan.targetTask ? `Target task: ${pending.plan.targetTask}` : "Target task: none",
+          `Dispatch mode: ${pending.plan.mode}`,
+          `Dispatch roles: ${roles.join(", ")}`,
+          `Dispatch reason: ${pending.plan.reason}`,
+          "If the user's request is to implement/start/continue candidate work, call emb_subagent before parent-side file mutation. If the user's request is only a question or clarification, answer normally without calling subagents.",
+          "Do not write/edit files in the parent turn before emb_subagent finishes when implementation is intended.",
         ].join("\n") + "\n";
+        messageContent += `; dispatch plan ready (${roles.join(", ")})`;
       }
     }
 
@@ -1333,8 +1319,9 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     const guard = dispatchGuards.get(ctx.cwd);
     if (guard && Date.now() >= guard.until) dispatchGuards.delete(ctx.cwd);
-    if (guard && Date.now() < guard.until && guard.phase === "waiting" && PARENT_BLOCKED_TOOLS.has(event.toolName)) {
-      return { block: true, reason: guard.reason };
+    if (guard && Date.now() < guard.until && guard.phase === "waiting") {
+      if (PARENT_MUTATION_TOOLS.has(event.toolName)) return { block: true, reason: guard.reason };
+      if (event.toolName === "bash" && isLikelyMutationShellCommand(String((event.input as any)?.command || ""))) return { block: true, reason: guard.reason };
     }
     if (guard && Date.now() < guard.until && guard.phase === "results-injected") {
       const path = String((event.input as any)?.path || "");
@@ -1459,10 +1446,23 @@ export default function (pi: ExtensionAPI) {
       const context = await prepareEmbContext(ctx.cwd);
       const prompt = String(params.prompt || pending?.prompt || "").trim();
       if (!prompt) return toolTextResult("emb_subagent error: missing prompt", { status: "error" });
-      const requestedRoles = Array.isArray(params.roles) ? params.roles.map(String) : undefined;
-      const plan = pending?.plan || buildDispatchPlan(prompt, context?.result || pending?.result || {});
-      const dispatch = requestedRoles && requestedRoles.length ? requestedRoles.filter((role) => SUPPORTED_AGENT_NAMES.has(role)) : plan;
-      const roles = Array.isArray(dispatch) ? dispatch : dispatch.runs.map((run) => run.role).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
+      const requestedRoles = Array.isArray(params.roles) ? params.roles.map(String).filter((role) => SUPPORTED_AGENT_NAMES.has(role)) : undefined;
+      const basePlan = pending?.plan || buildDispatchPlan(prompt, context?.result || pending?.result || {});
+      const dispatch: SubagentDispatchPlan = requestedRoles && requestedRoles.length
+        ? {
+            ...basePlan,
+            mode: requestedRoles.length > 1 ? basePlan.mode : "single",
+            reason: `${basePlan.reason} Manual roles preserved with target-task scoped prompts.`,
+            runs: requestedRoles.map((role) => ({
+              role,
+              intent: READ_ONLY_AGENT_NAMES.has(role) ? (role === "release-checker" ? "verification" : "evidence") : "implementation",
+              writable: !READ_ONLY_AGENT_NAMES.has(role),
+              targetTask: basePlan.targetTask,
+              prompt: rolePrompt(role, READ_ONLY_AGENT_NAMES.has(role) ? (role === "release-checker" ? "verification" : "evidence") : "implementation", prompt, context?.result || pending?.result || {}, basePlan.targetTask),
+            })),
+          }
+        : basePlan;
+      const roles = dispatch.runs.map((run) => run.role).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
       if (!roles.length) return toolTextResult("emb_subagent error: no supported roles", { status: "error" });
       const batch = await runEmbSubagentBatch(ctx.cwd, prompt, dispatch, context?.result || pending?.result, signal, onUpdate);
       pendingNativeDispatch.delete(ctx.cwd);
