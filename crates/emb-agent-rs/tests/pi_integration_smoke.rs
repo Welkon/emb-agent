@@ -29,6 +29,9 @@ fn pi_extension_exposes_unified_tool_layer() {
         "name: \"emb_subagent\"",
         "name: \"emb_session_search\"",
         "name: \"emb_session_extract\"",
+        "name: \"knowledge_search\"",
+        "name: \"knowledge_diagnose\"",
+        "name: \"knowledge_graph_query\"",
         "triggerTurn: true",
         "INGEST_TIMEOUT_MS",
         "INGEST_MAX_BUFFER",
@@ -67,6 +70,8 @@ fn pi_extension_exposes_unified_tool_layer() {
         "native-pi",
         "PARENT_MUTATION_TOOLS",
         "The parent AI must decide from the user's request",
+        "knowledge_search, knowledge_diagnose, and knowledge_graph_query",
+        "Use knowledge_search for project knowledge",
         "subagentDispatchEnabled",
         "isWorkSelection",
         "phase: \"waiting\"",
@@ -144,6 +149,10 @@ fn pi_docs_match_extension_surface() {
     assert!(docs.contains("ask_user_question"));
     assert!(docs.contains("emb_subagent"));
     assert!(docs.contains("emb_session_search"));
+    assert!(docs.contains("emb_session_extract"));
+    assert!(docs.contains("knowledge_search"));
+    assert!(docs.contains("knowledge_diagnose"));
+    assert!(docs.contains("knowledge_graph_query"));
     assert!(docs.contains("native-pi"));
     assert!(
         !docs.contains("不需要扩展"),

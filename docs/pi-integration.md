@@ -56,12 +56,15 @@ Pi extension 注册 LLM 可直接调用的工具：
 | `emb_subagent` | 在隔离 headless Pi 子进程里运行 emb-agent 原生固件子 agent |
 | `emb_session_search` | 搜索本机 Pi/Codex session，用于跨会话记忆 |
 | `emb_session_extract` | 抽取本机 session 对话，可按 `all`/`brainstorm`/`implement` 粗切片 |
+| `knowledge_search` | 查询 emb-agent 原生项目知识索引，覆盖 truth/PRD/task/wiki/compound/parsed docs |
+| `knowledge_diagnose` | 查看知识索引、manifest、embedding cache、stale sources 状态 |
+| `knowledge_graph_query` | 查询/解释原生知识图谱中的芯片、寄存器、文档、任务、wiki 关系 |
 | `ingest_doc` | 解析/缓存 PDF、manual、datasheet；不要直接 read 原始 PDF |
 | `doc_lookup` | 查询已解析文档缓存 |
 | `doc_fetch` | 读取已缓存的 parsed markdown |
 | `ask_user_question` | 用 Pi UI 向用户提结构化问题 |
 
-规则：PDF/手册必须先通过 `ingest_doc` 或 `/emb-ingest`，再用 `doc_fetch` / `doc_lookup` 读取缓存结果。Pi extension 会阻止直接 `read *.pdf` 或用 `cat/strings/xxd` 之类 shell 命令读取原始 PDF。
+规则：项目知识、设计 rationale、历史 PRD/task/wiki、寄存器/外设证据优先用 `knowledge_search` 或 `knowledge_graph_query`；需要原始文档细节时再用 `doc_lookup` / `doc_fetch` 补源。PDF/手册必须先通过 `ingest_doc` 或 `/emb-ingest`，再用 `doc_fetch` / `doc_lookup` 读取缓存结果。Pi extension 会阻止直接 `read *.pdf` 或用 `cat/strings/xxd` 之类 shell 命令读取原始 PDF。
 
 ## 原生子 agent 派发
 

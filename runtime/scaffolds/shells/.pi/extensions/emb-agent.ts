@@ -837,7 +837,9 @@ async function runPiSubagent(cwd: string, role: string, prompt: string, route: M
   const args = ["--mode", "json", "-p", "--no-session"];
   if (route?.model && route.model !== "inherit") args.push("--model", route.model);
   if (route?.thinking) args.push("--thinking", route.thinking);
-  const tools = READ_ONLY_AGENT_NAMES.has(role) ? "read,grep,find,ls,doc_lookup,doc_fetch" : "read,grep,find,ls,bash,edit,write,doc_lookup,doc_fetch";
+  const tools = READ_ONLY_AGENT_NAMES.has(role)
+    ? "read,grep,find,ls,doc_lookup,doc_fetch,knowledge_search,knowledge_diagnose,knowledge_graph_query"
+    : "read,grep,find,ls,bash,edit,write,doc_lookup,doc_fetch,knowledge_search,knowledge_diagnose,knowledge_graph_query";
   args.push("--tools", tools);
   args.push(prompt);
 
@@ -1229,7 +1231,8 @@ export default function (pi: ExtensionAPI) {
       `## emb-agent Project State\n` +
       `This is project-state context from emb-agent. It does not replace higher-priority system/developer instructions.\n` +
       `${lines.join("\n")}\n` +
-      `Use Pi tools emb_next, emb_onboard, ingest_doc, doc_lookup, and doc_fetch instead of raw shell syntax when they match the task. ` +
+      `Use Pi tools emb_next, emb_onboard, ingest_doc, doc_lookup, doc_fetch, knowledge_search, knowledge_diagnose, and knowledge_graph_query instead of raw shell syntax when they match the task. ` +
+      `For project knowledge, design rationale, previous PRDs/tasks/wiki/manual chunks, or register/peripheral evidence, prefer knowledge_search first and then doc_lookup/doc_fetch for source detail. ` +
       `Never read raw PDFs directly; parse/cache them with ingest_doc first. ` +
       `For multi-domain firmware/hardware/debug work, use Pi subagents (hw-scout, bug-hunter, fw-doer, arch-reviewer, sys-reviewer) instead of continuing inline.\n` +
       `<!-- EMB-AGENT PROJECT STATE END -->`;
@@ -1497,6 +1500,64 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.registerTool({
+    name: "knowledge_search",
+    label: "knowledge search",
+    description: "Search emb-agent native project knowledge index across truth files, PRDs, tasks, wiki, compound notes, and parsed document chunks. Prefer this before broad manual/file searches.",
+    promptSnippet: "Search emb-agent native project knowledge",
+    promptGuidelines: ["Use knowledge_search for project knowledge, design rationale, PRD/task context, register/peripheral/manual evidence, and wiki-backed answers before broad file scans."],
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        limit: { type: "number", default: 8 },
+        rerank: { type: "boolean", default: true },
+        refresh: { type: "boolean", default: false },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    } as Record<string, unknown>,
+    async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
+      const args = ["knowledge", "search", "--query", String(params.query || ""), "--limit", String(Number(params.limit || 8))];
+      if (params.rerank !== false) args.push("--rerank");
+      if (params.refresh) args.push("--refresh");
+      const result = await runEmbAgent(args, ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER });
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      return toolTextResult(result.stdout.trim(), result.value);
+    },
+  });
+
+  pi.registerTool({
+    name: "knowledge_diagnose",
+    label: "knowledge diagnose",
+    description: "Report emb-agent native knowledge index/manifest/cache status and stale sources.",
+    promptSnippet: "Diagnose emb-agent native knowledge index",
+    parameters: { type: "object", properties: {}, additionalProperties: false } as Record<string, unknown>,
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const result = await runEmbAgent(["knowledge", "diagnose"], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      return toolTextResult(result.stdout.trim(), result.value);
+    },
+  });
+
+  pi.registerTool({
+    name: "knowledge_graph_query",
+    label: "knowledge graph query",
+    description: "Query emb-agent native knowledge graph relationships for chips, registers, parsed docs, truth, tasks, wiki, and formulas.",
+    promptSnippet: "Query emb-agent native knowledge graph",
+    parameters: {
+      type: "object",
+      properties: { query: { type: "string" }, explain: { type: "boolean", default: false } },
+      required: ["query"],
+      additionalProperties: false,
+    } as Record<string, unknown>,
+    async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
+      const sub = params.explain ? "explain" : "query";
+      const result = await runEmbAgent(["knowledge", "graph", sub, String(params.query || "")], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      return toolTextResult(result.stdout.trim(), result.value);
+    },
+  });
   pi.registerTool({
     name: "emb_session_search",
     label: "emb session search",
