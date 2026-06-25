@@ -68,7 +68,7 @@ Pi extension 注册 LLM 可直接调用的工具：
 emb-agent 的 Pi 分发层由 `.pi/extensions/emb-agent.ts` 自己实现。它不靠中文/英文关键词猜用户意图，而是先根据 emb-agent runtime 的结构化协议生成 `SubagentDispatchPlan`，再让父 AI 决定是否调用 `emb_subagent`：
 
 1. extension 读取 `agent_protocol.gate.kind`、`action`、`task_candidates`、`delegation_policy` 生成 dispatch plan：`phase`、`targetTask`、`mode`、`runs[]`。
-2. `work-selection` / `task-execution` 的候选任务会先被排序成具体目标（优先 P0/`01-*`/framework，避开 integration），而不是一次吞掉全部任务。
+2. `work-selection` / `task-execution` 的候选任务会先被排序成具体目标（优先未完成、低 priority 数字、数字前缀靠前、候选顺序靠前），而不是一次吞掉全部任务。
 3. `prd-exploration` 和 `prd-breakdown` 默认只给出只读证据/审查计划；实现子代等到具体 target task 后再运行。
 4. 父 AI 根据用户当前话语判断是否是实现/继续/启动意图；若是，则必须先调用 `emb_subagent`，不能父线程直接写文件。
 5. extension 在需要 delegation 的结构化 gate 下会拦截父线程的 `write`/`edit` 以及明显写入型 shell 命令，防止绕过子代。

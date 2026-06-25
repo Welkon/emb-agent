@@ -557,26 +557,37 @@ function shouldAutoDispatchSubagents(prompt: string, result: EmbAgentResult, set
   return subagentDispatchEnabled(result, settings);
 }
 
-function candidateTasks(result: EmbAgentResult): Array<{ name: string; title?: string; status?: string; priority?: string }> {
+function candidateTasks(result: EmbAgentResult): Array<{ name: string; title?: string; status?: string; priority?: string; order: number }> {
   return [...(result.task_candidates || []), ...(result.prd_task_candidates || [])]
+    .map((task, order) => ({ ...task, order }))
     .filter((task, index, all) => task?.name && all.findIndex((item) => item.name === task.name) === index);
 }
 
-function taskRank(task: { name: string; title?: string; status?: string; priority?: string }): number {
-  const text = `${task.name} ${task.title || ""} ${task.priority || ""}`.toLowerCase();
-  let score = 0;
-  if (/^0*1[-_]|framework|baremetal|骨架|框架|p0/.test(text)) score -= 100;
-  if (/p0/.test(text)) score -= 30;
-  if (/p1/.test(text)) score -= 15;
-  if (/integration|集成|联调|release|验收/.test(text)) score += 60;
-  if (/depends|blocked|waiting|hold/.test(String(task.status || "").toLowerCase())) score += 50;
-  return score;
+function priorityRank(priority?: string): number {
+  const match = String(priority || "").match(/p(\d+)/i);
+  return match ? Number(match[1]) : 99;
+}
+
+function numericTaskPrefix(name: string): number {
+  const match = String(name || "").match(/^(\d+)/);
+  return match ? Number(match[1]) : 999;
+}
+
+function statusRank(status?: string): number {
+  const text = String(status || "").toLowerCase();
+  if (/blocked|waiting|hold/.test(text)) return 50;
+  if (/closed|done|resolved/.test(text)) return 100;
+  return 0;
+}
+
+function taskRank(task: { name: string; status?: string; priority?: string; order?: number }): number {
+  return statusRank(task.status) * 10_000 + priorityRank(task.priority) * 100 + numericTaskPrefix(task.name);
 }
 
 function selectTargetTask(result: EmbAgentResult): string | undefined {
   const tasks = candidateTasks(result).filter((task) => !/closed|done|resolved/i.test(String(task.status || "")));
   if (!tasks.length) return undefined;
-  return [...tasks].sort((a, b) => taskRank(a) - taskRank(b) || a.name.localeCompare(b.name))[0]?.name;
+  return [...tasks].sort((a, b) => taskRank(a) - taskRank(b) || (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))[0]?.name;
 }
 
 function dispatchPhase(result: EmbAgentResult): DispatchPhase {
