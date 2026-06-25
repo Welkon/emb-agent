@@ -68,8 +68,8 @@ Pi extension 注册 LLM 可直接调用的工具：
 emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
 
 1. `pi.on("input")` 识别 broad firmware/system-framework 请求。
-2. 命中 `delegation_policy.required_before_broad_work` 时，父 agent 会被要求先调用 `emb_subagent`。
-3. `emb_subagent` 使用 `pi --mode json -p --no-session` 启动隔离 headless Pi 子进程。
+2. 命中 `delegation_policy.required_before_broad_work` 时，extension 会在 `before_agent_start` 自动触发 native read-only 子 agent，必要时也允许父 agent 显式调用 `emb_subagent`。
+3. 自动派发和 `emb_subagent` 都使用 `pi --mode json -p --no-session` 启动隔离 headless Pi 子进程。
 4. 子进程设置 `EMB_AGENT_SUBAGENT_CHILD=1`，防止递归触发自动派发。
 5. extension 解析 JSON event stream，显示 native progress card。
 6. 全部结果通过 `display:false` hidden context 注入，父 agent 只综合结论，不展示原始报告。

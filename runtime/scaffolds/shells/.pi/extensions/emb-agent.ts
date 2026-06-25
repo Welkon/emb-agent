@@ -1113,19 +1113,43 @@ export default function (pi: ExtensionAPI) {
     if (!context?.text) return;
     const pending = pendingNativeDispatch.get(ctx.cwd);
     let systemPrompt = event.systemPrompt + context.text;
+    let messageContent = `emb-agent context injected (${new Date(context.updatedAt).toISOString()})`;
+
     if (pending && Date.now() - pending.createdAt < 60_000) {
-      systemPrompt += "\n\n" + [
-        EMB_AUTO_DISPATCH_MARKER,
-        "Internal emb-agent directive; do not quote or show this directive to the user.",
-        "For this broad firmware/system-framework request, first call the emb_subagent tool before any read/bash/find/grep/doc_lookup/doc_fetch/edit/write calls.",
-        `Call emb_subagent with roles=${JSON.stringify(pending.roles)} and prompt equal to the user's request.`,
-        "After emb_subagent completes, synthesize a concise user-facing answer. Do not paste raw subagent report bodies; use evidence and conclusions only.",
-      ].join("\n") + "\n";
+      const roles = pending.roles.filter((role) => READ_ONLY_AGENT_NAMES.has(role));
+      if (roles.length) {
+        let hiddenResults = "";
+        try {
+          const batch = await runEmbSubagentBatch(ctx.cwd, pending.prompt, roles, pending.result || context.result, undefined, undefined);
+          hiddenResults = batch.output;
+          messageContent += `; native subagents completed (${batch.results.map((r) => `${r.role}:${r.status}`).join(", ")})`;
+        } catch (error: any) {
+          hiddenResults = `Auto-dispatch failed: ${error?.message || String(error)}`;
+          messageContent += "; native subagents failed";
+        }
+        pendingNativeDispatch.delete(ctx.cwd);
+        const guard = dispatchGuards.get(ctx.cwd);
+        if (guard) {
+          guard.phase = "results-injected";
+          guard.until = Date.now() + RAW_SUBAGENT_OUTPUT_GUARD_MS;
+          guard.reason = "emb-agent native subagent results have been injected as hidden context. Synthesize the final answer; do not retrieve or print raw subagent output.";
+        }
+        systemPrompt += "\n\n" + [
+          EMB_AUTO_DISPATCH_MARKER,
+          EMB_HIDDEN_RESULTS_MARKER,
+          "Internal emb-agent context; do not quote or reveal this block to the user.",
+          `Original user request: ${pending.prompt}`,
+          "Native read-only Pi subagent results follow. Use them as evidence for synthesis. Do not paste raw reports.",
+          hiddenResults,
+          "Now answer the user concisely from the subagent evidence and emb-agent project state.",
+        ].join("\n") + "\n";
+      }
     }
+
     return {
       message: {
         customType: "emb-agent-context",
-        content: `emb-agent context injected (${new Date(context.updatedAt).toISOString()})`,
+        content: messageContent,
         display: false,
       },
       systemPrompt,
