@@ -199,6 +199,29 @@ interface SessionSearchHit {
   score: number;
 }
 
+function summarizeKnowledgeSearch(value: any, refreshed: boolean, graphRefreshed: boolean): string {
+  const count = Number(value?.count || 0);
+  const provider = String(value?.rerank_provider || "local");
+  const refreshText = refreshed || graphRefreshed
+    ? ` (${refreshed ? "index refreshed" : "index ready"}${graphRefreshed ? ", graph refreshed" : ""})`
+    : "";
+  return `Project knowledge searched${refreshText}; ${count} hit(s), rerank=${provider}. Raw recall was injected as hidden context.`;
+}
+
+function summarizeKnowledgeDiagnose(value: any): string {
+  const status = String(value?.status || "unknown");
+  const chunks = Number(value?.chunks || 0);
+  const sources = Number(value?.sources || 0);
+  const stale = value?.stale === true ? ", refresh needed" : "";
+  return `Knowledge status: ${status}${stale}; sources=${sources}, chunks=${chunks}. Detailed diagnosis was injected as hidden context.`;
+}
+
+function summarizeKnowledgeGraph(value: any): string {
+  const nodes = Number(value?.nodes_found ?? value?.nodes?.length ?? 0);
+  const edges = Number(value?.edges_found ?? value?.edges?.length ?? 0);
+  return `Project knowledge graph queried; ${nodes} node hit(s), ${edges} edge hit(s). Raw graph results were injected as hidden context.`;
+}
+
 function toolTextResult(text: string, details?: unknown) {
   const payload: { content: { type: "text"; text: string }[]; details?: unknown } = {
     content: [{ type: "text", text }],
@@ -210,14 +233,14 @@ function toolTextResult(text: string, details?: unknown) {
 function normalizeLanguage(value: unknown): string {
   const lang = String(value || "").trim().toLowerCase();
   if (!lang) return "";
-  if (["zh", "zh-cn", "zh_hans", "cn", "chinese", "中文", "简体中文"].includes(lang)) return "zh";
-  if (["en", "english", "英文"].includes(lang)) return "en";
+  if (["zh", "zh-cn", "zh_hans", "cn", "chinese", "\u4e2d\u6587", "\u7b80\u4f53\u4e2d\u6587"].includes(lang)) return "zh";
+  if (["en", "english", "\u82f1\u6587"].includes(lang)) return "en";
   return lang;
 }
 
 function languageDirective(language: unknown): string {
   const lang = normalizeLanguage(language);
-  if (lang === "zh") return "Respond to the user in Simplified Chinese (中文), unless the user explicitly asks for another language.";
+  if (lang === "zh") return "Respond to the user in Simplified Chinese, unless the user explicitly asks for another language.";
   if (lang === "en") return "Respond to the user in English, unless the user explicitly asks for another language.";
   return "";
 }
@@ -422,6 +445,7 @@ const RAW_SUBAGENT_OUTPUT_GUARD_MS = 60_000;
 const PARENT_MUTATION_TOOLS = new Set(["write", "edit"]);
 const EMB_AUTO_DISPATCH_MARKER = "[emb-agent:native-subagent-dispatch-active]";
 const EMB_HIDDEN_RESULTS_MARKER = "[emb-agent:hidden-subagent-results]";
+const EMB_HIDDEN_KNOWLEDGE_MARKER = "[emb-agent:hidden-knowledge-results]";
 const EMB_CHILD_ENV = "EMB_AGENT_SUBAGENT_CHILD";
 const MAX_SUBAGENT_OUTPUT = 50_000;
 const MAX_TAIL = 4_000;
@@ -1138,9 +1162,9 @@ function renderSubagentProgress(details: EmbSubagentProgress, includeOutput = tr
     const frame = SPINNER_FRAMES[Math.floor((Date.now() - details.startedAt) / TUI_HEARTBEAT_MS) % SPINNER_FRAMES.length] || "⠸";
     const icon = role.status === "succeeded" ? "✓" : role.status === "failed" ? "✗" : role.status === "cancelled" ? "!" : running ? frame : "⠸";
     const roleUsage = formatContextUsage(role.usage);
-    const attempt = role.attempt ? `try ${role.attempt}/${role.attemptsMax || 1}` : null;
+    const retry = role.attempt && role.attempt > 1 ? `retry ${role.attempt}/${role.attemptsMax || 1}` : null;
     const route = role.routeHistory.length > 1 ? `route ${role.routeHistory.join("→")}` : null;
-    const stats = [attempt, role.tools.length ? `${role.tools.length} tools` : null, role.model || null, route, role.thinking ? `thinking=${role.thinking}` : null, roleUsage || null].filter(Boolean).join(" · ");
+    const stats = [retry, role.tools.length ? `${role.tools.length} tools` : null, role.model || null, route, role.thinking ? `thinking=${role.thinking}` : null, roleUsage || null].filter(Boolean).join(" · ");
     lines.push(`${icon} ${role.role} ${role.status}${stats ? ` · ${stats}` : ""}`);
     if (includeOutput && role.textTail) lines.push(`  ${role.textTail.slice(-300).replace(/\s+/g, " ")}`);
     if (role.errorMessage) lines.push(`  error: ${role.errorMessage}`);
@@ -1216,8 +1240,8 @@ async function readSessionDialogue(path: string, phase: "all" | "brainstorm" | "
   const turns = lines.map(extractSessionText).filter(Boolean);
   const text = turns.join("\n\n");
   if (phase === "all") return text;
-  const createIdx = text.search(/\b(emb-agent|task\.py)\s+(task\s+)?(add|create)\b|PRD|需求探索|brainstorm/i);
-  const startIdx = text.search(/\b(emb-agent|task\.py)\s+(task\s+)?(activate|start)\b|开始实现|implementation/i);
+  const createIdx = text.search(/\b(emb-agent|task\.py)\s+(task\s+)?(add|create)\b|PRD|\u9700\u6c42\u63a2\u7d22|brainstorm/i);
+  const startIdx = text.search(/\b(emb-agent|task\.py)\s+(task\s+)?(activate|start)\b|\u5f00\u59cb\u5b9e\u73b0|implementation/i);
   if (phase === "brainstorm") return createIdx >= 0 && startIdx > createIdx ? text.slice(createIdx, startIdx) : text;
   if (phase === "implement") return startIdx >= 0 ? text.slice(startIdx) : "";
   return text;
@@ -1416,7 +1440,7 @@ function isSourceInspectionShellCommand(command: string): boolean {
 function isParentClosureDocPath(path: string): boolean {
   const p = String(path || "").replace(/\\/g, "/");
   return Boolean(
-    /(^|\/)\.emb-agent\/tasks\/[^/]+\/(aar\.md|task\.json|review.*\.md|validation.*\.md)$/i.test(p) ||
+    /(^|\/)\.emb-agent\/tasks\/[^/]+\/(prd\.md|aar\.md|task\.json|review.*\.md|validation.*\.md)$/i.test(p) ||
     /(^|\/)\.emb-agent\/(attention\.md|architecture\/.*\.md|compound\/.*\.md|wiki\/.*\.md|reference\/.*\.md|memory\/.*\.md|audits\/.*\.md|sessions\/.*\.md)$/i.test(p) ||
     /(^|\/)docs\/.*\.md$/i.test(p) ||
     /(^|\/)(README|CHANGELOG|NOTES)\.md$/i.test(p)
@@ -1784,6 +1808,13 @@ export default function (pi: ExtensionAPI) {
       required: ["query"],
       additionalProperties: false,
     } as Record<string, unknown>,
+    renderCall(_args: Record<string, unknown>, theme: any) {
+      return new Text(`${theme.bold("knowledge_search")} ${theme.fg("dim", "hidden")}`, 0, 0);
+    },
+    renderResult(result: any, _ctx: any, theme: any) {
+      const text = result?.content?.[0]?.text || "Project knowledge searched; raw recall was injected as hidden context.";
+      return new Text(theme.fg("muted", String(text)), 0, 0);
+    },
     async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
       const args = ["knowledge", "search", "--query", String(params.query || ""), "--limit", String(Number(params.limit || 8))];
       if (params.rerank !== false) args.push("--rerank");
@@ -1805,7 +1836,15 @@ export default function (pi: ExtensionAPI) {
       const prefix = shouldRefresh || graphNeedsRefresh
         ? `[knowledge ${shouldRefresh ? "index refreshed" : "index current"}; graph ${graphRefreshed ? "refreshed" : "refresh skipped/failed"} before search]\n`
         : "";
-      return toolTextResult(prefix + result.stdout.trim(), result.value);
+      await pi.sendMessage({
+        customType: "emb-agent-knowledge-results",
+        content:
+          `${EMB_HIDDEN_KNOWLEDGE_MARKER}\n` +
+          "Hidden project knowledge search results for the parent agent. Do not paste raw JSON, full hit lists, paths, scores, rerank details, or cache details to the user. Use these results only to support a concise evidence-backed answer.\n\n" +
+          prefix + result.stdout.trim(),
+        display: false,
+      } as any);
+      return toolTextResult(summarizeKnowledgeSearch(result.value as any, shouldRefresh, graphRefreshed), result.value);
     },
   });
 
@@ -1815,10 +1854,25 @@ export default function (pi: ExtensionAPI) {
     description: "Report emb-agent native knowledge index/manifest/cache status and stale sources.",
     promptSnippet: "Diagnose emb-agent native knowledge index",
     parameters: { type: "object", properties: {}, additionalProperties: false } as Record<string, unknown>,
+    renderCall(_args: Record<string, unknown>, theme: any) {
+      return new Text(`${theme.bold("knowledge_diagnose")} ${theme.fg("dim", "hidden")}`, 0, 0);
+    },
+    renderResult(result: any, _ctx: any, theme: any) {
+      const text = result?.content?.[0]?.text || "Knowledge diagnosis was injected as hidden context.";
+      return new Text(theme.fg("muted", String(text)), 0, 0);
+    },
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const result = await runEmbAgent(["knowledge", "diagnose"], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
       if (!result.ok) return toolTextResult(errorText(result), result);
-      return toolTextResult(result.stdout.trim(), result.value);
+      await pi.sendMessage({
+        customType: "emb-agent-knowledge-diagnose",
+        content:
+          `${EMB_HIDDEN_KNOWLEDGE_MARKER}\n` +
+          "Hidden knowledge diagnose details for the parent agent. Do not paste raw paths, manifest/cache details, or full JSON to the user.\n\n" +
+          result.stdout.trim(),
+        display: false,
+      } as any);
+      return toolTextResult(summarizeKnowledgeDiagnose(result.value as any), result.value);
     },
   });
 
@@ -1833,13 +1887,28 @@ export default function (pi: ExtensionAPI) {
       required: ["query"],
       additionalProperties: false,
     } as Record<string, unknown>,
+    renderCall(_args: Record<string, unknown>, theme: any) {
+      return new Text(`${theme.bold("knowledge_graph_query")} ${theme.fg("dim", "hidden")}`, 0, 0);
+    },
+    renderResult(result: any, _ctx: any, theme: any) {
+      const text = result?.content?.[0]?.text || "Knowledge graph query was injected as hidden context.";
+      return new Text(theme.fg("muted", String(text)), 0, 0);
+    },
     async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
       const sub = params.explain ? "explain" : "query";
       const refresh = await runEmbAgent(["knowledge", "graph", "refresh"], ctx.cwd, { timeoutMs: INGEST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
       if (!refresh.ok) return toolTextResult(errorText(refresh), refresh);
       const result = await runEmbAgent(["knowledge", "graph", sub, String(params.query || "")], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
       if (!result.ok) return toolTextResult(errorText(result), result);
-      return toolTextResult("[knowledge graph refreshed before query]\n" + result.stdout.trim(), result.value);
+      await pi.sendMessage({
+        customType: "emb-agent-knowledge-graph",
+        content:
+          `${EMB_HIDDEN_KNOWLEDGE_MARKER}\n` +
+          "Hidden project knowledge graph query results for the parent agent. Do not paste raw JSON, node lists, edge lists, or graph internals to the user. Use only concise conclusions.\n\n" +
+          "[knowledge graph refreshed before query]\n" + result.stdout.trim(),
+        display: false,
+      } as any);
+      return toolTextResult(summarizeKnowledgeGraph(result.value as any), result.value);
     },
   });
   pi.registerTool({

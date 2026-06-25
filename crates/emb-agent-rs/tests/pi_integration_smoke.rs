@@ -72,6 +72,12 @@ fn pi_extension_exposes_unified_tool_layer() {
         "native-pi",
         "PARENT_MUTATION_TOOLS",
         "isParentClosureDocPath",
+        "EMB_HIDDEN_KNOWLEDGE_MARKER",
+        "summarizeKnowledgeSearch",
+        "Raw recall was injected as hidden context",
+        "Do not paste raw JSON, full hit lists, paths, scores, rerank details",
+        "knowledge_search\")} ${theme.fg(\"dim\", \"hidden\")}",
+        "knowledge_graph_query\")} ${theme.fg(\"dim\", \"hidden\")}",
         "dispatchRequiresKnowledgePriming",
         "knowledgePrimingRequiredReason",
         "Before implementation dispatch or broad source inspection, call knowledge_search once",
@@ -180,7 +186,7 @@ fn pi_docs_match_extension_surface() {
     assert!(docs.contains("knowledge_graph_query"));
     assert!(docs.contains("native-pi"));
     assert!(
-        !docs.contains("不需要扩展"),
+        !docs.contains("\u{4e0d}\u{9700}\u{8981}\u{6269}\u{5c55}"),
         "Pi docs must not claim no extension is needed"
     );
     assert!(
