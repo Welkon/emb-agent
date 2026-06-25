@@ -128,7 +128,7 @@ interface SubagentRunState {
   stderrTail: string;
   finalText: string;
   errorMessage?: string;
-  usage: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number; turns: number; ctxTokens: number };
+  usage: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number; turns: number; ctxTokens: number; ctxLimit: number; ctxRemaining: number };
   usageMessageIds: string[];
   attempt: number;
   attemptsMax: number;
@@ -769,7 +769,7 @@ function newRunState(role: string, task: string, route?: ModelRoute): SubagentRu
     thinkingTail: "",
     stderrTail: "",
     finalText: "",
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, ctxTokens: 0 },
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, ctxTokens: 0, ctxLimit: 0, ctxRemaining: 0 },
     usageMessageIds: [],
     attempt: 0,
     attemptsMax: route?.model && route.model !== "inherit" ? SUBAGENT_MODEL_RETRIES + 1 : 1,
@@ -786,6 +786,8 @@ function addUsage(state: SubagentRunState, usageValue: unknown): boolean {
   const cacheRead = Number(usage.cacheRead ?? usage.cache_read ?? usage.cachedTokens ?? 0);
   const cacheWrite = Number(usage.cacheWrite ?? usage.cache_write ?? 0);
   const totalTokens = Number(usage.totalTokens ?? usage.total_tokens ?? 0);
+  const ctxLimit = Number(usage.contextLimit ?? usage.contextWindow ?? usage.maxContextTokens ?? usage.max_context_tokens ?? usage.limit ?? 0);
+  const ctxRemaining = Number(usage.contextRemaining ?? usage.remainingTokens ?? usage.remaining_tokens ?? usage.tokensRemaining ?? 0);
   const totalCost = Number(cost.total ?? usage.costTotal ?? usage.totalCost ?? 0);
   const before = JSON.stringify(state.usage);
   state.usage.input += Number.isFinite(input) ? input : 0;
@@ -795,6 +797,9 @@ function addUsage(state: SubagentRunState, usageValue: unknown): boolean {
   state.usage.cost += Number.isFinite(totalCost) ? totalCost : 0;
   if (Number.isFinite(totalTokens) && totalTokens > 0) state.usage.ctxTokens = totalTokens;
   else state.usage.ctxTokens = Math.max(state.usage.ctxTokens, state.usage.input + state.usage.output + state.usage.cacheRead + state.usage.cacheWrite);
+  if (Number.isFinite(ctxLimit) && ctxLimit > 0) state.usage.ctxLimit = Math.max(state.usage.ctxLimit, ctxLimit);
+  if (Number.isFinite(ctxRemaining) && ctxRemaining > 0) state.usage.ctxRemaining = ctxRemaining;
+  else if (state.usage.ctxLimit > 0 && state.usage.ctxTokens > 0) state.usage.ctxRemaining = Math.max(0, state.usage.ctxLimit - state.usage.ctxTokens);
   return JSON.stringify(state.usage) !== before;
 }
 
@@ -1088,29 +1093,17 @@ function formatTokenCount(value: number): string {
   return String(Math.round(n));
 }
 
-function formatCost(value: number): string {
-  const n = Number(value || 0);
-  if (!Number.isFinite(n) || n <= 0) return "";
-  if (n < 0.001) return `$${n.toFixed(6)}`;
-  return `$${n.toFixed(4)}`;
+function contextTokensUsed(usage: SubagentRunState["usage"]): number {
+  return Number(usage.ctxTokens || 0) || (Number(usage.input || 0) + Number(usage.output || 0) + Number(usage.cacheRead || 0) + Number(usage.cacheWrite || 0));
 }
 
-function usageTotal(usage: SubagentRunState["usage"]): number {
-  return Number(usage.input || 0) + Number(usage.output || 0) + Number(usage.cacheRead || 0) + Number(usage.cacheWrite || 0);
-}
-
-function formatUsage(usage: SubagentRunState["usage"]): string {
-  const total = usageTotal(usage);
-  if (!total && !usage.ctxTokens && !usage.cost) return "";
-  const parts = [
-    `tok ${formatTokenCount(total)}`,
-    usage.input ? `in ${formatTokenCount(usage.input)}` : null,
-    usage.output ? `out ${formatTokenCount(usage.output)}` : null,
-    usage.cacheRead ? `cache ${formatTokenCount(usage.cacheRead)}` : null,
-    usage.ctxTokens ? `ctx ${formatTokenCount(usage.ctxTokens)}` : null,
-    formatCost(usage.cost) || null,
-  ].filter(Boolean);
-  return parts.join("/");
+function formatContextUsage(usage: SubagentRunState["usage"]): string {
+  const used = contextTokensUsed(usage);
+  if (!used && !usage.ctxLimit) return "";
+  const limit = Number(usage.ctxLimit || 0);
+  const remaining = Number(usage.ctxRemaining || 0) || (limit > 0 ? Math.max(0, limit - used) : 0);
+  if (limit > 0) return `ctx ${formatTokenCount(used)}/${formatTokenCount(limit)} · left ${formatTokenCount(remaining)}`;
+  return `ctx ${formatTokenCount(used)} used`;
 }
 
 function aggregateUsage(roles: SubagentRunState[]): SubagentRunState["usage"] {
@@ -1121,20 +1114,22 @@ function aggregateUsage(roles: SubagentRunState[]): SubagentRunState["usage"] {
     acc.cacheWrite += Number(role.usage?.cacheWrite || 0);
     acc.cost += Number(role.usage?.cost || 0);
     acc.turns += Number(role.usage?.turns || 0);
-    acc.ctxTokens = Math.max(acc.ctxTokens, Number(role.usage?.ctxTokens || 0));
+    acc.ctxTokens += contextTokensUsed(role.usage);
+    if (role.usage?.ctxLimit) acc.ctxLimit += Number(role.usage.ctxLimit || 0);
+    if (role.usage?.ctxRemaining) acc.ctxRemaining += Number(role.usage.ctxRemaining || 0);
     return acc;
-  }, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, ctxTokens: 0 });
+  }, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, ctxTokens: 0, ctxLimit: 0, ctxRemaining: 0 });
 }
 
 function renderSubagentProgress(details: EmbSubagentProgress, includeOutput = true): string {
   const totalUsage = aggregateUsage(details.roles);
-  const usageSummary = formatUsage(totalUsage);
+  const usageSummary = formatContextUsage(totalUsage);
   const lines = [`emb-agent native subagents · ${details.final ? "done" : "running"}${usageSummary ? ` · total ${usageSummary}` : ""}`];
   for (const role of details.roles) {
     const running = role.status === "running" || role.status === "pending";
     const frame = SPINNER_FRAMES[Math.floor((Date.now() - details.startedAt) / 120) % SPINNER_FRAMES.length] || "⠸";
     const icon = role.status === "succeeded" ? "✓" : role.status === "failed" ? "✗" : role.status === "cancelled" ? "!" : running ? frame : "⠸";
-    const roleUsage = formatUsage(role.usage);
+    const roleUsage = formatContextUsage(role.usage);
     const attempt = role.attempt ? `try ${role.attempt}/${role.attemptsMax || 1}` : null;
     const route = role.routeHistory.length > 1 ? `route ${role.routeHistory.join("→")}` : null;
     const stats = [attempt, role.tools.length ? `${role.tools.length} tools` : null, role.model || null, route, role.thinking ? `thinking=${role.thinking}` : null, roleUsage || null].filter(Boolean).join(" · ");
