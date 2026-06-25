@@ -65,14 +65,16 @@ Pi extension 注册 LLM 可直接调用的工具：
 
 ## 原生子 agent 派发
 
-emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
+emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现。核心不是只选 roles，而是先生成 `SubagentDispatchPlan`：
 
 1. `pi.on("input")` 识别 broad firmware/system-framework 请求。
-2. 命中 `delegation_policy.required_before_broad_work` 时，extension 会在 `before_agent_start` 自动触发 native read-only 子 agent，必要时也允许父 agent 显式调用 `emb_subagent`。
-3. 自动派发和 `emb_subagent` 都使用 `pi --mode json -p --no-session` 启动隔离 headless Pi 子进程。
-4. 子进程设置 `EMB_AGENT_SUBAGENT_CHILD=1`，防止递归触发自动派发。
-5. extension 解析 JSON event stream，显示 native progress card。
-6. 全部结果通过 `display:false` hidden context 注入，父 agent 只综合结论，不展示原始报告。
+2. extension 按 `agent_protocol.gate.kind`、`action`、`task_candidates`、用户意图生成 dispatch plan：`phase`、`targetTask`、`mode`、`runs[]`。
+3. `work-selection` / `task-execution` 下的“全部执行/写代码/实现全部”会先从候选任务中选择第一个可执行目标（优先 P0/`01-*`/framework，避开 integration），再派发到目标 task；不会一次吞掉全部任务。
+4. `prd-exploration` 和 `prd-breakdown` 默认只派只读证据/审查子代；实现子代等到具体 target task 后再运行。
+5. 自动派发和 `emb_subagent` 都使用 `pi --mode json -p --no-session` 启动隔离 headless Pi 子进程。
+6. 子进程设置 `EMB_AGENT_SUBAGENT_CHILD=1`，防止递归触发自动派发。
+7. extension 解析 JSON event stream，显示 native progress card。
+8. 全部结果通过 `display:false` hidden context 注入，父 agent 只综合结论，不展示原始报告。
 
 默认只读预检角色：
 
@@ -82,7 +84,7 @@ emb-agent 自动 dispatcher 由 `.pi/extensions/emb-agent.ts` 自己实现：
 - `bug-hunter`：根因与回归风险追踪
 - `release-checker`：发布前验证、回滚和用户影响检查
 
-`fw-doer` 和 `onboard` 仍保留模型路由。PRD 探索阶段默认只派发只读角色；当会话进入 work-selection/实现类请求（例如“全部执行”“写代码”“实现全部”）时，自动派发会选择 `fw-doer`。
+`fw-doer` 和 `onboard` 仍保留模型路由。PRD 探索阶段默认只派发只读角色；当会话进入 work-selection/task-execution 且用户提出实现类请求（例如“全部执行”“写代码”“实现全部”）时，自动派发会生成链式计划：可选 `hw-scout` 先做目标任务证据确认，`fw-doer` 只实现选中的目标 task，`release-checker` 做验收/缺口检查。
 
 ## Session Insight
 

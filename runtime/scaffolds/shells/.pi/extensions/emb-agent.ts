@@ -48,8 +48,8 @@ interface EmbAgentResult {
   open_tasks?: number;
   agent_protocol?: { gate?: { recommended_command?: string; recommended_agent?: string; kind?: string; delegation_policy?: DelegationPolicy } };
   language?: string;
-  task_candidates?: Array<{ name: string }>;
-  prd_task_candidates?: Array<{ name: string }>;
+  task_candidates?: Array<{ name: string; title?: string; status?: string; priority?: string }>;
+  prd_task_candidates?: Array<{ name: string; title?: string; status?: string; priority?: string }>;
   local_parse?: { quality?: string; tool?: string; line_count?: number; char_count?: number; status?: string };
   quality_gate?: string;
   recommended_action?: string;
@@ -138,6 +138,25 @@ interface EmbSubagentResult {
   model?: string;
   thinking?: string;
   error?: string;
+}
+
+type DispatchPhase = "prd-exploration" | "prd-breakdown" | "work-selection" | "task-execution" | "verification" | "debug" | "general";
+type DispatchIntent = "evidence" | "implementation" | "architecture" | "system-review" | "debug" | "verification";
+
+interface SubagentDispatchRun {
+  role: string;
+  intent: DispatchIntent;
+  writable: boolean;
+  targetTask?: string;
+  prompt: string;
+}
+
+interface SubagentDispatchPlan {
+  phase: DispatchPhase;
+  targetTask?: string;
+  mode: "single" | "parallel" | "chain";
+  reason: string;
+  runs: SubagentDispatchRun[];
 }
 
 interface AutoDispatchResult {
@@ -546,10 +565,117 @@ function shouldAutoDispatchSubagents(prompt: string, result: EmbAgentResult, set
   return Boolean(policy.required_before_broad_work || isPrdExploration(result));
 }
 
+function candidateTasks(result: EmbAgentResult): Array<{ name: string; title?: string; status?: string; priority?: string }> {
+  return [...(result.task_candidates || []), ...(result.prd_task_candidates || [])]
+    .filter((task, index, all) => task?.name && all.findIndex((item) => item.name === task.name) === index);
+}
+
+function taskRank(task: { name: string; title?: string; status?: string; priority?: string }): number {
+  const text = `${task.name} ${task.title || ""} ${task.priority || ""}`.toLowerCase();
+  let score = 0;
+  if (/^0*1[-_]|framework|baremetal|骨架|框架|p0/.test(text)) score -= 100;
+  if (/p0/.test(text)) score -= 30;
+  if (/p1/.test(text)) score -= 15;
+  if (/integration|集成|联调|release|验收/.test(text)) score += 60;
+  if (/depends|blocked|waiting|hold/.test(String(task.status || "").toLowerCase())) score += 50;
+  return score;
+}
+
+function selectTargetTask(result: EmbAgentResult): string | undefined {
+  const tasks = candidateTasks(result).filter((task) => !/closed|done|resolved/i.test(String(task.status || "")));
+  if (!tasks.length) return undefined;
+  return [...tasks].sort((a, b) => taskRank(a) - taskRank(b) || a.name.localeCompare(b.name))[0]?.name;
+}
+
+function dispatchPhase(result: EmbAgentResult): DispatchPhase {
+  const gate = String(result.agent_protocol?.gate?.kind || "").toLowerCase();
+  const action = String(result.action || "").toLowerCase();
+  if (gate.includes("prd-exploration") || action === "clarify") return "prd-exploration";
+  if (gate.includes("prd-breakdown") || action === "prd-breakdown") return "prd-breakdown";
+  if (gate.includes("work-selection") || action === "choose-work") return "work-selection";
+  if (gate.includes("task-execution") || action === "do") return "task-execution";
+  return "general";
+}
+
+function rolePrompt(role: string, intent: DispatchIntent, userPrompt: string, result: EmbAgentResult, targetTask?: string, previousOutput?: string): string {
+  const taskLine = targetTask ? `Target task: ${targetTask}` : "Target task: none selected";
+  const taskGuard = targetTask
+    ? `Stay inside the target task. Read .emb-agent/tasks/${targetTask}/task.json and .emb-agent/tasks/${targetTask}/prd.md first when present. Do not broaden into unrelated tasks.`
+    : "Do not invent a task target. If implementation is requested but no target task exists, report the missing selection instead of editing broadly.";
+  const previous = previousOutput ? `\n\nPrevious subagent output to use as context:\n${previousOutput.slice(0, MAX_SUBAGENT_OUTPUT)}` : "";
+  const directives: Record<string, string> = {
+    "hw-scout": "Collect only hardware/manual/schematic evidence needed for the target work. Cite exact cached document paths, registers, pins, nets, config bits, and uncertainty. Do not edit files.",
+    "fw-doer": "Implement only the target task. Make minimal source edits, preserve project conventions, and stop after the scoped implementation plus local validation evidence. Do not implement downstream dependent tasks unless explicitly targeted.",
+    "arch-reviewer": "Review architecture, ISR/main-loop boundaries, timing, RAM/ROM, scheduler/event-step fit, and vertical-slice boundaries for this target work. Do not edit files.",
+    "sys-reviewer": "Review behavior requirements, state-machine consistency, power/sleep/wakeup, WDT/LVD/reset behavior, and acceptance evidence. Do not edit files.",
+    "bug-hunter": "Find root cause hypotheses, regression vectors, and minimal reproduction/verification steps for the target bug. Do not edit unless explicitly asked as fw-doer.",
+    "release-checker": "Check whether the target task result is ready: changed files, acceptance criteria, validation gaps, rollback/user impact, and next task handoff. Do not edit files.",
+  };
+  return [
+    taskLine,
+    `Dispatch intent: ${intent}`,
+    taskGuard,
+    directives[role] || "Perform the delegated emb-agent task only.",
+    "Use emb-agent project truth and cached knowledge. Prefer doc_lookup/doc_fetch over broad scans. Report concise evidence and residual risks.",
+    "Original user request:",
+    userPrompt,
+    previous,
+  ].join("\n");
+}
+
+function buildDispatchPlan(prompt: string, result: EmbAgentResult): SubagentDispatchPlan {
+  const phase = dispatchPhase(result);
+  const targetTask = selectTargetTask(result);
+  if (phase === "prd-exploration") {
+    return {
+      phase,
+      mode: "parallel",
+      reason: "PRD exploration allows read-only evidence scouts/reviewers only.",
+      runs: [
+        { role: "hw-scout", intent: "evidence", writable: false, prompt: rolePrompt("hw-scout", "evidence", prompt, result) },
+        { role: "sys-reviewer", intent: "system-review", writable: false, prompt: rolePrompt("sys-reviewer", "system-review", prompt, result) },
+      ],
+    };
+  }
+  if (phase === "prd-breakdown") {
+    return {
+      phase,
+      mode: "parallel",
+      reason: "PRD breakdown needs evidence plus architecture/system review before task creation.",
+      runs: [
+        { role: "hw-scout", intent: "evidence", writable: false, prompt: rolePrompt("hw-scout", "evidence", prompt, result) },
+        { role: "arch-reviewer", intent: "architecture", writable: false, prompt: rolePrompt("arch-reviewer", "architecture", prompt, result) },
+        { role: "sys-reviewer", intent: "system-review", writable: false, prompt: rolePrompt("sys-reviewer", "system-review", prompt, result) },
+      ],
+    };
+  }
+  if (promptLooksImplementationWork(prompt) && (phase === "work-selection" || phase === "task-execution" || phase === "general")) {
+    const runs: SubagentDispatchRun[] = [];
+    if (targetTask) runs.push({ role: "hw-scout", intent: "evidence", writable: false, targetTask, prompt: rolePrompt("hw-scout", "evidence", prompt, result, targetTask) });
+    runs.push({ role: "fw-doer", intent: "implementation", writable: true, targetTask, prompt: rolePrompt("fw-doer", "implementation", prompt, result, targetTask) });
+    if (targetTask) runs.push({ role: "release-checker", intent: "verification", writable: false, targetTask, prompt: rolePrompt("release-checker", "verification", prompt, result, targetTask) });
+    return {
+      phase,
+      targetTask,
+      mode: runs.length > 1 ? "chain" : "single",
+      reason: targetTask ? `Implementation request scoped to first ready target task: ${targetTask}.` : "Implementation request has no selected task; fw-doer must refuse broad edits and ask for scope.",
+      runs,
+    };
+  }
+  return {
+    phase,
+    mode: "parallel",
+    reason: "Broad firmware request needs read-only reconnaissance and review before inline work.",
+    runs: [
+      { role: "hw-scout", intent: "evidence", writable: false, targetTask, prompt: rolePrompt("hw-scout", "evidence", prompt, result, targetTask) },
+      { role: "arch-reviewer", intent: "architecture", writable: false, targetTask, prompt: rolePrompt("arch-reviewer", "architecture", prompt, result, targetTask) },
+      { role: "sys-reviewer", intent: "system-review", writable: false, targetTask, prompt: rolePrompt("sys-reviewer", "system-review", prompt, result, targetTask) },
+    ],
+  };
+}
+
 function autoDispatchRoles(prompt: string, result: EmbAgentResult): string[] {
-  if (promptLooksImplementationWork(prompt) && isWorkSelection(result)) return ["fw-doer"];
-  if (promptLooksImplementationWork(prompt) && !isPrdExploration(result)) return ["fw-doer"];
-  return isPrdExploration(result) ? ["hw-scout", "sys-reviewer"] : ["hw-scout", "arch-reviewer", "sys-reviewer"];
+  return buildDispatchPlan(prompt, result).runs.map((run) => run.role);
 }
 
 function appendTail(current: string, chunk: string, limit = MAX_TAIL): string {
@@ -777,10 +903,19 @@ async function runPiSubagent(cwd: string, role: string, prompt: string, route: M
   });
 }
 
-async function runEmbSubagentBatch(cwd: string, userPrompt: string, roles: string[], result: EmbAgentResult | undefined, signal: AbortSignal | undefined, onUpdate?: (r: any) => void): Promise<{ output: string; details: EmbSubagentProgress; failed: boolean; results: EmbSubagentResult[] }> {
+async function runEmbSubagentBatch(cwd: string, userPrompt: string, planOrRoles: SubagentDispatchPlan | string[], result: EmbAgentResult | undefined, signal: AbortSignal | undefined, onUpdate?: (r: any) => void): Promise<{ output: string; details: EmbSubagentProgress; failed: boolean; results: EmbSubagentResult[]; plan: SubagentDispatchPlan }> {
+  const plan: SubagentDispatchPlan = Array.isArray(planOrRoles)
+    ? {
+        phase: result ? dispatchPhase(result) : "general",
+        mode: planOrRoles.length > 1 ? "parallel" : "single",
+        reason: "Manual role list dispatch.",
+        runs: planOrRoles.map((role) => ({ role, intent: READ_ONLY_AGENT_NAMES.has(role) ? "evidence" : "implementation", writable: !READ_ONLY_AGENT_NAMES.has(role), prompt: rolePrompt(role, READ_ONLY_AGENT_NAMES.has(role) ? "evidence" : "implementation", userPrompt, result || {}) })),
+      }
+    : planOrRoles;
+  const runs = plan.runs.filter((run) => SUPPORTED_AGENT_NAMES.has(run.role));
   const routes = await loadModelRoutes(cwd);
   const startedAt = Date.now();
-  const details: EmbSubagentProgress = { kind: "emb-agent-subagent-progress", batchId: randomUUID(), mode: roles.length > 1 ? "parallel" : "single", roles: [], final: false, startedAt, updatedAt: startedAt };
+  const details: EmbSubagentProgress = { kind: "emb-agent-subagent-progress", batchId: randomUUID(), mode: plan.mode, roles: [], final: false, startedAt, updatedAt: startedAt };
   let lastKey = "";
   const emit = (force = false) => {
     details.updatedAt = Date.now();
@@ -789,14 +924,30 @@ async function runEmbSubagentBatch(cwd: string, userPrompt: string, roles: strin
     lastKey = key;
     onUpdate?.({ content: [{ type: "text", text: renderSubagentProgress(details, false) }], details: clone(details) });
   };
-  details.roles = roles.map((role) => newRunState(role, userPrompt, routes[role]));
+  details.roles = runs.map((run) => newRunState(run.role, run.prompt, routes[run.role]));
   emit(true);
-  const results = await Promise.all(details.roles.map((state) => runPiSubagent(cwd, state.role, buildSubagentPrompt(state.role, userPrompt, result), routes[state.role], state, () => emit(), signal)));
+  const runOne = (run: SubagentDispatchRun, state: SubagentRunState, previousOutput?: string) => {
+    const delegatedPrompt = previousOutput ? rolePrompt(run.role, run.intent, userPrompt, result || {}, run.targetTask || plan.targetTask, previousOutput) : run.prompt;
+    return runPiSubagent(cwd, run.role, buildSubagentPrompt(run.role, delegatedPrompt, result), routes[run.role], state, () => emit(), signal);
+  };
+  let results: EmbSubagentResult[] = [];
+  if (plan.mode === "chain") {
+    let previous = "";
+    for (let i = 0; i < runs.length; i++) {
+      const item = await runOne(runs[i]!, details.roles[i]!, previous);
+      results.push(item);
+      previous = [previous, `## ${item.role} (${item.status})\n${item.output}`].filter(Boolean).join("\n\n---\n\n");
+      if (item.status !== "succeeded") break;
+    }
+  } else {
+    results = await Promise.all(runs.map((run, index) => runOne(run, details.roles[index]!)));
+  }
   details.final = true;
   details.updatedAt = Date.now();
   emit(true);
-  const output = results.map((item) => `## ${item.role} (${item.status})\n${item.output.slice(0, MAX_SUBAGENT_OUTPUT)}`).join("\n\n---\n\n");
-  return { output, details: clone(details), failed: results.some((r) => r.status !== "succeeded"), results };
+  const header = [`Dispatch phase: ${plan.phase}`, plan.targetTask ? `Target task: ${plan.targetTask}` : "Target task: none", `Mode: ${plan.mode}`, `Reason: ${plan.reason}`].join("\n");
+  const output = `${header}\n\n` + results.map((item) => `## ${item.role} (${item.status})\n${item.output.slice(0, MAX_SUBAGENT_OUTPUT)}`).join("\n\n---\n\n");
+  return { output, details: clone(details), failed: results.some((r) => r.status !== "succeeded"), results, plan };
 }
 
 function clone<T>(value: T): T {
@@ -818,9 +969,10 @@ function renderSubagentProgress(details: EmbSubagentProgress, includeOutput = tr
 async function autoDispatchSubagents(cwd: string, userPrompt: string, result: EmbAgentResult, signal: AbortSignal | undefined, onUpdate?: (r: any) => void): Promise<AutoDispatchResult & { output?: string; details?: EmbSubagentProgress }> {
   const settings = await readPiSettings(cwd);
   if (!shouldAutoDispatchSubagents(userPrompt, result, settings)) return { attempted: false, roles: [], errors: [] };
-  const roles = autoDispatchRoles(userPrompt, result).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
+  const plan = buildDispatchPlan(userPrompt, result);
+  const roles = plan.runs.map((run) => run.role).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
   try {
-    const batch = await runEmbSubagentBatch(cwd, userPrompt, roles, result, signal, onUpdate);
+    const batch = await runEmbSubagentBatch(cwd, userPrompt, plan, result, signal, onUpdate);
     return { attempted: true, batchId: batch.details.batchId, roles, errors: batch.failed ? ["one or more subagents failed"] : [], output: batch.output, details: batch.details };
   } catch (error: any) {
     return { attempted: true, roles, errors: [error?.message || String(error)] };
@@ -1039,7 +1191,7 @@ function questionSummary(q: QuestionDef): string {
 export default function (pi: ExtensionAPI) {
   const contexts = new Map<string, ContextEntry>();
   const dispatchGuards = new Map<string, DispatchGuard>();
-  const pendingNativeDispatch = new Map<string, { prompt: string; result: EmbAgentResult; roles: string[]; createdAt: number }>();
+  const pendingNativeDispatch = new Map<string, { prompt: string; result: EmbAgentResult; plan: SubagentDispatchPlan; createdAt: number }>();
 
   function markContextDirty(cwd: string) {
     const current = contexts.get(cwd);
@@ -1114,8 +1266,9 @@ export default function (pi: ExtensionAPI) {
     const context = await prepareEmbContext(ctx.cwd);
     const settings = await readPiSettings(ctx.cwd);
     if (!context?.result || !shouldAutoDispatchSubagents(text, context.result, settings)) return { action: "continue" };
-    const roles = autoDispatchRoles(text, context.result).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
-    pendingNativeDispatch.set(ctx.cwd, { prompt: text, result: context.result, roles, createdAt: Date.now() });
+    const plan = buildDispatchPlan(text, context.result);
+    const roles = plan.runs.map((run) => run.role).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
+    pendingNativeDispatch.set(ctx.cwd, { prompt: text, result: context.result, plan, createdAt: Date.now() });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
       reason: "emb-agent native subagent delegation is active for this broad firmware/framework request. The parent agent must first call emb_subagent and must not read files, run shell commands, edit, or continue inline before the hidden subagent results are available.",
@@ -1132,11 +1285,11 @@ export default function (pi: ExtensionAPI) {
     let messageContent = `emb-agent context injected (${new Date(context.updatedAt).toISOString()})`;
 
     if (pending && Date.now() - pending.createdAt < 60_000) {
-      const roles = pending.roles.filter((role) => SUPPORTED_AGENT_NAMES.has(role));
+      const roles = pending.plan.runs.map((run) => run.role).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
       if (roles.length) {
         let hiddenResults = "";
         try {
-          const batch = await runEmbSubagentBatch(ctx.cwd, pending.prompt, roles, pending.result || context.result, undefined, undefined);
+          const batch = await runEmbSubagentBatch(ctx.cwd, pending.prompt, pending.plan, pending.result || context.result, undefined, undefined);
           hiddenResults = batch.output;
           messageContent += `; native subagents completed (${batch.results.map((r) => `${r.role}:${r.status}`).join(", ")})`;
         } catch (error: any) {
@@ -1306,10 +1459,12 @@ export default function (pi: ExtensionAPI) {
       const context = await prepareEmbContext(ctx.cwd);
       const prompt = String(params.prompt || pending?.prompt || "").trim();
       if (!prompt) return toolTextResult("emb_subagent error: missing prompt", { status: "error" });
-      const requestedRoles = Array.isArray(params.roles) ? params.roles.map(String) : pending?.roles;
-      const roles = (requestedRoles && requestedRoles.length ? requestedRoles : autoDispatchRoles(prompt, context?.result || pending?.result || {})).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
+      const requestedRoles = Array.isArray(params.roles) ? params.roles.map(String) : undefined;
+      const plan = pending?.plan || buildDispatchPlan(prompt, context?.result || pending?.result || {});
+      const dispatch = requestedRoles && requestedRoles.length ? requestedRoles.filter((role) => SUPPORTED_AGENT_NAMES.has(role)) : plan;
+      const roles = Array.isArray(dispatch) ? dispatch : dispatch.runs.map((run) => run.role).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
       if (!roles.length) return toolTextResult("emb_subagent error: no supported roles", { status: "error" });
-      const batch = await runEmbSubagentBatch(ctx.cwd, prompt, roles, context?.result || pending?.result, signal, onUpdate);
+      const batch = await runEmbSubagentBatch(ctx.cwd, prompt, dispatch, context?.result || pending?.result, signal, onUpdate);
       pendingNativeDispatch.delete(ctx.cwd);
       const guard = dispatchGuards.get(ctx.cwd);
       if (guard) {
