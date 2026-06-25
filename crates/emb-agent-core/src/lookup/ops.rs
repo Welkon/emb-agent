@@ -367,6 +367,15 @@ pub fn query_board(
 // === fetch document ===
 
 pub fn fetch_document(project_root: &Path, doc_path: &str) -> Result<String, String> {
+    if is_schematic_path(doc_path) {
+        if let Some(content) = fetch_cached_schematic_parse(project_root, doc_path)? {
+            return Ok(content);
+        }
+        return Err(format!(
+            "Schematic not found or not parsed: {doc_path}. Run `ingest schematic --file {doc_path}` first."
+        ));
+    }
+
     if let Some(content) = fetch_cached_parse(project_root, doc_path)? {
         return Ok(content);
     }
@@ -386,6 +395,49 @@ pub fn fetch_document(project_root: &Path, doc_path: &str) -> Result<String, Str
     Err(format!(
         "Document not found or not parsed: {doc_path}. Run `ingest doc --file {doc_path} --provider auto` first."
     ))
+}
+
+fn fetch_cached_schematic_parse(
+    project_root: &Path,
+    doc_path: &str,
+) -> Result<Option<String>, String> {
+    let cache_path = project_root
+        .join(".emb-agent")
+        .join("cache")
+        .join("schematics");
+    for entry in walk_dir(&cache_path) {
+        let parsed = entry.join("parsed.json");
+        if parsed.exists() {
+            let source_path = entry.join("source.json");
+            if source_path.exists()
+                && let Ok(content) = fs::read_to_string(&source_path)
+                && (content.contains(doc_path)
+                    || content.contains(
+                        Path::new(doc_path)
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or(""),
+                    ))
+            {
+                return fs::read_to_string(&parsed)
+                    .map(Some)
+                    .map_err(|e| format!("read error: {e}"));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn is_schematic_path(doc_path: &str) -> bool {
+    matches!(
+        Path::new(doc_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str(),
+        "schdoc" | "pcbdoc" | "sch" | "dsn" | "kicad_sch"
+    )
 }
 
 fn fetch_cached_parse(project_root: &Path, doc_path: &str) -> Result<Option<String>, String> {

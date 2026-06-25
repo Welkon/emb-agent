@@ -522,6 +522,18 @@ fn doc_ingest_creates_env_example_and_blocks_until_mineru_key_exists() {
         stderr.contains("binary") && stderr.contains("ingest doc"),
         "doc fetch stderr: {stderr}"
     );
+
+    let schematic_fetch = Command::new(emb_agent_bin())
+        .args(["doc", "fetch", "--path", "docs/fixture.SchDoc"])
+        .arg("--cwd")
+        .arg(project.path())
+        .output()
+        .expect("run schematic doc fetch");
+    let schematic_fetch = assert_success(schematic_fetch);
+    assert!(
+        schematic_fetch.contains("parser_mode") && schematic_fetch.contains("fixture"),
+        "schematic fetch output: {schematic_fetch}"
+    );
 }
 
 #[test]

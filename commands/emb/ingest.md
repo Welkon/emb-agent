@@ -43,7 +43,7 @@ allowed-tools:
 - `declare hardware` / `ingest hardware` return `write_mode: truth-write` because they update truth files directly.
 - `ingest doc` returns `write_mode: staged-truth` when it has a target truth file; review `apply_ready` and then use `ingest apply doc ...` to write the selected fields.
 - `ingest schematic` returns `write_mode: analysis-only`, `truth_write.direct: false`, and `apply_ready: null`; it only prepares artifacts for agent analysis.
-- After schematic ingest, use the returned `parsed.json`, `analysis.visual-netlist.json`, `analysis.schematic-advice.json`, and `preview.svg` artifacts as agent input and confirm controller/signals/peripherals before writing truth.
+- After schematic ingest, use the returned `parsed.json`, `analysis.visual-netlist.json`, `analysis.schematic-advice.json`, and `preview.svg` artifacts as agent input and confirm controller/signals/peripherals before writing truth. `doc fetch --path <schematic.SchDoc>` returns the cached `parsed.json`; it must not read raw binary SchDoc bytes.
 - Schematic advice findings are review prompts only. Users may dismiss or ignore them after confirming board intent, datasheet limits, firmware defaults, and BOM values.
 - For targeted schematic inspection after ingest, use `/emb:schematic summary --parsed <parsed.json>`, `/emb:schematic component --ref <designator> --parsed <parsed.json>`, or `/emb:schematic net --name <net> --parsed <parsed.json>`.
 - `ingest board` directly reads Altium `.PcbDoc` OLE/CFB containers and returns `write_mode: analysis-only`; it prepares `analysis.board-layout.json` and `analysis.board-advice.json` without writing truth.

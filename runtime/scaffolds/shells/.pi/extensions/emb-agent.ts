@@ -1427,8 +1427,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "doc_fetch",
     label: "doc fetch",
-    description: "Fetch cached parsed markdown for a document path. Use after ingest_doc, not on raw PDFs.",
-    promptSnippet: "Fetch cached parsed markdown for a document path",
+    description: "Fetch cached parsed markdown for a document path, or cached parsed schematic JSON for SchDoc/schematic paths. Use after ingest_doc/ingest schematic, not on raw PDFs before ingest.",
+    promptSnippet: "Fetch cached parsed markdown or schematic parse for a source path",
     parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } as Record<string, unknown>,
     async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
       const result = await runEmbAgent(["doc", "fetch", "--path", String(params.path || "")], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER, allowNonJson: true });
