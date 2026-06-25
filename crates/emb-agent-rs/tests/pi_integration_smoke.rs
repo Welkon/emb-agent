@@ -59,7 +59,7 @@ fn pi_extension_exposes_unified_tool_layer() {
         "pendingNativeDispatch",
         "emb-agent:hidden-subagent-results",
         "return { action: \"continue\" }",
-        "Native read-only Pi subagent results follow",
+        "Native Pi subagent results follow",
         "Auto-dispatch failed",
         "phase: \"waiting\"",
         "phase === \"results-injected\"",

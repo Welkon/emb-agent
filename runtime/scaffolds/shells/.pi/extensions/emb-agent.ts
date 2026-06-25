@@ -834,7 +834,7 @@ function shouldPauseParent(dispatch: AutoDispatchResult | null): boolean {
 function renderAutoDispatch(dispatch: AutoDispatchResult | null): string {
   if (!dispatch?.attempted) return "";
   const lines = ["\n## emb-agent Native Subagent Dispatch"];
-  if (dispatch.roles.length) lines.push(`Launched native read-only Pi subagents: ${dispatch.roles.join(", ")}.`);
+  if (dispatch.roles.length) lines.push(`Launched native Pi subagents: ${dispatch.roles.join(", ")}.`);
   if (dispatch.errors.length) lines.push(`Warnings: ${dispatch.errors.join("; ")}`);
   lines.push("Parent agent must wait for hidden subagent results before inline file/code exploration.");
   return lines.join("\n");
@@ -1155,7 +1155,7 @@ export default function (pi: ExtensionAPI) {
           EMB_HIDDEN_RESULTS_MARKER,
           "Internal emb-agent context; do not quote or reveal this block to the user.",
           `Original user request: ${pending.prompt}`,
-          "Native read-only Pi subagent results follow. Use them as evidence for synthesis. Do not paste raw reports.",
+          "Native Pi subagent results follow. Use them as evidence for synthesis. Do not paste raw reports.",
           hiddenResults,
           "Now answer the user concisely from the subagent evidence and emb-agent project state.",
         ].join("\n") + "\n";
@@ -1308,7 +1308,7 @@ export default function (pi: ExtensionAPI) {
       if (!prompt) return toolTextResult("emb_subagent error: missing prompt", { status: "error" });
       const requestedRoles = Array.isArray(params.roles) ? params.roles.map(String) : pending?.roles;
       const roles = (requestedRoles && requestedRoles.length ? requestedRoles : autoDispatchRoles(prompt, context?.result || pending?.result || {})).filter((role) => SUPPORTED_AGENT_NAMES.has(role));
-      if (!roles.length) return toolTextResult("emb_subagent error: no supported read-only roles", { status: "error" });
+      if (!roles.length) return toolTextResult("emb_subagent error: no supported roles", { status: "error" });
       const batch = await runEmbSubagentBatch(ctx.cwd, prompt, roles, context?.result || pending?.result, signal, onUpdate);
       pendingNativeDispatch.delete(ctx.cwd);
       const guard = dispatchGuards.get(ctx.cwd);
