@@ -530,6 +530,7 @@ pub fn build_next_json_with_tasks_and_policy(
         "hardware_unknown_count": snapshot.hardware_unknown_count,
         "truth_validation_errors": snapshot.truth_validation_errors,
         "truth_validation_summary": truth_errors_summary,
+        "firmware_layout": default_firmware_layout(Path::new(&snapshot.project_root)),
         "firmware_manual_required": snapshot.firmware_manual_required,
         "hardware_evidence_files": snapshot.hardware_evidence_files,
         "graph_health": build_graph_health(snapshot),
@@ -710,7 +711,7 @@ fn build_next_agent_protocol_with_policy(
         let graph_path = project_root.join(".emb-agent/graph/graph.json");
         let graph_exists = graph_path.is_file();
         let manual_parsed = manual_cached_or_parsed(snapshot);
-        let has_code = has_source_files(project_root);
+        let has_code = has_source_files(project_root, None);
         // Graph is only required if project has source code. Pre-firmware projects (no .c/.h/.rs) skip this check.
         let graph_required = has_code && !graph_exists;
         let manual_required = !manual_parsed;
@@ -773,6 +774,48 @@ fn build_next_agent_protocol_with_policy(
         .to_string();
     }
     "{\"gate\":{\"kind\":\"none\",\"blocking\":false}}".to_string()
+}
+
+fn default_firmware_layout(project_root: &Path) -> Value {
+    let mut source_roots = vec!["firmware/src".to_string(), "firmware/include".to_string()];
+    let project_json = project_root.join(".emb-agent/project.json");
+    if let Ok(raw) = std::fs::read_to_string(project_json)
+        && let Ok(value) = serde_json::from_str::<Value>(&raw)
+        && let Some(packages) = value.get("packages").and_then(Value::as_array)
+    {
+        for package in packages {
+            let path = package.get("path").and_then(Value::as_str).unwrap_or("");
+            let kind = package
+                .get("type")
+                .or_else(|| package.get("kind"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if !path.is_empty()
+                && (kind == "firmware" || path == "firmware" || path.starts_with("firmware/"))
+                && !source_roots.iter().any(|root| root == path)
+            {
+                source_roots.push(path.to_string());
+            }
+        }
+    }
+    for optional in ["firmware", "src", "include"] {
+        if project_root.join(optional).is_dir() && !source_roots.iter().any(|root| root == optional)
+        {
+            source_roots.push(optional.to_string());
+        }
+    }
+    let source_files_present = source_roots
+        .iter()
+        .any(|root| has_source_files(project_root, Some(root)));
+    json!({
+        "root": "firmware",
+        "source_roots": source_roots,
+        "default_source_root": "firmware/src",
+        "default_include_root": "firmware/include",
+        "legacy_source_roots": ["src", "include"],
+        "source_files_present": source_files_present,
+        "policy": "new emb-agent firmware projects create firmware/src and firmware/include; legacy src/include remains supported but is not the default"
+    })
 }
 
 /// Returns true if cached docs contain parsed hardware MCU manual/datasheet evidence.
@@ -850,10 +893,16 @@ fn is_manual_doc_index_entry(doc: &Value, mcu_model: &str) -> bool {
 }
 
 /// Returns true if any source files exist (C, header, Rust, Python, assembly).
-fn has_source_files(project_root: &Path) -> bool {
+fn has_source_files(project_root: &Path, scope: Option<&str>) -> bool {
+    let root = scope
+        .map(|scope| project_root.join(scope))
+        .unwrap_or_else(|| project_root.to_path_buf());
+    if !root.is_dir() {
+        return false;
+    }
     let extensions = ["c", "h", "rs", "py", "cpp", "hpp", "s", "asm", "S"];
     for ext in &extensions {
-        if walkdir_first_file(project_root, ext) {
+        if walkdir_first_file(&root, ext) {
             return true;
         }
     }
@@ -940,7 +989,8 @@ pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
             "developer": snapshot.developer,
             "branch": snapshot.git_branch,
             "bootstrap": snapshot.bootstrap_status,
-            "workflow": snapshot.workflow_state
+            "workflow": snapshot.workflow_state,
+            "firmware_layout": default_firmware_layout(Path::new(&snapshot.project_root))
         },
         "prd": {
             "system_prd": snapshot.system_prd_exists,
@@ -1410,6 +1460,15 @@ mod tests {
             serde_json::from_str(&build_next_json(&sample_snapshot())).unwrap();
         assert_eq!(next["language"], "zh");
         assert_eq!(next["language_instruction"], status["language_instruction"]);
+        assert_eq!(next["firmware_layout"]["root"], "firmware");
+        assert_eq!(
+            next["firmware_layout"]["default_source_root"],
+            "firmware/src"
+        );
+        assert_eq!(
+            status["project"]["firmware_layout"]["default_include_root"],
+            "firmware/include"
+        );
 
         let context = build_session_context(&sample_snapshot());
         assert!(context.contains("Response language: Respond to the user in Simplified Chinese"));

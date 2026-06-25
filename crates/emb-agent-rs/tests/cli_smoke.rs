@@ -255,6 +255,13 @@ fn init_uses_backend_neutral_event_step_framework_defaults() {
         "project json must not emit legacy scheduler_shape: {raw}"
     );
 
+    assert_eq!(project_json["default_package"], "firmware");
+    assert_eq!(project_json["active_package"], "firmware");
+    assert_eq!(project_json["packages"][0]["path"], "firmware");
+    assert_eq!(project_json["packages"][0]["type"], "firmware");
+    assert!(root.join("firmware/src").is_dir());
+    assert!(root.join("firmware/include").is_dir());
+
     let system_prd = fs::read_to_string(root.join("docs/prd/system.md")).expect("read system prd");
     assert!(
         system_prd.contains("Official framework: event-step"),

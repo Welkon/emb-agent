@@ -45,13 +45,15 @@ pub fn init_project(cwd: &Path) -> String {
     let _ = fs::create_dir_all(ext_dir.join("roadmap"));
     let _ = fs::create_dir_all(ext_dir.join("audits"));
     let _ = fs::create_dir_all(ext_dir.join("extensions").join("chips").join("profiles"));
+    let _ = fs::create_dir_all(cwd.join("firmware").join("src"));
+    let _ = fs::create_dir_all(cwd.join("firmware").join("include"));
     ensure_default_config(&ext_dir);
     let project = serde_json::json!({
         "project_profile": "",
         "active_specs": ["embedded-space"],
-        "packages": [],
-        "default_package": "",
-        "active_package": "",
+        "packages": [{"name":"firmware","path":"firmware","type":"firmware","submodule":false}],
+        "default_package": "firmware",
+        "active_package": "firmware",
         "flash_flow": "",
         "developer": {"name": "", "runtime": ""},
         "preferences": {"truth_source_mode": "hardware_first"},

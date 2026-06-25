@@ -481,6 +481,18 @@ function detectMonorepoPackages(projectRoot) {
 
   submodulePaths.forEach(addPackage);
 
+  if (!byPath.has('firmware')) {
+    const firmwarePath = path.join(projectRoot, 'firmware');
+    fs.mkdirSync(path.join(firmwarePath, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(firmwarePath, 'include'), { recursive: true });
+    byPath.set('firmware', {
+      name: 'firmware',
+      path: 'firmware',
+      type: 'firmware',
+      submodule: false
+    });
+  }
+
   const packages = Array.from(byPath.values())
     .sort((left, right) => left.path.localeCompare(right.path));
   const defaultPackage =

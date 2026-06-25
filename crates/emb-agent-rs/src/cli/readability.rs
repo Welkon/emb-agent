@@ -12,9 +12,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .map(String::as_str)
         .unwrap_or(".");
 
-    let src_dir = Path::new(cwd).join("src");
-    if !src_dir.exists() {
-        return Err("No src/ directory found. Run from project root.".to_string());
+    let cwd = Path::new(cwd);
+    let src_dirs = [
+        cwd.join("firmware/src"),
+        cwd.join("firmware/include"),
+        cwd.join("src"),
+        cwd.join("include"),
+    ];
+    let existing = src_dirs
+        .iter()
+        .filter(|path| path.exists())
+        .collect::<Vec<_>>();
+    if existing.is_empty() {
+        return Err("No firmware source directory found. Expected firmware/src and firmware/include (or legacy src/include). Run from project root.".to_string());
     }
 
     println!("Readability lint report:\n");
@@ -22,11 +32,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut issues = Vec::new();
 
     // Scan C files
-    if let Ok(entries) = fs::read_dir(&src_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|e| e == "c" || e == "h") {
-                issues.extend(lint_file(&path));
+    for src_dir in existing {
+        if let Ok(entries) = fs::read_dir(src_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "c" || e == "h") {
+                    issues.extend(lint_file(&path));
+                }
             }
         }
     }
