@@ -69,6 +69,8 @@ fn pi_extension_exposes_unified_tool_layer() {
         "subagentModelRoutes",
         "native-pi",
         "PARENT_MUTATION_TOOLS",
+        "stripBenignShellRedirections",
+        "\\/dev\\/null",
         "The parent AI must decide from the user's request",
         "knowledge_search, knowledge_diagnose, and knowledge_graph_query",
         "Use knowledge_search for project knowledge",

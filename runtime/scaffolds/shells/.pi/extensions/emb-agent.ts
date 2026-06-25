@@ -1177,9 +1177,19 @@ function isRawPdfShellCommand(command: string): boolean {
   return /(^|[;&|\s])(cat|head|tail|less|more|xxd|od|strings|pdftotext|mutool|python3?\s+-c)\b/.test(c);
 }
 
+function stripBenignShellRedirections(command: string): string {
+  return String(command || "")
+    .replace(/\s*\d?>\s*\/dev\/null\b/g, "")
+    .replace(/\s*\d?>>\s*\/dev\/null\b/g, "")
+    .replace(/\s*\d?>&\d\b/g, "");
+}
+
 function isLikelyMutationShellCommand(command: string): boolean {
-  const c = String(command || "").toLowerCase();
-  return /(^|[;&|\s])(cat\s+>\s*|tee\b|mkdir\b|touch\b|rm\b|mv\b|cp\b|python3?\b.*\b(open\(|write_text|write\()|node\b.*\bwritefilesync\b|perl\s+-pi|sed\s+-i)\b|>>|>/.test(c);
+  const c = stripBenignShellRedirections(String(command || "").toLowerCase()).replace(/\s+/g, " ");
+  const mutationCommand = /(^|[;&|\s])(cat\s+>\s*|tee\b|mkdir\b|touch\b|rm\b|mv\b|cp\b|perl\s+-pi\b|sed\s+-i\b)/.test(c);
+  const scriptWrite = /\bpython(?:3)?\b.*\b(open\s*\(|write_text\s*\(|write\s*\()|\bnode\b.*\bwritefilesync\b/.test(c);
+  const outputRedirect = /(^|\s)\d?>>?\s*(?!&)[^\s]/.test(c);
+  return mutationCommand || scriptWrite || outputRedirect;
 }
 
 // ---------------------------------------------------------------------------
