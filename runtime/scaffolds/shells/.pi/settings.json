@@ -9,13 +9,13 @@
       "rawResultGuardMs": 60000
     },
     "subagentModelRoutes": {
-      "hw-scout": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
-      "release-checker": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
-      "arch-reviewer": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
-      "bug-hunter": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
-      "sys-reviewer": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
-      "fw-doer": { "model": "custom/gpt-5.5", "thinking": "xhigh" },
-      "onboard": { "model": "custom/gpt-5.5", "thinking": "xhigh" }
+      "hw-scout": { "model": "inherit" },
+      "release-checker": { "model": "inherit" },
+      "arch-reviewer": { "model": "inherit" },
+      "bug-hunter": { "model": "inherit" },
+      "sys-reviewer": { "model": "inherit" },
+      "fw-doer": { "model": "inherit" },
+      "onboard": { "model": "inherit" }
     }
   }
 }

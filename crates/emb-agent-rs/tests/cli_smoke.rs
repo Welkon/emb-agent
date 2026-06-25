@@ -2728,9 +2728,8 @@ fn installer_pi_settings_merge_preserves_user_config() {
         "settings: {raw}"
     );
     assert_eq!(
-        value["embAgent"]["subagentModelRoutes"]["sys-reviewer"]["model"],
-        "deepseek/deepseek-v4-pro",
-        "settings should merge default routes with user overrides: {raw}"
+        value["embAgent"]["subagentModelRoutes"]["sys-reviewer"]["model"], "inherit",
+        "settings should merge default inherit routes with user overrides: {raw}"
     );
     assert!(
         value.get("subagents").is_none(),

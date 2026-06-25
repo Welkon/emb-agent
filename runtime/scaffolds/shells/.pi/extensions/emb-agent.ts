@@ -417,7 +417,17 @@ const MAX_SUBAGENT_OUTPUT = 50_000;
 const MAX_TAIL = 4_000;
 const MAX_SESSION_BYTES = 2 * 1024 * 1024;
 
-const DEFAULT_AUTO_AGENT_MODEL_ROUTES: Record<string, ModelRoute> = {
+const INHERIT_MODEL_ROUTES: Record<string, ModelRoute> = {
+  "hw-scout": { model: "inherit" },
+  "release-checker": { model: "inherit" },
+  "arch-reviewer": { model: "inherit" },
+  "bug-hunter": { model: "inherit" },
+  "sys-reviewer": { model: "inherit" },
+  "fw-doer": { model: "inherit" },
+  "onboard": { model: "inherit" },
+};
+
+const LEGACY_AUTO_AGENT_MODEL_ROUTES: Record<string, ModelRoute> = {
   "hw-scout": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
   "release-checker": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
   "arch-reviewer": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
@@ -426,6 +436,8 @@ const DEFAULT_AUTO_AGENT_MODEL_ROUTES: Record<string, ModelRoute> = {
   "fw-doer": { model: "custom/gpt-5.5", thinking: "xhigh" },
   "onboard": { model: "custom/gpt-5.5", thinking: "xhigh" },
 };
+
+const DEFAULT_AUTO_AGENT_MODEL_ROUTES: Record<string, ModelRoute> = INHERIT_MODEL_ROUTES;
 
 async function syncEmbAgentsToPi(cwd: string) {
   const candidates = [
@@ -464,14 +476,30 @@ function normalizeModelRoute(value: unknown): ModelRoute | null {
   return route.model || route.thinking ? route : null;
 }
 
+function sameModelRoute(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left || null) === JSON.stringify(right || null);
+}
+
+function stripLegacyGeneratedModelRouteEntries(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const routes = { ...(value as Record<string, unknown>) };
+  for (const [name, legacy] of Object.entries(LEGACY_AUTO_AGENT_MODEL_ROUTES)) {
+    if (sameModelRoute(routes[name], legacy)) delete routes[name];
+  }
+  return routes;
+}
+
+function isLegacyGeneratedModelRoutes(value: unknown): boolean {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(stripLegacyGeneratedModelRouteEntries(value)).length === 0);
+}
+
 function configuredModelRoutes(settings: Record<string, unknown>): Record<string, ModelRoute> {
   const routes: Record<string, ModelRoute> = { ...DEFAULT_AUTO_AGENT_MODEL_ROUTES };
   const embAgent = settings.embAgent && typeof settings.embAgent === "object" && !Array.isArray(settings.embAgent)
     ? settings.embAgent as Record<string, unknown>
     : {};
-  const userRoutes = embAgent.subagentModelRoutes && typeof embAgent.subagentModelRoutes === "object" && !Array.isArray(embAgent.subagentModelRoutes)
-    ? embAgent.subagentModelRoutes as Record<string, unknown>
-    : {};
+  const rawRoutes = embAgent.subagentModelRoutes;
+  const userRoutes = stripLegacyGeneratedModelRouteEntries(rawRoutes);
   for (const [name, value] of Object.entries(userRoutes)) {
     const normalized = normalizeModelRoute(value);
     if (normalized) routes[name] = normalized;
@@ -513,6 +541,13 @@ async function ensureSubagentSettings(cwd: string) {
   if (!embAgent.subagentModelRoutes || typeof embAgent.subagentModelRoutes !== "object" || Array.isArray(embAgent.subagentModelRoutes)) {
     embAgent.subagentModelRoutes = DEFAULT_AUTO_AGENT_MODEL_ROUTES;
     changed = true;
+  } else {
+    const cleanedRoutes = stripLegacyGeneratedModelRouteEntries(embAgent.subagentModelRoutes);
+    const mergedRoutes = { ...DEFAULT_AUTO_AGENT_MODEL_ROUTES, ...cleanedRoutes };
+    if (JSON.stringify(embAgent.subagentModelRoutes) !== JSON.stringify(mergedRoutes)) {
+      embAgent.subagentModelRoutes = mergedRoutes;
+      changed = true;
+    }
   }
   if (!embAgent.subagents || typeof embAgent.subagents !== "object" || Array.isArray(embAgent.subagents)) {
     embAgent.subagents = {

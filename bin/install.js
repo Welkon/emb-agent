@@ -1050,6 +1050,36 @@ function mergeUniqueArray(existing, additions) {
 	return out;
 }
 
+function legacyGeneratedSubagentModelRoutes() {
+	return {
+		"hw-scout": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
+		"release-checker": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
+		"arch-reviewer": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
+		"bug-hunter": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
+		"sys-reviewer": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
+		"fw-doer": { "model": "custom/gpt-5.5", "thinking": "xhigh" },
+		"onboard": { "model": "custom/gpt-5.5", "thinking": "xhigh" },
+	};
+}
+
+function sameModelRoute(left, right) {
+	return JSON.stringify(left || null) === JSON.stringify(right || null);
+}
+
+function stripLegacyGeneratedSubagentModelRouteEntries(value) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	var routes = Object.assign({}, value);
+	var legacy = legacyGeneratedSubagentModelRoutes();
+	Object.keys(legacy).forEach(function (name) {
+		if (sameModelRoute(routes[name], legacy[name])) delete routes[name];
+	});
+	return routes;
+}
+
+function isLegacyGeneratedSubagentModelRoutes(value) {
+	return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(stripLegacyGeneratedSubagentModelRouteEntries(value)).length === 0);
+}
+
 function deployPiSettingsJson(projectRoot, srcPath, destPath) {
 	backupManagedFile(projectRoot, destPath);
 	if (!fs.existsSync(srcPath)) return false;
@@ -1072,7 +1102,7 @@ function deployPiSettingsJson(projectRoot, srcPath, destPath) {
 	var existingSubagents = existingEmb.subagents && typeof existingEmb.subagents === "object" ? existingEmb.subagents : {};
 	merged.embAgent.subagents = Object.assign({}, templateSubagents, existingSubagents);
 	var templateRoutes = templateEmb.subagentModelRoutes && typeof templateEmb.subagentModelRoutes === "object" ? templateEmb.subagentModelRoutes : {};
-	var existingRoutes = existingEmb.subagentModelRoutes && typeof existingEmb.subagentModelRoutes === "object" ? existingEmb.subagentModelRoutes : {};
+	var existingRoutes = existingEmb.subagentModelRoutes && typeof existingEmb.subagentModelRoutes === "object" ? stripLegacyGeneratedSubagentModelRouteEntries(existingEmb.subagentModelRoutes) : {};
 	merged.embAgent.subagentModelRoutes = Object.assign({}, templateRoutes, existingRoutes);
 	delete merged.subagents;
 	ensureDir(path.dirname(destPath));

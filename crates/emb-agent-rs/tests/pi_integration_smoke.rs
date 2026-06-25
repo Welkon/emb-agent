@@ -122,15 +122,15 @@ fn pi_settings_are_safe_by_default() {
     assert!(value["embAgent"]["subagentModelRoutes"].is_object());
     assert_eq!(
         value["embAgent"]["subagentModelRoutes"]["sys-reviewer"]["model"],
-        "deepseek/deepseek-v4-pro"
+        "inherit"
     );
     assert_eq!(
         value["embAgent"]["subagentModelRoutes"]["hw-scout"]["model"],
-        "deepseek/deepseek-v4-flash"
+        "inherit"
     );
     assert_eq!(
         value["embAgent"]["subagentModelRoutes"]["fw-doer"]["model"],
-        "custom/gpt-5.5"
+        "inherit"
     );
     assert!(
         !settings.contains("claude/claude-opus-4-8"),
