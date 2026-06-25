@@ -483,6 +483,63 @@ function removePath(target) {
 	try { fs.rmSync(target, { recursive: true, force: true }); } catch (_) {}
 }
 
+function removeDirIfEmpty(target) {
+	try {
+		if (fs.existsSync(target) && fs.statSync(target).isDirectory() && fs.readdirSync(target).length === 0) fs.rmdirSync(target);
+	} catch (_) {}
+}
+
+function listRelativeFiles(dir) {
+	var files = [];
+	function walk(current, prefix) {
+		if (!fs.existsSync(current)) return;
+		var entries = fs.readdirSync(current, { withFileTypes: true }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+		for (var i = 0; i < entries.length; i++) {
+			var entry = entries[i];
+			var rel = prefix ? path.join(prefix, entry.name) : entry.name;
+			var full = path.join(current, entry.name);
+			if (entry.isDirectory()) walk(full, rel);
+			else if (entry.isFile()) files.push(rel.replace(/\\/g, "/"));
+		}
+	}
+	walk(dir, "");
+	return files;
+}
+
+function sameDirectoryContent(a, b) {
+	try {
+		if (!fs.existsSync(a) || !fs.existsSync(b)) return false;
+		var aFiles = listRelativeFiles(a);
+		var bFiles = listRelativeFiles(b);
+		if (aFiles.length !== bFiles.length) return false;
+		for (var i = 0; i < aFiles.length; i++) {
+			if (aFiles[i] !== bFiles[i]) return false;
+			if (!fs.readFileSync(path.join(a, aFiles[i])).equals(fs.readFileSync(path.join(b, bFiles[i])))) return false;
+		}
+		return true;
+	} catch (_) { return false; }
+}
+
+function cleanupPiSharedSkillCollisions(projectRoot, host) {
+	if (!host || host.name !== "pi") return;
+	var piSkillsRoot = path.join(hostDirFor(projectRoot, host), "skills");
+	var sharedSkillsRoot = path.join(projectRoot, ".agents", "skills");
+	if (!fs.existsSync(piSkillsRoot) || !fs.existsSync(sharedSkillsRoot)) return;
+	var entries = fs.readdirSync(piSkillsRoot, { withFileTypes: true }).filter(function (entry) { return entry.isDirectory(); });
+	for (var i = 0; i < entries.length; i++) {
+		var name = entries[i].name;
+		var piSkill = path.join(piSkillsRoot, name);
+		var sharedSkill = path.join(sharedSkillsRoot, name);
+		if (!fs.existsSync(path.join(piSkill, "SKILL.md")) || !fs.existsSync(path.join(sharedSkill, "SKILL.md"))) continue;
+		if (sameDirectoryContent(piSkill, sharedSkill)) {
+			removePath(sharedSkill);
+			logDetail("    Removed duplicate shared skill .agents/skills/" + name + " that conflicts with .pi/skills/" + name);
+		}
+	}
+	removeDirIfEmpty(sharedSkillsRoot);
+	removeDirIfEmpty(path.dirname(sharedSkillsRoot));
+}
+
 var ACTIVE_LOG_FILE = "";
 var QUIET_INSTALL = false;
 
@@ -1461,6 +1518,7 @@ function installForHost(projectRoot, host, callback) {
 				logDetail("    Skill deployed to " + host.dir + "/skills/emb-agent/");
 			}
 		}
+		cleanupPiSharedSkillCollisions(projectRoot, host);
 
 		var templateVars = hostTemplateVars(projectRoot, host);
 
@@ -1845,25 +1903,26 @@ function materializeSelectedSkill(projectRoot, host, item, callback) {
 	var projectSkillRoot = path.join(projectRoot, ".emb-agent", "plugins", item.name);
 	var hostSkillRoot = path.join(hostDirFor(projectRoot, host), "skills", item.name);
 	var sharedSkillRoot = path.join(projectRoot, ".agents", "skills", item.name);
+	var installSharedSkill = host && host.name === "codex";
 	ensureDir(path.dirname(projectSkillRoot));
 	ensureDir(path.dirname(hostSkillRoot));
-	ensureDir(path.dirname(sharedSkillRoot));
+	if (installSharedSkill) ensureDir(path.dirname(sharedSkillRoot));
 	if (fs.existsSync(item.url)) {
 		var sourceDir = path.dirname(item.url);
 		copyDirIfExists(sourceDir, projectSkillRoot);
 		copyDirIfExists(sourceDir, hostSkillRoot);
-		copyDirIfExists(sourceDir, sharedSkillRoot);
+		if (installSharedSkill) copyDirIfExists(sourceDir, sharedSkillRoot);
 		callback(true);
 		return;
 	}
 	ensureDir(projectSkillRoot);
 	ensureDir(hostSkillRoot);
-	ensureDir(sharedSkillRoot);
-	var pending = 3;
+	if (installSharedSkill) ensureDir(sharedSkillRoot);
+	var pending = installSharedSkill ? 3 : 2;
 	function done() { pending--; if (pending === 0) callback(true); }
 	downloadRawFile(item.url, path.join(projectSkillRoot, "SKILL.md"), done);
 	downloadRawFile(item.url, path.join(hostSkillRoot, "SKILL.md"), done);
-	downloadRawFile(item.url, path.join(sharedSkillRoot, "SKILL.md"), done);
+	if (installSharedSkill) downloadRawFile(item.url, path.join(sharedSkillRoot, "SKILL.md"), done);
 }
 
 function materializeSelectedSupport(projectRoot, host, state, callback) {

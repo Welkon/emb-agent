@@ -32,7 +32,7 @@ Skill is the user-visible capability unit. Installable bundles can ship one or m
 - If the plugin bundle contains a root `package.json` or `requirements.txt`, `skills install` provisions those dependencies into the plugin-local runtime automatically so command skills are runnable immediately after install.
 - `plugin.json` can also declare `dependencies.node`, `dependencies.python`, and `dependencies.system_requirements` when the bundle needs explicit runtime setup.
 - Project-local installed skill bundles live under `.emb-agent/plugins/`.
-- Project-scope installs also materialize host-visible entry skills under host skill directories such as `.codex/skills/` and the shared `.agents/skills/` layer when available.
+- Host-visible entry skills are installed under the target host skill directory. Codex also gets the shared `.agents/skills/` layer; Pi installs use `.pi/skills/` only so Pi does not see duplicate project skills through both `.pi/skills/` and `.agents/skills/`.
 - User-scope installed skill bundles live under the runtime home plugin directory.
 - `--isolated` uses the configured host sub-agent bridge when available.
 - Skills are optional integration surfaces, not emb-agent core policy. General engineering methods should be absorbed into commands, agents, workflow specs, or project truth when they become part of the default embedded workflow.

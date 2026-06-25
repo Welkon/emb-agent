@@ -2322,6 +2322,19 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         fs::create_dir_all(&skill_dir).expect("create stale codex skill");
         fs::write(skill_dir.join("SKILL.md"), "stale").expect("write stale codex skill");
     }
+    for base in [
+        root.join(".pi/skills/xc8-build"),
+        root.join(".agents/skills/xc8-build"),
+    ] {
+        fs::create_dir_all(base.join("scripts")).expect("create duplicate skill dir");
+        fs::write(
+            base.join("SKILL.md"),
+            "---\nname: xc8-build\ndescription: Build firmware\n---\n",
+        )
+        .expect("write duplicate skill");
+        fs::write(base.join("scripts/build_xc8.py"), "print('ok')\n")
+            .expect("write duplicate skill script");
+    }
     let stale_graph_key = format!("{}{}_API_KEY", "GRA", "PHIFY");
     fs::write(
         root.join(".env.example"),
@@ -2389,6 +2402,14 @@ fn installer_exposes_same_two_shell_commands_per_host() {
             .join("SKILL.md");
         assert!(skill_path.exists(), "missing Codex skill {skill_path:?}");
     }
+    assert!(
+        root.join(".pi/skills/xc8-build/SKILL.md").exists(),
+        "Pi skill copy should be preserved"
+    );
+    assert!(
+        !root.join(".agents/skills/xc8-build/SKILL.md").exists(),
+        "installer should remove identical shared skill duplicate that collides with .pi/skills"
+    );
     let codex_next = fs::read_to_string(root.join(".agents/skills/emb-next/SKILL.md"))
         .expect("read Codex next skill");
     assert!(
@@ -2576,6 +2597,56 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     );
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn installer_pi_skill_install_does_not_create_shared_duplicate() {
+    let repo_root = repo_root();
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("emb-agent-pi-skill-install-{nonce}"));
+    let support = root.join("emb-support");
+    let skill_dir = support.join("skills/xc8-build");
+    fs::create_dir_all(skill_dir.join("scripts")).expect("create local support skill");
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: xc8-build\ndescription: Build firmware\n---\n\n# XC8\n",
+    )
+    .expect("write local support skill");
+    fs::write(skill_dir.join("scripts/build_xc8.py"), "print('ok')\n")
+        .expect("write local support skill script");
+
+    let output = Command::new("node")
+        .arg(repo_root.join("bin").join("install.js"))
+        .arg("--target")
+        .arg("pi")
+        .arg("--local")
+        .arg("--developer")
+        .arg("tester")
+        .arg("--lang")
+        .arg("zh")
+        .arg("--skill")
+        .arg("xc8-build")
+        .env("EMB_SUPPORT_DIR", &support)
+        .current_dir(&root)
+        .output()
+        .expect("run pi installer with skill");
+    assert_success(output);
+
+    assert!(
+        root.join(".pi/skills/xc8-build/SKILL.md").exists(),
+        "Pi host skill should be installed"
+    );
+    assert!(
+        root.join(".emb-agent/plugins/xc8-build/SKILL.md").exists(),
+        "runtime plugin copy should be installed"
+    );
+    assert!(
+        !root.join(".agents/skills/xc8-build/SKILL.md").exists(),
+        "Pi-only skill install must not create a duplicate shared .agents skill"
+    );
 }
 
 #[test]

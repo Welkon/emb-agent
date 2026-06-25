@@ -1856,6 +1856,83 @@ function createInstallHelpers(deps) {
     }
   }
 
+  function listRelativeFiles(dirPath) {
+    const files = [];
+    function walk(current, prefix) {
+      if (!fs.existsSync(current)) {
+        return;
+      }
+      const entries = fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+      for (const entry of entries) {
+        const relative = prefix ? path.join(prefix, entry.name) : entry.name;
+        const full = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          walk(full, relative);
+        } else if (entry.isFile()) {
+          files.push(relative.replace(/\\/g, '/'));
+        }
+      }
+    }
+    walk(dirPath, '');
+    return files;
+  }
+
+  function sameDirectoryContent(left, right) {
+    try {
+      if (!fs.existsSync(left) || !fs.existsSync(right)) {
+        return false;
+      }
+      const leftFiles = listRelativeFiles(left);
+      const rightFiles = listRelativeFiles(right);
+      if (leftFiles.length !== rightFiles.length) {
+        return false;
+      }
+      for (let index = 0; index < leftFiles.length; index += 1) {
+        if (leftFiles[index] !== rightFiles[index]) {
+          return false;
+        }
+        const leftContent = fs.readFileSync(path.join(left, leftFiles[index]));
+        const rightContent = fs.readFileSync(path.join(right, rightFiles[index]));
+        if (!leftContent.equals(rightContent)) {
+          return false;
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function cleanupPiSharedSkillCollisions(targetDir, target) {
+    if (!target || target.name !== 'pi') {
+      return 0;
+    }
+    const piSkillsRoot = path.join(targetDir, 'skills');
+    const sharedSkillsRoot = path.join(path.resolve(targetDir, '..'), '.agents', 'skills');
+    if (!fs.existsSync(piSkillsRoot) || !fs.existsSync(sharedSkillsRoot)) {
+      return 0;
+    }
+    let removed = 0;
+    for (const entry of fs.readdirSync(piSkillsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const piSkill = path.join(piSkillsRoot, entry.name);
+      const sharedSkill = path.join(sharedSkillsRoot, entry.name);
+      if (
+        fs.existsSync(path.join(piSkill, 'SKILL.md')) &&
+        fs.existsSync(path.join(sharedSkill, 'SKILL.md')) &&
+        sameDirectoryContent(piSkill, sharedSkill)
+      ) {
+        removeDirIfExists(sharedSkill);
+        removed += 1;
+      }
+    }
+    removeDirIfEmpty(sharedSkillsRoot);
+    removeDirIfEmpty(path.dirname(sharedSkillsRoot));
+    return removed;
+  }
+
   function removeDirIfEmpty(dirPath) {
     if (!fs.existsSync(dirPath)) {
       return;
@@ -3421,6 +3498,7 @@ function createInstallHelpers(deps) {
       claudeCommandCount = installClaudeCommands(targetDir, target, runtimeDir);
       cursorCommandCount = installCursorCommands(targetDir, target, runtimeDir);
       piExtensionCount = installPiExtension(targetDir, target, runtimeDir);
+      cleanupPiSharedSkillCollisions(targetDir, target);
       const installedSurfaceCount =
         agentCount + codexSkillCount + sharedSkillCount + claudeCommandCount + cursorCommandCount + piExtensionCount;
       integrationActivity.succeed(
