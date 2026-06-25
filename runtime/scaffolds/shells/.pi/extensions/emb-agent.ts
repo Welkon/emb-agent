@@ -699,15 +699,16 @@ function buildDispatchPlan(prompt: string, result: EmbAgentResult): SubagentDisp
     };
   }
   if (phase === "work-selection" || phase === "task-execution") {
-    const runs: SubagentDispatchRun[] = [];
-    if (targetTask) runs.push({ role: "hw-scout", intent: "evidence", writable: false, targetTask, prompt: rolePrompt("hw-scout", "evidence", prompt, result, targetTask) });
-    runs.push({ role: "fw-doer", intent: "implementation", writable: true, targetTask, prompt: rolePrompt("fw-doer", "implementation", prompt, result, targetTask) });
-    if (targetTask) runs.push({ role: "release-checker", intent: "verification", writable: false, targetTask, prompt: rolePrompt("release-checker", "verification", prompt, result, targetTask) });
+    const runs: SubagentDispatchRun[] = [
+      { role: "fw-doer", intent: "implementation", writable: true, targetTask, prompt: rolePrompt("fw-doer", "implementation", prompt, result, targetTask) },
+    ];
     return {
       phase,
       targetTask,
-      mode: runs.length > 1 ? "chain" : "single",
-      reason: targetTask ? `Implementation request scoped to first ready target task: ${targetTask}.` : "Implementation request has no selected task; fw-doer must refuse broad edits and ask for scope.",
+      mode: "single",
+      reason: targetTask
+        ? `Token-efficient implementation dispatch scoped to target task: ${targetTask}. Run hw-scout or release-checker separately only when the parent AI judges fresh evidence/review is needed.`
+        : "Implementation request has no selected task; fw-doer must refuse broad edits and ask for scope.",
       runs,
     };
   }
@@ -1359,6 +1360,25 @@ function isLikelyMutationShellCommand(command: string): boolean {
   return mutationCommand || scriptWrite || outputRedirect;
 }
 
+function isParentClosureDocPath(path: string): boolean {
+  const p = String(path || "").replace(/\\/g, "/");
+  return Boolean(
+    /(^|\/)\.emb-agent\/tasks\/[^/]+\/(aar\.md|task\.json|review.*\.md|validation.*\.md)$/i.test(p) ||
+    /(^|\/)\.emb-agent\/(attention\.md|architecture\/.*\.md|compound\/.*\.md|wiki\/.*\.md|reference\/.*\.md|memory\/.*\.md|audits\/.*\.md|sessions\/.*\.md)$/i.test(p) ||
+    /(^|\/)docs\/.*\.md$/i.test(p) ||
+    /(^|\/)(README|CHANGELOG|NOTES)\.md$/i.test(p)
+  );
+}
+
+function shellCommandOnlyWritesClosureDocs(command: string): boolean {
+  const c = String(command || "").replace(/\\/g, "/");
+  if (!isLikelyMutationShellCommand(c)) return false;
+  if (/(^|[;&|\s])(rm\b|mv\b|cp\b|mkdir\b|touch\b|sed\s+-i\b|perl\s+-pi\b)/i.test(c)) return false;
+  const pathMatches = c.match(/(?:^|[\s'\"])([^\s'\"]*(?:\.emb-agent\/[^\s'\"]+|docs\/[^\s'\"]+|README\.md|CHANGELOG\.md|NOTES\.md))/gi) || [];
+  const paths = pathMatches.map((m) => m.trim().replace(/^['\"]|['\"]$/g, ""));
+  return paths.length > 0 && paths.every(isParentClosureDocPath);
+}
+
 // ---------------------------------------------------------------------------
 // ask_user_question UI
 // ---------------------------------------------------------------------------
@@ -1460,7 +1480,7 @@ export default function (pi: ExtensionAPI) {
     pendingNativeDispatch.set(ctx.cwd, { prompt: text, result: context.result, plan, createdAt: Date.now() });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
-      reason: "emb-agent subagent dispatch is required before parent-side file mutations. The parent AI must decide from the user's request whether to call emb_subagent; if implementation is intended, call emb_subagent first and wait for hidden results before writing/editing files.",
+      reason: "emb-agent subagent dispatch is required before parent-side implementation file mutations. The parent AI must decide from the user's request whether to call emb_subagent; if implementation is intended, call emb_subagent first and wait for hidden results before writing/editing source/build files. Task closure docs (AAR, task status, attention, architecture, compound/wiki notes, markdown docs) may be written directly by the parent agent.",
       phase: "waiting",
     });
     return { action: "continue" };
@@ -1485,8 +1505,8 @@ export default function (pi: ExtensionAPI) {
           `Dispatch mode: ${pending.plan.mode}`,
           `Dispatch roles: ${roles.join(", ")}`,
           `Dispatch reason: ${pending.plan.reason}`,
-          "If the user's request is to implement/start/continue candidate work, call emb_subagent before parent-side file mutation. If the user's request is only a question or clarification, answer normally without calling subagents.",
-          "Do not write/edit files in the parent turn before emb_subagent finishes when implementation is intended.",
+          "If the user's request is to implement/start/continue candidate work, call emb_subagent before parent-side source/build file mutation. If the user's request is only a question, clarification, task closure, AAR, or knowledge/documentation writeback, answer or write the closure docs normally without calling subagents.",
+          "Do not write/edit source/build files in the parent turn before emb_subagent finishes when implementation is intended. AAR/task status/attention/architecture/compound/wiki markdown closure writes are allowed.",
         ].join("\n") + "\n";
         messageContent += `; dispatch plan ready (${roles.join(", ")})`;
       }
@@ -1511,8 +1531,14 @@ export default function (pi: ExtensionAPI) {
     const guard = dispatchGuards.get(ctx.cwd);
     if (guard && Date.now() >= guard.until) dispatchGuards.delete(ctx.cwd);
     if (guard && Date.now() < guard.until && guard.phase === "waiting") {
-      if (PARENT_MUTATION_TOOLS.has(event.toolName)) return { block: true, reason: guard.reason };
-      if (event.toolName === "bash" && isLikelyMutationShellCommand(String((event.input as any)?.command || ""))) return { block: true, reason: guard.reason };
+      if (PARENT_MUTATION_TOOLS.has(event.toolName)) {
+        const path = String((event.input as any)?.path || "");
+        if (!isParentClosureDocPath(path)) return { block: true, reason: guard.reason };
+      }
+      if (event.toolName === "bash") {
+        const command = String((event.input as any)?.command || "");
+        if (isLikelyMutationShellCommand(command) && !shellCommandOnlyWritesClosureDocs(command)) return { block: true, reason: guard.reason };
+      }
     }
     if (guard && Date.now() < guard.until && guard.phase === "results-injected") {
       const path = String((event.input as any)?.path || "");
@@ -1668,7 +1694,7 @@ export default function (pi: ExtensionAPI) {
         content:
           `${EMB_HIDDEN_RESULTS_MARKER}\n` +
           `Original user request: ${prompt}\n\n` +
-          "The following native emb-agent subagent results are hidden from the user but available to the main agent. Synthesize the final user-facing answer now. Do not paste raw reports.\n\n" +
+          "The following native emb-agent subagent results are hidden from the user but available to the main agent. Synthesize the final user-facing answer now. Do not paste raw reports. If implementation appears complete, remind the user that task closure is a parent-agent step: AAR, task status, attention/architecture/compound/wiki notes can be written directly without launching more subagents unless the user asks for extra review.\n\n" +
           batch.output,
         display: false,
       } as any, { deliverAs: "followUp", triggerTurn: true } as any);
