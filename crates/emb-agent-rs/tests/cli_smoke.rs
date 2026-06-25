@@ -1661,6 +1661,65 @@ fn system_prd_without_child_prds_routes_to_prd_breakdown() {
 }
 
 #[test]
+fn completed_task_history_does_not_force_prd_breakdown() {
+    let project = TestProject::new("complete-no-prd-breakdown");
+    let _ = run(
+        &project,
+        &[
+            "declare",
+            "hardware",
+            "--mcu",
+            "CA51M550",
+            "--package",
+            "SOP8",
+        ],
+    );
+    fs::write(
+        project.path().join(".emb-agent/req.yaml"),
+        "goals:\n  - deliver timer firmware\nfeatures:\n  - display countdown\nacceptance:\n  - firmware builds and board acceptance can proceed\n",
+    )
+    .expect("write req truth");
+    fs::write(
+        project.path().join("docs/prd/system.md"),
+        "# System PRD\n\n## Behaviors\n\n- Display countdown.\n- Key controls timer.\n- Sleep after idle.\n\n## Acceptance Evidence\n\n- Build passes.\n- Board burn-in can proceed.\n",
+    )
+    .expect("write system prd");
+    for task in ["pwm-led", "schematic-review"] {
+        fs::write(
+            project
+                .path()
+                .join(".emb-agent")
+                .join("tasks")
+                .join(task)
+                .join("task.json"),
+            format!(
+                r#"{{"name":"{task}","title":"{task}","status":"completed","priority":"P2","package":"firmware"}}"#
+            ),
+        )
+        .expect("write completed task");
+    }
+
+    let next = run(&project, &["next", "--brief"]);
+    let value: serde_json::Value = serde_json::from_str(&next).expect("next json");
+    assert_eq!(value["action"], "complete", "next output: {next}");
+    assert_eq!(
+        value["agent_protocol"]["gate"]["kind"], "project-complete",
+        "next output: {next}"
+    );
+    assert_eq!(
+        value["prd"]["breakdown_needed"], false,
+        "next output: {next}"
+    );
+    assert!(
+        value["instructions"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Do not run PRD breakdown"),
+        "next output: {next}"
+    );
+}
+
+#[test]
 fn child_prds_without_tasks_route_to_work_selection() {
     let project = TestProject::new("child-prd-selection");
     fs::remove_dir_all(project.path().join(".emb-agent/tasks/pwm-led")).expect("remove pwm task");

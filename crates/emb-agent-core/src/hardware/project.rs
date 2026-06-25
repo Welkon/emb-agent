@@ -1063,6 +1063,15 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     } else {
         "concept"
     };
+    let task_total_count = count_known_execution_tasks(Path::new(&state.state_dir));
+    let completed_task_count = count_completed_execution_tasks(Path::new(&state.state_dir));
+    let all_known_tasks_closed = task_total_count > 0
+        && state.current_task.is_none()
+        && state.open_tasks == 0
+        && has_hardware
+        && child_prd_count == 0
+        && system_prd_has_content
+        && completed_task_count > 0;
     let explanation_only_path = has_structure_explanation_intent(&state)
         && state.current_task.is_none()
         && state.open_tasks == 0
@@ -1073,10 +1082,12 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         && state.current_task.is_none()
         && state.open_tasks == 0
         && !explanation_only_path
+        && !all_known_tasks_closed
         && system_prd_has_content
         && child_prd_count == 0;
     let firmware_manual_required = has_hardware
         && !has_firmware_manual_evidence(Path::new(&state.state_dir), &state.hardware.model)
+        && !all_known_tasks_closed
         && !explanation_only_path
         && (state.current_task.is_some()
             || (state.open_tasks == 0 && requirements_have_content && child_prd_count == 0));
@@ -1126,6 +1137,8 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         summary
     } else if state.current_task.is_some() {
         String::new()
+    } else if all_known_tasks_closed {
+        "All known execution tasks are closed. Do not force PRD breakdown only because no child PRD files remain. Present the project as code-complete and route the user toward board-level acceptance, release packaging, or explicit new-scope intake if they request more work.".to_string()
     } else if !state.requirements.unknowns.is_empty()
         || !state.hardware.unknowns.is_empty()
         || !has_hardware
@@ -1170,6 +1183,11 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         )
     } else if state.current_task.is_some() {
         ("do".to_string(), "Active task is selected".to_string())
+    } else if all_known_tasks_closed {
+        (
+            "complete".to_string(),
+            "All known execution tasks are closed. PRD breakdown is not required unless the user explicitly adds new scope or identifies an uncovered requirement.".to_string(),
+        )
     } else if !state.requirements.unknowns.is_empty()
         || !state.hardware.unknowns.is_empty()
         || !has_hardware
@@ -1685,24 +1703,49 @@ fn value_string_field(value: &Value, key: &str) -> String {
         .to_string()
 }
 pub fn count_open_tasks(ext: &Path) -> usize {
+    task_refs(ext)
+        .into_iter()
+        .filter(|task| !is_closed_task(&task.status))
+        .count()
+}
+
+fn count_completed_execution_tasks(ext: &Path) -> usize {
+    task_refs(ext)
+        .into_iter()
+        .filter(|task| !is_bootstrap_task_name(&task.name))
+        .filter(|task| is_completed_task(&task.status))
+        .count()
+}
+
+fn count_known_execution_tasks(ext: &Path) -> usize {
+    task_refs(ext)
+        .into_iter()
+        .filter(|task| !is_bootstrap_task_name(&task.name))
+        .count()
+}
+
+fn is_bootstrap_task_name(name: &str) -> bool {
+    let normalized = name.trim().to_ascii_lowercase();
+    normalized == "00-bootstrap-project" || normalized == "bootstrap-project"
+}
+
+fn task_refs(ext: &Path) -> Vec<TaskRef> {
     let tasks_dir = ext.join("tasks");
     let Ok(entries) = fs::read_dir(tasks_dir) else {
-        return 0;
+        return Vec::new();
     };
 
     entries
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().map(|ty| ty.is_dir()).unwrap_or(false))
         .filter(|entry| entry.file_name().to_string_lossy() != "archive")
-        .filter(|entry| {
+        .filter_map(|entry| {
             read_task_ref(
                 &entry.file_name().to_string_lossy(),
                 &entry.path().join("task.json"),
             )
-            .map(|task| !is_closed_task(&task.status))
-            .unwrap_or(false)
         })
-        .count()
+        .collect()
 }
 
 pub fn count_wiki_pages(ext: &Path) -> usize {
@@ -1734,6 +1777,7 @@ pub fn is_closed_task(status: &str) -> bool {
     matches!(
         status.trim().to_ascii_lowercase().as_str(),
         "completed"
+            | "done"
             | "resolved"
             | "closed"
             | "rejected"
@@ -1741,6 +1785,13 @@ pub fn is_closed_task(status: &str) -> bool {
             | "cancelled"
             | "canceled"
             | "deleted"
+    )
+}
+
+fn is_completed_task(status: &str) -> bool {
+    matches!(
+        status.trim().to_ascii_lowercase().as_str(),
+        "completed" | "resolved" | "closed" | "done"
     )
 }
 

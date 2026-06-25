@@ -400,6 +400,12 @@ pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
             firmware_manual_instructions(snapshot),
         );
     }
+    if snapshot.recommended_command == "complete" {
+        return (
+            "complete".to_string(),
+            "All known execution tasks are closed. PRD breakdown is not required unless the user explicitly adds new scope or identifies an uncovered requirement. Offer board-level acceptance, release packaging, or new-scope intake.".to_string(),
+        );
+    }
     if snapshot.current_task.is_some() {
         (
             "do".to_string(),
@@ -459,6 +465,11 @@ pub fn build_next_json_with_tasks_and_policy(
         (
             "ingest-docs".to_string(),
             firmware_manual_instructions(snapshot),
+        )
+    } else if snapshot.recommended_command == "complete" {
+        (
+            "complete".to_string(),
+            "All known execution tasks are closed. Do not run PRD breakdown unless the user explicitly adds new scope or points to an uncovered requirement. Offer next practical options: board-level acceptance/burn-in, release packaging, documentation/AAR cleanup, or create a new task for new scope.".to_string(),
         )
     } else if snapshot.current_task.is_some() {
         (
@@ -592,6 +603,19 @@ fn build_next_agent_protocol_with_policy(
                 "allowed_actions": ["repair_truth_yaml", "run_health_after_repair", "explain_validation_errors"],
                 "forbidden_actions": ["start_implementation", "create_task", "activate_task", "ignore_truth_validation_errors"],
                 "recommended_command": "/emb-next"
+            }
+        })
+        .to_string();
+    }
+    if action == "complete" {
+        return json!({
+            "gate": {
+                "kind": "project-complete",
+                "blocking": false,
+                "method": "acceptance-or-new-scope",
+                "allowed_actions": ["summarize_completion", "offer_board_acceptance", "offer_release_packaging", "create_new_task_only_after_explicit_new_scope", "answer_user_question_directly"],
+                "forbidden_actions": ["force_prd_breakdown", "invent_uncovered_requirements", "create_files_without_user_request", "start_implementation_without_new_scope"],
+                "recommended_next_options": ["board_acceptance", "burn_and_measure", "release_package", "new_scope_intake"]
             }
         })
         .to_string();
@@ -1100,16 +1124,18 @@ pub fn build_external_next_json(snapshot: &ProjectSnapshot, tasks: &[TaskSnapsho
         "choose-work"
     } else if snapshot.recommended_command == "clarify" {
         "clarify"
+    } else if snapshot.recommended_command == "complete" {
+        "complete"
     } else if snapshot.current_task.is_some() {
         "do"
     } else {
         "next"
     };
     let runtime_events = json!({
-        "status": if action == "do" { "ok" } else { "pending" },
+        "status": if action == "do" || action == "complete" { "ok" } else { "pending" },
         "total": 1,
         "blocked": 0,
-        "pending": if action == "do" { 0 } else { 1 },
+        "pending": if action == "do" || action == "complete" { 0 } else { 1 },
         "failed": 0
     });
     let routed_tasks = if !snapshot.prd_task_candidates.is_empty() && tasks.is_empty() {
