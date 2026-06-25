@@ -349,6 +349,11 @@ function renderIngestLines(result: EmbAgentResult): string[] {
   if (result.quality_gate) lines.push(`Quality gate: ${result.quality_gate}`);
   if (result.paths?.markdown) lines.push(`Markdown: ${result.paths.markdown}`);
   if (result.paths?.metadata) lines.push(`Metadata: ${result.paths.metadata}`);
+  if (result.parsed_path) lines.push(`Parsed schematic: ${result.parsed_path}`);
+  if (result.visual_netlist_path) lines.push(`Visual netlist: ${result.visual_netlist_path}`);
+  if (result.schematic_advice_path) lines.push(`Schematic advice: ${result.schematic_advice_path}`);
+  if (result.preview_path) lines.push(`Preview: ${result.preview_path}`);
+  if (result.parser_mode) lines.push(`Parser: ${result.parser_mode}`);
   if (result.recommended_action) lines.push(`Recommended action: ${result.recommended_action}`);
   if (result.next) lines.push(`Next: ${String(result.next)}`);
   return lines;
@@ -918,13 +923,27 @@ function boolArg(args: string[], name: string): boolean {
   return args.includes(name);
 }
 
+function isSchematicPath(path: string): boolean {
+  return /\.(?:schdoc|sch|dsn|kicad_sch)(?:$|[?#])/i.test(String(path || ""));
+}
+
+function isSchematicKind(kind: string): boolean {
+  return /^(schematic|sch|circuit|netlist)$/i.test(String(kind || "").trim());
+}
+
 function buildIngestDocArgs(params: Record<string, unknown>): string[] {
   const file = String(params.file || "").trim();
   if (!file) throw new Error("ingest_doc requires file");
+  const kind = String(params.kind || "datasheet").trim();
+  if (isSchematicKind(kind) || isSchematicPath(file)) {
+    const args = ["ingest", "schematic", "--file", file];
+    const format = String(params.format || "").trim();
+    if (format) args.push("--format", format);
+    return args;
+  }
   const args = ["ingest", "doc", "--file", file];
   const provider = String(params.provider || "auto").trim();
   if (provider) args.push("--provider", provider);
-  const kind = String(params.kind || "datasheet").trim();
   if (kind) args.push("--kind", kind);
   const to = String(params.to || params.intendedTo || "hardware").trim();
   if (to) args.push("--to", to);
@@ -944,10 +963,17 @@ function buildIngestDocArgs(params: Record<string, unknown>): string[] {
 
 function parseEmbIngestArgs(raw: string): Record<string, unknown> | null {
   const args = shellSplit(raw);
-  const sub = args[0] === "doc" ? args.shift() : "doc";
-  if (sub !== "doc") return null;
+  const sub = args[0] === "doc" || args[0] === "schematic" ? args.shift() : "doc";
   const file = optionValue(args, "--file") || args[0];
   if (!file) return null;
+  if (sub === "schematic") {
+    return {
+      file,
+      kind: "schematic",
+      format: optionValue(args, "--format"),
+      timeoutMs: Number(optionValue(args, "--timeout-ms") || 0) || undefined,
+    };
+  }
   return {
     file,
     provider: optionValue(args, "--provider") || "auto",
@@ -1143,7 +1169,7 @@ export default function (pi: ExtensionAPI) {
       await prepareEmbContext(ctx.cwd, true);
       const lines = renderNextLines(result.value);
       await sendSteer(
-        `[/emb-next]\n${lines.length ? lines.join("\n") : JSON.stringify(result.value, null, 2)}\n\nRespond to the user from the runtime recommendation above. Follow agent_protocol.gate allowed/forbidden actions exactly. Use Pi tools for emb-agent actions; use ingest_doc for PDFs/manuals. Do not auto-activate a task without user confirmation.`,
+        `[/emb-next]\n${lines.length ? lines.join("\n") : JSON.stringify(result.value, null, 2)}\n\nRespond to the user from the runtime recommendation above. Follow agent_protocol.gate allowed/forbidden actions exactly. Use Pi tools for emb-agent actions; use ingest_doc for PDFs/manuals and schematic files (it auto-routes SchDoc to ingest schematic). Do not auto-activate a task without user confirmation.`,
         ctx.cwd,
       );
     },
@@ -1161,11 +1187,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("emb-ingest", {
-    description: "Parse/cache documents with emb-agent (usage: /emb-ingest doc --file <path> [--provider auto|local|mineru])",
+    description: "Parse/cache documents or schematics with emb-agent (usage: /emb-ingest doc --file <path> or /emb-ingest schematic --file <path>)",
     handler: async (args, ctx) => {
       const params = parseEmbIngestArgs(args || "");
       if (!params) {
-        await sendSteer("[/emb-ingest]\nUsage: /emb-ingest doc --file <path> [--provider auto|local|mineru] [--kind datasheet] [--to hardware]", ctx.cwd);
+        await sendSteer("[/emb-ingest]\nUsage: /emb-ingest doc --file <path> [--provider auto|local|mineru] [--kind datasheet] [--to hardware]\n       /emb-ingest schematic --file <path>", ctx.cwd);
         return;
       }
       let cliArgs: string[];
@@ -1174,7 +1200,7 @@ export default function (pi: ExtensionAPI) {
       const result = await runEmbAgent(cliArgs, ctx.cwd, { timeoutMs: Number(params.timeoutMs || 0) || INGEST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER });
       if (!result.ok) { ctx.ui.notify(errorText(result), "warning"); return; }
       markContextDirty(ctx.cwd);
-      await sendSteer(`[/emb-ingest]\n${renderIngestLines(result.value).join("\n")}\n\nUse doc_fetch/doc_lookup on the cached artifact, inspect sparse local parses, then rerun /emb-next.`, ctx.cwd);
+      await sendSteer(`[/emb-ingest]\n${renderIngestLines(result.value).join("\n")}\n\nUse cached artifacts from the result. For documents, use doc_fetch/doc_lookup; for schematics, inspect parsed.json/advice/preview and rerun /emb-next.`, ctx.cwd);
     },
   });
 
@@ -1319,15 +1345,15 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "ingest_doc",
     label: "ingest doc",
-    description: "Parse/cache a PDF/manual/datasheet/document through emb-agent ingest doc. Use this instead of reading raw PDFs.",
-    promptSnippet: "Parse/cache a PDF/manual/datasheet/document through emb-agent ingest doc",
-    promptGuidelines: ["Use ingest_doc for PDFs, datasheets, manuals, DOC/PPT/XLS files, and document evidence before reading cached markdown."],
+    description: "Parse/cache a PDF/manual/datasheet/document, or route schematic files to emb-agent ingest schematic. Use this instead of reading raw PDFs or binary SchDoc files.",
+    promptSnippet: "Parse/cache a PDF/manual/datasheet/document or schematic through emb-agent ingest",
+    promptGuidelines: ["Use ingest_doc for PDFs, datasheets, manuals, DOC/PPT/XLS files, and document evidence before reading cached markdown.", "If file is .SchDoc/.sch/.kicad_sch or kind=schematic, this tool routes to ingest schematic; do not send schematic files to MinerU."],
     parameters: {
       type: "object",
       properties: {
         file: { type: "string", description: "Document path relative to the project root" },
         provider: { type: "string", enum: ["auto", "local", "mineru"], default: "auto" },
-        kind: { type: "string", default: "datasheet" },
+        kind: { type: "string", default: "datasheet", description: "Use 'schematic' for .SchDoc/.sch/.kicad_sch files; those are routed to ingest schematic." },
         to: { type: "string", default: "hardware" },
         title: { type: "string" },
         language: { type: "string" },
@@ -1338,6 +1364,7 @@ export default function (pi: ExtensionAPI) {
         enableTable: { type: "boolean" },
         enableFormula: { type: "boolean" },
         timeoutMs: { type: "number" },
+        format: { type: "string", description: "Optional schematic format override, e.g. altium-raw, altium-json, bom-csv, netlist" },
       },
       required: ["file"],
     } as Record<string, unknown>,
