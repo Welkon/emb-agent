@@ -399,6 +399,10 @@ function renderNextLines(result: EmbAgentResult, update?: EmbAgentResult | null)
   if (result.agent_protocol?.gate?.recommended_agent) lines.push(`Recommended agent: ${result.agent_protocol.gate.recommended_agent}`);
   if (result.reason) lines.push(`State: ${result.reason}`);
   if (result.action) lines.push(`Action: ${result.action}`);
+  const directAllowed = result.agent_protocol?.gate?.direct_work_allowed_for;
+  if (Array.isArray(directAllowed) && directAllowed.length) lines.push(`Direct read-only work allowed: ${directAllowed.join(", ")}`);
+  const suggestedRoles = result.agent_protocol?.gate?.suggested_read_only_roles;
+  if (suggestedRoles?.bug_audit && Array.isArray(suggestedRoles.bug_audit)) lines.push(`Bug audit roles: ${suggestedRoles.bug_audit.join(", ")}`);
   if (result.instructions) lines.push(`\n${result.instructions}`);
   const taskNames = (result.task_candidates || result.prd_task_candidates || []).map((t) => t.name);
   if (taskNames.length) lines.push(`Tasks: ${taskNames.join(", ")}`);
@@ -720,6 +724,15 @@ function rolePrompt(role: string, intent: DispatchIntent, userPrompt: string, re
     userPrompt,
     previous,
   ].join("\n");
+}
+
+function intentForRole(role: string): DispatchIntent {
+  if (role === "release-checker") return "verification";
+  if (role === "bug-hunter") return "debug";
+  if (role === "arch-reviewer") return "architecture";
+  if (role === "sys-reviewer") return "system-review";
+  if (READ_ONLY_AGENT_NAMES.has(role)) return "evidence";
+  return "implementation";
 }
 
 function buildDispatchPlan(prompt: string, result: EmbAgentResult): SubagentDispatchPlan {
@@ -1739,9 +1752,9 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "emb_subagent",
     label: "emb subagent",
-    description: "Run emb-agent native firmware subagents in isolated headless Pi sessions. Use before broad firmware/system-framework work.",
+    description: "Run emb-agent native firmware subagents in isolated headless Pi sessions. Use before broad firmware/system-framework work; for read-only bug audits prefer bug-hunter plus sys-reviewer.",
     promptSnippet: "Run emb-agent native firmware subagents before broad work",
-    promptGuidelines: ["Use emb_subagent before broad firmware work that spans hardware, architecture, power, drivers, framework, or verification."],
+    promptGuidelines: ["Use emb_subagent before broad firmware work that spans hardware, architecture, power, drivers, framework, or verification.", "If /emb-next reports prd-exploration but the user asks for a bounded read-only bug audit, use bug-hunter/sys-reviewer and do not treat PRD exploration as blocking the audit."],
     parameters: {
       type: "object",
       properties: {
@@ -1777,13 +1790,16 @@ export default function (pi: ExtensionAPI) {
             ...basePlan,
             mode: requestedRoles.length > 1 ? basePlan.mode : "single",
             reason: `${basePlan.reason} Manual roles preserved with target-task scoped prompts.`,
-            runs: requestedRoles.map((role) => ({
-              role,
-              intent: READ_ONLY_AGENT_NAMES.has(role) ? (role === "release-checker" ? "verification" : "evidence") : "implementation",
-              writable: !READ_ONLY_AGENT_NAMES.has(role),
-              targetTask: basePlan.targetTask,
-              prompt: rolePrompt(role, READ_ONLY_AGENT_NAMES.has(role) ? (role === "release-checker" ? "verification" : "evidence") : "implementation", prompt, context?.result || pending?.result || {}, basePlan.targetTask),
-            })),
+            runs: requestedRoles.map((role) => {
+              const intent = intentForRole(role);
+              return {
+                role,
+                intent,
+                writable: !READ_ONLY_AGENT_NAMES.has(role),
+                targetTask: basePlan.targetTask,
+                prompt: rolePrompt(role, intent, prompt, context?.result || pending?.result || {}, basePlan.targetTask),
+              };
+            }),
           }
         : basePlan;
       const roles = dispatch.runs.map((run) => run.role).filter((role) => SUPPORTED_AGENT_NAMES.has(role));

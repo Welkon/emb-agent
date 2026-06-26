@@ -1918,6 +1918,29 @@ fn concept_stage_unknowns_route_to_clarification_not_task_creation() {
             .unwrap_or(false),
         "next output: {next}"
     );
+    assert!(
+        next_value["agent_protocol"]["gate"]["allowed_actions"]
+            .as_array()
+            .map(|items| items
+                .iter()
+                .any(|item| item == "delegate_read_only_bug_hunter"))
+            .unwrap_or(false),
+        "next output: {next}"
+    );
+    assert!(
+        next_value["agent_protocol"]["gate"]["direct_work_allowed_for"]
+            .as_array()
+            .map(|items| items
+                .iter()
+                .any(|item| item == "bounded_read_only_bug_audit"))
+            .unwrap_or(false),
+        "next output: {next}"
+    );
+    assert_eq!(
+        next_value["agent_protocol"]["gate"]["suggested_read_only_roles"]["bug_audit"][0],
+        "bug-hunter",
+        "next output: {next}"
+    );
 }
 
 #[test]
