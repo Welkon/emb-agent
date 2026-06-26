@@ -108,6 +108,8 @@ Skip routine fixes, generic programming patterns, facts obvious from datasheets,
 ## Core Rules
 
 - Never guess hardware facts. Read `.emb-agent/hw.yaml` and `.emb-agent/req.yaml`.
+- Before reading firmware/source files, run `knowledge search --query "<task/context>" --rerank` or the host `knowledge_search` tool. If the knowledge tool is unavailable, fails, or returns no useful evidence, state that fallback condition and then use bounded `Read`/`Grep`/`rg` on the narrowest relevant paths.
+- Do not inspect raw schematic files directly. Route `.SchDoc`, `.sch`, `.dsn`, and `.kicad_sch` through `ingest schematic --file <path>` or the host `ingest_doc` tool with `kind=schematic`, then inspect cached parsed JSON/advice/preview artifacts.
 - Trust `agent_protocol.gate` — it tells you what actions are allowed right now.
 - In `prd-exploration`, if `document_evidence_policy.hardware_first=true`, ingest listed schematics and parse datasheets/manuals before asking the first behavior question. PDF parsing uses the configured local tool order, with MinerU as fallback.
 - If `markitdown` is missing when first needed and `uv` is available, emb-agent should auto-ensure it globally at user level. Do not install tooling into each project checkout.

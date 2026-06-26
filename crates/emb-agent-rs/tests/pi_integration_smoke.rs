@@ -76,7 +76,9 @@ fn pi_extension_exposes_unified_tool_layer() {
         "EMB_HIDDEN_DOC_MARKER",
         "summarizeKnowledgeSearch",
         "summarizeDocFetch",
-        "Raw recall was injected as hidden context",
+        "Compact evidence was injected as hidden context",
+        "compactKnowledgePayload",
+        "compactDocFetchPayload",
         "Do not paste raw JSON, full hit lists, paths, scores, rerank details",
         "knowledge_search\")} ${theme.fg(\"dim\", \"hidden\")}",
         "knowledge_graph_query\")} ${theme.fg(\"dim\", \"hidden\")}",
@@ -108,6 +110,16 @@ fn pi_extension_exposes_unified_tool_layer() {
         "knowledge_search, knowledge_diagnose, and knowledge_graph_query",
         "Use knowledge_search for project knowledge",
         "subagentDispatchEnabled",
+        "Before reading firmware/source files, call knowledge_search first",
+        "sourceInspectionKnowledgeRequiredReason",
+        "isRawSchematicShellCommand",
+        "Do not read raw schematic files directly",
+        "ingest_doc,doc_lookup,doc_fetch,knowledge_search",
+        "No usable analysis body was injected for this role",
+        "No usable hidden report was injected",
+        "isUnboundedFilesystemSearch",
+        "Do not search from filesystem root",
+        "first prove the firmware actually reaches the sleep entry path",
         "isWorkSelection",
         "phase: \"waiting\"",
         "phase === \"results-injected\"",
@@ -197,4 +209,50 @@ fn pi_docs_match_extension_surface() {
         !docs.contains("npm:@tintinweb/pi-subagents"),
         "Pi docs must not require Tintinweb for automatic dispatch"
     );
+}
+
+#[test]
+fn host_scaffolds_share_knowledge_first_and_schematic_rules() {
+    let defaults = read_repo("runtime/scaffolds/shells/_partials/human-readable-defaults.md");
+    for expected in [
+        "Before reading firmware/source files",
+        "knowledge search --query",
+        "host `knowledge_search` tool",
+        "If the knowledge tool is unavailable, fails, or returns no useful evidence",
+        "Do not inspect raw schematic files directly",
+        "ingest schematic --file <path>",
+        "kind=schematic",
+    ] {
+        assert!(
+            defaults.contains(expected),
+            "human-readable defaults missing {expected}"
+        );
+    }
+
+    for path in [
+        "runtime/scaffolds/shells/AGENTS.md",
+        "runtime/scaffolds/shells/CODEX.md",
+        "runtime/scaffolds/shells/CLAUDE.md",
+        "runtime/scaffolds/shells/GEMINI.md",
+        "runtime/scaffolds/shells/.codex/instructions.md",
+        "runtime/scaffolds/shells/.cursor/rules/workflow.mdc",
+        "runtime/scaffolds/shells/.windsurf/rules/workflow.md",
+    ] {
+        let scaffold = read_repo(path);
+        assert!(
+            scaffold.contains("{{INCLUDE:_partials/human-readable-defaults.md}}"),
+            "{path} must include shared human-readable defaults"
+        );
+    }
+
+    let omp = read_repo("runtime/scaffolds/shells/.omp/extensions/emb-agent.ts");
+    for expected in [
+        "Before reading firmware/source files, use knowledge_search",
+        "state the fallback and keep direct reads narrow",
+        "Route raw schematic files",
+        "ingest_doc kind=schematic",
+        "ingest schematic --file <path>",
+    ] {
+        assert!(omp.contains(expected), "OMP extension missing {expected}");
+    }
 }

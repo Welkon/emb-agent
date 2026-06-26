@@ -25,6 +25,14 @@ pub struct GraphEdge {
     #[serde(rename = "type")]
     pub edge_type: String,
     pub label: String,
+    /// Provenance basis: HEURISTIC (regex/keyword), LLM_SCHEMA (extracted by
+    /// the LLM extractor), LLM_EQUIVALENCE (aligned by the aligner),
+    /// FIELD_DIVERGENCE (conflict), or TRUTH (from a confirmed truth file).
+    #[serde(default)]
+    pub basis: String,
+    /// Confidence in [0,1] for LLM-synthesized edges; 1.0 for truth-derived.
+    #[serde(default)]
+    pub confidence: f32,
 }
 
 /// Full knowledge graph
@@ -167,7 +175,199 @@ pub fn graph_report(project_root: &Path) -> Result<String, String> {
 }
 
 /// Refresh/build graph by scanning project files
+/// LLM-schema enrichment: when an LLM is configured, run the schema extractor
+/// over each `doc_section` node's text (loaded from the cached PageIndex
+/// `structure.json`) and inject structured entities as graph nodes/edges with
+/// `basis: LLM_SCHEMA`. Then run the aligner to add `equivalent_to` edges
+/// (`basis: LLM_EQUIVALENCE`) and persist conflicts to `alignment.json`.
+/// When no LLM is configured, this is a no-op and the heuristic extraction
+/// already done in `refresh_graph` stands.
+fn enrich_with_llm(
+    project_root: &Path,
+    nodes: &mut Vec<GraphNode>,
+    edges: &mut Vec<GraphEdge>,
+    by_type: &mut HashMap<String, usize>,
+) {
+    let cfg = crate::knowledge::llm::resolve_llm_config(project_root);
+    if !cfg.available() {
+        return;
+    }
+
+    // Gather doc_section nodes and their text from the cached structure.json.
+    // doc_section node id format: "doc_section:<doc_id>:<path>".
+    let mut sections: Vec<crate::knowledge::align::SectionInput> = Vec::new();
+    let mut doc_section_ids: Vec<String> = Vec::new();
+    for node in nodes.iter().filter(|n| n.node_type == "doc_section") {
+        // id = doc_section:<doc_id>:<rest>
+        let parts: Vec<&str> = node.id.splitn(3, ':').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+        let doc_id = parts[1];
+        let section_path = parts[2];
+        let structure = crate::lookup::pageindex::load_structure(project_root, doc_id).ok();
+        let text = structure
+            .as_ref()
+            .and_then(|s| {
+                crate::lookup::pageindex::collect_sections(s)
+                    .into_iter()
+                    .find(|sec| sec.path == section_path)
+            })
+            .map(|sec| sec.text)
+            .unwrap_or_default();
+        if text.trim().is_empty() {
+            continue;
+        }
+        let (page_start, page_end) =
+            parse_page_span_from_summary(&node.summary).unwrap_or((None, None));
+        sections.push(crate::knowledge::align::SectionInput {
+            doc_id: doc_id.to_string(),
+            section_path: section_path.to_string(),
+            title: node.label.clone(),
+            text,
+            page_start,
+            page_end,
+            line_num: None,
+            source_kind: "datasheet".to_string(),
+        });
+        doc_section_ids.push(node.id.clone());
+    }
+    if sections.is_empty() {
+        return;
+    }
+
+    let extractions =
+        match crate::knowledge::extract::extract_sections(project_root, &cfg, &sections) {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("pageindex-graph: LLM enrichment failed: {e}");
+                return;
+            }
+        };
+
+    // Inject entities as nodes + doc_section -> entity edges.
+    let mut existing_ids: std::collections::HashSet<String> =
+        nodes.iter().map(|n| n.id.clone()).collect();
+    for (ext, section_node_id) in extractions.iter().zip(doc_section_ids.iter()) {
+        for entity in &ext.entities {
+            let eid = crate::knowledge::extract::entity_node_id(entity);
+            if !existing_ids.contains(&eid) {
+                nodes.push(GraphNode {
+                    id: eid.clone(),
+                    node_type: entity.entity_type.clone(),
+                    label: entity.name.clone(),
+                    summary: entity.summary.clone(),
+                    status: "extracted".to_string(),
+                    category: "llm-schema".to_string(),
+                });
+                *by_type.entry(entity.entity_type.clone()).or_default() += 1;
+                existing_ids.insert(eid.clone());
+            }
+            edges.push(GraphEdge {
+                from: section_node_id.clone(),
+                to: eid,
+                edge_type: "mentions".to_string(),
+                label: entity.entity_type.clone(),
+                basis: "LLM_SCHEMA".to_string(),
+                confidence: entity.confidence,
+            });
+        }
+    }
+
+    // Align: equivalences + conflicts.
+    let report = match crate::knowledge::align::align(project_root, &cfg, &extractions) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("pageindex-graph: alignment failed: {e}");
+            return;
+        }
+    };
+    for eq in &report.equivalences {
+        let from_id = ensure_entity_node_id(&eq.from, nodes, by_type);
+        let to_id = ensure_entity_node_id(&eq.to, nodes, by_type);
+        edges.push(GraphEdge {
+            from: from_id,
+            to: to_id,
+            edge_type: "equivalent_to".to_string(),
+            label: eq.role.clone(),
+            basis: "LLM_EQUIVALENCE".to_string(),
+            confidence: eq.confidence,
+        });
+    }
+    let _ = crate::knowledge::align::save_report(project_root, &report);
+}
+
+/// Parse "pp. 12-14" / "line 7" from a doc_section summary to recover page
+/// span. Best-effort; returns None on miss.
+fn parse_page_span_from_summary(summary: &str) -> Option<(Option<usize>, Option<usize>)> {
+    // "(pp. 12-14)" or "(pp. 12-14"
+    let lower = summary.to_lowercase();
+    let start = lower.find("pp.")?;
+    let rest = &summary[start + 3..];
+    let nums: Vec<&str> = rest
+        .split(|c: char| !c.is_ascii_digit() && c != '-')
+        .filter(|s| !s.is_empty())
+        .collect();
+    if nums.is_empty() {
+        return None;
+    }
+    let s: usize = nums[0].parse().ok()?;
+    let e: usize = nums.get(1).and_then(|n| n.parse().ok()).unwrap_or(s);
+    Some((Some(s), Some(e)))
+}
+
+/// Ensure an entity node exists for a canonical id; create a placeholder if not.
+fn ensure_entity_node_id(
+    canonical: &str,
+    nodes: &mut Vec<GraphNode>,
+    by_type: &mut HashMap<String, usize>,
+) -> String {
+    // canonical may already be a full node id like "register:wdtcon" or a bare
+    // "wdtcon". Normalize to a best-guess id by trying common entity types.
+    if nodes.iter().any(|n| n.id == canonical) {
+        return canonical.to_string();
+    }
+    // Try entity-type-prefixed forms.
+    for etype in [
+        "register",
+        "peripheral",
+        "signal",
+        "formula",
+        "constraint",
+        "concept",
+        "field",
+    ] {
+        let candidate = format!("{etype}:{canonical}");
+        if let Some(n) = nodes.iter().find(|n| n.id == candidate) {
+            return n.id.clone();
+        }
+    }
+    // Fallback: create a generic concept node under the canonical id.
+    let id = if canonical.contains(':') {
+        canonical.to_string()
+    } else {
+        format!("concept:{canonical}")
+    };
+    nodes.push(GraphNode {
+        id: id.clone(),
+        node_type: "concept".to_string(),
+        label: canonical.to_string(),
+        summary: String::new(),
+        status: "aligned".to_string(),
+        category: "llm-equivalence".to_string(),
+    });
+    *by_type.entry("concept".to_string()).or_default() += 1;
+    id
+}
+
 pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
+    refresh_graph_with_enrichment(project_root, false)
+}
+
+pub fn refresh_graph_with_enrichment(
+    project_root: &Path,
+    enrich: bool,
+) -> Result<KnowledgeGraph, String> {
     let ext_dir = project_root.join(".emb-agent");
     let graph_dir = ext_dir.join("graph");
     fs::create_dir_all(&graph_dir).map_err(|e| format!("mkdir error: {e}"))?;
@@ -214,6 +414,8 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                                     to: format!("net:{net}"),
                                     edge_type: "connected_to".to_string(),
                                     label: String::new(),
+                                    basis: "HEURISTIC".to_string(),
+                                    confidence: 1.0,
                                 });
                             }
                         }
@@ -291,6 +493,8 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                             to: format!("file:{path_str}"),
                             edge_type: "references".to_string(),
                             label: String::new(),
+                            basis: "TRUTH".to_string(),
+                            confidence: 1.0,
                         });
                         *by_type.entry("file".to_string()).or_default() += 1;
                     }
@@ -355,6 +559,9 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                     to: chip_id.clone(),
                     edge_type: "relates_to".to_string(),
                     label: "chip".to_string(),
+
+                    basis: "HEURISTIC".to_string(),
+                    confidence: 1.0,
                 });
                 // Add chip node if not already present
                 if !nodes.iter().any(|n| n.id == chip_id) {
@@ -379,6 +586,8 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                     to: periph_id.clone(),
                     edge_type: "uses".to_string(),
                     label: format!("peripheral:{peripheral}"),
+                    basis: "HEURISTIC".to_string(),
+                    confidence: 1.0,
                 });
                 // Add peripheral node
                 nodes.push(GraphNode {
@@ -547,10 +756,74 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                         to: format!("file:{source}"),
                         edge_type: "parsed_from".to_string(),
                         label: provider.to_string(),
+                        basis: "HEURISTIC".to_string(),
+                        confidence: 1.0,
                     });
                 }
 
-                if !markdown.is_empty() {
+                let structure_rel = doc
+                    .pointer("/paths/structure")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|path| !path.is_empty())
+                    .map(str::to_string);
+                if let Some(structure_rel) = structure_rel {
+                    let structure_text =
+                        fs::read_to_string(project_root.join(&structure_rel)).unwrap_or_default();
+                    if let Ok(structure) =
+                        serde_json::from_str::<serde_json::Value>(&structure_text)
+                    {
+                        let sections = crate::lookup::pageindex::collect_sections(&structure);
+                        for section in sections.iter().take(200) {
+                            let section_id = format!("doc_section:{doc_id}:{}", section.path);
+                            let span_label = if section.is_md {
+                                section
+                                    .line_num
+                                    .map(|n| format!("line {n}"))
+                                    .unwrap_or_else(|| "md".to_string())
+                            } else {
+                                match (section.page_start, section.page_end) {
+                                    (Some(s), Some(e)) => format!("pp. {s}–{e}"),
+                                    _ => "pdf".to_string(),
+                                }
+                            };
+                            let section_summary = if !section.summary.is_empty() {
+                                section.summary.clone()
+                            } else {
+                                section.title.clone()
+                            };
+                            nodes.push(GraphNode {
+                                id: section_id.clone(),
+                                node_type: "doc_section".to_string(),
+                                label: section.title.clone(),
+                                summary: format!("{section_summary} ({span_label})"),
+                                status: "parsed".to_string(),
+                                category: provider.to_string(),
+                            });
+                            *by_type.entry("doc_section".to_string()).or_default() += 1;
+                            // Section is part of the doc_parse root.
+                            edges.push(GraphEdge {
+                                from: section_id.clone(),
+                                to: id.clone(),
+                                edge_type: "section_of".to_string(),
+                                label: span_label.clone(),
+
+                                basis: "HEURISTIC".to_string(),
+                                confidence: 1.0,
+                            });
+                            // Per-section register/concept extraction — evidence
+                            // is now section-scoped, not whole-document.
+                            add_text_mentions(
+                                &mut nodes,
+                                &mut edges,
+                                &mut by_type,
+                                &section_id,
+                                &section.text,
+                                &section.title,
+                                provider,
+                            );
+                        }
+                    }
+                } else if !markdown.is_empty() {
                     let parse_text =
                         fs::read_to_string(project_root.join(&markdown)).unwrap_or_default();
                     for symbol in extract_register_like_symbols(&parse_text)
@@ -574,6 +847,9 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                             to: symbol_id,
                             edge_type: "mentions".to_string(),
                             label: "register".to_string(),
+
+                            basis: "HEURISTIC".to_string(),
+                            confidence: 1.0,
                         });
                     }
                     for formula in extract_formula_like_lines(&parse_text).into_iter().take(30) {
@@ -592,6 +868,9 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                             to: formula_id,
                             edge_type: "mentions".to_string(),
                             label: "formula".to_string(),
+
+                            basis: "HEURISTIC".to_string(),
+                            confidence: 1.0,
                         });
                     }
                     for keyword in extract_domain_keywords(&parse_text).into_iter().take(40) {
@@ -612,6 +891,9 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
                             to: keyword_id,
                             edge_type: "mentions".to_string(),
                             label: "concept".to_string(),
+
+                            basis: "HEURISTIC".to_string(),
+                            confidence: 1.0,
                         });
                     }
                 }
@@ -619,7 +901,12 @@ pub fn refresh_graph(project_root: &Path) -> Result<KnowledgeGraph, String> {
         }
     }
 
-    // Count ambiguous edges (edges without explicit types)
+    // Optional deep enrichment. Keep default refresh deterministic and fast;
+    // callers opt into LLM-schema extraction + cross-document alignment.
+    if enrich {
+        enrich_with_llm(project_root, &mut nodes, &mut edges, &mut by_type);
+    }
+
     let ambiguous = edges.iter().filter(|e| e.edge_type.is_empty()).count();
 
     let stats = GraphStats {
@@ -677,6 +964,9 @@ fn add_text_mentions(
             to: symbol_id,
             edge_type: "mentions".to_string(),
             label: "register".to_string(),
+
+            basis: "HEURISTIC".to_string(),
+            confidence: 1.0,
         });
     }
     for keyword in extract_domain_keywords(text).into_iter().take(20) {
@@ -697,6 +987,9 @@ fn add_text_mentions(
             to: keyword_id,
             edge_type: "mentions".to_string(),
             label: "concept".to_string(),
+
+            basis: "HEURISTIC".to_string(),
+            confidence: 1.0,
         });
     }
 }

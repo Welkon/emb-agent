@@ -687,7 +687,10 @@ export default function (pi: ExtensionAPI) {
     const text =
       "[emb-agent]\n" +
       lines.join("\n") +
-      "\n\nRead skill://emb-agent for the full CLI surface and workflow rules. Act on the state above.";
+      "\n\nWorkflow guardrails:\n" +
+      "- Before reading firmware/source files, use knowledge_search or `knowledge search --query ... --rerank`; if it fails or has no useful evidence, state the fallback and keep direct reads narrow.\n" +
+      "- Route raw schematic files (`.SchDoc`, `.sch`, `.dsn`, `.kicad_sch`) through `ingest_doc kind=schematic` or `ingest schematic --file <path>` before inspecting parsed artifacts.\n" +
+      "\nRead skill://emb-agent for the full CLI surface and workflow rules. Act on the state above.";
     if (!force && lastInjectedContextByCwd.get(ctx.cwd) === text) return;
     lastInjectedContextByCwd.set(ctx.cwd, text);
     await pi.sendMessage(

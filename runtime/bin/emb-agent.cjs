@@ -14,6 +14,9 @@ function findRustBinary() {
 		: ["emb-agent-rs", "emb-agent-rs-linux-x86_64", "emb-agent-rs.exe"];
 	var dirs = [
 		__dirname,
+		path.join(__dirname, "..", "..", "bin"),
+		path.join(__dirname, "..", "..", "target", "release"),
+		path.join(__dirname, "..", "..", "target", "debug"),
 		path.join(process.cwd(), ".cursor", "emb-agent", "bin"),
 		path.join(process.cwd(), ".claude", "emb-agent", "bin"),
 		path.join(process.cwd(), ".codex", "emb-agent", "bin"),
@@ -47,6 +50,7 @@ function spawnRustWithRetry(rustBin, args, opts, maxRetries) {
 		var result = childProcess.spawnSync(rustBin, args, opts);
 
 		// Success or non-retryable error
+		if (typeof result.status === "number") return result;
 		if (!result.error) return result;
 		if (result.error.code !== "EPERM" && result.error.code !== "EACCES") {
 			return result;
@@ -61,14 +65,20 @@ function spawnRustWithRetry(rustBin, args, opts, maxRetries) {
 		}
 	}
 
-	if (lastError && (lastError.code === "EPERM" || lastError.code === "EACCES") && process.platform !== "win32" && rustBin.indexOf("/mnt/") === 0) {
+	if (lastError && (lastError.code === "EPERM" || lastError.code === "EACCES") && process.platform !== "win32") {
 		var cachedBin = cachedExecutableCopy(rustBin);
 		if (cachedBin) {
 			var cachedResult = childProcess.spawnSync(cachedBin, args, opts);
+			if (typeof cachedResult.status === "number") return cachedResult;
 			if (!cachedResult.error) return cachedResult;
+			var cachedLoadedResult = spawnViaLinuxLoader(cachedBin, args, opts);
+			if (cachedLoadedResult && (typeof cachedLoadedResult.status === "number" || !cachedLoadedResult.error)) return cachedLoadedResult;
 			lastError = cachedResult.error;
 		}
 	}
+
+	var loadedResult = spawnViaLinuxLoader(rustBin, args, opts);
+	if (loadedResult && (typeof loadedResult.status === "number" || !loadedResult.error)) return loadedResult;
 
 	// All retries exhausted
 	var wslHint = "";
@@ -106,6 +116,20 @@ function cachedExecutableCopy(rustBin) {
 	} catch (_) {
 		return "";
 	}
+}
+
+function spawnViaLinuxLoader(rustBin, args, opts) {
+	if (process.platform !== "linux") return null;
+	var loaders = ["/lib64/ld-linux-x86-64.so.2", "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"];
+	for (var i = 0; i < loaders.length; i++) {
+		var loader = loaders[i];
+		try {
+			if (!fs.existsSync(loader)) continue;
+			var result = childProcess.spawnSync(loader, [rustBin].concat(args), opts);
+			if (typeof result.status === "number" || !result.error) return result;
+		} catch (_) {}
+	}
+	return null;
 }
 
 function readInstalledVersion() {
@@ -231,7 +255,7 @@ function main(argv) {
 		timeout: rustTimeoutMs(args),
 		stdio: ["pipe", "pipe", "pipe"],
 	});
-	if (result.error) {
+	if (result.error && typeof result.status !== "number") {
 		process.stderr.write("emb-agent spawn error: " + result.error.message + "\n");
 		process.exit(1);
 	}

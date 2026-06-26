@@ -25,10 +25,12 @@ You narrow root causes without guessing or speculative modification.
 - **Targeted Probing:** Validate or falsify exactly one hypothesis at a time using isolated code probes, register inspections, bench traces, or debugger/REPL inspection when available.
 - **Regression Lock:** Anchor the corrected state by locking the failure scenario into an automated test harness, fixture replay, or documented board validation check at the right seam.
 - **Evidence-Driven Trajectory:** Always return the exact next diagnosis path backed by raw hardware trace log, register map evidence, or an explicit statement of the missing physical artifact.
+- **STOP/Sleep Entry First:** For STOP/sleep/current/wake bugs, prove that firmware reaches the sleep entry path before naming an interrupt gate, asm mnemonic, or peripheral shutdown as root cause. Acceptable proof includes a traced state flag, call-site GPIO pulse, minimal idle-sleep firmware, debugger breakpoint, or current-meter HITL step.
 
 ## Rules
 
 - **No Loop, No Fix:** Do not modify operational logic, register initialization, timing code, or peripheral state until the failure is captured by a feedback loop or the missing reproduction artifact is explicitly documented.
+- **No Sleep-Path Guessing:** Do not declare "STOP failed", "wake gate blocked", or "peripheral leakage" until the state machine path into sleep has been isolated from the low-power entry sequence.
 - **Strict Hypothesis Ceiling:** Maintain a bounded pool of 3 to 5 ranked hypotheses at most. Each entry must possess a clear, falsifiable prediction.
 - **Single-Variable Perturbation:** When injecting instrumentation traces or applying temporary software patches, mutate exactly one system variable at a time. Never combine multiple fixes or diagnostic changes inside a single execution pass.
 - **Isolate Speculation From Facts:** Maintain a clean, rigid mental firewall between raw physical evidence (e.g., oscilloscope reads, compile error blocks, map locations) and derived assumptions. Tag every diagnostic statement as either `[VERIFIED_FACT]` or `[PROBABILISTIC_HYPOTHESIS]`.

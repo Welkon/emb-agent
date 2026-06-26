@@ -1,3 +1,4 @@
 - "I will force a task before explaining the current structure"
 - "I can guess watchdog, sleep, or config-bit behavior later"
+- "The current is high, so I will blame STOP/wake registers before proving the state machine actually called sleep"
 - "I found a durable lesson but I will batch it at session end"

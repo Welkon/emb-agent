@@ -27,6 +27,12 @@ pub struct DocCandidate {
     pub score: i32,
     pub confidence: String,
     pub reason: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sections: Vec<crate::lookup::pageindex::SectionMatch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retrieval: Option<String>,
 }
 
 pub fn lookup_docs(
@@ -55,7 +61,7 @@ pub fn lookup_docs(
     if docs_dir.exists() {
         walk_docs(
             &docs_dir,
-            &docs_dir,
+            project_root,
             &mut candidates,
             search_chip,
             search_vendor,
@@ -70,7 +76,7 @@ pub fn lookup_docs(
         let mut cache_candidates = Vec::new();
         walk_docs(
             &cache_dir,
-            &cache_dir,
+            project_root,
             &mut cache_candidates,
             search_chip,
             search_vendor,
@@ -82,6 +88,14 @@ pub fn lookup_docs(
 
     candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.score));
     let limit = limit.unwrap_or(10);
+    candidates.truncate(limit);
+
+    // Tree-aware boost: for docs ingested via the `pageindex` provider, score
+    // individual sections (title + summary + text) against chip/vendor/keyword
+    // and attach matched sections with page/line evidence so the host can jump
+    // straight to `doc pages --doc-id <id> --pages <range>`.
+    boost_tree_sections(&mut candidates, project_root, search_chip, keyword);
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.score));
     candidates.truncate(limit);
 
     Ok(DocLookupResult {
@@ -137,6 +151,9 @@ fn walk_docs(
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_lowercase();
+            let meta_text = doc_metadata_text(&path).to_lowercase();
+            let content_text = doc_search_content(&path).to_lowercase();
+            let hay = format!("{rel_str} {name} {meta_text} {content_text}");
 
             // Skip non-document files
             if !matches_extension(&rel_str) {
@@ -146,24 +163,24 @@ fn walk_docs(
             let mut score = 0;
             let mut reasons = Vec::new();
 
-            if !chip.is_empty() && rel_str.contains(&chip.to_lowercase()) {
+            if !chip.is_empty() && contains_chip_key(&hay, chip) {
                 score += 30;
                 reasons.push(format!("chip match: {chip}"));
             }
-            if !vendor.is_empty() && rel_str.contains(&vendor.to_lowercase()) {
+            if !vendor.is_empty() && hay.contains(&vendor.to_lowercase()) {
                 score += 20;
                 reasons.push(format!("vendor match: {vendor}"));
             }
-            if !package.is_empty() && rel_str.contains(&package.to_lowercase()) {
+            if !package.is_empty() && hay.contains(&package.to_lowercase()) {
                 score += 10;
                 reasons.push(format!("package match: {package}"));
             }
-            if let Some(kw) = keyword
-                && !kw.is_empty()
-                && rel_str.contains(&kw.to_lowercase())
-            {
-                score += 15;
-                reasons.push(format!("keyword match: {kw}"));
+            if let Some(kw) = keyword {
+                let (kw_score, kw_reasons) = keyword_score(&hay, kw);
+                if kw_score > 0 {
+                    score += kw_score;
+                    reasons.extend(kw_reasons);
+                }
             }
 
             // Bonus for datasheet-like names
@@ -192,10 +209,123 @@ fn walk_docs(
                     score,
                     confidence: confidence.to_string(),
                     reason: reasons.join(", "),
+                    sections: Vec::new(),
+                    doc_id: None,
+                    retrieval: None,
                 });
             }
         }
     }
+}
+
+fn doc_metadata_text(path: &Path) -> String {
+    let source_path = if path.file_name().and_then(|name| name.to_str()) == Some("source.json") {
+        path.to_path_buf()
+    } else {
+        path.parent()
+            .map(|parent| parent.join("source.json"))
+            .unwrap_or_else(|| path.with_file_name("source.json"))
+    };
+    let Ok(raw) = fs::read_to_string(source_path) else {
+        return String::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return raw.chars().take(4_000).collect();
+    };
+    [
+        "title",
+        "source",
+        "source_abs",
+        "kind",
+        "provider",
+        "doc_id",
+        "intended_to",
+        "language",
+    ]
+    .iter()
+    .filter_map(|key| value.get(*key).and_then(serde_json::Value::as_str))
+    .collect::<Vec<_>>()
+    .join(" ")
+}
+
+fn doc_search_content(path: &Path) -> String {
+    let lower = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if !(lower.ends_with(".md")
+        || lower.ends_with(".txt")
+        || lower.ends_with(".json")
+        || lower.ends_with(".yaml")
+        || lower.ends_with(".yml"))
+    {
+        return String::new();
+    }
+    fs::read_to_string(path)
+        .map(|text| text.chars().take(200_000).collect())
+        .unwrap_or_default()
+}
+
+fn contains_chip_key(hay: &str, chip: &str) -> bool {
+    let chip_l = chip.trim().to_lowercase();
+    if chip_l.is_empty() {
+        return false;
+    }
+    if hay.contains(&chip_l) {
+        return true;
+    }
+    for len in [7usize, 6usize] {
+        if chip_l.len() >= len && hay.contains(&chip_l[..len]) {
+            return true;
+        }
+    }
+    false
+}
+
+fn keyword_score(hay: &str, keyword: &str) -> (i32, Vec<String>) {
+    let kw = keyword.trim().to_lowercase();
+    if kw.is_empty() {
+        return (0, Vec::new());
+    }
+    let mut score = 0;
+    let mut reasons = Vec::new();
+    if hay.contains(&kw) {
+        score += 20;
+        reasons.push(format!("keyword phrase match: {keyword}"));
+    }
+    let mut token_hits = 0;
+    for token in kw
+        .split(|ch: char| {
+            ch.is_whitespace()
+                || matches!(
+                    ch,
+                    ',' | ';'
+                        | ':'
+                        | '/'
+                        | '\\'
+                        | '('
+                        | ')'
+                        | '['
+                        | ']'
+                        | '，'
+                        | '；'
+                        | '：'
+                        | '、'
+                )
+        })
+        .map(str::trim)
+        .filter(|token| token.chars().count() >= 2)
+    {
+        if hay.contains(token) {
+            token_hits += 1;
+        }
+    }
+    if token_hits > 0 {
+        score += (token_hits * 4).min(24);
+        reasons.push(format!("{token_hits} keyword token match(es)"));
+    }
+    (score, reasons)
 }
 
 fn matches_extension(path: &str) -> bool {
@@ -207,6 +337,150 @@ fn matches_extension(path: &str) -> bool {
         || lower.ends_with(".yaml")
         || lower.ends_with(".yml")
         || lower.ends_with(".json")
+}
+
+/// Tree-aware section scoring for docs ingested via the `pageindex` provider.
+///
+/// Loads `cache/docs/index.json`, and for every parsed doc that has a cached
+/// `structure.json`, scores each tree section (title + summary + text) against
+/// the chip and keyword filters. Matched sections are attached to the matching
+/// `DocCandidate` (or a new one is pushed) with page/line evidence, so the host
+/// can call `doc pages --doc-id <id> --pages <range>` directly.
+fn boost_tree_sections(
+    candidates: &mut Vec<DocCandidate>,
+    project_root: &Path,
+    chip: &str,
+    keyword: Option<&str>,
+) {
+    let index_path = project_root
+        .join(".emb-agent")
+        .join("cache")
+        .join("docs")
+        .join("index.json");
+    let Ok(raw) = fs::read_to_string(&index_path) else {
+        return;
+    };
+    let Ok(index) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return;
+    };
+    let Some(entries) = index.get("documents").and_then(serde_json::Value::as_array) else {
+        return;
+    };
+
+    let kw = keyword
+        .map(|k| k.trim().to_lowercase())
+        .filter(|k| !k.is_empty());
+    let chip_l = chip.to_lowercase();
+
+    for entry in entries {
+        if entry.get("parsed").and_then(serde_json::Value::as_bool) != Some(true) {
+            continue;
+        }
+        let Some(structure_rel) = entry
+            .pointer("/paths/structure")
+            .and_then(serde_json::Value::as_str)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let doc_id = entry
+            .get("doc_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let structure_path = project_root.join(structure_rel);
+        let Ok(structure_raw) = fs::read_to_string(&structure_path) else {
+            continue;
+        };
+        let Ok(structure) = serde_json::from_str::<serde_json::Value>(&structure_raw) else {
+            continue;
+        };
+
+        let sections = crate::lookup::pageindex::collect_sections(&structure);
+        let mut matched: Vec<crate::lookup::pageindex::SectionMatch> = Vec::new();
+        for section in &sections {
+            let hay =
+                format!("{} {} {}", section.title, section.summary, section.text).to_lowercase();
+            let mut score = 0i32;
+            let mut reasons = Vec::new();
+            if !chip_l.is_empty() && hay.contains(&chip_l) {
+                score += 30;
+                if section.title.to_lowercase().contains(&chip_l) {
+                    score += 10;
+                    reasons.push(format!("section title chip match: {chip}"));
+                } else {
+                    reasons.push(format!("section chip match: {chip}"));
+                }
+            }
+            if let Some(kw) = &kw
+                && hay.contains(kw)
+            {
+                score += 15;
+                reasons.push(format!("section keyword match: {kw}"));
+            }
+            if score > 0 {
+                matched.push(crate::lookup::pageindex::SectionMatch {
+                    path: section.path.clone(),
+                    title: section.title.clone(),
+                    page_start: section.page_start,
+                    page_end: section.page_end,
+                    line_num: section.line_num,
+                    score,
+                    reason: reasons.join(", "),
+                });
+            }
+        }
+        if matched.is_empty() {
+            continue;
+        }
+        matched.sort_by_key(|m| std::cmp::Reverse(m.score));
+        matched.truncate(5);
+
+        let doc_boost = matched.iter().take(3).map(|m| m.score).sum::<i32>().min(60)
+            + 5 * matched.len().min(4) as i32;
+
+        let source_rel = entry
+            .pointer("/paths/source")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string();
+
+        // Try to boost an existing candidate that points at the same source.
+        let existing = candidates
+            .iter_mut()
+            .find(|c| same_doc_path(&c.path, &source_rel));
+        if let Some(candidate) = existing {
+            candidate.score += doc_boost;
+            candidate.sections = matched.clone();
+            candidate.doc_id = Some(doc_id.clone());
+            candidate.retrieval = Some("tree".to_string());
+            if !candidate.reason.contains("tree section match") {
+                candidate.reason.push_str(", tree section match");
+            }
+        } else {
+            candidates.push(DocCandidate {
+                path: source_rel,
+                score: doc_boost,
+                confidence: if doc_boost >= 25 { "high" } else { "medium" }.to_string(),
+                reason: "tree section match".to_string(),
+                sections: matched.clone(),
+                doc_id: Some(doc_id.clone()),
+                retrieval: Some("tree".to_string()),
+            });
+        }
+    }
+}
+
+fn same_doc_path(candidate_path: &str, source_rel: &str) -> bool {
+    let a = candidate_path.replace('\\', "/").to_lowercase();
+    let b = source_rel.replace('\\', "/").to_lowercase();
+    if a == b {
+        return true;
+    }
+    // Fallback to filename equality for cache-vs-docs path mismatches.
+    let name_a = a.rsplit('/').next().unwrap_or("");
+    let name_b = b.rsplit('/').next().unwrap_or("");
+    !name_a.is_empty() && name_a == name_b
 }
 
 // === component lookup ===

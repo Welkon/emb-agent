@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const MINERU_BASE_URL: &str = "https://mineru.net";
-const ENV_EXAMPLE: &str = "# emb-agent integration secrets\n#\n# MinerU — optional PDF parsing API\nMINERU_API_KEY=\n#\n# emb-agent session memory embeddings — optional, opt-in.\n# Leave these blank/commented for fully local semantic-hash recall.\n# EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\n# EMB_AGENT_EMBEDDING_API_KEY=\n# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>\n# EMB_AGENT_EMBEDDING_UPLOAD=summary-only\n#\n# emb-agent knowledge rerank — optional, opt-in.\n# Leave these blank/commented to use local rerank scoring.\n# EMB_AGENT_RERANK_PROVIDER=openai-compatible\n# EMB_AGENT_RERANK_API_KEY=\n# EMB_AGENT_RERANK_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_RERANK_MODEL=<rerank-model>\n";
+const ENV_EXAMPLE: &str = "# emb-agent integration secrets\n#\n# MinerU — optional PDF parsing API\nMINERU_API_KEY=\n#\n# Shared OpenAI-compatible chat LLM — used by PageIndex, knowledge extraction,\n# alignment, and `knowledge ask --answer` unless a feature-specific override is set.\n# EMB_AGENT_LLM_MODEL=<model-id, e.g. gpt-4o-2024-11-20>\n# EMB_AGENT_LLM_API_BASE=<openai-compatible-base-url, defaults to the OpenAI endpoint>\n# EMB_AGENT_LLM_API_KEY=<api-key, or set OPENAI_API_KEY>\n#\n# PageIndex optional override (`ingest doc --provider pageindex`).\n# Native Rust builder (no Python); only set these when PageIndex needs a\n# different model/endpoint/key than EMB_AGENT_LLM_*.\n# EMB_AGENT_PAGEINDEX_MODEL=<model-id>\n# EMB_AGENT_PAGEINDEX_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_PAGEINDEX_API_KEY=<api-key>\n#\n# emb-agent session memory embeddings — optional, opt-in.\n# Leave these blank/commented for fully local semantic-hash recall.\n# EMB_AGENT_EMBEDDING_PROVIDER=openai-compatible\n# EMB_AGENT_EMBEDDING_API_KEY=\n# EMB_AGENT_EMBEDDING_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_EMBEDDING_MODEL=<embedding-model>\n# EMB_AGENT_EMBEDDING_UPLOAD=summary-only\n#\n# emb-agent knowledge rerank — optional, opt-in.\n# Leave these blank/commented to use local rerank scoring.\n# EMB_AGENT_RERANK_PROVIDER=openai-compatible\n# EMB_AGENT_RERANK_API_KEY=\n# EMB_AGENT_RERANK_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_RERANK_MODEL=<rerank-model>\n";
 const DEFAULT_LANGUAGE: &str = "ch";
 const DEFAULT_MODEL_VERSION: &str = "vlm";
 const DEFAULT_POLL_INTERVAL_MS: u64 = 3_000;
@@ -31,6 +31,13 @@ pub struct DocIngestOptions<'a> {
     pub enable_formula: bool,
     pub poll_interval_ms: Option<u64>,
     pub timeout_ms: Option<u64>,
+    /// Override model for the `pageindex` provider (OpenAI-compatible model id).
+    /// When None, PageIndex config falls back to `EMB_AGENT_LLM_MODEL` / project config.
+    pub pageindex_model: Option<&'a str>,
+    /// Override OpenAI-compatible API base for the `pageindex` provider.
+    pub pageindex_api_base: Option<&'a str>,
+    /// Override API key for the `pageindex` provider (OpenAI-compatible).
+    pub pageindex_api_key: Option<&'a str>,
 }
 
 #[derive(Debug, Clone)]
@@ -122,7 +129,7 @@ pub fn ingest_document(
     write_json(&source_path, &source_json)?;
 
     if parse_path.exists() && !options.force {
-        let result = result_json(
+        let mut result = result_json(
             "cached",
             &doc_id,
             &provider,
@@ -137,8 +144,36 @@ pub fn ingest_document(
             json!({"direct": false}),
             "doc fetch --path <source> reads the cached parse.md.",
         );
+        // Surface cached PageIndex artifacts so callers know tree retrieval is available.
+        let structure_rel = relative_json_path(project_root, &cache_dir.join("structure.json"));
+        let pages_rel = relative_json_path(project_root, &cache_dir.join("pages.json"));
+        if Path::new(&project_root.join(&structure_rel)).exists() {
+            result["paths"]["structure"] = json!(structure_rel);
+            result["paths"]["pages"] = json!(pages_rel);
+            result["retrieval"] = json!("tree");
+        }
         update_doc_index(project_root, &result)?;
         return Ok(result);
+    }
+
+    if provider == "pageindex" {
+        return run_pageindex_provider(
+            project_root,
+            &file_path,
+            &cache_dir,
+            &doc_id,
+            &provider,
+            kind,
+            intended_to,
+            &env,
+            &rel_source_path,
+            &rel_parse_path,
+            &rel_parse_json_path,
+            &rel_summary_path,
+            options.pageindex_model,
+            options.pageindex_api_base,
+            options.pageindex_api_key,
+        );
     }
 
     if provider == "local" || provider == "auto" {
@@ -446,6 +481,178 @@ pub fn ingest_document(
             "fallback_reason": "sparse-review-or-fallback"
         });
     }
+    update_doc_index(project_root, &result)?;
+    Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_pageindex_provider(
+    project_root: &Path,
+    file_path: &Path,
+    cache_dir: &Path,
+    doc_id: &str,
+    provider: &str,
+    kind: &str,
+    intended_to: &str,
+    env: &EnvSetup,
+    rel_source_path: &str,
+    rel_parse_path: &str,
+    rel_parse_json_path: &str,
+    rel_summary_path: &str,
+    model_override: Option<&str>,
+    api_base_override: Option<&str>,
+    api_key_override: Option<&str>,
+) -> Result<Value, String> {
+    let credentials_ok = api_key_override.is_some()
+        || crate::lookup::pageindex::pageindex_credentials_present(project_root);
+    if !credentials_ok {
+        write_json(
+            &project_root.join(rel_parse_json_path),
+            &json!({
+                "provider": "pageindex",
+                "mode": "tree",
+                "parsed": false,
+                "status": "needs_credentials",
+                "required_env": "EMB_AGENT_LLM_API_KEY or EMB_AGENT_PAGEINDEX_API_KEY (or OPENAI_API_KEY)"
+            }),
+        )?;
+        write_summary(
+            &project_root.join(rel_summary_path),
+            doc_id,
+            rel_parse_path,
+            rel_parse_json_path,
+            rel_source_path,
+        )?;
+        let result = result_json(
+            "needs_credentials",
+            doc_id,
+            provider,
+            kind,
+            intended_to,
+            env,
+            rel_source_path,
+            rel_parse_path,
+            rel_parse_json_path,
+            rel_summary_path,
+            None,
+            json!({"direct": false}),
+            "Set EMB_AGENT_LLM_API_KEY (or EMB_AGENT_PAGEINDEX_API_KEY / OPENAI_API_KEY) and EMB_AGENT_LLM_MODEL (or EMB_AGENT_PAGEINDEX_MODEL) in .env, then rerun ingest doc --provider pageindex --force.",
+        );
+        let mut result = result;
+        result["paths"]["structure"] = json!("");
+        result["paths"]["pages"] = json!("");
+        update_doc_index(project_root, &result)?;
+        return Ok(result);
+    }
+
+    let build = match crate::lookup::pageindex::build_structure(
+        project_root,
+        file_path,
+        doc_id,
+        model_override,
+        api_base_override,
+        api_key_override,
+    ) {
+        Ok(build) => build,
+        Err(error) => {
+            write_json(
+                &project_root.join(rel_parse_json_path),
+                &json!({
+                    "provider": "pageindex",
+                    "mode": "tree",
+                    "parsed": false,
+                    "status": "failed",
+                    "error": error
+                }),
+            )?;
+            write_summary(
+                &project_root.join(rel_summary_path),
+                doc_id,
+                rel_parse_path,
+                rel_parse_json_path,
+                rel_source_path,
+            )?;
+            let mut result = result_json(
+                "failed",
+                doc_id,
+                provider,
+                kind,
+                intended_to,
+                env,
+                rel_source_path,
+                rel_parse_path,
+                rel_parse_json_path,
+                rel_summary_path,
+                None,
+                json!({"direct": false}),
+                "PageIndex tree build failed. Inspect the error, retry with --force, or use --provider auto/mineru for a flat parse.",
+            );
+            result["error"] = json!(error);
+            update_doc_index(project_root, &result)?;
+            return Ok(result);
+        }
+    };
+
+    // Flatten the tree into parse.md so legacy `doc fetch` / vector `knowledge index`
+    // keep working alongside the new tree retrieval path.
+    let structure = crate::lookup::pageindex::load_structure(project_root, doc_id)?;
+    let flattened = crate::lookup::pageindex::flatten_structure_to_md(&structure);
+    fs::write(project_root.join(rel_parse_path), flattened)
+        .map_err(|e| format!("Cannot write parse.md from PageIndex tree: {e}"))?;
+
+    let structure_rel = relative_json_path(project_root, &cache_dir.join("structure.json"));
+    let pages_rel = relative_json_path(project_root, &cache_dir.join("pages.json"));
+
+    write_json(
+        &project_root.join(rel_parse_json_path),
+        &json!({
+            "provider": "pageindex",
+            "mode": "tree",
+            "parsed": true,
+            "tool": "pageindex",
+            "doc_name": build.doc_name,
+            "doc_description": build.doc_description,
+            "section_count": build.section_count,
+            "page_count": build.page_count,
+            "is_md": build.is_md,
+            "quality": "tree",
+            "structure_path": structure_rel,
+            "pages_path": pages_rel
+        }),
+    )?;
+    write_summary(
+        &project_root.join(rel_summary_path),
+        doc_id,
+        rel_parse_path,
+        rel_parse_json_path,
+        rel_source_path,
+    )?;
+
+    let mut result = result_json(
+        "ok",
+        doc_id,
+        provider,
+        kind,
+        intended_to,
+        env,
+        rel_source_path,
+        rel_parse_path,
+        rel_parse_json_path,
+        rel_summary_path,
+        None,
+        json!({"direct": false}),
+        "PageIndex tree cached. Use `doc tree --doc-id <id>` then `doc pages --doc-id <id> --pages <range>` for reasoning-based retrieval; `doc fetch --path <source>` still returns the flattened parse.md.",
+    );
+    result["paths"]["structure"] = json!(structure_rel);
+    result["paths"]["pages"] = json!(pages_rel);
+    result["retrieval"] = json!("tree");
+    result["tree"] = json!({
+        "doc_name": build.doc_name,
+        "doc_description": build.doc_description,
+        "section_count": build.section_count,
+        "page_count": build.page_count,
+        "is_md": build.is_md,
+    });
     update_doc_index(project_root, &result)?;
     Ok(result)
 }
@@ -990,6 +1197,8 @@ fn update_doc_index(project_root: &Path, result: &Value) -> Result<(), String> {
         "intended_to": result.get("intended_to").and_then(Value::as_str).unwrap_or(""),
         "parsed": result.get("parsed").and_then(Value::as_bool).unwrap_or(false),
         "status": result.get("status").and_then(Value::as_str).unwrap_or(""),
+        "retrieval": result.get("retrieval").cloned().unwrap_or(Value::Null),
+        "tree": result.get("tree").cloned().unwrap_or(Value::Null),
         "paths": result.get("paths").cloned().unwrap_or(Value::Null)
     }));
     write_json(&index_path, &index)
@@ -1055,6 +1264,10 @@ fn ensure_env_example(path: &Path) -> bool {
         (
             "MINERU_API_KEY",
             "# emb-agent integration secrets\n#\n# MinerU — optional PDF parsing API\nMINERU_API_KEY=\n",
+        ),
+        (
+            "EMB_AGENT_LLM_MODEL",
+            "# Shared OpenAI-compatible chat LLM — used by PageIndex, knowledge extraction,\n# alignment, and `knowledge ask --answer` unless feature-specific overrides are set.\n# EMB_AGENT_LLM_MODEL=<model-id, e.g. gpt-4o-2024-11-20>\n# EMB_AGENT_LLM_API_BASE=<openai-compatible-base-url, defaults to the OpenAI endpoint>\n# EMB_AGENT_LLM_API_KEY=<api-key, or set OPENAI_API_KEY>\n#\n# PageIndex optional override (`ingest doc --provider pageindex`).\n# EMB_AGENT_PAGEINDEX_MODEL=<model-id>\n# EMB_AGENT_PAGEINDEX_API_BASE=<openai-compatible-base-url>\n# EMB_AGENT_PAGEINDEX_API_KEY=<api-key>\n",
         ),
         (
             "EMB_AGENT_EMBEDDING_PROVIDER",

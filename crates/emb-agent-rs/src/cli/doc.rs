@@ -43,6 +43,32 @@ pub fn run(args: &[String]) -> Result<(), String> {
             println!("{}", emb_agent_core::meta_ops::doc_list(&ext_dir));
             Ok(())
         }
-        _ => Err("doc: expected lookup, fetch, or list".to_string()),
+        "tree" => {
+            let doc_id = option_value(args, "--doc-id")
+                .or_else(|| args.get(2).cloned())
+                .ok_or("doc tree requires --doc-id")?;
+            match emb_agent_core::lookup::doc_tree(Path::new(&cwd), &doc_id) {
+                Ok(r) => {
+                    println!("{}", serde_json::to_string_pretty(&r).unwrap_or_default());
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
+        }
+        "pages" => {
+            let doc_id = option_value(args, "--doc-id")
+                .or_else(|| args.get(2).cloned())
+                .ok_or("doc pages requires --doc-id")?;
+            let pages = option_value(args, "--pages")
+                .ok_or("doc pages requires --pages <range> (e.g. 5-7 or 3,8)")?;
+            match emb_agent_core::lookup::doc_pages(Path::new(&cwd), &doc_id, &pages) {
+                Ok(r) => {
+                    println!("{}", serde_json::to_string_pretty(&r).unwrap_or_default());
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
+        }
+        _ => Err("doc: expected lookup, fetch, list, tree, or pages".to_string()),
     }
 }

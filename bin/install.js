@@ -72,20 +72,98 @@ function findBundledRustBinary() {
 	return "";
 }
 
+function simpleHash(value) {
+	var hash = 2166136261;
+	for (var i = 0; i < value.length; i++) {
+		hash ^= value.charCodeAt(i);
+		hash = Math.imul(hash, 16777619);
+	}
+	return (hash >>> 0).toString(16);
+}
+
+function cachedExecutableCopy(rustBin) {
+	try {
+		var stat = fs.statSync(rustBin);
+		var cacheDir = path.join(os.tmpdir(), "emb-agent-bin-cache");
+		fs.mkdirSync(cacheDir, { recursive: true });
+		var cacheKey = simpleHash(rustBin + ":" + stat.size + ":" + Math.floor(stat.mtimeMs));
+		var cachedBin = path.join(cacheDir, path.basename(rustBin) + "-" + cacheKey);
+		if (!fs.existsSync(cachedBin) || fs.statSync(cachedBin).size !== stat.size) {
+			fs.copyFileSync(rustBin, cachedBin);
+		}
+		fs.chmodSync(cachedBin, 0o755);
+		return cachedBin;
+	} catch (_) {
+		return "";
+	}
+}
+
+function spawnRustWithRetry(rustBin, argv, opts, maxRetries) {
+	if (!maxRetries) maxRetries = 3;
+	var lastError = null;
+	for (var attempt = 1; attempt <= maxRetries; attempt++) {
+		if (attempt === 2 && lastError && (lastError.code === "EPERM" || lastError.code === "EACCES") && process.platform !== "win32") {
+			try { fs.chmodSync(rustBin, 0o755); } catch (_) {}
+		}
+		var result = childProcess.spawnSync(rustBin, argv, opts);
+		if (typeof result.status === "number") return result;
+		if (!result.error) return result;
+		if (result.error.code !== "EPERM" && result.error.code !== "EACCES") return result;
+		lastError = result.error;
+		if (attempt < maxRetries) {
+			var start = Date.now();
+			while (Date.now() - start < 50) {}
+		}
+	}
+	if (lastError && process.platform !== "win32") {
+		var cachedBin = cachedExecutableCopy(rustBin);
+		if (cachedBin) {
+			var cachedResult = childProcess.spawnSync(cachedBin, argv, opts);
+			if (typeof cachedResult.status === "number") return cachedResult;
+			if (!cachedResult.error) return cachedResult;
+			var cachedLoadedResult = spawnViaLinuxLoader(cachedBin, argv, opts);
+			if (cachedLoadedResult && (typeof cachedLoadedResult.status === "number" || !cachedLoadedResult.error)) return cachedLoadedResult;
+			lastError = cachedResult.error;
+		}
+	}
+	var loadedResult = spawnViaLinuxLoader(rustBin, argv, opts);
+	if (loadedResult && (typeof loadedResult.status === "number" || !loadedResult.error)) return loadedResult;
+	var hint = rustBin.indexOf("/mnt/") === 0
+		? " WSL workaround: move repo to ~/ (ext4), or disable Windows Defender realtime scan on /mnt/d."
+		: "";
+	var error = new Error("emb-agent spawn failed after " + maxRetries + " attempts: " + lastError.message + "." + hint);
+	error.code = lastError.code;
+	return { error: error };
+}
+
+function spawnViaLinuxLoader(rustBin, argv, opts) {
+	if (process.platform !== "linux") return null;
+	var loaders = ["/lib64/ld-linux-x86-64.so.2", "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"];
+	for (var i = 0; i < loaders.length; i++) {
+		var loader = loaders[i];
+		try {
+			if (!fs.existsSync(loader)) continue;
+			var result = childProcess.spawnSync(loader, [rustBin].concat(argv), opts);
+			if (typeof result.status === "number" || !result.error) return result;
+		} catch (_) {}
+	}
+	return null;
+}
+
 function dispatchRuntimeCommand(argv) {
 	var rustBin = findBundledRustBinary();
 	if (!rustBin) {
 		console.error("emb-agent: Rust binary (emb-agent-rs) not found. Run `npx emb-agent --target <host> --local` or build with `cargo build --release`.");
 		process.exit(1);
 	}
-	var result = childProcess.spawnSync(rustBin, argv, {
+	var result = spawnRustWithRetry(rustBin, argv, {
 		cwd: process.cwd(),
 		encoding: "utf8",
 		input: readStdinIfAny(),
 		maxBuffer: 1024 * 1024,
 		stdio: ["pipe", "pipe", "pipe"]
 	});
-	if (result.error) {
+	if (result.error && typeof result.status !== "number") {
 		console.error("emb-agent spawn error: " + result.error.message);
 		process.exit(1);
 	}

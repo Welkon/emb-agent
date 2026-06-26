@@ -152,6 +152,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
             let poll_interval_ms =
                 option_value(args, "--poll-interval-ms").and_then(|s| s.parse().ok());
             let timeout_ms = option_value(args, "--timeout-ms").and_then(|s| s.parse().ok());
+            let pageindex_model = option_value(args, "--pageindex-model");
+            let pageindex_api_base = option_value(args, "--pageindex-api-base");
+            let pageindex_api_key = option_value(args, "--pageindex-api-key");
             let result = emb_agent_core::lookup::ingest_document(
                 Path::new(&cwd),
                 emb_agent_core::lookup::DocIngestOptions {
@@ -169,6 +172,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     enable_formula: !args.iter().any(|arg| arg == "--no-formula"),
                     poll_interval_ms,
                     timeout_ms,
+                    pageindex_model: pageindex_model.as_deref(),
+                    pageindex_api_base: pageindex_api_base.as_deref(),
+                    pageindex_api_key: pageindex_api_key.as_deref(),
                 },
             )?;
             println!(

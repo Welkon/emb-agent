@@ -6,3 +6,5 @@
 - If `markitdown` is missing when first needed and `uv` exists, emb-agent should auto-ensure it globally for the user. Do not install tools into each project.
 - Treat skills, hooks, extensions, and wrappers as integration surfaces; they must not override emb-agent runtime gates.
 - Avoid generic AI or project-management wording when a concrete board action, artifact, or truth file is known.
+- Before reading firmware/source files, run `knowledge search --query "<task/context>" --rerank` or the host `knowledge_search` tool. If the knowledge tool is unavailable, fails, or returns no useful evidence, state that fallback condition and then use bounded `Read`/`Grep`/`rg` on the narrowest relevant paths.
+- Do not inspect raw schematic files directly. Route `.SchDoc`, `.sch`, `.dsn`, and `.kicad_sch` through `ingest schematic --file <path>` or the host `ingest_doc` tool with `kind=schematic`, then inspect cached parsed JSON/advice/preview artifacts.

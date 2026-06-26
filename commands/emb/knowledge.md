@@ -21,6 +21,7 @@ allowed-tools:
 - Maintain optional `.emb-agent/formulas/*.json` registries for structured formula, register, parameter, and evidence relationships.
 - Keep durable engineering conclusions, source summaries, decisions, risks, and cross-references visible in markdown.
 - Preserve `hw.yaml` and `req.yaml` as confirmed structured truth; wiki pages and graph candidates may contain draft synthesis, gaps, and ambiguous relationships.
+- `knowledge graph refresh` — fast deterministic graph rebuild. It consumes PageIndex `structure.json` when present (docs ingested via `--provider pageindex`): it emits `doc_section:<doc_id>:<path>` nodes with section-scoped page/line evidence and runs heuristic register/concept extraction **per section** instead of over the whole document, so `doc_section → register/concept` edges carry section-level evidence (e.g. `pp. 12–14`) rather than whole-document evidence. Docs without a tree fall back to whole-`parse.md` extraction. Use `knowledge graph refresh --enrich` for the deep LLM path.
 
 ### Wiki Page Kinds
 
@@ -46,10 +47,13 @@ Every wiki page SHOULD include frontmatter with `title`, `kind`, `date`, `expire
 - `knowledge promote --query <text> [--apply]` drafts or writes a wiki page under `.emb-agent/wiki/promoted/` using ranked evidence.
 - `knowledge lint`
 - `knowledge show <wiki/path>`
+- **`knowledge ask --query <text> [--rerank] [--answer] [--limit <n>]`** — unified fusion search across all three channels (vector + graph + tree). Returns ranked, channel-annotated hits with evidence strength (page > section > chunk) and deduplication. With `--rerank`, reranks the vector channel before fusion. With `--answer`, synthesizes a short cited answer via LLM.
+- **`knowledge extract [--force]`** — run LLM-schema extraction over every `doc_section` node, replacing heuristic regex/keyword extraction with structured entities (register, field, peripheral, formula, constraint, concept) carrying canonical ids, confidence, and named field values. Cached per-section hash for incremental rebuild.
+- **`knowledge align`** — after extraction, align entities across documents: bucket by canonical id, detect field-conflicts (e.g. reset_value diverges across datasheets), and propose `equivalent_to` edges between entities sharing the same hardware role across vendors/docs (LLM-driven). Persists report to `.emb-agent/graph/alignment.json`.
 - `knowledge graph build`
 - `knowledge graph update`
-- `knowledge graph refresh`
-- `knowledge graph report`
+- `knowledge graph refresh [--enrich|--quick]` — default is deterministic and fast. With `--enrich`, after the deterministic scan, when `EMB_AGENT_LLM_MODEL` + `EMB_AGENT_LLM_API_KEY` (or `OPENAI_API_KEY`) are set, it runs `extract` + `align` over `doc_section` nodes and injects structured entities with `basis: LLM_SCHEMA`, equivalences with `basis: LLM_EQUIVALENCE`, and conflicts with `basis: FIELD_DIVERGENCE` into the graph. `--quick` forces the fast path even if `--enrich` is present.
+- `knowledge graph report` — writes `.emb-agent/graph/GRAPH_REPORT.md` and prints a human-readable node summary.
 - `knowledge graph query <term>`
 - `knowledge graph explain <term>`
 - `knowledge graph path <from> <to>`
@@ -66,8 +70,8 @@ Every wiki page SHOULD include frontmatter with `title`, `kind`, `date`, `expire
 4. Run `knowledge graph refresh` after wiki/truth/task/tool/snippet changes to rebuild `.emb-agent/graph/graph.json` and `.emb-agent/graph/GRAPH_REPORT.md` from emb-agent native sources.
 5. After saving a tool run with register writes, run `knowledge formula draft --from-tool-output <file>` to preview a structured formula registry, then re-run with `--confirm` after checking the source evidence.
 6. For formulas that must be reused by agents, keep a JSON registry under `.emb-agent/formulas/` with `chip`, `formulas[].expression`, `variables`, `registers`, and `evidence` fields before rebuilding the graph.
-7. Run `knowledge graph report` or `knowledge graph lint` to detect stale graph manifests after tracked files change.
-8. Use report Suggested Explanations to inspect hot graph nodes, especially tool-run, register, formula, and snippet nodes created by recent work.
+7. Run `knowledge graph lint` to detect stale graph manifests after tracked files change.
+8. Run `knowledge graph report` to inspect hot graph nodes, especially tool-run, register, formula, and snippet nodes created by recent work.
 9. Run `knowledge search --query <term> --rerank` before broad searches when you need semantic project context, then use `knowledge promote --query <term> --apply` to create a reviewed wiki draft from high-value evidence and `knowledge graph query <term>` or `knowledge graph explain <term>` for relationship-oriented context.
 10. Run `knowledge lint` and `knowledge graph lint` periodically to find missing control files, orphan pages, unindexed pages, chip truth with no matching chip wiki page, stale graph manifests, and ambiguous graph relationships.
 11. After `task finish-work`, run `insight extract --confirm` (see emb-insight) to push durable learnings from this task into wiki. Then run `knowledge graph refresh`.
@@ -80,7 +84,7 @@ Every wiki page SHOULD include frontmatter with `title`, `kind`, `date`, `expire
 - Treat graph edges with `basis: AMBIGUOUS` as review prompts, not confirmed truth.
 - Treat formula registries as draft engineering evidence unless their `status` and source review explicitly say otherwise.
 - Treat `.emb-agent/runs/*.json` and `.emb-agent/firmware-snippets/*.md` as reusable artifacts that should stay linked to registers, formulas, and chips through the graph.
-- Refresh the graph when `knowledge graph report` returns `stale: true` or `knowledge graph lint` reports `graph-stale`.
+- Refresh the graph when `knowledge graph lint` reports `graph-stale`.
 - Prefer small linked pages over one large catch-all page.
 - Keep source pages under `wiki/sources/`, chip pages under `wiki/chips/`, decisions under `wiki/decisions/`, and risks under `wiki/risks/`.
 - **Wiki vs Spec boundary:** If it says "code must / must not X", put it in a spec. If it says "we chose X because Y" or "here's what we learned about Z", put it in wiki. When in doubt, wiki first — specs can be tightened later.

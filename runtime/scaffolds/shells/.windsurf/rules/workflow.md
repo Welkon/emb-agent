@@ -13,6 +13,10 @@
 
 {{INCLUDE:_partials/red-flags-stop.md}}
 
+## Human-Readable Defaults
+
+{{INCLUDE:_partials/human-readable-defaults.md}}
+
 ## Windsurf Notes
 
 - Treat `agent_protocol.gate` fields from emb-agent JSON as authoritative; execute allowed host actions yourself and never ask the user to run emb-agent commands manually.

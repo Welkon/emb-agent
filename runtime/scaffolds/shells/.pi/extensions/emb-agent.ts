@@ -139,6 +139,8 @@ interface KnowledgePrimingState {
   tool: string;
   query: string;
   createdAt: number;
+  status?: "ok" | "empty" | "failed";
+  hits?: number;
 }
 
 interface EmbSubagentResult {
@@ -205,7 +207,7 @@ function summarizeKnowledgeSearch(value: any, refreshed: boolean, graphRefreshed
   const refreshText = refreshed || graphRefreshed
     ? ` (${refreshed ? "index refreshed" : "index ready"}${graphRefreshed ? ", graph refreshed" : ""})`
     : "";
-  return `Project knowledge searched${refreshText}; ${count} hit(s), rerank=${provider}. Raw recall was injected as hidden context.`;
+  return `Project knowledge searched${refreshText}; ${count} hit(s), rerank=${provider}. Compact evidence was injected as hidden context.`;
 }
 
 function summarizeKnowledgeDiagnose(value: any): string {
@@ -232,12 +234,97 @@ function summarizeIngestResult(value: any): string {
 function summarizeDocLookup(value: any, stdout: string): string {
   const count = Number(value?.count ?? value?.hits?.length ?? value?.results?.length ?? 0);
   const suffix = count > 0 ? `; ${count} hit(s)` : stdout.trim() ? "; result available" : "; no visible hits";
-  return `Document cache lookup completed${suffix}. Raw lookup result was injected as hidden context.`;
+  return `Document cache lookup completed${suffix}. Compact lookup evidence was injected as hidden context.`;
 }
 
 function summarizeDocFetch(stdout: string): string {
   const bytes = Buffer.byteLength(stdout || "", "utf8");
-  return `Cached document content fetched (${bytes} byte(s)). Raw content was injected as hidden context.`;
+  const capped = bytes > DOC_FETCH_HIDDEN_EXCERPT_CHARS;
+  return `Cached document content fetched (${bytes} byte(s)). ${capped ? "A bounded excerpt" : "Content"} was injected as hidden context.`;
+}
+
+function compactText(text: unknown, maxChars: number): string {
+  const value = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}... [truncated ${value.length - maxChars} chars]`;
+}
+
+function roundScore(value: unknown): number | undefined {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.round(n * 1000) / 1000;
+}
+
+function compactKnowledgePayload(value: any): any {
+  const hits = Array.isArray(value?.hits) ? value.hits.slice(0, HIDDEN_TOP_HITS) : [];
+  return {
+    query: value?.query,
+    count: Number(value?.count ?? hits.length ?? 0),
+    rerank_provider: value?.rerank_provider,
+    rerank_model: value?.rerank_model,
+    note: "Compact evidence only. Treat paths/scores as retrieval hints, not proof; verify high-risk hardware claims against source files or bench evidence.",
+    hits: hits.map((hit: any, index: number) => ({
+      rank: index + 1,
+      source_type: hit?.source_type,
+      path: hit?.path,
+      title: hit?.title,
+      score: roundScore(hit?.score),
+      rerank_score: roundScore(hit?.rerank_score),
+      evidence: {
+        path: hit?.evidence?.path,
+        source_path: hit?.evidence?.source_path,
+        doc_id: hit?.evidence?.doc_id,
+        provider: hit?.evidence?.provider,
+        quality: hit?.evidence?.quality,
+        line_start: hit?.evidence?.line_start,
+        line_end: hit?.evidence?.line_end,
+        page_start: hit?.evidence?.page_start,
+        page_end: hit?.evidence?.page_end,
+      },
+      preview: compactText(hit?.preview, HIDDEN_PREVIEW_CHARS),
+    })),
+  };
+}
+
+function compactDocLookupPayload(value: any): any {
+  const documents = Array.isArray(value?.documents) ? value.documents.slice(0, HIDDEN_TOP_HITS) : [];
+  return {
+    command: value?.command || "doc lookup",
+    provider: value?.provider,
+    scope: value?.scope,
+    summary: value?.summary,
+    note: "Compact lookup evidence only. Prefer matched sections/pages over fetching whole cached manuals.",
+    documents: documents.map((doc: any, index: number) => ({
+      rank: index + 1,
+      path: doc?.path,
+      doc_id: doc?.doc_id,
+      score: doc?.score,
+      confidence: doc?.confidence,
+      reason: doc?.reason,
+      retrieval: doc?.retrieval,
+      sections: Array.isArray(doc?.sections) ? doc.sections.slice(0, 5).map((section: any) => ({
+        title: section?.title,
+        path: section?.path,
+        page_start: section?.page_start,
+        page_end: section?.page_end,
+        line_num: section?.line_num,
+        score: section?.score,
+        reason: section?.reason,
+      })) : [],
+    })),
+  };
+}
+
+function compactDocFetchPayload(path: unknown, stdout: string): any {
+  const bytes = Buffer.byteLength(stdout || "", "utf8");
+  const excerpt = String(stdout || "").slice(0, DOC_FETCH_HIDDEN_EXCERPT_CHARS);
+  return {
+    path,
+    bytes,
+    truncated: bytes > Buffer.byteLength(excerpt, "utf8"),
+    note: "Bounded excerpt only. For manual evidence, prefer doc_lookup or doc pages/chunk-range retrieval over whole-document reasoning.",
+    excerpt,
+  };
 }
 
 function toolTextResult(text: string, details?: unknown) {
@@ -471,12 +558,17 @@ const EMB_HIDDEN_KNOWLEDGE_MARKER = "[emb-agent:hidden-knowledge-results]";
 const EMB_HIDDEN_DOC_MARKER = "[emb-agent:hidden-doc-results]";
 const EMB_CHILD_ENV = "EMB_AGENT_SUBAGENT_CHILD";
 const MAX_SUBAGENT_OUTPUT = 50_000;
+const MAX_HIDDEN_SUBAGENT_OUTPUT = 16_000;
+const HIDDEN_TOP_HITS = 5;
+const HIDDEN_PREVIEW_CHARS = 900;
+const DOC_FETCH_HIDDEN_EXCERPT_CHARS = 12_000;
 const MAX_TAIL = 4_000;
 const MAX_SESSION_BYTES = 2 * 1024 * 1024;
 const SUBAGENT_MODEL_RETRIES = 3;
 const TUI_HEARTBEAT_MS = 200;
 const KNOWLEDGE_PRIMING_TTL_MS = 10 * 60_000;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const LOW_POWER_DEBUG_GATE = "For STOP/sleep/current/wake bugs, first prove the firmware actually reaches the sleep entry path (state flag, call site, minimal idle-sleep firmware, GPIO pulse, or current-meter HITL step) before declaring interrupt gates, asm mnemonics, or peripheral shutdown as the root cause.";
 
 const INHERIT_MODEL_ROUTES: Record<string, ModelRoute> = {
   "hw-scout": { model: "inherit" },
@@ -967,7 +1059,10 @@ function buildSubagentPrompt(role: string, userPrompt: string, result?: EmbAgent
     "Work from repository files and emb-agent project truth. Do not rely on parent chat memory.",
     READ_ONLY_AGENT_NAMES.has(role) ? "Do not modify files; this pass is read-only reconnaissance/review." : "Keep edits minimal and scoped to the delegated task.",
     `Do not spawn additional emb-agent subagents. ${EMB_CHILD_ENV}=1 is set for recursion prevention.`,
+    "Before reading firmware/source files, call knowledge_search first. If knowledge_search is unavailable, fails, or returns no useful evidence, state that fallback condition and then use bounded source reads.",
+    "Do not inspect raw schematic files directly. Use ingest_doc kind=schematic or ingest schematic first, then inspect cached parsed/advice artifacts.",
     "Return concise, evidence-backed findings. Include file paths and concrete risks; avoid raw large snippets.",
+    LOW_POWER_DEBUG_GATE,
     "Follow the user's/project's response language.",
     "",
     "emb-agent project state:",
@@ -983,8 +1078,8 @@ function buildPiSubagentArgs(prompt: string, role: string, route: ModelRoute | u
   if (route?.model && route.model !== "inherit") args.push("--model", route.model);
   if (route?.thinking) args.push("--thinking", route.thinking);
   const tools = READ_ONLY_AGENT_NAMES.has(role)
-    ? "read,grep,find,ls,doc_lookup,doc_fetch,knowledge_search,knowledge_diagnose,knowledge_graph_query"
-    : "read,grep,find,ls,bash,edit,write,doc_lookup,doc_fetch,knowledge_search,knowledge_diagnose,knowledge_graph_query";
+    ? "read,grep,find,ls,ingest_doc,doc_lookup,doc_fetch,knowledge_search,knowledge_diagnose,knowledge_graph_query"
+    : "read,grep,find,ls,bash,edit,write,ingest_doc,doc_lookup,doc_fetch,knowledge_search,knowledge_diagnose,knowledge_graph_query";
   args.push("--tools", tools);
   args.push(prompt);
   return args;
@@ -1092,6 +1187,18 @@ async function runPiSubagent(cwd: string, role: string, prompt: string, route: M
   return last || { role, status: "failed", output: "subagent failed before start", model: state.model, thinking: state.thinking, error: "subagent failed before start" };
 }
 
+function hiddenSubagentSection(item: EmbSubagentResult): string {
+  if (item.status === "succeeded") {
+    return `## ${item.role} (${item.status})\n${item.output.slice(0, MAX_HIDDEN_SUBAGENT_OUTPUT)}`;
+  }
+  const reason = item.error || compactText(item.output, 500) || item.status;
+  return [
+    `## ${item.role} (${item.status})`,
+    "No usable analysis body was injected for this role because the run did not complete successfully.",
+    `Status detail: ${reason}`,
+  ].join("\n");
+}
+
 async function runEmbSubagentBatch(cwd: string, userPrompt: string, planOrRoles: SubagentDispatchPlan | string[], result: EmbAgentResult | undefined, signal: AbortSignal | undefined, onUpdate?: (r: any) => void): Promise<{ output: string; details: EmbSubagentProgress; failed: boolean; results: EmbSubagentResult[]; plan: SubagentDispatchPlan }> {
   const plan: SubagentDispatchPlan = Array.isArray(planOrRoles)
     ? {
@@ -1140,7 +1247,7 @@ async function runEmbSubagentBatch(cwd: string, userPrompt: string, planOrRoles:
   details.updatedAt = Date.now();
   emit(true);
   const header = [`Dispatch phase: ${plan.phase}`, plan.targetTask ? `Target task: ${plan.targetTask}` : "Target task: none", `Mode: ${plan.mode}`, `Reason: ${plan.reason}`].join("\n");
-  const output = `${header}\n\n` + results.map((item) => `## ${item.role} (${item.status})\n${item.output.slice(0, MAX_SUBAGENT_OUTPUT)}`).join("\n\n---\n\n");
+  const output = `${header}\n\n` + results.map(hiddenSubagentSection).join("\n\n---\n\n");
   return { output, details: clone(details), failed: results.some((r) => r.status !== "succeeded"), results, plan };
 }
 
@@ -1408,6 +1515,27 @@ function isRawPdfShellCommand(command: string): boolean {
   return /(^|[;&|\s])(cat|head|tail|less|more|xxd|od|strings|pdftotext|mutool|python3?\s+-c)\b/.test(c);
 }
 
+function isRawSchematicShellCommand(command: string): boolean {
+  const c = String(command || "");
+  if (!isSchematicPath(c)) return false;
+  if (/emb-agent\.cjs\s+ingest\s+schematic\b/.test(c) || /\bingest\s+schematic\b/.test(c)) return false;
+  return /(^|[;&|\s])(cat|head|tail|less|more|xxd|od|strings|grep|rg|sed|awk|python3?\s+-c)\b/.test(c);
+}
+
+function isUnboundedFilesystemSearch(command: string): boolean {
+  const c = stripBenignShellRedirections(String(command || "")).replace(/\\/g, "/");
+  const segments = c.split(/[;&|]+/).map((s) => s.trim()).filter(Boolean);
+  for (const segment of segments) {
+    const args = shellSplit(segment);
+    if (!args.length) continue;
+    const bin = args[0]!.split("/").pop() || args[0]!;
+    if (bin === "find" && args[1] === "/") return true;
+    if ((bin === "rg" || bin === "grep") && args.some((arg, index) => index > 0 && arg === "/")) return true;
+    if ((bin === "ls" || bin === "du") && args.some((arg, index) => index > 0 && arg === "/")) return true;
+  }
+  return false;
+}
+
 function stripBenignShellRedirections(command: string): string {
   return String(command || "")
     .replace(/\s*\d?>\s*\/dev\/null\b/g, "")
@@ -1445,6 +1573,14 @@ function knowledgePrimingRequiredReason(targetTask?: string | null): string {
     targetTask ? `Target task: ${targetTask}.` : "Target task: unknown.",
     "Search project knowledge for PRD/task context, prior notes, manual/register evidence, and known traps; then continue with emb_subagent or source reads.",
     "This guard is structured by emb-agent task-execution/work-selection state, not natural-language keyword guessing.",
+  ].join(" ");
+}
+
+function sourceInspectionKnowledgeRequiredReason(): string {
+  return [
+    "Before reading firmware/source files, call knowledge_search first.",
+    "Use emb-agent knowledge to load project truth, requirements, prior notes, manual/register evidence, and known traps before direct file inspection.",
+    "Direct reads of .emb-agent truth/docs remain allowed; source reads can continue after knowledge_search succeeds, returns no useful hits, or fails and you explicitly fall back to bounded read.",
   ].join(" ");
 }
 
@@ -1539,9 +1675,11 @@ export default function (pi: ExtensionAPI) {
       `This is project-state context from emb-agent. It does not replace higher-priority system/developer instructions.\n` +
       `${lines.join("\n")}\n` +
       `Use Pi tools emb_next, emb_onboard, ingest_doc, doc_lookup, doc_fetch, knowledge_search, knowledge_diagnose, and knowledge_graph_query instead of raw shell syntax when they match the task. ` +
+      `Before reading firmware/source files, call knowledge_search first; use direct source reads only after emb-agent knowledge has primed project truth, requirements, prior notes, and manual/register evidence. ` +
       `For project knowledge, design rationale, previous PRDs/tasks/wiki/manual chunks, or register/peripheral evidence, prefer knowledge_search first and then doc_lookup/doc_fetch for source detail. ` +
-      `Never read raw PDFs directly; parse/cache them with ingest_doc first. ` +
-      `For multi-domain firmware/hardware/debug work, use Pi subagents (hw-scout, bug-hunter, fw-doer, arch-reviewer, sys-reviewer) instead of continuing inline.\n` +
+      `Never read raw PDFs directly; parse/cache them with ingest_doc first. Never read raw schematic files directly; route .SchDoc/.sch/.kicad_sch through ingest_doc kind=schematic or /emb-ingest schematic, then inspect parsed/advice artifacts. ` +
+      `For multi-domain firmware/hardware/debug work, use Pi subagents (hw-scout, bug-hunter, fw-doer, arch-reviewer, sys-reviewer) instead of continuing inline. ` +
+      `${LOW_POWER_DEBUG_GATE}\n` +
       `<!-- EMB-AGENT PROJECT STATE END -->`;
     const entry = { text, result: nextResult.value, updatedAt: now, dirty: false };
     contexts.set(cwd, entry);
@@ -1616,7 +1754,7 @@ export default function (pi: ExtensionAPI) {
           `Dispatch roles: ${roles.join(", ")}`,
           `Dispatch reason: ${pending.plan.reason}`,
           "If the user's request is to implement/start/continue candidate work, call knowledge_search first for the target task, then call emb_subagent before parent-side source/build file mutation. If the user's request is only a question, clarification, task closure, AAR, or knowledge/documentation writeback, answer or write the closure docs normally without calling subagents.",
-          "Do not perform broad source reads or write/edit source/build files before the implementation knowledge_search has run. AAR/task status/attention/architecture/compound/wiki markdown closure writes are allowed.",
+          "Do not perform source reads, broad source scans, or write/edit source/build files before knowledge_search has run. AAR/task status/attention/architecture/compound/wiki markdown closure writes are allowed.",
         ].join("\n") + "\n";
         messageContent += `; dispatch plan ready (${roles.join(", ")})`;
       }
@@ -1639,6 +1777,11 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("tool_call", async (event, ctx) => {
     const pending = pendingNativeDispatch.get(ctx.cwd);
+    if (!hasFreshKnowledgePriming(ctx.cwd, pending, knowledgePriming)) {
+      const reason = sourceInspectionKnowledgeRequiredReason();
+      if (event.toolName === "read" && isSourceInspectionPath(String((event.input as any)?.path || ""))) return { block: true, reason };
+      if (event.toolName === "bash" && isSourceInspectionShellCommand(String((event.input as any)?.command || ""))) return { block: true, reason };
+    }
     if (pending && dispatchRequiresKnowledgePriming(pending.plan) && !hasFreshKnowledgePriming(ctx.cwd, pending, knowledgePriming)) {
       const reason = knowledgePrimingRequiredReason(pending.plan.targetTask);
       if (event.toolName === "emb_subagent") return { block: true, reason };
@@ -1669,6 +1812,15 @@ export default function (pi: ExtensionAPI) {
     }
     if (event.toolName === "bash" && isRawPdfShellCommand(String((event.input as any)?.command || ""))) {
       return { block: true, reason: "Do not inspect raw PDFs with shell tools. Use ingest_doc or /emb-ingest doc --file <path> first, then doc_fetch/doc_lookup on cached markdown." };
+    }
+    if (event.toolName === "read" && isSchematicPath(String((event.input as any)?.path || ""))) {
+      return { block: true, reason: "Do not read raw schematic files directly. Use ingest_doc with kind=schematic, or /emb-ingest schematic --file <path>, then inspect cached parsed/advice artifacts." };
+    }
+    if (event.toolName === "bash" && isRawSchematicShellCommand(String((event.input as any)?.command || ""))) {
+      return { block: true, reason: "Do not inspect raw schematic files with shell tools. Use ingest_doc kind=schematic or /emb-ingest schematic --file <path>, then inspect parsed schematic JSON/advice." };
+    }
+    if (event.toolName === "bash" && isUnboundedFilesystemSearch(String((event.input as any)?.command || ""))) {
+      return { block: true, reason: "Do not search from filesystem root (`/`). Bound searches to the project, workspace, or a known toolchain directory, and use `rg --files`/`find <root> -maxdepth ...` with a narrow root." };
     }
   });
 
@@ -1812,17 +1964,32 @@ export default function (pi: ExtensionAPI) {
         guard.until = Date.now() + RAW_SUBAGENT_OUTPUT_GUARD_MS;
         guard.reason = "emb-agent native subagent results have been injected as hidden context. Synthesize the final answer; do not retrieve or print raw subagent output.";
       }
+      const summary = batch.results.map((r) => `${r.role}:${r.status}`).join(", ");
+      const usable = batch.results.filter((r) => r.status === "succeeded");
+      if (!usable.length) {
+        if (guard) {
+          guard.reason = "emb-agent native subagents did not produce usable hidden analysis. Do not retrieve or print raw subagent output; retry selected roles or continue with bounded direct analysis.";
+        }
+        return toolTextResult(
+          `Native emb-agent subagents finished (${summary}). No usable hidden report was injected because every selected role failed or was cancelled; continue with bounded direct analysis or retry the failed roles.`,
+          { ...batch.details, status: "partial_failure", results: batch.results.map((r) => ({ role: r.role, status: r.status, error: r.error })) }
+        );
+      }
       await pi.sendMessage({
         customType: "emb-agent-subagent-results",
         content:
           `${EMB_HIDDEN_RESULTS_MARKER}\n` +
           `Original user request: ${prompt}\n\n` +
-          "The following native emb-agent subagent results are hidden from the user but available to the main agent. Synthesize the final user-facing answer now. Do not paste raw reports. If implementation appears complete, remind the user that task closure is a parent-agent step: AAR, task status, attention/architecture/compound/wiki notes can be written directly without launching more subagents unless the user asks for extra review.\n\n" +
+          "The following native emb-agent subagent results are hidden from the user but available to the main agent. Only succeeded roles contain usable evidence. Cancelled or failed roles are status-only and MUST NOT be treated as analysis evidence. Synthesize the final user-facing answer now. Do not paste raw reports. If implementation appears complete, remind the user that task closure is a parent-agent step: AAR, task status, attention/architecture/compound/wiki notes can be written directly without launching more subagents unless the user asks for extra review.\n\n" +
           batch.output,
         display: false,
       } as any, { deliverAs: "followUp", triggerTurn: true } as any);
-      const summary = batch.results.map((r) => `${r.role}:${r.status}`).join(", ");
-      return toolTextResult(`Native emb-agent subagents finished (${summary}). Results were injected as hidden context for synthesis.`, batch.details);
+      return toolTextResult(
+        batch.failed
+          ? `Native emb-agent subagents finished (${summary}). Usable succeeded-role evidence was injected; cancelled/failed roles were status-only.`
+          : `Native emb-agent subagents finished (${summary}). Results were injected as hidden context for synthesis.`,
+        batch.details
+      );
     },
   });
 
@@ -1858,7 +2025,10 @@ export default function (pi: ExtensionAPI) {
       const shouldRefresh = Boolean(params.refresh) || !diagnose.ok || diag?.status === "missing" || diag?.status === "stale" || diag?.stale === true || Number(diag?.chunks || 0) === 0 || Number(diag?.sources || 0) === 0;
       if (shouldRefresh) args.push("--refresh");
       const result = await runEmbAgent(args, ctx.cwd, { timeoutMs: INGEST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER });
-      if (!result.ok) return toolTextResult(errorText(result), result);
+      if (!result.ok) {
+        knowledgePriming.set(ctx.cwd, { tool: "knowledge_search", query: String(params.query || ""), createdAt: Date.now(), status: "failed" });
+        return toolTextResult(`${errorText(result)}\n\nknowledge_search was attempted and failed; bounded direct reads are now allowed as fallback for this turn.`, result);
+      }
       const graphReport = await runEmbAgent(["knowledge", "graph", "report"], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER, allowNonJson: true });
       const graphReportText = graphReport.ok ? graphReport.stdout : `${graphReport.message}\n${graphReport.stdout || ""}\n${graphReport.stderr || ""}`;
       const graphNeedsRefresh = !graphReport.ok || /stale\s*[:=]\s*true|graph-stale|graph\.json not found|Trigger .*graph refresh/i.test(graphReportText);
@@ -1867,7 +2037,8 @@ export default function (pi: ExtensionAPI) {
         const graph = await runEmbAgent(["knowledge", "graph", "refresh"], ctx.cwd, { timeoutMs: INGEST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER });
         graphRefreshed = graph.ok;
       }
-      knowledgePriming.set(ctx.cwd, { tool: "knowledge_search", query: String(params.query || ""), createdAt: Date.now() });
+      const hitCount = Number((result.value as any)?.count ?? (Array.isArray((result.value as any)?.hits) ? (result.value as any).hits.length : 0));
+      knowledgePriming.set(ctx.cwd, { tool: "knowledge_search", query: String(params.query || ""), createdAt: Date.now(), status: hitCount > 0 ? "ok" : "empty", hits: hitCount });
       const prefix = shouldRefresh || graphNeedsRefresh
         ? `[knowledge ${shouldRefresh ? "index refreshed" : "index current"}; graph ${graphRefreshed ? "refreshed" : "refresh skipped/failed"} before search]\n`
         : "";
@@ -1875,8 +2046,8 @@ export default function (pi: ExtensionAPI) {
         customType: "emb-agent-knowledge-results",
         content:
           `${EMB_HIDDEN_KNOWLEDGE_MARKER}\n` +
-          "Hidden project knowledge search results for the parent agent. Do not paste raw JSON, full hit lists, paths, scores, rerank details, or cache details to the user. Use these results only to support a concise evidence-backed answer.\n\n" +
-          prefix + result.stdout.trim(),
+          "Hidden project knowledge search evidence for the parent agent. Do not paste raw JSON, full hit lists, paths, scores, rerank details, or cache details to the user. Use these results only to support a concise evidence-backed answer; verify high-risk hardware claims against source files, manual pages, or bench data.\n\n" +
+          prefix + JSON.stringify(compactKnowledgePayload(result.value as any), null, 2),
         display: false,
       } as any);
       return toolTextResult(summarizeKnowledgeSearch(result.value as any, shouldRefresh, graphRefreshed), result.value);
@@ -2077,8 +2248,8 @@ export default function (pi: ExtensionAPI) {
         customType: "emb-agent-doc-lookup",
         content:
           `${EMB_HIDDEN_DOC_MARKER}\n` +
-          "Hidden document lookup result for the parent agent. Do not paste raw JSON, full snippets, cached paths, scores, or lookup internals to the user. Use only concise source-backed conclusions.\n\n" +
-          result.stdout.trim(),
+          "Hidden document lookup evidence for the parent agent. Do not paste raw JSON, full snippets, cached paths, scores, or lookup internals to the user. Use only concise source-backed conclusions.\n\n" +
+          JSON.stringify(compactDocLookupPayload(result.value as any), null, 2),
         display: false,
       } as any);
       return toolTextResult(summarizeDocLookup(result.value as any, result.stdout), result.value);
@@ -2095,7 +2266,7 @@ export default function (pi: ExtensionAPI) {
       return new Text(`${theme.bold("doc_fetch")} ${theme.fg("dim", "hidden")}`, 0, 0);
     },
     renderResult(result: any, _ctx: any, theme: any) {
-      const text = result?.content?.[0]?.text || "Cached document content fetched. Raw content was injected as hidden context.";
+      const text = result?.content?.[0]?.text || "Cached document content fetched. Bounded excerpt was injected as hidden context.";
       return new Text(theme.fg("muted", String(text)), 0, 0);
     },
     async execute(_toolCallId, params: Record<string, unknown>, _signal, _onUpdate, ctx) {
@@ -2105,8 +2276,8 @@ export default function (pi: ExtensionAPI) {
         customType: "emb-agent-doc-fetch",
         content:
           `${EMB_HIDDEN_DOC_MARKER}\n` +
-          "Hidden cached document/schematic content for the parent agent. Do not paste raw parsed markdown, schematic JSON, cached paths, or large excerpts to the user. Use only concise source-backed conclusions.\n\n" +
-          result.stdout.trim(),
+          "Hidden cached document/schematic excerpt for the parent agent. Do not paste raw parsed markdown, schematic JSON, cached paths, or large excerpts to the user. Use only concise source-backed conclusions.\n\n" +
+          JSON.stringify(compactDocFetchPayload(params.path, result.stdout), null, 2),
         display: false,
       } as any);
       return toolTextResult(summarizeDocFetch(result.stdout), { path: params.path, bytes: Buffer.byteLength(result.stdout || "", "utf8") });

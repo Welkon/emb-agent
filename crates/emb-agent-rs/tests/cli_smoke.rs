@@ -1063,6 +1063,101 @@ fn doc_lookup_preserves_first_yaml_character() {
 }
 
 #[test]
+fn doc_lookup_matches_cached_source_metadata_and_parse_text() {
+    let project = TestProject::new("doc-lookup-cache-source");
+    fs::write(
+        project.path().join(".emb-agent/hw.yaml"),
+        "model: \"SC8F072AD614SP\"\npackage: \"SOP-14\"\n",
+    )
+    .expect("write hw truth");
+    let doc_dir = project
+        .path()
+        .join(".emb-agent")
+        .join("cache")
+        .join("docs")
+        .join("sc8f072-manual");
+    fs::create_dir_all(&doc_dir).expect("create doc cache");
+    fs::write(
+        doc_dir.join("source.json"),
+        r#"{"doc_id":"sc8f072-manual","source":"docs/SC8F072用户手册_V1.0.2.pdf","title":"SC8F072用户手册_V1.0.2.pdf","provider":"local","kind":"datasheet"}"#,
+    )
+    .expect("write source metadata");
+    fs::write(
+        doc_dir.join("parse.md"),
+        "6.2.6 PORTA电平变化中断\nRAIF/RAIE 可通过 IOCA 口线变化从休眠唤醒。清除 RAIF 前需要读或写 PORTA。\n",
+    )
+    .expect("write parsed manual");
+
+    let lookup = run(
+        &project,
+        &["doc", "lookup", "--keyword", "IOC 电平变化中断 唤醒 RAIF"],
+    );
+    let value: serde_json::Value = serde_json::from_str(&lookup).expect("lookup json");
+    let docs = value["documents"].as_array().expect("documents array");
+    assert!(!docs.is_empty(), "lookup output: {lookup}");
+    assert!(
+        docs[0]["path"]
+            .as_str()
+            .unwrap_or_default()
+            .contains(".emb-agent/cache/docs/sc8f072-manual"),
+        "lookup output: {lookup}"
+    );
+    assert!(
+        docs[0]["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("keyword token"),
+        "lookup output: {lookup}"
+    );
+}
+
+#[test]
+fn knowledge_search_prioritizes_truth_for_board_facts() {
+    let project = TestProject::new("knowledge-truth-priority");
+    fs::write(
+        project.path().join(".emb-agent/hw.yaml"),
+        "model: \"SC8F072AD614SP\"\npackage: \"SOP-14\"\nled_output: \"LED- (half-hole-pad, Q1(S8050)-RA3 driven via R1=1K)\"\n",
+    )
+    .expect("write hw truth");
+    let doc_dir = project
+        .path()
+        .join(".emb-agent")
+        .join("cache")
+        .join("docs")
+        .join("noisy-manual");
+    fs::create_dir_all(&doc_dir).expect("create doc cache");
+    fs::write(
+        doc_dir.join("source.json"),
+        r#"{"doc_id":"noisy-manual","source":"docs/SC8P062B用户手册_V1.0.1.pdf","title":"SC8P062B用户手册_V1.0.1.pdf","provider":"auto","kind":"datasheet"}"#,
+    )
+    .expect("write noisy metadata");
+    fs::write(
+        doc_dir.join("parse.md"),
+        "PWM 控制输出 三极管 output state control register PORTB PWMCON0\n",
+    )
+    .expect("write noisy parse");
+
+    let search = run(
+        &project,
+        &[
+            "knowledge",
+            "search",
+            "--query",
+            "控制输出 三极管 control transistor output state",
+            "--limit",
+            "5",
+            "--rerank",
+            "--refresh",
+        ],
+    );
+    let value: serde_json::Value = serde_json::from_str(&search).expect("search json");
+    let hits = value["hits"].as_array().expect("hits array");
+    assert!(!hits.is_empty(), "search output: {search}");
+    assert_eq!(hits[0]["source_type"], "truth", "search output: {search}");
+    assert_eq!(hits[0]["path"], "hw.yaml", "search output: {search}");
+}
+
+#[test]
 fn validate_catches_duplicate_yaml_keys() {
     let project = TestProject::new("validate-duplicates");
     fs::write(
@@ -2334,6 +2429,115 @@ fn knowledge_query_and_explain_accept_named_options_after_cwd() {
 }
 
 #[test]
+fn knowledge_documented_commands_are_routable_and_write_expected_artifacts() {
+    let project = TestProject::new("knowledge-docs");
+
+    let init = run(&project, &["knowledge", "init"]);
+    assert!(init.contains("\"status\": \"ok\""), "init output: {init}");
+    assert!(
+        project.path().join(".emb-agent/wiki/index.md").exists(),
+        "wiki index missing"
+    );
+
+    let save = run(
+        &project,
+        &[
+            "knowledge",
+            "save-query",
+            "--confirm",
+            "Watchdog answer",
+            "--summary",
+            "WDT evidence summary",
+            "--body",
+            "Use project evidence before changing watchdog code.",
+        ],
+    );
+    assert!(
+        save.contains("\"status\": \"applied\""),
+        "save output: {save}"
+    );
+    assert!(
+        project
+            .path()
+            .join(".emb-agent/wiki/queries/watchdog-answer.md")
+            .exists(),
+        "saved query missing"
+    );
+
+    let show = run(&project, &["knowledge", "show", "queries/watchdog-answer"]);
+    assert!(
+        show.contains("WDT evidence summary") && show.contains("\"content\""),
+        "show output: {show}"
+    );
+
+    let source = run(
+        &project,
+        &[
+            "knowledge",
+            "ingest",
+            "--confirm",
+            "Manual source",
+            "--summary",
+            "Parsed manual notes",
+            "--link",
+            "docs/manual.pdf",
+        ],
+    );
+    assert!(
+        source.contains("\"kind\": \"source\"") && source.contains("\"status\": \"applied\""),
+        "source output: {source}"
+    );
+
+    let tool_output = project.path().join("tool-output.txt");
+    fs::write(
+        &tool_output,
+        "Write PR2 and T2CON.\nPWM_FREQ = FOSC / (4 * (PR2 + 1))\n",
+    )
+    .expect("write tool output");
+    let formula = run(
+        &project,
+        &[
+            "knowledge",
+            "formula",
+            "draft",
+            "--from-tool-output",
+            "tool-output.txt",
+            "--chip",
+            "TESTMCU",
+            "--confirm",
+        ],
+    );
+    assert!(
+        formula.contains("\"formula_count\": 1") && formula.contains("\"status\": \"applied\""),
+        "formula output: {formula}"
+    );
+
+    let refresh = run(&project, &["knowledge", "graph", "update"]);
+    assert!(
+        refresh.contains("\"native\": true"),
+        "refresh output: {refresh}"
+    );
+
+    let path = run(
+        &project,
+        &["knowledge", "graph", "path", "component:U1", "net:PWM_OUT"],
+    );
+    assert!(
+        path.contains("\"status\": \"found\"") && path.contains("connected_to"),
+        "path output: {path}"
+    );
+
+    let graph_lint = run(&project, &["knowledge", "graph", "lint"]);
+    assert!(
+        graph_lint.contains("\"nodes\"") && graph_lint.contains("\"issue_count\""),
+        "graph lint output: {graph_lint}"
+    );
+
+    let lint = run(&project, &["knowledge", "lint"]);
+    assert!(lint.contains("\"issue_count\""), "lint output: {lint}");
+}
+
+#[test]
 fn command_docs_are_help_routable() {
     let repo_root = repo_root();
     let commands_dir = repo_root.join("commands").join("emb");
@@ -2967,6 +3171,104 @@ fn legacy_doc_commands_are_dispatchable() {
         let output = run(&project, &[command]);
         assert!(output.contains("\"status\""), "{command} output: {output}");
     }
+}
+
+#[test]
+fn doc_tree_and_pages_read_cached_pageindex_structure() {
+    let project = TestProject::new("doctree");
+    let doc_id = "treefix";
+    let cache = project
+        .path()
+        .join(".emb-agent")
+        .join("cache")
+        .join("docs")
+        .join(doc_id);
+    fs::create_dir_all(&cache).expect("create doc cache");
+
+    let structure = r#"{
+      "doc_name": "SC8F072 manual",
+      "doc_description": "MCU reference manual",
+      "structure": [
+        {
+          "title": "Watchdog Timer (WDT)",
+          "node_id": "0001",
+          "start_index": 12,
+          "end_index": 14,
+          "summary": "WDT timeout and reset control",
+          "text": "WDT control register WDTCON.",
+          "nodes": [
+            {
+              "title": "WDTCON register",
+              "node_id": "0002",
+              "start_index": 13,
+              "end_index": 14,
+              "summary": "",
+              "text": "WDTCON bits: PS2:0, ENWDT.",
+              "nodes": []
+            }
+          ]
+        }
+      ]
+    }"#;
+    fs::write(cache.join("structure.json"), structure).expect("write structure");
+    fs::write(cache.join("pages.json"), r#"[{"page":12,"content":"p12"},{"page":13,"content":"WDTCON bits: PS2:0, ENWDT."},{"page":14,"content":"p14"}]"#)
+        .expect("write pages");
+    let index = serde_json::json!({
+        "documents": [{
+            "doc_id": doc_id,
+            "provider": "pageindex",
+            "kind": "datasheet",
+            "title": "SC8F072 manual",
+            "intended_to": "hardware",
+            "parsed": true,
+            "status": "ok",
+            "retrieval": "tree",
+            "paths": {
+                "source": "docs/sc8f072.pdf",
+                "markdown": format!(".emb-agent/cache/docs/{doc_id}/parse.md"),
+                "structure": format!(".emb-agent/cache/docs/{doc_id}/structure.json"),
+                "pages": format!(".emb-agent/cache/docs/{doc_id}/pages.json")
+            }
+        }]
+    });
+    fs::write(
+        project
+            .path()
+            .join(".emb-agent")
+            .join("cache")
+            .join("docs")
+            .join("index.json"),
+        serde_json::to_string(&index).unwrap(),
+    )
+    .expect("write index");
+
+    let tree = run(&project, &["doc", "tree", "--doc-id", doc_id]);
+    assert!(tree.contains("Watchdog Timer (WDT)"), "tree output: {tree}");
+    assert!(tree.contains("\"type\": \"pdf\""), "tree output: {tree}");
+    // text fields must be stripped from the tree view
+    assert!(!tree.contains("WDTCON bits"), "tree leaked text: {tree}");
+
+    let pages = run(
+        &project,
+        &["doc", "pages", "--doc-id", doc_id, "--pages", "13-14"],
+    );
+    assert!(pages.contains("WDTCON bits"), "pages output: {pages}");
+    assert!(pages.contains("\"page\": 13"), "pages output: {pages}");
+
+    // doc lookup should surface a tree-section match with page evidence.
+    let lookup = run(&project, &["doc", "lookup", "--keyword", "watchdog"]);
+    assert!(
+        lookup.contains("\"retrieval\": \"tree\""),
+        "lookup output: {lookup}"
+    );
+    assert!(
+        lookup.contains("Watchdog Timer"),
+        "lookup sections: {lookup}"
+    );
+    assert!(
+        lookup.contains("\"page_start\": 12"),
+        "lookup page span: {lookup}"
+    );
 }
 
 #[test]

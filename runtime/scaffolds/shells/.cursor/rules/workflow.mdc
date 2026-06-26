@@ -18,6 +18,10 @@ alwaysApply: false
 
 {{INCLUDE:_partials/red-flags-stop.md}}
 
+## Human-Readable Defaults
+
+{{INCLUDE:_partials/human-readable-defaults.md}}
+
 ## Cursor Notes
 
 - Skill: emb-agent
