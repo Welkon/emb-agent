@@ -1446,9 +1446,11 @@ function hooksFileHasRuntimeEntries(hooksPath, hostName) {
 	if (!fs.existsSync(hooksPath)) return false;
 	try {
 		var hooks = fs.readFileSync(hooksPath, "utf8");
+		var codexGuardOk = hostName !== "codex" || hooks.indexOf("hook tool-guard --host codex") >= 0;
 		return hooks.indexOf("{{") === -1
 			&& hooks.indexOf("hook session-start --host " + hostName) >= 0
 			&& hooks.indexOf("hook context-monitor --host " + hostName) >= 0
+			&& codexGuardOk
 			&& hooks.indexOf("ApplyPatch") >= 0;
 	} catch (_) {
 		return false;

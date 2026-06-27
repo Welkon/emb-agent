@@ -177,6 +177,7 @@ pub struct HookConfig {
     pub session_start: HookEntry,
     pub statusline: HookEntry,
     pub context_monitor: HookEntry,
+    pub tool_guard: HookEntry,
 }
 
 impl HookConfig {
@@ -195,10 +196,16 @@ impl HookConfig {
             .or_else(|| value.get("contextMonitor"))
             .map(HookEntry::from_value)
             .unwrap_or_default();
+        let tool_guard = value
+            .get("tool_guard")
+            .or_else(|| value.get("toolGuard"))
+            .map(HookEntry::from_value)
+            .unwrap_or_default();
         Self {
             session_start,
             statusline,
             context_monitor,
+            tool_guard,
         }
     }
 
@@ -207,6 +214,7 @@ impl HookConfig {
             "session-start" | "session_start" => &self.session_start,
             "statusline" => &self.statusline,
             "context-monitor" | "context_monitor" => &self.context_monitor,
+            "tool-guard" | "tool_guard" => &self.tool_guard,
             _ => &self.session_start,
         }
     }
@@ -1577,6 +1585,10 @@ pub fn build_project_state_json(state: &ProjectState) -> String {
                 "context_monitor": {
                     "enabled": state.config.hooks.context_monitor.enabled,
                     "runtime": &state.config.hooks.context_monitor.runtime,
+                },
+                "tool_guard": {
+                    "enabled": state.config.hooks.tool_guard.enabled,
+                    "runtime": &state.config.hooks.tool_guard.runtime,
                 },
             },
         },

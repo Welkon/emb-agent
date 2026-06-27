@@ -141,6 +141,9 @@ pub fn normalize_hook_name(hook: &str) -> String {
         "emb-context-monitor.js" | "PostToolUse" | "context_monitor" => {
             "context-monitor".to_string()
         }
+        "emb-tool-guard.js" | "PreToolUse" | "pre_tool_use" | "tool_guard" => {
+            "tool-guard".to_string()
+        }
         value if !value.is_empty() => value.to_string(),
         _ => "session-start".to_string(),
     }
@@ -149,7 +152,7 @@ pub fn normalize_hook_name(hook: &str) -> String {
 pub fn is_rust_hook_supported(hook: &str) -> bool {
     matches!(
         hook,
-        "session-start" | "session-end" | "statusline" | "context-monitor"
+        "session-start" | "session-end" | "statusline" | "context-monitor" | "tool-guard"
     )
 }
 
@@ -158,6 +161,7 @@ pub fn hook_file_name(hook: &str) -> &'static str {
         "session-start" => "emb-session-start.js",
         "statusline" => "emb-statusline.js",
         "context-monitor" => "emb-context-monitor.js",
+        "tool-guard" => "emb-tool-guard.js",
         _ => "emb-session-start.js",
     }
 }
@@ -270,9 +274,10 @@ pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
     let session_start = build_hook_plan(host, "session-start", runtime_dir, None);
     let statusline = build_hook_plan(host, "statusline", runtime_dir, None);
     let context_monitor = build_hook_plan(host, "context-monitor", runtime_dir, None);
+    let tool_guard = build_hook_plan(host, "tool-guard", runtime_dir, None);
     let rust_binary = rust_binary_path(runtime_dir);
     format!(
-        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs\",\"host\":{},\"runtime_dir\":{},\"source_runtime\":{},\"rust_binary\":{},\"rust_binary_exists\":{},\"env\":{{\"EMB_AGENT_RUST_HOOKS\":{},\"EMB_AGENT_RUST_HOOK_CMD\":{}}},\"hooks\":{{\"session_start\":{},\"statusline\":{},\"context_monitor\":{}}}}}",
+        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs\",\"host\":{},\"runtime_dir\":{},\"source_runtime\":{},\"rust_binary\":{},\"rust_binary_exists\":{},\"env\":{{\"EMB_AGENT_RUST_HOOKS\":{},\"EMB_AGENT_RUST_HOOK_CMD\":{}}},\"hooks\":{{\"session_start\":{},\"statusline\":{},\"context_monitor\":{},\"tool_guard\":{}}}}}",
         json_quote(host),
         json_quote(&runtime_dir.to_string_lossy()),
         is_source_runtime_layout(runtime_dir),
@@ -282,7 +287,8 @@ pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
         json_quote(&env::var("EMB_AGENT_RUST_HOOK_CMD").unwrap_or_default()),
         build_hook_plan_json(&session_start),
         build_hook_plan_json(&statusline),
-        build_hook_plan_json(&context_monitor)
+        build_hook_plan_json(&context_monitor),
+        build_hook_plan_json(&tool_guard)
     )
 }
 
@@ -334,6 +340,19 @@ mod tests {
     }
 
     #[test]
+    fn hook_resolver_supports_codex_tool_guard() {
+        let runtime_dir = repo_root().join("runtime");
+        let plan = build_hook_plan("codex", "PreToolUse", &runtime_dir, None);
+        assert_eq!(plan.hook, "tool-guard");
+        assert_eq!(plan.runtime, "rust");
+        assert!(plan.command.contains(" hook tool-guard --host codex"));
+        assert_eq!(
+            plan.fallback,
+            build_node_hook_command(&runtime_dir, "codex", "tool-guard")
+        );
+    }
+
+    #[test]
     fn hook_plan_json_is_machine_readable() {
         let plan = HookPlan {
             hook: "statusline".to_string(),
@@ -359,7 +378,9 @@ mod tests {
         assert!(json.contains("\"session_start\""));
         assert!(json.contains("\"statusline\""));
         assert!(json.contains("\"context_monitor\""));
+        assert!(json.contains("\"tool_guard\""));
         assert!(json.contains("\"hook\":\"context-monitor\""));
+        assert!(json.contains("\"hook\":\"tool-guard\""));
     }
 
     #[test]

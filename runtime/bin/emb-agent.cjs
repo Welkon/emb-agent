@@ -231,6 +231,78 @@ function rustTimeoutMs(args) {
 	return Math.max(base, requested + 60000);
 }
 
+function runRustHook(rustBin, args, input, callback) {
+	var stdout = [];
+	var stderr = [];
+	var stdoutSize = 0;
+	var stderrSize = 0;
+	var maxBuffer = 1024 * 1024;
+	var settled = false;
+	var child;
+	var timer;
+
+	function done(result) {
+		if (settled) return;
+		settled = true;
+		if (timer) clearTimeout(timer);
+		callback(result);
+	}
+
+	try {
+		child = childProcess.spawn(rustBin, args, { stdio: ["pipe", "pipe", "pipe"] });
+	} catch (error) {
+		done({ error: error });
+		return;
+	}
+
+	child.stdout.on("data", function (chunk) {
+		stdoutSize += chunk.length;
+		if (stdoutSize > maxBuffer) {
+			child.kill("SIGTERM");
+			done({ error: new Error("emb-agent hook stdout exceeded maxBuffer") });
+			return;
+		}
+		stdout.push(chunk);
+	});
+	child.stderr.on("data", function (chunk) {
+		stderrSize += chunk.length;
+		if (stderrSize > maxBuffer) {
+			child.kill("SIGTERM");
+			done({ error: new Error("emb-agent hook stderr exceeded maxBuffer") });
+			return;
+		}
+		stderr.push(chunk);
+	});
+	child.on("error", function (error) {
+		done({ error: error });
+	});
+	child.on("close", function (code) {
+		done({
+			status: typeof code === "number" ? code : 1,
+			stdout: Buffer.concat(stdout).toString("utf8"),
+			stderr: Buffer.concat(stderr).toString("utf8"),
+		});
+	});
+
+	timer = setTimeout(function () {
+		child.kill("SIGTERM");
+		done({ error: new Error("emb-agent hook timed out after " + rustTimeoutMs(args) + "ms") });
+	}, rustTimeoutMs(args));
+
+	child.stdin.end(input || Buffer.alloc(0));
+}
+
+function finishRustResult(result) {
+	if (result.error && typeof result.status !== "number") {
+		process.stderr.write("emb-agent spawn error: " + result.error.message + "\n");
+		process.exit(1);
+	}
+
+	if (result.stdout) fs.writeSync(1, result.stdout);
+	if (result.stderr) fs.writeSync(2, result.stderr);
+	process.exit(typeof result.status === "number" ? result.status : 1);
+}
+
 function main(argv) {
 	var args = Array.isArray(argv) ? argv : process.argv.slice(2);
 	if (args[0] === "update" && (!args[1] || args[1] === "check" || args[1] === "command" || args[1] === "--brief" || args[1] === "--json")) {
@@ -248,21 +320,20 @@ function main(argv) {
 		process.exit(1);
 	}
 
+	var stdinPayload = readStdinPayload();
+	if (args[0] === "hook") {
+		runRustHook(rustBin, args, stdinPayload, finishRustResult);
+		return;
+	}
+
 	var result = spawnRustWithRetry(rustBin, args, {
 		encoding: "utf8",
-		input: readStdinPayload(),
+		input: stdinPayload,
 		maxBuffer: 1024 * 1024,
 		timeout: rustTimeoutMs(args),
 		stdio: ["pipe", "pipe", "pipe"],
 	});
-	if (result.error && typeof result.status !== "number") {
-		process.stderr.write("emb-agent spawn error: " + result.error.message + "\n");
-		process.exit(1);
-	}
-
-	if (result.stdout) fs.writeSync(1, result.stdout);
-	if (result.stderr) fs.writeSync(2, result.stderr);
-	process.exit(typeof result.status === "number" ? result.status : 1);
+	finishRustResult(result);
 }
 
 module.exports = { main };

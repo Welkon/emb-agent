@@ -255,4 +255,16 @@ fn host_scaffolds_share_knowledge_first_and_schematic_rules() {
     ] {
         assert!(omp.contains(expected), "OMP extension missing {expected}");
     }
+
+    let codex_hooks = read_repo("runtime/scaffolds/shells/.codex/hooks.json");
+    for expected in [
+        "PreToolUse",
+        "hook tool-guard --host codex",
+        "hook context-monitor --host codex",
+    ] {
+        assert!(
+            codex_hooks.contains(expected),
+            "Codex hooks scaffold missing {expected}"
+        );
+    }
 }

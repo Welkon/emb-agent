@@ -353,9 +353,11 @@ fn manual_update_command() -> &'static str {
 
 fn hooks_config_has_runtime_entries(host_dir: &Path, host: &str) -> bool {
     let hooks = fs::read_to_string(host_dir.join("hooks.json")).unwrap_or_default();
+    let codex_guard_ok = host != "codex" || hooks.contains("hook tool-guard --host codex");
     !hooks.contains("{{")
         && hooks.contains(&format!("hook session-start --host {host}"))
         && hooks.contains(&format!("hook context-monitor --host {host}"))
+        && codex_guard_ok
         && hooks.contains("ApplyPatch")
 }
 

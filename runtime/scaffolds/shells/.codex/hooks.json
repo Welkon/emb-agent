@@ -12,6 +12,19 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/emb-agent/bin/emb-agent.cjs hook tool-guard --host codex",
+            "timeout": 10,
+            "statusMessage": "Checking emb-agent tool policy..."
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash|Shell|Exec|exec_command|Edit|Write|MultiEdit|ApplyPatch|apply_patch|Task",

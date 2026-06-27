@@ -400,6 +400,127 @@ fn context_monitor_reads_multiline_stdin_and_uses_cursor_shape() {
 }
 
 #[test]
+fn codex_tool_guard_blocks_source_read_before_knowledge_search() {
+    let project = TestProject::new("codex-tool-guard-source");
+    let payload = format!(
+        "{{\n  \"hook_event_name\": \"PreToolUse\",\n  \"cwd\": \"{}\",\n  \"tool_name\": \"Read\",\n  \"tool_input\": {{ \"path\": \"firmware/src/main.c\" }}\n}}\n",
+        project.path().to_string_lossy()
+    );
+
+    let output = run_with_stdin(&["hook", "tool-guard", "--host", "codex"], &payload);
+    assert!(
+        output.contains("\"decision\":\"block\""),
+        "hook output: {output}"
+    );
+    assert!(output.contains("knowledge search"), "hook output: {output}");
+}
+
+#[test]
+fn codex_tool_guard_records_knowledge_search_attempt_and_allows_source_read() {
+    let project = TestProject::new("codex-tool-guard-knowledge");
+    let knowledge_payload = format!(
+        "{{\n  \"hook_event_name\": \"PreToolUse\",\n  \"cwd\": \"{}\",\n  \"tool_name\": \"Bash\",\n  \"tool_input\": {{ \"command\": \"node .codex/emb-agent/bin/emb-agent.cjs knowledge search --query timer --rerank\" }}\n}}\n",
+        project.path().to_string_lossy()
+    );
+    let output = run_with_stdin(
+        &["hook", "tool-guard", "--host", "codex"],
+        &knowledge_payload,
+    );
+    assert_eq!(output, "");
+
+    let state = fs::read_to_string(
+        project
+            .path()
+            .join(".emb-agent")
+            .join("sessions")
+            .join("tool-guard-state.json"),
+    )
+    .expect("read tool guard state");
+    assert!(state.contains("knowledge_primed_at_ms"), "state: {state}");
+    assert!(state.contains("timer"), "state: {state}");
+
+    let read_payload = format!(
+        "{{\n  \"hook_event_name\": \"PreToolUse\",\n  \"cwd\": \"{}\",\n  \"tool_name\": \"Read\",\n  \"tool_input\": {{ \"path\": \"firmware/src/main.c\" }}\n}}\n",
+        project.path().to_string_lossy()
+    );
+    let output = run_with_stdin(&["hook", "tool-guard", "--host", "codex"], &read_payload);
+    assert_eq!(output, "");
+}
+
+#[test]
+fn codex_tool_guard_blocks_raw_schematic_shell_reads() {
+    let project = TestProject::new("codex-tool-guard-schematic");
+    let payload = format!(
+        "{{\n  \"hook_event_name\": \"PreToolUse\",\n  \"cwd\": \"{}\",\n  \"tool_name\": \"Bash\",\n  \"tool_input\": {{ \"command\": \"strings docs/board.SchDoc\" }}\n}}\n",
+        project.path().to_string_lossy()
+    );
+
+    let output = run_with_stdin(&["hook", "tool-guard", "--host", "codex"], &payload);
+    assert!(
+        output.contains("\"decision\":\"block\""),
+        "hook output: {output}"
+    );
+    assert!(output.contains("schematic"), "hook output: {output}");
+}
+
+#[test]
+fn codex_tool_guard_blocks_unbounded_root_search() {
+    let project = TestProject::new("codex-tool-guard-root");
+    let payload = format!(
+        "{{\n  \"hook_event_name\": \"PreToolUse\",\n  \"cwd\": \"{}\",\n  \"tool_name\": \"Bash\",\n  \"tool_input\": {{ \"command\": \"find / -name '*.c'\" }}\n}}\n",
+        project.path().to_string_lossy()
+    );
+
+    let output = run_with_stdin(&["hook", "tool-guard", "--host", "codex"], &payload);
+    assert!(
+        output.contains("\"decision\":\"block\""),
+        "hook output: {output}"
+    );
+    assert!(output.contains("filesystem root"), "hook output: {output}");
+}
+
+#[test]
+fn runtime_wrapper_forwards_hook_stdin_without_hanging() {
+    let project = TestProject::new("runtime-wrapper-hook-stdin");
+    let payload = format!(
+        "{{\n  \"hook_event_name\": \"PreToolUse\",\n  \"cwd\": \"{}\",\n  \"tool_name\": \"Read\",\n  \"tool_input\": {{ \"path\": \"firmware/src/main.c\" }}\n}}\n",
+        project.path().to_string_lossy()
+    );
+    let mut child = Command::new("node")
+        .arg(
+            repo_root()
+                .join("runtime")
+                .join("bin")
+                .join("emb-agent.cjs"),
+        )
+        .arg("hook")
+        .arg("tool-guard")
+        .arg("--host")
+        .arg("codex")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn runtime wrapper hook");
+    child
+        .stdin
+        .as_mut()
+        .expect("child stdin")
+        .write_all(payload.as_bytes())
+        .expect("write runtime wrapper hook stdin");
+    let output = child.wait_with_output().expect("wait runtime wrapper hook");
+    let stdout = assert_success(output);
+    assert!(
+        stdout.contains("\"decision\":\"block\""),
+        "wrapper hook output: {stdout}"
+    );
+    assert!(
+        stdout.contains("knowledge search"),
+        "wrapper hook output: {stdout}"
+    );
+}
+
+#[test]
 fn help_shows_default_user_flow() {
     let output = Command::new(emb_agent_bin())
         .arg("help")
@@ -1031,6 +1152,14 @@ fn runtime_wrapper_allows_long_doc_ingest() {
     assert!(
         wrapper.contains("timeout: rustTimeoutMs(args)"),
         "runtime wrapper must not keep a fixed 120s spawn timeout for MinerU parsing"
+    );
+    assert!(
+        wrapper.contains("function runRustHook"),
+        "runtime wrapper must use a hook-specific spawn path"
+    );
+    assert!(
+        wrapper.contains("child.stdin.end(input || Buffer.alloc(0))"),
+        "runtime wrapper must explicitly close hook stdin"
     );
     assert!(
         wrapper.contains("fs.writeSync(1, result.stdout)"),
@@ -2731,6 +2860,8 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         .expect("read Codex hooks config");
     assert!(
         codex_hooks.contains("hook session-start --host codex")
+            && codex_hooks.contains("PreToolUse")
+            && codex_hooks.contains("hook tool-guard --host codex")
             && codex_hooks.contains("hook context-monitor --host codex")
             && codex_hooks.contains("ApplyPatch")
             && codex_hooks.contains("apply_patch")
