@@ -276,13 +276,32 @@ pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
     let context_monitor = build_hook_plan(host, "context-monitor", runtime_dir, None);
     let tool_guard = build_hook_plan(host, "tool-guard", runtime_dir, None);
     let rust_binary = rust_binary_path(runtime_dir);
+    let rust_binary_exists = rust_binary.exists();
+    let hooks_ready = rust_binary_exists
+        && session_start.supported
+        && context_monitor.supported
+        && (host != "codex" || tool_guard.supported);
+    let readiness_status = if hooks_ready { "ok" } else { "warn" };
+    let next_steps = hook_diagnostics_next_steps(host, hooks_ready);
     format!(
-        "{{\"status\":\"ok\",\"runtime\":\"emb-agent-rs\",\"host\":{},\"runtime_dir\":{},\"source_runtime\":{},\"rust_binary\":{},\"rust_binary_exists\":{},\"env\":{{\"EMB_AGENT_RUST_HOOKS\":{},\"EMB_AGENT_RUST_HOOK_CMD\":{}}},\"hooks\":{{\"session_start\":{},\"statusline\":{},\"context_monitor\":{},\"tool_guard\":{}}}}}",
+        "{{\"status\":{},\"runtime\":\"emb-agent-rs\",\"host\":{},\"runtime_dir\":{},\"source_runtime\":{},\"rust_binary\":{},\"rust_binary_exists\":{},\"readiness\":{{\"status\":{},\"session_start\":{},\"context_monitor\":{},\"tool_guard_required\":{},\"tool_guard\":{},\"message\":{}}},\"next_steps\":{},\"env\":{{\"EMB_AGENT_RUST_HOOKS\":{},\"EMB_AGENT_RUST_HOOK_CMD\":{}}},\"hooks\":{{\"session_start\":{},\"statusline\":{},\"context_monitor\":{},\"tool_guard\":{}}}}}",
+        json_quote(readiness_status),
         json_quote(host),
         json_quote(&runtime_dir.to_string_lossy()),
         is_source_runtime_layout(runtime_dir),
         json_quote(&rust_binary.to_string_lossy()),
-        rust_binary.exists(),
+        rust_binary_exists,
+        json_quote(readiness_status),
+        session_start.supported,
+        context_monitor.supported,
+        host == "codex",
+        tool_guard.supported,
+        json_quote(if hooks_ready {
+            "Hook runtime and required hook plans are present."
+        } else {
+            "Hook runtime or required hook plans are incomplete; follow next_steps."
+        }),
+        json_string_array(&next_steps),
         json_quote(&env::var("EMB_AGENT_RUST_HOOKS").unwrap_or_default()),
         json_quote(&env::var("EMB_AGENT_RUST_HOOK_CMD").unwrap_or_default()),
         build_hook_plan_json(&session_start),
@@ -290,6 +309,41 @@ pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
         build_hook_plan_json(&context_monitor),
         build_hook_plan_json(&tool_guard)
     )
+}
+
+fn hook_diagnostics_next_steps(host: &str, hooks_ready: bool) -> Vec<String> {
+    let mut steps = Vec::new();
+    if hooks_ready {
+        steps.push("Start a new host session, then ask for /emb start or /emb next.".to_string());
+    } else {
+        steps.push("Run emb-agent repair/update for this host, then restart the host session.".to_string());
+    }
+    match host {
+        "codex" => {
+            steps.push("In Codex, run /hooks and trust the project hooks if they are pending review.".to_string());
+            steps.push("Confirm ~/.codex/config.toml enables hooks if project hooks do not run.".to_string());
+        }
+        "cursor" => {
+            steps.push("Reload the Cursor window if hooks or commands are not visible.".to_string());
+        }
+        "claude" => {
+            steps.push("Start a new Claude Code session after hook changes.".to_string());
+        }
+        _ => {}
+    }
+    steps
+}
+
+fn json_string_array(values: &[String]) -> String {
+    let mut out = String::from("[");
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        out.push_str(&json_quote(value));
+    }
+    out.push(']');
+    out
 }
 
 pub fn shell_quote(path: &Path) -> String {

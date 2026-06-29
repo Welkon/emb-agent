@@ -15,10 +15,13 @@ Output the emb-agent help summary below and nothing else.
 
 Use this order unless the runtime `next` output says otherwise:
 
-1. `onboard` — first run, partial setup, or existing docs need migration.
-2. `next --brief` — default continuation after onboarding.
-3. `task add|activate` — create or choose concrete work.
-4. `scan -> plan -> do -> review -> verify` — execute and close work.
+1. Restart or reload the host after install or repair.
+2. Codex only: run `/hooks` and trust pending project hooks.
+3. `onboard` — first run, partial setup, or existing docs need migration.
+4. `start --brief` — re-render existing project context when the startup hook was missed.
+5. `next --brief` — default continuation after onboarding or startup.
+6. `task add|activate` — create or choose concrete work.
+7. `scan -> plan -> do -> review -> verify` — execute and close work.
 
 All installed commands remain available. `init`, `init-project`, `bootstrap`, and `board` are not the normal starting path; use them when `next --brief`, `health`, or the user request calls for that specific function.
 
@@ -47,6 +50,7 @@ All installed commands remain available. `init`, `init-project`, `bootstrap`, an
 - `next --brief` — ask the runtime what to do now.
 - `start --brief` — re-render entry guidance when startup injection was missed.
 - `health` — diagnose why startup or `next` looks blocked.
+- `diagnostics hooks --host <host>` — verify hook runtime, hook plans, and next repair steps.
 
 ### Work
 

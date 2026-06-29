@@ -291,8 +291,7 @@ fn is_leap(y: i64) -> bool {
 }
 /// Show architecture status: check if ARCHITECTURE.md exists and which sections are filled
 pub fn arch_status(ext_dir: &Path) -> String {
-    let arch_dir = ext_dir.join("architecture");
-    let arch_md = arch_dir.join("ARCHITECTURE.md");
+    let arch_md = architecture_path(ext_dir);
     if !arch_md.exists() {
         return r#"{"status":"ok","architecture":{"exists":false,"note":"ARCHITECTURE.md not found. Run emb-agent init first."}}"#.to_string();
     }
@@ -320,10 +319,18 @@ pub fn arch_status(ext_dir: &Path) -> String {
 
 /// Architecture check: compare ARCHITECTURE.md against current code (stub)
 pub fn arch_check(ext_dir: &Path) -> String {
-    let arch_md = ext_dir.join("architecture").join("ARCHITECTURE.md");
+    let arch_md = architecture_path(ext_dir);
     if !arch_md.exists() {
         return r#"{"status":"ok","check":{"arch_exists":false,"findings":[],"recommendation":"Run emb-agent init to create architecture skeleton."}}"#.to_string();
     }
     // Stub: real implementation would compare docs vs actual code structure
     r#"{"status":"ok","check":{"arch_exists":true,"findings":[],"recommendation":"Architecture check not yet implemented in Rust. Review ARCHITECTURE.md manually."}}"#.to_string()
+}
+
+fn architecture_path(ext_dir: &Path) -> std::path::PathBuf {
+    let current = ext_dir.join("ARCHITECTURE.md");
+    if current.exists() {
+        return current;
+    }
+    ext_dir.join("architecture").join("ARCHITECTURE.md")
 }

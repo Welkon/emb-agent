@@ -14,12 +14,12 @@ allowed-tools:
 
 ## Purpose
 
-- At task finish-work, automatically extract durable learnings from the task PRD, diff, trace entries, and journal — and write them back to the wiki so they survive beyond the task.
+- At task finish-work, automatically extract durable learnings from the task PRD, diff, trace entries, and workspace journal — and write them back to the wiki so they survive beyond the task.
 - Session insight is the bridge between ephemeral task execution and persistent project memory. Without it, key decisions and gotchas are lost when the task closes.
 
 ## Commands
 
-- `insight extract [--task <name>] [--confirm]` — Scan the current (or named) task's PRD, diff, trace entries, and journal. Extract key decisions, pitfalls, and invariants, then draft wiki pages. Re-run with `--confirm` to write.
+- `insight extract [--task <name>] [--confirm]` — Scan the current (or named) task's PRD, diff, trace entries, and workspace journal. Extract key decisions, pitfalls, and invariants, then draft wiki pages. Re-run with `--confirm` to write.
 - `insight decisions [--task <name>]` — List decisions extracted from a task.
 - `insight pitfalls [--task <name>]` — List pitfalls and how they were resolved.
 - `insight invariants [--task <name>]` — List invariants discovered or reinforced.
@@ -32,7 +32,7 @@ When `insight extract` runs, it reads:
 1. **Task PRD** (`.emb-agent/tasks/<name>/prd.md`): goal, constraints, acceptance criteria
 2. **Diff** (git diff for the task's changed files): what actually changed
 3. **Trace entries** (`.emb-agent/trace/trace.jsonl` filtered by task): phase-by-phase record
-4. **Task journal** (`.emb-agent/tasks/<name>/journal.md` if present): developer notes
+4. **Workspace journal** (`.emb-agent/workspace/<developer>/journal-N.md` if present): developer session notes
 
 From these it extracts:
 
@@ -59,7 +59,7 @@ What remains unknown after this task. Write to `wiki/queries/<slug>.md`.
 
 ## Workflow
 
-1. After `task finish-work`, the agent runs `insight extract --confirm` automatically (or prompts the user if auto-runner is off).
+1. After `task finish-work`, the agent records closure context with `session record`, then runs `insight extract --confirm` automatically (or prompts the user if auto-runner is off).
 2. `insight extract` drafts wiki pages and prints a preview. With `--confirm`, it writes them.
 3. After writing, run `knowledge graph refresh` to index the new wiki pages.
 4. Run `insight stale-check` periodically to surface wiki pages past their `stale_after` date.

@@ -24,7 +24,7 @@ fn run(args: &[String]) -> Result<(), String> {
 
     match command {
         // Session
-        "statusline" | "start" | "next" | "status" | "health" | "pause" | "resume" => {
+        "statusline" | "start" | "next" | "status" | "health" | "pause" | "resume" | "session" => {
             cli::session::run(args)
         }
         // External protocol
@@ -62,9 +62,7 @@ fn run(args: &[String]) -> Result<(), String> {
         // Variant
         "variant" | "workspace" => cli::variant::run(args),
         // Misc small commands
-        "config" | "prd" | "session" | "context" | "bootstrap" | "declare" | "resolve" => {
-            cli::misc::run(args)
-        }
+        "config" | "prd" | "context" | "bootstrap" | "declare" | "resolve" => cli::misc::run(args),
         // Compound knowledge
         "compound" | "attention" | "note" | "arch" => cli::compound::run(args),
         // Extended operations
@@ -80,13 +78,18 @@ fn print_help() {
     println!(
         r#"emb-agent-rs
 
-emb-agent default user flow:
-  /emb onboard
-  /emb ingest
-  /emb next
+	emb-agent default user flow:
+	  1. Install or repair host integration.
+	  2. Restart/reload the host; in Codex run /hooks and trust project hooks.
+	  3. New project: /emb onboard
+	     Existing project: /emb start
+	     Continue work: /emb next
+	  4. If startup context is missing: diagnostics hooks --host <host>
 
-USAGE:
+	USAGE:
   Session:    onboard, start, next, status [--query "question"], health, pause [note], resume
+              session show|journal|history
+              session record --title "..." --summary "..." [--detail "..."] [--commit HASH] [--test CMD] [--next "..."]
   Tasks:      task list/show/add/activate/resolve/delete, task worktree list/status/show/create/cleanup
   Impl:       impl mark --decision <slug> --status <planned|implemented|verified> [--file <path>]
               impl list [--brief], impl verify --decision <slug>

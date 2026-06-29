@@ -273,9 +273,100 @@ function defaultEmbAgentConfigYaml() {
 		"    max_live_workers: 6",
 		"",
 		"codex:",
-		"  dispatch_mode: inline  # inline | sub-agent",
+		"  dispatch_mode: inline  # inline | auto | sub-agent",
 		""
 	].join("\n");
+}
+
+function defaultEmbAgentWorkflowMd() {
+	return [
+		"# emb-agent Workflow",
+		"",
+		"This directory is project-local state. Keep the top level small:",
+		"",
+		"| Path | Purpose |",
+		"|---|---|",
+		"| `.developer` | Local developer identity used for agent context |",
+		"| `.language` | Preferred response language (`zh`, `en`, or blank for host default) |",
+		"| `.template-hashes` | Managed template fingerprints for repair/update |",
+		"| `.version` | emb-agent project template/runtime version |",
+		"| `config.yaml` | Local emb-agent configuration and hook settings |",
+		"| `workflow.md` | Human-readable workflow, layout, and conventions |",
+		"| `project.json` | Package/profile metadata |",
+		"| `hw.yaml` | Hardware truth: MCU, package, pins, clock, board facts |",
+		"| `req.yaml` | Product behavior, constraints, acceptance, unknowns |",
+		"| `attention.md` | Current blockers, traps, priorities, environment notes |",
+		"| `ARCHITECTURE.md` | Current module/peripheral/ISR ownership map |",
+		"| `tasks/` | Active and completed task records |",
+		"| `.install/` | Installer logs, backups, version state, install result |",
+		"",
+		"Feature directories such as `cache/`, `graph/`, `wiki/`, `compound/`,",
+		"`memory/`, `sessions/`, `specs/`, and `plugins/` are created only when the",
+		"matching command or installer option needs them.",
+		"",
+		"## Shared Conventions",
+		"",
+		"- Run `/emb onboard` for empty, partial, or migrated projects.",
+		"- Run `/emb start` for an existing emb-agent project.",
+		"- Run `/emb next` after setup to choose one next action.",
+		"- Keep hardware truth in `hw.yaml` and product behavior in `req.yaml` plus `docs/prd/`.",
+		"",
+		"## Knowledge Evolution",
+		"",
+		"Promote a lesson only if it is repeatable and expensive or not visible in code.",
+		"Use generated feature directories only when the corresponding command writes them.",
+		""
+	].join("\n");
+}
+
+function templateHash(source) {
+	var hash = 2166136261;
+	for (var i = 0; i < source.length; i++) {
+		hash ^= source.charCodeAt(i);
+		hash = Math.imul(hash, 16777619);
+	}
+	return ("00000000" + (hash >>> 0).toString(16)).slice(-8);
+}
+
+function ensureEmbAgentProjectContract(projectRoot, options) {
+	var ext = embAgentDir(projectRoot);
+	ensureDir(ext);
+	var developerPath = path.join(ext, ".developer");
+	if (!fs.existsSync(developerPath)) {
+		var developer = String((options && options.developer) || "").trim();
+		fs.writeFileSync(developerPath, JSON.stringify({ name: developer }) + "\n");
+	}
+	var languagePath = path.join(ext, ".language");
+	if (!fs.existsSync(languagePath)) {
+		var language = normalizeLanguage((options && options.lang) || "");
+		fs.writeFileSync(languagePath, language ? language + "\n" : "\n");
+	}
+	fs.writeFileSync(path.join(ext, ".version"), VERSION + "\n");
+	var workflow = defaultEmbAgentWorkflowMd();
+	var workflowPath = path.join(ext, "workflow.md");
+	if (!fs.existsSync(workflowPath)) fs.writeFileSync(workflowPath, workflow, "utf8");
+	var templateState = {
+		template_version: VERSION,
+		templates: {
+			"workflow.md": templateHash(workflow),
+			".language": "language-preference-v1",
+			"ARCHITECTURE.md": "embedded-architecture-v1",
+			"attention.md": "project-attention-v1",
+			"project.json": "project-config-v1",
+			"hw.yaml": "hardware-truth-v1",
+			"req.yaml": "requirements-truth-v1"
+		}
+	};
+	fs.writeFileSync(path.join(ext, ".template-hashes"), JSON.stringify(templateState, null, 2) + "\n");
+	var legacyReadme = path.join(ext, "README.md");
+	try {
+		if (fs.existsSync(legacyReadme)) {
+			var existing = fs.readFileSync(legacyReadme, "utf8");
+			if (existing.indexOf("# emb-agent Project State") >= 0 && existing.indexOf("This directory is project-local state") >= 0) {
+				fs.unlinkSync(legacyReadme);
+			}
+		}
+	} catch (_) {}
 }
 
 function ensureEmbAgentProjectConfig(projectRoot) {
@@ -299,7 +390,7 @@ function ensureEmbAgentProjectConfig(projectRoot) {
 		if (hookLines.length) updated = updated.replace(/^hooks:[ \t]*$/m, "hooks:\n" + hookLines.join("\n"));
 	}
 	if (!/^codex:[ \t]*$/m.test(updated)) {
-		updated = updated.replace(/\s*$/, "\n\ncodex:\n  dispatch_mode: inline  # inline | sub-agent\n");
+		updated = updated.replace(/\s*$/, "\n\ncodex:\n  dispatch_mode: inline  # inline | auto | sub-agent\n");
 	}
 	if (updated !== text) fs.writeFileSync(configPath, updated, "utf8");
 }
@@ -483,9 +574,11 @@ function usage() {
 		"  npx emb-agent --target codex --developer felix --spec scmcu-space  # Direct",
 		"",
 		"After install:",
-		"  /emb onboard    # Recommended next step for a new project",
-		"  /emb start      # Continue an existing emb-agent project",
-		"  /emb help       # Show the shortest user flow if unsure",
+		"  1) Restart/reload the target host.",
+		"  2) Codex only: run /hooks and trust pending project hooks.",
+		"  3) New project: /emb onboard",
+		"     Existing project: /emb start",
+		"     Unsure: /emb help",
 		"",
 		"Installs to:",
 		"  - Rust binary (cached/downloaded)",
@@ -514,6 +607,18 @@ function parseArgs(argv) {
 }
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
+
+function embAgentDir(projectRoot) {
+	return path.join(projectRoot, ".emb-agent");
+}
+
+function installStateDir(projectRoot) {
+	return path.join(embAgentDir(projectRoot), ".install");
+}
+
+function installStateFile(projectRoot, name) {
+	return path.join(installStateDir(projectRoot), name);
+}
 
 
 function copyDir(src, dest) {
@@ -622,8 +727,8 @@ var ACTIVE_LOG_FILE = "";
 var QUIET_INSTALL = false;
 
 function setInstallLogFile(projectRoot) {
-	ensureDir(path.join(projectRoot, ".emb-agent"));
-	ACTIVE_LOG_FILE = path.join(projectRoot, ".emb-agent", "install.log");
+	ensureDir(installStateDir(projectRoot));
+	ACTIVE_LOG_FILE = installStateFile(projectRoot, "install.log");
 }
 
 function logDetail(message) {
@@ -660,21 +765,23 @@ function languageBlock(lang) {
 
 function readLanguagePreference(projectRoot) {
 	try { return normalizeLanguage(fs.readFileSync(path.join(projectRoot, ".emb-agent", ".language"), "utf8")); }
+	catch (_) {}
+	try { return normalizeLanguage(fs.readFileSync(installStateFile(projectRoot, "language"), "utf8")); }
 	catch (_) { return ""; }
 }
 
 function writeLanguagePreference(projectRoot, lang) {
 	var normalized = normalizeLanguage(lang);
 	if (!normalized) return;
-	ensureDir(path.join(projectRoot, ".emb-agent"));
-	fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".language"), normalized + "\n");
+	ensureDir(embAgentDir(projectRoot));
+	fs.writeFileSync(path.join(embAgentDir(projectRoot), ".language"), normalized + "\n");
 }
 
 function writeDeveloperPreference(projectRoot, name) {
 	var trimmed = String(name || "").trim();
 	if (!trimmed) return;
-	ensureDir(path.join(projectRoot, ".emb-agent"));
-	fs.writeFileSync(path.join(projectRoot, ".emb-agent", ".developer"), JSON.stringify({ name: trimmed }) + "\n");
+	ensureDir(embAgentDir(projectRoot));
+	fs.writeFileSync(path.join(embAgentDir(projectRoot), ".developer"), JSON.stringify({ name: trimmed }) + "\n");
 }
 
 function backupManagedFile(projectRoot, filePath) {
@@ -683,7 +790,7 @@ function backupManagedFile(projectRoot, filePath) {
 		var rel = path.relative(projectRoot, filePath);
 		if (!rel || rel.startsWith("..")) return;
 		var stamp = new Date().toISOString().replace(/[:.]/g, "-");
-		var backupPath = path.join(projectRoot, ".emb-agent", "backups", "install-" + stamp, rel);
+		var backupPath = path.join(installStateDir(projectRoot), "backups", "install-" + stamp, rel);
 		ensureDir(path.dirname(backupPath));
 		fs.copyFileSync(filePath, backupPath);
 	} catch (_) {}
@@ -1359,7 +1466,21 @@ function scopedHosts(hosts, scope) {
 }
 
 function planEntries(projectRoot, hosts) {
-	var entries = [path.join(projectRoot, ".emb-agent"), path.join(projectRoot, "AGENTS.md"), path.join(projectRoot, "docs", "prd")];
+	var entries = [
+		path.join(projectRoot, ".emb-agent", ".developer"),
+		path.join(projectRoot, ".emb-agent", ".language"),
+		path.join(projectRoot, ".emb-agent", ".template-hashes"),
+		path.join(projectRoot, ".emb-agent", ".version"),
+		path.join(projectRoot, ".emb-agent", "config.yaml"),
+		path.join(projectRoot, ".emb-agent", "workflow.md"),
+		path.join(projectRoot, ".emb-agent", "project.json"),
+		path.join(projectRoot, ".emb-agent", "hw.yaml"),
+		path.join(projectRoot, ".emb-agent", "req.yaml"),
+		path.join(projectRoot, ".emb-agent", "tasks"),
+		path.join(projectRoot, ".emb-agent", ".install"),
+		path.join(projectRoot, "AGENTS.md"),
+		path.join(projectRoot, "docs", "prd")
+	];
 	for (var i = 0; i < hosts.length; i++) {
 		var host = hosts[i];
 		var hostDir = hostDirFor(projectRoot, host);
@@ -1401,6 +1522,12 @@ function renderInstallPlan(projectRoot, hosts, options) {
 		var surface = hostSurfaceSummary(projectRoot, hosts[i]);
 		lines.push("  - " + hosts[i].name + ": " + surface.commands.join(", ") + " (" + surface.kind + ")");
 	}
+	lines.push("");
+	lines.push("After install:");
+	lines.push("  1. Restart/reload the target host.");
+	if (hosts.some(function (host) { return host.name === "codex"; })) lines.push("  2. Codex: run /hooks and trust pending project hooks.");
+	lines.push("  3. New project: /emb onboard; existing project: /emb start; then /emb next.");
+	lines.push("  4. If context is missing: run diagnostics hooks --host <host>.");
 	if (!compact) {
 		lines.push("");
 		lines.push("Managed paths:");
@@ -1411,13 +1538,13 @@ function renderInstallPlan(projectRoot, hosts, options) {
 }
 
 function writeInstallHistory(projectRoot, hosts, options) {
-	var historyDir = path.join(projectRoot, ".emb-agent");
+	var historyDir = installStateDir(projectRoot);
 	ensureDir(historyDir);
 	var record = { time: new Date().toISOString(), version: VERSION, mode: options.mode || "install", scope: options.scope || "local", language: normalizeLanguage(options.lang || readLanguagePreference(projectRoot)), hosts: hosts.map(function (h) { return h.name; }), commands: ["emb-next", "emb-onboard", "emb-ingest"] };
 	fs.appendFileSync(path.join(historyDir, "install-history.jsonl"), JSON.stringify(record) + "\n");
 }
 function writeRuntimeVersionState(projectRoot, hosts, options) {
-	var dir = path.join(projectRoot, ".emb-agent");
+	var dir = installStateDir(projectRoot);
 	ensureDir(dir);
 	var state = {
 		version: VERSION,
@@ -1428,18 +1555,23 @@ function writeRuntimeVersionState(projectRoot, hosts, options) {
 		manual_update_command: "npx emb-agent@latest update --target all --local"
 	};
 	fs.writeFileSync(path.join(dir, "runtime-version.json"), JSON.stringify(state, null, 2) + "\n");
+	ensureDir(embAgentDir(projectRoot));
+	fs.writeFileSync(path.join(embAgentDir(projectRoot), ".version"), VERSION + "\n");
 }
 
 
 function writeInstallResult(projectRoot, hosts, options) {
-	var lines = ["# emb-agent Install Result", "", "- Version: " + VERSION, "- Date: " + new Date().toISOString(), "- Scope: " + (options.scope || "local"), "- Language: " + (normalizeLanguage(options.lang || readLanguagePreference(projectRoot)) || "not set"), "", "## Commands"];
+	var lines = ["# emb-agent Install Result", "", "- Version: " + VERSION, "- Date: " + new Date().toISOString(), "- Scope: " + (options.scope || "local"), "- Language: " + (normalizeLanguage(options.lang || readLanguagePreference(projectRoot)) || "not set"), "", "## Fast Path", "", "1. Restart or reload the target host so new commands and hooks are visible.", "2. If Codex is installed, run `/hooks` and trust pending project hooks.", "3. New or migrated project: run `/emb onboard`.", "4. Existing emb-agent project: run `/emb start`.", "5. Default continuation after setup: run `/emb next`.", "", "## Commands"];
 	for (var i = 0; i < hosts.length; i++) {
 		var surface = hostSurfaceSummary(projectRoot, hosts[i]);
-		lines.push("", "### " + hosts[i].name, "", "- Surface: " + surface.kind, "- Path: " + surface.dir, "- Entries: " + surface.commands.join(", "), "- Reload: " + surface.reload);
+		var hostDir = hostDirFor(projectRoot, hosts[i]);
+		var runtimeDir = path.join(hostDir, "emb-agent");
+		lines.push("", "### " + hosts[i].name, "", "- Surface: " + surface.kind, "- Path: " + surface.dir, "- Entries: " + surface.commands.join(", "), "- Reload: " + surface.reload, "- Doctor: `node " + path.join(runtimeDir, "bin", "emb-agent.cjs").replace(/\\/g, "/") + " doctor --host " + hosts[i].name + " --brief`", "- Hook diagnostics: `node " + path.join(runtimeDir, "bin", "emb-agent.cjs").replace(/\\/g, "/") + " diagnostics hooks --host " + hosts[i].name + " --runtime-dir " + runtimeDir.replace(/\\/g, "/") + "`");
+		if (hosts[i].name === "codex") lines.push("- Codex hook activation: run `/hooks` in Codex and trust project hooks after install or repair.");
 	}
-	lines.push("", "## Next", "", "- New or migrated project: run `/emb onboard`.", "- Existing emb-agent project: run `/emb start`.", "- If unsure: run `/emb help` for the shortest user flow.", "- Then continue with `/emb ingest`, `/emb next`, `/emb task`, and `/emb session` or `/emb transcript` as recommended.", "- Check/update runtime: `node .<host>/emb-agent/bin/emb-agent.cjs update` or `npx emb-agent@latest update --target all --local`.", "- Diagnose runtime state: `node .<host>/emb-agent/bin/emb-agent.cjs doctor --host <host> --brief`.");
-	ensureDir(path.join(projectRoot, ".emb-agent"));
-	fs.writeFileSync(path.join(projectRoot, ".emb-agent", "INSTALL_RESULT.md"), lines.join("\n") + "\n");
+	lines.push("", "## Troubleshooting", "", "- If startup context is missing, run the host-specific hook diagnostics command above.", "- If commands are missing, restart/reload the host and then run the doctor command above.", "- If Codex hooks do not run, check `/hooks` trust first, then `~/.codex/config.toml` hook enablement.", "- Check/update runtime: `node .<host>/emb-agent/bin/emb-agent.cjs update` or `npx emb-agent@latest update --target all --local`.");
+	ensureDir(installStateDir(projectRoot));
+	fs.writeFileSync(installStateFile(projectRoot, "INSTALL_RESULT.md"), lines.join("\n") + "\n");
 }
 
 function hooksFileHasRuntimeEntries(hooksPath, hostName) {
@@ -1523,14 +1655,12 @@ function runInstallChecks(projectRoot, hosts) {
 
 function printPostInstallNextSteps() {
 	console.log("");
-	console.log("Recommended next step:");
-	console.log("  /emb onboard");
-	console.log("");
-	console.log("If this is an existing emb-agent project:");
-	console.log("  /emb start");
-	console.log("");
-	console.log("If unsure:");
-	console.log("  /emb help");
+	console.log("Fast path:");
+	console.log("  1) Restart/reload the target host.");
+	console.log("  2) Codex only: run /hooks and trust pending project hooks.");
+	console.log("  3) New project: /emb onboard");
+	console.log("     Existing project: /emb start");
+	console.log("     Unsure: /emb help");
 }
 
 function uninstallHost(projectRoot, host) {
@@ -1556,9 +1686,14 @@ function completeInstallBatch(projectRoot, hosts, options) {
 	console.log((failed.length === 0 ? "✓" : "!") + " Install check: " + (failed.length === 0 ? "ok" : "needs attention"));
 	for (var i = 0; i < checks.length; i++) {
 		console.log("  " + checks[i].host.name + ": " + checks[i].surface.commands.join(" or ") + " — " + checks[i].surface.reload);
+		var hostDir = hostDirFor(projectRoot, checks[i].host);
+		var runtimeDir = path.join(hostDir, "emb-agent").replace(/\\/g, "/");
+		console.log("    doctor: node " + runtimeDir + "/bin/emb-agent.cjs doctor --host " + checks[i].host.name + " --brief");
+		console.log("    hooks:  node " + runtimeDir + "/bin/emb-agent.cjs diagnostics hooks --host " + checks[i].host.name + " --runtime-dir " + runtimeDir);
+		if (checks[i].host.name === "codex") console.log("    codex:  run /hooks and trust pending project hooks");
 	}
-	console.log("  Details: .emb-agent/INSTALL_RESULT.md");
-	console.log("  Log: .emb-agent/install.log");
+	console.log("  Details: .emb-agent/.install/INSTALL_RESULT.md");
+	console.log("  Log: .emb-agent/.install/install.log");
 	if (!process.env.EMB_AGENT_SUPPRESS_NEXT_STEPS) printPostInstallNextSteps();
 }
 
@@ -1573,6 +1708,7 @@ function installForHost(projectRoot, host, callback) {
 
 	ensureProjectEnvFiles(projectRoot);
 	ensureEmbAgentProjectConfig(projectRoot);
+	ensureEmbAgentProjectContract(projectRoot, { developer: "" });
 	ensureDir(path.join(projectRoot, "docs"));
 	ensureDir(path.join(projectRoot, "docs", "prd"));
 	ensureDir(path.join(embDir, "bin"));
@@ -1696,6 +1832,7 @@ function installForHost(projectRoot, host, callback) {
 				}
 			} catch (_) {}
 		}
+		ensureEmbAgentProjectContract(projectRoot, { developer: "" });
 		function finishDone() {
 			logDetail("Done. emb-agent is now installed for your AI runtime.");
 			if (process.env._EMB_INSTALL_DONE) process.exit(0);

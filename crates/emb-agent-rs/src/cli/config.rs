@@ -63,6 +63,7 @@ pub fn parse_config(text: &str) -> EmbAgentConfig {
                 ("", _, "session_auto_commit") => cfg.session_auto_commit = parse_bool(&value),
                 ("codex", _, "dispatch_mode") => {
                     cfg.codex_dispatch_mode = match value.as_str() {
+                        "auto" => "auto".to_string(),
                         "sub-agent" | "sub_agent" | "subagent" => "sub-agent".to_string(),
                         _ => "inline".to_string(),
                     }
@@ -181,11 +182,15 @@ pub fn run_configured_hooks(project_root: &Path, hook: &str, extra_env: &[(&str,
     }
 }
 
-fn maybe_auto_commit_session(project_root: &Path, message: &str) {
+pub fn maybe_auto_commit_session(project_root: &Path, message: &str) {
     if !project_root.join(".git").exists() {
         return;
     }
-    let paths = [".emb-agent/sessions", ".emb-agent/cache/mem/index.json"];
+    let paths = [
+        ".emb-agent/sessions",
+        ".emb-agent/workspace",
+        ".emb-agent/cache/mem/index.json",
+    ];
     let _ = Command::new("git")
         .arg("add")
         .args(paths)

@@ -47,6 +47,6 @@ allowed-tools:
 
 - **After implement**: run `trace record` to log changed files, referenced specs, and key decisions.
 - **After check**: append review outcome and discovered pitfalls to the trace.
-- **After finish-work**: run `trace record` with final commit and reviewer, then `insight extract --confirm` to push durable learnings (decisions, pitfalls, invariants) into `.emb-agent/wiki/`.
+- **After finish-work**: run `session record` for the workspace journal, run `trace record` with final commit and reviewer, then `insight extract --confirm` to push durable learnings (decisions, pitfalls, invariants) into `.emb-agent/wiki/`.
 - Trace entries are append-only. Insights are written as wiki pages linked back to the task.
 - In auto-runner mode, trace recording and insight extraction happen automatically at each phase boundary.

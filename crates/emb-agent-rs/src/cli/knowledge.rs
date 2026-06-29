@@ -1457,12 +1457,17 @@ fn collect_knowledge_docs(project_root: &Path) -> Vec<KnowledgeDoc> {
         push_file_doc(&mut docs, &ext.join(rel), source_type, rel);
     }
     for root in [
+        ("architecture", ext.join("ARCHITECTURE.md")),
         ("architecture", ext.join("architecture")),
         ("compound", ext.join("compound")),
         ("wiki", ext.join("wiki")),
         ("prd", project_root.join("docs").join("prd")),
     ] {
-        collect_markdown(&mut docs, &root.1, root.0, project_root);
+        if root.1.is_file() {
+            push_file_doc(&mut docs, &root.1, root.0, ".emb-agent/ARCHITECTURE.md");
+        } else {
+            collect_markdown(&mut docs, &root.1, root.0, project_root);
+        }
     }
     collect_cached_doc_parses(&mut docs, project_root);
     let tasks = ext.join("tasks");

@@ -18,6 +18,12 @@ fn emb_agent_bin() -> PathBuf {
         })
 }
 
+fn write_install_runtime_version(root: &Path, raw: impl AsRef<[u8]>) {
+    let install_dir = root.join(".emb-agent").join(".install");
+    fs::create_dir_all(&install_dir).expect("create install state dir");
+    fs::write(install_dir.join("runtime-version.json"), raw).expect("write runtime version");
+}
+
 struct TestProject {
     root: PathBuf,
 }
@@ -533,8 +539,12 @@ fn help_shows_default_user_flow() {
         "help output: {stdout}"
     );
     assert!(stdout.contains("/emb onboard"), "help output: {stdout}");
-    assert!(stdout.contains("/emb ingest"), "help output: {stdout}");
     assert!(stdout.contains("/emb next"), "help output: {stdout}");
+    assert!(stdout.contains("/hooks"), "help output: {stdout}");
+    assert!(
+        stdout.contains("diagnostics hooks"),
+        "help output: {stdout}"
+    );
 }
 
 #[test]
@@ -780,6 +790,44 @@ fn init_writes_config_and_task_lifecycle_hooks_run() {
     let dispatch_value: serde_json::Value = serde_json::from_str(&dispatch).expect("dispatch json");
     assert_eq!(dispatch_value["codex"]["dispatch_mode"], "sub-agent");
     assert_eq!(dispatch_value["dispatch"]["subagent_allowed"], true);
+    assert_eq!(dispatch_value["dispatch"]["subagent_required"], true);
+
+    fs::write(
+        project.path().join(".emb-agent/config.yaml"),
+        r#"codex:
+  dispatch_mode: auto
+"#,
+    )
+    .expect("write auto dispatch config");
+    let auto_dispatch = run(&project, &["dispatch", "implement pwm framework"]);
+    let auto_value: serde_json::Value =
+        serde_json::from_str(&auto_dispatch).expect("auto dispatch json");
+    assert_eq!(auto_value["codex"]["dispatch_mode"], "auto");
+    assert_eq!(auto_value["dispatch"]["inline_allowed"], true);
+    assert_eq!(auto_value["dispatch"]["subagent_allowed"], true);
+    assert_eq!(auto_value["dispatch"]["subagent_required"], false);
+    assert_eq!(auto_value["dispatch"]["subagent_recommended"], true);
+    assert_eq!(
+        auto_value["dispatch"]["subagent_prompt"]["agent"],
+        "fw-doer"
+    );
+    let auto_dispatch_run = Command::new(emb_agent_bin())
+        .arg("dispatch")
+        .arg("run")
+        .arg("implement pwm framework")
+        .arg("--cwd")
+        .arg(project.path())
+        .output()
+        .expect("run auto dispatch contract");
+    let auto_dispatch_run = assert_success(auto_dispatch_run);
+    let auto_run_value: serde_json::Value =
+        serde_json::from_str(&auto_dispatch_run).expect("auto dispatch run json");
+    assert_eq!(auto_run_value["status"], "delegation-contract");
+    assert_eq!(auto_run_value["mode"], "auto");
+    assert_eq!(
+        auto_run_value["contract"]["dispatch"]["subagent_recommended"],
+        true
+    );
 
     fs::write(
         project.path().join(".emb-agent/config.yaml"),
@@ -865,6 +913,66 @@ hooks:
     assert!(
         dispatch_run.contains("sub-agent"),
         "dispatch run: {dispatch_run}"
+    );
+}
+
+#[test]
+fn doctor_reports_codex_auto_dispatch_mode() {
+    let project = TestProject::new("codex-auto-dispatch-doctor");
+    let version = env!("CARGO_PKG_VERSION");
+    fs::write(
+        project.path().join(".emb-agent/config.yaml"),
+        r#"codex:
+  dispatch_mode: auto
+"#,
+    )
+    .expect("write auto config");
+    write_install_runtime_version(
+        project.path(),
+        format!(r#"{{"version":"{version}","hosts":[{{"name":"codex","version":"{version}"}}]}}"#),
+    );
+    let codex_runtime = project.path().join(".codex/emb-agent");
+    fs::create_dir_all(codex_runtime.join("bin")).expect("create codex runtime bin");
+    fs::create_dir_all(project.path().join(".agents/skills/emb-next"))
+        .expect("create codex next skill dir");
+    fs::create_dir_all(project.path().join(".agents/skills/emb-onboard"))
+        .expect("create codex onboard skill dir");
+    fs::create_dir_all(project.path().join(".codex/skills/emb-agent"))
+        .expect("create codex emb-agent skill dir");
+    fs::write(codex_runtime.join("VERSION"), format!("{version}\n")).expect("write version");
+    fs::write(codex_runtime.join("bin/emb-agent.cjs"), "// wrapper\n").expect("write wrapper");
+    fs::write(codex_runtime.join("bin/emb-agent-rs"), "").expect("write rust bin marker");
+    fs::write(
+        project.path().join(".agents/skills/emb-next/SKILL.md"),
+        "next",
+    )
+    .expect("write codex next skill");
+    fs::write(
+        project.path().join(".agents/skills/emb-onboard/SKILL.md"),
+        "onboard",
+    )
+    .expect("write codex onboard skill");
+    fs::write(
+        project.path().join(".codex/skills/emb-agent/SKILL.md"),
+        "skill",
+    )
+    .expect("write codex emb-agent skill");
+    fs::write(
+        project.path().join(".codex/hooks.json"),
+        r#"{"hooks":["hook session-start --host codex","hook context-monitor --host codex","hook tool-guard --host codex","ApplyPatch"]}"#,
+    )
+    .expect("write codex hooks");
+
+    let output = run(&project, &["doctor", "--host", "codex", "--brief"]);
+    let value: serde_json::Value = serde_json::from_str(&output).expect("doctor json");
+    assert_eq!(value["hosts"][0]["codex_dispatch"]["mode"], "auto");
+    assert_eq!(
+        value["hosts"][0]["codex_dispatch"]["auto_dispatch_enabled"], true,
+        "doctor output: {output}"
+    );
+    assert_eq!(
+        value["hosts"][0]["codex_dispatch"]["inline_fallback_allowed"], true,
+        "doctor output: {output}"
     );
 }
 
@@ -1996,11 +2104,10 @@ fn child_prds_without_tasks_route_to_work_selection() {
 #[test]
 fn doctor_reports_stale_host_runtime_versions() {
     let project = TestProject::new("stale-runtime");
-    fs::write(
-        project.path().join(".emb-agent/runtime-version.json"),
+    write_install_runtime_version(
+        project.path(),
         r#"{"version":"0.5.0","hosts":[{"name":"cursor","version":"0.5.0"}]}"#,
-    )
-    .expect("write runtime version");
+    );
     let cursor_runtime = project.path().join(".cursor/emb-agent");
     fs::create_dir_all(cursor_runtime.join("bin")).expect("create cursor runtime bin");
     fs::create_dir_all(project.path().join(".cursor/commands")).expect("create cursor commands");
@@ -2047,11 +2154,10 @@ fn doctor_reports_stale_host_runtime_versions() {
 fn doctor_reports_stale_codex_hook_config() {
     let project = TestProject::new("stale-codex-hooks");
     let version = env!("CARGO_PKG_VERSION");
-    fs::write(
-        project.path().join(".emb-agent/runtime-version.json"),
+    write_install_runtime_version(
+        project.path(),
         format!(r#"{{"version":"{version}","hosts":[{{"name":"codex","version":"{version}"}}]}}"#),
-    )
-    .expect("write runtime version");
+    );
     let codex_runtime = project.path().join(".codex/emb-agent");
     fs::create_dir_all(codex_runtime.join("bin")).expect("create codex runtime bin");
     fs::create_dir_all(project.path().join(".agents/skills/emb-next"))
@@ -2085,6 +2191,17 @@ fn doctor_reports_stale_codex_hook_config() {
     assert_eq!(value["status"], "warn", "doctor output: {output}");
     assert_eq!(
         value["hosts"][0]["host_config_ok"], false,
+        "doctor output: {output}"
+    );
+    assert_eq!(
+        value["hosts"][0]["hook_readiness"]["status"], "warn",
+        "doctor output: {output}"
+    );
+    assert!(
+        value["hosts"][0]["hook_readiness"]["next_steps"][0]
+            .as_str()
+            .unwrap_or("")
+            .contains("repair"),
         "doctor output: {output}"
     );
 }
@@ -2952,6 +3069,14 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         "Codex hook diagnostics output: {codex_hook_diag}"
     );
     assert!(
+        codex_hook_diag.contains("\"readiness\""),
+        "Codex hook diagnostics output: {codex_hook_diag}"
+    );
+    assert!(
+        codex_hook_diag.contains("/hooks"),
+        "Codex hook diagnostics output: {codex_hook_diag}"
+    );
+    assert!(
         codex_hook_diag.contains(".codex/emb-agent"),
         "Codex hook diagnostics output: {codex_hook_diag}"
     );
@@ -3010,8 +3135,8 @@ fn installer_exposes_same_two_shell_commands_per_host() {
             && installed_config.contains("worker_guard"),
         "installed config: {installed_config}"
     );
-    let install_result =
-        fs::read_to_string(root.join(".emb-agent/INSTALL_RESULT.md")).expect("read install result");
+    let install_result = fs::read_to_string(root.join(".emb-agent/.install/INSTALL_RESULT.md"))
+        .expect("read install result");
     assert!(
         install_result.contains("/emb-ingest"),
         "install result: {install_result}"
@@ -3159,8 +3284,8 @@ fn installer_pi_settings_merge_preserves_user_config() {
         value.get("subagents").is_none(),
         "legacy subagent settings should be removed after switching to native emb-agent dispatch: {raw}"
     );
-    let install_result =
-        fs::read_to_string(root.join(".emb-agent/INSTALL_RESULT.md")).expect("read install result");
+    let install_result = fs::read_to_string(root.join(".emb-agent/.install/INSTALL_RESULT.md"))
+        .expect("read install result");
     assert!(
         install_result.contains("/emb-ingest"),
         "install result: {install_result}"
@@ -3492,10 +3617,150 @@ fn initialized_project_without_hardware_still_routes_to_onboard() {
         "next output: {next}"
     );
 
-    let shared = root.join(".emb-agent/reference/shared-conventions.md");
-    let knowledge = root.join(".emb-agent/reference/knowledge-evolution.md");
-    assert!(shared.exists(), "shared conventions missing");
-    assert!(knowledge.exists(), "knowledge evolution missing");
+    assert!(
+        root.join(".emb-agent/ARCHITECTURE.md").exists(),
+        "architecture guide missing"
+    );
+    assert!(
+        root.join(".emb-agent/workflow.md").exists(),
+        "workflow contract missing"
+    );
+    assert!(
+        root.join(".emb-agent/.developer").exists(),
+        "developer marker missing"
+    );
+    assert!(
+        root.join(".emb-agent/.language").exists(),
+        "language marker missing"
+    );
+    assert!(
+        root.join(".emb-agent/.template-hashes").exists(),
+        "template hashes missing"
+    );
+    assert!(
+        root.join(".emb-agent/.version").exists(),
+        "version marker missing"
+    );
+    let workflow =
+        fs::read_to_string(root.join(".emb-agent/workflow.md")).expect("read workflow contract");
+    assert!(
+        workflow.contains("Shared Conventions") && workflow.contains("Knowledge Evolution"),
+        "workflow should include conventions and knowledge guidance: {workflow}"
+    );
+    for generated_dir in [
+        "architecture",
+        "reference",
+        "cache",
+        "graph",
+        "wiki",
+        "memory",
+        "sessions",
+        "workspace",
+        "compound",
+        "chips",
+        "issues",
+        "refactors",
+        "roadmap",
+        "audits",
+        "extensions",
+    ] {
+        assert!(
+            !root.join(".emb-agent").join(generated_dir).exists(),
+            "fresh init should not pre-create empty generated directory: {generated_dir}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn session_record_creates_workspace_journal_lazily() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("emb-agent-session-record-{nonce}"));
+    fs::create_dir_all(&root).expect("create root");
+
+    assert_success(
+        Command::new(emb_agent_bin())
+            .arg("init")
+            .arg("--cwd")
+            .arg(&root)
+            .output()
+            .expect("run init"),
+    );
+    assert!(
+        !root.join(".emb-agent/workspace").exists(),
+        "workspace journal should be lazy-created"
+    );
+    fs::write(root.join(".emb-agent/.developer"), "{\"name\":\"Felix\"}\n")
+        .expect("write developer");
+
+    let output = Command::new(emb_agent_bin())
+        .args([
+            "session",
+            "record",
+            "--title",
+            "Bring up PWM",
+            "--summary",
+            "Configured PWM timer bring-up notes",
+            "--detail",
+            "Changed timer init and captured scope evidence",
+            "--commit",
+            "abc1234",
+            "--test",
+            "cargo test pwm",
+            "--next",
+            "Verify duty-cycle limits on hardware",
+            "--cwd",
+        ])
+        .arg(&root)
+        .output()
+        .expect("run session record");
+    let record = assert_success(output);
+    let record_value: serde_json::Value =
+        serde_json::from_str(&record).expect("session record json");
+    assert_eq!(record_value["status"], "ok", "record output: {record}");
+    assert_eq!(
+        record_value["journal"], ".emb-agent/workspace/felix/journal-1.md",
+        "record output: {record}"
+    );
+
+    let journal = fs::read_to_string(root.join(".emb-agent/workspace/felix/journal-1.md"))
+        .expect("read workspace journal");
+    assert!(
+        journal.contains("## Session 1: Bring up PWM")
+            && journal.contains("Configured PWM timer bring-up notes")
+            && journal.contains("Changed timer init")
+            && journal.contains("abc1234")
+            && journal.contains("cargo test pwm"),
+        "journal: {journal}"
+    );
+    let developer_index = fs::read_to_string(root.join(".emb-agent/workspace/felix/index.md"))
+        .expect("read developer workspace index");
+    assert!(
+        developer_index.contains("Felix Workspace Journal")
+            && developer_index.contains("Session 1: Bring up PWM"),
+        "developer index: {developer_index}"
+    );
+    let workspace_index = fs::read_to_string(root.join(".emb-agent/workspace/index.md"))
+        .expect("read workspace index");
+    assert!(
+        workspace_index.contains("[Felix](felix/index.md)") && workspace_index.contains("1"),
+        "workspace index: {workspace_index}"
+    );
+
+    let history = Command::new(emb_agent_bin())
+        .args(["session", "history", "--cwd"])
+        .arg(&root)
+        .output()
+        .expect("run session history");
+    let history = assert_success(history);
+    assert!(
+        history.contains("Workspace Journal") && history.contains("Bring up PWM"),
+        "history output: {history}"
+    );
 
     let _ = fs::remove_dir_all(root);
 }

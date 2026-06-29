@@ -3,6 +3,8 @@ use crate::json::json_quote;
 use std::fs;
 use std::path::Path;
 
+const PROJECT_TEMPLATE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// Initialize a new emb-agent project
 pub fn init_project(cwd: &Path) -> String {
     let ext_dir = cwd.join(".emb-agent");
@@ -10,6 +12,7 @@ pub fn init_project(cwd: &Path) -> String {
     if project_json.exists() {
         let env = crate::lookup::ensure_project_env(cwd);
         ensure_default_config(&ext_dir);
+        ensure_project_contract_files(&ext_dir);
         return serde_json::json!({
             "status": "ok",
             "initialized": true,
@@ -29,25 +32,10 @@ pub fn init_project(cwd: &Path) -> String {
 
     let _ = fs::create_dir_all(&ext_dir);
     let _ = fs::create_dir_all(ext_dir.join("tasks"));
-    let _ = fs::create_dir_all(ext_dir.join("specs"));
-    let _ = fs::create_dir_all(ext_dir.join("cache").join("docs"));
-    let _ = fs::create_dir_all(ext_dir.join("graph"));
-    let _ = fs::create_dir_all(ext_dir.join("wiki"));
-    let _ = fs::create_dir_all(ext_dir.join("memory"));
-    let _ = fs::create_dir_all(ext_dir.join("state"));
-    let _ = fs::create_dir_all(ext_dir.join("sessions"));
-    let _ = fs::create_dir_all(ext_dir.join("compound"));
-    let _ = fs::create_dir_all(ext_dir.join("architecture"));
-    let _ = fs::create_dir_all(ext_dir.join("reference"));
-    let _ = fs::create_dir_all(ext_dir.join("chips"));
-    let _ = fs::create_dir_all(ext_dir.join("issues"));
-    let _ = fs::create_dir_all(ext_dir.join("refactors"));
-    let _ = fs::create_dir_all(ext_dir.join("roadmap"));
-    let _ = fs::create_dir_all(ext_dir.join("audits"));
-    let _ = fs::create_dir_all(ext_dir.join("extensions").join("chips").join("profiles"));
     let _ = fs::create_dir_all(cwd.join("firmware").join("src"));
     let _ = fs::create_dir_all(cwd.join("firmware").join("include"));
     ensure_default_config(&ext_dir);
+    ensure_project_contract_files(&ext_dir);
     let project = serde_json::json!({
         "project_profile": "",
         "active_specs": ["embedded-space"],
@@ -172,15 +160,12 @@ pub fn init_project(cwd: &Path) -> String {
 | Decision | Date | Rationale | Alternatives Considered |
 |----------|------|-----------|------------------------|
 ";
-    let _ = fs::write(
-        ext_dir.join("architecture").join("ARCHITECTURE.md"),
-        arch_md,
-    );
+    let _ = fs::write(ext_dir.join("ARCHITECTURE.md"), arch_md);
 
     let shared_conventions = "\
-# emb-agent Shared Conventions
+## Shared Conventions
 
-## Truth Placement Map
+### Truth Placement Map
 
 | Information | Primary location |
 |---|---|
@@ -188,12 +173,19 @@ pub fn init_project(cwd: &Path) -> String {
 | MCU/package/pins/peripherals/clock/board facts | `.emb-agent/hw.yaml` |
 | Product behavior, constraints, acceptance, unknowns | `.emb-agent/req.yaml` and `docs/prd/` |
 | Reusable traps/tricks/decisions/learnings/explorations | `.emb-agent/compound/` |
-| Current module map, data flow, ISR routing, peripheral ownership | `.emb-agent/architecture/` |
+| Current module map, data flow, ISR routing, peripheral ownership | `.emb-agent/ARCHITECTURE.md` |
 | Long-form source synthesis and human-readable notes | `.emb-agent/wiki/` |
 | Machine query index | `.emb-agent/graph/` |
-| Session-local continuity | `.emb-agent/memory/` and `.emb-agent/sessions/` |
+| Session-local continuity | `.emb-agent/memory/` |
+| Human-readable session history | `.emb-agent/workspace/` |
+| Machine hook event journal | `.emb-agent/sessions/` |
+| Install logs, backups, version metadata | `.emb-agent/.install/` |
 
-## Stage Gates
+Most directories are created lazily when their feature first writes data. A fresh
+install intentionally keeps only the core project truth and a small set of
+human-readable guide files at the top level.
+
+### Stage Gates
 
 - Onboard → Work: user confirms empty/partial/migration path and any migrated facts.
 - Issue Report → Analyze: user confirms report accuracy.
@@ -201,30 +193,24 @@ pub fn init_project(cwd: &Path) -> String {
 - Issue Fix → Close: user confirms fix verification.
 - Knowledge capture: user confirms compound entries before writing.
 
-## Terminology Discipline
+### Terminology Discipline
 
-Before introducing a new term, check code, `.emb-agent/architecture/`, and `.emb-agent/compound/` for conflicts.
+Before introducing a new term, check code, `.emb-agent/ARCHITECTURE.md`, and `.emb-agent/compound/` for conflicts.
 ";
-    let _ = fs::write(
-        ext_dir.join("reference").join("shared-conventions.md"),
-        shared_conventions,
-    );
     let knowledge_evolution = "\
-# Knowledge Evolution
+## Knowledge Evolution
 
 Promote a lesson only if it is repeatable AND (expensive OR not-visible-in-code).
 
 Record to:
 - `.emb-agent/compound/` for learn/trick/decision/trap/explore entries.
 - `.emb-agent/attention.md` only for boot-time blockers and traps.
-- `.emb-agent/architecture/` for current module/peripheral/ISR ownership.
+- `.emb-agent/ARCHITECTURE.md` for current module/peripheral/ISR ownership.
 
 Do not record generic programming knowledge or facts obvious from code and datasheets.
 ";
-    let _ = fs::write(
-        ext_dir.join("reference").join("knowledge-evolution.md"),
-        knowledge_evolution,
-    );
+    append_workflow_section(&ext_dir, "## Shared Conventions", shared_conventions);
+    append_workflow_section(&ext_dir, "## Knowledge Evolution", knowledge_evolution);
     ensure_gitignore_entry(cwd, ".emb-agent/sessions/");
 
     // Create and auto-complete bootstrap task
@@ -310,6 +296,88 @@ Do not record generic programming knowledge or facts obvious from code and datas
     .to_string()
 }
 
+fn ensure_project_contract_files(ext_dir: &Path) {
+    let _ = fs::write(ext_dir.join(".version"), format!("{PROJECT_TEMPLATE_VERSION}\n"));
+    if !ext_dir.join(".developer").exists() {
+        let _ = fs::write(ext_dir.join(".developer"), "{\"name\":\"\"}\n");
+    }
+    if !ext_dir.join(".language").exists() {
+        let _ = fs::write(ext_dir.join(".language"), "\n");
+    }
+    let hashes = serde_json::json!({
+        "template_version": PROJECT_TEMPLATE_VERSION,
+        "templates": {
+            "workflow.md": template_hash(default_workflow_md()),
+            ".language": "language-preference-v1",
+            "ARCHITECTURE.md": "embedded-architecture-v1",
+            "attention.md": "project-attention-v1",
+            "project.json": "project-config-v1",
+            "hw.yaml": "hardware-truth-v1",
+            "req.yaml": "requirements-truth-v1"
+        }
+    });
+    let _ = fs::write(
+        ext_dir.join(".template-hashes"),
+        serde_json::to_string_pretty(&hashes).unwrap_or_default() + "\n",
+    );
+    let workflow_path = ext_dir.join("workflow.md");
+    if !workflow_path.exists() {
+        let _ = fs::write(workflow_path, default_workflow_md());
+    }
+}
+
+fn default_workflow_md() -> &'static str {
+    "\
+# emb-agent Workflow
+
+This directory is project-local state. Keep the top level small:
+
+| Path | Purpose |
+|---|---|
+| `.developer` | Local developer identity used for agent context |
+| `.language` | Preferred response language (`zh`, `en`, or blank for host default) |
+| `.template-hashes` | Managed template fingerprints for repair/update |
+| `.version` | emb-agent project template/runtime version |
+| `config.yaml` | Local emb-agent configuration and hook settings |
+| `workflow.md` | Human-readable workflow, layout, and conventions |
+| `project.json` | Package/profile metadata |
+| `hw.yaml` | Hardware truth: MCU, package, pins, clock, board facts |
+| `req.yaml` | Product behavior, constraints, acceptance, unknowns |
+| `attention.md` | Current blockers, traps, priorities, environment notes |
+| `ARCHITECTURE.md` | Current module/peripheral/ISR ownership map |
+| `tasks/` | Active and completed task records |
+| `.install/` | Installer logs, backups, version state, install result |
+
+Feature directories such as `cache/`, `graph/`, `wiki/`, `compound/`,
+`memory/`, `sessions/`, `workspace/`, `specs/`, and `plugins/` are created
+only when the matching command or installer option needs them.
+"
+}
+
+fn append_workflow_section(ext_dir: &Path, marker: &str, section: &str) {
+    let path = ext_dir.join("workflow.md");
+    let mut content = fs::read_to_string(&path).unwrap_or_default();
+    if content.contains(marker) {
+        return;
+    }
+    if !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push('\n');
+    content.push_str(section.trim());
+    content.push('\n');
+    let _ = fs::write(path, content);
+}
+
+fn template_hash(source: &str) -> String {
+    let mut hash: u32 = 2166136261;
+    for byte in source.as_bytes() {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(16777619);
+    }
+    format!("{hash:08x}")
+}
+
 fn ensure_gitignore_entry(project_root: &Path, entry: &str) {
     let path = project_root.join(".gitignore");
     let existing = fs::read_to_string(&path).unwrap_or_default();
@@ -324,10 +392,33 @@ fn ensure_gitignore_entry(project_root: &Path, entry: &str) {
     updated.push('\n');
     let _ = fs::write(path, updated);
 }
+
+fn install_state_path(cwd: &Path, name: &str) -> std::path::PathBuf {
+    cwd.join(".emb-agent").join(".install").join(name)
+}
+
+fn read_project_language(cwd: &Path) -> String {
+    fs::read_to_string(cwd.join(".emb-agent").join(".language"))
+        .or_else(|_| fs::read_to_string(install_state_path(cwd, "language")))
+        .unwrap_or_default()
+}
+
 fn read_project_runtime_version(cwd: &Path) -> String {
-    let path = cwd.join(".emb-agent").join("runtime-version.json");
+    let path = install_state_path(cwd, "runtime-version.json");
     let Ok(raw) = fs::read_to_string(path) else {
-        return String::new();
+        return fs::read_to_string(cwd.join(".emb-agent").join("runtime-version.json"))
+            .ok()
+            .and_then(|raw| {
+                serde_json::from_str::<serde_json::Value>(&raw)
+                    .ok()
+                    .and_then(|value| {
+                        value
+                            .get("version")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string)
+                    })
+            })
+            .unwrap_or_default();
     };
     serde_json::from_str::<serde_json::Value>(&raw)
         .ok()
@@ -365,8 +456,10 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
     let host = host.trim();
     let hosts: Vec<String> = if host.is_empty() || host == "all" {
         // Read installed-host list from runtime-version.json, falling back to all known hosts
-        let rv_path = cwd.join(".emb-agent").join("runtime-version.json");
+        let rv_path = install_state_path(cwd, "runtime-version.json");
+        let legacy_rv_path = cwd.join(".emb-agent").join("runtime-version.json");
         let installed_hosts: Vec<String> = fs::read_to_string(&rv_path)
+            .or_else(|_| fs::read_to_string(&legacy_rv_path))
             .ok()
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
             .and_then(|v| {
@@ -399,10 +492,7 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
     let truth_validation_errors = validate_truth_files(cwd);
 
     let mut checks = Vec::new();
-    let language = fs::read_to_string(cwd.join(".emb-agent").join(".language"))
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let language = read_project_language(cwd).trim().to_string();
     for item in &hosts {
         let item_str = item.as_str();
         let dir = match item_str {
@@ -503,6 +593,12 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             && host_config_ok
             && stale.is_empty()
             && version_status != "stale";
+        let codex_dispatch = if item_str == "codex" {
+            codex_dispatch_doctor(cwd)
+        } else {
+            serde_json::Value::Null
+        };
+        let hook_readiness = host_hook_readiness(item_str, &host_dir, &runtime_dir, runtime_ok);
         checks.push(serde_json::json!({
             "host": item_str,
             "status": if ok { "ok" } else { "warn" },
@@ -515,6 +611,8 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             "commands": ["emb-next", "emb-onboard"],
             "commands_ok": commands_ok,
             "host_config_ok": host_config_ok,
+            "hook_readiness": hook_readiness,
+            "codex_dispatch": codex_dispatch,
             "stale_files": stale,
             "manual_update_command": manual_update_command()
         }));
@@ -535,6 +633,94 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
         "next": "Use emb-next for initialized projects or emb-onboard for new/migrated projects. Run the manual update command when any host reports version_status=stale."
     }))
     .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
+}
+
+fn host_hook_readiness(
+    host: &str,
+    host_dir: &Path,
+    runtime_dir: &Path,
+    runtime_ok: bool,
+) -> serde_json::Value {
+    let hooks_path = host_dir.join("hooks.json");
+    let has_hooks_file = hooks_path.exists();
+    let hooks_text = fs::read_to_string(&hooks_path).unwrap_or_default();
+    let required: Vec<&str> = match host {
+        "codex" => vec![
+            "hook session-start --host codex",
+            "hook context-monitor --host codex",
+            "hook tool-guard --host codex",
+            "ApplyPatch",
+        ],
+        "cursor" => vec![
+            "hook session-start --host cursor",
+            "hook context-monitor --host cursor",
+            "ApplyPatch",
+        ],
+        _ => Vec::new(),
+    };
+    let missing: Vec<String> = required
+        .iter()
+        .filter(|needle| !hooks_text.contains(**needle))
+        .map(|needle| needle.to_string())
+        .collect();
+    let configured = required.is_empty() || (has_hooks_file && missing.is_empty());
+    let rust_binary = runtime_dir.join("bin").join(if cfg!(windows) {
+        "emb-agent-rs.exe"
+    } else {
+        "emb-agent-rs"
+    });
+    let mut next_steps = Vec::new();
+    if !runtime_ok {
+        next_steps.push("Run emb-agent repair/update for this host; runtime files are missing.");
+    }
+    if !configured && (host == "codex" || host == "cursor") {
+        next_steps.push("Re-run emb-agent repair --target <host> to refresh hooks.json.");
+    }
+    if host == "codex" {
+        next_steps.push("In Codex, run /hooks and trust pending project hooks after install or repair.");
+        next_steps.push("If hooks never fire, verify hooks are enabled in ~/.codex/config.toml.");
+    }
+    if host == "cursor" {
+        next_steps.push("Reload the Cursor window after hook or command updates.");
+    }
+    serde_json::json!({
+        "status": if runtime_ok && configured { "ok" } else { "warn" },
+        "hooks_file": hooks_path.to_string_lossy(),
+        "hooks_file_exists": has_hooks_file,
+        "runtime_binary_exists": rust_binary.exists(),
+        "required_markers": required,
+        "missing_markers": missing,
+        "diagnostics_command": format!(
+            "node {}/bin/emb-agent.cjs diagnostics hooks --host {} --runtime-dir {}",
+            runtime_dir.to_string_lossy(),
+            host,
+            runtime_dir.to_string_lossy()
+        ),
+        "next_steps": next_steps
+    })
+}
+
+fn codex_dispatch_doctor(cwd: &Path) -> serde_json::Value {
+    let mode = config_scalar(
+        &cwd.join(".emb-agent").join("config.yaml"),
+        "codex",
+        "dispatch_mode",
+    )
+    .unwrap_or_else(|| "inline".to_string());
+    let normalized = match mode.as_str() {
+        "auto" => "auto",
+        "sub-agent" | "sub_agent" | "subagent" => "sub-agent",
+        _ => "inline",
+    };
+    serde_json::json!({
+        "mode": normalized,
+        "auto_dispatch_enabled": normalized == "auto",
+        "forced_subagent_enabled": normalized == "sub-agent",
+        "inline_fallback_allowed": normalized != "sub-agent",
+        "host_subagent_surface": "native-codex-explicit-subagent-workflow",
+        "available_agents": ["hw-scout", "fw-doer", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"],
+        "change_config": "Set .emb-agent/config.yaml codex.dispatch_mode to inline, auto, or sub-agent."
+    })
 }
 
 fn ensure_default_config(ext_dir: &Path) {
@@ -586,7 +772,7 @@ fn ensure_default_config(ext_dir: &Path) {
         }
     }
     if !updated.lines().any(|line| line.trim() == "codex:") {
-        updated.push_str("\n\ncodex:\n  dispatch_mode: inline  # inline | sub-agent\n");
+        updated.push_str("\n\ncodex:\n  dispatch_mode: inline  # inline | auto | sub-agent\n");
     }
     if updated != text {
         let _ = fs::write(&config_path, updated);
@@ -620,7 +806,7 @@ channel:\n\
     max_live_workers: 6\n\
 \n\
 codex:\n\
-  dispatch_mode: inline  # inline | sub-agent\n"
+  dispatch_mode: inline  # inline | auto | sub-agent\n"
 }
 
 /// Migration status. The current Rust runtime does not require a separate project migration step.
@@ -928,26 +1114,104 @@ pub fn dispatch_orchestrate(ext_dir: &Path, job: &str) -> String {
     let mode = config_scalar(&ext_dir.join("config.yaml"), "codex", "dispatch_mode")
         .unwrap_or_else(|| "inline".to_string());
     let normalized = match mode.as_str() {
+        "auto" => "auto",
         "sub-agent" | "sub_agent" | "subagent" => "sub-agent",
         _ => "inline",
     };
-    let worker_required = normalized == "sub-agent";
+    let plan = codex_dispatch_plan(normalized, job);
     serde_json::json!({
         "status": "ok",
         "job": job,
         "codex": {"dispatch_mode": normalized},
-        "dispatch": {
-            "mode": normalized,
-            "inline_allowed": normalized == "inline",
-            "subagent_allowed": worker_required,
-            "worker_envelope": if worker_required { serde_json::json!({
-                "agent": "fw-doer",
-                "task": job,
-                "instructions": "Run as a scoped Codex sub-agent if the host exposes one; otherwise fall back to inline execution."
-            }) } else { serde_json::Value::Null }
-        }
+        "dispatch": plan
     })
     .to_string()
+}
+
+fn codex_dispatch_plan(mode: &str, job: &str) -> serde_json::Value {
+    let recommended = match mode {
+        "sub-agent" => true,
+        "auto" => codex_auto_dispatch_recommended(job),
+        _ => false,
+    };
+    let subagent_prompt = if recommended {
+        serde_json::json!({
+            "agent": codex_worker_agent_for_job(job),
+            "task": job,
+            "prompt": if mode == "sub-agent" {
+                format!(
+                    "Spawn the `{}` subagent for this emb-agent job, wait for it to finish, then summarize its result with file references. Do not recursively delegate.\n\nJob: {}",
+                    codex_worker_agent_for_job(job),
+                    job
+                )
+            } else {
+                format!(
+                    "For this emb-agent job, use Codex subagents only if the current work benefits from parallel delegation. If you delegate, spawn the `{}` subagent, wait for it to finish, and summarize its result with file references. Otherwise continue inline.\n\nJob: {}",
+                    codex_worker_agent_for_job(job),
+                    job
+                )
+            }
+        })
+    } else {
+        serde_json::Value::Null
+    };
+    serde_json::json!({
+        "mode": mode,
+        "inline_allowed": mode != "sub-agent",
+        "subagent_allowed": mode != "inline",
+        "subagent_required": mode == "sub-agent",
+        "subagent_recommended": recommended,
+        "auto_reason": codex_auto_dispatch_reason(job),
+        "trigger_policy": "Codex only spawns subagents when the user explicitly asks for subagents or parallel agent work.",
+        "available_agents": ["hw-scout", "fw-doer", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"],
+        "subagent_prompt": subagent_prompt
+    })
+}
+
+fn codex_auto_dispatch_recommended(job: &str) -> bool {
+    let lower = job.to_ascii_lowercase();
+    [
+        "implement",
+        "refactor",
+        "review",
+        "verify",
+        "debug",
+        "bug",
+        "power",
+        "sleep",
+        "watchdog",
+        "lvd",
+        "toolchain",
+        "sdk",
+        "multi",
+        "framework",
+        "architecture",
+        "driver",
+        "peripheral",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+fn codex_auto_dispatch_reason(job: &str) -> &'static str {
+    if codex_auto_dispatch_recommended(job) {
+        "broad_or_high_risk_embedded_work"
+    } else {
+        "narrow_or_unspecified_work"
+    }
+}
+
+fn codex_worker_agent_for_job(job: &str) -> &'static str {
+    let lower = job.to_ascii_lowercase();
+    if lower.contains("review") || lower.contains("architecture") {
+        "sys-reviewer"
+    } else if lower.contains("bug") || lower.contains("debug") {
+        "bug-hunter"
+    } else if lower.contains("hardware") || lower.contains("schematic") || lower.contains("register") {
+        "hw-scout"
+    } else {
+        "fw-doer"
+    }
 }
 
 fn config_scalar(config_path: &Path, section: &str, key: &str) -> Option<String> {

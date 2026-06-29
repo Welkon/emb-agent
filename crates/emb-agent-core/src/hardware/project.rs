@@ -1323,7 +1323,17 @@ pub fn read_project_state(project_root: &Path) -> ProjectState {
     let hw_yaml = read_text(&state_dir.join("hw.yaml"));
     let req_yaml = read_text(&state_dir.join("req.yaml"));
     let developer_json = read_text(&ext.join(".developer"));
+    let developer_json = if developer_json.is_empty() {
+        read_text(&ext.join(".install").join("developer.json"))
+    } else {
+        developer_json
+    };
     let language = read_text(&ext.join(".language"));
+    let language = if language.is_empty() {
+        read_text(&ext.join(".install").join("language"))
+    } else {
+        language
+    };
     let current_task = read_current_task_ref(&state_dir);
     let truth_validation_errors = validate_truth_files(&root);
 

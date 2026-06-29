@@ -74,7 +74,7 @@ Every wiki page SHOULD include frontmatter with `title`, `kind`, `date`, `expire
 8. Run `knowledge graph report` to inspect hot graph nodes, especially tool-run, register, formula, and snippet nodes created by recent work.
 9. Run `knowledge search --query <term> --rerank` before broad searches when you need semantic project context, then use `knowledge promote --query <term> --apply` to create a reviewed wiki draft from high-value evidence and `knowledge graph query <term>` or `knowledge graph explain <term>` for relationship-oriented context.
 10. Run `knowledge lint` and `knowledge graph lint` periodically to find missing control files, orphan pages, unindexed pages, chip truth with no matching chip wiki page, stale graph manifests, and ambiguous graph relationships.
-11. After `task finish-work`, run `insight extract --confirm` (see emb-insight) to push durable learnings from this task into wiki. Then run `knowledge graph refresh`.
+11. After `task finish-work`, run `session record`, then `insight extract --confirm` (see emb-insight) to push durable learnings from this task into wiki. Then run `knowledge graph refresh`.
 12. Use `insight stale-check` to surface wiki pages past their `stale_after` date.
 
 ## Rules

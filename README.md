@@ -186,11 +186,22 @@ Every enabled host exposes the same two emb-agent entrypoints through its native
 | Cursor | command files | `/emb-next`, `/emb-onboard` |
 | Codex | `.agents/skills/<name>/SKILL.md` | `$emb-next`, `$emb-onboard` |
 
-After install, emb-agent writes `.emb-agent/INSTALL_RESULT.md`, runs an install check, and prints host-specific reload instructions. To diagnose later:
+After install, emb-agent writes `.emb-agent/.install/INSTALL_RESULT.md`, runs an install check, and prints host-specific reload instructions. To diagnose later:
 
 ```bash
 node .codex/emb-agent/bin/emb-agent.cjs doctor --host codex --brief
+node .codex/emb-agent/bin/emb-agent.cjs diagnostics hooks --host codex --runtime-dir .codex/emb-agent
 ```
+
+Recommended first-use flow:
+
+1. Restart or reload the target host after install or repair.
+2. Codex only: run `/hooks` and trust pending project hooks.
+3. New project: run `/emb onboard`.
+4. Existing emb-agent project: run `/emb start`.
+5. Continue work from runtime guidance: run `/emb next`.
+
+If startup context is missing, run the hook diagnostics command above before changing project files.
 
 Or build from source:
 

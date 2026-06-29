@@ -1,7 +1,6 @@
 use super::config::load_config;
 use super::util::{current_dir_string, option_value};
 use std::path::Path;
-use std::process::Command;
 
 pub fn run(args: &[String]) -> Result<(), String> {
     let cmd = args.first().map(String::as_str).unwrap_or("");
@@ -63,69 +62,24 @@ fn run_dispatch_worker(args: &[String], cwd: &str, ext_dir: &Path) -> Result<(),
     let project_root = Path::new(cwd);
     let config = load_config(project_root);
     let contract = emb_agent_core::ext_ops::dispatch_orchestrate(ext_dir, job);
-    if config.codex_dispatch_mode != "sub-agent" || args.iter().any(|arg| arg == "--inline") {
+    if args.iter().any(|arg| arg == "--inline") || config.codex_dispatch_mode == "inline" {
         println!("{contract}");
-        return Ok(());
-    }
-    let prompt = format!(
-        "You are an emb-agent Codex worker. Run this scoped job without delegating further. Return concise findings and patch summary only.\n\nJob: {job}\n\nProject: {cwd}"
-    );
-    let codex = Command::new("codex")
-        .arg("exec")
-        .arg("--cd")
-        .arg(cwd)
-        .arg("--sandbox")
-        .arg("workspace-write")
-        .arg("--skip-git-repo-check")
-        .arg(prompt)
-        .output();
-    match codex {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "status": if output.status.success() { "ok" } else { "error" },
-                    "mode": "sub-agent",
-                    "job": job,
-                    "contract": serde_json::from_str::<serde_json::Value>(&contract).unwrap_or_default(),
-                    "worker": {
-                        "command": "codex exec",
-                        "exit_code": output.status.code(),
-                        "stdout_tail": tail(&stdout, 12000),
-                        "stderr_tail": tail(&stderr, 4000)
-                    }
-                }))
-                .unwrap_or_default()
-            );
-            Ok(())
-        }
-        Err(error) => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "status": "manual-workers-required",
-                    "mode": "sub-agent",
-                    "job": job,
-                    "contract": serde_json::from_str::<serde_json::Value>(&contract).unwrap_or_default(),
-                    "error": error.to_string(),
-                    "fallback": "Codex CLI is unavailable; run the worker envelope manually or switch codex.dispatch_mode to inline."
-                }))
-                .unwrap_or_default()
-            );
-            Ok(())
-        }
-    }
-}
-
-fn tail(text: &str, max_chars: usize) -> String {
-    let len = text.chars().count();
-    if len <= max_chars {
-        text.to_string()
     } else {
-        text.chars().skip(len - max_chars).collect()
+        let contract_json =
+            serde_json::from_str::<serde_json::Value>(&contract).unwrap_or_default();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "status": "delegation-contract",
+                "mode": config.codex_dispatch_mode,
+                "job": job,
+                "contract": contract_json,
+                "note": "Codex official subagents are spawned by explicit user instructions in the active Codex session; emb-agent returns the prompt contract instead of launching codex exec."
+            }))
+            .unwrap_or(contract)
+        );
     }
+    Ok(())
 }
 
 fn print_default_user_flow() {
@@ -133,16 +87,16 @@ fn print_default_user_flow() {
         "{}",
         [
             "emb-agent default user flow:",
-            "  1. /emb onboard    create or repair project context",
-            "  2. /emb ingest     import datasheets, schematics, SDK notes, and source truth",
-            "  3. /emb start      summarize known truth, task/session state, gaps, and workflow",
-            "  4. /emb next       choose exactly one most useful next action",
-            "  5. /emb task       create or continue focused work after context exists",
-            "  6. /emb session    review continuity; use /emb transcript for handoff details",
+            "  1. Restart/reload the host after install or repair",
+            "  2. Codex only: run /hooks and trust pending project hooks",
+            "  3. /emb onboard    create or repair project context",
+            "  4. /emb start      summarize an existing emb-agent project",
+            "  5. /emb next       choose exactly one most useful next action",
+            "  6. /emb task       create or continue focused work after context exists",
             "",
             "Recommended next step: /emb onboard",
             "Existing emb-agent project: /emb start",
-            "If unsure: /emb help",
+            "Hooks missing context: diagnostics hooks --host <host>",
         ]
         .join("\n")
     );

@@ -183,7 +183,7 @@ npx emb-agent --target all --local --dry-run
 | Cursor | command files | `/emb-next`, `/emb-onboard` |
 | Codex | `.agents/skills/<name>/SKILL.md` | `$emb-next`, `$emb-onboard` |
 
-安装后会写入 `.emb-agent/INSTALL_RESULT.md`，自动运行安装检查，并打印每个 host 的 reload 提示。后续诊断可运行：
+安装后会写入 `.emb-agent/.install/INSTALL_RESULT.md`，自动运行安装检查，并打印每个 host 的 reload 提示。后续诊断可运行：
 
 ```bash
 node .codex/emb-agent/bin/emb-agent.cjs doctor --host codex --brief
