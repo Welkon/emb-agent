@@ -10,6 +10,7 @@
 //   (root)      - actions, hooks, json, ext_ops, meta_ops, prd_ops, variant_ops
 
 pub mod compound;
+pub mod firmware_ops;
 pub mod hardware;
 pub mod knowledge;
 pub mod lookup;
@@ -26,6 +27,7 @@ pub mod meta_ops;
 pub mod prd_ops;
 pub mod variant_ops;
 pub use compound::*;
+pub use firmware_ops::*;
 
 // Re-exports for backward compatibility
 pub use actions::*;

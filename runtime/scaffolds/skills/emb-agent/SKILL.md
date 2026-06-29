@@ -47,7 +47,7 @@ Common host dirs: .cursor (Cursor), .codex (Codex), .claude (Claude), .pi (Pi).
 | Ingest schematic | `ingest schematic --file <path>` |
 | Durable task research | `.emb-agent/tasks/<task>/research/<topic>.md` via `researcher` when subagents are available |
 | Capture a durable lesson when one actually emerged | `task aar scan` |
-| Board signoff | `verify board --result pass <summary>` |
+| Board signoff | User describes board result; agent records board evidence |
 | Full command docs | `.<host>/emb-agent/commands/emb/<command>.md` for any installed command; prefer the fast path unless the task needs a specialized command |
 ## Session Flow
 

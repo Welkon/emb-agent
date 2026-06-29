@@ -166,7 +166,7 @@ npx emb-agent --target all --local --dry-run
 ```
 Where `<host>` is one of the enabled targets: `codex`, `claude`, `cursor`, or `all`.
 
-Interactive install scans for `emb-support` (via `EMB_SUPPORT_DIR`, project ancestors, the installer checkout, or the home directory) and prompts for external support specs and skills. Direct installs can select the same support entries with repeatable `--spec <name>` and `--skill <name>` flags.
+Interactive install scans for `emb-support` via `EMB_SUPPORT_DIR`, project ancestors, the installer checkout, or the home directory. If no local support bundle is available, it defaults to the GitHub support repository (`Welkon/emb-support`) and prompts for optional specs and skills from that source. Direct installs can select support entries with repeatable `--spec <name>` and `--skill <name>` flags.
 
 > **Note:** `pi`, `omp`, and `windsurf` are disabled by default in development builds. OMP support is currently off; do not remove it from `shells.json.disabled` unless you are reviving that integration.
 ### Local vs global

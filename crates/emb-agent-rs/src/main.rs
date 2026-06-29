@@ -42,6 +42,8 @@ fn run(args: &[String]) -> Result<(), String> {
         "component" => cli::component::run(args),
         // Board
         "board" => cli::board_cli::run(args),
+        // Firmware evidence / handoff internals
+        "firmware" => cli::firmware::run(args),
         // Knowledge
         "knowledge" => cli::knowledge::run(args),
         // Memory

@@ -78,6 +78,9 @@ fn build_statusline_inner(
             &format!("dirty {}", snapshot.git_dirty_count),
         ));
     }
+    if let Some(risk) = statusline_embedded_risk(snapshot) {
+        parts.push(paint(color, "33", &risk));
+    }
     if let Some(duration) = session.duration_label() {
         parts.push(duration);
     }
@@ -748,6 +751,7 @@ You are the user's embedded development assistant. Start with onboarding, not im
         if snapshot.power_management_risk {
             lines.push("Embedded power-risk reminder: keep watchdog, sleep/wake, config-bit truth, and idle-current acceptance visible.".to_string());
         }
+        push_embedded_risk_lines(&mut lines, snapshot);
         lines.extend([
             "</current-state>".to_string(),
             String::new(),
@@ -783,6 +787,7 @@ You are the user's embedded development assistant. Start with onboarding, not im
         if let Some(git) = git_status_summary(snapshot) {
             lines.push(format!("Git status: {}", git));
         }
+        push_embedded_risk_lines(&mut lines, snapshot);
         if let Some(block) = workflow_state_block(snapshot) {
             lines.push("<workflow-md-state>".to_string());
             lines.push(block);
@@ -867,6 +872,7 @@ You are the user's embedded development assistant. Start with onboarding, not im
     if snapshot.power_management_risk {
         lines.push("Embedded power-risk: watchdog, sleep/wake behavior, config-bit truth, and idle-current acceptance must be made explicit early.".to_string());
     }
+    push_embedded_risk_lines(&mut lines, snapshot);
 
     if !snapshot.task_intake_summary.is_empty() {
         lines.push(format!("Task intake: {}", snapshot.task_intake_summary));
@@ -994,6 +1000,7 @@ pub fn build_start_json(snapshot: &ProjectSnapshot) -> String {
             "wiki_pages": snapshot.wiki_pages,
             "active_task": active_task
         },
+        "embedded_risk": embedded_risk_json(snapshot),
         "workspace_journal": workspace_journal_json(snapshot),
         "immediate": {
             "command": snapshot.recommended_command,
@@ -1157,6 +1164,7 @@ pub fn build_next_json_with_tasks_and_policy(
         "workspace_journal": workspace_journal_json(snapshot),
         "agent_protocol": agent_protocol,
         "delegation_policy": subagent_delegation_policy(&action),
+        "embedded_risk": embedded_risk_json(snapshot),
         "requirements_unknown_count": snapshot.requirements_unknown_count,
         "hardware_unknown_count": snapshot.hardware_unknown_count,
         "truth_validation_errors": snapshot.truth_validation_errors,
@@ -1665,6 +1673,7 @@ pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
             "workflow": snapshot.workflow_state,
             "firmware_layout": default_firmware_layout(Path::new(&snapshot.project_root))
         },
+        "embedded_risk": embedded_risk_json(snapshot),
         "prd": {
             "system_prd": snapshot.system_prd_exists,
             "system_prd_has_content": snapshot.system_prd_has_content,
@@ -1758,6 +1767,7 @@ pub fn build_external_start_json(snapshot: &ProjectSnapshot) -> String {
             "cli": format!("node .<host>/emb-agent/bin/emb-agent.cjs {}", next_cmd)
         },
         "workspace_journal": workspace_journal_json(snapshot),
+        "embedded_risk": embedded_risk_json(snapshot),
         "runtime_events": runtime_events
     })
     .to_string()
@@ -1828,6 +1838,7 @@ pub fn build_external_next_json(snapshot: &ProjectSnapshot, tasks: &[TaskSnapsho
             "cli": format!("node .<host>/emb-agent/bin/emb-agent.cjs next")
         },
         "workspace_journal": workspace_journal_json(snapshot),
+        "embedded_risk": embedded_risk_json(snapshot),
         "runtime_events": runtime_events
     })
     .to_string()
@@ -1877,6 +1888,7 @@ pub fn build_external_status_json(snapshot: &ProjectSnapshot) -> String {
             "active_source": snapshot.current_task_source
         },
         "workspace_journal": workspace_journal_json(snapshot),
+        "embedded_risk": embedded_risk_json(snapshot),
         "runtime_events": runtime_events
     })
     .to_string()
@@ -1920,6 +1932,7 @@ pub fn build_external_health_json(snapshot: &ProjectSnapshot) -> String {
             "firmware_manual_evidence": !snapshot.firmware_manual_required
         },
         "truth_validation_errors": snapshot.truth_validation_errors,
+        "embedded_risk": embedded_risk_json(snapshot),
         "runtime_events": runtime_events
     })
     .to_string()
@@ -2002,6 +2015,7 @@ pub fn build_health_json(snapshot: &ProjectSnapshot) -> String {
     ];
     let pass_count = checks.iter().filter(|(_, ok, _)| *ok).count();
     let fail_count = checks.len() - pass_count;
+    let embedded_risk = embedded_risk_json(snapshot);
     let checks_json: Vec<String> = checks
         .iter()
         .map(|(name, ok, desc)| {
@@ -2014,14 +2028,114 @@ pub fn build_health_json(snapshot: &ProjectSnapshot) -> String {
         })
         .collect();
     format!(
-        "{{\"status\":{},\"pass\":{},\"fail\":{},\"warn\":0,\"truth_validation_errors\":{},\"checks\":[{}]}}",
+        "{{\"status\":{},\"pass\":{},\"fail\":{},\"warn\":0,\"truth_validation_errors\":{},\"embedded_risk\":{},\"checks\":[{}]}}",
         json_quote(if fail_count == 0 { "pass" } else { "fail" }),
         pass_count,
         fail_count,
         serde_json::to_string(&snapshot.truth_validation_errors)
             .unwrap_or_else(|_| "[]".to_string()),
+        embedded_risk,
         checks_json.join(",")
     )
+}
+
+fn statusline_embedded_risk(snapshot: &ProjectSnapshot) -> Option<String> {
+    let risk = embedded_risk_level(snapshot);
+    if risk == "low" {
+        return None;
+    }
+    let mut labels = Vec::new();
+    if snapshot.power_management_risk {
+        labels.push("power");
+    }
+    if snapshot.hardware_electrical_unknown_count > 0 {
+        labels.push("io");
+    }
+    if snapshot.hardware_sleep_state_unknown_count > 0 {
+        labels.push("sleep");
+    }
+    if labels.is_empty() {
+        labels.push("hw");
+    }
+    Some(format!("risk {}", labels.join("/")))
+}
+
+fn push_embedded_risk_lines(lines: &mut Vec<String>, snapshot: &ProjectSnapshot) {
+    let risk = embedded_risk_json(snapshot);
+    let level = risk.get("level").and_then(Value::as_str).unwrap_or("low");
+    if level == "low" {
+        return;
+    }
+    let mut summary = vec![format!("Embedded risk: {level}")];
+    if snapshot.power_management_risk {
+        summary.push("power/sleep/watchdog in scope".to_string());
+    }
+    if snapshot.hardware_electrical_unknown_count > 0 {
+        summary.push(format!(
+            "{} signal(s) missing active/electrical/pull/safe-state truth",
+            snapshot.hardware_electrical_unknown_count
+        ));
+    }
+    if snapshot.hardware_sleep_state_unknown_count > 0 {
+        summary.push(format!(
+            "{} signal(s) missing sleep-state or wake-source truth",
+            snapshot.hardware_sleep_state_unknown_count
+        ));
+    }
+    if snapshot.hardware_unconfirmed_signal_count > 0 {
+        summary.push(format!(
+            "{} signal(s) not confirmed",
+            snapshot.hardware_unconfirmed_signal_count
+        ));
+    }
+    lines.push(summary.join("; "));
+}
+
+fn embedded_risk_level(snapshot: &ProjectSnapshot) -> &'static str {
+    if snapshot.power_management_risk
+        || snapshot.hardware_sleep_state_unknown_count > 0
+        || snapshot.hardware_unknown_count > 0
+    {
+        "high"
+    } else if snapshot.hardware_electrical_unknown_count > 0
+        || snapshot.hardware_power_domain_unknown_count > 0
+        || snapshot.hardware_unconfirmed_signal_count > 0
+    {
+        "medium"
+    } else {
+        "low"
+    }
+}
+
+fn embedded_risk_json(snapshot: &ProjectSnapshot) -> Value {
+    json!({
+        "level": embedded_risk_level(snapshot),
+        "power_management_risk": snapshot.power_management_risk,
+        "hardware": {
+            "signals": snapshot.hardware_signal_count,
+            "pin_mapping_declared": snapshot.hardware_pin_mapping_declared,
+            "unknowns": snapshot.hardware_unknown_count,
+            "unconfirmed_signals": snapshot.hardware_unconfirmed_signal_count,
+            "electrical_unknown_signals": snapshot.hardware_electrical_unknown_count,
+            "power_domain_unknown_signals": snapshot.hardware_power_domain_unknown_count,
+            "sleep_state_unknown_signals": snapshot.hardware_sleep_state_unknown_count,
+            "wake_sources": snapshot.hardware_wake_source_count
+        },
+        "ai_gate": {
+            "before_io_or_power_edits": [
+                "confirm active_level, electrical drive type, pull bias, safe_state, and power_domain for touched signals",
+                "confirm sleep_state and wake_source for touched signals when low-power or wake behavior is in scope",
+                "capture board-measurement evidence internally for PWM, ADC thresholds, current, wake latency, or sleep current changes"
+            ],
+            "resource_review": [
+                "capture a resource summary internally from the current build report or map after nontrivial firmware edits",
+                "flag printf/sprintf/float/division/table/ISR growth on low-ROM targets"
+            ],
+            "release_handoff": [
+                "draft release handoff internally and fill image hash, toolchain version, target chip/package, config bits/fuses, flash method, and verification evidence before release"
+            ]
+        }
+    })
 }
 
 fn fallback<'a>(value: &'a str, default_value: &'a str) -> &'a str {
@@ -2095,6 +2209,12 @@ mod tests {
             requirements_unknown_count: 0,
             hardware_unknown_count: 0,
             hardware_pin_mapping_declared: true,
+            hardware_signal_count: 2,
+            hardware_unconfirmed_signal_count: 0,
+            hardware_electrical_unknown_count: 0,
+            hardware_power_domain_unknown_count: 0,
+            hardware_sleep_state_unknown_count: 0,
+            hardware_wake_source_count: 1,
             hardware_evidence_files: Vec::new(),
             local_doc_tool_priority: vec![
                 "markitdown".to_string(),
@@ -2186,6 +2306,9 @@ mod tests {
             status["project"]["git"]["summary"],
             "branch beta; dirty 2 paths"
         );
+        assert_eq!(status["embedded_risk"]["level"], "low");
+        assert_eq!(status["embedded_risk"]["hardware"]["signals"], 2);
+        assert_eq!(status["embedded_risk"]["hardware"]["wake_sources"], 1);
 
         assert_eq!(status["prd"]["system_prd"], true);
         assert_eq!(status["prd"]["child_prd_count"], 1);
@@ -2202,9 +2325,36 @@ mod tests {
             status["project"]["firmware_layout"]["default_include_root"],
             "firmware/include"
         );
+        assert_eq!(next["embedded_risk"]["level"], "low");
+        assert_eq!(
+            next["embedded_risk"]["ai_gate"]["resource_review"][0],
+            "capture a resource summary internally from the current build report or map after nontrivial firmware edits"
+        );
 
         let context = build_session_context(&sample_snapshot());
         assert!(context.contains("Response language: Respond to the user in Simplified Chinese"));
+    }
+
+    #[test]
+    fn embedded_risk_surfaces_power_and_hardware_gaps() {
+        let mut snapshot = sample_snapshot();
+        snapshot.power_management_risk = true;
+        snapshot.hardware_electrical_unknown_count = 1;
+        snapshot.hardware_sleep_state_unknown_count = 1;
+        snapshot.hardware_unconfirmed_signal_count = 1;
+        let statusline = build_statusline(&snapshot);
+        assert!(statusline.contains("risk power/io/sleep"));
+
+        let status: serde_json::Value =
+            serde_json::from_str(&build_status_json(&snapshot)).unwrap();
+        assert_eq!(status["embedded_risk"]["level"], "high");
+        assert_eq!(
+            status["embedded_risk"]["hardware"]["electrical_unknown_signals"],
+            1
+        );
+        let context = build_session_context(&snapshot);
+        assert!(context.contains("Embedded risk: high"));
+        assert!(context.contains("missing sleep-state or wake-source truth"));
     }
 
     #[test]

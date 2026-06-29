@@ -92,6 +92,7 @@ Pair it with `embedded-space` for generic MCU safety/ownership rules and with ve
 - For every new abstraction that changes call shape, dispatch, table size, or module boundaries, compare before/after build size when practical.
 - If an abstraction adds `> 2%` program ROM, `> 1%` data RAM, or affects ISR/hot-loop timing, require a concrete product or verification reason instead of "cleaner architecture".
 - For ROM/RAM pressure, inspect the map/listing before speculating.
+- For release or customer handoff, preserve the image hash, map/listing path, toolchain version, target chip/package, config bits/fuses, flash method, and resource usage snapshot so later regressions can compare against the exact delivered artifact.
 - Record size traps and surprising compiler behavior in the project-local spec or task AAR.
 
 ## Avoid By Default

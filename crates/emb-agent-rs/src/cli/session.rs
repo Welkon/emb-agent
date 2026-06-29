@@ -431,7 +431,7 @@ pub fn run_finish_work_command(args: &[String], cwd: &str) -> Result<(), String>
         "command": "finish-work",
         "journal": journal.to_json(),
         "task": task_json,
-        "follow_ups": finish_work_followups(),
+        "follow_ups": finish_work_followups(&project_root),
         "next_command": "next"
     });
     println!("{}", pretty_json(&payload));
@@ -594,25 +594,57 @@ fn is_ok_task_lifecycle_result(value: &Value) -> bool {
     value.get("status").and_then(Value::as_str) == Some("ok")
 }
 
-fn finish_work_followups() -> Value {
+fn finish_work_followups(project_root: &Path) -> Value {
+    let firmware_reports = project_root
+        .join(".emb-agent")
+        .join("reports")
+        .join("firmware");
+    let resource_summary = firmware_reports.join("resource-summary.json");
+    let board_evidence = firmware_reports.join("board-evidence.jsonl");
+    let release_handoff = firmware_reports.join("release-handoff.md");
     serde_json::json!([
         {
-            "name": "trace",
-            "status": "unsupported",
-            "command": "trace record",
-            "reason": "trace record is documented but not implemented in this runtime yet"
+            "name": "resource_evidence",
+            "status": if resource_summary.is_file() { "ready" } else { "as-needed" },
+            "path": ".emb-agent/reports/firmware/resource-summary.json",
+            "handled_by": "agent-internal",
+            "user_action": "none",
+            "reason": if resource_summary.is_file() {
+                "build/resource evidence is available for this session"
+            } else {
+                "agent captures build/resource evidence during verification when a report or map exists"
+            }
         },
         {
-            "name": "insight",
-            "status": "unsupported",
-            "command": "insight extract --confirm",
-            "reason": "insight extraction is documented but not implemented in this runtime yet"
+            "name": "board_evidence",
+            "status": if board_evidence.is_file() { "ready" } else { "as-needed" },
+            "path": ".emb-agent/reports/firmware/board-evidence.jsonl",
+            "handled_by": "agent-internal",
+            "user_action": "none",
+            "reason": if board_evidence.is_file() {
+                "board or measurement evidence has been recorded"
+            } else {
+                "only required when the task touches hardware-facing behavior or the user provides bench results"
+            }
+        },
+        {
+            "name": "release_handoff",
+            "status": if release_handoff.is_file() { "ready" } else { "optional" },
+            "path": ".emb-agent/reports/firmware/release-handoff.md",
+            "handled_by": "agent-internal",
+            "user_action": "none",
+            "reason": if release_handoff.is_file() {
+                "release handoff draft exists"
+            } else {
+                "create during release/customer handoff, not for every small task"
+            }
         },
         {
             "name": "knowledge_graph",
-            "status": "manual",
-            "command": "knowledge graph refresh",
-            "reason": "run after wiki or knowledge files change"
+            "status": "as-needed",
+            "handled_by": "agent-internal",
+            "user_action": "none",
+            "reason": "refresh only when durable wiki, compound, or knowledge files changed"
         }
     ])
 }

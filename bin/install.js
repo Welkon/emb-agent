@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// emb-agent installer v0.5.0
+// emb-agent installer v0.7.0
 // Deploys Rust binary + runtime templates to target AI host directories.
 
 var childProcess = require("child_process");
@@ -12,7 +12,7 @@ var REPO_ROOT = path.resolve(__dirname, "..");
 var PACKAGE_JSON = JSON.parse(
 	fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
 );
-var VERSION = PACKAGE_JSON.version || "0.5.0";
+var VERSION = PACKAGE_JSON.version || "0.7.0";
 
 var RUNTIME_SRC = path.join(REPO_ROOT, "runtime");
 var RUST_BIN_DIR = path.join(REPO_ROOT, "bin");
@@ -462,7 +462,7 @@ function ensureEmbAgentProjectContract(projectRoot, options) {
 			"ARCHITECTURE.md": "embedded-architecture-v1",
 			"attention.md": "project-attention-v1",
 			"project.json": "project-config-v1",
-			"hw.yaml": "hardware-truth-v1",
+			"hw.yaml": "hardware-truth-v2",
 			"req.yaml": "requirements-truth-v1"
 		}
 	};
@@ -1357,8 +1357,8 @@ function renderSingleSelectionScreen(title, items, state, options) {
 	lines.push("");
 	lines.push(C.blue + "▶ " + title + C.reset);
 	if (options && options.description) lines.push(C.dim + "  " + options.description + C.reset);
-	lines.push(C.dim + "  Use ↑/↓ to move, Space to select, Enter to confirm the selected option." + C.reset);
-	lines.push(C.dim + "  Nothing is selected until you press Space. Esc/Ctrl+C cancels." + C.reset);
+	lines.push(C.dim + "  Use ↑/↓ to move; Enter confirms the highlighted option. Space also marks a choice." + C.reset);
+	lines.push(C.dim + "  Esc/Ctrl+C cancels." + C.reset);
 	lines.push("");
 	for (var i = 0; i < items.length; i++) {
 		var active = state.cursorIndex === i;
@@ -1395,7 +1395,11 @@ function selectOne(title, items, callback, options) {
 		if (input === "\u001b[A" || input === "\u001bOA") { state.cursorIndex = (state.cursorIndex - 1 + items.length) % items.length; render(); return; }
 		if (input === "\u001b[B" || input === "\u001bOB") { state.cursorIndex = (state.cursorIndex + 1) % items.length; render(); return; }
 		if (input === " ") { state.selectedIndex = state.cursorIndex; state.warning = ""; render(); return; }
-		if (input === "\r" || input === "\n") { if (state.selectedIndex >= 0) finish(); else { state.warning = "Press Space to select an option first."; render(); } return; }
+		if (input === "\r" || input === "\n") {
+			if (state.selectedIndex < 0) state.selectedIndex = state.cursorIndex;
+			finish();
+			return;
+		}
 		if (input === "\u0003" || input === "\u0004" || input === "\u001b" || input === "q" || input === "Q") cancel();
 	}
 	try {
@@ -2608,8 +2612,8 @@ function main(argv) {
 				},
 				function askLocation(next) {
 					selectOne("Install Location", [
-						{ label: "Global", desc: "Install to the user config directory", value: "global" },
-						{ label: "Local", desc: "Install into this project (recommended)", value: "local" }
+						{ label: "Local", desc: "Install into this project (recommended)", value: "local" },
+						{ label: "Global", desc: "Install to the user config directory", value: "global" }
 					], function (selected) { state.location = selected; next(); }, { description: "Project-scoped installs are easier to test and keep isolated." });
 				},
 				function askSpecs(next) {
@@ -2671,14 +2675,13 @@ function main(argv) {
 		if (supportDir) {
 			scanLocal();
 			if (extSpecs.length === 0 && extSkills.length === 0) {
-				// Try GitHub as fallback
-				console.log(C.dim + "  Local emb-support found but empty. Trying GitHub..." + C.reset);
+				console.log(C.dim + "  Local emb-support found but empty. Trying GitHub: Welkon/emb-support..." + C.reset);
 				fetchSpecListFromGitHub(function (s) { extSpecs = s; fetchSkillListFromGitHub(function (sk) { extSkills = sk; startInstallFlow(); }); });
 			} else {
 				startInstallFlow();
 			}
 		} else {
-			console.log(C.dim + "  Fetching available specs and skills from GitHub..." + C.reset);
+			console.log(C.dim + "  Fetching available specs and skills from GitHub: Welkon/emb-support..." + C.reset);
 			fetchSpecListFromGitHub(function (s) { extSpecs = s; fetchSkillListFromGitHub(function (sk) { extSkills = sk; startInstallFlow(); }); });
 		}
 	} else {

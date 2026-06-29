@@ -248,23 +248,28 @@ pub fn build_verify_output(snapshot: &ProjectSnapshot) -> VerifyOutput {
             vec![
                 "Hardware truth sources verified".to_string(),
                 "Implementation matches the plan".to_string(),
-                "Verification evidence recorded".to_string(),
+                "Build/resource evidence captured when a report or map is available".to_string(),
+                "Board measurement evidence recorded when behavior touches PWM, ADC, current, wake, sleep, reset, or output safe state".to_string(),
+                "Verification result recorded without asking the user to run internal firmware commands".to_string(),
             ]
         },
         evidence_targets: vec![
             "Output artifact or behavior change".to_string(),
             "Build artifact or measurement trace".to_string(),
+            "Resource summary artifact under .emb-agent/reports/firmware/ when build output is available".to_string(),
+            "Board evidence artifact under .emb-agent/reports/firmware/ when bench evidence exists".to_string(),
             "Regression check recorded if applicable".to_string(),
         ],
         result_template: vec![
             "What was verified".to_string(),
             "How it was verified".to_string(),
             "Evidence path".to_string(),
+            "Resource/board evidence captured by the agent with no user command required".to_string(),
         ],
         next_step: if blank {
             "Record the shortlist and decision rationale".to_string()
         } else {
-            "List this round's verification targets first".to_string()
+            "List this round's verification targets first, then capture resource and board evidence through the runtime when applicable without handing the user extra commands".to_string()
         },
         verification_focus: if blank {
             vec![
@@ -272,7 +277,12 @@ pub fn build_verify_output(snapshot: &ProjectSnapshot) -> VerifyOutput {
                 "failure-paths".to_string(),
             ]
         } else {
-            vec!["board-behavior".to_string(), "failure-paths".to_string()]
+            vec![
+                "build-resource-delta".to_string(),
+                "board-behavior".to_string(),
+                "failure-paths".to_string(),
+                "release-handoff-readiness".to_string(),
+            ]
         },
         workflow_stage: stage("verify", "Close the iteration with a result record"),
     }

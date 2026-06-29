@@ -1,6 +1,6 @@
 {
   "name": "emb-agent",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A lightweight embedded workflow system for Codex, Cursor, Claude, Pi and other AI runtimes, optimized for MCU, RTOS, and IoT repositories.",
   "bin": {
     "emb-agent": "bin/install.js"

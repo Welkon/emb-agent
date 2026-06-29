@@ -22,6 +22,7 @@ Pair it with vendor, chip-family, or project-local specs for compiler dialects, 
 - Do not add compiler dialect, IDE project-file, SFR header, absolute-address syntax, package pinout, memory-size threshold, vendor library, or chip-specific peripheral rules here.
 - Put vendor/toolchain rules in selectable vendor specs such as `scmcu-space` or `padauk-space`.
 - Put concrete chip/package/board facts in project truth (`hw.yaml`, `req.yaml`) or project-local specs.
+- For each touched physical signal, project truth should record pin, direction, default state, `active_level`, electrical drive type, pull/bias, power domain, startup/fault `safe_state`, sleep state, wake source, and analog divider/reference details when relevant. Treat blank electrical or sleep/wake fields as unknown hardware truth, not as permission to infer behavior.
 - When multiple specs apply, use this order: hardware truth and measured behavior first, then project-local/chip/vendor specs, then this generic embedded-space guidance.
 
 ## Core Stance
@@ -39,6 +40,7 @@ Pair it with vendor, chip-family, or project-local specs for compiler dialects, 
 - Application logic should consume semantic state and call hardware/platform APIs; it should not scatter board pin or register decisions across unrelated modules.
 - Board/platform code may know concrete pins, channels, and registers. Generic application modules should not.
 - Before enabling an output or changing a mux, define the reset/default state, fault state, and owner for every affected pin.
+- For analog inputs, record the divider/reference/source impedance assumption and verify thresholds against measured or datasheet-backed values before changing protection, battery, or charging behavior.
 
 ## Time Base And Main Loop
 
@@ -47,6 +49,7 @@ Pair it with vendor, chip-family, or project-local specs for compiler dialects, 
 - Avoid blocking waits in the main loop unless the product timing and watchdog policy explicitly allow them.
 - When multiple cadences are derived from one tick, keep dividers/counters direct and reviewable.
 - Before relying on a time base, verify clock source, prescaler/reload settings, interrupt cadence, jitter tolerance, and sleep/wake interaction.
+- For low-power work, maintain a wake/sleep matrix: entry conditions, enabled wake sources, peripherals shut down before sleep, GPIO/PWM/ADC/register state restored after wake, watchdog policy, wake latency target, and measured idle-current target.
 
 ## ISR And Shared State
 
@@ -91,6 +94,7 @@ Pair it with vendor, chip-family, or project-local specs for compiler dialects, 
 - For sleep/low-power work, separate runtime safe states from sleep-current states. A display or bus may require high-Z while running, but the lowest sleep current may require deterministic input/output levels on non-wake pins.
 - Treat vendor example code and measured board behavior as first-class evidence for low-power entry and wake sequencing. If a manual mnemonic and an official example differ, try the example path before inventing a register sequence.
 - Always confirm whether the user flashes the command-line artifact, an IDE-built artifact, or a programmer configuration. Do not assume a local HEX includes configuration bits or is the artifact being burned.
+- For board-facing behavior, record board revision, chip marking/package, programmer/IDE/toolchain version, firmware image hash, supply/load condition, measured waveform/current/threshold values, and evidence file path. PC logic tests do not prove PWM, ADC, output pulse, current, reset, wake, or sleep-current behavior.
 - Record bench gaps and assumptions close to the task or project truth, not only in conversation. When the user confirms real-board pass/fail/current/wake behavior, preserve it as a board validation record before treating it as settled truth.
 
 ## Avoid Without Project-Specific Justification

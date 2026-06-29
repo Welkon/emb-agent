@@ -340,6 +340,90 @@ fn run_with_stdin(args: &[&str], stdin: &str) -> String {
 }
 
 #[test]
+fn firmware_resource_evidence_and_release_handoff_smoke() {
+    let project = TestProject::new("firmware-evidence");
+    let report_path = project.path().join("build-summary.txt");
+    fs::write(
+        &report_path,
+        "Program Memory Usage : 1630 bytes / 2048 bytes\nData Memory Usage : 88 / 128 bytes\nwarning: stack depth unknown\n",
+    )
+    .expect("write resource report");
+
+    let resource = run(
+        &project,
+        &[
+            "firmware",
+            "resource",
+            "analyze",
+            "--file",
+            "build-summary.txt",
+        ],
+    );
+    let resource_json: serde_json::Value = serde_json::from_str(&resource).expect("resource json");
+    assert_eq!(resource_json["status"], "ok");
+    assert_eq!(
+        resource_json["resource_summary"]["program_rom"]["used_bytes"],
+        1630
+    );
+    assert_eq!(
+        resource_json["resource_summary"]["data_ram"]["total_bytes"],
+        128
+    );
+    assert!(
+        project
+            .path()
+            .join(".emb-agent/reports/firmware/resource-summary.json")
+            .is_file()
+    );
+
+    let evidence = run(
+        &project,
+        &[
+            "firmware",
+            "evidence",
+            "add",
+            "--kind",
+            "pwm",
+            "--result",
+            "ok",
+            "--expected",
+            "16kHz",
+            "--measured",
+            "15.98kHz",
+            "--path",
+            "captures/pwm.csv",
+            "--notes",
+            "scope capture",
+        ],
+    );
+    let evidence_json: serde_json::Value = serde_json::from_str(&evidence).expect("evidence json");
+    assert_eq!(evidence_json["status"], "ok");
+    assert_eq!(evidence_json["evidence"]["result"], "PASS");
+    assert!(
+        project
+            .path()
+            .join(".emb-agent/reports/firmware/board-evidence.jsonl")
+            .is_file()
+    );
+
+    let release = run(
+        &project,
+        &["firmware", "release", "draft", "--version", "v1.2.3"],
+    );
+    let release_json: serde_json::Value = serde_json::from_str(&release).expect("release json");
+    assert_eq!(release_json["status"], "ok");
+    assert_eq!(release_json["release_handoff"]["board_evidence_count"], 1);
+    let handoff = fs::read_to_string(
+        project
+            .path()
+            .join(".emb-agent/reports/firmware/release-handoff.md"),
+    )
+    .expect("read handoff");
+    assert!(handoff.contains("Firmware Release Handoff"));
+    assert!(handoff.contains("Board evidence entries: 1"));
+}
+
+#[test]
 fn hook_session_start_reads_multiline_stdin_cwd() {
     let project = TestProject::new("hook-session-stdin");
     let payload = format!(
@@ -563,6 +647,14 @@ fn help_shows_default_user_flow() {
     assert!(
         stdout.contains("diagnostics hooks"),
         "help output: {stdout}"
+    );
+    assert!(
+        !stdout.contains("firmware resource analyze"),
+        "help should not expose internal firmware evidence commands: {stdout}"
+    );
+    assert!(
+        !stdout.contains("firmware evidence add"),
+        "help should not expose internal firmware evidence commands: {stdout}"
     );
 }
 
@@ -1358,6 +1450,37 @@ fn runtime_wrapper_allows_long_doc_ingest() {
     assert!(
         installer.contains("fs.writeSync(1, result.stdout)"),
         "installer runtime dispatch must flush large outputs before process.exit"
+    );
+}
+
+#[test]
+fn installer_interactive_defaults_are_fast_and_local_first() {
+    let installer = fs::read_to_string(repo_root().join("bin/install.js")).expect("read installer");
+    assert!(
+        installer.contains("Enter confirms the highlighted option"),
+        "single-select installer prompts should allow Enter to accept the highlighted default"
+    );
+    assert!(
+        installer.contains("if (state.selectedIndex < 0) state.selectedIndex = state.cursorIndex;"),
+        "single-select installer prompts should not require pressing Space before Enter"
+    );
+    let local = installer
+        .find("{ label: \"Local\", desc: \"Install into this project (recommended)\", value: \"local\" }")
+        .expect("local install option");
+    let global = installer
+        .find("{ label: \"Global\", desc: \"Install to the user config directory\", value: \"global\" }")
+        .expect("global install option");
+    assert!(
+        local < global,
+        "interactive install should default to local before global"
+    );
+    assert!(
+        installer.contains("Fetching available specs and skills from GitHub: Welkon/emb-support"),
+        "interactive install should default to the GitHub support repository when local emb-support is absent"
+    );
+    assert!(
+        installer.contains("Local emb-support found but empty. Trying GitHub: Welkon/emb-support"),
+        "interactive install should fall back to the GitHub support repository when local emb-support is empty"
     );
 }
 
@@ -4166,6 +4289,21 @@ fn finish_work_records_workspace_journal_and_resolves_active_task() {
     );
     assert_eq!(value["task"]["archive_attempted"], true);
     assert_eq!(value["task"]["archive"]["archived"], true);
+    assert_eq!(value["follow_ups"][0]["name"], "resource_evidence");
+    assert_eq!(value["follow_ups"][0]["status"], "as-needed");
+    assert_eq!(value["follow_ups"][0]["handled_by"], "agent-internal");
+    assert_eq!(value["follow_ups"][0]["user_action"], "none");
+    assert_eq!(value["follow_ups"][1]["name"], "board_evidence");
+    assert_eq!(value["follow_ups"][1]["status"], "as-needed");
+    assert_eq!(value["follow_ups"][1]["user_action"], "none");
+    assert!(
+        value["follow_ups"]
+            .as_array()
+            .expect("follow_ups array")
+            .iter()
+            .all(|item| item.get("command").is_none()),
+        "finish-work follow-ups should not hand users extra commands: {output}"
+    );
 
     let journal = fs::read_to_string(
         project

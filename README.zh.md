@@ -164,6 +164,8 @@ npx emb-agent --target all --local --dry-run
 
 其中 `<host>` 可选当前启用目标：`codex`、`claude`、`cursor`、`all`。
 
+交互式安装会通过 `EMB_SUPPORT_DIR`、项目祖先目录、安装器 checkout 或 home 目录扫描本地 `emb-support`；如果没有本地支持包，默认走 GitHub support 仓库（`Welkon/emb-support`），并从该来源提示选择可选 specs / skills。直接安装可以用可重复的 `--spec <name>` 和 `--skill <name>` 选择支持项。
+
 > **注意：** `pi`、`omp`、`windsurf` 在开发构建中默认禁用。OMP 支持当前已关闭，除非要恢复该集成，否则不要从 `shells.json.disabled` 中移除它。
 
 ### Local / Global

@@ -43,6 +43,12 @@ pub struct ProjectSnapshot {
     pub requirements_unknown_count: usize,
     pub hardware_unknown_count: usize,
     pub hardware_pin_mapping_declared: bool,
+    pub hardware_signal_count: usize,
+    pub hardware_unconfirmed_signal_count: usize,
+    pub hardware_electrical_unknown_count: usize,
+    pub hardware_power_domain_unknown_count: usize,
+    pub hardware_sleep_state_unknown_count: usize,
+    pub hardware_wake_source_count: usize,
     pub hardware_evidence_files: Vec<String>,
     pub local_doc_tool_priority: Vec<String>,
     pub truth_validation_errors: Vec<String>,
@@ -250,6 +256,15 @@ pub struct HardwareSignal {
     pub pin: String,
     pub direction: String,
     pub default_state: String,
+    pub active_level: String,
+    pub electrical: String,
+    pub pull: String,
+    pub power_domain: String,
+    pub safe_state: String,
+    pub sleep_state: String,
+    pub wake_source: String,
+    pub analog_role: String,
+    pub divider: String,
     pub confirmed: Option<bool>,
     pub note: String,
 }
@@ -314,6 +329,57 @@ fn hardware_unknown_count(hardware: &HardwareTruth) -> usize {
         count += 1;
     }
     count
+}
+
+fn hardware_unconfirmed_signal_count(signals: &[HardwareSignal]) -> usize {
+    signals
+        .iter()
+        .filter(|signal| signal.confirmed != Some(true))
+        .count()
+}
+
+fn hardware_electrical_unknown_count(signals: &[HardwareSignal]) -> usize {
+    signals
+        .iter()
+        .filter(|signal| {
+            !signal.name.trim().is_empty()
+                && (signal.active_level.trim().is_empty()
+                    || signal.electrical.trim().is_empty()
+                    || signal.pull.trim().is_empty()
+                    || signal.safe_state.trim().is_empty())
+        })
+        .count()
+}
+
+fn hardware_power_domain_unknown_count(signals: &[HardwareSignal]) -> usize {
+    signals
+        .iter()
+        .filter(|signal| !signal.name.trim().is_empty() && signal.power_domain.trim().is_empty())
+        .count()
+}
+
+fn hardware_sleep_state_unknown_count(signals: &[HardwareSignal]) -> usize {
+    signals
+        .iter()
+        .filter(|signal| {
+            !signal.name.trim().is_empty()
+                && (signal.sleep_state.trim().is_empty() || signal.wake_source.trim().is_empty())
+        })
+        .count()
+}
+
+fn hardware_wake_source_count(signals: &[HardwareSignal]) -> usize {
+    signals
+        .iter()
+        .filter(|signal| {
+            let value = signal.wake_source.trim();
+            !value.is_empty()
+                && !matches!(
+                    value.to_ascii_lowercase().as_str(),
+                    "none" | "no" | "false" | "n/a" | "na"
+                )
+        })
+        .count()
 }
 
 fn is_clarification_task(task: &TaskRef) -> bool {
@@ -1231,6 +1297,16 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     };
 
     let hardware_unknown_count = hardware_unknown_count(&state.hardware);
+    let hardware_signal_count = state.hardware.signals.len();
+    let hardware_unconfirmed_signal_count =
+        hardware_unconfirmed_signal_count(&state.hardware.signals);
+    let hardware_electrical_unknown_count =
+        hardware_electrical_unknown_count(&state.hardware.signals);
+    let hardware_power_domain_unknown_count =
+        hardware_power_domain_unknown_count(&state.hardware.signals);
+    let hardware_sleep_state_unknown_count =
+        hardware_sleep_state_unknown_count(&state.hardware.signals);
+    let hardware_wake_source_count = hardware_wake_source_count(&state.hardware.signals);
 
     ProjectSnapshot {
         initialized: state.initialized,
@@ -1265,6 +1341,12 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         requirements_unknown_count: state.requirements.unknowns.len(),
         hardware_unknown_count,
         hardware_pin_mapping_declared: has_pin_mapping(&state.hardware.signals),
+        hardware_signal_count,
+        hardware_unconfirmed_signal_count,
+        hardware_electrical_unknown_count,
+        hardware_power_domain_unknown_count,
+        hardware_sleep_state_unknown_count,
+        hardware_wake_source_count,
         hardware_evidence_files: evidence_files,
         local_doc_tool_priority,
         truth_validation_errors: state.truth_validation_errors,
@@ -1536,6 +1618,15 @@ impl HardwareSignal {
             pin: value.get("pin").cloned().unwrap_or_default(),
             direction: value.get("direction").cloned().unwrap_or_default(),
             default_state: value.get("default_state").cloned().unwrap_or_default(),
+            active_level: value.get("active_level").cloned().unwrap_or_default(),
+            electrical: value.get("electrical").cloned().unwrap_or_default(),
+            pull: value.get("pull").cloned().unwrap_or_default(),
+            power_domain: value.get("power_domain").cloned().unwrap_or_default(),
+            safe_state: value.get("safe_state").cloned().unwrap_or_default(),
+            sleep_state: value.get("sleep_state").cloned().unwrap_or_default(),
+            wake_source: value.get("wake_source").cloned().unwrap_or_default(),
+            analog_role: value.get("analog_role").cloned().unwrap_or_default(),
+            divider: value.get("divider").cloned().unwrap_or_default(),
             confirmed: value
                 .get("confirmed")
                 .and_then(|value| parse_yaml_bool(value)),
@@ -1635,6 +1726,15 @@ pub fn build_project_state_json(state: &ProjectState) -> String {
                 "pin": signal.pin,
                 "direction": signal.direction,
                 "default_state": signal.default_state,
+                "active_level": signal.active_level,
+                "electrical": signal.electrical,
+                "pull": signal.pull,
+                "power_domain": signal.power_domain,
+                "safe_state": signal.safe_state,
+                "sleep_state": signal.sleep_state,
+                "wake_source": signal.wake_source,
+                "analog_role": signal.analog_role,
+                "divider": signal.divider,
                 "confirmed": signal.confirmed,
                 "note": signal.note,
             })).collect::<Vec<_>>(),
@@ -2139,6 +2239,15 @@ mod tests {
                 "    pin: GPIO4",
                 "    direction: input",
                 "    default_state: floating",
+                "    active_level: analog",
+                "    electrical: analog",
+                "    pull: none",
+                "    power_domain: battery",
+                "    safe_state: input",
+                "    sleep_state: high_z",
+                "    wake_source: none",
+                "    analog_role: adc_divider",
+                "    divider: Rtop=200k,Rbot=100k,Vref=Vdd",
                 "    confirmed: true",
                 "    note: Routed to divider",
                 "peripherals:",
@@ -2242,6 +2351,12 @@ mod tests {
         assert_eq!(snapshot.open_tasks, 1);
         assert_eq!(snapshot.wiki_pages, 1);
         assert_eq!(snapshot.recommended_command, "do");
+        assert_eq!(snapshot.hardware_signal_count, 1);
+        assert_eq!(snapshot.hardware_unconfirmed_signal_count, 0);
+        assert_eq!(snapshot.hardware_electrical_unknown_count, 0);
+        assert_eq!(snapshot.hardware_power_domain_unknown_count, 0);
+        assert_eq!(snapshot.hardware_sleep_state_unknown_count, 0);
+        assert_eq!(snapshot.hardware_wake_source_count, 0);
         assert_eq!(snapshot.current_task.unwrap().title, "Implement ADC");
         let _ = fs::remove_dir_all(root);
     }
@@ -2312,6 +2427,17 @@ mod tests {
         assert_eq!(state.hardware.target, "vendor-ide-project");
         assert_eq!(state.hardware.signals[0].name, "ADC_IN");
         assert_eq!(state.hardware.signals[0].pin, "GPIO4");
+        assert_eq!(state.hardware.signals[0].active_level, "analog");
+        assert_eq!(state.hardware.signals[0].electrical, "analog");
+        assert_eq!(state.hardware.signals[0].power_domain, "battery");
+        assert_eq!(state.hardware.signals[0].safe_state, "input");
+        assert_eq!(state.hardware.signals[0].sleep_state, "high_z");
+        assert_eq!(state.hardware.signals[0].wake_source, "none");
+        assert_eq!(state.hardware.signals[0].analog_role, "adc_divider");
+        assert_eq!(
+            state.hardware.signals[0].divider,
+            "Rtop=200k,Rbot=100k,Vref=Vdd"
+        );
         assert_eq!(state.hardware.signals[0].confirmed, Some(true));
         assert_eq!(state.hardware.peripherals[0].name, "ADC1");
         assert_eq!(state.requirements.goals, vec!["Stabilize wakeup path"]);
