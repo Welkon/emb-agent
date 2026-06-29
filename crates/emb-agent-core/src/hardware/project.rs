@@ -28,6 +28,7 @@ pub struct ProjectSnapshot {
     pub default_package: String,
     pub active_package: String,
     pub git_branch: String,
+    pub git_dirty_count: usize,
     pub open_tasks: usize,
     pub wiki_pages: usize,
     pub current_task: Option<TaskSnapshot>,
@@ -67,6 +68,7 @@ pub struct ProjectState {
     pub open_tasks: usize,
     pub wiki_pages: usize,
     pub git_branch: String,
+    pub git_dirty_count: usize,
     pub language: String,
     pub truth_validation_errors: Vec<String>,
 }
@@ -1004,7 +1006,7 @@ fn normalize_identifier(value: &str) -> String {
 
 pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     let state = project_state_from_cwd(cwd);
-    if !state.initialized && state.project_root.is_empty() {
+    if !state.initialized {
         return ProjectSnapshot {
             initialized: false,
             recommended_command: "onboard".to_string(),
@@ -1240,6 +1242,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         default_package: state.config.default_package,
         active_package: state.config.active_package,
         git_branch: state.git_branch,
+        git_dirty_count: state.git_dirty_count,
         open_tasks: state.open_tasks,
         wiki_pages: state.wiki_pages,
         current_task: state.current_task.map(|task| TaskSnapshot {
@@ -1351,6 +1354,7 @@ pub fn read_project_state(project_root: &Path) -> ProjectState {
         open_tasks: count_open_tasks(&state_dir),
         wiki_pages: count_wiki_pages(&state_dir),
         git_branch: git_branch(&root),
+        git_dirty_count: git_dirty_count(&root),
         current_task,
         truth_validation_errors,
     }
@@ -1649,6 +1653,8 @@ pub fn build_project_state_json(state: &ProjectState) -> String {
         "open_tasks": state.open_tasks,
         "wiki_pages": state.wiki_pages,
         "git_branch": state.git_branch,
+        "git_dirty_count": state.git_dirty_count,
+        "git_dirty": state.git_dirty_count > 0,
     })
     .to_string()
 }
@@ -1829,6 +1835,25 @@ pub fn git_branch(project_root: &Path) -> String {
         .filter(|output| output.status.success())
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
         .unwrap_or_default()
+}
+
+pub fn git_dirty_count(project_root: &Path) -> usize {
+    if !project_root.join(".git").exists() {
+        return 0;
+    }
+    Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(project_root)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .count()
+        })
+        .unwrap_or(0)
 }
 
 pub fn read_text(path: &Path) -> String {

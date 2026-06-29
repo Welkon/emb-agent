@@ -67,7 +67,9 @@ Examples:
 - SKU-specific factory test branching
 - one-off board bring-up conventions
 
-Project-local workflow extensions belong in:
+Project-local workflow extensions are an advanced, on-demand feature. They are
+not part of the default `.emb-agent/` layout. When `workflow init` or
+`workflow import` is explicitly used, they belong in:
 
 - `.emb-agent/registry/workflow.json`
 - `.emb-agent/specs/`

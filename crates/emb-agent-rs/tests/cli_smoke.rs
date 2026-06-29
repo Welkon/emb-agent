@@ -821,6 +821,42 @@ fn init_writes_config_and_task_lifecycle_hooks_run() {
         auto_value["dispatch"]["subagent_prompt"]["agents"],
         serde_json::json!(["fw-doer", "release-checker"])
     );
+    assert!(
+        auto_value["dispatch"]["available_agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|agent| agent == "researcher"),
+        "auto dispatch should expose researcher: {auto_dispatch}"
+    );
+
+    let research_dispatch = run(&project, &["dispatch", "research vendor SDK API examples"]);
+    let research_value: serde_json::Value =
+        serde_json::from_str(&research_dispatch).expect("research dispatch json");
+    assert_eq!(
+        research_value["dispatch"]["subagent_prompt"]["agent"],
+        "researcher"
+    );
+    assert_eq!(
+        research_value["dispatch"]["subagent_sequence"],
+        serde_json::json!(["researcher"])
+    );
+    assert_eq!(
+        research_value["dispatch"]["auto_reason"],
+        "research_heavy_or_external_context_work"
+    );
+
+    let sdk_impl_dispatch = run(&project, &["dispatch", "implement SDK library integration"]);
+    let sdk_impl_value: serde_json::Value =
+        serde_json::from_str(&sdk_impl_dispatch).expect("sdk impl dispatch json");
+    assert_eq!(
+        sdk_impl_value["dispatch"]["subagent_prompt"]["agent"],
+        "fw-doer"
+    );
+    assert_eq!(
+        sdk_impl_value["dispatch"]["subagent_sequence"],
+        serde_json::json!(["researcher", "fw-doer", "release-checker"])
+    );
     let auto_dispatch_run = Command::new(emb_agent_bin())
         .arg("dispatch")
         .arg("run")
@@ -992,6 +1028,14 @@ fn doctor_reports_codex_auto_dispatch_mode() {
     assert_eq!(
         value["hosts"][0]["codex_dispatch"]["inline_fallback_allowed"], true,
         "doctor output: {output}"
+    );
+    assert!(
+        value["hosts"][0]["codex_dispatch"]["available_agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|agent| agent == "researcher"),
+        "doctor output should include researcher: {output}"
     );
 }
 
@@ -1902,6 +1946,17 @@ fn active_task_defaults_cover_aar_and_resolve_commands() {
     let created = run(&project, &["task", "add", "Implement timed key run"]);
     let created_value: serde_json::Value = serde_json::from_str(&created).expect("task add json");
     let task_name = created_value["task"]["name"].as_str().expect("task name");
+    let task_dir = project.path().join(".emb-agent/tasks").join(task_name);
+    for manifest in ["implement.jsonl", "check.jsonl", "debug.jsonl"] {
+        let manifest_text =
+            fs::read_to_string(task_dir.join(manifest)).expect("read task context manifest");
+        assert!(
+            manifest_text.contains("\"_example\"")
+                && manifest_text.contains("One JSON object per line")
+                && manifest_text.contains(&format!("docs/prd/tasks/{task_name}.md")),
+            "{manifest} should include a useful seed row: {manifest_text}"
+        );
+    }
     let activated = run(&project, &["task", "activate", task_name]);
     let activated_value: serde_json::Value =
         serde_json::from_str(&activated).expect("task activate json");
@@ -2970,6 +3025,12 @@ fn installer_exposes_same_three_shell_commands_per_host() {
         fs::create_dir_all(&skill_dir).expect("create stale codex skill");
         fs::write(skill_dir.join("SKILL.md"), "stale").expect("write stale codex skill");
     }
+    fs::create_dir_all(root.join(".emb-agent")).expect("create stale emb-agent dir");
+    fs::write(
+        root.join(".emb-agent/workflow.md"),
+        "# emb-agent Workflow\n\n[workflow-state:concept]\nold concept\n[/workflow-state:concept]\n\n[workflow-state:clarifying]\nold clarify\n[/workflow-state:clarifying]\n\n[workflow-state:ready]\nold ready\n[/workflow-state:ready]\n\n[workflow-state:task_active]\nold active task flow without researcher\n[/workflow-state:task_active]\n\n## Shared Conventions\n\n- Keep hardware truth in `hw.yaml`, product behavior in `req.yaml` plus `docs/prd/`.\n",
+    )
+    .expect("write stale workflow");
     for base in [
         root.join(".pi/skills/xc8-build"),
         root.join(".agents/skills/xc8-build"),
@@ -3182,6 +3243,14 @@ fn installer_exposes_same_three_shell_commands_per_host() {
         codex_hook_diag.contains(".codex/emb-agent"),
         "Codex hook diagnostics output: {codex_hook_diag}"
     );
+    assert!(
+        root.join(".codex/emb-agent/agents/researcher.md").exists(),
+        "installed Codex runtime must include researcher subagent"
+    );
+    assert!(
+        root.join(".claude/emb-agent/agents/researcher.md").exists(),
+        "installed Claude runtime must include researcher subagent"
+    );
 
     let runtime_commands = root
         .join(".codex")
@@ -3236,6 +3305,14 @@ fn installer_exposes_same_three_shell_commands_per_host() {
             && installed_config.contains("after_create")
             && installed_config.contains("worker_guard"),
         "installed config: {installed_config}"
+    );
+    let repaired_workflow =
+        fs::read_to_string(root.join(".emb-agent/workflow.md")).expect("read workflow");
+    assert!(
+        repaired_workflow.contains("dispatch `researcher` first")
+            && repaired_workflow.contains("tasks/<task>/research/")
+            && !repaired_workflow.contains("old active task flow"),
+        "repair should refresh managed workflow state blocks: {repaired_workflow}"
     );
     let install_result = fs::read_to_string(root.join(".emb-agent/.install/INSTALL_RESULT.md"))
         .expect("read install result");

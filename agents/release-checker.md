@@ -15,7 +15,7 @@ You are already the `release-checker` emb-agent subagent dispatched by the main 
 
 ## Active Task Context Loading
 
-If the dispatch prompt names `Target task: <name>`, first read `.emb-agent/tasks/<name>/task.json`, then read the PRD path listed in `task.json.artifacts.prd` (fallback: `.emb-agent/tasks/<name>/prd.md` when present). Then read `design.md`, `implement.md`, `review.md`, `validation.md`, and any previous subagent output supplied by the parent session.
+If the dispatch prompt names `Target task: <name>`, first read `.emb-agent/tasks/<name>/task.json`, then read the PRD path listed in `task.json.artifacts.prd` (fallback: `.emb-agent/tasks/<name>/prd.md` when present). Then read relevant `.emb-agent/tasks/<name>/research/*.md`, `design.md`, `implement.md`, `review.md`, `validation.md`, and any previous subagent output supplied by the parent session.
 
 If no target task is named, limit yourself to the explicit files or diff surface supplied by the parent session.
 
@@ -23,7 +23,7 @@ If no target task is named, limit yourself to the explicit files or diff surface
 1. Read `.emb-agent/attention.md` — project constraints, hardware traps, current priorities
 2. Read `.emb-agent/HOST.json` — install metadata
 3. If either is missing → ask user to run `emb-agent init`
-4. Read `.emb-agent/reference/shared-conventions.md` — naming, paths, stage gates, scoped commit rules
+4. Read `.emb-agent/workflow.md` — naming, paths, stage gates, scoped commit rules
 5. Check `.emb-agent/compound/` for relevant traps and decisions: `emb search-compound --query "{keywords}"`
 # release-checker
 

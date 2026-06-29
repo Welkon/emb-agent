@@ -1,6 +1,6 @@
 # emb-agent Shared Conventions
 
-Shared conventions for all emb-agent agents. Deployed by the installer to `.emb-agent/reference/shared-conventions.md`. All agents reference this file for naming, path, and lifecycle conventions.
+Shared conventions for emb-agent agents. Current project installs keep these conventions in `.emb-agent/workflow.md`; this runtime copy exists as package reference material.
 
 ---
 
@@ -8,52 +8,36 @@ Shared conventions for all emb-agent agents. Deployed by the installer to `.emb-
 
 ```
 .emb-agent/
-├── attention.md              Agent boot-time required read (project constraints, traps, priorities)
-├── HOST.json                 Install metadata (host name, profile, version)
-├── VERSION                   emb-agent version
-├── hw.yaml                   Hardware truth (MCU, pins, peripherals, clock)
-├── req.yaml                  Requirements truth (product requirements, constraints)
-├── project.json              Project configuration
-├── config.json               Runtime configuration
-├── compound/                 Persistent knowledge (learnings, tricks, decisions, traps, explorations)
-│   └── YYYY-MM-DD-{type}-{slug}.md
-│       type in: learn, trick, decision, trap, explore
-├── architecture/             System architecture map (current state only, not plans)
-│   ├── ARCHITECTURE.md       Master index + key architecture decisions
-│   └── {subsystem}.md        Per-subsystem architecture doc
-├── reference/                Cross-agent shared references
-│   ├── shared-conventions.md (this file)
-│   └── code-dimensions.md    Complexity dimension reference
-├── tasks/                    Task manifests
-│   └── {task-name}/
-│       └── task.json
-├── wiki/                     Wiki pages
-├── graph/                    Knowledge graph (graph.json)
-├── memory/                   Memory entries
-├── specs/                    Project-local specs
-├── profiles/                 Runtime profiles
-├── templates/                Document templates
-├── registry/                 Workflow registry
-├── chips/                    Chip support data
-├── issues/                   Issue tracking
-│   └── YYYY-MM-DD-{slug}/
-│       ├── {slug}-report.md
-│       ├── {slug}-analysis.md
-│       └── {slug}-fix-note.md
-├── audits/                   Audit reports
-│   └── YYYY-MM-DD-{slug}/
-│       ├── index.md
-│       └── finding-NN.md
-├── roadmap/                  Roadmap planning
-│   └── {slug}/
-│       ├── {slug}-roadmap.md
-│       └── {slug}-items.yaml
-└── refactors/                Refactor tracking
-    └── YYYY-MM-DD-{slug}/
-        ├── {slug}-scan.md
-        ├── {slug}-refactor-design.md
-        └── {slug}-apply-notes.md
+|-- .developer                Local developer identity used for agent context
+|-- .language                 Preferred response language (`zh`, `en`, or blank)
+|-- .template-hashes          Managed template fingerprints for repair/update
+|-- .version                  Project template/runtime version
+|-- config.yaml               Local emb-agent configuration and hook settings
+|-- workflow.md               Human-readable workflow, layout, and conventions
+|-- project.json              Package/profile metadata
+|-- hw.yaml                   Hardware truth: MCU, pins, peripherals, clock, board facts
+|-- req.yaml                  Product behavior, constraints, acceptance, unknowns
+|-- attention.md              Agent boot-time required read
+|-- ARCHITECTURE.md           Current module/peripheral/ISR ownership map
+|-- tasks/                    Durable task records
+|   `-- <task>/
+|       |-- task.json
+|       |-- prd.md            Optional task-local PRD fallback
+|       |-- design.md         Optional durable design notes
+|       |-- implement.md      Optional execution plan
+|       |-- review.md         Optional review notes
+|       |-- validation.md     Optional validation notes
+|       `-- research/         Reusable task research from researcher/scouts
+|           `-- <topic>.md
+`-- .install/                 Installer logs, backups, version state, install result
 ```
+
+Feature directories such as `cache/`, `graph/`, `wiki/`, `compound/`, `memory/`,
+`sessions/`, `specs/`, `plugins/`, `issues/`, `audits/`, `roadmap/`, and
+`refactors/` are created only when the matching command or installer option needs
+them. Do not treat old `reference/`, `templates/`, `registry/`, or
+`architecture/` directories as required project layout; current architecture truth
+lives at `.emb-agent/ARCHITECTURE.md`.
 
 ## 0.1 Truth Placement Map
 
@@ -62,8 +46,9 @@ Shared conventions for all emb-agent agents. Deployed by the installer to `.emb-
 | Boot-time traps, active priorities, environment blockers | `.emb-agent/attention.md` |
 | MCU/package/pins/peripherals/clock/board facts | `.emb-agent/hw.yaml` |
 | Product behavior, constraints, acceptance, unknowns | `.emb-agent/req.yaml` and `docs/prd/` |
+| Reusable task-specific research | `.emb-agent/tasks/<task>/research/<topic>.md` |
 | Reusable traps/tricks/decisions/learnings/explorations | `.emb-agent/compound/` |
-| Current module map, data flow, ISR routing, peripheral ownership | `.emb-agent/architecture/` |
+| Current module map, data flow, ISR routing, peripheral ownership | `.emb-agent/ARCHITECTURE.md` |
 | Long-form source synthesis and human-readable notes | `.emb-agent/wiki/` |
 | Machine query index | `.emb-agent/graph/` |
 | Session-local continuity | `.emb-agent/memory/` and `.emb-agent/sessions/` |
@@ -112,7 +97,7 @@ All agents MUST follow this boot sequence:
 1. Read `.emb-agent/attention.md` — project constraints and known traps
 2. Read `.emb-agent/HOST.json` — install metadata
 3. If either is missing → prompt user to run initialization
-4. Read `.emb-agent/reference/shared-conventions.md` — cross-agent conventions
+4. Read `.emb-agent/workflow.md` — cross-agent conventions
 
 ## 5. Stage Gates
 
@@ -125,14 +110,14 @@ Between workflow stages, agents MUST stop and ask for user confirmation:
 - Issue Analyze → Fix: user confirms root cause and fix approach (see bug-hunter Gate 2)
 - Issue Fix → Close: user confirms fix verification (see bug-hunter Gate 3)
 
-Recording threshold for compound entries: see `.emb-agent/reference/knowledge-evolution.md`.
+Recording threshold for compound entries: see the `Knowledge Evolution` section in `.emb-agent/workflow.md`.
 Core rule: record only if repeatable AND (expensive OR not-visible-in-code).
 
 ## 6. Terminology Discipline
 
 Before introducing a new term (function name, macro, type, variable):
 1. Grep the project for potential conflicts
-2. Check `.emb-agent/architecture/` for existing terminology
+2. Check `.emb-agent/ARCHITECTURE.md` for existing terminology
 3. Check `.emb-agent/compound/` for related decisions
 4. If conflict found → rename or explicitly differentiate in docs
 

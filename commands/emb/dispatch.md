@@ -21,7 +21,7 @@ allowed-tools:
 - Prefer the lightest command that keeps facts, evidence, and project truth aligned.
 - Use `dispatch run next` or `dispatch run <action>` in runtime CLI when you want to execute the resolved dispatch target immediately.
 - `codex.dispatch_mode: inline` keeps dispatch contract-only.
-- `codex.dispatch_mode: auto` recommends native Codex subagent prompts for broad or high-risk embedded work while preserving inline fallback; implementation jobs use `fw-doer` followed by `release-checker`.
+- `codex.dispatch_mode: auto` recommends native Codex subagent prompts for broad, high-risk, or research-heavy embedded work while preserving inline fallback; SDK/toolchain/API implementation jobs use `researcher` before `fw-doer` followed by `release-checker`.
 - `codex.dispatch_mode: sub-agent` returns a native Codex subagent prompt contract and requires host-native delegation when the current Codex surface exposes subagents.
 - `dispatch next` carries the `knowledge_graph` summary from `next` so wrappers can refresh stale graph artifacts without changing the resolved action.
 - Use `prefs set orchestration_mode <auto|coordinator|fork|swarm>` when the session should prefer a coordinator chain, inherited-context fork workers, or a flat swarm roster.

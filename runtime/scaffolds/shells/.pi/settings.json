@@ -10,6 +10,7 @@
     },
     "subagentModelRoutes": {
       "hw-scout": { "model": "inherit" },
+      "researcher": { "model": "inherit" },
       "release-checker": { "model": "inherit" },
       "arch-reviewer": { "model": "inherit" },
       "bug-hunter": { "model": "inherit" },

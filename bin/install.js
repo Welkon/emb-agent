@@ -336,7 +336,8 @@ function defaultEmbAgentWorkflowMd() {
 		"question at a time with your recommended answer and trade-off, update the",
 		"system PRD or task PRD plus `req.yaml` after each confirmation, and stop before",
 		"task activation until the gate changes. Complex tasks should have durable",
-		"`design.md` and `implement.md` notes before implementation.",
+		"`design.md`, `implement.md`, and `research/<topic>.md` notes before",
+		"implementation when external SDK/toolchain/API evidence is load-bearing.",
 		"[/workflow-state:clarifying]",
 		"",
 		"[workflow-state:ready]",
@@ -348,10 +349,11 @@ function defaultEmbAgentWorkflowMd() {
 		"[workflow-state:task_active]",
 		"An active task exists. Keep reads scoped to the task PRD, hardware/requirement",
 		"truth, and directly affected source/build files. Main-session default: when the",
-		"host exposes a subagent/delegation tool, dispatch a focused implementation",
-		"worker and then an independent release/system checker; subagents must not spawn",
-		"more subagents. The parent session coordinates, synthesizes hidden results,",
-		"writes closure docs, and closes with `/emb-finish-work` after verification.",
+		"host exposes a subagent/delegation tool, dispatch `researcher` first for missing",
+		"SDK/toolchain/API evidence, then a focused implementation worker, then an",
+		"independent release/system checker; subagents must not spawn more subagents.",
+		"The parent session coordinates, synthesizes hidden results, writes closure docs,",
+		"and closes with `/emb-finish-work` after verification.",
 		"Inline implementation is only the fallback for narrow work or hosts without a",
 		"subagent surface.",
 		"[/workflow-state:task_active]",
@@ -361,7 +363,7 @@ function defaultEmbAgentWorkflowMd() {
 		"- Run `/emb-start` for empty, partial, migrated, or existing projects.",
 		"- Run `/emb-next` after setup to choose one next action.",
 		"- Run `/emb-finish-work` when verified work is ready to close.",
-		"- Keep hardware truth in `hw.yaml` and product behavior in `req.yaml` plus `docs/prd/`.",
+		"- Keep hardware truth in `hw.yaml`, product behavior in `req.yaml` plus `docs/prd/`, and reusable task research in `tasks/<task>/research/`.",
 		"",
 		"## Knowledge Evolution",
 		"",
@@ -369,6 +371,42 @@ function defaultEmbAgentWorkflowMd() {
 		"Use generated feature directories only when the corresponding command writes them.",
 		""
 	].join("\n");
+}
+
+function workflowStateBlock(text, state) {
+	var start = "[workflow-state:" + state + "]";
+	var end = "[/workflow-state:" + state + "]";
+	var afterStart = text.split(start)[1];
+	if (!afterStart) return "";
+	var body = afterStart.split(end)[0];
+	if (body === undefined) return "";
+	return start + body + end;
+}
+
+function refreshManagedWorkflowText(existing, managed) {
+	if (existing.indexOf("# emb-agent Workflow") < 0 || existing.indexOf("[workflow-state:") < 0) return existing;
+	var updated = existing;
+	var featureDirs = [
+		"Feature directories such as `cache/`, `graph/`, `wiki/`, `compound/`,",
+		"`memory/`, `sessions/`, `specs/`, and `plugins/` are created only when the",
+		"matching command or installer option needs them."
+	].join("\n");
+	updated = updated.replace(
+		/Feature directories such as [\s\S]*?matching command or installer option needs them\./,
+		featureDirs
+	);
+	for (var i = 0; i < ["concept", "clarifying", "ready", "task_active"].length; i++) {
+		var state = ["concept", "clarifying", "ready", "task_active"][i];
+		var replacement = workflowStateBlock(managed, state);
+		if (!replacement) continue;
+		var pattern = new RegExp("\\[workflow-state:" + state + "\\][\\s\\S]*?\\[/workflow-state:" + state + "\\]");
+		if (pattern.test(updated)) updated = updated.replace(pattern, replacement);
+	}
+	updated = updated.replace(
+		/- Keep hardware truth in `hw\.yaml`(?:,| and) product behavior in `req\.yaml` plus `docs\/prd\/`\./,
+		"- Keep hardware truth in `hw.yaml`, product behavior in `req.yaml` plus `docs/prd/`, and reusable task research in `tasks/<task>/research/`."
+	);
+	return updated;
 }
 
 function templateHash(source) {
@@ -396,7 +434,13 @@ function ensureEmbAgentProjectContract(projectRoot, options) {
 	fs.writeFileSync(path.join(ext, ".version"), VERSION + "\n");
 	var workflow = defaultEmbAgentWorkflowMd();
 	var workflowPath = path.join(ext, "workflow.md");
-	if (!fs.existsSync(workflowPath)) fs.writeFileSync(workflowPath, workflow, "utf8");
+	if (!fs.existsSync(workflowPath)) {
+		fs.writeFileSync(workflowPath, workflow, "utf8");
+	} else {
+		var existingWorkflow = fs.readFileSync(workflowPath, "utf8");
+		var refreshedWorkflow = refreshManagedWorkflowText(existingWorkflow, workflow);
+		if (refreshedWorkflow !== existingWorkflow) fs.writeFileSync(workflowPath, refreshedWorkflow, "utf8");
+	}
 	var templateState = {
 		template_version: VERSION,
 		templates: {
@@ -795,6 +839,86 @@ function cleanupLeanHostRuntime(embDir) {
 	for (var i = 0; i < managed.length; i++) removePath(path.join(embDir, managed[i]));
 }
 
+function removeEmptyProjectDirs(dir, extDir) {
+	if (!fs.existsSync(dir)) return true;
+	var entries = [];
+	try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return false; }
+	for (var i = 0; i < entries.length; i++) {
+		if (!entries[i].isDirectory()) continue;
+		removeEmptyProjectDirs(path.join(dir, entries[i].name), extDir);
+	}
+	if (dir === extDir) return false;
+	try {
+		if (fs.existsSync(dir) && fs.statSync(dir).isDirectory() && fs.readdirSync(dir).length === 0) {
+			fs.rmdirSync(dir);
+			return true;
+		}
+	} catch (_) {}
+	return false;
+}
+
+function directoryOnlyHasRelativeFiles(dir, allowed) {
+	if (!fs.existsSync(dir)) return false;
+	var seen = {};
+	function walk(current) {
+		var entries = [];
+		try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch (_) { return false; }
+		for (var i = 0; i < entries.length; i++) {
+			var full = path.join(current, entries[i].name);
+			if (entries[i].isDirectory()) {
+				if (!walk(full)) return false;
+			} else if (entries[i].isFile()) {
+				var rel = path.relative(dir, full).replace(/\\/g, "/");
+				if (allowed.indexOf(rel) === -1) return false;
+				seen[rel] = true;
+			} else {
+				return false;
+			}
+		}
+		return true;
+	}
+	if (!walk(dir)) return false;
+	return Object.keys(seen).length > 0;
+}
+
+function migrateProjectArchitectureFile(extDir) {
+	var current = path.join(extDir, "ARCHITECTURE.md");
+	var legacy = path.join(extDir, "architecture", "ARCHITECTURE.md");
+	try {
+		if (!fs.existsSync(current) && fs.existsSync(legacy)) fs.renameSync(legacy, current);
+	} catch (_) {}
+	removeDirIfEmpty(path.join(extDir, "architecture"));
+}
+
+function removeEmptyFile(filePath) {
+	try {
+		if (fs.existsSync(filePath) && fs.statSync(filePath).isFile() && fs.readFileSync(filePath, "utf8").trim() === "") {
+			fs.unlinkSync(filePath);
+		}
+	} catch (_) {}
+}
+
+function cleanupProjectStateLayout(projectRoot) {
+	var extDir = embAgentDir(projectRoot);
+	if (!fs.existsSync(extDir)) return;
+	migrateProjectArchitectureFile(extDir);
+	removeEmptyFile(path.join(extDir, ".current-task"));
+	["INSTALL_RESULT.md", "install-history.jsonl", "install.log", "runtime-version.json"].forEach(function (name) {
+		removePath(path.join(extDir, name));
+	});
+	removePath(path.join(extDir, "backups"));
+	if (directoryOnlyHasRelativeFiles(path.join(extDir, "reference"), ["shared-conventions.md", "knowledge-evolution.md"])) {
+		removePath(path.join(extDir, "reference"));
+	}
+	if (directoryOnlyHasRelativeFiles(path.join(extDir, "templates"), ["scan-workflow.md.tpl", "plan-workflow.md.tpl", "do-workflow.md.tpl", "verify-workflow.md.tpl"])) {
+		removePath(path.join(extDir, "templates"));
+	}
+	if (directoryOnlyHasRelativeFiles(path.join(extDir, "registry"), ["workflow.json", "worktrees.json"])) {
+		removePath(path.join(extDir, "registry"));
+	}
+	removeEmptyProjectDirs(extDir, extDir);
+}
+
 function normalizeLanguage(value) {
 	var lang = String(value || "").trim().toLowerCase();
 	if (!lang) return "";
@@ -820,6 +944,18 @@ function readLanguagePreference(projectRoot) {
 	catch (_) {}
 	try { return normalizeLanguage(fs.readFileSync(installStateFile(projectRoot, "language"), "utf8")); }
 	catch (_) { return ""; }
+}
+
+function readDeveloperPreference(projectRoot) {
+	try {
+		var raw = fs.readFileSync(path.join(projectRoot, ".emb-agent", ".developer"), "utf8").trim();
+		if (!raw) return "";
+		if (raw.charAt(0) === "{") {
+			var parsed = JSON.parse(raw);
+			return String((parsed && parsed.name) || "").trim();
+		}
+		return raw;
+	} catch (_) { return ""; }
 }
 
 function writeLanguagePreference(projectRoot, lang) {
@@ -1290,6 +1426,7 @@ function mergeUniqueArray(existing, additions) {
 function legacyGeneratedSubagentModelRoutes() {
 	return {
 		"hw-scout": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
+		"researcher": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
 		"release-checker": { "model": "deepseek/deepseek-v4-flash", "thinking": "off" },
 		"arch-reviewer": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
 		"bug-hunter": { "model": "deepseek/deepseek-v4-pro", "thinking": "high" },
@@ -1431,8 +1568,8 @@ function renderShellCommandShim(projectRoot, host, command) {
 		"",
 		"- Treat stdout as AI routing context, not as user-facing transcript.",
 		"- Follow `agent_protocol.gate` allowed and forbidden actions exactly.",
-		"- Follow `delegation_policy`: for broad firmware work (system framework, multi-peripheral, power/sleep/watchdog/LVD/config bits, toolchain/SDK integration, or implementation plus review), list available subagents first and delegate scouts/reviewers or focused workers when the host exposes them.",
-		"- During PRD exploration, use subagents only for read-only evidence scouting/review; implementation workers wait for an active concrete task.",
+		"- Follow `delegation_policy`: for broad firmware work (system framework, multi-peripheral, power/sleep/watchdog/LVD/config bits, toolchain/SDK integration, vendor/API research, or implementation plus review), list available subagents first and delegate scouts/researchers/reviewers or focused workers when the host exposes them.",
+		"- During PRD exploration, use subagents only for read-only evidence scouting/research/review; implementation workers wait for an active concrete task.",
 		"- Do not ask the user to run emb-agent manually when this command can run it.",
 	];
 	if (language) lines.push("- " + language);
@@ -1459,7 +1596,7 @@ function renderCodexSkillShim(projectRoot, host, command) {
 		"```",
 		"",
 		"Treat stdout as AI routing context and follow `agent_protocol.gate` exactly.",
-		"Follow `delegation_policy`: for broad firmware work, list available subagents first and delegate scouts/reviewers or focused workers when the host exposes them. During PRD exploration, delegate only read-only evidence scouting/review.",
+		"Follow `delegation_policy`: for broad firmware work, list available subagents first and delegate scouts/researchers/reviewers or focused workers when the host exposes them. During PRD exploration, delegate only read-only evidence scouting/research/review.",
 	];
 	if (language) lines.push(language);
 	return lines.join("\n") + "\n";
@@ -1572,12 +1709,13 @@ function renderInstallPlan(projectRoot, hosts, options) {
 	var lines = [];
 	var scope = options.scope || "local";
 	var language = normalizeLanguage(options.lang || readLanguagePreference(projectRoot)) || "not set";
+	var developer = String(options.developer || readDeveloperPreference(projectRoot) || "developer").trim();
 	var compact = options.compact === true;
 	lines.push("Install plan");
 	lines.push("  mode: " + (options.mode || "install"));
 	lines.push("  scope: " + scope);
 	lines.push("  language: " + language);
-	lines.push("  developer: " + (options.developer || "developer"));
+	lines.push("  developer: " + developer);
 	lines.push("  hosts: " + hosts.map(function (h) { return h.name; }).join(", "));
 	if (DISABLED_HOSTS.length) lines.push("  disabled: " + DISABLED_HOSTS.join(", "));
 	if (options.specs && options.specs.length) lines.push("  external specs: " + options.specs.join(", "));
@@ -1607,7 +1745,7 @@ function renderInstallPlan(projectRoot, hosts, options) {
 function writeInstallHistory(projectRoot, hosts, options) {
 	var historyDir = installStateDir(projectRoot);
 	ensureDir(historyDir);
-	var record = { time: new Date().toISOString(), version: VERSION, mode: options.mode || "install", scope: options.scope || "local", language: normalizeLanguage(options.lang || readLanguagePreference(projectRoot)), hosts: hosts.map(function (h) { return h.name; }), commands: CANONICAL_SHELL_COMMANDS.map(function (command) { return command.name; }) };
+	var record = { time: new Date().toISOString(), version: VERSION, mode: options.mode || "install", scope: options.scope || "local", language: normalizeLanguage(options.lang || readLanguagePreference(projectRoot)), developer: String(options.developer || readDeveloperPreference(projectRoot) || "").trim(), hosts: hosts.map(function (h) { return h.name; }), commands: CANONICAL_SHELL_COMMANDS.map(function (command) { return command.name; }) };
 	fs.appendFileSync(path.join(historyDir, "install-history.jsonl"), JSON.stringify(record) + "\n");
 }
 function writeRuntimeVersionState(projectRoot, hosts, options) {
@@ -1787,6 +1925,7 @@ function installForHost(projectRoot, host, callback) {
 	ensureProjectEnvFiles(projectRoot);
 	ensureEmbAgentProjectConfig(projectRoot);
 	ensureEmbAgentProjectContract(projectRoot, { developer: "" });
+	cleanupProjectStateLayout(projectRoot);
 	ensureDir(path.join(projectRoot, "docs"));
 	ensureDir(path.join(projectRoot, "docs", "prd"));
 	ensureDir(path.join(embDir, "bin"));
@@ -1911,6 +2050,7 @@ function installForHost(projectRoot, host, callback) {
 			} catch (_) {}
 		}
 		ensureEmbAgentProjectContract(projectRoot, { developer: "" });
+		cleanupProjectStateLayout(projectRoot);
 		function finishDone() {
 			logDetail("Done. emb-agent is now installed for your AI runtime.");
 			if (process.env._EMB_INSTALL_DONE) process.exit(0);

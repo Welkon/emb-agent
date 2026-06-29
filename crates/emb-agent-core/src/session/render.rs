@@ -40,7 +40,11 @@ pub fn build_statusline_for_host(
     build_statusline_inner(snapshot, session_payload, color)
 }
 
-fn build_statusline_inner(snapshot: &ProjectSnapshot, session_payload: &str, color: bool) -> String {
+fn build_statusline_inner(
+    snapshot: &ProjectSnapshot,
+    session_payload: &str,
+    color: bool,
+) -> String {
     if !snapshot.initialized && snapshot.project_root.is_empty() {
         return "emb · onboard".to_string();
     }
@@ -67,6 +71,13 @@ fn build_statusline_inner(snapshot: &ProjectSnapshot, session_payload: &str, col
     if !snapshot.git_branch.is_empty() {
         parts.push(paint(color, "35", &snapshot.git_branch));
     }
+    if snapshot.git_dirty_count > 0 {
+        parts.push(paint(
+            color,
+            "33",
+            &format!("dirty {}", snapshot.git_dirty_count),
+        ));
+    }
     if let Some(duration) = session.duration_label() {
         parts.push(duration);
     }
@@ -91,7 +102,10 @@ fn build_statusline_inner(snapshot: &ProjectSnapshot, session_payload: &str, col
             paint(color, "33", &format!("({})", task.status))
         );
         if !task.package.is_empty() {
-            task_line.push_str(&format!(" {}", paint(color, "90", &format!("[{}]", task.package))));
+            task_line.push_str(&format!(
+                " {}",
+                paint(color, "90", &format!("[{}]", task.package))
+            ));
         }
         lines.push(task_line);
     }
@@ -101,7 +115,10 @@ fn build_statusline_inner(snapshot: &ProjectSnapshot, session_payload: &str, col
     let width = terminal_width();
     if let Some(width) = width
         && !rate_parts.is_empty()
-        && visible_len(&info_line) + visible_len(&paint(color, "90", " · ")) + visible_len(&rate_parts.join(" · ")) > width
+        && visible_len(&info_line)
+            + visible_len(&paint(color, "90", " · "))
+            + visible_len(&rate_parts.join(" · "))
+            > width
     {
         lines.push(info_line);
         lines.push(rate_parts.join(&paint(color, "90", " · ")));
@@ -178,7 +195,11 @@ impl StatuslineSession {
         if self.context_size == 0 || model_mentions_context(&self.model) {
             Some(self.model.clone())
         } else {
-            Some(format!("{} ({})", self.model, format_context_size(self.context_size)))
+            Some(format!(
+                "{} ({})",
+                self.model,
+                format_context_size(self.context_size)
+            ))
         }
     }
 
@@ -213,7 +234,11 @@ impl StatuslineSession {
                 {
                     item.push_str(&format!(
                         " {}",
-                        paint(color, "90", &format!("(reset {})", format_remaining(reset - now)))
+                        paint(
+                            color,
+                            "90",
+                            &format!("(reset {})", format_remaining(reset - now))
+                        )
                     ));
                 }
                 item
@@ -363,12 +388,13 @@ fn subagent_delegation_policy(action: &str) -> Value {
         "main_session_default": if task_implementation_default {
             "dispatch implementation plus independent check subagents when the host exposes a subagent tool"
         } else {
-            "use read-only scouts/reviewers for broad or high-risk work; keep narrow explanations direct"
+            "use read-only scouts/researchers/reviewers for broad or high-risk work; keep narrow explanations direct"
         },
         "required_before_task_implementation": task_implementation_default,
         "post_implementation_check_required": task_implementation_default,
         "execution_flow": [
             "knowledge_search_or_project_truth_prime",
+            "researcher_or_read_only_scout_for_context_gaps",
             "focused_implementation_worker",
             "independent_release_or_system_check",
             "parent_synthesis_and_finish_work"
@@ -385,18 +411,19 @@ fn subagent_delegation_policy(action: &str) -> Value {
             "multiple_peripherals_or_power_domains",
             "sleep_wake_watchdog_lvd_or_config_bit_risk",
             "toolchain_migration_or_sdk_library_integration",
+            "external_docs_vendor_api_or_research_heavy_context",
             "implementation_plus_independent_review",
             "large_context_recon_before_editing"
         ],
         "first_step": "list_available_subagents_before_broad_execution",
         "recommended_roles": [
             "hardware/register evidence scout",
-            "context/planning scout",
+            "research/context scout",
             "focused implementation worker",
             "architecture/system reviewer",
             "release/check reviewer"
         ],
-        "prd_exploration_scope": "read-only evidence scouts and reviewers are allowed during PRD exploration; implementation workers wait until a concrete task is active"
+        "prd_exploration_scope": "read-only evidence scouts, researchers, and reviewers are allowed during PRD exploration; implementation workers wait until a concrete task is active"
     })
 }
 
@@ -634,7 +661,10 @@ fn compact_text(value: &str, max_chars: usize) -> String {
     if compact.chars().count() <= max_chars {
         return compact;
     }
-    let mut out = compact.chars().take(max_chars.saturating_sub(3)).collect::<String>();
+    let mut out = compact
+        .chars()
+        .take(max_chars.saturating_sub(3))
+        .collect::<String>();
     out.push_str("...");
     out
 }
@@ -750,8 +780,8 @@ You are the user's embedded development assistant. Start with onboarding, not im
         if !snapshot.developer.is_empty() {
             lines.push(format!("Developer: {}", snapshot.developer));
         }
-        if !snapshot.git_branch.is_empty() {
-            lines.push(format!("Git branch: {}", snapshot.git_branch));
+        if let Some(git) = git_status_summary(snapshot) {
+            lines.push(format!("Git status: {}", git));
         }
         if let Some(block) = workflow_state_block(snapshot) {
             lines.push("<workflow-md-state>".to_string());
@@ -822,8 +852,8 @@ You are the user's embedded development assistant. Start with onboarding, not im
         snapshot.system_prd_exists, snapshot.system_prd_has_content, snapshot.child_prd_count
     ));
     lines.push(format!("Wiki pages: {}", snapshot.wiki_pages));
-    if !snapshot.git_branch.is_empty() {
-        lines.push(format!("Git branch: {}", snapshot.git_branch));
+    if let Some(git) = git_status_summary(snapshot) {
+        lines.push(format!("Git status: {}", git));
     }
     if let Some(task) = &snapshot.current_task {
         lines.push(format!("Active task: {} ({})", task.name, task.title));
@@ -848,7 +878,7 @@ You are the user's embedded development assistant. Start with onboarding, not im
         "Routing gate — before implementation or broad file exploration:".to_string(),
         "Run the current host's emb-next entry (for example `/emb-next`, `$emb-next`, or the installed runtime command `node .<host>/emb-agent/bin/emb-agent.cjs next --brief`) and follow `agent_protocol.gate` exactly.".to_string(),
         "Do not manually explore files or decide next steps on your own until you have that routing recommendation.".to_string(),
-        "Subagent policy: if the host exposes a subagent/delegation tool, active task implementation defaults to main-session coordination with focused implementation and independent check subagents; the main session synthesizes results, handles closure docs, and runs `/emb-finish-work`. For system framework design, multiple peripherals, power/sleep/watchdog/LVD/config-bit risk, toolchain migration, SDK/library integration, or implementation plus review, list available subagents first and dispatch read-only scouts/reviewers or focused workers instead of doing the whole job inline. Subagents must not recursively spawn more emb-agent subagents. During PRD exploration, read-only evidence scouts are allowed; implementation workers wait for an active concrete task.".to_string(),
+        "Subagent policy: if the host exposes a subagent/delegation tool, active task implementation defaults to main-session coordination with focused implementation and independent check subagents; the main session synthesizes results, handles closure docs, and runs `/emb-finish-work`. For system framework design, multiple peripherals, power/sleep/watchdog/LVD/config-bit risk, toolchain migration, SDK/library integration, vendor/API research, or implementation plus review, list available subagents first and dispatch read-only scouts, the `researcher`, reviewers, or focused workers instead of doing the whole job inline. Subagents must not recursively spawn more emb-agent subagents. During PRD exploration, read-only evidence scouts and `researcher` are allowed; implementation workers wait for an active concrete task.".to_string(),
         "When the user explicitly asks what a service split, scheduler path, or time-slice call chain means, treat explanation-first as a valid direct route; do not force task creation just to answer that question.".to_string(),
         String::new(),
         "Rules:".to_string(),
@@ -1037,15 +1067,15 @@ pub fn build_next_json_with_tasks_and_policy(
 ) -> String {
     let has_truth_errors = !snapshot.truth_validation_errors.is_empty();
     let truth_errors_summary = snapshot.truth_validation_errors.join("; ");
-    let (action, instructions): (String, String) = if has_truth_errors {
-        (
-            "repair-truth".to_string(),
-            "Project truth validation failed. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml, then run the installed emb-agent runtime's health command before continuing. Do not start implementation while truth files are invalid.".to_string(),
-        )
-    } else if snapshot.recommended_command == "onboard" {
+    let (action, instructions): (String, String) = if snapshot.recommended_command == "onboard" {
         (
             "onboard".to_string(),
             "Project needs onboarding. Trigger `/emb-start` or the installed runtime's `start --brief`; audit existing hardware docs before declaring hardware or implementing.".to_string(),
+        )
+    } else if has_truth_errors {
+        (
+            "repair-truth".to_string(),
+            "Project truth validation failed. Repair .emb-agent/hw.yaml and .emb-agent/req.yaml, then run the installed emb-agent runtime's health command before continuing. Do not start implementation while truth files are invalid.".to_string(),
         )
     } else if snapshot.recommended_command == "clarify" {
         ("clarify".to_string(), clarify_instructions(snapshot))
@@ -1232,7 +1262,7 @@ fn build_next_agent_protocol_with_policy(
                         "complex_task_implementation": ".emb-agent/tasks/<task>/implement.md when execution order, validation commands, or rollback points need a durable plan",
                         "research": ".emb-agent/tasks/<task>/research/<topic>.md when a delegated scout/research pass produces reusable evidence"
                     },
-                    "research_rule": "During planning, read-only scout/reviewer subagents may collect evidence; persist reusable findings into task research files instead of leaving them only in chat."
+                    "research_rule": "During planning, read-only scout/researcher/reviewer subagents may collect evidence; persist reusable findings into task research files instead of leaving them only in chat."
                 },
                 "document_evidence_policy": {
                     "hardware_first": hardware_docs_pending,
@@ -1250,9 +1280,11 @@ fn build_next_agent_protocol_with_policy(
                 "suggested_read_only_roles": {
                     "bug_audit": ["bug-hunter", "sys-reviewer"],
                     "hardware_evidence": ["hw-scout"],
+                    "general_research": ["researcher"],
+                    "toolchain_or_sdk_research": ["researcher"],
                     "architecture_review": ["arch-reviewer", "sys-reviewer"]
                 },
-                "allowed_actions": ["scan_docs_for_hardware_evidence", "ingest_schematic", "ingest_datasheet_or_manual", "read_cached_schematic_and_manual_artifacts", "delegate_read_only_hardware_evidence_scout", "delegate_read_only_bug_hunter", "delegate_read_only_system_reviewer", "delegate_read_only_toolchain_or_sdk_feasibility_scout", "delegate_read_only_architecture_reviewer", "persist_planning_research_to_task_file", "perform_read_only_bug_audit", "perform_direct_bounded_analysis_without_task", "run_one_off_verification_without_task", "summarize_findings_without_edits", "record_unconfirmed_hardware_conflicts", "brainstorm_with_user", "ask_one_load_bearing_question", "ask_one_load_bearing_question_with_recommended_answer", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "trigger_task_add_after_user_confirms_concrete_deliverable_or_bug", "draft_agent_brief_from_confirmed_scope", "activate_task_after_agent_brief_ready", "extract_and_record_exact_timing_percent_times_from_captures", "verify_watchdog_and_sleep_policy", "verify_config_bit_dependencies", "record_current_measurement_acceptance"],
+                "allowed_actions": ["scan_docs_for_hardware_evidence", "ingest_schematic", "ingest_datasheet_or_manual", "read_cached_schematic_and_manual_artifacts", "delegate_read_only_hardware_evidence_scout", "delegate_read_only_researcher", "delegate_read_only_bug_hunter", "delegate_read_only_system_reviewer", "delegate_read_only_toolchain_or_sdk_feasibility_scout", "delegate_read_only_architecture_reviewer", "persist_planning_research_to_task_file", "perform_read_only_bug_audit", "perform_direct_bounded_analysis_without_task", "run_one_off_verification_without_task", "summarize_findings_without_edits", "record_unconfirmed_hardware_conflicts", "brainstorm_with_user", "ask_one_load_bearing_question", "ask_one_load_bearing_question_with_recommended_answer", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "trigger_task_add_after_user_confirms_concrete_deliverable_or_bug", "draft_agent_brief_from_confirmed_scope", "activate_task_after_agent_brief_ready", "extract_and_record_exact_timing_percent_times_from_captures", "verify_watchdog_and_sleep_policy", "verify_config_bit_dependencies", "record_current_measurement_acceptance"],
                 "forbidden_actions": ["skip_existing_docs_before_question_when_hardware_first", "create_implementation_task_without_confirmed_scope", "start_implementation", "edit_source_during_read_only_bug_audit", "delegate_implementation_worker_before_confirmed_scope", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params", "assume_watchdog_behavior_without_config_truth", "assume_sleep_current_without_shutdown_plan"],
                 "recommended_command": "/emb-next"
             }
@@ -1305,7 +1337,7 @@ fn build_next_agent_protocol_with_policy(
                 "required_brief_fields": ["current_behavior", "desired_behavior", "hardware_facts", "firmware_interfaces", "acceptance_criteria", "out_of_scope", "required_verification"],
                 "slice_rule": "Use vertical tracer-bullet slices: each slice must deliver one narrow but complete observable path across firmware, hardware truth, docs, and verification surfaces.",
                 "direct_work_allowed_for": ["design_explanation", "explanation_only", "narrow_read_only_analysis", "one_off_verification_run", "small_scoped_fix"],
-                "allowed_actions": ["present_existing_task_candidates", "present_child_prd_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "list_available_subagents_before_broad_execution", "delegate_read_only_recon_or_review", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear", "create_task_from_selected_child_prd", "explain_existing_structure_before_refactor", "walk_service_and_time_slice_flow", "perform_direct_bounded_analysis_without_task", "perform_direct_bounded_fix_without_task", "run_one_off_verification_without_task"],
+                "allowed_actions": ["present_existing_task_candidates", "present_child_prd_candidates", "classify_work_category", "offer_new_task_or_bug", "ask_user_to_choose_work_path", "draft_agent_brief", "split_into_vertical_slices", "list_available_subagents_before_broad_execution", "delegate_read_only_researcher", "delegate_read_only_recon_or_review", "trigger_task_activate_after_explicit_ready_task_choice", "trigger_task_add_after_scope_clear", "create_task_from_selected_child_prd", "explain_existing_structure_before_refactor", "walk_service_and_time_slice_flow", "perform_direct_bounded_analysis_without_task", "perform_direct_bounded_fix_without_task", "run_one_off_verification_without_task"],
                 "forbidden_actions": ["force_existing_task_activation", "ask_user_to_run_task_list", "ask_user_to_run_task_activate", "invent_task_name", "start_broad_or_multi_area_implementation_without_selected_or_created_ready_task", "run_shell_command_for_emb_slash_command", "create_horizontal_layer_tasks", "ignore_child_prd_candidates"],
             }
         })
@@ -1320,7 +1352,7 @@ fn build_next_agent_protocol_with_policy(
                 "delegation_policy": subagent_delegation_policy(action),
                 "categories": ["bug", "feature", "board-bringup", "power", "timing", "toolchain"],
                 "direct_work_allowed_for": ["design_explanation", "explanation_only", "narrow_read_only_analysis", "one_off_verification_run", "small_scoped_fix"],
-                "allowed_actions": ["classify_work_category", "answer_design_or_structure_question_directly", "walk_service_and_time_slice_flow", "list_available_subagents_before_broad_execution", "delegate_read_only_recon_or_review", "perform_direct_bounded_analysis_without_task", "perform_direct_bounded_fix_without_task", "run_one_off_verification_without_task", "trigger_task_add_after_scope_clear"],
+                "allowed_actions": ["classify_work_category", "answer_design_or_structure_question_directly", "walk_service_and_time_slice_flow", "list_available_subagents_before_broad_execution", "delegate_read_only_researcher", "delegate_read_only_recon_or_review", "perform_direct_bounded_analysis_without_task", "perform_direct_bounded_fix_without_task", "run_one_off_verification_without_task", "trigger_task_add_after_scope_clear"],
                 "forbidden_actions": ["force_task_creation_for_explanation", "force_task_creation_for_small_fix", "start_broad_multi_area_implementation_without_agreed_scope"],
                 "recommended_command": "/emb-next"
             }
@@ -1333,7 +1365,7 @@ fn build_next_agent_protocol_with_policy(
                 "kind": "task-execution",
                 "blocking": false,
                 "delegation_policy": subagent_delegation_policy(action),
-                "allowed_actions": ["explain_existing_structure_in_task_scope", "walk_time_slice_or_service_call_graph", "refine_brief_in_scope", "list_available_subagents_before_broad_execution", "delegate_read_only_recon_or_review", "delegate_focused_implementation_worker", "implement_within_task_scope", "verify_within_task_scope"],
+                "allowed_actions": ["explain_existing_structure_in_task_scope", "walk_time_slice_or_service_call_graph", "refine_brief_in_scope", "list_available_subagents_before_broad_execution", "delegate_read_only_researcher", "delegate_read_only_recon_or_review", "delegate_focused_implementation_worker", "implement_within_task_scope", "verify_within_task_scope"],
                 "preferred_first_step_when_user_signals_confusion": ["explain_existing_structure_in_task_scope", "walk_time_slice_or_service_call_graph", "propose_refactor_only_after_shared_understanding"],
                 "forbidden_actions": ["broad_file_scan_outside_task_scope", "invent_new_cross_project_scope_without_updating_task"]
             }
@@ -1622,6 +1654,12 @@ pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
             "package": snapshot.mcu_package,
             "developer": snapshot.developer,
             "branch": snapshot.git_branch,
+            "git": {
+                "branch": snapshot.git_branch,
+                "dirty": snapshot.git_dirty_count > 0,
+                "dirty_paths": snapshot.git_dirty_count,
+                "summary": git_status_summary(snapshot).unwrap_or_default()
+            },
             "bootstrap": snapshot.bootstrap_status,
             "workflow": snapshot.workflow_state,
             "firmware_layout": default_firmware_layout(Path::new(&snapshot.project_root))
@@ -1991,6 +2029,30 @@ fn fallback<'a>(value: &'a str, default_value: &'a str) -> &'a str {
     }
 }
 
+fn git_status_summary(snapshot: &ProjectSnapshot) -> Option<String> {
+    if snapshot.git_branch.is_empty() && snapshot.git_dirty_count == 0 {
+        return None;
+    }
+    let status = if snapshot.git_dirty_count == 0 {
+        "clean".to_string()
+    } else {
+        format!(
+            "dirty {} {}",
+            snapshot.git_dirty_count,
+            if snapshot.git_dirty_count == 1 {
+                "path"
+            } else {
+                "paths"
+            }
+        )
+    };
+    if snapshot.git_branch.is_empty() {
+        Some(status)
+    } else {
+        Some(format!("branch {}; {}", snapshot.git_branch, status))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2009,6 +2071,7 @@ mod tests {
             default_package: "core".to_string(),
             active_package: "core".to_string(),
             git_branch: "beta".to_string(),
+            git_dirty_count: 2,
             open_tasks: 1,
             wiki_pages: 1,
             current_task: Some(TaskSnapshot {
@@ -2060,6 +2123,8 @@ mod tests {
         assert!(line.contains("CTRL-123 QFN32"));
         assert!(line.contains("1 task(s)"));
         assert!(line.contains("var esp32-c3"));
+        assert!(line.contains("beta"));
+        assert!(line.contains("dirty 2"));
         assert!(line.contains("[P1] Implement ADC"));
         assert!(line.contains("(active)"));
         assert!(line.contains("next do"));
@@ -2110,6 +2175,13 @@ mod tests {
             "Respond to the user in Simplified Chinese (中文), unless the user explicitly asks for another language."
         );
         assert_eq!(status["tasks"]["active"], "task-1");
+        assert_eq!(status["project"]["git"]["branch"], "beta");
+        assert_eq!(status["project"]["git"]["dirty"], true);
+        assert_eq!(status["project"]["git"]["dirty_paths"], 2);
+        assert_eq!(
+            status["project"]["git"]["summary"],
+            "branch beta; dirty 2 paths"
+        );
 
         assert_eq!(status["prd"]["system_prd"], true);
         assert_eq!(status["prd"]["child_prd_count"], 1);
@@ -2149,8 +2221,10 @@ mod tests {
         assert!(context.contains("independent check subagents"));
         assert!(context.contains("system framework design"));
         assert!(context.contains("toolchain migration"));
+        assert!(context.contains("vendor/API research"));
+        assert!(context.contains("`researcher`"));
         assert!(context.contains("must not recursively spawn"));
-        assert!(context.contains("read-only evidence scouts are allowed"));
+        assert!(context.contains("read-only evidence scouts and `researcher` are allowed"));
     }
 
     #[test]
@@ -2203,7 +2277,7 @@ mod tests {
         assert_eq!(gate["kind"], "prd-exploration");
         assert_eq!(
             gate["delegation_policy"]["prd_exploration_scope"],
-            "read-only evidence scouts and reviewers are allowed during PRD exploration; implementation workers wait until a concrete task is active"
+            "read-only evidence scouts, researchers, and reviewers are allowed during PRD exploration; implementation workers wait until a concrete task is active"
         );
         assert_eq!(
             gate["brainstorm_contract"]["evidence_rule"],
@@ -2212,6 +2286,20 @@ mod tests {
         assert_eq!(
             gate["brainstorm_contract"]["artifact_rules"]["task_prd"],
             "docs/prd/tasks/<task>.md records task-local goal, requirements, acceptance, out-of-scope, open questions, and evidence"
+        );
+        assert!(
+            gate["allowed_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item == "delegate_read_only_researcher")
+        );
+        assert!(
+            gate["suggested_read_only_roles"]["general_research"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item == "researcher")
         );
         assert!(
             gate["allowed_actions"]

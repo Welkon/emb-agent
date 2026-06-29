@@ -136,11 +136,6 @@ pub fn task_add_with_deps(
         serde_json::to_string_pretty(&task).unwrap_or_default(),
     );
 
-    // Create empty context files
-    for f in &["implement.jsonl", "check.jsonl", "debug.jsonl"] {
-        let _ = fs::write(task_dir.join(f), "");
-    }
-
     let project_root = project_root_from_ext_dir(ext_dir);
     let prd_abs = project_root.join(&prd_path);
     if let Some(parent) = prd_abs.parent() {
@@ -149,6 +144,7 @@ pub fn task_add_with_deps(
     if !prd_abs.exists() {
         let _ = fs::write(&prd_abs, task_prd_template(&name, summary, &category));
     }
+    write_task_context_manifests(&task_dir, &name, &prd_path);
 
     format!(
         "{{\"status\":\"ok\",\"created\":true,\"task\":{{\"name\":{},\"title\":{},\"status\":\"pending\",\"priority\":{},\"category\":{},\"triage_state\":\"needs-triage\",\"human_gate\":{},\"prd\":{}}},\"task_optional\":true,\"direct_work_allowed_for\":[\"design_explanation\",\"narrow_read_only_analysis\",\"one_off_verification_run\",\"small_scoped_fix\"],\"next\":\"brainstorm contract\",\"next_instructions\":\"Task created as a durable container with a PRD artifact. Before activation, inspect project evidence, update the PRD with confirmed facts and acceptance criteria, ask one load-bearing product or risk decision at a time with a recommended answer, and keep complex design/implementation notes in task-local design.md and implement.md when needed. If the request is only a narrow explanation, one-off verification, or small scoped fix, this task can stay pending while the work proceeds directly.\",\"activation_command\":\"/emb:task activate {}\"}}",
@@ -160,6 +156,46 @@ pub fn task_add_with_deps(
         json_quote(&prd_path),
         name
     )
+}
+
+fn write_task_context_manifests(task_dir: &Path, name: &str, prd_path: &str) {
+    let examples = [
+        (
+            "implement.jsonl",
+            "implementation",
+            "Add source, SDK, design, or local research files the fw-doer must read before editing.",
+        ),
+        (
+            "check.jsonl",
+            "check",
+            "Add review specs, acceptance notes, generated reports, or changed-file context for release-checker/sys-reviewer.",
+        ),
+        (
+            "debug.jsonl",
+            "debug",
+            "Add reproduction logs, traces, register dumps, or failing test fixtures for bug-hunter.",
+        ),
+    ];
+    for (file, role, guidance) in examples {
+        let seed = json!({
+            "_example": {
+                "role": role,
+                "file": prd_path,
+                "reason": format!("Task PRD for {name}")
+            },
+            "guidance": guidance,
+            "format": "One JSON object per line. Use {\"file\":\"path/to/file.md\",\"reason\":\"why\"} or {\"file\":\"path/to/dir/\",\"type\":\"directory\",\"reason\":\"why\"}. Paths are project-relative."
+        });
+        let path = task_dir.join(file);
+        if !path.exists()
+            || fs::read_to_string(&path)
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+        {
+            let _ = fs::write(path, format!("{seed}\n"));
+        }
+    }
 }
 
 fn task_prd_template(name: &str, summary: &str, category: &str) -> String {
@@ -180,10 +216,7 @@ fn task_prd_template(name: &str, summary: &str, category: &str) -> String {
 - TODO: Ask one load-bearing product, hardware, power, timing, risk, or acceptance decision at a time.\n\n\
 ## Evidence And Research\n\n\
 - TODO: Cite project files, parsed docs, schematic evidence, session notes, or task-local research files used during planning.\n",
-        summary,
-        summary,
-        name,
-        category
+        summary, summary, name, category
     )
 }
 

@@ -532,7 +532,7 @@ function formatEmbStatusLines(r: EmbAgentResult, update?: EmbAgentResult | null)
 // Native emb-agent subagent dispatch and session insight
 // ---------------------------------------------------------------------------
 
-const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer", "sys-reviewer"]);
+const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "researcher", "bug-hunter", "arch-reviewer", "sys-reviewer"]);
 const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "release-checker", "onboard"]);
 const SUPPORTED_AGENT_NAMES = new Set([...READ_ONLY_AGENT_NAMES, ...WRITE_CAPABLE_AGENTS]);
 const PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS = 180_000;
@@ -558,6 +558,7 @@ const LOW_POWER_DEBUG_GATE = "For STOP/sleep/current/wake bugs, first prove the 
 
 const INHERIT_MODEL_ROUTES: Record<string, ModelRoute> = {
   "hw-scout": { model: "inherit" },
+  "researcher": { model: "inherit" },
   "release-checker": { model: "inherit" },
   "arch-reviewer": { model: "inherit" },
   "bug-hunter": { model: "inherit" },
@@ -568,6 +569,7 @@ const INHERIT_MODEL_ROUTES: Record<string, ModelRoute> = {
 
 const LEGACY_AUTO_AGENT_MODEL_ROUTES: Record<string, ModelRoute> = {
   "hw-scout": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
+  "researcher": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
   "release-checker": { model: "deepseek/deepseek-v4-flash", thinking: "off" },
   "arch-reviewer": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
   "bug-hunter": { model: "deepseek/deepseek-v4-pro", thinking: "high" },
@@ -779,11 +781,14 @@ function dispatchPhase(result: EmbAgentResult): DispatchPhase {
 function rolePrompt(role: string, intent: DispatchIntent, userPrompt: string, result: EmbAgentResult, targetTask?: string, previousOutput?: string): string {
   const taskLine = targetTask ? `Target task: ${targetTask}` : "Target task: none selected";
   const taskGuard = targetTask
-    ? `Stay inside the target task. Read .emb-agent/tasks/${targetTask}/task.json first, then read the PRD path listed in task.json artifacts.prd (fallback: .emb-agent/tasks/${targetTask}/prd.md if present), plus task-local design.md/implement.md when present. Do not broaden into unrelated tasks.`
+    ? `Stay inside the target task. Read .emb-agent/tasks/${targetTask}/task.json first, then read the PRD path listed in task.json artifacts.prd (fallback: .emb-agent/tasks/${targetTask}/prd.md if present), plus task-local research/*.md, design.md, and implement.md when present. Do not broaden into unrelated tasks.`
     : "Do not invent a task target. If implementation is requested but no target task exists, report the missing selection instead of editing broadly.";
   const previous = previousOutput ? `\n\nPrevious subagent output to use as context:\n${previousOutput.slice(0, MAX_SUBAGENT_OUTPUT)}` : "";
   const directives: Record<string, string> = {
     "hw-scout": "Collect only hardware/manual/schematic evidence needed for the target work. Cite exact cached document paths, registers, pins, nets, config bits, and uncertainty. Do not edit files.",
+    "researcher": targetTask
+      ? `Research code, docs, SDKs, APIs, toolchains, vendor examples, and migration constraints for this target. Persist reusable evidence only under .emb-agent/tasks/${targetTask}/research/<topic>.md; do not edit source, PRD, truth files, host config, or task.json.`
+      : "Research the explicit question only. If durable output is needed, report that the parent session must select a task or provide .emb-agent/tasks/<task>/research/<topic>.md before persistence.",
     "fw-doer": targetTask
       ? "Implement only the target task. You MUST create or edit the required repository files for that target when implementation is requested. Make minimal source edits, preserve project conventions, and stop after the scoped implementation plus local validation evidence. Do not implement downstream dependent tasks unless explicitly targeted."
       : "Implementation was requested but no target task was selected. Do not make broad edits; report the missing target and ask for scope.",
@@ -810,34 +815,50 @@ function intentForRole(role: string): DispatchIntent {
   if (role === "bug-hunter") return "debug";
   if (role === "arch-reviewer") return "architecture";
   if (role === "sys-reviewer") return "system-review";
+  if (role === "researcher") return "evidence";
   if (READ_ONLY_AGENT_NAMES.has(role)) return "evidence";
   return "implementation";
+}
+
+function needsResearchPreflight(prompt: string): boolean {
+  const text = prompt.toLowerCase();
+  const research = /(research|investigate|feasibility|external|vendor|sdk|api|library|example|sample|toolchain|migration|documentation|docs|protocol|compatibility|调研|研究|可行性|外部|供应商|接口|库|示例|工具链|迁移|文档|协议|兼容)/i.test(text);
+  const hardwareOnly = /(hardware|schematic|register|pinout|pin map|pcb|datasheet|manual|硬件|原理图|寄存器|引脚|手册)/i.test(text);
+  return research && !hardwareOnly;
 }
 
 function buildDispatchPlan(prompt: string, result: EmbAgentResult): SubagentDispatchPlan {
   const phase = dispatchPhase(result);
   const targetTask = selectTargetTask(result);
   if (phase === "prd-exploration") {
+    const runs: SubagentDispatchRun[] = [
+      { role: "hw-scout", intent: "evidence", writable: false, prompt: rolePrompt("hw-scout", "evidence", prompt, result) },
+      { role: "sys-reviewer", intent: "system-review", writable: false, prompt: rolePrompt("sys-reviewer", "system-review", prompt, result) },
+    ];
+    if (needsResearchPreflight(prompt)) {
+      runs.unshift({ role: "researcher", intent: "evidence", writable: false, prompt: rolePrompt("researcher", "evidence", prompt, result) });
+    }
     return {
       phase,
       mode: "parallel",
-      reason: "PRD exploration allows read-only evidence scouts/reviewers only.",
-      runs: [
-        { role: "hw-scout", intent: "evidence", writable: false, prompt: rolePrompt("hw-scout", "evidence", prompt, result) },
-        { role: "sys-reviewer", intent: "system-review", writable: false, prompt: rolePrompt("sys-reviewer", "system-review", prompt, result) },
-      ],
+      reason: "PRD exploration allows read-only evidence scouts/researchers/reviewers only.",
+      runs,
     };
   }
   if (phase === "prd-breakdown") {
+    const runs: SubagentDispatchRun[] = [
+      { role: "hw-scout", intent: "evidence", writable: false, prompt: rolePrompt("hw-scout", "evidence", prompt, result) },
+      { role: "arch-reviewer", intent: "architecture", writable: false, prompt: rolePrompt("arch-reviewer", "architecture", prompt, result) },
+      { role: "sys-reviewer", intent: "system-review", writable: false, prompt: rolePrompt("sys-reviewer", "system-review", prompt, result) },
+    ];
+    if (needsResearchPreflight(prompt)) {
+      runs.unshift({ role: "researcher", intent: "evidence", writable: false, prompt: rolePrompt("researcher", "evidence", prompt, result) });
+    }
     return {
       phase,
       mode: "parallel",
       reason: "PRD breakdown needs evidence plus architecture/system review before task creation.",
-      runs: [
-        { role: "hw-scout", intent: "evidence", writable: false, prompt: rolePrompt("hw-scout", "evidence", prompt, result) },
-        { role: "arch-reviewer", intent: "architecture", writable: false, prompt: rolePrompt("arch-reviewer", "architecture", prompt, result) },
-        { role: "sys-reviewer", intent: "system-review", writable: false, prompt: rolePrompt("sys-reviewer", "system-review", prompt, result) },
-      ],
+      runs,
     };
   }
   if (phase === "work-selection" || phase === "task-execution") {
@@ -849,25 +870,32 @@ function buildDispatchPlan(prompt: string, result: EmbAgentResult): SubagentDisp
       : [
           { role: "fw-doer", intent: "implementation", writable: true, targetTask, prompt: rolePrompt("fw-doer", "implementation", prompt, result, targetTask) },
         ];
+    if (targetTask && needsResearchPreflight(prompt)) {
+      runs.unshift({ role: "researcher", intent: "evidence", writable: false, targetTask, prompt: rolePrompt("researcher", "evidence", prompt, result, targetTask) });
+    }
     return {
       phase,
       targetTask,
       mode: targetTask ? "chain" : "single",
       reason: targetTask
-        ? `Implementation dispatch scoped to target task: ${targetTask}. Main-session default is fw-doer followed by release-checker; add hw-scout/sys-reviewer only when fresh hardware or system evidence is needed.`
+        ? `Implementation dispatch scoped to target task: ${targetTask}. Main-session default is researcher first when SDK/toolchain/API evidence is missing, then fw-doer followed by release-checker; add hw-scout/sys-reviewer only when fresh hardware or system evidence is needed.`
         : "Implementation request has no selected task; fw-doer must refuse broad edits and ask for scope.",
       runs,
     };
+  }
+  const runs: SubagentDispatchRun[] = [
+    { role: "hw-scout", intent: "evidence", writable: false, targetTask, prompt: rolePrompt("hw-scout", "evidence", prompt, result, targetTask) },
+    { role: "arch-reviewer", intent: "architecture", writable: false, targetTask, prompt: rolePrompt("arch-reviewer", "architecture", prompt, result, targetTask) },
+    { role: "sys-reviewer", intent: "system-review", writable: false, targetTask, prompt: rolePrompt("sys-reviewer", "system-review", prompt, result, targetTask) },
+  ];
+  if (needsResearchPreflight(prompt)) {
+    runs.unshift({ role: "researcher", intent: "evidence", writable: false, targetTask, prompt: rolePrompt("researcher", "evidence", prompt, result, targetTask) });
   }
   return {
     phase,
     mode: "parallel",
     reason: "Broad firmware request needs read-only reconnaissance and review before inline work.",
-    runs: [
-      { role: "hw-scout", intent: "evidence", writable: false, targetTask, prompt: rolePrompt("hw-scout", "evidence", prompt, result, targetTask) },
-      { role: "arch-reviewer", intent: "architecture", writable: false, targetTask, prompt: rolePrompt("arch-reviewer", "architecture", prompt, result, targetTask) },
-      { role: "sys-reviewer", intent: "system-review", writable: false, targetTask, prompt: rolePrompt("sys-reviewer", "system-review", prompt, result, targetTask) },
-    ],
+    runs,
   };
 }
 
@@ -1038,6 +1066,7 @@ function buildSubagentPrompt(role: string, userPrompt: string, result?: EmbAgent
   const nextLines = result ? renderNextLines(result) : [];
   const focus: Record<string, string> = {
     "hw-scout": "Locate hardware/register/manual/schematic/pin-map facts. Return evidence paths, exact constraints, gaps, and firmware risks.",
+    "researcher": "Research code, docs, SDKs, APIs, toolchains, vendor examples, and migration constraints. Persist reusable task evidence to .emb-agent/tasks/<task>/research/<topic>.md when a target task exists.",
     "fw-doer": "Implement focused firmware changes in the repository. Keep edits scoped, preserve project conventions, and report changed files plus validation evidence.",
     "arch-reviewer": "Review architecture/framework boundaries, scheduler/timing implications, ISR boundaries, RAM/ROM risk, and safe vertical slices.",
     "sys-reviewer": "Review requirements, concurrency, power/sleep/wakeup behavior, verification order, and system-level failure modes.",
@@ -1649,7 +1678,7 @@ export default function (pi: ExtensionAPI) {
       `Before reading firmware/source files, call knowledge_search first; use direct source reads only after emb-agent knowledge has primed project truth, requirements, prior notes, and manual/register evidence. ` +
       `For project knowledge, design rationale, previous PRDs/tasks/wiki/manual chunks, or register/peripheral evidence, prefer knowledge_search first and then doc_lookup/doc_fetch for source detail. ` +
       `Never read raw PDFs directly; parse/cache them with ingest_doc first. Never read raw schematic files directly; route .SchDoc/.sch/.kicad_sch through ingest_doc kind=schematic or CLI ingest schematic, then inspect parsed/advice artifacts. ` +
-      `For active task implementation, main-session default is Pi subagent dispatch: fw-doer followed by release-checker, with hw-scout/bug-hunter/arch-reviewer/sys-reviewer added only when that evidence is needed. For multi-domain firmware/hardware/debug work, use Pi subagents instead of continuing inline. ` +
+      `For active task implementation, main-session default is Pi subagent dispatch: researcher first when SDK/toolchain/API evidence is missing, then fw-doer followed by release-checker, with hw-scout/bug-hunter/arch-reviewer/sys-reviewer added only when that evidence is needed. For multi-domain firmware/hardware/debug work, use Pi subagents instead of continuing inline. ` +
       `${LOW_POWER_DEBUG_GATE}\n` +
       `<!-- EMB-AGENT PROJECT STATE END -->`;
     const entry = { text, result: nextResult.value, updatedAt: now, dirty: false };
@@ -1699,7 +1728,7 @@ export default function (pi: ExtensionAPI) {
     pendingNativeDispatch.set(ctx.cwd, { prompt: text, result: context.result, plan, createdAt: Date.now() });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
-      reason: "emb-agent subagent dispatch is required before parent-side implementation file mutations. For active task implementation, call knowledge_search first, then emb_subagent (fw-doer followed by release-checker) and wait for hidden results before writing/editing source/build files. Task closure docs (AAR, task status, attention, architecture, compound/wiki notes, markdown docs) may be written directly by the parent agent.",
+      reason: "emb-agent subagent dispatch is required before parent-side implementation file mutations. For active task implementation, call knowledge_search first, then emb_subagent (researcher first when SDK/toolchain/API evidence is missing, then fw-doer followed by release-checker) and wait for hidden results before writing/editing source/build files. Task closure docs (AAR, task status, attention, architecture, compound/wiki notes, markdown docs) may be written directly by the parent agent.",
       phase: "waiting",
     });
     return { action: "continue" };
@@ -1724,7 +1753,7 @@ export default function (pi: ExtensionAPI) {
           `Dispatch mode: ${pending.plan.mode}`,
           `Dispatch roles: ${roles.join(", ")}`,
           `Dispatch reason: ${pending.plan.reason}`,
-          "If the user's request is to implement/start/continue candidate work, call knowledge_search first for the target task, then call emb_subagent before parent-side source/build file mutation. For active task implementation, the default dispatch is fw-doer followed by release-checker; add scout/reviewer roles only when fresh evidence is needed. If the user's request is only a question, clarification, task closure, AAR, or knowledge/documentation writeback, answer or write the closure docs normally without calling subagents.",
+          "If the user's request is to implement/start/continue candidate work, call knowledge_search first for the target task, then call emb_subagent before parent-side source/build file mutation. For active task implementation, the default dispatch is researcher first when SDK/toolchain/API evidence is missing, then fw-doer followed by release-checker; add scout/reviewer roles only when fresh evidence is needed. If the user's request is only a question, clarification, task closure, AAR, or knowledge/documentation writeback, answer or write the closure docs normally without calling subagents.",
           "Do not perform source reads, broad source scans, or write/edit source/build files before knowledge_search has run. AAR/task status/attention/architecture/compound/wiki markdown closure writes are allowed.",
         ].join("\n") + "\n";
         messageContent += `; dispatch plan ready (${roles.join(", ")})`;
@@ -1895,14 +1924,14 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "emb_subagent",
     label: "emb subagent",
-    description: "Run emb-agent native firmware subagents in isolated headless Pi sessions. Active task implementation defaults to fw-doer followed by release-checker; for read-only bug audits prefer bug-hunter plus sys-reviewer.",
+    description: "Run emb-agent native firmware subagents in isolated headless Pi sessions. Active task implementation defaults to researcher when SDK/toolchain/API evidence is missing, then fw-doer followed by release-checker; for read-only bug audits prefer bug-hunter plus sys-reviewer.",
     promptSnippet: "Run emb-agent native subagents before active task implementation",
-    promptGuidelines: ["Use emb_subagent for active task implementation before parent-side source/build edits; default to fw-doer followed by release-checker.", "Use emb_subagent before broad firmware work that spans hardware, architecture, power, drivers, framework, or verification.", "If /emb-next reports prd-exploration but the user asks for a bounded read-only bug audit, use bug-hunter/sys-reviewer and do not treat PRD exploration as blocking the audit."],
+    promptGuidelines: ["Use emb_subagent for active task implementation before parent-side source/build edits; default to researcher first when SDK/toolchain/API evidence is missing, then fw-doer followed by release-checker.", "Use emb_subagent before broad firmware work that spans hardware, architecture, power, drivers, framework, SDK/API research, or verification.", "If /emb-next reports prd-exploration but the user asks for bounded read-only research or bug audit, use researcher or bug-hunter/sys-reviewer and do not treat PRD exploration as blocking the audit."],
     parameters: {
       type: "object",
       properties: {
         prompt: { type: "string", description: "Original user request or focused delegated task" },
-        roles: { type: "array", items: { type: "string", enum: ["hw-scout", "fw-doer", "arch-reviewer", "sys-reviewer", "bug-hunter", "release-checker"] } },
+        roles: { type: "array", items: { type: "string", enum: ["hw-scout", "researcher", "fw-doer", "arch-reviewer", "sys-reviewer", "bug-hunter", "release-checker"] } },
       },
       additionalProperties: false,
     } as Record<string, unknown>,

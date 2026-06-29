@@ -16,7 +16,7 @@ You are already the `onboard` emb-agent subagent dispatched by the main session.
 ## Boot Sequence (always execute first)
 1. Check whether `.emb-agent/` exists and what it contains: `Glob .emb-agent/**/*`
 2. If `.emb-agent/` is missing entirely → **empty-repo path**.
-3. If `.emb-agent/` exists but is incomplete (missing attention.md, hw.yaml, req.yaml, or compound/) → **partial path** (audit what's missing, fill gaps).
+3. If `.emb-agent/` exists but is incomplete (missing attention.md, hw.yaml, req.yaml, workflow.md, project.json, or ARCHITECTURE.md) → **partial path** (audit what's missing, fill gaps).
 4. If `.emb-agent/` exists but the repo also has scattered hardware docs outside it → **migration path**.
 5. Scan the repo for existing hardware/documentation artifacts:
    - Datasheets: `*.pdf` in repo root, `docs/`, `datasheet/`, `reference/`
@@ -37,7 +37,7 @@ operate correctly.
 
 | Path | Condition | Output |
 |------|-----------|--------|
-| **Empty repo** | No `.emb-agent/`, no scattered hw docs | Full scaffold from templates |
+| **Empty repo** | No `.emb-agent/`, no scattered hw docs | Lean truth scaffold |
 | **Migration** | Scattered hw docs exist outside `.emb-agent/`, or `.emb-agent/` is partial | Audit report + mapping plan (user confirms each item) + scaffold fill |
 
 Auto-detect the path and report to user — do NOT ask the user to choose. They may not know
@@ -56,29 +56,24 @@ Do NOT demand answers the user doesn't have yet. Mark unknowns explicitly.
 Create the full `.emb-agent/` tree in one pass:
 ```
 .emb-agent/
-├── attention.md              (minimal skeleton — only user-supplied constraints)
-├── HOST.json                 (install metadata placeholder)
-├── hw.yaml                   (empty template with detected signals if any)
-├── req.yaml                  (empty template)
-├── project.json              (default config)
-├── compound/                 (.gitkeep)
-├── architecture/
-│   └── ARCHITECTURE.md       (placeholder: project name + "to be filled after first feature")
-├── reference/                (copy shared-conventions.md + knowledge-evolution.md from runtime/)
-├── tasks/                    (.gitkeep)
-├── wiki/                     (.gitkeep)
-├── graph/                    (.gitkeep)
-├── memory/                   (.gitkeep)
-├── specs/                    (.gitkeep)
-├── profiles/                 (.gitkeep)
-├── templates/                (copy from runtime/templates/)
-├── registry/                 (copy workflow.json from runtime/registry/)
-├── chips/                    (.gitkeep)
-├── issues/                   (.gitkeep)
-├── audits/                   (.gitkeep)
-├── roadmap/                  (.gitkeep)
-└── refactors/                (.gitkeep)
+|-- .developer                (local developer identity)
+|-- .language                 (preferred response language when configured)
+|-- .template-hashes          (managed template fingerprints)
+|-- .version                  (project template/runtime version)
+|-- config.yaml               (local config and hooks)
+|-- workflow.md               (human-readable workflow and layout)
+|-- attention.md              (minimal skeleton - only user-supplied constraints)
+|-- hw.yaml                   (empty template with detected signals if any)
+|-- req.yaml                  (empty template)
+|-- project.json              (default config)
+|-- ARCHITECTURE.md           (placeholder: project name + "to be filled after first feature")
+|-- tasks/                    (durable task records)
+`-- .install/                 (installer state when installed)
 ```
+
+Do not create feature directories such as `compound/`, `wiki/`, `graph/`, `memory/`,
+`specs/`, `templates/`, `registry/`, `issues/`, `audits/`, `roadmap/`, or
+`refactors/` during empty onboarding unless the matching command needs them.
 
 ### Step 3: attention.md minimal skeleton
 Write only what the user has confirmed:
@@ -186,7 +181,7 @@ Migrated:
 
 Skeleton filled:
   - .emb-agent/attention.md (from user input + migrated traps)
-  - .emb-agent/architecture/ARCHITECTURE.md (placeholder)
+  - .emb-agent/ARCHITECTURE.md (placeholder)
 
 Not migrated (retained in place):
   - misc/meeting-notes.txt (user chose skip)

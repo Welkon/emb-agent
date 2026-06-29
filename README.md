@@ -61,12 +61,13 @@ emb-agent sits between the AI assistant and your repository. It does not replace
 
 ### Specialized agents
 
-emb-agent ships a set of workflow-specific sub-agents that the AI assistant can delegate to. Each agent has a narrow scope and clear acceptance criteria. On subagent-capable hosts, active task implementation defaults to a focused `fw-doer` run followed by an independent `release-checker`; the parent session coordinates, synthesizes results, and closes the task.
+emb-agent ships a set of workflow-specific sub-agents that the AI assistant can delegate to. Each agent has a narrow scope and clear acceptance criteria. On subagent-capable hosts, active task implementation defaults to `researcher` first when SDK/toolchain/API evidence is missing, then a focused `fw-doer` run followed by an independent `release-checker`; the parent session coordinates, synthesizes results, and closes the task.
 
 | Agent | Role |
 |---|---|
 | **onboard** | Project initialization and migration — scaffolds `.emb-agent/` for empty repos, or audits and maps existing hardware docs |
 | **hw-scout** | Hardware truth investigation — locates datasheets, schematics, pin maps, and register-level facts |
+| **researcher** | Code, SDK, API, toolchain, vendor-example, and migration research persisted under task `research/` files |
 | **fw-doer** | Minimal code and documentation changes with structure health pre-checks |
 | **arch-reviewer** | Architecture review against embedded constraints (ROM/RAM budgets, ISR latency, power domains) |
 | **bug-hunter** | Root-cause analysis of hardware-software bugs with register-level tracing |

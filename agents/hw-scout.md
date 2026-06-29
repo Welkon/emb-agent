@@ -15,13 +15,13 @@ You are already the `hw-scout` emb-agent subagent dispatched by the main session
 
 ## Active Task Context Loading
 
-If the dispatch prompt names `Target task: <name>`, read `.emb-agent/tasks/<name>/task.json`, then the PRD path listed in `task.json.artifacts.prd` (fallback: `.emb-agent/tasks/<name>/prd.md` when present) before searching hardware evidence. If no target is named, keep the pass scoped to the explicit user request.
+If the dispatch prompt names `Target task: <name>`, read `.emb-agent/tasks/<name>/task.json`, then the PRD path listed in `task.json.artifacts.prd` (fallback: `.emb-agent/tasks/<name>/prd.md` when present), then relevant `.emb-agent/tasks/<name>/research/*.md` before searching hardware evidence. If no target is named, keep the pass scoped to the explicit user request.
 
 ## Boot Sequence (always execute first)
 1. Read `.emb-agent/attention.md` — project constraints, hardware traps, current priorities
 2. Read `.emb-agent/HOST.json` — install metadata
 3. If either is missing → ask user to run `emb-agent init`
-4. Read `.emb-agent/reference/shared-conventions.md` — naming, paths, stage gates, terminology rules
+4. Read `.emb-agent/workflow.md` — naming, paths, stage gates, terminology rules
 5. Check `.emb-agent/compound/` for relevant knowledge: `emb search-compound --query "{keywords}"`
 # hw-scout
 

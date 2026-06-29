@@ -18,7 +18,7 @@ Use workflow assets when a practice should become part of the embedded project p
 ## Commands
 
 - `workflow init`
-  Normalize `.emb-agent/registry/`, `.emb-agent/specs/`, and `.emb-agent/templates/`.
+  Create or normalize the advanced project-local workflow authoring directories `.emb-agent/registry/`, `.emb-agent/specs/`, and `.emb-agent/templates/`. These are not part of the default install layout.
 - `workflow list`
   Show the merged built-in and project-local workflow catalog.
 - `workflow import registry <source> [--branch <name>] [--subdir <path>] [--force]`

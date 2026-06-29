@@ -1,7 +1,7 @@
 # Architecture
 
 > System architecture map — records the current state of the firmware, not future plans.
-> Update after each feature acceptance. See `.emb-agent/reference/shared-conventions.md` for conventions.
+> Update after each feature acceptance. See `.emb-agent/workflow.md` for conventions.
 
 ## Official Firmware Framework
 

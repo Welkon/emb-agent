@@ -1,7 +1,7 @@
 # Project Attention
 
 > emb-agent agents read this file at session start. Keep entries short (1-2 lines).
-> Use `emb note` to add entries. See `.emb-agent/reference/shared-conventions.md` for conventions.
+> Use `emb note` to add entries. See `.emb-agent/workflow.md` for conventions.
 
 ## Hardware Traps & Quirks
 

@@ -45,6 +45,7 @@ Common host dirs: .cursor (Cursor), .codex (Codex), .claude (Claude), .pi (Pi).
 | Record decision | `decision record` |
 | Ingest datasheet/manual | `ingest doc --provider auto --file <path> --kind datasheet --to hardware` |
 | Ingest schematic | `ingest schematic --file <path>` |
+| Durable task research | `.emb-agent/tasks/<task>/research/<topic>.md` via `researcher` when subagents are available |
 | Capture a durable lesson when one actually emerged | `task aar scan` |
 | Board signoff | `verify board --result pass <summary>` |
 | Full command docs | `.<host>/emb-agent/commands/emb/<command>.md` for any installed command; prefer the fast path unless the task needs a specialized command |
@@ -58,7 +59,8 @@ Common host dirs: .cursor (Cursor), .codex (Codex), .claude (Claude), .pi (Pi).
 3. If the user says the current service split, scheduler path, or time-slice flow is hard
    to understand, explain the existing structure first and only then propose a refactor.
 4. Once a durable task is active, follow the workflow that fits the work: explain/scan →
-   plan → do → review → verify. Not every task starts with implementation.
+   research when evidence is missing → plan → do → review → verify. Not every task
+   starts with implementation.
 5. After a substantial workflow exit, capture knowledge only if a reusable lesson,
    invariant, pitfall, or workflow rule actually emerged.
 6. For new firmware architecture, default to the official `event-step` control contract:
@@ -101,7 +103,7 @@ Before recording post-flow knowledge, check:
 - [ ] **Learn?** — Did you discover something about the codebase or hardware that a fresh
   agent would not infer from code and datasheets alone? → `compound learn --slug "..." --summary "..."`
 
-Recording threshold (from `.emb-agent/reference/knowledge-evolution.md`):
+Recording threshold (from the `Knowledge Evolution` section in `.emb-agent/workflow.md`):
 record only if repeatable AND (expensive OR not-visible-in-code).
 Skip routine fixes, generic programming patterns, facts obvious from datasheets, and vendor SDK conventions.
 
@@ -115,10 +117,11 @@ Skip routine fixes, generic programming patterns, facts obvious from datasheets,
 - If `markitdown` is missing when first needed and `uv` is available, emb-agent should auto-ensure it globally at user level. Do not install tooling into each project checkout.
 - After editing truth files or PRDs, run `validate` or `health`.
 - Split work into vertical tracer-bullet slices.
+- If a delegated scout or research pass produces reusable evidence, persist it under `.emb-agent/tasks/<task>/research/<topic>.md` and make later implementation/review agents read it.
 - Use `mem search/context/show/related/extract` when cross-session recall would prevent rediscovery or preserve a past decision. Use `mem reindex`/`mem stats`/`mem doctor` if results look stale.
 - If `.emb-agent/` is missing or incomplete, route to `onboard` agent first.
 
 For detailed procedures, read command docs on demand:
 - PRD / tasks / bugs / knowledge → `.<host>/emb-agent/commands/emb/`
-- Post-flow knowledge capture → `.emb-agent/reference/knowledge-evolution.md`
+- Post-flow knowledge capture → `.emb-agent/workflow.md`
 - Project truth files → `.emb-agent/`

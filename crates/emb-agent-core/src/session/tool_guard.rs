@@ -5,9 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
-use crate::hardware::project::find_project_root;
+use crate::hardware::project::{TaskRef, find_project_root, read_current_task_ref};
 
 const KNOWLEDGE_PRIMING_TTL_MS: u128 = 10 * 60 * 1000;
+const SUBAGENT_CONTEXT_MARKER: &str = "<!-- emb-agent-hook-injected -->";
 
 pub fn build_tool_guard_output_for_host(raw_input: &str, host: &str) -> String {
     let data: Value = serde_json::from_str(raw_input.trim()).unwrap_or_else(|_| json!({}));
@@ -22,6 +23,10 @@ pub fn build_tool_guard_output_from_value_for_host(data: &Value, host: &str) -> 
     let project_root = project_root_from_payload(data);
     let tool = tool_name(data);
     let command = command_from_payload(data);
+
+    if let Some(output) = build_subagent_context_output(&project_root, data, &tool) {
+        return output;
+    }
 
     if is_knowledge_search_tool_call(&tool, data, command.as_deref()) {
         record_knowledge_priming(&project_root, host, &tool, command.as_deref(), data);
@@ -63,6 +68,506 @@ fn block_payload(reason: &str) -> String {
     json!({
         "decision": "block",
         "reason": reason,
+    })
+    .to_string()
+}
+
+#[derive(Debug, Clone)]
+struct SubagentCall {
+    agent: String,
+    prompt: String,
+    tool_input: Value,
+}
+
+fn build_subagent_context_output(project_root: &Path, data: &Value, tool: &str) -> Option<String> {
+    let call = parse_subagent_call(data, tool)?;
+    let agent = normalize_subagent_name(&call.agent);
+    if !is_emb_subagent(&agent) || call.prompt.contains(SUBAGENT_CONTEXT_MARKER) {
+        return None;
+    }
+
+    let state_dir = crate::variant_ops::active_state_dir(&project_root.join(".emb-agent"));
+    let current_task = read_current_task_ref(&state_dir);
+    let context = build_subagent_context(project_root, current_task.as_ref(), &agent);
+    if context.trim().is_empty() {
+        return None;
+    }
+
+    let injected_prompt =
+        build_subagent_prompt(&agent, current_task.as_ref(), &context, &call.prompt);
+    let updated_input = with_updated_prompt(call.tool_input, &injected_prompt);
+    Some(subagent_context_payload(&updated_input))
+}
+
+fn parse_subagent_call(data: &Value, tool: &str) -> Option<SubagentCall> {
+    let tool_input = tool_input_object(data);
+    let normalized_tool = normalize_tool_name(tool);
+    let mut agent = String::new();
+
+    if matches!(
+        normalized_tool.as_str(),
+        "task" | "agent" | "subagent" | "sub_agent"
+    ) || normalized_tool.ends_with("__task")
+        || normalized_tool.ends_with("__agent")
+    {
+        agent = extract_subagent_type(&tool_input);
+    } else if is_emb_subagent(&normalize_subagent_name(tool)) {
+        agent = tool.to_string();
+    }
+
+    if agent.is_empty() {
+        agent = string_path(data, &["agent_name"])
+            .or_else(|| string_path(data, &["agentName"]))
+            .unwrap_or_default();
+    }
+    if agent.is_empty() {
+        return None;
+    }
+
+    let prompt = string_path(&tool_input, &["prompt"])
+        .or_else(|| string_path(&tool_input, &["instructions"]))
+        .or_else(|| string_path(data, &["prompt"]))
+        .or_else(|| string_path(data, &["toolArgs"]))
+        .unwrap_or_default();
+    if prompt.trim().is_empty() {
+        return None;
+    }
+
+    Some(SubagentCall {
+        agent,
+        prompt,
+        tool_input,
+    })
+}
+
+fn tool_input_object(data: &Value) -> Value {
+    for key in [
+        "tool_input",
+        "toolInput",
+        "input",
+        "arguments",
+        "args",
+        "params",
+    ] {
+        if let Some(value) = data.get(key) {
+            return value.clone();
+        }
+    }
+    Value::Object(serde_json::Map::new())
+}
+
+fn extract_subagent_type(tool_input: &Value) -> String {
+    for key in [
+        "subagent_type",
+        "subagentType",
+        "subagent_type_name",
+        "subagentTypeName",
+        "agent_type",
+        "agentType",
+        "name",
+    ] {
+        if let Some(value) = tool_input.get(key) {
+            let name = extract_subagent_name(value);
+            if !name.is_empty() {
+                return name;
+            }
+        }
+    }
+    String::new()
+}
+
+fn extract_subagent_name(value: &Value) -> String {
+    if let Some(value) = value.as_str() {
+        return value.trim().to_string();
+    }
+    let Some(map) = value.as_object() else {
+        return String::new();
+    };
+
+    for key in ["name", "subagent_type_name", "subagentTypeName"] {
+        if let Some(value) = map.get(key).and_then(Value::as_str) {
+            let value = value.trim();
+            if !value.is_empty() {
+                return value.to_string();
+            }
+        }
+    }
+
+    if let Some(custom) = map.get("custom").and_then(Value::as_object)
+        && let Some(name) = custom.get("name").and_then(Value::as_str)
+        && !name.trim().is_empty()
+    {
+        return name.trim().to_string();
+    }
+
+    if let Some(oneof) = map.get("type").and_then(Value::as_object) {
+        if oneof.get("case").and_then(Value::as_str) == Some("custom")
+            && let Some(nested) = oneof.get("value").and_then(Value::as_object)
+            && let Some(name) = nested.get("name").and_then(Value::as_str)
+            && !name.trim().is_empty()
+        {
+            return name.trim().to_string();
+        }
+        if let Some(case_name) = oneof.get("case").and_then(Value::as_str)
+            && !case_name.trim().is_empty()
+        {
+            return case_name.trim().to_string();
+        }
+    }
+
+    if map.get("case").and_then(Value::as_str) == Some("custom")
+        && let Some(nested) = map.get("value").and_then(Value::as_object)
+        && let Some(name) = nested.get("name").and_then(Value::as_str)
+        && !name.trim().is_empty()
+    {
+        return name.trim().to_string();
+    }
+
+    map.get("case")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_default()
+}
+
+fn normalize_subagent_name(value: &str) -> String {
+    let value = value
+        .trim()
+        .rsplit(['/', ':'])
+        .next()
+        .unwrap_or(value.trim())
+        .replace('_', "-")
+        .to_ascii_lowercase();
+    value
+        .strip_prefix("emb-agent-")
+        .unwrap_or(&value)
+        .to_string()
+}
+
+fn is_emb_subagent(agent: &str) -> bool {
+    matches!(
+        agent,
+        "fw-doer"
+            | "release-checker"
+            | "sys-reviewer"
+            | "arch-reviewer"
+            | "bug-hunter"
+            | "hw-scout"
+            | "researcher"
+            | "onboard"
+    )
+}
+
+fn build_subagent_context(project_root: &Path, task: Option<&TaskRef>, agent: &str) -> String {
+    let mut parts = Vec::new();
+    push_file_context(
+        project_root,
+        &mut parts,
+        ".emb-agent/workflow.md",
+        "Workflow and layout",
+    );
+    push_file_context(
+        project_root,
+        &mut parts,
+        ".emb-agent/attention.md",
+        "Current project attention",
+    );
+    push_file_context(
+        project_root,
+        &mut parts,
+        ".emb-agent/hw.yaml",
+        "Hardware truth",
+    );
+    push_file_context(
+        project_root,
+        &mut parts,
+        ".emb-agent/req.yaml",
+        "Requirement truth",
+    );
+
+    if matches!(
+        agent,
+        "fw-doer" | "release-checker" | "sys-reviewer" | "arch-reviewer"
+    ) {
+        push_file_context(
+            project_root,
+            &mut parts,
+            ".emb-agent/ARCHITECTURE.md",
+            "Architecture map",
+        );
+    }
+
+    if let Some(task) = task {
+        push_task_context(project_root, &mut parts, task, agent);
+    } else {
+        parts.push(
+            "=== Active task ===\nNo active emb-agent task is set. Read-only research/scout/review work may proceed if the parent prompt is explicit. Implementation agents must report that the parent session needs to select or activate a task before editing broadly.".to_string(),
+        );
+    }
+
+    join_context_parts(parts)
+}
+
+fn push_task_context(project_root: &Path, parts: &mut Vec<String>, task: &TaskRef, agent: &str) {
+    let Some(task_dir) = task_dir_from_ref(project_root, task) else {
+        return;
+    };
+    let task_rel = relative_path(project_root, &task_dir);
+    push_file_context(
+        project_root,
+        parts,
+        &format!("{task_rel}/task.json"),
+        "Active task metadata",
+    );
+
+    for prd in task_prd_paths(project_root, &task_dir, task) {
+        push_file_context(project_root, parts, &prd, "Task PRD");
+    }
+
+    for file in [
+        "design.md",
+        "implement.md",
+        "review.md",
+        "validation.md",
+        "aar.md",
+    ] {
+        push_file_context(
+            project_root,
+            parts,
+            &format!("{task_rel}/{file}"),
+            "Task artifact",
+        );
+    }
+
+    match agent {
+        "fw-doer" => push_manifest_context(project_root, parts, &task_rel, "implement.jsonl"),
+        "release-checker" | "sys-reviewer" | "arch-reviewer" => {
+            push_manifest_context(project_root, parts, &task_rel, "check.jsonl")
+        }
+        "bug-hunter" => {
+            push_manifest_context(project_root, parts, &task_rel, "debug.jsonl");
+            push_manifest_context(project_root, parts, &task_rel, "check.jsonl");
+        }
+        _ => {}
+    }
+
+    push_markdown_directory_context(
+        project_root,
+        parts,
+        &format!("{task_rel}/research"),
+        "Task research",
+        20,
+    );
+}
+
+fn task_dir_from_ref(project_root: &Path, task: &TaskRef) -> Option<PathBuf> {
+    let task_json = PathBuf::from(&task.path);
+    if task_json.is_absolute()
+        && task_json
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == "task.json")
+    {
+        return task_json.parent().map(Path::to_path_buf);
+    }
+    let ext = project_root.join(".emb-agent");
+    let state_dir = crate::variant_ops::active_state_dir(&ext);
+    Some(state_dir.join("tasks").join(&task.name))
+}
+
+fn task_prd_paths(project_root: &Path, task_dir: &Path, task: &TaskRef) -> Vec<String> {
+    let mut paths = Vec::new();
+    let task_json = task_dir.join("task.json");
+    if let Ok(text) = fs::read_to_string(&task_json)
+        && let Ok(value) = serde_json::from_str::<Value>(&text)
+        && let Some(path) = value
+            .pointer("/artifacts/prd")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    {
+        paths.push(path.to_string());
+    }
+    paths.push(format!("docs/prd/tasks/{}.md", task.name));
+    paths.push(format!("{}/prd.md", relative_path(project_root, task_dir)));
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn push_manifest_context(project_root: &Path, parts: &mut Vec<String>, task_rel: &str, file: &str) {
+    let manifest_rel = format!("{task_rel}/{file}");
+    let Some(manifest_path) = safe_project_path(project_root, &manifest_rel) else {
+        return;
+    };
+    let Ok(text) = fs::read_to_string(manifest_path) else {
+        return;
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(item) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let Some(path) = item
+            .get("file")
+            .or_else(|| item.get("path"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if item.get("type").and_then(Value::as_str) == Some("directory") {
+            push_markdown_directory_context(project_root, parts, path, "Manifest directory", 20);
+        } else {
+            push_file_context(project_root, parts, path, "Manifest file");
+        }
+    }
+}
+
+fn push_file_context(project_root: &Path, parts: &mut Vec<String>, rel: &str, label: &str) {
+    let Some(path) = safe_project_path(project_root, rel) else {
+        return;
+    };
+    let Ok(text) = fs::read_to_string(&path) else {
+        return;
+    };
+    if text.trim().is_empty() {
+        return;
+    }
+    let rel = relative_path(project_root, &path);
+    parts.push(format!(
+        "=== {rel} ({label}) ===\n{}",
+        truncate_context(&text, 20_000)
+    ));
+}
+
+fn push_markdown_directory_context(
+    project_root: &Path,
+    parts: &mut Vec<String>,
+    rel: &str,
+    label: &str,
+    max_files: usize,
+) {
+    let Some(dir) = safe_project_path(project_root, rel) else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut files: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("md")
+        })
+        .collect();
+    files.sort();
+    for path in files.into_iter().take(max_files) {
+        let rel = relative_path(project_root, &path);
+        push_file_context(project_root, parts, &rel, label);
+    }
+}
+
+fn safe_project_path(project_root: &Path, rel: &str) -> Option<PathBuf> {
+    let rel = rel.trim().trim_start_matches("./");
+    if rel.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(rel);
+    if path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return None;
+    }
+    if path.is_absolute() {
+        if path.starts_with(project_root) {
+            Some(path)
+        } else {
+            None
+        }
+    } else {
+        Some(project_root.join(path))
+    }
+}
+
+fn relative_path(project_root: &Path, path: &Path) -> String {
+    path.strip_prefix(project_root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn truncate_context(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let mut out = text
+        .chars()
+        .take(max_chars.saturating_sub(80))
+        .collect::<String>();
+    out.push_str("\n\n[emb-agent truncated this injected file context]\n");
+    out
+}
+
+fn join_context_parts(parts: Vec<String>) -> String {
+    let mut out = String::new();
+    for part in parts {
+        if part.trim().is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        if out.chars().count() + part.chars().count() > 90_000 {
+            out.push_str("[emb-agent stopped context injection at 90000 chars]\n");
+            break;
+        }
+        out.push_str(&part);
+    }
+    out
+}
+
+fn build_subagent_prompt(
+    agent: &str,
+    task: Option<&TaskRef>,
+    context: &str,
+    original_prompt: &str,
+) -> String {
+    let task_line = task
+        .map(|task| format!("Target task: {}", task.name))
+        .unwrap_or_else(|| "Target task: (none active)".to_string());
+    format!(
+        "{SUBAGENT_CONTEXT_MARKER}\n# emb-agent Subagent Context\n\nAgent: `{agent}`\n{task_line}\n\nThe parent session has injected the current emb-agent task and project context below. Treat it as routing context, then execute the original task. Do not spawn more emb-agent subagents.\n\n## Injected Context\n\n{context}\n\n---\n\n## Original Task\n\n{}",
+        original_prompt.trim()
+    )
+}
+
+fn with_updated_prompt(tool_input: Value, prompt: &str) -> Value {
+    match tool_input {
+        Value::Object(mut map) => {
+            map.insert("prompt".to_string(), Value::String(prompt.to_string()));
+            Value::Object(map)
+        }
+        _ => json!({ "prompt": prompt }),
+    }
+}
+
+fn subagent_context_payload(updated_input: &Value) -> String {
+    json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": updated_input,
+        },
+        "permission": "allow",
+        "updated_input": updated_input,
+        "updatedInput": updated_input,
     })
     .to_string()
 }
@@ -898,6 +1403,101 @@ mod tests {
         );
         assert!(output.contains("\"decision\":\"block\""));
         assert!(output.contains("filesystem root"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn injects_active_task_context_for_subagent_spawn() {
+        let root = temp_project("subagent-context");
+        fs::write(root.join(".emb-agent/workflow.md"), "# Workflow\n").unwrap();
+        fs::write(root.join(".emb-agent/attention.md"), "# Attention\n").unwrap();
+        fs::write(root.join(".emb-agent/hw.yaml"), "mcu:\n  model: SC8F072\n").unwrap();
+        fs::write(
+            root.join(".emb-agent/req.yaml"),
+            "goals:\n  - PWM dimming\n",
+        )
+        .unwrap();
+        fs::write(root.join(".emb-agent/ARCHITECTURE.md"), "# Architecture\n").unwrap();
+        fs::create_dir_all(root.join(".emb-agent/tasks/pwm-led/research")).unwrap();
+        fs::create_dir_all(root.join("docs/prd/tasks")).unwrap();
+        fs::write(root.join(".emb-agent/.current-task"), "pwm-led\n").unwrap();
+        fs::write(
+            root.join(".emb-agent/tasks/pwm-led/task.json"),
+            r#"{"name":"pwm-led","title":"Implement PWM","status":"in_progress","priority":"P1","artifacts":{"prd":"docs/prd/tasks/pwm-led.md"}}"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("docs/prd/tasks/pwm-led.md"),
+            "# PWM PRD\n\nUse timer PWM.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".emb-agent/tasks/pwm-led/implement.md"),
+            "# Implement\n\nTouch pwm.c only.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".emb-agent/tasks/pwm-led/research/timer.md"),
+            "# Timer Research\n\nTMR2 supports PWM.\n",
+        )
+        .unwrap();
+
+        let output = build_tool_guard_output_from_value_for_host(
+            &json!({
+                "cwd": root,
+                "tool_name": "Task",
+                "tool_input": {
+                    "subagent_type": "fw-doer",
+                    "prompt": "Implement the PWM task."
+                }
+            }),
+            "claude",
+        );
+
+        assert!(output.contains("hookSpecificOutput"), "output: {output}");
+        assert!(output.contains("permissionDecision"), "output: {output}");
+        assert!(output.contains(SUBAGENT_CONTEXT_MARKER), "output: {output}");
+        assert!(output.contains("Target task: pwm-led"), "output: {output}");
+        assert!(
+            output.contains("docs/prd/tasks/pwm-led.md"),
+            "output: {output}"
+        );
+        assert!(output.contains("implement.md"), "output: {output}");
+        assert!(output.contains("research/timer.md"), "output: {output}");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn injects_project_context_for_researcher_without_active_task() {
+        let root = temp_project("researcher-no-task");
+        fs::write(
+            root.join(".emb-agent/workflow.md"),
+            "# Workflow\n\nResearch first for SDK questions.\n",
+        )
+        .unwrap();
+        fs::write(root.join(".emb-agent/attention.md"), "# Attention\n").unwrap();
+
+        let output = build_tool_guard_output_from_value_for_host(
+            &json!({
+                "cwd": root,
+                "tool_name": "Task",
+                "tool_input": {
+                    "subagent_type": "researcher",
+                    "prompt": "Research the vendor SDK timer API."
+                }
+            }),
+            "codex",
+        );
+
+        assert!(output.contains(SUBAGENT_CONTEXT_MARKER), "output: {output}");
+        assert!(
+            output.contains("No active emb-agent task"),
+            "output: {output}"
+        );
+        assert!(
+            output.contains("Research first for SDK questions"),
+            "output: {output}"
+        );
         let _ = fs::remove_dir_all(root);
     }
 }

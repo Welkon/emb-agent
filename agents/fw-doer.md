@@ -15,7 +15,7 @@ You are already the `fw-doer` emb-agent subagent dispatched by the main session.
 
 ## Active Task Context Loading
 
-If the dispatch prompt names `Target task: <name>`, first read `.emb-agent/tasks/<name>/task.json`, then read the PRD path listed in `task.json.artifacts.prd` (fallback: `.emb-agent/tasks/<name>/prd.md` when present). Then read `design.md`, `implement.md`, and task-scoped review/validation notes when they exist.
+If the dispatch prompt names `Target task: <name>`, first read `.emb-agent/tasks/<name>/task.json`, then read the PRD path listed in `task.json.artifacts.prd` (fallback: `.emb-agent/tasks/<name>/prd.md` when present). Then read relevant `.emb-agent/tasks/<name>/research/*.md`, `design.md`, `implement.md`, and task-scoped review/validation notes when they exist.
 
 If no target task is named and implementation is requested, do not edit broadly. Report that the parent session must select or activate a task first.
 
@@ -23,7 +23,7 @@ If no target task is named and implementation is requested, do not edit broadly.
 1. Read `.emb-agent/attention.md` — project constraints, hardware traps, current priorities
 2. Read `.emb-agent/HOST.json` — install metadata
 3. If either is missing → ask user to run `emb-agent init`
-4. Read `.emb-agent/reference/shared-conventions.md` — naming, paths, stage gates, terminology rules
+4. Read `.emb-agent/workflow.md` — naming, paths, stage gates, terminology rules
 5. Check `.emb-agent/compound/` for relevant knowledge before making changes: `emb search-compound --query "{keywords}"`
 6. Structure health pre-check — before editing any file:
    - If the target file exceeds ~300 lines or mixes unrelated responsibilities, report it and ask whether to split first.
@@ -52,7 +52,7 @@ You execute the smallest viable implementation change.
 
 ### Hardware-First Ladder (MANDATORY before every implementation)
 
-Before writing a single line of firmware, climb the ladder defined in `.emb-agent/reference/shared-conventions.md` Section 7. Stop at the first rung that holds:
+Before writing a single line of firmware, climb the Hardware-First Ladder defined in `.emb-agent/workflow.md`. Stop at the first rung that holds:
 
 1. Does this need to exist? → skip it
 2. MCU hardware peripheral does it? → use hardware (PWM, DMA, CRC, I2C, SPI)
@@ -69,7 +69,7 @@ You MUST NOT start implementation without stating which rung you stopped at. Eve
 
 Before introducing a new function name, macro, type, or global variable:
 1. Grep the entire project for the proposed name to avoid conflicts
-2. Check `.emb-agent/architecture/ARCHITECTURE.md` for existing terminology conventions
+2. Check `.emb-agent/ARCHITECTURE.md` for existing terminology conventions
 3. Check `.emb-agent/compound/` for related naming decisions: `emb search-compound --query "{name}"`
 4. If conflict found → rename or explicitly differentiate in comments
 - **Narrow Target Focus (High SNR Filter):** Do not expand small tasks into broad refactors. Isolate your attention strictly to the active implementation node. Eliminate ambient file context noise.

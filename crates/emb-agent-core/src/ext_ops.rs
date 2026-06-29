@@ -4,6 +4,15 @@ use std::fs;
 use std::path::Path;
 
 const PROJECT_TEMPLATE_VERSION: &str = env!("CARGO_PKG_VERSION");
+const CODEX_AVAILABLE_AGENTS: [&str; 7] = [
+    "hw-scout",
+    "researcher",
+    "fw-doer",
+    "bug-hunter",
+    "arch-reviewer",
+    "sys-reviewer",
+    "release-checker",
+];
 
 /// Initialize a new emb-agent project
 pub fn init_project(cwd: &Path) -> String {
@@ -172,6 +181,7 @@ pub fn init_project(cwd: &Path) -> String {
 | Boot-time traps, active priorities, environment blockers | `.emb-agent/attention.md` |
 | MCU/package/pins/peripherals/clock/board facts | `.emb-agent/hw.yaml` |
 | Product behavior, constraints, acceptance, unknowns | `.emb-agent/req.yaml` and `docs/prd/` |
+| Reusable task-specific research | `.emb-agent/tasks/<task>/research/<topic>.md` |
 | Reusable traps/tricks/decisions/learnings/explorations | `.emb-agent/compound/` |
 | Current module map, data flow, ISR routing, peripheral ownership | `.emb-agent/ARCHITECTURE.md` |
 | Long-form source synthesis and human-readable notes | `.emb-agent/wiki/` |
@@ -297,7 +307,10 @@ Do not record generic programming knowledge or facts obvious from code and datas
 }
 
 fn ensure_project_contract_files(ext_dir: &Path) {
-    let _ = fs::write(ext_dir.join(".version"), format!("{PROJECT_TEMPLATE_VERSION}\n"));
+    let _ = fs::write(
+        ext_dir.join(".version"),
+        format!("{PROJECT_TEMPLATE_VERSION}\n"),
+    );
     if !ext_dir.join(".developer").exists() {
         let _ = fs::write(ext_dir.join(".developer"), "{\"name\":\"\"}\n");
     }
@@ -377,7 +390,8 @@ ask one load-bearing behavior, hardware, power, product-risk, or acceptance
 question at a time with your recommended answer and trade-off, update the
 system PRD or task PRD plus `req.yaml` after each confirmation, and stop before
 task activation until the gate changes. Complex tasks should have durable
-`design.md` and `implement.md` notes before implementation.
+`design.md`, `implement.md`, and `research/<topic>.md` notes before
+implementation when external SDK/toolchain/API evidence is load-bearing.
 [/workflow-state:clarifying]
 
 [workflow-state:ready]
@@ -389,10 +403,11 @@ confirms the concrete target and acceptance surface.
 [workflow-state:task_active]
 An active task exists. Keep reads scoped to the task PRD, hardware/requirement
 truth, and directly affected source/build files. Main-session default: when the
-host exposes a subagent/delegation tool, dispatch a focused implementation
-worker and then an independent release/system checker; subagents must not spawn
-more subagents. The parent session coordinates, synthesizes hidden results,
-writes closure docs, and closes with `/emb-finish-work` after verification.
+host exposes a subagent/delegation tool, dispatch `researcher` first for missing
+SDK/toolchain/API evidence, then a focused implementation worker, then an
+independent release/system checker; subagents must not spawn more subagents.
+The parent session coordinates, synthesizes hidden results, writes closure docs,
+and closes with `/emb-finish-work` after verification.
 Inline implementation is only the fallback for narrow work or hosts without a
 subagent surface.
 [/workflow-state:task_active]
@@ -510,9 +525,13 @@ fn canonical_command_files_exist(dir: &Path) -> bool {
 }
 
 fn canonical_codex_skills_exist(root: &Path) -> bool {
-    canonical_host_commands()
-        .iter()
-        .all(|name| root.join(".agents").join("skills").join(name).join("SKILL.md").exists())
+    canonical_host_commands().iter().all(|name| {
+        root.join(".agents")
+            .join("skills")
+            .join(name)
+            .join("SKILL.md")
+            .exists()
+    })
 }
 
 pub fn install_doctor(cwd: &Path, host: &str) -> String {
@@ -729,7 +748,8 @@ fn host_hook_readiness(
         next_steps.push("Re-run emb-agent repair --target <host> to refresh hooks.json.");
     }
     if host == "codex" {
-        next_steps.push("In Codex, run /hooks and trust pending project hooks after install or repair.");
+        next_steps
+            .push("In Codex, run /hooks and trust pending project hooks after install or repair.");
         next_steps.push("If hooks never fire, verify hooks are enabled in ~/.codex/config.toml.");
     }
     if host == "cursor" {
@@ -770,7 +790,7 @@ fn codex_dispatch_doctor(cwd: &Path) -> serde_json::Value {
         "forced_subagent_enabled": normalized == "sub-agent",
         "inline_fallback_allowed": normalized != "sub-agent",
         "host_subagent_surface": "native-codex-explicit-subagent-workflow",
-        "available_agents": ["hw-scout", "fw-doer", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"],
+        "available_agents": CODEX_AVAILABLE_AGENTS,
         "change_config": "Set .emb-agent/config.yaml codex.dispatch_mode to inline, auto, or sub-agent."
     })
 }
@@ -1189,11 +1209,23 @@ fn codex_dispatch_plan(mode: &str, job: &str) -> serde_json::Value {
     };
     let primary_agent = codex_worker_agent_for_job(job);
     let post_check_required = recommended && codex_post_check_recommended(job);
-    let subagent_sequence = if post_check_required {
-        vec![primary_agent, "release-checker"]
-    } else {
-        vec![primary_agent]
-    };
+    let mut subagent_sequence = Vec::new();
+    if recommended {
+        if let Some(preflight_agent) = codex_research_preflight_agent_for_job(job) {
+            if preflight_agent != primary_agent {
+                subagent_sequence.push(preflight_agent);
+            }
+        }
+    }
+    subagent_sequence.push(primary_agent);
+    if post_check_required && !subagent_sequence.contains(&"release-checker") {
+        subagent_sequence.push("release-checker");
+    }
+    let sequence_prompt = subagent_sequence
+        .iter()
+        .map(|agent| format!("`{agent}`"))
+        .collect::<Vec<_>>()
+        .join(" -> ");
     let subagent_prompt = if recommended {
         serde_json::json!({
             "agent": primary_agent,
@@ -1201,24 +1233,14 @@ fn codex_dispatch_plan(mode: &str, job: &str) -> serde_json::Value {
             "task": job,
             "prompt": if mode == "sub-agent" {
                 format!(
-                    "Spawn the `{}` subagent for this emb-agent job, wait for it to finish, then{} summarize the result with file references. Each child is already an emb-agent subagent and must not recursively delegate.\n\nJob: {}",
-                    primary_agent,
-                    if post_check_required {
-                        " spawn `release-checker` for an independent implementation check,"
-                    } else {
-                        ""
-                    },
+                    "Spawn emb-agent subagents in this order: {}. Wait for each to finish, then summarize the result with file references. If `researcher` runs, it must persist reusable findings to `.emb-agent/tasks/<task>/research/<topic>.md` when a target task exists or report that no durable research path was provided. Each child is already an emb-agent subagent and must not recursively delegate.\n\nJob: {}",
+                    sequence_prompt,
                     job
                 )
             } else {
                 format!(
-                    "For this emb-agent job, prefer native Codex subagents when the current work is broad, high-risk, or implementation plus review. Spawn `{}`, wait for it to finish, then{} summarize with file references. Inline fallback is allowed only for narrow scoped work or unavailable subagent surfaces. Children must not recursively delegate.\n\nJob: {}",
-                    primary_agent,
-                    if post_check_required {
-                        " spawn `release-checker` for an independent check,"
-                    } else {
-                        ""
-                    },
+                    "For this emb-agent job, prefer native Codex subagents when the current work is broad, high-risk, research-heavy, or implementation plus review. Spawn emb-agent subagents in this order when available: {}. Wait for each to finish, then summarize with file references. If `researcher` runs, it must persist reusable findings to `.emb-agent/tasks/<task>/research/<topic>.md` when a target task exists or report that no durable research path was provided. Inline fallback is allowed only for narrow scoped work or unavailable subagent surfaces. Children must not recursively delegate.\n\nJob: {}",
+                    sequence_prompt,
                     job
                 )
             }
@@ -1235,8 +1257,8 @@ fn codex_dispatch_plan(mode: &str, job: &str) -> serde_json::Value {
         "post_check_required": post_check_required,
         "subagent_sequence": subagent_sequence,
         "auto_reason": codex_auto_dispatch_reason(job),
-        "trigger_policy": "inline mode keeps the main Codex agent direct; auto mode recommends native subagents for broad/high-risk work with inline fallback; sub-agent mode requires native subagent dispatch when the host exposes it.",
-        "available_agents": ["hw-scout", "fw-doer", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"],
+        "trigger_policy": "inline mode keeps the main Codex agent direct; auto mode recommends native subagents for broad/high-risk or research-heavy work with inline fallback; sub-agent mode requires native subagent dispatch when the host exposes it.",
+        "available_agents": CODEX_AVAILABLE_AGENTS,
         "subagent_prompt": subagent_prompt
     })
 }
@@ -1256,6 +1278,19 @@ fn codex_auto_dispatch_recommended(job: &str) -> bool {
         "lvd",
         "toolchain",
         "sdk",
+        "research",
+        "investigate",
+        "feasibility",
+        "vendor",
+        "datasheet",
+        "manual",
+        "documentation",
+        "docs",
+        "api",
+        "library",
+        "example",
+        "sample",
+        "migration",
         "multi",
         "framework",
         "architecture",
@@ -1273,6 +1308,15 @@ fn codex_auto_dispatch_recommended(job: &str) -> bool {
         "架构",
         "驱动",
         "外设",
+        "研究",
+        "调研",
+        "可行性",
+        "供应商",
+        "文档",
+        "接口",
+        "库",
+        "示例",
+        "迁移",
     ]
     .iter()
     .any(|needle| lower.contains(needle))
@@ -1302,7 +1346,9 @@ fn codex_post_check_recommended(job: &str) -> bool {
 }
 
 fn codex_auto_dispatch_reason(job: &str) -> &'static str {
-    if codex_auto_dispatch_recommended(job) {
+    if codex_research_terms(job) {
+        "research_heavy_or_external_context_work"
+    } else if codex_auto_dispatch_recommended(job) {
         "broad_or_high_risk_embedded_work"
     } else {
         "narrow_or_unspecified_work"
@@ -1311,17 +1357,112 @@ fn codex_auto_dispatch_reason(job: &str) -> &'static str {
 
 fn codex_worker_agent_for_job(job: &str) -> &'static str {
     let lower = job.to_ascii_lowercase();
+    let implementation_work = codex_implementation_terms(job);
     if lower.contains("verify") || lower.contains("验证") || lower.contains("release") {
         "release-checker"
-    } else if lower.contains("review") || lower.contains("architecture") || lower.contains("评审") {
+    } else if lower.contains("review") || lower.contains("architecture") || lower.contains("评审")
+    {
         "sys-reviewer"
     } else if lower.contains("bug") || lower.contains("debug") {
         "bug-hunter"
-    } else if lower.contains("hardware") || lower.contains("schematic") || lower.contains("register") {
+    } else if lower.contains("hardware")
+        || lower.contains("schematic")
+        || lower.contains("register")
+    {
         "hw-scout"
+    } else if codex_research_terms(job) && !implementation_work {
+        "researcher"
     } else {
         "fw-doer"
     }
+}
+
+fn codex_research_preflight_agent_for_job(job: &str) -> Option<&'static str> {
+    if codex_research_terms(job) && !codex_hardware_truth_terms(job) {
+        Some("researcher")
+    } else {
+        None
+    }
+}
+
+fn codex_hardware_truth_terms(job: &str) -> bool {
+    let lower = job.to_ascii_lowercase();
+    [
+        "hardware",
+        "schematic",
+        "register",
+        "pinout",
+        "pin map",
+        "pcb",
+        "datasheet",
+        "manual",
+        "硬件",
+        "原理图",
+        "寄存器",
+        "引脚",
+        "手册",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+fn codex_implementation_terms(job: &str) -> bool {
+    let lower = job.to_ascii_lowercase();
+    [
+        "implement",
+        "refactor",
+        "fix",
+        "change",
+        "write",
+        "edit",
+        "driver",
+        "firmware",
+        "实现",
+        "修复",
+        "改",
+        "写",
+        "重构",
+        "驱动",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+fn codex_research_terms(job: &str) -> bool {
+    let lower = job.to_ascii_lowercase();
+    [
+        "research",
+        "investigate",
+        "feasibility",
+        "external",
+        "vendor",
+        "sdk",
+        "api",
+        "library",
+        "example",
+        "sample",
+        "toolchain",
+        "migration",
+        "documentation",
+        "docs",
+        "protocol",
+        "compatibility",
+        "调研",
+        "研究",
+        "可行性",
+        "外部",
+        "供应商",
+        "接口",
+        "库",
+        "示例",
+        "工具链",
+        "迁移",
+        "文档",
+        "协议",
+        "兼容",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
 }
 
 fn config_scalar(config_path: &Path, section: &str, key: &str) -> Option<String> {

@@ -352,7 +352,9 @@ fn project_root_from_payload(data: &Value) -> String {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path)
     };
-    if let Some(root) = find_project_root(&absolute) {
+    if absolute.exists()
+        && let Some(root) = find_project_root(&absolute)
+    {
         return root.to_string_lossy().to_string();
     }
 

@@ -316,15 +316,24 @@ fn hook_diagnostics_next_steps(host: &str, hooks_ready: bool) -> Vec<String> {
     if hooks_ready {
         steps.push("Start a new host session, then ask for /emb-start or /emb-next.".to_string());
     } else {
-        steps.push("Run emb-agent repair/update for this host, then restart the host session.".to_string());
+        steps.push(
+            "Run emb-agent repair/update for this host, then restart the host session.".to_string(),
+        );
     }
     match host {
         "codex" => {
-            steps.push("In Codex, run /hooks and trust the project hooks if they are pending review.".to_string());
-            steps.push("Confirm ~/.codex/config.toml enables hooks if project hooks do not run.".to_string());
+            steps.push(
+                "In Codex, run /hooks and trust the project hooks if they are pending review."
+                    .to_string(),
+            );
+            steps.push(
+                "Confirm ~/.codex/config.toml enables hooks if project hooks do not run."
+                    .to_string(),
+            );
         }
         "cursor" => {
-            steps.push("Reload the Cursor window if hooks or commands are not visible.".to_string());
+            steps
+                .push("Reload the Cursor window if hooks or commands are not visible.".to_string());
         }
         "claude" => {
             steps.push("Start a new Claude Code session after hook changes.".to_string());
