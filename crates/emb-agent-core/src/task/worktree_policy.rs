@@ -42,6 +42,13 @@ pub struct WorktreePolicy {
     pub task_worktree_path: String,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ActiveTaskSelection {
+    pub task: String,
+    pub source: String,
+    pub session_id: String,
+}
+
 pub fn current_workspace_status(cwd: &Path) -> WorkspaceStatus {
     let cwd_string = cwd.to_string_lossy().to_string();
     let repo_root = match git_stdout(cwd, &["rev-parse", "--show-toplevel"]) {
@@ -93,9 +100,79 @@ pub fn record_session_heartbeat(
     cwd: &Path,
     host: &str,
 ) -> Option<SessionHeartbeat> {
+    write_session_heartbeat(ext_dir, cwd, host, None)
+}
+
+pub fn set_session_active_task(
+    ext_dir: &Path,
+    cwd: &Path,
+    host: &str,
+    task_name: &str,
+) -> Option<SessionHeartbeat> {
+    write_session_heartbeat(ext_dir, cwd, host, Some(task_name.trim()))
+}
+
+pub fn clear_session_active_task(ext_dir: &Path, cwd: &Path, task_name: &str) -> usize {
+    let workspace = current_workspace_status(cwd);
+    let registry_ext_dir = session_registry_ext_dir(ext_dir, &workspace);
+    let mut cleared = clear_task_from_sessions_dir(&registry_ext_dir, task_name);
+    if registry_ext_dir != ext_dir {
+        cleared += clear_task_from_sessions_dir(ext_dir, task_name);
+    }
+    cleared
+}
+
+pub fn resolve_active_task_name(ext_dir: &Path, cwd: &Path, _host: &str) -> ActiveTaskSelection {
+    let workspace = current_workspace_status(cwd);
+    let registry_ext_dir = session_registry_ext_dir(ext_dir, &workspace);
+    prune_stale_sessions(&registry_ext_dir);
+
+    if let Some(session_id) = env_session_id()
+        && let Some(session) = read_session(&registry_ext_dir, &session_id)
+        && !session.task.trim().is_empty()
+    {
+        return ActiveTaskSelection {
+            task: session.task.trim().to_string(),
+            source: format!("session:{session_id}"),
+            session_id,
+        };
+    }
+
+    if env_session_id().is_none() {
+        let sessions = active_sessions(&registry_ext_dir);
+        if sessions.len() == 1 {
+            let session = &sessions[0];
+            if !session.task.trim().is_empty() {
+                return ActiveTaskSelection {
+                    task: session.task.trim().to_string(),
+                    source: format!("session-fallback:{}", session.session_id),
+                    session_id: session.session_id.clone(),
+                };
+            }
+        }
+    }
+
+    let global_task = current_task_name(ext_dir);
+    if global_task.is_empty() {
+        ActiveTaskSelection::default()
+    } else {
+        ActiveTaskSelection {
+            task: global_task,
+            source: "global".to_string(),
+            session_id: String::new(),
+        }
+    }
+}
+
+fn write_session_heartbeat(
+    ext_dir: &Path,
+    cwd: &Path,
+    host: &str,
+    task_override: Option<&str>,
+) -> Option<SessionHeartbeat> {
     let workspace = current_workspace_status(cwd);
     if !workspace.git_available {
-        return None;
+        return write_non_git_session_heartbeat(ext_dir, cwd, host, task_override);
     }
     let registry_ext_dir = session_registry_ext_dir(ext_dir, &workspace);
     let sessions_dir = registry_ext_dir.join("sessions");
@@ -103,6 +180,12 @@ pub fn record_session_heartbeat(
     prune_stale_sessions(&registry_ext_dir);
 
     let session_id = session_id_from_env(host, &workspace.repo_root);
+    let path = sessions_dir.join(format!("{}.json", safe_file_stem(&session_id)));
+    let task = task_override
+        .map(|task| task.trim().to_string())
+        .filter(|task| !task.is_empty())
+        .or_else(|| read_session_task_from_path(&path))
+        .unwrap_or_else(|| current_task_name(ext_dir));
     let heartbeat = SessionHeartbeat {
         session_id: session_id.clone(),
         host: host.to_string(),
@@ -110,11 +193,48 @@ pub fn record_session_heartbeat(
         repo_root: workspace.repo_root.clone(),
         workspace_kind: workspace.kind.clone(),
         branch: workspace.branch.clone(),
-        task: current_task_name(ext_dir),
+        task,
         pid: std::process::id(),
         updated_at_ms: now_ms(),
     };
+    let body = serde_json::to_string_pretty(&heartbeat).ok()?;
+    fs::write(path, body).ok()?;
+    Some(heartbeat)
+}
+
+fn write_non_git_session_heartbeat(
+    ext_dir: &Path,
+    cwd: &Path,
+    host: &str,
+    task_override: Option<&str>,
+) -> Option<SessionHeartbeat> {
+    let sessions_dir = ext_dir.join("sessions");
+    fs::create_dir_all(&sessions_dir).ok()?;
+    prune_stale_sessions(ext_dir);
+
+    let repo_root = cwd
+        .canonicalize()
+        .unwrap_or_else(|_| cwd.to_path_buf())
+        .to_string_lossy()
+        .to_string();
+    let session_id = session_id_from_env(host, &repo_root);
     let path = sessions_dir.join(format!("{}.json", safe_file_stem(&session_id)));
+    let task = task_override
+        .map(|task| task.trim().to_string())
+        .filter(|task| !task.is_empty())
+        .or_else(|| read_session_task_from_path(&path))
+        .unwrap_or_else(|| current_task_name(ext_dir));
+    let heartbeat = SessionHeartbeat {
+        session_id: session_id.clone(),
+        host: host.to_string(),
+        cwd: cwd.to_string_lossy().to_string(),
+        repo_root,
+        workspace_kind: "non-git".to_string(),
+        branch: String::new(),
+        task,
+        pid: std::process::id(),
+        updated_at_ms: now_ms(),
+    };
     let body = serde_json::to_string_pretty(&heartbeat).ok()?;
     fs::write(path, body).ok()?;
     Some(heartbeat)
@@ -130,6 +250,9 @@ pub fn prune_stale_sessions(ext_dir: &Path) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        if path.file_name().and_then(|s| s.to_str()) == Some("tool-guard-state.json") {
             continue;
         }
         let stale = fs::read_to_string(&path)
@@ -151,6 +274,9 @@ pub fn active_sessions(ext_dir: &Path) -> Vec<SessionHeartbeat> {
     let mut sessions = Vec::new();
     if let Ok(entries) = fs::read_dir(&sessions_dir) {
         for entry in entries.flatten() {
+            if entry.path().file_name().and_then(|s| s.to_str()) == Some("tool-guard-state.json") {
+                continue;
+            }
             if let Ok(content) = fs::read_to_string(entry.path())
                 && let Ok(session) = serde_json::from_str::<SessionHeartbeat>(&content)
                 && now.saturating_sub(session.updated_at_ms) <= ttl_ms
@@ -271,6 +397,57 @@ fn session_registry_ext_dir(ext_dir: &Path, workspace: &WorkspaceStatus) -> Path
     ext_dir.to_path_buf()
 }
 
+fn read_session(ext_dir: &Path, session_id: &str) -> Option<SessionHeartbeat> {
+    let path = ext_dir
+        .join("sessions")
+        .join(format!("{}.json", safe_file_stem(session_id)));
+    let content = fs::read_to_string(path).ok()?;
+    serde_json::from_str::<SessionHeartbeat>(&content).ok()
+}
+
+fn read_session_task_from_path(path: &Path) -> Option<String> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<SessionHeartbeat>(&content).ok())
+        .map(|session| session.task.trim().to_string())
+        .filter(|task| !task.is_empty())
+}
+
+fn clear_task_from_sessions_dir(ext_dir: &Path, task_name: &str) -> usize {
+    let task_name = task_name.trim();
+    if task_name.is_empty() {
+        return 0;
+    }
+    let sessions_dir = ext_dir.join("sessions");
+    let Ok(entries) = fs::read_dir(&sessions_dir) else {
+        return 0;
+    };
+    let mut cleared = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(mut session) = serde_json::from_str::<SessionHeartbeat>(&content) else {
+            continue;
+        };
+        if session.task.trim() != task_name {
+            continue;
+        }
+        session.task.clear();
+        session.updated_at_ms = now_ms();
+        if let Ok(body) = serde_json::to_string_pretty(&session)
+            && fs::write(path, body).is_ok()
+        {
+            cleared += 1;
+        }
+    }
+    cleared
+}
+
 fn current_task_name(ext_dir: &Path) -> String {
     let state_dir = crate::variant_ops::active_state_dir(ext_dir);
     fs::read_to_string(state_dir.join(".current-task"))
@@ -300,20 +477,27 @@ fn task_recorded_worktree_path(ext_dir: &Path, task_name: &str) -> String {
 }
 
 fn session_id_from_env(host: &str, repo_root: &str) -> String {
-    for key in [
+    if let Some(value) = env_session_id() {
+        return value;
+    }
+    let safe_repo = safe_file_stem(repo_root);
+    format!("{host}-{safe_repo}")
+}
+
+fn env_session_id() -> Option<String> {
+    [
         "EMB_AGENT_SESSION_ID",
         "PI_SESSION_ID",
         "CODEX_SESSION_ID",
         "CLAUDE_SESSION_ID",
-    ] {
-        if let Ok(value) = std::env::var(key)
-            && !value.trim().is_empty()
-        {
-            return value.trim().to_string();
-        }
-    }
-    let safe_repo = safe_file_stem(repo_root);
-    format!("{host}-{safe_repo}")
+    ]
+    .into_iter()
+    .find_map(|key| {
+        std::env::var(key)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    })
 }
 
 fn git_stdout(cwd: &Path, args: &[&str]) -> Option<String> {

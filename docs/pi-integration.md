@@ -37,7 +37,7 @@ npx emb-agent@latest --target pi --local
 | --- | --- |
 | `/emb-start` | 加载 `start --brief` 项目上下文，并按 runtime gate 判断是否 onboarding |
 | `/emb-next` | 运行 `next --brief` 并把 routing gate 注入对话 |
-| `/emb-finish-work` | 记录 workspace journal，并在默认路径下关闭 active task |
+| `/emb-finish-work` | 由父 AI 在验证后触发，记录 workspace journal、关闭 active task，并归档到 `.emb-agent/tasks/archive/YYYY-MM/` |
 
 文档、手册、datasheet 和原理图不再作为用户 slash 命令暴露。Pi agent 应调用 `ingest_doc` 工具；CLI 场景用 `ingest doc --file <path>` 或 `ingest schematic --file <path>`。
 

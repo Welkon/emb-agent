@@ -304,7 +304,7 @@ function defaultEmbAgentWorkflowMd() {
 		"| `req.yaml` | Product behavior, constraints, acceptance, unknowns |",
 		"| `attention.md` | Current blockers, traps, priorities, environment notes |",
 		"| `ARCHITECTURE.md` | Current module/peripheral/ISR ownership map |",
-		"| `tasks/` | Active and completed task records |",
+		"| `tasks/` | Active task records plus `archive/YYYY-MM/` completed task history |",
 		"| `.install/` | Installer logs, backups, version state, install result |",
 		"",
 		"Feature directories such as `cache/`, `graph/`, `wiki/`, `compound/`,",
@@ -317,7 +317,7 @@ function defaultEmbAgentWorkflowMd() {
 		"",
 		"1. `/emb-start` loads or refreshes project context and routes onboarding when needed.",
 		"2. `/emb-next` continues from the current runtime gate.",
-		"3. `/emb-finish-work` records the workspace journal and closes completed work.",
+		"3. `/emb-finish-work` records the workspace journal, resolves the active task, and archives it under `tasks/archive/YYYY-MM/`.",
 		"",
 		"Internal runtime commands (`onboard`, `ingest`, `knowledge`, `task`, `scan`,",
 		"`plan`, `do`, `review`, `verify`) are tools used when the current gate asks for",
@@ -353,7 +353,8 @@ function defaultEmbAgentWorkflowMd() {
 		"SDK/toolchain/API evidence, then a focused implementation worker, then an",
 		"independent release/system checker; subagents must not spawn more subagents.",
 		"The parent session coordinates, synthesizes hidden results, writes closure docs,",
-		"and closes with `/emb-finish-work` after verification.",
+		"and triggers `/emb-finish-work` after verification so the runtime resolves and",
+		"archives the active task.",
 		"Inline implementation is only the fallback for narrow work or hosts without a",
 		"subagent surface.",
 		"[/workflow-state:task_active]",
@@ -362,7 +363,7 @@ function defaultEmbAgentWorkflowMd() {
 		"",
 		"- Run `/emb-start` for empty, partial, migrated, or existing projects.",
 		"- Run `/emb-next` after setup to choose one next action.",
-		"- Run `/emb-finish-work` when verified work is ready to close.",
+		"- The parent AI triggers `/emb-finish-work` when verified work is ready to close; the runtime resolves and archives the active task.",
 		"- Keep hardware truth in `hw.yaml`, product behavior in `req.yaml` plus `docs/prd/`, and reusable task research in `tasks/<task>/research/`.",
 		"",
 		"## Knowledge Evolution",
@@ -395,6 +396,14 @@ function refreshManagedWorkflowText(existing, managed) {
 		/Feature directories such as [\s\S]*?matching command or installer option needs them\./,
 		featureDirs
 	);
+	updated = updated.replace(
+		/\| `tasks\/` \| Active and completed task records \|/,
+		"| `tasks/` | Active task records plus `archive/YYYY-MM/` completed task history |"
+	);
+	updated = updated.replace(
+		/3\. `\/emb-finish-work` records the workspace journal and closes completed work\./,
+		"3. `/emb-finish-work` records the workspace journal, resolves the active task, and archives it under `tasks/archive/YYYY-MM/`."
+	);
 	for (var i = 0; i < ["concept", "clarifying", "ready", "task_active"].length; i++) {
 		var state = ["concept", "clarifying", "ready", "task_active"][i];
 		var replacement = workflowStateBlock(managed, state);
@@ -405,6 +414,10 @@ function refreshManagedWorkflowText(existing, managed) {
 	updated = updated.replace(
 		/- Keep hardware truth in `hw\.yaml`(?:,| and) product behavior in `req\.yaml` plus `docs\/prd\/`\./,
 		"- Keep hardware truth in `hw.yaml`, product behavior in `req.yaml` plus `docs/prd/`, and reusable task research in `tasks/<task>/research/`."
+	);
+	updated = updated.replace(
+		/- Run `\/emb-finish-work` when verified work is ready to close\./,
+		"- The parent AI triggers `/emb-finish-work` when verified work is ready to close; the runtime resolves and archives the active task."
 	);
 	return updated;
 }

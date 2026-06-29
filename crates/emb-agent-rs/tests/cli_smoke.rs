@@ -303,6 +303,24 @@ fn run(project: &TestProject, args: &[&str]) -> String {
     assert_success(output)
 }
 
+fn run_with_env(project: &TestProject, args: &[&str], envs: &[(&str, &str)]) -> String {
+    let mut command = Command::new(emb_agent_bin());
+    command.args(args).arg("--cwd").arg(project.path());
+    for key in [
+        "EMB_AGENT_SESSION_ID",
+        "PI_SESSION_ID",
+        "CODEX_SESSION_ID",
+        "CLAUDE_SESSION_ID",
+    ] {
+        command.env_remove(key);
+    }
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let output = command.output().expect("run emb-agent-rs with env");
+    assert_success(output)
+}
+
 fn run_with_stdin(args: &[&str], stdin: &str) -> String {
     let mut child = Command::new(emb_agent_bin())
         .args(args)
@@ -3607,6 +3625,118 @@ fn task_activate_requires_worktree_when_other_main_session_active() {
 }
 
 #[test]
+fn status_prefers_session_active_task_over_global_current_task() {
+    let project = TestProject::new("session-active-task");
+    fs::write(project.path().join(".emb-agent/.current-task"), "pwm-led\n")
+        .expect("write global current task");
+    project.write_session_heartbeat("s1", "schematic-review");
+
+    let status = run_with_env(
+        &project,
+        &["status", "--brief"],
+        &[("EMB_AGENT_SESSION_ID", "s1")],
+    );
+    let value: serde_json::Value = serde_json::from_str(&status).expect("status json");
+    assert_eq!(value["tasks"]["active"], "schematic-review");
+    assert_eq!(value["tasks"]["active_source"], "session:s1");
+}
+
+#[test]
+fn status_does_not_guess_session_task_when_multiple_sessions_have_no_identity() {
+    let project = TestProject::new("session-active-task-multiple");
+    fs::write(project.path().join(".emb-agent/.current-task"), "pwm-led\n")
+        .expect("write global current task");
+    project.write_session_heartbeat("s1", "schematic-review");
+    project.write_session_heartbeat("s2", "schematic-review");
+
+    let status = run_with_env(&project, &["status", "--brief"], &[]);
+    let value: serde_json::Value = serde_json::from_str(&status).expect("status json");
+    assert_eq!(value["tasks"]["active"], "pwm-led");
+    assert_eq!(value["tasks"]["active_source"], "global");
+}
+
+#[test]
+fn hook_statusline_preserves_existing_session_task() {
+    let project = TestProject::new("session-heartbeat-preserve");
+    fs::write(project.path().join(".emb-agent/.current-task"), "pwm-led\n")
+        .expect("write global current task");
+    project.write_session_heartbeat("s1", "schematic-review");
+
+    let _ = run_with_env(
+        &project,
+        &["hook", "statusline", "--host", "codex"],
+        &[("EMB_AGENT_SESSION_ID", "s1")],
+    );
+    let raw = fs::read_to_string(project.path().join(".emb-agent/sessions/s1.json"))
+        .expect("read session heartbeat");
+    let value: serde_json::Value = serde_json::from_str(&raw).expect("session json");
+    assert_eq!(value["task"], "schematic-review");
+}
+
+#[test]
+fn task_resolve_without_name_uses_session_active_task() {
+    let project = TestProject::new("session-active-task-resolve");
+    fs::write(project.path().join(".emb-agent/.current-task"), "pwm-led\n")
+        .expect("write global current task");
+    project.write_session_heartbeat("s1", "schematic-review");
+
+    let output = run_with_env(
+        &project,
+        &["task", "resolve"],
+        &[("EMB_AGENT_SESSION_ID", "s1")],
+    );
+    let value: serde_json::Value = serde_json::from_str(&output).expect("resolve json");
+    assert_eq!(value["task"]["name"], "schematic-review");
+    assert_eq!(value["task"]["status"], "completed");
+
+    let pwm_led =
+        fs::read_to_string(project.path().join(".emb-agent/tasks/pwm-led/task.json")).unwrap();
+    assert!(
+        pwm_led.contains("\"status\":\"pending\""),
+        "global task should not be resolved: {pwm_led}"
+    );
+}
+
+#[test]
+fn task_archive_moves_task_to_month_archive() {
+    let project = TestProject::new("task-archive");
+
+    let output = run(
+        &project,
+        &["task", "archive", "schematic-review", "--no-commit"],
+    );
+    let value: serde_json::Value = serde_json::from_str(&output).expect("archive json");
+    assert_eq!(value["status"], "ok", "archive output: {output}");
+    assert_eq!(value["archived"], true, "archive output: {output}");
+    assert!(
+        !project
+            .path()
+            .join(".emb-agent/tasks/schematic-review")
+            .exists(),
+        "active task directory should be moved"
+    );
+    let archived_task_json = value["archive"]["task_json"]
+        .as_str()
+        .expect("archive task_json path");
+    let archived = fs::read_to_string(archived_task_json).expect("read archived task");
+    let archived_value: serde_json::Value =
+        serde_json::from_str(&archived).expect("archived task json");
+    assert_eq!(archived_value["status"], "completed");
+    assert!(
+        archived_value["archivedAt"]
+            .as_str()
+            .unwrap_or("")
+            .contains('T')
+    );
+
+    let list = run(&project, &["task", "list"]);
+    assert!(
+        list.contains("pwm-led") && !list.contains("schematic-review"),
+        "task list should hide archived tasks: {list}"
+    );
+}
+
+#[test]
 fn legacy_doc_commands_are_dispatchable() {
     let project = TestProject::new("legacy");
 
@@ -4034,6 +4164,8 @@ fn finish_work_records_workspace_journal_and_resolves_active_task() {
         value["task"]["resolve"]["task"]["status"], "completed",
         "finish-work output: {output}"
     );
+    assert_eq!(value["task"]["archive_attempted"], true);
+    assert_eq!(value["task"]["archive"]["archived"], true);
 
     let journal = fs::read_to_string(
         project
@@ -4048,9 +4180,23 @@ fn finish_work_records_workspace_journal_and_resolves_active_task() {
         "journal: {journal}"
     );
 
-    let task = run(&project, &["task", "show", "pwm-led"]);
-    let task_value: serde_json::Value = serde_json::from_str(&task).expect("task json");
-    assert_eq!(task_value["status"], "completed", "task output: {task}");
+    assert!(
+        !project.path().join(".emb-agent/tasks/pwm-led").exists(),
+        "finish-work should archive active task"
+    );
+    let archived_task_json = value["task"]["archive"]["archive"]["task_json"]
+        .as_str()
+        .expect("archive task_json path");
+    let archived_task = fs::read_to_string(archived_task_json).expect("read archived task");
+    let archived_value: serde_json::Value =
+        serde_json::from_str(&archived_task).expect("archived task json");
+    assert_eq!(archived_value["status"], "completed");
+    assert!(
+        archived_value["archivedAt"]
+            .as_str()
+            .unwrap_or("")
+            .contains('T')
+    );
 
     let start = run(&project, &["start", "--json"]);
     let start_value: serde_json::Value = serde_json::from_str(&start).expect("start json");

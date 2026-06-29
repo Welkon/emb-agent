@@ -1,7 +1,7 @@
 use super::config::run_configured_hooks;
 use super::util::{current_dir_string, option_value};
 use emb_agent_core::{build_task_list_json, read_all_tasks, read_task};
-use std::{fs, path::Path};
+use std::path::Path;
 
 pub fn run(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -87,7 +87,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 .get(2)
                 .filter(|arg| !arg.starts_with("--"))
                 .cloned()
-                .or_else(|| active_task_name(&ext_dir))
+                .or_else(|| active_task_name(&ext_dir, Path::new(&cwd)))
                 .ok_or("task resolve requires <name> or an active task")?;
             let note = args.get(3).map(|s| s.as_str()).unwrap_or("");
             let output = emb_agent_core::task::task_ops::task_resolve(&ext_dir, &name, note);
@@ -103,13 +103,23 @@ pub fn run(args: &[String]) -> Result<(), String> {
             run_lifecycle_hooks(Path::new(&cwd), &ext_dir, "after_archive", name);
             Ok(())
         }
+        Some("archive") => {
+            let name = args.get(2).ok_or("task archive requires <name>")?;
+            let no_commit = args.iter().any(|a| a == "--no-commit");
+            let output = emb_agent_core::task::task_ops::task_archive(&ext_dir, name, no_commit);
+            println!("{}", output);
+            if let Some(task_json) = archive_task_json_path(&output) {
+                run_lifecycle_hooks_for_task_json(Path::new(&cwd), "after_archive", &task_json);
+            }
+            Ok(())
+        }
         Some("aar") => match args.get(2).map(String::as_str) {
             Some("status") => {
                 let name = args
                     .get(3)
                     .filter(|arg| !arg.starts_with("--"))
                     .cloned()
-                    .or_else(|| active_task_name(&ext_dir))
+                    .or_else(|| active_task_name(&ext_dir, Path::new(&cwd)))
                     .ok_or("task aar status requires <name> or an active task")?;
                 println!(
                     "{}",
@@ -122,7 +132,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     .get(3)
                     .filter(|arg| !arg.starts_with("--"))
                     .cloned()
-                    .or_else(|| active_task_name(&ext_dir))
+                    .or_else(|| active_task_name(&ext_dir, Path::new(&cwd)))
                     .ok_or("task aar scan requires <name> or an active task")?;
                 let lessons = if args.iter().any(|a| a == "--lessons") {
                     Some(true)
@@ -142,7 +152,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     .get(3)
                     .filter(|arg| !arg.starts_with("--"))
                     .cloned()
-                    .or_else(|| active_task_name(&ext_dir))
+                    .or_else(|| active_task_name(&ext_dir, Path::new(&cwd)))
                     .ok_or("task aar record requires <name> or an active task")?;
                 let note = if args.get(3).map(|arg| arg.starts_with("--")).unwrap_or(true) {
                     args.get(3).map(|s| s.as_str()).unwrap_or("")
@@ -268,7 +278,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             _ => Err("task bug: expected add, list, or resolve".to_string()),
         },
         _ => Err(
-            "task: expected list, show, add, activate, finish-work, resolve, delete, aar, worktree, or bug"
+            "task: expected list, show, add, activate, finish-work, resolve, archive, delete, aar, worktree, or bug"
                 .to_string(),
         ),
     }
@@ -286,6 +296,10 @@ fn json_string_field(raw: &str, key: &str) -> Option<String> {
 
 fn run_lifecycle_hooks(project_root: &Path, ext_dir: &Path, hook: &str, task_name: &str) {
     let task_json = ext_dir.join("tasks").join(task_name).join("task.json");
+    run_lifecycle_hooks_for_task_json(project_root, hook, &task_json);
+}
+
+fn run_lifecycle_hooks_for_task_json(project_root: &Path, hook: &str, task_json: &Path) {
     run_configured_hooks(
         project_root,
         hook,
@@ -293,19 +307,29 @@ fn run_lifecycle_hooks(project_root: &Path, ext_dir: &Path, hook: &str, task_nam
     );
 }
 
-fn active_task_name(ext_dir: &Path) -> Option<String> {
-    let state_dir = emb_agent_core::variant_ops::active_state_dir(ext_dir);
-    let name = fs::read_to_string(state_dir.join(".current-task")).ok()?;
-    let name = name.trim();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name.to_string())
+fn archive_task_json_path(output: &str) -> Option<std::path::PathBuf> {
+    let value = serde_json::from_str::<serde_json::Value>(output).ok()?;
+    if value.get("status").and_then(serde_json::Value::as_str) != Some("ok")
+        || !value
+            .get("archived")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    {
+        return None;
     }
+    value
+        .get("archive")
+        .and_then(|archive| archive.get("task_json"))
+        .and_then(serde_json::Value::as_str)
+        .map(std::path::PathBuf::from)
+}
+
+fn active_task_name(ext_dir: &Path, cwd: &Path) -> Option<String> {
+    emb_agent_core::read_current_task_name_for_session(ext_dir, cwd, "cli")
 }
 
 fn print_help() {
     println!(
-        "emb-agent-rs task\n\nUSAGE:\n  task list\n  task show <name>\n  task add <summary> [--priority P1]\n  task activate <name> [--worktree]\n  task finish-work [name] [--summary <text>] [--test <cmd>] [--no-resolve]\n  task delete <name>\n  task aar status <name>\n  task aar scan <name> --no-lessons|--lessons\n  task aar record <name> <note>\n  task resolve <name> [note]\n  task worktree list\n  task worktree status [name]\n  task worktree show <name>\n  task worktree create <name> [--branch <branch>] [--base <base>]\n  task worktree cleanup <name>\n  task bug add <parent-task> <summary>\n  task bug list [parent-task] [--variant <name>]\n  task bug resolve <bug-id> [note]\n\nSTATUS FLOW:\n  pending → in_progress → completed → deleted\n  pending ⇄ in_progress (reversible)\n  completed can be re-activated to in_progress\n\nNOTES:\n  task containers are recommended for multi-step or resumable work, but narrow explanations,\n  one-off verification, and small scoped fixes can often stay direct.\n  task finish-work records the workspace journal and resolves the active task unless --no-resolve is set.\n  task resolve auto-records a minimal no-lessons AAR when no durable lesson was captured.\n  If task aar scan uses --lessons, task aar record is still required before resolve.\n"
+        "emb-agent-rs task\n\nUSAGE:\n  task list\n  task show <name>\n  task add <summary> [--priority P1]\n  task activate <name> [--worktree]\n  task finish-work [name] [--summary <text>] [--test <cmd>] [--no-resolve] [--no-archive]\n  task archive <name> [--no-commit]\n  task delete <name>\n  task aar status <name>\n  task aar scan <name> --no-lessons|--lessons\n  task aar record <name> <note>\n  task resolve <name> [note]\n  task worktree list\n  task worktree status [name]\n  task worktree show <name>\n  task worktree create <name> [--branch <branch>] [--base <base>]\n  task worktree cleanup <name>\n  task bug add <parent-task> <summary>\n  task bug list [parent-task] [--variant <name>]\n  task bug resolve <bug-id> [note]\n\nSTATUS FLOW:\n  pending → in_progress → completed → archived\n  pending ⇄ in_progress (reversible)\n  completed can be re-activated before archive\n\nNOTES:\n  task containers are recommended for multi-step or resumable work, but narrow explanations,\n  one-off verification, and small scoped fixes can often stay direct.\n  task finish-work records the workspace journal, resolves the active task unless --no-resolve is set, and archives it unless --no-archive is set.\n  task resolve auto-records a minimal no-lessons AAR when no durable lesson was captured.\n  If task aar scan uses --lessons, task aar record is still required before resolve.\n"
     );
 }

@@ -272,7 +272,11 @@ pub fn task_activate_with_options(ext_dir: &Path, name: &str, use_worktree: bool
     // Read task, update status
     let content = fs::read_to_string(&task_path).unwrap_or_default();
     let mut task: Value = serde_json::from_str(&content).unwrap_or(Value::Null);
-    let current_status = task.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    let current_status = task
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if current_status == "deleted" {
         return format!(
             "{{\"status\":\"error\",\"error\":{{\"code\":\"deleted-tombstone\",\"message\":\"Task {} is deleted and cannot be activated\"}}}}",
@@ -280,6 +284,14 @@ pub fn task_activate_with_options(ext_dir: &Path, name: &str, use_worktree: bool
         );
     }
     if current_status == "in_progress" {
+        let current_task_file = state_dir.join(".current-task");
+        let _ = fs::write(&current_task_file, name);
+        let _ = crate::task::worktree_policy::set_session_active_task(
+            ext_dir,
+            &project_root,
+            "cli",
+            name,
+        );
         return format!(
             "{{\"status\":\"ok\",\"activated\":false,\"already_active\":true,\"task\":{{\"name\":{},\"status\":\"in_progress\"}},\"next\":\"do\",\"next_instructions\":\"Task is already active. Use `/emb:do` for structured execution when ready, but scoped explanation or design review can still happen first.\"}}",
             json_quote(name)
@@ -323,6 +335,8 @@ pub fn task_activate_with_options(ext_dir: &Path, name: &str, use_worktree: bool
     // Write current task file
     let current_task_file = state_dir.join(".current-task");
     let _ = fs::write(&current_task_file, name);
+    let _ =
+        crate::task::worktree_policy::set_session_active_task(ext_dir, &project_root, "cli", name);
 
     let worktree_json = worktree_result
         .as_ref()
@@ -351,7 +365,11 @@ pub fn task_delete(ext_dir: &Path, name: &str) -> String {
 
     let content = fs::read_to_string(&task_path).unwrap_or_default();
     let mut task: Value = serde_json::from_str(&content).unwrap_or(Value::Null);
-    let current_status = task.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    let current_status = task
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if current_status == "deleted" {
         return format!(
             "{{\"status\":\"ok\",\"deleted\":false,\"already_deleted\":true,\"task\":{{\"name\":{},\"status\":\"deleted\"}}}}",
@@ -377,11 +395,132 @@ pub fn task_delete(ext_dir: &Path, name: &str) -> String {
     {
         let _ = fs::write(&current_task_file, "");
     }
+    let project_root = project_root_from_ext_dir(ext_dir);
+    let _ = crate::task::worktree_policy::clear_session_active_task(ext_dir, &project_root, name);
 
     format!(
         "{{\"status\":\"ok\",\"deleted\":true,\"task\":{{\"name\":{},\"status\":\"deleted\"}},\"tombstone\":true,\"next\":\"next\",\"next_instructions\":\"Task tombstoned. Directory and AAR preserved. Trigger `/emb-next` for routing.\"}}",
         json_quote(name)
     )
+}
+
+/// Archive a task directory under tasks/archive/YYYY-MM/ after marking it completed.
+pub fn task_archive(ext_dir: &Path, name: &str, no_commit: bool) -> String {
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    let tasks_dir = state_dir.join("tasks");
+    let task_dir = tasks_dir.join(name);
+    let task_path = task_dir.join("task.json");
+    if !task_path.exists() {
+        if let Some(archived_path) = find_archived_task_path(&tasks_dir, name) {
+            return json!({
+                "status": "ok",
+                "archived": false,
+                "already_archived": true,
+                "task": {"name": name},
+                "archive": {
+                    "path": archived_path.to_string_lossy(),
+                    "task_json": archived_path.join("task.json").to_string_lossy()
+                },
+                "next": "next",
+                "next_instructions": "Task is already archived. Trigger `/emb-next` for routing."
+            })
+            .to_string();
+        }
+        return format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"not-found\",\"message\":\"Task not found: {}\"}}}}",
+            name
+        );
+    }
+
+    let content = fs::read_to_string(&task_path).unwrap_or_default();
+    let mut task: Value = serde_json::from_str(&content).unwrap_or(Value::Null);
+    let current_status = task
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if current_status == "deleted" {
+        return format!(
+            "{{\"status\":\"error\",\"error\":{{\"code\":\"deleted-tombstone\",\"message\":\"Task {} is deleted and cannot be archived\"}}}}",
+            name
+        );
+    }
+
+    let now = chrono_now();
+    if let Some(obj) = task.as_object_mut() {
+        if !matches!(
+            current_status.as_ref(),
+            "completed" | "done" | "resolved" | "closed"
+        ) {
+            obj.insert("status".to_string(), json!("completed"));
+        }
+        if obj
+            .get("completedAt")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .is_empty()
+        {
+            obj.insert("completedAt".to_string(), json!(now.clone()));
+        }
+        obj.insert("archivedAt".to_string(), json!(now));
+    }
+    let _ = fs::write(
+        &task_path,
+        serde_json::to_string_pretty(&task).unwrap_or_default(),
+    );
+
+    let archive_month = chrono::Local::now().format("%Y-%m").to_string();
+    let archive_dir = tasks_dir.join("archive").join(&archive_month);
+    if let Err(err) = fs::create_dir_all(&archive_dir) {
+        return json!({
+            "status": "error",
+            "error": {"code": "archive-mkdir", "message": err.to_string()}
+        })
+        .to_string();
+    }
+    let archive_dest = archive_dir.join(name);
+    if archive_dest.exists() {
+        return json!({
+            "status": "error",
+            "error": {"code": "archive-exists", "message": format!("Archived task already exists: {}", archive_dest.to_string_lossy())}
+        })
+        .to_string();
+    }
+    if let Err(err) = fs::rename(&task_dir, &archive_dest) {
+        return json!({
+            "status": "error",
+            "error": {"code": "archive-move", "message": err.to_string()}
+        })
+        .to_string();
+    }
+
+    let current_task_file = state_dir.join(".current-task");
+    if fs::read_to_string(&current_task_file)
+        .unwrap_or_default()
+        .trim()
+        == name
+    {
+        let _ = fs::write(&current_task_file, "");
+    }
+    let project_root = project_root_from_ext_dir(ext_dir);
+    let _ = crate::task::worktree_policy::clear_session_active_task(ext_dir, &project_root, name);
+
+    let auto_commit =
+        archive_auto_commit(ext_dir, &project_root, &task_dir, &archive_dest, no_commit);
+    json!({
+        "status": "ok",
+        "archived": true,
+        "task": {"name": name, "status": "completed"},
+        "archive": {
+            "month": archive_month,
+            "path": archive_dest.to_string_lossy(),
+            "task_json": archive_dest.join("task.json").to_string_lossy()
+        },
+        "auto_commit": auto_commit,
+        "next": "next",
+        "next_instructions": "Task archived. Trigger `/emb-next` for routing."
+    })
+    .to_string()
 }
 
 /// Resolve (complete) a task
@@ -462,6 +601,8 @@ pub fn task_resolve(ext_dir: &Path, name: &str, note: &str) -> String {
     {
         let _ = fs::write(&current_task_file, "");
     }
+    let project_root = project_root_from_ext_dir(ext_dir);
+    let _ = crate::task::worktree_policy::clear_session_active_task(ext_dir, &project_root, name);
 
     format!(
         "{{\"status\":\"ok\",\"resolved\":true,\"task\":{{\"name\":{},\"status\":\"completed\"}},\"aar\":{{\"auto_recorded_no_lessons\":{}}},\"next\":\"next\",\"next_instructions\":{}}}",
@@ -945,6 +1086,161 @@ fn task_worktree_path(repo_root: &Path, name: &str) -> PathBuf {
 
 fn project_root_from_ext_dir(ext_dir: &Path) -> PathBuf {
     ext_dir.parent().unwrap_or(ext_dir).to_path_buf()
+}
+
+fn find_archived_task_path(tasks_dir: &Path, name: &str) -> Option<PathBuf> {
+    let archive_dir = tasks_dir.join("archive");
+    let entries = fs::read_dir(archive_dir).ok()?;
+    for entry in entries.flatten() {
+        let month_dir = entry.path();
+        if !month_dir.is_dir() {
+            continue;
+        }
+        let candidate = month_dir.join(name);
+        if candidate.join("task.json").exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn archive_auto_commit(
+    ext_dir: &Path,
+    project_root: &Path,
+    source_task_dir: &Path,
+    archive_dest: &Path,
+    no_commit: bool,
+) -> Value {
+    if no_commit {
+        return json!({"enabled": false, "status": "skipped", "reason": "no-commit"});
+    }
+    if !config_bool(ext_dir, "session_auto_commit").unwrap_or(false) {
+        return json!({"enabled": false, "status": "skipped", "reason": "session_auto_commit=false"});
+    }
+    if git_repo_root(project_root).is_err() {
+        return json!({"enabled": true, "status": "skipped", "reason": "not-git"});
+    }
+
+    let Some(source_rel) = repo_relative(project_root, source_task_dir) else {
+        return json!({"enabled": true, "status": "skipped", "reason": "source-outside-repo"});
+    };
+    let Some(dest_rel) = repo_relative(project_root, archive_dest) else {
+        return json!({"enabled": true, "status": "skipped", "reason": "archive-outside-repo"});
+    };
+
+    let add = Command::new("git")
+        .args(["add", "--", &dest_rel])
+        .current_dir(project_root)
+        .output();
+    if let Ok(output) = add {
+        if !output.status.success() {
+            return json!({
+                "enabled": true,
+                "status": "warn",
+                "reason": "git-add-failed",
+                "stderr": String::from_utf8_lossy(&output.stderr).trim()
+            });
+        }
+    } else {
+        return json!({"enabled": true, "status": "warn", "reason": "git-add-spawn-failed"});
+    }
+
+    let _ = Command::new("git")
+        .args([
+            "rm",
+            "-r",
+            "--cached",
+            "--ignore-unmatch",
+            "--",
+            &source_rel,
+        ])
+        .current_dir(project_root)
+        .output();
+
+    let diff = Command::new("git")
+        .args(["diff", "--cached", "--quiet", "--", &source_rel, &dest_rel])
+        .current_dir(project_root)
+        .output();
+    if let Ok(output) = diff
+        && output.status.success()
+    {
+        return json!({"enabled": true, "status": "skipped", "reason": "nothing-staged"});
+    }
+
+    let task_name = archive_dest
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("task");
+    let commit_message = format!("chore(task): archive {task_name}");
+    let commit = Command::new("git")
+        .args(["commit", "-m", &commit_message])
+        .current_dir(project_root)
+        .output();
+    match commit {
+        Ok(output) if output.status.success() => {
+            json!({"enabled": true, "status": "committed", "message": commit_message})
+        }
+        Ok(output) => json!({
+            "enabled": true,
+            "status": "warn",
+            "reason": "git-commit-failed",
+            "message": commit_message,
+            "stderr": String::from_utf8_lossy(&output.stderr).trim()
+        }),
+        Err(err) => json!({
+            "enabled": true,
+            "status": "warn",
+            "reason": "git-commit-spawn-failed",
+            "message": err.to_string()
+        }),
+    }
+}
+
+fn repo_relative(project_root: &Path, path: &Path) -> Option<String> {
+    if let Ok(rel) = path.strip_prefix(project_root) {
+        return Some(rel.to_string_lossy().replace('\\', "/"));
+    }
+    let root = project_root.canonicalize().ok()?;
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().ok()?.join(path)
+    };
+    let canonical = if absolute.exists() {
+        absolute.canonicalize().ok()?
+    } else if let Some(parent) = absolute.parent().filter(|parent| parent.exists()) {
+        parent
+            .canonicalize()
+            .ok()?
+            .join(absolute.file_name().unwrap_or_default())
+    } else {
+        path.canonicalize().ok()?
+    };
+    canonical
+        .strip_prefix(root)
+        .ok()
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+}
+
+fn config_bool(ext_dir: &Path, key: &str) -> Option<bool> {
+    let text = fs::read_to_string(ext_dir.join("config.yaml")).ok()?;
+    for raw in text.lines() {
+        let line = raw.split('#').next().unwrap_or("");
+        let trimmed = line.trim();
+        if trimmed.is_empty() || line.starts_with(' ') {
+            continue;
+        }
+        if let Some((k, v)) = trimmed.split_once(':')
+            && k.trim() == key
+        {
+            let value = v.trim().trim_matches('"').trim_matches('\'');
+            return Some(matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            ));
+        }
+    }
+    None
 }
 
 fn git_repo_root(project_root: &Path) -> Result<PathBuf, String> {

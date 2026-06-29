@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
-use crate::hardware::project::{TaskRef, find_project_root, read_current_task_ref};
+use crate::hardware::project::{TaskRef, find_project_root, read_current_task_ref_for_session};
 
 const KNOWLEDGE_PRIMING_TTL_MS: u128 = 10 * 60 * 1000;
 const SUBAGENT_CONTEXT_MARKER: &str = "<!-- emb-agent-hook-injected -->";
@@ -24,7 +24,7 @@ pub fn build_tool_guard_output_from_value_for_host(data: &Value, host: &str) -> 
     let tool = tool_name(data);
     let command = command_from_payload(data);
 
-    if let Some(output) = build_subagent_context_output(&project_root, data, &tool) {
+    if let Some(output) = build_subagent_context_output(&project_root, data, &tool, host) {
         return output;
     }
 
@@ -79,15 +79,20 @@ struct SubagentCall {
     tool_input: Value,
 }
 
-fn build_subagent_context_output(project_root: &Path, data: &Value, tool: &str) -> Option<String> {
+fn build_subagent_context_output(
+    project_root: &Path,
+    data: &Value,
+    tool: &str,
+    host: &str,
+) -> Option<String> {
     let call = parse_subagent_call(data, tool)?;
     let agent = normalize_subagent_name(&call.agent);
     if !is_emb_subagent(&agent) || call.prompt.contains(SUBAGENT_CONTEXT_MARKER) {
         return None;
     }
 
-    let state_dir = crate::variant_ops::active_state_dir(&project_root.join(".emb-agent"));
-    let current_task = read_current_task_ref(&state_dir);
+    let current_task =
+        read_current_task_ref_for_session(&project_root.join(".emb-agent"), project_root, host);
     let context = build_subagent_context(project_root, current_task.as_ref(), &agent);
     if context.trim().is_empty() {
         return None;

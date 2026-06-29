@@ -89,8 +89,8 @@ fn print_help() {
   Session:    onboard, start, next, status [--query "question"], health, pause [note], resume
               session show|journal|history
               session record --title "..." --summary "..." [--detail "..."] [--commit HASH] [--test CMD] [--next "..."]
-              finish-work [--summary "..."] [--test CMD] [--no-resolve]
-  Tasks:      task list/show/add/activate/finish-work/resolve/delete, task worktree list/status/show/create/cleanup
+              finish-work [--summary "..."] [--test CMD] [--no-resolve] [--no-archive]
+  Tasks:      task list/show/add/activate/finish-work/resolve/archive/delete, task worktree list/status/show/create/cleanup
   Impl:       impl mark --decision <slug> --status <planned|implemented|verified> [--file <path>]
               impl list [--brief], impl verify --decision <slug>
   Lint:       lint (readability) — flag forwarding wrappers, deep nesting >4, misleading names

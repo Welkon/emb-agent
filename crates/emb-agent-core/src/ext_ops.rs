@@ -358,7 +358,7 @@ This directory is project-local state. Keep the top level small:
 | `req.yaml` | Product behavior, constraints, acceptance, unknowns |
 | `attention.md` | Current blockers, traps, priorities, environment notes |
 | `ARCHITECTURE.md` | Current module/peripheral/ISR ownership map |
-| `tasks/` | Active and completed task records |
+| `tasks/` | Active task records plus `archive/YYYY-MM/` completed task history |
 | `.install/` | Installer logs, backups, version state, install result |
 
 Feature directories such as `cache/`, `graph/`, `wiki/`, `compound/`,
@@ -371,7 +371,7 @@ Host-visible commands are intentionally small:
 
 1. `/emb-start` loads or refreshes project context and routes onboarding when needed.
 2. `/emb-next` continues from the current runtime gate.
-3. `/emb-finish-work` records the workspace journal and closes completed work.
+3. `/emb-finish-work` records the workspace journal, resolves the active task, and archives it under `tasks/archive/YYYY-MM/`.
 
 Internal runtime commands (`onboard`, `ingest`, `knowledge`, `task`, `scan`,
 `plan`, `do`, `review`, `verify`) are tools used when the current gate asks for
@@ -407,7 +407,8 @@ host exposes a subagent/delegation tool, dispatch `researcher` first for missing
 SDK/toolchain/API evidence, then a focused implementation worker, then an
 independent release/system checker; subagents must not spawn more subagents.
 The parent session coordinates, synthesizes hidden results, writes closure docs,
-and closes with `/emb-finish-work` after verification.
+and triggers `/emb-finish-work` after verification so the runtime resolves and
+archives the active task.
 Inline implementation is only the fallback for narrow work or hosts without a
 subagent surface.
 [/workflow-state:task_active]
@@ -701,7 +702,7 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             "errors": truth_validation_errors
         },
         "hosts": checks,
-        "next": "Use emb-start to load or repair context, emb-next to continue, and emb-finish-work to close completed work. Run the manual update command when any host reports version_status=stale."
+        "next": "Use emb-start to load or repair context, emb-next to continue, and emb-finish-work after verification so the runtime records the journal, resolves the active task, and archives it. Run the manual update command when any host reports version_status=stale."
     }))
     .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
 }

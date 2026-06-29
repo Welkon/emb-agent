@@ -288,7 +288,7 @@ pub fn run_finish_work_command(args: &[String], cwd: &str) -> Result<(), String>
         return Err("finish-work requires an initialized .emb-agent project".to_string());
     }
 
-    let task_name = finish_work_task_name(args, &ext_dir);
+    let task_name = finish_work_task_name(args, &ext_dir, &project_root);
     let task_info = task_name
         .as_deref()
         .and_then(|name| read_task_info(&ext_dir, name));
@@ -389,15 +389,42 @@ pub fn run_finish_work_command(args: &[String], cwd: &str) -> Result<(), String>
     } else {
         None
     };
+    let archive_enabled = resolve_enabled && !args.iter().any(|arg| arg == "--no-archive");
+    let archive_result = if archive_enabled
+        && resolve_result
+            .as_ref()
+            .is_some_and(is_ok_task_lifecycle_result)
+    {
+        task_name.as_deref().map(|name| {
+            archive_finish_work_task(
+                &project_root,
+                &ext_dir,
+                name,
+                args.iter().any(|arg| arg == "--no-commit"),
+            )
+        })
+    } else {
+        None
+    };
     let resolve_failed = resolve_result
         .as_ref()
         .is_some_and(|value| value.get("status").and_then(Value::as_str) != Some("ok"));
-    let finish_status = if resolve_failed { "warn" } else { "ok" };
+    let archive_failed = archive_result
+        .as_ref()
+        .is_some_and(|value| value.get("status").and_then(Value::as_str) != Some("ok"));
+    let finish_status = if resolve_failed || archive_failed {
+        "warn"
+    } else {
+        "ok"
+    };
     let task_json = serde_json::json!({
         "name": task_name,
         "resolve_enabled": resolve_enabled,
         "resolve_attempted": resolve_result.is_some(),
-        "resolve": resolve_result.unwrap_or(Value::Null)
+        "resolve": resolve_result.unwrap_or(Value::Null),
+        "archive_enabled": archive_enabled,
+        "archive_attempted": archive_result.is_some(),
+        "archive": archive_result.unwrap_or(Value::Null)
     });
     let payload = serde_json::json!({
         "status": finish_status,
@@ -417,12 +444,12 @@ struct TaskInfo {
     package: String,
 }
 
-fn finish_work_task_name(args: &[String], ext_dir: &Path) -> Option<String> {
+fn finish_work_task_name(args: &[String], ext_dir: &Path, cwd: &Path) -> Option<String> {
     option_value(args, "--task")
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| task_finish_work_positional(args))
-        .or_else(|| active_task_name(ext_dir))
+        .or_else(|| active_task_name(ext_dir, cwd))
 }
 
 fn task_finish_work_positional(args: &[String]) -> Option<String> {
@@ -439,15 +466,8 @@ fn task_finish_work_positional(args: &[String]) -> Option<String> {
         .filter(|arg| !arg.is_empty())
 }
 
-fn active_task_name(ext_dir: &Path) -> Option<String> {
-    let state_dir = emb_agent_core::variant_ops::active_state_dir(ext_dir);
-    let name = fs::read_to_string(state_dir.join(".current-task")).ok()?;
-    let name = name.trim();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name.to_string())
-    }
+fn active_task_name(ext_dir: &Path, cwd: &Path) -> Option<String> {
+    emb_agent_core::read_current_task_name_for_session(ext_dir, cwd, "cli")
 }
 
 fn read_task_info(ext_dir: &Path, name: &str) -> Option<TaskInfo> {
@@ -536,6 +556,42 @@ fn resolve_finish_work_task(
         );
     }
     value
+}
+
+fn archive_finish_work_task(
+    project_root: &Path,
+    ext_dir: &Path,
+    name: &str,
+    no_commit: bool,
+) -> Value {
+    let raw = emb_agent_core::task::task_ops::task_archive(ext_dir, name, no_commit);
+    let value = serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| {
+        serde_json::json!({
+            "status": "error",
+            "error": {"code": "invalid-archive-output", "message": raw}
+        })
+    });
+    if value.get("status").and_then(Value::as_str) == Some("ok")
+        && value
+            .get("archived")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        && let Some(task_json) = value
+            .get("archive")
+            .and_then(|archive| archive.get("task_json"))
+            .and_then(Value::as_str)
+    {
+        run_configured_hooks(
+            project_root,
+            "after_archive",
+            &[("TASK_JSON_PATH", task_json.to_string())],
+        );
+    }
+    value
+}
+
+fn is_ok_task_lifecycle_result(value: &Value) -> bool {
+    value.get("status").and_then(Value::as_str) == Some("ok")
 }
 
 fn finish_work_followups() -> Value {

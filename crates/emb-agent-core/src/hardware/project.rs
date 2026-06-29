@@ -32,6 +32,7 @@ pub struct ProjectSnapshot {
     pub open_tasks: usize,
     pub wiki_pages: usize,
     pub current_task: Option<TaskSnapshot>,
+    pub current_task_source: String,
     pub recommended_command: String,
     pub recommended_reason: String,
     pub bootstrap_status: String,
@@ -65,6 +66,7 @@ pub struct ProjectState {
     pub hardware: HardwareTruth,
     pub requirements: RequirementsTruth,
     pub current_task: Option<TaskRef>,
+    pub current_task_source: String,
     pub open_tasks: usize,
     pub wiki_pages: usize,
     pub git_branch: String,
@@ -1252,6 +1254,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
             priority: task.priority,
             package: task.package,
         }),
+        current_task_source: state.current_task_source,
         recommended_command,
         recommended_reason,
         bootstrap_status: bootstrap_status.to_string(),
@@ -1312,10 +1315,18 @@ pub fn project_state_from_cwd(cwd: &str) -> ProjectState {
     let Some(root) = find_project_root(Path::new(cwd)) else {
         return ProjectState::default();
     };
-    read_project_state(&root)
+    read_project_state_for_session(&root, Path::new(cwd), "cli")
 }
 
 pub fn read_project_state(project_root: &Path) -> ProjectState {
+    read_project_state_inner(project_root, None)
+}
+
+pub fn read_project_state_for_session(project_root: &Path, cwd: &Path, host: &str) -> ProjectState {
+    read_project_state_inner(project_root, Some((cwd, host)))
+}
+
+fn read_project_state_inner(project_root: &Path, session: Option<(&Path, &str)>) -> ProjectState {
     let root = project_root
         .canonicalize()
         .unwrap_or_else(|_| project_root.to_path_buf());
@@ -1337,7 +1348,8 @@ pub fn read_project_state(project_root: &Path) -> ProjectState {
     } else {
         language
     };
-    let current_task = read_current_task_ref(&state_dir);
+    let (current_task, current_task_source) =
+        read_current_task_ref_with_source(&state_dir, &ext, session);
     let truth_validation_errors = validate_truth_files(&root);
 
     ProjectState {
@@ -1351,11 +1363,12 @@ pub fn read_project_state(project_root: &Path) -> ProjectState {
         language,
         hardware: HardwareTruth::from_yaml(&hw_yaml),
         requirements: RequirementsTruth::from_yaml(&req_yaml),
+        current_task,
+        current_task_source,
         open_tasks: count_open_tasks(&state_dir),
         wiki_pages: count_wiki_pages(&state_dir),
         git_branch: git_branch(&root),
         git_dirty_count: git_dirty_count(&root),
-        current_task,
         truth_validation_errors,
     }
 }
@@ -1650,6 +1663,7 @@ pub fn build_project_state_json(state: &ProjectState) -> String {
             "package": task.package,
             "path": task.path,
         })),
+        "current_task_source": state.current_task_source,
         "open_tasks": state.open_tasks,
         "wiki_pages": state.wiki_pages,
         "git_branch": state.git_branch,
@@ -1700,6 +1714,62 @@ pub fn read_current_task_ref(ext: &Path) -> Option<TaskRef> {
         return None;
     }
     Some(task)
+}
+
+pub fn read_current_task_ref_for_session(
+    ext_dir: &Path,
+    cwd: &Path,
+    host: &str,
+) -> Option<TaskRef> {
+    let state_dir = crate::variant_ops::active_state_dir(ext_dir);
+    read_current_task_ref_with_source(&state_dir, ext_dir, Some((cwd, host))).0
+}
+
+pub fn read_current_task_name_for_session(
+    ext_dir: &Path,
+    cwd: &Path,
+    host: &str,
+) -> Option<String> {
+    read_current_task_ref_for_session(ext_dir, cwd, host).map(|task| task.name)
+}
+
+fn read_current_task_ref_with_source(
+    state_dir: &Path,
+    ext_dir: &Path,
+    session: Option<(&Path, &str)>,
+) -> (Option<TaskRef>, String) {
+    if let Some((cwd, host)) = session {
+        let selection = crate::task::worktree_policy::resolve_active_task_name(ext_dir, cwd, host);
+        if !selection.task.is_empty() {
+            let task_path = state_dir
+                .join("tasks")
+                .join(&selection.task)
+                .join("task.json");
+            if let Some(task) = read_task_ref(&selection.task, &task_path)
+                && !is_closed_task(&task.status)
+            {
+                return (Some(task), selection.source);
+            }
+
+            if selection.source != "global" {
+                let global_task = read_current_task_ref(state_dir);
+                let source = if global_task.is_some() {
+                    "global".to_string()
+                } else {
+                    String::new()
+                };
+                return (global_task, source);
+            }
+        }
+    }
+
+    let global_task = read_current_task_ref(state_dir);
+    let source = if global_task.is_some() {
+        "global".to_string()
+    } else {
+        String::new()
+    };
+    (global_task, source)
 }
 
 pub fn read_task_ref(task_name: &str, task_path: &Path) -> Option<TaskRef> {

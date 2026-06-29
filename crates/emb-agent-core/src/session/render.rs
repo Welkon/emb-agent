@@ -791,7 +791,8 @@ You are the user's embedded development assistant. Start with onboarding, not im
         push_workspace_journal_lines(&mut lines, snapshot);
         lines.extend([
             "Use host-visible commands only for the main flow: emb-start, emb-next, emb-finish-work.".to_string(),
-            "Use internal runtime/tool commands only when the current gate specifically requires evidence, task, knowledge, or verification work.".to_string(),
+            "After verified task work, the parent AI triggers emb-finish-work; the runtime resolves the active task and archives it without asking the user to run internal task commands.".to_string(),
+            "Use internal runtime/tool commands only when the current gate specifically requires evidence, task, knowledge, verification, or lifecycle work.".to_string(),
             "</emb-agent-workflow-state>".to_string(),
         ]);
         return lines.join("\n");
@@ -1675,7 +1676,8 @@ pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
         "tasks": {
             "open": snapshot.open_tasks,
             "wiki_pages": snapshot.wiki_pages,
-            "active": active_task_name
+            "active": active_task_name,
+            "active_source": snapshot.current_task_source
         },
         "next": {
             "command": snapshot.recommended_command,
@@ -1871,7 +1873,8 @@ pub fn build_external_status_json(snapshot: &ProjectSnapshot) -> String {
         "tasks": {
             "open": snapshot.open_tasks,
             "wiki_pages": snapshot.wiki_pages,
-            "active": active_task
+            "active": active_task,
+            "active_source": snapshot.current_task_source
         },
         "workspace_journal": workspace_journal_json(snapshot),
         "runtime_events": runtime_events
@@ -2081,6 +2084,7 @@ mod tests {
                 priority: "P1".to_string(),
                 package: "core".to_string(),
             }),
+            current_task_source: "global".to_string(),
             recommended_command: "do".to_string(),
             recommended_reason: "Active task is selected".to_string(),
             bootstrap_status: "ready".to_string(),
