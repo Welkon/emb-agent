@@ -17,11 +17,12 @@ fn read_repo(path: impl AsRef<Path>) -> String {
 fn pi_extension_exposes_unified_tool_layer() {
     let ext = read_repo("runtime/scaffolds/shells/.pi/extensions/emb-agent.ts");
     for expected in [
+        "pi.registerCommand(\"emb-start\"",
         "pi.registerCommand(\"emb-next\"",
-        "pi.registerCommand(\"emb-onboard\"",
-        "pi.registerCommand(\"emb-ingest\"",
+        "pi.registerCommand(\"emb-finish-work\"",
+        "name: \"emb_start\"",
         "name: \"emb_next\"",
-        "name: \"emb_onboard\"",
+        "name: \"emb_finish_work\"",
         "name: \"ingest_doc\"",
         "name: \"doc_lookup\"",
         "name: \"doc_fetch\"",
@@ -62,8 +63,10 @@ fn pi_extension_exposes_unified_tool_layer() {
         "selectTargetTask",
         "rolePrompt",
         "MUST create or edit",
-        "Token-efficient implementation dispatch scoped to target task",
-        "Run hw-scout or release-checker separately only when the parent AI judges fresh evidence/review is needed",
+        "Implementation dispatch scoped to target task",
+        "Main-session default is fw-doer followed by release-checker",
+        "Self-fix only clear, bounded issues discovered during the check",
+        "Do not spawn additional emb-agent subagents",
         "Manual roles preserved with target-task scoped prompts",
         "Dispatch phase:",
         "release-checker",
@@ -100,13 +103,16 @@ fn pi_extension_exposes_unified_tool_layer() {
         "SUBAGENT_MODEL_RETRIES",
         "TUI_HEARTBEAT_MS",
         "SPINNER_FRAMES",
+        "subagent ${details.mode}",
+        "◐",
         "shouldRetrySubagentFailure",
         "buildPiSubagentArgs",
         "routeHistory",
         "total ${usageSummary}",
         "ctx ${formatTokenCount(used)} used",
         "\\/dev\\/null",
-        "The parent AI must decide from the user's request",
+        "For active task implementation, call knowledge_search first",
+        "the default dispatch is fw-doer followed by release-checker",
         "knowledge_search, knowledge_diagnose, and knowledge_graph_query",
         "Use knowledge_search for project knowledge",
         "subagentDispatchEnabled",
@@ -133,6 +139,10 @@ fn pi_extension_exposes_unified_tool_layer() {
     for forbidden in [
         "npm:@tintinweb/pi-subagents",
         "subagents:rpc",
+        "pi.registerCommand(\"emb-onboard\"",
+        "pi.registerCommand(\"emb-ingest\"",
+        "name: \"emb_onboard\"",
+        "/emb-ingest",
         "patchTintinwebSubagentNotifications",
         "visibleAgentDispatchInstructions",
         "pendingVisibleDispatch",
@@ -191,8 +201,12 @@ fn pi_settings_are_safe_by_default() {
 fn pi_docs_match_extension_surface() {
     let docs = read_repo("docs/pi-integration.md");
     assert!(docs.contains(".pi/extensions/emb-agent.ts"));
-    assert!(docs.contains("/emb-ingest"));
+    assert!(docs.contains("/emb-start"));
+    assert!(docs.contains("/emb-next"));
+    assert!(docs.contains("/emb-finish-work"));
     assert!(docs.contains("ingest_doc"));
+    assert!(docs.contains("emb_start"));
+    assert!(docs.contains("emb_finish_work"));
     assert!(docs.contains("ask_user_question"));
     assert!(docs.contains("emb_subagent"));
     assert!(docs.contains("emb_session_search"));
@@ -201,6 +215,10 @@ fn pi_docs_match_extension_surface() {
     assert!(docs.contains("knowledge_diagnose"));
     assert!(docs.contains("knowledge_graph_query"));
     assert!(docs.contains("native-pi"));
+    assert!(
+        !docs.contains("/emb-ingest") && !docs.contains("emb_onboard"),
+        "Pi docs must not expose legacy ingest/onboard host commands"
+    );
     assert!(
         !docs.contains("\u{4e0d}\u{9700}\u{8981}\u{6269}\u{5c55}"),
         "Pi docs must not claim no extension is needed"
@@ -259,12 +277,26 @@ fn host_scaffolds_share_knowledge_first_and_schematic_rules() {
     let codex_hooks = read_repo("runtime/scaffolds/shells/.codex/hooks.json");
     for expected in [
         "PreToolUse",
+        "UserPromptSubmit",
         "hook tool-guard --host codex",
         "hook context-monitor --host codex",
     ] {
         assert!(
             codex_hooks.contains(expected),
             "Codex hooks scaffold missing {expected}"
+        );
+    }
+
+    let claude_settings = read_repo("runtime/scaffolds/shells/.claude/settings.json");
+    for expected in [
+        "\"statusLine\"",
+        "hook statusline --host claude",
+        "UserPromptSubmit",
+        "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR",
+    ] {
+        assert!(
+            claude_settings.contains(expected),
+            "Claude settings scaffold missing {expected}"
         );
     }
 }

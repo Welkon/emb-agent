@@ -1008,7 +1008,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         return ProjectSnapshot {
             initialized: false,
             recommended_command: "onboard".to_string(),
-            recommended_reason: "Project not yet initialized. Run emb-onboard to scaffold .emb-agent/ or migrate existing hardware documents.".to_string(),
+            recommended_reason: "Project not yet initialized. Run emb-start to scaffold .emb-agent/ or migrate existing hardware documents.".to_string(),
             ..ProjectSnapshot::default()
         };
     }
@@ -1118,20 +1118,20 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
             state.truth_validation_errors.join("; ")
         )
     } else if active_is_clarification {
-        let mut summary = "Continue the active clarification/brainstorming task as a doc-grounded grilling loop. Ask one load-bearing question at a time, challenge ambiguous terms against project truth, extract exact timing/percentage/slope values from any waveform or measurement captures before implementing, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string();
+        let mut summary = "Continue the active clarification/brainstorming task as a doc-grounded brainstorm loop. Inspect repository evidence before asking, ask one load-bearing question at a time with a recommended answer and trade-off, challenge ambiguous terms against project truth, extract exact timing/percentage/slope values from any waveform or measurement captures before implementing, update docs/prd/system.md or the task PRD plus .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and do not create another task or start implementation until the state-machine checklist and concrete scope are explicit.".to_string();
         if power_management_risk {
             summary.push_str(" Because sleep/power behavior is in scope, explicitly lock down watchdog policy, sleep entry conditions, wake sources, pre-sleep peripheral shutdown, post-wake restore sequence, config-bit dependencies, and idle-current acceptance evidence before coding.");
         }
         summary
     } else if needs_prd_exploration {
         if hardware_first_docs_pending {
-            let mut summary = "System PRD is missing or still scaffold-only, and hardware-first evidence exists under docs/. Before asking behavior questions, list docs hardware inputs, ingest schematics with `ingest schematic`, parse MCU/datasheet PDFs with `ingest doc` using the configured local tool order before MinerU fallback, record schematic/manual conflicts as PRD/req unknowns, then ask one load-bearing behavior/power/reset/acceptance question at a time.".to_string();
+            let mut summary = "System PRD is missing or still scaffold-only, and hardware-first evidence exists under docs/. Before asking behavior questions, list docs hardware inputs, ingest schematics with `ingest schematic`, parse MCU/datasheet PDFs with `ingest doc` using the configured local tool order before MinerU fallback, record schematic/manual conflicts as PRD/req unknowns, then ask one load-bearing behavior/power/reset/acceptance question at a time with a recommended answer and trade-off.".to_string();
             if power_management_risk {
                 summary.push_str(" Treat watchdog and sleep policy as first-pass PRD questions, not later implementation cleanup.");
             }
             summary
         } else {
-            let mut summary = "System PRD is missing or still scaffold-only. Run PRD exploration before task creation: ask one load-bearing behavior/power/reset/acceptance question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run validate or health after truth edits, and stop until explicit agreement.".to_string();
+            let mut summary = "System PRD is missing or still scaffold-only. Run the brainstorm contract before task creation: inspect repository evidence first, ask one load-bearing behavior/power/reset/acceptance question at a time with a recommended answer and trade-off, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run validate or health after truth edits, and stop until explicit agreement.".to_string();
             if power_management_risk {
                 summary.push_str(" Front-load watchdog behavior, sleep entry and wake conditions, config-bit dependencies, peripheral shutdown/restore, and measured idle-current acceptance.");
             }
@@ -1151,7 +1151,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
         || !state.hardware.unknowns.is_empty()
         || !has_hardware
     {
-        let mut summary = "Continue requirement exploration/brainstorming as a doc-grounded grilling loop. Clarify behavior, interaction, power, LED, mechanical, hardware constraints, and the state-machine checklist; update docs/prd/system.md and .emb-agent/req.yaml; run the installed emb-agent runtime's validate or health command after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug. If the latest user request already confirms a concrete deliverable or bug, record that scope, fill the task brief from the confirmed facts, and create/activate the implementation task after health passes instead of asking for another confirmation.".to_string();
+        let mut summary = "Continue requirement exploration/brainstorming as a doc-grounded brainstorm loop. Inspect repository evidence before asking; clarify behavior, interaction, power, LED, mechanical, hardware constraints, and the state-machine checklist one question at a time with recommended answers and trade-offs; update docs/prd/system.md and .emb-agent/req.yaml; run the installed emb-agent runtime's validate or health command after truth edits. Do not create an implementation task until the user confirms a concrete deliverable or bug. If the latest user request already confirms a concrete deliverable or bug, record that scope, fill the task PRD and brief from the confirmed facts, and create/activate the implementation task after health passes instead of asking for another confirmation.".to_string();
         if power_management_risk {
             summary.push_str(" For battery or low-power behavior, explicitly close watchdog, sleep/wake, config-bit, and idle-current unknowns early.");
         }
@@ -1177,7 +1177,7 @@ pub fn snapshot_from_cwd(cwd: &str) -> ProjectSnapshot {
     } else if active_is_clarification {
         (
             "clarify".to_string(),
-            "Active work is requirement/hardware clarification. Continue the doc-grounded grilling loop and record confirmed decisions before creating implementation tasks.".to_string(),
+            "Active work is requirement/hardware clarification. Continue the doc-grounded brainstorm contract and record confirmed decisions before creating implementation tasks.".to_string(),
         )
     } else if needs_prd_exploration {
         (

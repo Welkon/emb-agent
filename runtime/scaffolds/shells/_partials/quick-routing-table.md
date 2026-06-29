@@ -1,6 +1,6 @@
 | Task | Required reads | Workflow |
 | --- | --- | --- |
-| Project not initialized or hardware truth missing | `AGENTS.md`; `.emb-agent/hw.yaml`; `.emb-agent/req.yaml`; `docs/` schematics/manuals/datasheets | Run `/emb-onboard` or the installed runtime's `onboard` command before implementation |
+| Project not initialized or hardware truth missing | `AGENTS.md`; `.emb-agent/hw.yaml`; `.emb-agent/req.yaml`; `docs/` schematics/manuals/datasheets | Run `/emb-start` or the installed runtime's `start --brief` command before implementation |
 | Need the next allowed step | `.emb-agent/project.json`; `.emb-agent/tasks/`; `docs/prd/`; `docs/` hardware evidence when gate says hardware-first | Run `/emb-next` or the installed runtime's `next --brief` command and follow `agent_protocol.gate` |
 | Need to understand the current service split, scheduler path, or time-slice flow | Active task PRD if one exists; `.emb-agent/hw.yaml`; `.emb-agent/req.yaml`; only the in-scope source files | Explain the current structure first. Do not force task creation just to answer a design or readability question |
 | Narrow analysis, one-off verification, or small scoped fix | `.emb-agent/hw.yaml`; `.emb-agent/req.yaml`; scoped source files tied to the request | Work can proceed directly once the scope and verification surface are explicit; use a task only if the work becomes multi-step or resumable |

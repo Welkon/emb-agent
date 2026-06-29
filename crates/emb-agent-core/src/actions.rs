@@ -457,7 +457,7 @@ pub fn build_do_output(snapshot: &ProjectSnapshot) -> DoOutput {
         (
             "Implement the active task",
             "Active task exists. Proceed with implementation:\n\
-1. Read the task PRD (.emb-agent/tasks/<task>/task.json and prd.md)\n\
+1. Read `.emb-agent/tasks/<task>/task.json`, then the PRD path listed in `artifacts.prd`\n\
 2. Write firmware code in firmware/src and headers in firmware/include unless project truth explicitly declares another firmware package path\n\
 3. Compile and verify through the normal project checks\n\
 4. After implementation evidence exists, trigger `/emb:review`"

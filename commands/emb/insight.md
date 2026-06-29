@@ -29,7 +29,7 @@ allowed-tools:
 
 When `insight extract` runs, it reads:
 
-1. **Task PRD** (`.emb-agent/tasks/<name>/prd.md`): goal, constraints, acceptance criteria
+1. **Task PRD** (`task.json.artifacts.prd`, normally `docs/prd/tasks/<name>.md`): goal, constraints, acceptance criteria
 2. **Diff** (git diff for the task's changed files): what actually changed
 3. **Trace entries** (`.emb-agent/trace/trace.jsonl` filtered by task): phase-by-phase record
 4. **Workspace journal** (`.emb-agent/workspace/<developer>/journal-N.md` if present): developer session notes
@@ -59,7 +59,7 @@ What remains unknown after this task. Write to `wiki/queries/<slug>.md`.
 
 ## Workflow
 
-1. After `task finish-work`, the agent records closure context with `session record`, then runs `insight extract --confirm` automatically (or prompts the user if auto-runner is off).
+1. After `task finish-work`, the agent uses the workspace journal recorded by finish-work, then runs `insight extract --confirm` automatically when insight extraction is implemented (or prompts the user if auto-runner is off).
 2. `insight extract` drafts wiki pages and prints a preview. With `--confirm`, it writes them.
 3. After writing, run `knowledge graph refresh` to index the new wiki pages.
 4. Run `insight stale-check` periodically to surface wiki pages past their `stale_after` date.

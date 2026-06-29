@@ -314,7 +314,7 @@ pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
 fn hook_diagnostics_next_steps(host: &str, hooks_ready: bool) -> Vec<String> {
     let mut steps = Vec::new();
     if hooks_ready {
-        steps.push("Start a new host session, then ask for /emb start or /emb next.".to_string());
+        steps.push("Start a new host session, then ask for /emb-start or /emb-next.".to_string());
     } else {
         steps.push("Run emb-agent repair/update for this host, then restart the host session.".to_string());
     }

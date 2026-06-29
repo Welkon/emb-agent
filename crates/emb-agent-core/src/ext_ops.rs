@@ -351,6 +351,51 @@ This directory is project-local state. Keep the top level small:
 Feature directories such as `cache/`, `graph/`, `wiki/`, `compound/`,
 `memory/`, `sessions/`, `workspace/`, `specs/`, and `plugins/` are created
 only when the matching command or installer option needs them.
+
+## Main Flow
+
+Host-visible commands are intentionally small:
+
+1. `/emb-start` loads or refreshes project context and routes onboarding when needed.
+2. `/emb-next` continues from the current runtime gate.
+3. `/emb-finish-work` records the workspace journal and closes completed work.
+
+Internal runtime commands (`onboard`, `ingest`, `knowledge`, `task`, `scan`,
+`plan`, `do`, `review`, `verify`) are tools used when the current gate asks for
+that specific work.
+
+[workflow-state:concept]
+The project is still in concept/onboarding mode. Do not implement yet. Gather
+hardware/product truth, ingest schematics or manuals when they are the source of
+truth, update `hw.yaml`/`req.yaml`/`docs/prd/system.md`, then rerun `/emb-next`.
+[/workflow-state:concept]
+
+[workflow-state:clarifying]
+The system PRD or requirements are not stable enough for execution. Run the
+main-session brainstorm contract: inspect repository evidence before asking,
+ask one load-bearing behavior, hardware, power, product-risk, or acceptance
+question at a time with your recommended answer and trade-off, update the
+system PRD or task PRD plus `req.yaml` after each confirmation, and stop before
+task activation until the gate changes. Complex tasks should have durable
+`design.md` and `implement.md` notes before implementation.
+[/workflow-state:clarifying]
+
+[workflow-state:ready]
+The project has enough truth to choose work. Use `/emb-next` to present existing
+tasks or PRD-derived candidates. Create or activate a task only when the user
+confirms the concrete target and acceptance surface.
+[/workflow-state:ready]
+
+[workflow-state:task_active]
+An active task exists. Keep reads scoped to the task PRD, hardware/requirement
+truth, and directly affected source/build files. Main-session default: when the
+host exposes a subagent/delegation tool, dispatch a focused implementation
+worker and then an independent release/system checker; subagents must not spawn
+more subagents. The parent session coordinates, synthesizes hidden results,
+writes closure docs, and closes with `/emb-finish-work` after verification.
+Inline implementation is only the fallback for narrow work or hosts without a
+subagent surface.
+[/workflow-state:task_active]
 "
 }
 
@@ -445,11 +490,29 @@ fn manual_update_command() -> &'static str {
 fn hooks_config_has_runtime_entries(host_dir: &Path, host: &str) -> bool {
     let hooks = fs::read_to_string(host_dir.join("hooks.json")).unwrap_or_default();
     let codex_guard_ok = host != "codex" || hooks.contains("hook tool-guard --host codex");
+    let codex_workflow_ok = host != "codex" || hooks.contains("UserPromptSubmit");
     !hooks.contains("{{")
         && hooks.contains(&format!("hook session-start --host {host}"))
         && hooks.contains(&format!("hook context-monitor --host {host}"))
         && codex_guard_ok
+        && codex_workflow_ok
         && hooks.contains("ApplyPatch")
+}
+
+fn canonical_host_commands() -> [&'static str; 3] {
+    ["emb-start", "emb-next", "emb-finish-work"]
+}
+
+fn canonical_command_files_exist(dir: &Path) -> bool {
+    canonical_host_commands()
+        .iter()
+        .all(|name| dir.join(format!("{name}.md")).exists())
+}
+
+fn canonical_codex_skills_exist(root: &Path) -> bool {
+    canonical_host_commands()
+        .iter()
+        .all(|name| root.join(".agents").join("skills").join(name).join("SKILL.md").exists())
 }
 
 pub fn install_doctor(cwd: &Path, host: &str) -> String {
@@ -521,17 +584,7 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             ),
             "codex" => (
                 "codex-skills",
-                cwd.join(".agents")
-                    .join("skills")
-                    .join("emb-next")
-                    .join("SKILL.md")
-                    .exists()
-                    && cwd
-                        .join(".agents")
-                        .join("skills")
-                        .join("emb-onboard")
-                        .join("SKILL.md")
-                        .exists(),
+                canonical_codex_skills_exist(cwd),
                 hooks_config_has_runtime_entries(&host_dir, "codex")
                     && host_dir
                         .join("skills")
@@ -541,8 +594,7 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             ),
             "cursor" => (
                 "cursor-command-files",
-                host_dir.join("commands").join("emb-next.md").exists()
-                    && host_dir.join("commands").join("emb-onboard.md").exists(),
+                canonical_command_files_exist(&host_dir.join("commands")),
                 hooks_config_has_runtime_entries(&host_dir, "cursor")
                     && host_dir
                         .join("rules")
@@ -556,20 +608,20 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             ),
             "windsurf" => (
                 "windsurf-workflows",
-                host_dir.join("workflows").join("emb-next.md").exists()
-                    && host_dir.join("workflows").join("emb-onboard.md").exists(),
+                canonical_command_files_exist(&host_dir.join("workflows")),
                 true,
             ),
             _ => (
                 "command-files",
-                host_dir.join("commands").join("emb-next.md").exists()
-                    && host_dir.join("commands").join("emb-onboard.md").exists(),
+                canonical_command_files_exist(&host_dir.join("commands")),
                 true,
             ),
         };
         let stale_candidates = [
             host_dir.join("commands").join("next.md"),
             host_dir.join("commands").join("onboard.md"),
+            host_dir.join("commands").join("emb-onboard.md"),
+            host_dir.join("commands").join("emb-ingest.md"),
             host_dir.join("commands").join("emb-status.md"),
             host_dir.join("commands").join("emb-scan.md"),
             host_dir.join("commands").join("emb-init.md"),
@@ -608,7 +660,7 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             "expected_version": if expected_runtime_version.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(expected_runtime_version.clone()) },
             "version_status": version_status,
             "surface": surface,
-            "commands": ["emb-next", "emb-onboard"],
+            "commands": canonical_host_commands(),
             "commands_ok": commands_ok,
             "host_config_ok": host_config_ok,
             "hook_readiness": hook_readiness,
@@ -630,7 +682,7 @@ pub fn install_doctor(cwd: &Path, host: &str) -> String {
             "errors": truth_validation_errors
         },
         "hosts": checks,
-        "next": "Use emb-next for initialized projects or emb-onboard for new/migrated projects. Run the manual update command when any host reports version_status=stale."
+        "next": "Use emb-start to load or repair context, emb-next to continue, and emb-finish-work to close completed work. Run the manual update command when any host reports version_status=stale."
     }))
     .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
 }
@@ -814,8 +866,9 @@ pub fn migrate_status(_ext_dir: &Path) -> String {
     r#"{"status":"ok","migration_required":false,"runtime":"rust"}"#.to_string()
 }
 
-/// Onboard handoff. The runtime keeps this intentionally small: emb-onboard owns
-/// repo audit, user confirmation, and fact extraction.
+/// Onboard handoff. The runtime keeps this intentionally small: the host-facing
+/// entry is emb-start; the internal onboard action owns repo audit, user
+/// confirmation, and fact extraction.
 pub fn onboard_status(cwd: &Path) -> String {
     let ext_dir = cwd.join(".emb-agent");
     let initialized = ext_dir.join("project.json").exists();
@@ -832,7 +885,7 @@ pub fn onboard_status(cwd: &Path) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "status": "ok",
         "action": "onboard",
-        "recommended_agent": "emb-onboard",
+        "recommended_agent": "emb-start",
         "path": path,
         "initialized": initialized,
         "has_hw": has_hw,
@@ -844,7 +897,7 @@ pub fn onboard_status(cwd: &Path) -> String {
             "Where are schematics, datasheets, pin maps, build files, and product requirements located?",
             "May emb-agent write .emb-agent/hw.yaml, .emb-agent/req.yaml, and docs/prd/system.md after confirmation?"
         ],
-        "instructions": "Invoke emb-onboard. Audit existing hardware/product evidence, choose empty/partial/migration path, ask the listed questions, never move user files without confirmation, then stop and route back to next --brief.",
+        "instructions": "Continue the onboarding route from emb-start. Audit existing hardware/product evidence, choose empty/partial/migration path, ask the listed questions, never move user files without confirmation, then stop and route back to next --brief.",
         "next": { "command": "next --brief" }
     }))
     .unwrap_or_else(|_| "{\"status\":\"error\"}".to_string())
@@ -1134,20 +1187,38 @@ fn codex_dispatch_plan(mode: &str, job: &str) -> serde_json::Value {
         "auto" => codex_auto_dispatch_recommended(job),
         _ => false,
     };
+    let primary_agent = codex_worker_agent_for_job(job);
+    let post_check_required = recommended && codex_post_check_recommended(job);
+    let subagent_sequence = if post_check_required {
+        vec![primary_agent, "release-checker"]
+    } else {
+        vec![primary_agent]
+    };
     let subagent_prompt = if recommended {
         serde_json::json!({
-            "agent": codex_worker_agent_for_job(job),
+            "agent": primary_agent,
+            "agents": subagent_sequence.clone(),
             "task": job,
             "prompt": if mode == "sub-agent" {
                 format!(
-                    "Spawn the `{}` subagent for this emb-agent job, wait for it to finish, then summarize its result with file references. Do not recursively delegate.\n\nJob: {}",
-                    codex_worker_agent_for_job(job),
+                    "Spawn the `{}` subagent for this emb-agent job, wait for it to finish, then{} summarize the result with file references. Each child is already an emb-agent subagent and must not recursively delegate.\n\nJob: {}",
+                    primary_agent,
+                    if post_check_required {
+                        " spawn `release-checker` for an independent implementation check,"
+                    } else {
+                        ""
+                    },
                     job
                 )
             } else {
                 format!(
-                    "For this emb-agent job, use Codex subagents only if the current work benefits from parallel delegation. If you delegate, spawn the `{}` subagent, wait for it to finish, and summarize its result with file references. Otherwise continue inline.\n\nJob: {}",
-                    codex_worker_agent_for_job(job),
+                    "For this emb-agent job, prefer native Codex subagents when the current work is broad, high-risk, or implementation plus review. Spawn `{}`, wait for it to finish, then{} summarize with file references. Inline fallback is allowed only for narrow scoped work or unavailable subagent surfaces. Children must not recursively delegate.\n\nJob: {}",
+                    primary_agent,
+                    if post_check_required {
+                        " spawn `release-checker` for an independent check,"
+                    } else {
+                        ""
+                    },
                     job
                 )
             }
@@ -1161,8 +1232,10 @@ fn codex_dispatch_plan(mode: &str, job: &str) -> serde_json::Value {
         "subagent_allowed": mode != "inline",
         "subagent_required": mode == "sub-agent",
         "subagent_recommended": recommended,
+        "post_check_required": post_check_required,
+        "subagent_sequence": subagent_sequence,
         "auto_reason": codex_auto_dispatch_reason(job),
-        "trigger_policy": "Codex only spawns subagents when the user explicitly asks for subagents or parallel agent work.",
+        "trigger_policy": "inline mode keeps the main Codex agent direct; auto mode recommends native subagents for broad/high-risk work with inline fallback; sub-agent mode requires native subagent dispatch when the host exposes it.",
         "available_agents": ["hw-scout", "fw-doer", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"],
         "subagent_prompt": subagent_prompt
     })
@@ -1188,6 +1261,41 @@ fn codex_auto_dispatch_recommended(job: &str) -> bool {
         "architecture",
         "driver",
         "peripheral",
+        "实现",
+        "重构",
+        "评审",
+        "验证",
+        "调试",
+        "缺陷",
+        "低功耗",
+        "睡眠",
+        "看门狗",
+        "架构",
+        "驱动",
+        "外设",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+fn codex_post_check_recommended(job: &str) -> bool {
+    let lower = job.to_ascii_lowercase();
+    [
+        "implement",
+        "refactor",
+        "fix",
+        "change",
+        "write",
+        "edit",
+        "driver",
+        "framework",
+        "toolchain",
+        "实现",
+        "修复",
+        "改",
+        "写",
+        "重构",
+        "驱动",
     ]
     .iter()
     .any(|needle| lower.contains(needle))
@@ -1203,7 +1311,9 @@ fn codex_auto_dispatch_reason(job: &str) -> &'static str {
 
 fn codex_worker_agent_for_job(job: &str) -> &'static str {
     let lower = job.to_ascii_lowercase();
-    if lower.contains("review") || lower.contains("architecture") {
+    if lower.contains("verify") || lower.contains("验证") || lower.contains("release") {
+        "release-checker"
+    } else if lower.contains("review") || lower.contains("architecture") || lower.contains("评审") {
         "sys-reviewer"
     } else if lower.contains("bug") || lower.contains("debug") {
         "bug-hunter"

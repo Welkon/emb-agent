@@ -58,6 +58,7 @@ pub fn task_add_with_deps(
 
     let category = normalize_task_category(task_type, summary);
     let human_gated = task_needs_human_gate(&category, summary);
+    let prd_path = format!("docs/prd/tasks/{}.md", name);
     let task = json!({
         "id": task_id,
         "name": name,
@@ -116,7 +117,7 @@ pub fn task_add_with_deps(
         "pr_url": "",
         "pr": {"status": ""},
         "artifacts": {
-            "prd": format!("docs/prd/tasks/{}.md", name),
+            "prd": prd_path.clone(),
             "implement": [],
             "check": [],
             "debug": [],
@@ -140,14 +141,49 @@ pub fn task_add_with_deps(
         let _ = fs::write(task_dir.join(f), "");
     }
 
+    let project_root = project_root_from_ext_dir(ext_dir);
+    let prd_abs = project_root.join(&prd_path);
+    if let Some(parent) = prd_abs.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if !prd_abs.exists() {
+        let _ = fs::write(&prd_abs, task_prd_template(&name, summary, &category));
+    }
+
     format!(
-        "{{\"status\":\"ok\",\"created\":true,\"task\":{{\"name\":{},\"title\":{},\"status\":\"pending\",\"priority\":{},\"category\":{},\"triage_state\":\"needs-triage\",\"human_gate\":{}}},\"task_optional\":true,\"direct_work_allowed_for\":[\"design_explanation\",\"narrow_read_only_analysis\",\"one_off_verification_run\",\"small_scoped_fix\"],\"next\":\"task brief\",\"next_instructions\":\"Task created as a durable container. Fill only the missing agent-brief fields if this work is multi-step, resumable, or needs handoff/verification structure. If the request is only a narrow explanation, one-off verification, or small scoped fix, this task can stay pending while the work proceeds directly.\",\"activation_command\":\"/emb:task activate {}\"}}",
+        "{{\"status\":\"ok\",\"created\":true,\"task\":{{\"name\":{},\"title\":{},\"status\":\"pending\",\"priority\":{},\"category\":{},\"triage_state\":\"needs-triage\",\"human_gate\":{},\"prd\":{}}},\"task_optional\":true,\"direct_work_allowed_for\":[\"design_explanation\",\"narrow_read_only_analysis\",\"one_off_verification_run\",\"small_scoped_fix\"],\"next\":\"brainstorm contract\",\"next_instructions\":\"Task created as a durable container with a PRD artifact. Before activation, inspect project evidence, update the PRD with confirmed facts and acceptance criteria, ask one load-bearing product or risk decision at a time with a recommended answer, and keep complex design/implementation notes in task-local design.md and implement.md when needed. If the request is only a narrow explanation, one-off verification, or small scoped fix, this task can stay pending while the work proceeds directly.\",\"activation_command\":\"/emb:task activate {}\"}}",
         json_quote(&name),
         json_quote(summary),
         json_quote(priority),
         json_quote(&category),
         human_gated,
+        json_quote(&prd_path),
         name
+    )
+}
+
+fn task_prd_template(name: &str, summary: &str, category: &str) -> String {
+    format!(
+        "# {}\n\n\
+## Goal\n\n\
+- {}\n\n\
+## Confirmed Facts\n\n\
+- Task: `{}`\n\
+- Category: `{}`\n\n\
+## Requirements\n\n\
+- TODO: Capture behavior, hardware constraints, and user-visible outcome.\n\n\
+## Acceptance Criteria\n\n\
+- TODO: Define the observable pass/fail checks before activation.\n\n\
+## Out Of Scope\n\n\
+- TODO: Record boundaries that should not be implemented in this task.\n\n\
+## Open Questions\n\n\
+- TODO: Ask one load-bearing product, hardware, power, timing, risk, or acceptance decision at a time.\n\n\
+## Evidence And Research\n\n\
+- TODO: Cite project files, parsed docs, schematic evidence, session notes, or task-local research files used during planning.\n",
+        summary,
+        summary,
+        name,
+        category
     )
 }
 

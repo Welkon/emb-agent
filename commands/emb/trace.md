@@ -54,7 +54,7 @@ Each line in `trace.jsonl` is a JSON object:
 
 1. **After implement phase**: Run `trace record` to log what was changed, why, and which specs guided the change.
 2. **After check phase**: Append review outcome and any new pitfalls/invariants discovered.
-3. **After finish-work**: Run `session record` to capture the human-readable workspace journal, run `trace record` one final time with the closing commit and reviewer, then run `insight extract` (see emb-insight) to push durable learnings into wiki.
+3. **After finish-work**: Run `finish-work` or `task finish-work` first. It records the human-readable workspace journal and returns trace/insight follow-up status; run `trace record` only when this runtime implements tracing for the project.
 
 ## Rules
 

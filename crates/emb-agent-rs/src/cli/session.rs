@@ -1,4 +1,4 @@
-use super::config::{load_config, maybe_auto_commit_session};
+use super::config::{load_config, maybe_auto_commit_session, run_configured_hooks};
 use super::util::{current_dir_string, option_value, option_values};
 use chrono::Local;
 use emb_agent_core::{
@@ -18,6 +18,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let cwd = option_value(args, "--cwd").unwrap_or_else(current_dir_string);
     let snapshot = snapshot_from_cwd(&cwd);
     match args.first().map(String::as_str).unwrap_or("") {
+        "finish" | "finish-work" => run_finish_work_command(args, &cwd),
         "session" => run_session_namespace(args, &cwd),
         "statusline" => {
             println!("{}", build_statusline(&snapshot));
@@ -111,9 +112,10 @@ fn run_session_namespace(args: &[String], cwd: &str) -> Result<(), String> {
             Ok(())
         }
         "record" => record_workspace_session(args, subcommand_index + 1, cwd),
+        "finish" | "finish-work" => run_finish_work_command(args, cwd),
         "journal" | "history" => show_workspace_journal(cwd),
         other => Err(format!(
-            "unknown session command: {other}. Valid: show, record, journal, history"
+            "unknown session command: {other}. Valid: show, record, finish-work, journal, history"
         )),
     }
 }
@@ -165,6 +167,70 @@ fn record_workspace_session(args: &[String], value_start: usize, cwd: &str) -> R
     let commits = clean_values(option_values(args, "--commit"));
     let next_steps = clean_values(option_values(args, "--next"));
 
+    let result = write_workspace_session(
+        &project_root,
+        WorkspaceSessionRecord {
+            title,
+            task,
+            package,
+            branch,
+            summary,
+            detail,
+            commits,
+            tests,
+            status,
+            next_steps,
+        },
+    )?;
+
+    println!("{}", pretty_json(&result.to_json()));
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct WorkspaceSessionRecord {
+    title: String,
+    task: String,
+    package: String,
+    branch: String,
+    summary: String,
+    detail: String,
+    commits: Vec<String>,
+    tests: Vec<String>,
+    status: String,
+    next_steps: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct WorkspaceRecordResult {
+    developer_name: String,
+    developer_slug: String,
+    session_number: usize,
+    journal_path: String,
+    developer_index: String,
+    workspace_index: String,
+}
+
+impl WorkspaceRecordResult {
+    fn to_json(&self) -> Value {
+        serde_json::json!({
+            "status": "ok",
+            "kind": "workspace-journal",
+            "developer": self.developer_name,
+            "developer_dir": format!(".emb-agent/workspace/{}", self.developer_slug),
+            "session": self.session_number,
+            "journal": self.journal_path,
+            "index": self.developer_index,
+            "workspace_index": self.workspace_index
+        })
+    }
+}
+
+fn write_workspace_session(
+    project_root: &Path,
+    record: WorkspaceSessionRecord,
+) -> Result<WorkspaceRecordResult, String> {
+    let ext_dir = project_root.join(".emb-agent");
     let developer_name = read_developer_name(&ext_dir);
     let developer_slug = sanitize_developer_slug(&developer_name);
     let workspace_dir = ext_dir.join("workspace");
@@ -177,19 +243,19 @@ fn record_workspace_session(args: &[String], value_start: usize, cwd: &str) -> R
     let entry = build_session_entry(SessionEntryInput {
         session_number,
         date: &date,
-        title: &title,
-        task: &task,
-        package: &package,
-        branch: &branch,
-        summary: &summary,
-        detail: &detail,
-        commits: &commits,
-        tests: &tests,
-        status: &status,
-        next_steps: &next_steps,
+        title: &record.title,
+        task: &record.task,
+        package: &record.package,
+        branch: &record.branch,
+        summary: &record.summary,
+        detail: &record.detail,
+        commits: &record.commits,
+        tests: &record.tests,
+        status: &record.status,
+        next_steps: &record.next_steps,
     });
 
-    let cfg = load_config(&project_root);
+    let cfg = load_config(project_root);
     let journal_number = choose_journal_number(&developer_dir, &entry, cfg.max_journal_lines);
     let journal_path = developer_dir.join(format!("journal-{journal_number}.md"));
     append_journal_entry(&journal_path, &developer_name, journal_number, &entry)?;
@@ -198,28 +264,301 @@ fn record_workspace_session(args: &[String], value_start: usize, cwd: &str) -> R
         &developer_name,
         &developer_slug,
         &date,
-        &status,
+        &record.status,
     )?;
     rewrite_workspace_index(&workspace_dir)?;
     if cfg.session_auto_commit {
-        maybe_auto_commit_session(&project_root, &cfg.session_commit_message);
+        maybe_auto_commit_session(project_root, &cfg.session_commit_message);
     }
 
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&serde_json::json!({
-            "status": "ok",
-            "kind": "workspace-journal",
-            "developer": developer_name,
-            "developer_dir": format!(".emb-agent/workspace/{developer_slug}"),
-            "session": session_number,
-            "journal": relative_to_project(&project_root, &journal_path),
-            "index": format!(".emb-agent/workspace/{developer_slug}/index.md"),
-            "workspace_index": ".emb-agent/workspace/index.md"
-        }))
-        .unwrap_or_else(|_| "{\"status\":\"ok\"}".to_string())
-    );
+    Ok(WorkspaceRecordResult {
+        developer_name,
+        developer_slug: developer_slug.clone(),
+        session_number,
+        journal_path: relative_to_project(project_root, &journal_path),
+        developer_index: format!(".emb-agent/workspace/{developer_slug}/index.md"),
+        workspace_index: ".emb-agent/workspace/index.md".to_string(),
+    })
+}
+
+pub fn run_finish_work_command(args: &[String], cwd: &str) -> Result<(), String> {
+    let project_root = discover_project_root(cwd);
+    let ext_dir = project_root.join(".emb-agent");
+    if !ext_dir.exists() {
+        return Err("finish-work requires an initialized .emb-agent project".to_string());
+    }
+
+    let task_name = finish_work_task_name(args, &ext_dir);
+    let task_info = task_name
+        .as_deref()
+        .and_then(|name| read_task_info(&ext_dir, name));
+    let task_title = task_info
+        .as_ref()
+        .map(|info| info.title.as_str())
+        .unwrap_or("");
+    let task_package = task_info
+        .as_ref()
+        .map(|info| info.package.as_str())
+        .unwrap_or("");
+    let title = option_value(args, "--title")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            if !task_title.is_empty() {
+                format!("Finish {task_title}")
+            } else if let Some(task_name) = &task_name {
+                format!("Finish {task_name}")
+            } else {
+                "Finish work".to_string()
+            }
+        });
+    let mut detail = option_values(args, "--detail")
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if detail.is_empty() {
+        detail = read_piped_stdin().unwrap_or_default();
+    }
+    if detail.is_empty() {
+        detail = finish_work_detail(&project_root);
+    }
+    let summary = option_value(args, "--summary")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| finish_work_summary(task_name.as_deref(), task_title));
+    let status = option_value(args, "--status")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "completed".to_string());
+    let branch = option_value(args, "--branch")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| git_branch(&project_root));
+    let package = option_value(args, "--package")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            if task_package.is_empty() {
+                active_package(&ext_dir)
+            } else {
+                task_package.to_string()
+            }
+        });
+    let task = option_value(args, "--task")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| task_name.clone())
+        .unwrap_or_else(|| title.clone());
+    let mut tests = option_values(args, "--test");
+    tests.extend(option_values(args, "--testing"));
+    let tests = clean_values(tests);
+    let mut commits = clean_values(option_values(args, "--commit"));
+    if commits.is_empty()
+        && let Some(commit) = git_output(&project_root, &["log", "-1", "--pretty=%h %s"])
+    {
+        commits.push(commit);
+    }
+    let mut next_steps = clean_values(option_values(args, "--next"));
+    if next_steps.is_empty() {
+        next_steps.push("Run `next` to route follow-up work or board acceptance.".to_string());
+    }
+
+    let journal = write_workspace_session(
+        &project_root,
+        WorkspaceSessionRecord {
+            title,
+            task,
+            package,
+            branch,
+            summary: summary.clone(),
+            detail,
+            commits,
+            tests,
+            status,
+            next_steps,
+        },
+    )?;
+
+    let resolve_enabled = !args.iter().any(|arg| arg == "--no-resolve");
+    let resolve_result = if resolve_enabled {
+        task_name
+            .as_deref()
+            .map(|name| resolve_finish_work_task(&project_root, &ext_dir, name, &summary))
+    } else {
+        None
+    };
+    let resolve_failed = resolve_result
+        .as_ref()
+        .is_some_and(|value| value.get("status").and_then(Value::as_str) != Some("ok"));
+    let finish_status = if resolve_failed { "warn" } else { "ok" };
+    let task_json = serde_json::json!({
+        "name": task_name,
+        "resolve_enabled": resolve_enabled,
+        "resolve_attempted": resolve_result.is_some(),
+        "resolve": resolve_result.unwrap_or(Value::Null)
+    });
+    let payload = serde_json::json!({
+        "status": finish_status,
+        "command": "finish-work",
+        "journal": journal.to_json(),
+        "task": task_json,
+        "follow_ups": finish_work_followups(),
+        "next_command": "next"
+    });
+    println!("{}", pretty_json(&payload));
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct TaskInfo {
+    title: String,
+    package: String,
+}
+
+fn finish_work_task_name(args: &[String], ext_dir: &Path) -> Option<String> {
+    option_value(args, "--task")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| task_finish_work_positional(args))
+        .or_else(|| active_task_name(ext_dir))
+}
+
+fn task_finish_work_positional(args: &[String]) -> Option<String> {
+    if args.first().map(String::as_str) != Some("task") {
+        return None;
+    }
+    let subcommand = args.get(1).map(String::as_str);
+    if !matches!(subcommand, Some("finish") | Some("finish-work")) {
+        return None;
+    }
+    args.get(2)
+        .filter(|arg| !arg.starts_with("--"))
+        .map(|arg| arg.trim().to_string())
+        .filter(|arg| !arg.is_empty())
+}
+
+fn active_task_name(ext_dir: &Path) -> Option<String> {
+    let state_dir = emb_agent_core::variant_ops::active_state_dir(ext_dir);
+    let name = fs::read_to_string(state_dir.join(".current-task")).ok()?;
+    let name = name.trim();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
+fn read_task_info(ext_dir: &Path, name: &str) -> Option<TaskInfo> {
+    let state_dir = emb_agent_core::variant_ops::active_state_dir(ext_dir);
+    let raw = fs::read_to_string(state_dir.join("tasks").join(name).join("task.json")).ok()?;
+    let value = serde_json::from_str::<Value>(&raw).ok()?;
+    Some(TaskInfo {
+        title: value
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or(name)
+            .to_string(),
+        package: value
+            .get("package")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+fn finish_work_summary(task_name: Option<&str>, task_title: &str) -> String {
+    if !task_title.trim().is_empty() {
+        format!("Finished task {task_title}.")
+    } else if let Some(task_name) = task_name {
+        format!("Finished task {task_name}.")
+    } else {
+        "Finished current work.".to_string()
+    }
+}
+
+fn finish_work_detail(project_root: &Path) -> String {
+    let mut sections = Vec::new();
+    if let Some(status) = git_output(project_root, &["status", "--short"])
+        && !status.trim().is_empty()
+    {
+        sections.push(format!("Git status:\n\n```text\n{status}\n```"));
+    }
+    if let Some(diffstat) = git_output(project_root, &["diff", "--stat", "HEAD"])
+        && !diffstat.trim().is_empty()
+    {
+        sections.push(format!("Diff stat:\n\n```text\n{diffstat}\n```"));
+    }
+    if sections.is_empty() {
+        "- No git changes detected or git status unavailable.".to_string()
+    } else {
+        sections.join("\n\n")
+    }
+}
+
+fn git_output(project_root: &Path, args: &[&str]) -> Option<String> {
+    Command::new("git")
+        .args(args)
+        .current_dir(project_root)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|output| !output.is_empty())
+}
+
+fn resolve_finish_work_task(
+    project_root: &Path,
+    ext_dir: &Path,
+    name: &str,
+    summary: &str,
+) -> Value {
+    let raw = emb_agent_core::task::task_ops::task_resolve(ext_dir, name, summary);
+    let value = serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| {
+        serde_json::json!({
+            "status": "error",
+            "error": {"code": "invalid-resolve-output", "message": raw}
+        })
+    });
+    let resolved = value.get("status").and_then(Value::as_str) == Some("ok")
+        && !value
+            .get("already_completed")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+    if resolved {
+        let state_dir = emb_agent_core::variant_ops::active_state_dir(ext_dir);
+        let task_json = state_dir.join("tasks").join(name).join("task.json");
+        run_configured_hooks(
+            project_root,
+            "after_finish",
+            &[("TASK_JSON_PATH", task_json.to_string_lossy().to_string())],
+        );
+    }
+    value
+}
+
+fn finish_work_followups() -> Value {
+    serde_json::json!([
+        {
+            "name": "trace",
+            "status": "unsupported",
+            "command": "trace record",
+            "reason": "trace record is documented but not implemented in this runtime yet"
+        },
+        {
+            "name": "insight",
+            "status": "unsupported",
+            "command": "insight extract --confirm",
+            "reason": "insight extraction is documented but not implemented in this runtime yet"
+        },
+        {
+            "name": "knowledge_graph",
+            "status": "manual",
+            "command": "knowledge graph refresh",
+            "reason": "run after wiki or knowledge files change"
+        }
+    ])
 }
 
 fn show_workspace_journal(cwd: &str) -> Result<(), String> {
@@ -699,6 +1038,10 @@ fn relative_to_project(project_root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+fn pretty_json(value: &Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| "{\"status\":\"ok\"}".to_string())
 }
 
 pub fn run_external(args: &[String]) -> Result<(), String> {

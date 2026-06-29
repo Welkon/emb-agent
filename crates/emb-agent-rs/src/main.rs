@@ -24,9 +24,8 @@ fn run(args: &[String]) -> Result<(), String> {
 
     match command {
         // Session
-        "statusline" | "start" | "next" | "status" | "health" | "pause" | "resume" | "session" => {
-            cli::session::run(args)
-        }
+        "statusline" | "start" | "next" | "status" | "health" | "pause" | "resume" | "session"
+        | "finish" | "finish-work" => cli::session::run(args),
         // External protocol
         "external" => cli::session::run_external(args),
         // Actions
@@ -81,16 +80,17 @@ fn print_help() {
 	emb-agent default user flow:
 	  1. Install or repair host integration.
 	  2. Restart/reload the host; in Codex run /hooks and trust project hooks.
-	  3. New project: /emb onboard
-	     Existing project: /emb start
-	     Continue work: /emb next
-	  4. If startup context is missing: diagnostics hooks --host <host>
+	  3. Start or refresh context: /emb-start
+	  4. Continue work: /emb-next
+	  5. Close completed work: /emb-finish-work
+	  6. If startup context is missing: diagnostics hooks --host <host>
 
 	USAGE:
   Session:    onboard, start, next, status [--query "question"], health, pause [note], resume
               session show|journal|history
               session record --title "..." --summary "..." [--detail "..."] [--commit HASH] [--test CMD] [--next "..."]
-  Tasks:      task list/show/add/activate/resolve/delete, task worktree list/status/show/create/cleanup
+              finish-work [--summary "..."] [--test CMD] [--no-resolve]
+  Tasks:      task list/show/add/activate/finish-work/resolve/delete, task worktree list/status/show/create/cleanup
   Impl:       impl mark --decision <slug> --status <planned|implemented|verified> [--file <path>]
               impl list [--brief], impl verify --decision <slug>
   Lint:       lint (readability) — flag forwarding wrappers, deep nesting >4, misleading names

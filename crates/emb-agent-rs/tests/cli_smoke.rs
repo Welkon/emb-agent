@@ -538,8 +538,9 @@ fn help_shows_default_user_flow() {
         stdout.contains("emb-agent default user flow"),
         "help output: {stdout}"
     );
-    assert!(stdout.contains("/emb onboard"), "help output: {stdout}");
-    assert!(stdout.contains("/emb next"), "help output: {stdout}");
+    assert!(stdout.contains("/emb-start"), "help output: {stdout}");
+    assert!(stdout.contains("/emb-next"), "help output: {stdout}");
+    assert!(stdout.contains("/emb-finish-work"), "help output: {stdout}");
     assert!(stdout.contains("/hooks"), "help output: {stdout}");
     assert!(
         stdout.contains("diagnostics hooks"),
@@ -811,6 +812,15 @@ fn init_writes_config_and_task_lifecycle_hooks_run() {
         auto_value["dispatch"]["subagent_prompt"]["agent"],
         "fw-doer"
     );
+    assert_eq!(auto_value["dispatch"]["post_check_required"], true);
+    assert_eq!(
+        auto_value["dispatch"]["subagent_sequence"],
+        serde_json::json!(["fw-doer", "release-checker"])
+    );
+    assert_eq!(
+        auto_value["dispatch"]["subagent_prompt"]["agents"],
+        serde_json::json!(["fw-doer", "release-checker"])
+    );
     let auto_dispatch_run = Command::new(emb_agent_bin())
         .arg("dispatch")
         .arg("run")
@@ -933,25 +943,34 @@ fn doctor_reports_codex_auto_dispatch_mode() {
     );
     let codex_runtime = project.path().join(".codex/emb-agent");
     fs::create_dir_all(codex_runtime.join("bin")).expect("create codex runtime bin");
+    fs::create_dir_all(project.path().join(".agents/skills/emb-start"))
+        .expect("create codex start skill dir");
     fs::create_dir_all(project.path().join(".agents/skills/emb-next"))
         .expect("create codex next skill dir");
-    fs::create_dir_all(project.path().join(".agents/skills/emb-onboard"))
-        .expect("create codex onboard skill dir");
+    fs::create_dir_all(project.path().join(".agents/skills/emb-finish-work"))
+        .expect("create codex finish-work skill dir");
     fs::create_dir_all(project.path().join(".codex/skills/emb-agent"))
         .expect("create codex emb-agent skill dir");
     fs::write(codex_runtime.join("VERSION"), format!("{version}\n")).expect("write version");
     fs::write(codex_runtime.join("bin/emb-agent.cjs"), "// wrapper\n").expect("write wrapper");
     fs::write(codex_runtime.join("bin/emb-agent-rs"), "").expect("write rust bin marker");
     fs::write(
+        project.path().join(".agents/skills/emb-start/SKILL.md"),
+        "start",
+    )
+    .expect("write codex start skill");
+    fs::write(
         project.path().join(".agents/skills/emb-next/SKILL.md"),
         "next",
     )
     .expect("write codex next skill");
     fs::write(
-        project.path().join(".agents/skills/emb-onboard/SKILL.md"),
-        "onboard",
+        project
+            .path()
+            .join(".agents/skills/emb-finish-work/SKILL.md"),
+        "finish",
     )
-    .expect("write codex onboard skill");
+    .expect("write codex finish-work skill");
     fs::write(
         project.path().join(".codex/skills/emb-agent/SKILL.md"),
         "skill",
@@ -959,7 +978,7 @@ fn doctor_reports_codex_auto_dispatch_mode() {
     .expect("write codex emb-agent skill");
     fs::write(
         project.path().join(".codex/hooks.json"),
-        r#"{"hooks":["hook session-start --host codex","hook context-monitor --host codex","hook tool-guard --host codex","ApplyPatch"]}"#,
+        r#"{"hooks":["hook session-start --host codex","UserPromptSubmit","hook context-monitor --host codex","hook tool-guard --host codex","ApplyPatch"]}"#,
     )
     .expect("write codex hooks");
 
@@ -1679,7 +1698,10 @@ fn task_add_creates_triage_brief_and_vertical_slice_metadata() {
         created["task"]["triage_state"], "needs-triage",
         "task add output: {output}"
     );
-    assert_eq!(created["next"], "task brief", "task add output: {output}");
+    assert_eq!(
+        created["next"], "brainstorm contract",
+        "task add output: {output}"
+    );
     assert_eq!(created["task_optional"], true, "task add output: {output}");
     assert!(
         created["direct_work_allowed_for"]
@@ -1690,8 +1712,26 @@ fn task_add_creates_triage_brief_and_vertical_slice_metadata() {
     );
 
     let task_name = created["task"]["name"].as_str().expect("task name");
+    let prd_path = created["task"]["prd"].as_str().expect("created task prd");
+    assert_eq!(
+        prd_path,
+        format!("docs/prd/tasks/{task_name}.md"),
+        "task add output: {output}"
+    );
+    let task_prd = fs::read_to_string(project.path().join(prd_path)).expect("read task prd");
+    assert!(
+        task_prd.contains("## Confirmed Facts")
+            && task_prd.contains("## Acceptance Criteria")
+            && task_prd.contains("## Open Questions")
+            && task_prd.contains("## Evidence And Research"),
+        "task PRD missing brainstorm sections: {task_prd}"
+    );
     let shown = run(&project, &["task", "show", task_name]);
     let task: serde_json::Value = serde_json::from_str(&shown).expect("task show json");
+    assert_eq!(
+        task["artifacts"]["prd"], prd_path,
+        "task show output: {shown}"
+    );
     assert_eq!(
         task["agent_brief"]["current_behavior"], "",
         "task show output: {shown}"
@@ -2120,10 +2160,15 @@ fn doctor_reports_stale_host_runtime_versions() {
     fs::write(project.path().join(".cursor/commands/emb-next.md"), "next")
         .expect("write cursor next command");
     fs::write(
-        project.path().join(".cursor/commands/emb-onboard.md"),
-        "onboard",
+        project.path().join(".cursor/commands/emb-start.md"),
+        "start",
     )
-    .expect("write cursor onboard command");
+    .expect("write cursor start command");
+    fs::write(
+        project.path().join(".cursor/commands/emb-finish-work.md"),
+        "finish",
+    )
+    .expect("write cursor finish-work command");
     fs::write(project.path().join(".cursor/hooks.json"), "{}").expect("write cursor hooks");
     fs::write(
         project.path().join(".cursor/rules/emb-agent-workflow.mdc"),
@@ -2160,25 +2205,34 @@ fn doctor_reports_stale_codex_hook_config() {
     );
     let codex_runtime = project.path().join(".codex/emb-agent");
     fs::create_dir_all(codex_runtime.join("bin")).expect("create codex runtime bin");
+    fs::create_dir_all(project.path().join(".agents/skills/emb-start"))
+        .expect("create codex start skill dir");
     fs::create_dir_all(project.path().join(".agents/skills/emb-next"))
         .expect("create codex next skill dir");
-    fs::create_dir_all(project.path().join(".agents/skills/emb-onboard"))
-        .expect("create codex onboard skill dir");
+    fs::create_dir_all(project.path().join(".agents/skills/emb-finish-work"))
+        .expect("create codex finish-work skill dir");
     fs::create_dir_all(project.path().join(".codex/skills/emb-agent"))
         .expect("create codex emb-agent skill dir");
     fs::write(codex_runtime.join("VERSION"), format!("{version}\n")).expect("write version");
     fs::write(codex_runtime.join("bin/emb-agent.cjs"), "// wrapper\n").expect("write wrapper");
     fs::write(codex_runtime.join("bin/emb-agent-rs"), "").expect("write rust bin marker");
     fs::write(
+        project.path().join(".agents/skills/emb-start/SKILL.md"),
+        "start",
+    )
+    .expect("write codex start skill");
+    fs::write(
         project.path().join(".agents/skills/emb-next/SKILL.md"),
         "next",
     )
     .expect("write codex next skill");
     fs::write(
-        project.path().join(".agents/skills/emb-onboard/SKILL.md"),
-        "onboard",
+        project
+            .path()
+            .join(".agents/skills/emb-finish-work/SKILL.md"),
+        "finish",
     )
-    .expect("write codex onboard skill");
+    .expect("write codex finish-work skill");
     fs::write(
         project.path().join(".codex/skills/emb-agent/SKILL.md"),
         "skill",
@@ -2243,11 +2297,25 @@ fn concept_stage_unknowns_route_to_clarification_not_task_creation() {
         "next output: {next}"
     );
     assert!(
-        next_value["agent_protocol"]["gate"]["method"] == "grill-with-docs"
+        next_value["agent_protocol"]["gate"]["method"] == "brainstorm-with-docs"
             && next_value["instructions"]
                 .as_str()
                 .unwrap_or("")
-                .contains("state-machine checklist"),
+                .contains("doc-grounded brainstorm loop")
+            && next_value["instructions"]
+                .as_str()
+                .unwrap_or("")
+                .contains("recommended answer"),
+        "next output: {next}"
+    );
+    assert_eq!(
+        next_value["agent_protocol"]["gate"]["brainstorm_contract"]["mode"],
+        "main-session-interactive",
+        "next output: {next}"
+    );
+    assert_eq!(
+        next_value["agent_protocol"]["gate"]["brainstorm_contract"]["artifact_rules"]["task_prd"],
+        "docs/prd/tasks/<task>.md records task-local goal, requirements, acceptance, out-of-scope, open questions, and evidence",
         "next output: {next}"
     );
     assert!(
@@ -2501,11 +2569,13 @@ fn assert_no_markdown_files(dir: PathBuf) {
     }
 }
 
-fn assert_two_command_files(dir: PathBuf, host: &str) {
+fn assert_three_command_files(dir: PathBuf, host: &str) {
+    let start = dir.join("emb-start.md");
     let next = dir.join("emb-next.md");
-    let onboard = dir.join("emb-onboard.md");
+    let finish = dir.join("emb-finish-work.md");
+    assert!(start.exists(), "missing {start:?}");
     assert!(next.exists(), "missing {next:?}");
-    assert!(onboard.exists(), "missing {onboard:?}");
+    assert!(finish.exists(), "missing {finish:?}");
     assert!(
         !dir.join("next.md").exists(),
         "legacy next command leaked for {host}"
@@ -2513,6 +2583,10 @@ fn assert_two_command_files(dir: PathBuf, host: &str) {
     assert!(
         !dir.join("onboard.md").exists(),
         "legacy onboard command leaked for {host}"
+    );
+    assert!(
+        !dir.join("emb-onboard.md").exists(),
+        "legacy emb-onboard command leaked for {host}"
     );
 
     let mut exposed = 0;
@@ -2524,12 +2598,22 @@ fn assert_two_command_files(dir: PathBuf, host: &str) {
             exposed += 1;
         }
     }
-    assert_eq!(exposed, 2, "unexpected command shim count for {host}");
+    assert_eq!(exposed, 3, "unexpected command shim count for {host}");
 
+    let start_body = fs::read_to_string(start).expect("read start shim");
+    assert!(
+        start_body.contains("start --brief"),
+        "start shim body: {start_body}"
+    );
     let next_body = fs::read_to_string(next).expect("read next shim");
     assert!(
         next_body.contains("next --brief"),
         "next shim body: {next_body}"
+    );
+    let finish_body = fs::read_to_string(finish).expect("read finish-work shim");
+    assert!(
+        finish_body.contains("finish-work"),
+        "finish-work shim body: {finish_body}"
     );
     assert!(
         next_body.contains("Simplified Chinese"),
@@ -2839,7 +2923,7 @@ fn commands_list_guides_without_hiding_full_inventory() {
 }
 
 #[test]
-fn installer_exposes_same_two_shell_commands_per_host() {
+fn installer_exposes_same_three_shell_commands_per_host() {
     let repo_root = repo_root();
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2854,8 +2938,13 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         for stale in [
             "next.md",
             "onboard.md",
+            "start.md",
+            "finish-work.md",
+            "emb-start.md",
             "emb-next.md",
             "emb-onboard.md",
+            "emb-ingest.md",
+            "emb-finish-work.md",
             "emb-status.md",
             "emb-scan.md",
             "emb-init.md",
@@ -2865,10 +2954,18 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     }
     let windsurf_workflows = root.join(".windsurf").join("workflows");
     fs::create_dir_all(&windsurf_workflows).expect("create stale workflow dir");
-    for stale in ["next.md", "onboard.md", "emb-next.md", "emb-onboard.md"] {
+    for stale in [
+        "next.md",
+        "onboard.md",
+        "start.md",
+        "finish-work.md",
+        "emb-next.md",
+        "emb-onboard.md",
+        "emb-ingest.md",
+    ] {
         fs::write(windsurf_workflows.join(stale), "stale").expect("write stale workflow");
     }
-    for skill in ["emb-next", "emb-onboard"] {
+    for skill in ["emb-start", "emb-next", "emb-finish-work", "emb-onboard"] {
         let skill_dir = root.join(".agents").join("skills").join(skill);
         fs::create_dir_all(&skill_dir).expect("create stale codex skill");
         fs::write(skill_dir.join("SKILL.md"), "stale").expect("write stale codex skill");
@@ -2945,7 +3042,7 @@ fn installer_exposes_same_two_shell_commands_per_host() {
         "installer should create .env.example only, not .env"
     );
 
-    for skill in ["emb-next", "emb-onboard"] {
+    for skill in ["emb-start", "emb-next", "emb-finish-work"] {
         let skill_path = root
             .join(".agents")
             .join("skills")
@@ -2953,6 +3050,10 @@ fn installer_exposes_same_two_shell_commands_per_host() {
             .join("SKILL.md");
         assert!(skill_path.exists(), "missing Codex skill {skill_path:?}");
     }
+    assert!(
+        !root.join(".agents/skills/emb-onboard/SKILL.md").exists(),
+        "legacy Codex emb-onboard skill should be removed"
+    );
     assert!(
         root.join(".pi/skills/xc8-build/SKILL.md").exists(),
         "Pi skill copy should be preserved"
@@ -2978,6 +3079,7 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     assert!(
         codex_hooks.contains("hook session-start --host codex")
             && codex_hooks.contains("PreToolUse")
+            && codex_hooks.contains("UserPromptSubmit")
             && codex_hooks.contains("hook tool-guard --host codex")
             && codex_hooks.contains("hook context-monitor --host codex")
             && codex_hooks.contains("ApplyPatch")
@@ -2991,7 +3093,7 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     );
 
     for host in [".cursor", ".claude"] {
-        assert_two_command_files(root.join(host).join("commands"), host);
+        assert_three_command_files(root.join(host).join("commands"), host);
     }
 
     let cursor_hooks = fs::read_to_string(root.join(".cursor").join("hooks.json"))
@@ -3138,7 +3240,11 @@ fn installer_exposes_same_two_shell_commands_per_host() {
     let install_result = fs::read_to_string(root.join(".emb-agent/.install/INSTALL_RESULT.md"))
         .expect("read install result");
     assert!(
-        install_result.contains("/emb-ingest"),
+        install_result.contains("/emb-start")
+            && install_result.contains("/emb-next")
+            && install_result.contains("/emb-finish-work")
+            && !install_result.contains("/emb-ingest")
+            && !install_result.contains("/emb-onboard"),
         "install result: {install_result}"
     );
 
@@ -3287,7 +3393,11 @@ fn installer_pi_settings_merge_preserves_user_config() {
     let install_result = fs::read_to_string(root.join(".emb-agent/.install/INSTALL_RESULT.md"))
         .expect("read install result");
     assert!(
-        install_result.contains("/emb-ingest"),
+        install_result.contains("/emb-start")
+            && install_result.contains("/emb-next")
+            && install_result.contains("/emb-finish-work")
+            && !install_result.contains("/emb-ingest")
+            && !install_result.contains("/emb-onboard"),
         "install result: {install_result}"
     );
 
@@ -3559,7 +3669,7 @@ fn uninitialized_project_routes_to_onboard() {
         start.contains("Start with onboarding"),
         "start output: {start}"
     );
-    assert!(start.contains("emb-onboard"), "start output: {start}");
+    assert!(start.contains("emb-start"), "start output: {start}");
 
     let statusline = run_raw(&["statusline"]);
     assert_eq!(statusline.trim(), "emb · onboard");
@@ -3609,11 +3719,11 @@ fn initialized_project_without_hardware_still_routes_to_onboard() {
         "next output: {next}"
     );
     assert!(
-        next_value["agent_protocol"]["gate"]["method"] == "grill-with-docs"
+        next_value["agent_protocol"]["gate"]["method"] == "brainstorm-with-docs"
             && next_value["instructions"]
                 .as_str()
                 .unwrap_or("")
-                .contains("doc-grounded grilling loop"),
+                .contains("doc-grounded brainstorm loop"),
         "next output: {next}"
     );
 
@@ -3646,6 +3756,12 @@ fn initialized_project_without_hardware_still_routes_to_onboard() {
     assert!(
         workflow.contains("Shared Conventions") && workflow.contains("Knowledge Evolution"),
         "workflow should include conventions and knowledge guidance: {workflow}"
+    );
+    assert!(
+        workflow.contains("Main-session default")
+            && workflow.contains("focused implementation")
+            && workflow.contains("independent release/system checker"),
+        "workflow should document active task subagent flow: {workflow}"
     );
     for generated_dir in [
         "architecture",
@@ -3762,7 +3878,113 @@ fn session_record_creates_workspace_journal_lazily() {
         "history output: {history}"
     );
 
+    let start_json = Command::new(emb_agent_bin())
+        .args(["start", "--json", "--cwd"])
+        .arg(&root)
+        .output()
+        .expect("run start json");
+    let start_json = assert_success(start_json);
+    let start_value: serde_json::Value = serde_json::from_str(&start_json).expect("start json");
+    assert_eq!(start_value["workspace_journal"]["available"], true);
+    assert_eq!(
+        start_value["workspace_journal"]["title"], "Bring up PWM",
+        "start json: {start_json}"
+    );
+    assert!(
+        start_value["workspace_journal"]["next_steps"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Verify duty-cycle limits"),
+        "start json: {start_json}"
+    );
+
+    let start_context = Command::new(emb_agent_bin())
+        .args(["start", "--cwd"])
+        .arg(&root)
+        .output()
+        .expect("run start context");
+    let start_context = assert_success(start_context);
+    assert!(
+        start_context.contains("Recent workspace journal")
+            && start_context.contains("Verify duty-cycle limits"),
+        "start context: {start_context}"
+    );
+
+    let next_json = Command::new(emb_agent_bin())
+        .args(["next", "--brief", "--cwd"])
+        .arg(&root)
+        .output()
+        .expect("run next json");
+    let next_json = assert_success(next_json);
+    let next_value: serde_json::Value = serde_json::from_str(&next_json).expect("next json");
+    assert_eq!(next_value["workspace_journal"]["available"], true);
+    assert_eq!(
+        next_value["workspace_journal"]["title"], "Bring up PWM",
+        "next json: {next_json}"
+    );
+
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn finish_work_records_workspace_journal_and_resolves_active_task() {
+    let project = TestProject::new("finish-work");
+    let activated = run(&project, &["task", "activate", "pwm-led"]);
+    assert!(
+        activated.contains("\"status\":\"ok\"") || activated.contains("\"status\": \"ok\""),
+        "activate output: {activated}"
+    );
+
+    let output = run(
+        &project,
+        &[
+            "finish-work",
+            "--summary",
+            "PWM dimming implementation is complete",
+            "--test",
+            "cargo test pwm",
+            "--next",
+            "Run board acceptance on the LED output",
+        ],
+    );
+    let value: serde_json::Value = serde_json::from_str(&output).expect("finish-work json");
+    assert_eq!(value["status"], "ok", "finish-work output: {output}");
+    assert_eq!(
+        value["journal"]["journal"], ".emb-agent/workspace/developer/journal-1.md",
+        "finish-work output: {output}"
+    );
+    assert_eq!(
+        value["task"]["resolve"]["task"]["status"], "completed",
+        "finish-work output: {output}"
+    );
+
+    let journal = fs::read_to_string(
+        project
+            .path()
+            .join(".emb-agent/workspace/developer/journal-1.md"),
+    )
+    .expect("read finish-work journal");
+    assert!(
+        journal.contains("PWM dimming implementation is complete")
+            && journal.contains("cargo test pwm")
+            && journal.contains("Run board acceptance"),
+        "journal: {journal}"
+    );
+
+    let task = run(&project, &["task", "show", "pwm-led"]);
+    let task_value: serde_json::Value = serde_json::from_str(&task).expect("task json");
+    assert_eq!(task_value["status"], "completed", "task output: {task}");
+
+    let start = run(&project, &["start", "--json"]);
+    let start_value: serde_json::Value = serde_json::from_str(&start).expect("start json");
+    assert_eq!(start_value["workspace_journal"]["available"], true);
+    assert!(
+        start_value["workspace_journal"]["summary"]
+            .as_str()
+            .unwrap_or("")
+            .contains("PWM dimming implementation is complete"),
+        "start json: {start}"
+    );
 }
 
 #[test]

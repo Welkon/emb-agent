@@ -23,18 +23,25 @@ var PARTIALS_DIR = path.join(RUNTIME_SRC, "scaffolds", "shells", "_partials");
 var REFERENCE_SRC = path.join(RUNTIME_SRC, "reference");
 var CANONICAL_SHELL_COMMANDS = [
 	{
+		name: "emb-start",
+		file: "emb-start.md",
+		args: "start --brief",
+		description: "Load emb-agent project context and route first-session startup.",
+		summary: "Run emb-agent start, then follow the startup/onboarding context it returns."
+	},
+	{
 		name: "emb-next",
 		file: "emb-next.md",
 		args: "next --brief",
-		description: "Show task candidates or the recommended next emb-agent action.",
+		description: "Continue the active emb-agent workflow from the current project state.",
 		summary: "Run emb-agent next, then continue from its machine-readable recommendation."
 	},
 	{
-		name: "emb-onboard",
-		file: "emb-onboard.md",
-		args: "onboard",
-		description: "Run the emb-agent onboarding handoff.",
-		summary: "Run emb-agent onboarding when project truth is missing, incomplete, or scattered."
+		name: "emb-finish-work",
+		file: "emb-finish-work.md",
+		args: "finish-work",
+		description: "Record a workspace journal and close the active task when work is done.",
+		summary: "Run emb-agent finish-work at session close to record continuity and resolve completed work."
 	},
 ];
 
@@ -43,7 +50,7 @@ var RUNTIME_COMMANDS = {
 	chip: true, commands: true, component: true, compound: true, config: true, context: true,
 	debug: true, declare: true, diagnostics: true, doc: true, doctor: true, do: true,
 	executor: true, external: true, health: true, help: true, ingest: true, init: true,
-	"init-project": true, insight: true, knowledge: true, memory: true, migrate: true,
+	"init-project": true, finish: true, "finish-work": true, insight: true, knowledge: true, memory: true, migrate: true,
 	next: true, note: true, onboard: true, orchestrate: true, pause: true, plan: true,
 	prd: true, prefs: true, resolve: true, resume: true, review: true, scaffold: true,
 	scan: true, session: true, settings: true, skills: true, snippet: true, start: true,
@@ -304,11 +311,56 @@ function defaultEmbAgentWorkflowMd() {
 		"`memory/`, `sessions/`, `specs/`, and `plugins/` are created only when the",
 		"matching command or installer option needs them.",
 		"",
+		"## Main Flow",
+		"",
+		"Host-visible commands are intentionally small:",
+		"",
+		"1. `/emb-start` loads or refreshes project context and routes onboarding when needed.",
+		"2. `/emb-next` continues from the current runtime gate.",
+		"3. `/emb-finish-work` records the workspace journal and closes completed work.",
+		"",
+		"Internal runtime commands (`onboard`, `ingest`, `knowledge`, `task`, `scan`,",
+		"`plan`, `do`, `review`, `verify`) are tools used when the current gate asks for",
+		"that specific work.",
+		"",
+		"[workflow-state:concept]",
+		"The project is still in concept/onboarding mode. Do not implement yet. Gather",
+		"hardware/product truth, ingest schematics or manuals when they are the source of",
+		"truth, update `hw.yaml`/`req.yaml`/`docs/prd/system.md`, then rerun `/emb-next`.",
+		"[/workflow-state:concept]",
+		"",
+		"[workflow-state:clarifying]",
+		"The system PRD or requirements are not stable enough for execution. Run the",
+		"main-session brainstorm contract: inspect repository evidence before asking,",
+		"ask one load-bearing behavior, hardware, power, product-risk, or acceptance",
+		"question at a time with your recommended answer and trade-off, update the",
+		"system PRD or task PRD plus `req.yaml` after each confirmation, and stop before",
+		"task activation until the gate changes. Complex tasks should have durable",
+		"`design.md` and `implement.md` notes before implementation.",
+		"[/workflow-state:clarifying]",
+		"",
+		"[workflow-state:ready]",
+		"The project has enough truth to choose work. Use `/emb-next` to present existing",
+		"tasks or PRD-derived candidates. Create or activate a task only when the user",
+		"confirms the concrete target and acceptance surface.",
+		"[/workflow-state:ready]",
+		"",
+		"[workflow-state:task_active]",
+		"An active task exists. Keep reads scoped to the task PRD, hardware/requirement",
+		"truth, and directly affected source/build files. Main-session default: when the",
+		"host exposes a subagent/delegation tool, dispatch a focused implementation",
+		"worker and then an independent release/system checker; subagents must not spawn",
+		"more subagents. The parent session coordinates, synthesizes hidden results,",
+		"writes closure docs, and closes with `/emb-finish-work` after verification.",
+		"Inline implementation is only the fallback for narrow work or hosts without a",
+		"subagent surface.",
+		"[/workflow-state:task_active]",
+		"",
 		"## Shared Conventions",
 		"",
-		"- Run `/emb onboard` for empty, partial, or migrated projects.",
-		"- Run `/emb start` for an existing emb-agent project.",
-		"- Run `/emb next` after setup to choose one next action.",
+		"- Run `/emb-start` for empty, partial, migrated, or existing projects.",
+		"- Run `/emb-next` after setup to choose one next action.",
+		"- Run `/emb-finish-work` when verified work is ready to close.",
 		"- Keep hardware truth in `hw.yaml` and product behavior in `req.yaml` plus `docs/prd/`.",
 		"",
 		"## Knowledge Evolution",
@@ -576,9 +628,9 @@ function usage() {
 		"After install:",
 		"  1) Restart/reload the target host.",
 		"  2) Codex only: run /hooks and trust pending project hooks.",
-		"  3) New project: /emb onboard",
-		"     Existing project: /emb start",
-		"     Unsure: /emb help",
+		"  3) Start or refresh context: /emb-start",
+		"  4) Continue work: /emb-next",
+		"  5) Close completed work: /emb-finish-work",
 		"",
 		"Installs to:",
 		"  - Rust binary (cached/downloaded)",
@@ -1296,7 +1348,17 @@ function deployPiSettingsJson(projectRoot, srcPath, destPath) {
 }
 
 function staleCommandFileNames() {
-	return commandFileNames().concat(["next.md", "onboard.md", "emb-status.md", "emb-scan.md", "emb-init.md"]);
+	return commandFileNames().concat([
+		"next.md",
+		"onboard.md",
+		"start.md",
+		"finish-work.md",
+		"emb-onboard.md",
+		"emb-ingest.md",
+		"emb-status.md",
+		"emb-scan.md",
+		"emb-init.md"
+	]);
 }
 
 function cleanupManagedHostCommands(projectRoot, host) {
@@ -1317,6 +1379,8 @@ function cleanupManagedHostCommands(projectRoot, host) {
 		}
 		for (var k = 0; k < staleCodexSkillDirs.length; k++) {
 			removePath(path.join(hostDir, "skills", staleCodexSkillDirs[k]));
+			removePath(path.join(projectRoot, ".agents", "skills", staleCodexSkillDirs[k]));
+			removePath(path.join(os.homedir(), ".agents", "skills", staleCodexSkillDirs[k]));
 		}
 	}
 }
@@ -1437,14 +1501,16 @@ function deployCanonicalShellCommands(projectRoot, host) {
 
 
 function hostSurfaceSummary(projectRoot, host) {
-	if (host.name === "pi") return { kind: "extension", dir: path.join(hostDirFor(projectRoot, host), "extensions"), commands: ["/emb-next", "/emb-onboard", "/emb-ingest"], reload: "Start a new pi session after install." };
-	if (host.name === "omp") return { kind: "extension", dir: path.join(hostDirFor(projectRoot, host), "extensions"), commands: ["/emb-next", "/emb-onboard"], reload: "Start a new " + host.name + " session after install." };
+	var slashCommands = CANONICAL_SHELL_COMMANDS.map(function (command) { return "/" + command.name; });
+	var skillCommands = CANONICAL_SHELL_COMMANDS.map(function (command) { return "$" + command.name; });
+	if (host.name === "pi") return { kind: "extension", dir: path.join(hostDirFor(projectRoot, host), "extensions"), commands: slashCommands, reload: "Start a new pi session after install." };
+	if (host.name === "omp") return { kind: "extension", dir: path.join(hostDirFor(projectRoot, host), "extensions"), commands: slashCommands, reload: "Start a new " + host.name + " session after install." };
 	if (host.name === "codex") {
 		var root = hostInstallScope(host) === "global" ? path.join(os.homedir(), ".agents", "skills") : path.join(projectRoot, ".agents", "skills");
-		return { kind: "codex-skills", dir: root, commands: ["$emb-next", "$emb-onboard"], reload: "Restart Codex or run /skills if the new skills are not visible." };
+		return { kind: "codex-skills", dir: root, commands: skillCommands, reload: "Restart Codex or run /skills if the new skills are not visible." };
 }
-	if (host.name === "windsurf") return { kind: "windsurf-workflows", dir: canonicalSurfaceDir(projectRoot, host), commands: ["/emb-next", "/emb-onboard"], reload: "Refresh Cascade or open a new Windsurf session." };
-	return { kind: "command-files", dir: canonicalSurfaceDir(projectRoot, host), commands: ["/emb-next", "/emb-onboard"], reload: host.name === "cursor" ? "Reload Cursor window if commands are not visible." : "Start a new Claude Code session if commands are not visible." };
+	if (host.name === "windsurf") return { kind: "windsurf-workflows", dir: canonicalSurfaceDir(projectRoot, host), commands: slashCommands, reload: "Refresh Cascade or open a new Windsurf session." };
+	return { kind: "command-files", dir: canonicalSurfaceDir(projectRoot, host), commands: slashCommands, reload: host.name === "cursor" ? "Reload Cursor window if commands are not visible." : "Start a new Claude Code session if commands are not visible." };
 }
 
 function selectedHostList(args, state) {
@@ -1526,8 +1592,9 @@ function renderInstallPlan(projectRoot, hosts, options) {
 	lines.push("After install:");
 	lines.push("  1. Restart/reload the target host.");
 	if (hosts.some(function (host) { return host.name === "codex"; })) lines.push("  2. Codex: run /hooks and trust pending project hooks.");
-	lines.push("  3. New project: /emb onboard; existing project: /emb start; then /emb next.");
-	lines.push("  4. If context is missing: run diagnostics hooks --host <host>.");
+	lines.push("  3. Start or refresh context with /emb-start.");
+	lines.push("  4. Continue work with /emb-next; close a completed session with /emb-finish-work.");
+	lines.push("  5. If context is missing: run diagnostics hooks --host <host>.");
 	if (!compact) {
 		lines.push("");
 		lines.push("Managed paths:");
@@ -1540,7 +1607,7 @@ function renderInstallPlan(projectRoot, hosts, options) {
 function writeInstallHistory(projectRoot, hosts, options) {
 	var historyDir = installStateDir(projectRoot);
 	ensureDir(historyDir);
-	var record = { time: new Date().toISOString(), version: VERSION, mode: options.mode || "install", scope: options.scope || "local", language: normalizeLanguage(options.lang || readLanguagePreference(projectRoot)), hosts: hosts.map(function (h) { return h.name; }), commands: ["emb-next", "emb-onboard", "emb-ingest"] };
+	var record = { time: new Date().toISOString(), version: VERSION, mode: options.mode || "install", scope: options.scope || "local", language: normalizeLanguage(options.lang || readLanguagePreference(projectRoot)), hosts: hosts.map(function (h) { return h.name; }), commands: CANONICAL_SHELL_COMMANDS.map(function (command) { return command.name; }) };
 	fs.appendFileSync(path.join(historyDir, "install-history.jsonl"), JSON.stringify(record) + "\n");
 }
 function writeRuntimeVersionState(projectRoot, hosts, options) {
@@ -1561,7 +1628,7 @@ function writeRuntimeVersionState(projectRoot, hosts, options) {
 
 
 function writeInstallResult(projectRoot, hosts, options) {
-	var lines = ["# emb-agent Install Result", "", "- Version: " + VERSION, "- Date: " + new Date().toISOString(), "- Scope: " + (options.scope || "local"), "- Language: " + (normalizeLanguage(options.lang || readLanguagePreference(projectRoot)) || "not set"), "", "## Fast Path", "", "1. Restart or reload the target host so new commands and hooks are visible.", "2. If Codex is installed, run `/hooks` and trust pending project hooks.", "3. New or migrated project: run `/emb onboard`.", "4. Existing emb-agent project: run `/emb start`.", "5. Default continuation after setup: run `/emb next`.", "", "## Commands"];
+	var lines = ["# emb-agent Install Result", "", "- Version: " + VERSION, "- Date: " + new Date().toISOString(), "- Scope: " + (options.scope || "local"), "- Language: " + (normalizeLanguage(options.lang || readLanguagePreference(projectRoot)) || "not set"), "", "## Fast Path", "", "1. Restart or reload the target host so new commands and hooks are visible.", "2. If Codex is installed, run `/hooks` and trust pending project hooks.", "3. Start or refresh context with `/emb-start`.", "4. Continue with `/emb-next`.", "5. Close completed work with `/emb-finish-work`.", "", "## Commands"];
 	for (var i = 0; i < hosts.length; i++) {
 		var surface = hostSurfaceSummary(projectRoot, hosts[i]);
 		var hostDir = hostDirFor(projectRoot, hosts[i]);
@@ -1579,20 +1646,31 @@ function hooksFileHasRuntimeEntries(hooksPath, hostName) {
 	try {
 		var hooks = fs.readFileSync(hooksPath, "utf8");
 		var codexGuardOk = hostName !== "codex" || hooks.indexOf("hook tool-guard --host codex") >= 0;
+		var codexWorkflowOk = hostName !== "codex" || hooks.indexOf("UserPromptSubmit") >= 0;
 		return hooks.indexOf("{{") === -1
 			&& hooks.indexOf("hook session-start --host " + hostName) >= 0
 			&& hooks.indexOf("hook context-monitor --host " + hostName) >= 0
 			&& codexGuardOk
+			&& codexWorkflowOk
 			&& hooks.indexOf("ApplyPatch") >= 0;
 	} catch (_) {
 		return false;
 	}
 }
 
+function canonicalCommandFilesExist(dir) {
+	for (var i = 0; i < CANONICAL_SHELL_COMMANDS.length; i++) {
+		if (!fs.existsSync(path.join(dir, CANONICAL_SHELL_COMMANDS[i].file))) return false;
+	}
+	return true;
+}
+
 function codexSurfaceOk(projectRoot, host, surface) {
 	var hostDir = hostDirFor(projectRoot, host);
 	var hooksPath = path.join(hostDir, "hooks.json");
-	var skillsOk = fs.existsSync(path.join(surface.dir, "emb-next", "SKILL.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard", "SKILL.md"));
+	var skillsOk = CANONICAL_SHELL_COMMANDS.every(function (command) {
+		return fs.existsSync(path.join(surface.dir, command.name, "SKILL.md"));
+	});
 	var skillPath = path.join(hostDir, "skills", "emb-agent", "SKILL.md");
 	return skillsOk && fs.existsSync(skillPath) && hooksFileHasRuntimeEntries(hooksPath, "codex");
 }
@@ -1602,7 +1680,7 @@ function cursorSurfaceOk(projectRoot, host, surface) {
 	var hooksPath = path.join(hostDir, "hooks.json");
 	var rulePath = path.join(hostDir, "rules", "emb-agent-workflow.mdc");
 	var skillPath = path.join(hostDir, "skills", "emb-agent", "SKILL.md");
-	var commandsOk = fs.existsSync(path.join(surface.dir, "emb-next.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard.md"));
+	var commandsOk = canonicalCommandFilesExist(surface.dir);
 	return commandsOk && fs.existsSync(rulePath) && fs.existsSync(skillPath) && hooksFileHasRuntimeEntries(hooksPath, "cursor");
 }
 
@@ -1640,7 +1718,7 @@ function runInstallChecks(projectRoot, hosts) {
 		else if (host.name === "omp") surfaceOk = fs.existsSync(path.join(hostDirFor(projectRoot, host), "extensions", "emb-agent.ts"));
 		else if (host.name === "codex") surfaceOk = codexSurfaceOk(projectRoot, host, surface);
 		else if (host.name === "cursor") surfaceOk = cursorSurfaceOk(projectRoot, host, surface);
-		else surfaceOk = fs.existsSync(path.join(surface.dir, "emb-next.md")) && fs.existsSync(path.join(surface.dir, "emb-onboard.md"));
+		else surfaceOk = canonicalCommandFilesExist(surface.dir);
 		var doctor = "";
 		try {
 			var r = childProcess.spawnSync("node", [wrapper, "doctor", "--host", host.name, "--brief"], { cwd: projectRoot, encoding: "utf8", timeout: 10000 });
@@ -1658,9 +1736,9 @@ function printPostInstallNextSteps() {
 	console.log("Fast path:");
 	console.log("  1) Restart/reload the target host.");
 	console.log("  2) Codex only: run /hooks and trust pending project hooks.");
-	console.log("  3) New project: /emb onboard");
-	console.log("     Existing project: /emb start");
-	console.log("     Unsure: /emb help");
+	console.log("  3) Start or refresh context: /emb-start");
+	console.log("  4) Continue work: /emb-next");
+	console.log("  5) Close completed work: /emb-finish-work");
 }
 
 function uninstallHost(projectRoot, host) {

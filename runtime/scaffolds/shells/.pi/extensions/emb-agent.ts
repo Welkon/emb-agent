@@ -1,8 +1,8 @@
 /**
  * emb-agent Pi extension
  *
- * Unified Pi surface for emb-agent: project-state injection, slash commands,
- * Pi-native tools, PDF/document ingest routing, native subagent dispatch, and session insight.
+ * Focused Pi surface for emb-agent: project-state injection, three user slash
+ * commands, Pi-native tools, document routing, native subagent dispatch, and session insight.
  *
  * Requires: emb-agent installed via `npx emb-agent --target pi`.
  */
@@ -32,6 +32,12 @@ const INGEST_MAX_BUFFER = 10 * 1024 * 1024;
 interface DelegationPolicy {
   applies_when_host_exposes_subagent_tool?: boolean;
   required_before_broad_work?: boolean;
+  required_before_task_implementation?: boolean;
+  post_implementation_check_required?: boolean;
+  main_session_default?: string;
+  execution_flow?: string[];
+  dispatch_prompt_contract?: string[];
+  child_self_exemption?: string;
   broad_work_triggers?: string[];
   first_step?: string;
   recommended_roles?: string[];
@@ -452,8 +458,9 @@ function formatRecommendedCommand(r: EmbAgentResult): string {
   else if (command.startsWith("/")) return "";
   command = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").replace(/\s+--brief$/, "").trim();
   const name = command.split(/\s+/)[0] || "";
-  if (name === "onboard") return "/emb-onboard";
-  if (name === "ingest" || name === "ingest-docs") return "/emb-ingest";
+  if (name === "start" || name === "onboard") return "/emb-start";
+  if (name === "finish" || name === "finish-work") return "/emb-finish-work";
+  if (name === "ingest" || name === "ingest-docs") return "ingest_doc";
   return name ? "/emb-next" : "";
 }
 
@@ -478,7 +485,7 @@ function renderNextLines(result: EmbAgentResult, update?: EmbAgentResult | null)
   if (result.summary) lines.push(`Project: ${result.summary}`);
   const command = formatRecommendedCommand(result);
   if (command) {
-    lines.push(`Next command: ${command}`);
+    lines.push(`Next action: ${command}`);
     const reason = formatRecommendedReason(result);
     if (reason) lines.push(`  ${reason}`);
   }
@@ -496,38 +503,16 @@ function renderNextLines(result: EmbAgentResult, update?: EmbAgentResult | null)
   return lines;
 }
 
-function renderIngestLines(result: EmbAgentResult): string[] {
-  const lines = [
-    `Status: ${result.status || "unknown"}`,
-    `Provider: ${result.provider || "unknown"}`,
-    `Parsed: ${result.parsed === false ? "false" : "true"}`,
-  ];
-  if (result.doc_id) lines.push(`Doc ID: ${result.doc_id}`);
-  if (result.local_parse) {
-    const q = result.local_parse.quality || result.local_parse.status || "unknown";
-    lines.push(`Local parse: ${result.local_parse.tool || "n/a"}, quality=${q}, lines=${result.local_parse.line_count ?? "?"}`);
-  }
-  if (result.quality_gate) lines.push(`Quality gate: ${result.quality_gate}`);
-  if (result.paths?.markdown) lines.push(`Markdown: ${result.paths.markdown}`);
-  if (result.paths?.metadata) lines.push(`Metadata: ${result.paths.metadata}`);
-  if (result.parsed_path) lines.push(`Parsed schematic: ${result.parsed_path}`);
-  if (result.visual_netlist_path) lines.push(`Visual netlist: ${result.visual_netlist_path}`);
-  if (result.schematic_advice_path) lines.push(`Schematic advice: ${result.schematic_advice_path}`);
-  if (result.preview_path) lines.push(`Preview: ${result.preview_path}`);
-  if (result.parser_mode) lines.push(`Parser: ${result.parser_mode}`);
-  if (result.recommended_action) lines.push(`Recommended action: ${result.recommended_action}`);
-  if (result.next) lines.push(`Next: ${String(result.next)}`);
-  return lines;
-}
-
 function yamlScalar(value: unknown): string {
   return JSON.stringify(String(value ?? ""));
 }
 
-function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): string {
+function formatEmbStatusLines(r: EmbAgentResult, update?: EmbAgentResult | null): string[] {
+  const lines: string[] = [];
   const parts: string[] = [];
   const notice = updateNotice(update || null);
   if (notice.label) parts.push(notice.label);
+  parts.push("emb");
   if (r.project?.active_variant) parts.push(`var:${r.project.active_variant}`);
   if (isDeclaredChip(r.project?.mcu)) {
     const pkg = isDeclaredChip(r.project?.package) ? `/${r.project!.package}` : "";
@@ -536,18 +521,19 @@ function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): str
   if (r.tasks?.wiki_pages) parts.push(`wiki:${r.tasks.wiki_pages}`);
   if (r.tasks?.open) parts.push(`tasks:${r.tasks.open}`);
   const activeTask = formatActiveTask(r.tasks?.active);
-  if (activeTask) parts.push(`▸${activeTask}`);
+  if (activeTask) lines.push(`▸ ${activeTask}`);
   const command = formatRecommendedCommand(r);
-  if (command) parts.push(command);
-  return parts.length > 0 ? `emb: ${parts.join(" · ")}` : "";
+  if (command) parts.push(`next:${command}`);
+  if (parts.length > 0) lines.push(parts.join(" · "));
+  return lines;
 }
 
 // ---------------------------------------------------------------------------
 // Native emb-agent subagent dispatch and session insight
 // ---------------------------------------------------------------------------
 
-const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer", "sys-reviewer", "release-checker"]);
-const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "onboard"]);
+const READ_ONLY_AGENT_NAMES = new Set(["hw-scout", "bug-hunter", "arch-reviewer", "sys-reviewer"]);
+const WRITE_CAPABLE_AGENTS = new Set(["fw-doer", "release-checker", "onboard"]);
 const SUPPORTED_AGENT_NAMES = new Set([...READ_ONLY_AGENT_NAMES, ...WRITE_CAPABLE_AGENTS]);
 const PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS = 180_000;
 const RAW_SUBAGENT_OUTPUT_GUARD_MS = 60_000;
@@ -567,7 +553,7 @@ const MAX_SESSION_BYTES = 2 * 1024 * 1024;
 const SUBAGENT_MODEL_RETRIES = 3;
 const TUI_HEARTBEAT_MS = 200;
 const KNOWLEDGE_PRIMING_TTL_MS = 10 * 60_000;
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER_FRAMES = ["◐", "◓", "◑", "◒"];
 const LOW_POWER_DEBUG_GATE = "For STOP/sleep/current/wake bugs, first prove the firmware actually reaches the sleep entry path (state flag, call site, minimal idle-sleep firmware, GPIO pulse, or current-meter HITL step) before declaring interrupt gates, asm mnemonics, or peripheral shutdown as the root cause.";
 
 const INHERIT_MODEL_ROUTES: Record<string, ModelRoute> = {
@@ -738,7 +724,7 @@ function subagentDispatchEnabled(result: EmbAgentResult, settings: Record<string
   const subagents = embAgent.subagents && typeof embAgent.subagents === "object" && !Array.isArray(embAgent.subagents) ? embAgent.subagents as Record<string, unknown> : {};
   if (subagents.dispatchMode === "off" || subagents.dispatchMode === "inline") return false;
   const policy = result.delegation_policy || result.agent_protocol?.gate?.delegation_policy;
-  return Boolean(policy?.applies_when_host_exposes_subagent_tool && (policy.required_before_broad_work || isPrdExploration(result) || isWorkSelection(result)));
+  return Boolean(policy?.applies_when_host_exposes_subagent_tool && (policy.required_before_broad_work || policy.required_before_task_implementation || isPrdExploration(result) || isWorkSelection(result)));
 }
 
 function shouldAutoDispatchSubagents(prompt: string, result: EmbAgentResult, settings: Record<string, unknown>): boolean {
@@ -793,7 +779,7 @@ function dispatchPhase(result: EmbAgentResult): DispatchPhase {
 function rolePrompt(role: string, intent: DispatchIntent, userPrompt: string, result: EmbAgentResult, targetTask?: string, previousOutput?: string): string {
   const taskLine = targetTask ? `Target task: ${targetTask}` : "Target task: none selected";
   const taskGuard = targetTask
-    ? `Stay inside the target task. Read .emb-agent/tasks/${targetTask}/task.json and .emb-agent/tasks/${targetTask}/prd.md first when present. Do not broaden into unrelated tasks.`
+    ? `Stay inside the target task. Read .emb-agent/tasks/${targetTask}/task.json first, then read the PRD path listed in task.json artifacts.prd (fallback: .emb-agent/tasks/${targetTask}/prd.md if present), plus task-local design.md/implement.md when present. Do not broaden into unrelated tasks.`
     : "Do not invent a task target. If implementation is requested but no target task exists, report the missing selection instead of editing broadly.";
   const previous = previousOutput ? `\n\nPrevious subagent output to use as context:\n${previousOutput.slice(0, MAX_SUBAGENT_OUTPUT)}` : "";
   const directives: Record<string, string> = {
@@ -804,13 +790,14 @@ function rolePrompt(role: string, intent: DispatchIntent, userPrompt: string, re
     "arch-reviewer": "Review architecture, ISR/main-loop boundaries, timing, RAM/ROM, scheduler/event-step fit, and vertical-slice boundaries for this target work. Do not edit files.",
     "sys-reviewer": "Review behavior requirements, state-machine consistency, power/sleep/wakeup, WDT/LVD/reset behavior, and acceptance evidence. Do not edit files.",
     "bug-hunter": "Find root cause hypotheses, regression vectors, and minimal reproduction/verification steps for the target bug. Do not edit unless explicitly asked as fw-doer.",
-    "release-checker": "Check whether the target task result is ready: changed files, acceptance criteria, validation gaps, rollback/user impact, and next task handoff. Do not edit files.",
+    "release-checker": "Independently check whether the target task result is ready: changed files, acceptance criteria, validation gaps, rollback/user impact, and next task handoff. Self-fix only clear, bounded issues discovered during the check; do not start new feature work or broaden scope.",
   };
   return [
     taskLine,
     `Dispatch intent: ${intent}`,
     taskGuard,
     directives[role] || "Perform the delegated emb-agent task only.",
+    `You are already the ${role} subagent. Do not spawn additional emb-agent subagents; report any need for more parallel work to the parent session instead.`,
     "Use emb-agent project truth and cached knowledge. Prefer doc_lookup/doc_fetch over broad scans. Report concise evidence and residual risks.",
     "Original user request:",
     userPrompt,
@@ -854,15 +841,20 @@ function buildDispatchPlan(prompt: string, result: EmbAgentResult): SubagentDisp
     };
   }
   if (phase === "work-selection" || phase === "task-execution") {
-    const runs: SubagentDispatchRun[] = [
-      { role: "fw-doer", intent: "implementation", writable: true, targetTask, prompt: rolePrompt("fw-doer", "implementation", prompt, result, targetTask) },
-    ];
+    const runs: SubagentDispatchRun[] = targetTask
+      ? [
+          { role: "fw-doer", intent: "implementation", writable: true, targetTask, prompt: rolePrompt("fw-doer", "implementation", prompt, result, targetTask) },
+          { role: "release-checker", intent: "verification", writable: true, targetTask, prompt: rolePrompt("release-checker", "verification", prompt, result, targetTask) },
+        ]
+      : [
+          { role: "fw-doer", intent: "implementation", writable: true, targetTask, prompt: rolePrompt("fw-doer", "implementation", prompt, result, targetTask) },
+        ];
     return {
       phase,
       targetTask,
-      mode: "single",
+      mode: targetTask ? "chain" : "single",
       reason: targetTask
-        ? `Token-efficient implementation dispatch scoped to target task: ${targetTask}. Run hw-scout or release-checker separately only when the parent AI judges fresh evidence/review is needed.`
+        ? `Implementation dispatch scoped to target task: ${targetTask}. Main-session default is fw-doer followed by release-checker; add hw-scout/sys-reviewer only when fresh hardware or system evidence is needed.`
         : "Implementation request has no selected task; fw-doer must refuse broad edits and ask for scope.",
       runs,
     };
@@ -1050,14 +1042,19 @@ function buildSubagentPrompt(role: string, userPrompt: string, result?: EmbAgent
     "arch-reviewer": "Review architecture/framework boundaries, scheduler/timing implications, ISR boundaries, RAM/ROM risk, and safe vertical slices.",
     "sys-reviewer": "Review requirements, concurrency, power/sleep/wakeup behavior, verification order, and system-level failure modes.",
     "bug-hunter": "Find likely root causes, risky assumptions, regression vectors, and minimal validation steps.",
-    "release-checker": "Check readiness risks, missing validation, changelog/user-impact concerns, and rollback notes.",
+    "release-checker": "Independently check readiness risks, missing validation, changelog/user-impact concerns, rollback notes, and any clear small issues that should be self-fixed before closure.",
   };
+  const mutationRule = role === "release-checker"
+    ? "You may self-fix clear, bounded issues found during the check. Do not implement new features, redesign scope, or continue dependent tasks."
+    : READ_ONLY_AGENT_NAMES.has(role)
+      ? "Do not modify files; this pass is read-only reconnaissance/review."
+      : "Keep edits minimal and scoped to the delegated task.";
   return [
     "You are an emb-agent firmware subagent running in an isolated Pi session.",
     `Role: ${role}`,
     `Focus: ${focus[role] || "Perform focused firmware analysis."}`,
     "Work from repository files and emb-agent project truth. Do not rely on parent chat memory.",
-    READ_ONLY_AGENT_NAMES.has(role) ? "Do not modify files; this pass is read-only reconnaissance/review." : "Keep edits minimal and scoped to the delegated task.",
+    mutationRule,
     `Do not spawn additional emb-agent subagents. ${EMB_CHILD_ENV}=1 is set for recursion prevention.`,
     "Before reading firmware/source files, call knowledge_search first. If knowledge_search is unavailable, fails, or returns no useful evidence, state that fallback condition and then use bounded source reads.",
     "Do not inspect raw schematic files directly. Use ingest_doc kind=schematic or ingest schematic first, then inspect cached parsed/advice artifacts.",
@@ -1264,6 +1261,17 @@ function formatTokenCount(value: number): string {
   return String(Math.round(n));
 }
 
+function formatElapsed(ms: number): string {
+  const secs = Math.max(0, Math.floor(ms / 1000));
+  const mins = Math.floor(secs / 60);
+  const rem = secs % 60;
+  if (mins >= 60) {
+    const hours = Math.floor(mins / 60);
+    return `${hours}h${mins % 60}m`;
+  }
+  return mins > 0 ? `${mins}m${rem}s` : `${rem}s`;
+}
+
 function contextTokensUsed(usage: SubagentRunState["usage"]): number {
   return Number(usage.ctxTokens || 0) || (Number(usage.input || 0) + Number(usage.output || 0) + Number(usage.cacheRead || 0) + Number(usage.cacheWrite || 0));
 }
@@ -1295,16 +1303,20 @@ function aggregateUsage(roles: SubagentRunState[]): SubagentRunState["usage"] {
 function renderSubagentProgress(details: EmbSubagentProgress, includeOutput = true): string {
   const totalUsage = aggregateUsage(details.roles);
   const usageSummary = formatContextUsage(totalUsage);
-  const lines = [`emb-agent native subagents · ${details.final ? "done" : "running"}${usageSummary ? ` · total ${usageSummary}` : ""}`];
+  const done = details.roles.filter((role) => role.status === "succeeded" || role.status === "failed" || role.status === "cancelled").length;
+  const elapsed = formatElapsed((details.updatedAt || Date.now()) - details.startedAt);
+  const headFrame = details.final ? "✓" : SPINNER_FRAMES[Math.floor((Date.now() - details.startedAt) / TUI_HEARTBEAT_MS) % SPINNER_FRAMES.length] || "◐";
+  const lines = [`${headFrame} subagent ${details.mode} · ${done}/${details.roles.length} done · ${details.final ? "done" : "running"} · ${elapsed}${usageSummary ? ` · total ${usageSummary}` : ""}`];
   for (const role of details.roles) {
     const running = role.status === "running" || role.status === "pending";
-    const frame = SPINNER_FRAMES[Math.floor((Date.now() - details.startedAt) / TUI_HEARTBEAT_MS) % SPINNER_FRAMES.length] || "⠸";
-    const icon = role.status === "succeeded" ? "✓" : role.status === "failed" ? "✗" : role.status === "cancelled" ? "!" : running ? frame : "⠸";
+    const frame = SPINNER_FRAMES[Math.floor((Date.now() - details.startedAt) / TUI_HEARTBEAT_MS) % SPINNER_FRAMES.length] || "◐";
+    const icon = role.status === "succeeded" ? "✓" : role.status === "failed" ? "✗" : role.status === "cancelled" ? "!" : running ? frame : "◐";
     const roleUsage = formatContextUsage(role.usage);
     const retry = role.attempt && role.attempt > 1 ? `retry ${role.attempt}/${role.attemptsMax || 1}` : null;
     const route = role.routeHistory.length > 1 ? `route ${role.routeHistory.join("→")}` : null;
     const stats = [retry, role.tools.length ? `${role.tools.length} tools` : null, role.model || null, route, role.thinking ? `thinking=${role.thinking}` : null, roleUsage || null].filter(Boolean).join(" · ");
-    lines.push(`${icon} ${role.role} ${role.status}${stats ? ` · ${stats}` : ""}`);
+    const roleElapsed = role.startedAt ? formatElapsed((role.finishedAt || Date.now()) - role.startedAt) : "";
+    lines.push(`${icon} ${role.role} · ${role.status}${roleElapsed ? ` · ${roleElapsed}` : ""}${stats ? ` · ${stats}` : ""}`);
     if (includeOutput && role.textTail) lines.push(`  ${role.textTail.slice(-300).replace(/\s+/g, " ")}`);
     if (role.errorMessage) lines.push(`  error: ${role.errorMessage}`);
   }
@@ -1425,17 +1437,6 @@ function shellSplit(input: string): string[] {
   return out;
 }
 
-function optionValue(args: string[], name: string): string | undefined {
-  const idx = args.indexOf(name);
-  if (idx >= 0 && idx + 1 < args.length) return args[idx + 1];
-  const prefix = `${name}=`;
-  return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
-}
-
-function boolArg(args: string[], name: string): boolean {
-  return args.includes(name);
-}
-
 function isSchematicPath(path: string): boolean {
   return /\.(?:schdoc|sch|dsn|kicad_sch)(?:$|[?#])/i.test(String(path || ""));
 }
@@ -1472,36 +1473,6 @@ function buildIngestDocArgs(params: Record<string, unknown>): string[] {
   const timeoutMs = Number(params.timeoutMs || 0);
   if (Number.isFinite(timeoutMs) && timeoutMs > 0) args.push("--timeout-ms", String(timeoutMs));
   return args;
-}
-
-function parseEmbIngestArgs(raw: string): Record<string, unknown> | null {
-  const args = shellSplit(raw);
-  const sub = args[0] === "doc" || args[0] === "schematic" ? args.shift() : "doc";
-  const file = optionValue(args, "--file") || args[0];
-  if (!file) return null;
-  if (sub === "schematic") {
-    return {
-      file,
-      kind: "schematic",
-      format: optionValue(args, "--format"),
-      timeoutMs: Number(optionValue(args, "--timeout-ms") || 0) || undefined,
-    };
-  }
-  return {
-    file,
-    provider: optionValue(args, "--provider") || "auto",
-    kind: optionValue(args, "--kind") || "datasheet",
-    to: optionValue(args, "--to") || "hardware",
-    title: optionValue(args, "--title"),
-    language: optionValue(args, "--language"),
-    pages: optionValue(args, "--pages"),
-    modelVersion: optionValue(args, "--model-version"),
-    force: boolArg(args, "--force"),
-    isOcr: boolArg(args, "--ocr") || boolArg(args, "--is-ocr"),
-    enableTable: !boolArg(args, "--no-table"),
-    enableFormula: !boolArg(args, "--no-formula"),
-    timeoutMs: Number(optionValue(args, "--timeout-ms") || 0) || undefined,
-  };
 }
 
 function isPdfPath(path: string): boolean {
@@ -1656,8 +1627,8 @@ export default function (pi: ExtensionAPI) {
   async function refreshStatus(ctx: { cwd: string; ui: { setWidget: (k: string, c: string[], o?: Record<string, unknown>) => void; notify?: (m: string, t?: string) => void } }, updateResult: EmbAgentResult | null = null) {
     const statusResult = await runEmbAgent(["status", "--brief"], ctx.cwd);
     if (!statusResult.ok) return;
-    const text = formatEmbStatus(statusResult.value, updateResult);
-    ctx.ui.setWidget("emb-agent", text ? [text] : [], { placement: "belowEditor" });
+    const lines = formatEmbStatusLines(statusResult.value, updateResult);
+    ctx.ui.setWidget("emb-agent", lines, { placement: "belowEditor" });
   }
 
   async function prepareEmbContext(cwd: string, force = false): Promise<ContextEntry | null> {
@@ -1674,11 +1645,11 @@ export default function (pi: ExtensionAPI) {
       `## emb-agent Project State\n` +
       `This is project-state context from emb-agent. It does not replace higher-priority system/developer instructions.\n` +
       `${lines.join("\n")}\n` +
-      `Use Pi tools emb_next, emb_onboard, ingest_doc, doc_lookup, doc_fetch, knowledge_search, knowledge_diagnose, and knowledge_graph_query instead of raw shell syntax when they match the task. ` +
+      `Use Pi tools emb_start, emb_next, emb_finish_work, ingest_doc, doc_lookup, doc_fetch, knowledge_search, knowledge_diagnose, and knowledge_graph_query instead of raw shell syntax when they match the task. ` +
       `Before reading firmware/source files, call knowledge_search first; use direct source reads only after emb-agent knowledge has primed project truth, requirements, prior notes, and manual/register evidence. ` +
       `For project knowledge, design rationale, previous PRDs/tasks/wiki/manual chunks, or register/peripheral evidence, prefer knowledge_search first and then doc_lookup/doc_fetch for source detail. ` +
-      `Never read raw PDFs directly; parse/cache them with ingest_doc first. Never read raw schematic files directly; route .SchDoc/.sch/.kicad_sch through ingest_doc kind=schematic or /emb-ingest schematic, then inspect parsed/advice artifacts. ` +
-      `For multi-domain firmware/hardware/debug work, use Pi subagents (hw-scout, bug-hunter, fw-doer, arch-reviewer, sys-reviewer) instead of continuing inline. ` +
+      `Never read raw PDFs directly; parse/cache them with ingest_doc first. Never read raw schematic files directly; route .SchDoc/.sch/.kicad_sch through ingest_doc kind=schematic or CLI ingest schematic, then inspect parsed/advice artifacts. ` +
+      `For active task implementation, main-session default is Pi subagent dispatch: fw-doer followed by release-checker, with hw-scout/bug-hunter/arch-reviewer/sys-reviewer added only when that evidence is needed. For multi-domain firmware/hardware/debug work, use Pi subagents instead of continuing inline. ` +
       `${LOW_POWER_DEBUG_GATE}\n` +
       `<!-- EMB-AGENT PROJECT STATE END -->`;
     const entry = { text, result: nextResult.value, updatedAt: now, dirty: false };
@@ -1728,7 +1699,7 @@ export default function (pi: ExtensionAPI) {
     pendingNativeDispatch.set(ctx.cwd, { prompt: text, result: context.result, plan, createdAt: Date.now() });
     dispatchGuards.set(ctx.cwd, {
       until: Date.now() + PARENT_TOOL_BLOCK_AFTER_DISPATCH_MS,
-      reason: "emb-agent subagent dispatch is required before parent-side implementation file mutations. The parent AI must decide from the user's request whether to call emb_subagent; if implementation is intended, call emb_subagent first and wait for hidden results before writing/editing source/build files. Task closure docs (AAR, task status, attention, architecture, compound/wiki notes, markdown docs) may be written directly by the parent agent.",
+      reason: "emb-agent subagent dispatch is required before parent-side implementation file mutations. For active task implementation, call knowledge_search first, then emb_subagent (fw-doer followed by release-checker) and wait for hidden results before writing/editing source/build files. Task closure docs (AAR, task status, attention, architecture, compound/wiki notes, markdown docs) may be written directly by the parent agent.",
       phase: "waiting",
     });
     return { action: "continue" };
@@ -1753,7 +1724,7 @@ export default function (pi: ExtensionAPI) {
           `Dispatch mode: ${pending.plan.mode}`,
           `Dispatch roles: ${roles.join(", ")}`,
           `Dispatch reason: ${pending.plan.reason}`,
-          "If the user's request is to implement/start/continue candidate work, call knowledge_search first for the target task, then call emb_subagent before parent-side source/build file mutation. If the user's request is only a question, clarification, task closure, AAR, or knowledge/documentation writeback, answer or write the closure docs normally without calling subagents.",
+          "If the user's request is to implement/start/continue candidate work, call knowledge_search first for the target task, then call emb_subagent before parent-side source/build file mutation. For active task implementation, the default dispatch is fw-doer followed by release-checker; add scout/reviewer roles only when fresh evidence is needed. If the user's request is only a question, clarification, task closure, AAR, or knowledge/documentation writeback, answer or write the closure docs normally without calling subagents.",
           "Do not perform source reads, broad source scans, or write/edit source/build files before knowledge_search has run. AAR/task status/attention/architecture/compound/wiki markdown closure writes are allowed.",
         ].join("\n") + "\n";
         messageContent += `; dispatch plan ready (${roles.join(", ")})`;
@@ -1808,16 +1779,16 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (event.toolName === "read" && isPdfPath(String((event.input as any)?.path || ""))) {
-      return { block: true, reason: "Do not read raw PDFs directly. Use the ingest_doc Pi tool or /emb-ingest doc --file <path> so emb-agent parses and caches the document first." };
+      return { block: true, reason: "Do not read raw PDFs directly. Use the ingest_doc Pi tool or CLI `ingest doc --file <path>` so emb-agent parses and caches the document first." };
     }
     if (event.toolName === "bash" && isRawPdfShellCommand(String((event.input as any)?.command || ""))) {
-      return { block: true, reason: "Do not inspect raw PDFs with shell tools. Use ingest_doc or /emb-ingest doc --file <path> first, then doc_fetch/doc_lookup on cached markdown." };
+      return { block: true, reason: "Do not inspect raw PDFs with shell tools. Use ingest_doc or CLI `ingest doc --file <path>` first, then doc_fetch/doc_lookup on cached markdown." };
     }
     if (event.toolName === "read" && isSchematicPath(String((event.input as any)?.path || ""))) {
-      return { block: true, reason: "Do not read raw schematic files directly. Use ingest_doc with kind=schematic, or /emb-ingest schematic --file <path>, then inspect cached parsed/advice artifacts." };
+      return { block: true, reason: "Do not read raw schematic files directly. Use ingest_doc with kind=schematic, or CLI `ingest schematic --file <path>`, then inspect cached parsed/advice artifacts." };
     }
     if (event.toolName === "bash" && isRawSchematicShellCommand(String((event.input as any)?.command || ""))) {
-      return { block: true, reason: "Do not inspect raw schematic files with shell tools. Use ingest_doc kind=schematic or /emb-ingest schematic --file <path>, then inspect parsed schematic JSON/advice." };
+      return { block: true, reason: "Do not inspect raw schematic files with shell tools. Use ingest_doc kind=schematic or CLI `ingest schematic --file <path>`, then inspect parsed schematic JSON/advice." };
     }
     if (event.toolName === "bash" && isUnboundedFilesystemSearch(String((event.input as any)?.command || ""))) {
       return { block: true, reason: "Do not search from filesystem root (`/`). Bound searches to the project, workspace, or a known toolchain directory, and use `rg --files`/`find <root> -maxdepth ...` with a narrow root." };
@@ -1825,6 +1796,18 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── Slash commands ──────────────────────────────────────────────
+
+  pi.registerCommand("emb-start", {
+    description: "Load emb-agent project context and route startup",
+    handler: async (_args, ctx) => {
+      const result = await runEmbAgent(["start", "--brief"], ctx.cwd);
+      if (!result.ok) { ctx.ui.notify(errorText(result), "warning"); return; }
+      contexts.set(ctx.cwd, { text: "", updatedAt: 0, dirty: true });
+      await prepareEmbContext(ctx.cwd, true);
+      const lines = renderNextLines(result.value);
+      await sendSteer(`[/emb-start]\n${lines.length ? lines.join("\n") : JSON.stringify(result.value, null, 2)}\n\nUse this startup context to decide whether onboarding, task selection, or direct continuation is appropriate.`, ctx.cwd);
+    },
+  });
 
   pi.registerCommand("emb-next", {
     description: "Run emb-agent next and inject result into conversation",
@@ -1841,32 +1824,15 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("emb-onboard", {
-    description: "Run emb-agent onboarding handoff",
-    handler: async (_args, ctx) => {
-      const result = await runEmbAgent(["onboard"], ctx.cwd);
+  pi.registerCommand("emb-finish-work", {
+    description: "Record workspace journal and close completed work",
+    handler: async (args, ctx) => {
+      const cliArgs = ["finish-work", ...shellSplit(args || "")];
+      const result = await runEmbAgent(cliArgs, ctx.cwd);
       if (!result.ok) { ctx.ui.notify(errorText(result), "warning"); return; }
       markContextDirty(ctx.cwd);
       const lines = renderNextLines(result.value);
-      await sendSteer(`[/emb-onboard]\n${lines.length ? lines.join("\n") : JSON.stringify(result.value, null, 2)}\n\nAct on the onboarding handoff above.`, ctx.cwd);
-    },
-  });
-
-  pi.registerCommand("emb-ingest", {
-    description: "Parse/cache documents or schematics with emb-agent (usage: /emb-ingest doc --file <path> or /emb-ingest schematic --file <path>)",
-    handler: async (args, ctx) => {
-      const params = parseEmbIngestArgs(args || "");
-      if (!params) {
-        await sendSteer("[/emb-ingest]\nUsage: /emb-ingest doc --file <path> [--provider auto|local|mineru] [--kind datasheet] [--to hardware]\n       /emb-ingest schematic --file <path>", ctx.cwd);
-        return;
-      }
-      let cliArgs: string[];
-      try { cliArgs = buildIngestDocArgs(params); }
-      catch (error: any) { ctx.ui.notify(error?.message || String(error), "warning"); return; }
-      const result = await runEmbAgent(cliArgs, ctx.cwd, { timeoutMs: Number(params.timeoutMs || 0) || INGEST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER });
-      if (!result.ok) { ctx.ui.notify(errorText(result), "warning"); return; }
-      markContextDirty(ctx.cwd);
-      await sendSteer(`[/emb-ingest]\n${renderIngestLines(result.value).join("\n")}\n\nUse cached artifacts from the result. For documents, use doc_fetch/doc_lookup; for schematics, inspect parsed.json/advice/preview and rerun /emb-next.`, ctx.cwd);
+      await sendSteer(`[/emb-finish-work]\n${lines.length ? lines.join("\n") : JSON.stringify(result.value, null, 2)}\n\nSynthesize the closure state and next handoff from the workspace journal result.`, ctx.cwd);
     },
   });
 
@@ -1888,13 +1854,38 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
-    name: "emb_onboard",
-    label: "emb onboard",
-    description: "Run emb-agent onboarding handoff for uninitialized or migrated firmware projects.",
-    promptSnippet: "Run emb-agent onboarding handoff",
+    name: "emb_start",
+    label: "emb start",
+    description: "Run emb-agent start --brief and return startup/onboarding routing context.",
+    promptSnippet: "Run emb-agent start --brief and return startup context",
     parameters: { type: "object", properties: {}, additionalProperties: false } as Record<string, unknown>,
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      const result = await runEmbAgent(["onboard"], ctx.cwd);
+      const result = await runEmbAgent(["start", "--brief"], ctx.cwd);
+      if (!result.ok) return toolTextResult(errorText(result), result);
+      markContextDirty(ctx.cwd);
+      return toolTextResult(renderNextLines(result.value).join("\n") || JSON.stringify(result.value, null, 2), result.value);
+    },
+  });
+
+  pi.registerTool({
+    name: "emb_finish_work",
+    label: "emb finish",
+    description: "Record the workspace journal and resolve the active task when work is complete.",
+    promptSnippet: "Run emb-agent finish-work to close completed work",
+    parameters: {
+      type: "object",
+      properties: {
+        summary: { type: "string", description: "Optional closure summary" },
+        noResolve: { type: "boolean", description: "Record journal only; do not resolve active task" },
+      },
+      additionalProperties: false,
+    } as Record<string, unknown>,
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const args = ["finish-work"];
+      const summary = String((params as any)?.summary || "").trim();
+      if (summary) args.push("--summary", summary);
+      if ((params as any)?.noResolve === true) args.push("--no-resolve");
+      const result = await runEmbAgent(args, ctx.cwd);
       if (!result.ok) return toolTextResult(errorText(result), result);
       markContextDirty(ctx.cwd);
       return toolTextResult(renderNextLines(result.value).join("\n") || JSON.stringify(result.value, null, 2), result.value);
@@ -1904,9 +1895,9 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "emb_subagent",
     label: "emb subagent",
-    description: "Run emb-agent native firmware subagents in isolated headless Pi sessions. Use before broad firmware/system-framework work; for read-only bug audits prefer bug-hunter plus sys-reviewer.",
-    promptSnippet: "Run emb-agent native firmware subagents before broad work",
-    promptGuidelines: ["Use emb_subagent before broad firmware work that spans hardware, architecture, power, drivers, framework, or verification.", "If /emb-next reports prd-exploration but the user asks for a bounded read-only bug audit, use bug-hunter/sys-reviewer and do not treat PRD exploration as blocking the audit."],
+    description: "Run emb-agent native firmware subagents in isolated headless Pi sessions. Active task implementation defaults to fw-doer followed by release-checker; for read-only bug audits prefer bug-hunter plus sys-reviewer.",
+    promptSnippet: "Run emb-agent native subagents before active task implementation",
+    promptGuidelines: ["Use emb_subagent for active task implementation before parent-side source/build edits; default to fw-doer followed by release-checker.", "Use emb_subagent before broad firmware work that spans hardware, architecture, power, drivers, framework, or verification.", "If /emb-next reports prd-exploration but the user asks for a bounded read-only bug audit, use bug-hunter/sys-reviewer and do not treat PRD exploration as blocking the audit."],
     parameters: {
       type: "object",
       properties: {

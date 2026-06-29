@@ -8,6 +8,12 @@ Task manifests live under:
 .emb-agent/tasks/<task-name>/task.json
 ```
 
+Task requirements live under:
+
+```text
+docs/prd/tasks/<task-name>.md
+```
+
 ## Purpose
 
 The task model gives longer work a durable structure:
@@ -17,6 +23,7 @@ The task model gives longer work a durable structure:
 - branch context
 - related files
 - next action phases
+- a PRD artifact for confirmed facts, requirements, acceptance criteria, open questions, and evidence
 
 This is the layer between short interactive work and full project management tooling.
 
@@ -68,7 +75,7 @@ Key fields include:
 ## Typical flow
 
 ```text
-task add -> task activate -> task context add -> task aar scan -> task aar record? -> task resolve
+task add -> brainstorm/update docs/prd/tasks/<task>.md -> task activate -> task context add -> task aar scan -> task aar record? -> task resolve
 ```
 
 Worktree operations are now available as a first-class companion flow:

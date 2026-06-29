@@ -61,7 +61,7 @@ emb-agent sits between the AI assistant and your repository. It does not replace
 
 ### Specialized agents
 
-emb-agent ships a set of workflow-specific sub-agents that the AI assistant can delegate to. Each agent has a narrow scope and clear acceptance criteria.
+emb-agent ships a set of workflow-specific sub-agents that the AI assistant can delegate to. Each agent has a narrow scope and clear acceptance criteria. On subagent-capable hosts, active task implementation defaults to a focused `fw-doer` run followed by an independent `release-checker`; the parent session coordinates, synthesizes results, and closes the task.
 
 | Agent | Role |
 |---|---|
@@ -71,7 +71,7 @@ emb-agent ships a set of workflow-specific sub-agents that the AI assistant can 
 | **arch-reviewer** | Architecture review against embedded constraints (ROM/RAM budgets, ISR latency, power domains) |
 | **bug-hunter** | Root-cause analysis of hardware-software bugs with register-level tracing |
 | **sys-reviewer** | System-level review across firmware, schematic, and requirements |
-| **release-checker** | Pre-release validation of build, tests, and release artifacts |
+| **release-checker** | Independent implementation check, bounded self-fix, and release validation |
 
 ---
 
@@ -178,13 +178,13 @@ Interactive install scans for `emb-support` (via `EMB_SUPPORT_DIR`, project ance
 
 ### Host command surface
 
-Every enabled host exposes the same two emb-agent entrypoints through its native mechanism:
+Every enabled host exposes the same three emb-agent entrypoints through its native mechanism:
 
 | Host | Surface | Entries |
 |---|---|---|
-| Claude Code | `.claude/commands/*.md` | `/emb-next`, `/emb-onboard` |
-| Cursor | command files | `/emb-next`, `/emb-onboard` |
-| Codex | `.agents/skills/<name>/SKILL.md` | `$emb-next`, `$emb-onboard` |
+| Claude Code | `.claude/commands/*.md` | `/emb-start`, `/emb-next`, `/emb-finish-work` |
+| Cursor | command files | `/emb-start`, `/emb-next`, `/emb-finish-work` |
+| Codex | `.agents/skills/<name>/SKILL.md` | `$emb-start`, `$emb-next`, `$emb-finish-work` |
 
 After install, emb-agent writes `.emb-agent/.install/INSTALL_RESULT.md`, runs an install check, and prints host-specific reload instructions. To diagnose later:
 
@@ -197,9 +197,9 @@ Recommended first-use flow:
 
 1. Restart or reload the target host after install or repair.
 2. Codex only: run `/hooks` and trust pending project hooks.
-3. New project: run `/emb onboard`.
-4. Existing emb-agent project: run `/emb start`.
-5. Continue work from runtime guidance: run `/emb next`.
+3. Start or refresh context: run `/emb-start`.
+4. Continue work from runtime guidance: run `/emb-next`.
+5. Close completed work: run `/emb-finish-work`.
 
 If startup context is missing, run the hook diagnostics command above before changing project files.
 
@@ -225,7 +225,7 @@ cargo build --release
 | [AI Host Contract](docs/ai-host-contract.md) | Integration rules for AI runtimes |
 | [Automation Contract](docs/automation-contract.md) | Stable machine-readable outputs |
 | [Workflow Layering](docs/workflow-layering.md) | Core vs project-specific workflow boundaries |
-| [Command Reference](commands/emb/help.md) | Default command flow plus full installed command docs; host slash surfaces still expose `/emb-next` and `/emb-onboard` |
+| [Command Reference](commands/emb/help.md) | Default command flow plus full installed command docs; host slash surfaces expose `/emb-start`, `/emb-next`, and `/emb-finish-work` |
 
 ---
 

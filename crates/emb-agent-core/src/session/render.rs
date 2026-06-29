@@ -2,7 +2,9 @@ use crate::hardware::project::{ProjectSnapshot, TaskSnapshot};
 use crate::json::json_quote;
 use crate::task::{WorktreePolicy, worktree_policy_json};
 use serde_json::{Value, json};
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn response_language_instruction(language: &str) -> &'static str {
     match language.trim().to_ascii_lowercase().as_str() {
@@ -23,13 +25,33 @@ fn is_declared_chip(value: &str) -> bool {
 }
 
 pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
+    build_statusline_for_host(snapshot, "", "")
+}
+
+pub fn build_statusline_for_host(
+    snapshot: &ProjectSnapshot,
+    host: &str,
+    session_payload: &str,
+) -> String {
+    let color = host.eq_ignore_ascii_case("claude")
+        || std::env::var("EMB_AGENT_STATUSLINE_COLOR")
+            .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+    build_statusline_inner(snapshot, session_payload, color)
+}
+
+fn build_statusline_inner(snapshot: &ProjectSnapshot, session_payload: &str, color: bool) -> String {
     if !snapshot.initialized && snapshot.project_root.is_empty() {
         return "emb · onboard".to_string();
     }
 
-    let mut parts = vec!["emb".to_string()];
+    let session = StatuslineSession::from_payload(session_payload);
+    let mut parts = vec![session.model_label().unwrap_or_else(|| "emb".to_string())];
+    if let Some(ctx) = session.context_label(color) {
+        parts.push(ctx);
+    }
     if !snapshot.active_variant.is_empty() {
-        parts.push(format!("var: {}", snapshot.active_variant));
+        parts.push(format!("var {}", snapshot.active_variant));
     }
 
     if is_declared_chip(&snapshot.mcu_model) {
@@ -38,28 +60,279 @@ pub fn build_statusline(snapshot: &ProjectSnapshot) -> String {
         } else {
             snapshot.mcu_model.clone()
         };
-        parts.push(format!("chip: {chip}"));
+        parts.push(chip);
     } else {
-        parts.push("chip: undeclared".to_string());
+        parts.push("chip undeclared".to_string());
+    }
+    if !snapshot.git_branch.is_empty() {
+        parts.push(paint(color, "35", &snapshot.git_branch));
+    }
+    if let Some(duration) = session.duration_label() {
+        parts.push(duration);
+    }
+    if !snapshot.developer.is_empty() {
+        parts.push(paint(color, "32", &snapshot.developer));
     }
     parts.push(format!("{} task(s)", snapshot.open_tasks));
     if snapshot.wiki_pages > 0 {
-        parts.push(format!("wiki: {}", snapshot.wiki_pages));
+        parts.push(format!("wiki {}", snapshot.wiki_pages));
     }
-    if !snapshot.git_branch.is_empty() {
-        parts.push(format!("branch: {}", snapshot.git_branch));
+    if !snapshot.workflow_state.is_empty() {
+        parts.push(format!("state {}", snapshot.workflow_state));
     }
-    parts.push(format!("next: {}", snapshot.recommended_command));
+    parts.push(format!("next {}", snapshot.recommended_command));
 
-    let mut line = parts.join(" · ");
+    let mut lines = Vec::new();
     if let Some(task) = &snapshot.current_task {
-        line.push_str(&format!(" | [{}] {}", task.priority, task.title));
+        let mut task_line = format!(
+            "{} {} {}",
+            paint(color, "36", &format!("[{}]", task.priority)),
+            task.title,
+            paint(color, "33", &format!("({})", task.status))
+        );
+        if !task.package.is_empty() {
+            task_line.push_str(&format!(" {}", paint(color, "90", &format!("[{}]", task.package))));
+        }
+        lines.push(task_line);
     }
-    line
+
+    let info_line = parts.join(&paint(color, "90", " · "));
+    let rate_parts = session.rate_limit_labels(color);
+    let width = terminal_width();
+    if let Some(width) = width
+        && !rate_parts.is_empty()
+        && visible_len(&info_line) + visible_len(&paint(color, "90", " · ")) + visible_len(&rate_parts.join(" · ")) > width
+    {
+        lines.push(info_line);
+        lines.push(rate_parts.join(&paint(color, "90", " · ")));
+    } else if rate_parts.is_empty() {
+        lines.push(info_line);
+    } else {
+        let mut all = parts;
+        all.extend(rate_parts);
+        lines.push(all.join(&paint(color, "90", " · ")));
+    }
+
+    lines.join("\n")
+}
+
+#[derive(Debug, Default)]
+struct StatuslineSession {
+    model: String,
+    context_size: u64,
+    context_used_pct: Option<u64>,
+    duration_ms: u64,
+    rate_limits: Vec<(String, u64, Option<u64>)>,
+}
+
+impl StatuslineSession {
+    fn from_payload(payload: &str) -> Self {
+        let Ok(value) = serde_json::from_str::<Value>(payload) else {
+            return Self::default();
+        };
+        let model = value
+            .get("model")
+            .and_then(|model| {
+                model
+                    .get("display_name")
+                    .or_else(|| model.get("name"))
+                    .and_then(Value::as_str)
+            })
+            .or_else(|| value.get("model").and_then(Value::as_str))
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let context = value.get("context_window").unwrap_or(&Value::Null);
+        let context_size = number_field(context, "context_window_size").unwrap_or(0);
+        let context_used_pct = number_field(context, "used_percentage");
+        let duration_ms = value
+            .get("cost")
+            .and_then(|cost| number_field(cost, "total_duration_ms"))
+            .unwrap_or(0);
+        let mut rate_limits = Vec::new();
+        if let Some(rate) = value.get("rate_limits") {
+            for (label, key) in [("5h", "five_hour"), ("7d", "seven_day")] {
+                let Some(window) = rate.get(key) else {
+                    continue;
+                };
+                let Some(pct) = number_field(window, "used_percentage") else {
+                    continue;
+                };
+                let resets_at = number_field(window, "resets_at");
+                rate_limits.push((label.to_string(), pct, resets_at));
+            }
+        }
+        Self {
+            model,
+            context_size,
+            context_used_pct,
+            duration_ms,
+            rate_limits,
+        }
+    }
+
+    fn model_label(&self) -> Option<String> {
+        if self.model.is_empty() {
+            return None;
+        }
+        if self.context_size == 0 || model_mentions_context(&self.model) {
+            Some(self.model.clone())
+        } else {
+            Some(format!("{} ({})", self.model, format_context_size(self.context_size)))
+        }
+    }
+
+    fn context_label(&self, color: bool) -> Option<String> {
+        let pct = self.context_used_pct?;
+        let code = if pct >= 90 {
+            "31"
+        } else if pct >= 70 {
+            "33"
+        } else {
+            "32"
+        };
+        Some(format!("ctx {}", paint(color, code, &format!("{pct}%"))))
+    }
+
+    fn duration_label(&self) -> Option<String> {
+        if self.duration_ms == 0 {
+            None
+        } else {
+            Some(format_duration(self.duration_ms))
+        }
+    }
+
+    fn rate_limit_labels(&self, color: bool) -> Vec<String> {
+        let now = epoch_secs();
+        self.rate_limits
+            .iter()
+            .map(|(label, pct, reset)| {
+                let mut item = format!("{label} {pct}%");
+                if let Some(reset) = reset
+                    && *reset > now
+                {
+                    item.push_str(&format!(
+                        " {}",
+                        paint(color, "90", &format!("(reset {})", format_remaining(reset - now)))
+                    ));
+                }
+                item
+            })
+            .collect()
+    }
+}
+
+fn number_field(value: &Value, key: &str) -> Option<u64> {
+    value.get(key).and_then(number_value)
+}
+
+fn number_value(value: &Value) -> Option<u64> {
+    if let Some(n) = value.as_u64() {
+        return Some(n);
+    }
+    if let Some(n) = value.as_f64()
+        && n.is_finite()
+        && n >= 0.0
+    {
+        return Some(n as u64);
+    }
+    value.as_str()?.parse::<f64>().ok().and_then(|n| {
+        if n.is_finite() && n >= 0.0 {
+            Some(n as u64)
+        } else {
+            None
+        }
+    })
+}
+
+fn model_mentions_context(model: &str) -> bool {
+    let lower = model.to_ascii_lowercase();
+    lower.contains(" context")
+        || lower.contains("ctx")
+        || lower.split_whitespace().any(|part| {
+            let part = part.trim_matches(|c: char| !c.is_ascii_alphanumeric());
+            part.len() >= 2
+                && matches!(part.chars().last(), Some('k' | 'K' | 'm' | 'M' | 'g' | 'G'))
+                && part[..part.len() - 1].chars().all(|c| c.is_ascii_digit())
+        })
+}
+
+fn format_context_size(size: u64) -> String {
+    if size >= 1_000_000 {
+        format!("{}M", size / 1_000_000)
+    } else if size >= 1_000 {
+        format!("{}K", size / 1_000)
+    } else {
+        size.to_string()
+    }
+}
+
+fn format_duration(ms: u64) -> String {
+    let secs = ms / 1000;
+    let hours = secs / 3600;
+    let mins = (secs % 3600) / 60;
+    if hours > 0 {
+        format!("{hours}h{mins}m")
+    } else {
+        format!("{mins}m")
+    }
+}
+
+fn format_remaining(secs: u64) -> String {
+    let days = secs / 86400;
+    let hours = (secs % 86400) / 3600;
+    let mins = (secs % 3600) / 60;
+    if days > 0 {
+        format!("{days}d{hours}h")
+    } else if hours > 0 {
+        format!("{hours}h{mins}m")
+    } else {
+        format!("{mins}m")
+    }
+}
+
+fn epoch_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn terminal_width() -> Option<usize> {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|width| *width > 0)
+}
+
+fn paint(enabled: bool, code: &str, text: &str) -> String {
+    if enabled {
+        format!("\x1b[{code}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
+fn visible_len(text: &str) -> usize {
+    let mut count = 0;
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' && chars.peek() == Some(&'[') {
+            let _ = chars.next();
+            for next in chars.by_ref() {
+                if next == 'm' {
+                    break;
+                }
+            }
+        } else {
+            count += 1;
+        }
+    }
+    count
 }
 
 fn clarify_instructions(snapshot: &ProjectSnapshot) -> String {
-    let mut instructions = "Run PRD exploration as a doc-grounded grilling loop: if hardware-first docs exist under docs/, first ingest schematics and parse datasheets/manuals with the configured local conversion order before MinerU fallback, record unconfirmed hardware conflicts in PRD/req unknowns, then challenge ambiguous terms against existing project truth, ask one load-bearing behavior/hardware/power/state-machine question at a time, update docs/prd/system.md and .emb-agent/req.yaml after confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and stop before task creation until the compact state-machine checklist is explicit. If the user asks for a bounded code review, bug audit, design explanation, or one-off verification, handle it as read-only bounded work: use bug-hunter/sys-reviewer or direct narrow inspection, summarize findings, and only create/activate a task before making code changes or starting multi-step implementation.".to_string();
+    let mut instructions = "Run PRD exploration as a doc-grounded brainstorm loop: if a question can be answered from code, tests, configs, docs, parsed manuals, schematics, existing PRDs/tasks, or session memory, inspect that evidence before asking the user. If hardware-first docs exist under docs/, first ingest schematics and parse datasheets/manuals with the configured local conversion order before MinerU fallback, record unconfirmed hardware conflicts in PRD/req unknowns, then challenge ambiguous terms against existing project truth. Ask only one load-bearing behavior/hardware/power/state-machine/product-risk question at a time, include your recommended answer and the trade-off if the user chooses differently, update docs/prd/system.md or the task PRD plus .emb-agent/req.yaml after each confirmation, run the installed emb-agent runtime's validate or health command after truth edits, and stop before task creation/activation until the compact state-machine checklist is explicit. For complex implementation work, keep the PRD focused on requirements/acceptance and write task-local design.md and implement.md before activation. If the user asks for a bounded code review, bug audit, design explanation, or one-off verification, handle it as read-only bounded work: use bug-hunter/sys-reviewer or direct narrow inspection, summarize findings, and only create/activate a task before making code changes or starting multi-step implementation.".to_string();
     if snapshot.power_management_risk {
         instructions.push_str(" Because low-power or wake behavior is in scope, front-load watchdog policy, sleep entry conditions, wake sources, pre-sleep peripheral shutdown, post-wake restore sequence, config-bit dependencies, and idle-current acceptance evidence.");
     }
@@ -83,9 +356,30 @@ fn subagent_delegation_policy(action: &str) -> Value {
         action,
         "do" | "prd-breakdown" | "choose-work" | "task-or-direct"
     );
+    let task_implementation_default = matches!(action, "do" | "choose-work");
     json!({
         "applies_when_host_exposes_subagent_tool": true,
         "required_before_broad_work": required_before_broad_work,
+        "main_session_default": if task_implementation_default {
+            "dispatch implementation plus independent check subagents when the host exposes a subagent tool"
+        } else {
+            "use read-only scouts/reviewers for broad or high-risk work; keep narrow explanations direct"
+        },
+        "required_before_task_implementation": task_implementation_default,
+        "post_implementation_check_required": task_implementation_default,
+        "execution_flow": [
+            "knowledge_search_or_project_truth_prime",
+            "focused_implementation_worker",
+            "independent_release_or_system_check",
+            "parent_synthesis_and_finish_work"
+        ],
+        "dispatch_prompt_contract": [
+            "include_target_task_or_state_first",
+            "state_the_role_and_scope",
+            "tell_child_it_is_already_a_subagent",
+            "forbid_recursive_subagent_dispatch"
+        ],
+        "child_self_exemption": "subagents must treat delegation instructions as already satisfied and must not spawn other emb-agent subagents",
         "broad_work_triggers": [
             "system_framework_or_scheduler_design",
             "multiple_peripherals_or_power_domains",
@@ -99,7 +393,8 @@ fn subagent_delegation_policy(action: &str) -> Value {
             "hardware/register evidence scout",
             "context/planning scout",
             "focused implementation worker",
-            "architecture/system reviewer"
+            "architecture/system reviewer",
+            "release/check reviewer"
         ],
         "prd_exploration_scope": "read-only evidence scouts and reviewers are allowed during PRD exploration; implementation workers wait until a concrete task is active"
     })
@@ -133,6 +428,252 @@ fn clarify_state_machine_checklist(snapshot: &ProjectSnapshot) -> Vec<&'static s
     checklist
 }
 
+#[derive(Debug, Clone)]
+struct RecentWorkspaceJournal {
+    developer: String,
+    session: usize,
+    title: String,
+    path: String,
+    summary: String,
+    status: String,
+    next_steps: String,
+}
+
+fn recent_workspace_journal(snapshot: &ProjectSnapshot) -> Option<RecentWorkspaceJournal> {
+    if snapshot.project_root.trim().is_empty() {
+        return None;
+    }
+    let project_root = Path::new(&snapshot.project_root);
+    let workspace_dir = project_root.join(".emb-agent").join("workspace");
+    if !workspace_dir.is_dir() {
+        return None;
+    }
+    let developer = if snapshot.developer.trim().is_empty() {
+        "developer".to_string()
+    } else {
+        snapshot.developer.trim().to_string()
+    };
+    let developer_slug = sanitize_workspace_slug(&developer);
+    let developer_dir = workspace_dir.join(&developer_slug);
+    if developer_dir.is_dir()
+        && let Some(entry) = latest_workspace_entry_in_dir(project_root, &developer_dir, &developer)
+    {
+        return Some(entry);
+    }
+
+    let mut candidates = Vec::new();
+    if let Ok(entries) = fs::read_dir(&workspace_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let fallback_developer = entry.file_name().to_string_lossy().to_string();
+            if let Some(journal) =
+                latest_workspace_entry_in_dir(project_root, &path, &fallback_developer)
+            {
+                candidates.push(journal);
+            }
+        }
+    }
+    candidates.sort_by(|a, b| a.session.cmp(&b.session).then(a.path.cmp(&b.path)));
+    candidates.pop()
+}
+
+fn latest_workspace_entry_in_dir(
+    project_root: &Path,
+    developer_dir: &Path,
+    developer: &str,
+) -> Option<RecentWorkspaceJournal> {
+    let mut files = workspace_journal_files(developer_dir);
+    files.sort_by_key(|(number, _)| *number);
+    for (_, path) in files.into_iter().rev() {
+        let text = fs::read_to_string(&path).ok()?;
+        if let Some(entry) = parse_latest_workspace_entry(project_root, developer, &path, &text) {
+            return Some(entry);
+        }
+    }
+    None
+}
+
+fn workspace_journal_files(developer_dir: &Path) -> Vec<(usize, PathBuf)> {
+    let Ok(entries) = fs::read_dir(developer_dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = path.file_name()?.to_str()?;
+            let number = name
+                .strip_prefix("journal-")?
+                .strip_suffix(".md")?
+                .parse::<usize>()
+                .ok()?;
+            Some((number, path))
+        })
+        .collect()
+}
+
+fn parse_latest_workspace_entry(
+    project_root: &Path,
+    developer: &str,
+    path: &Path,
+    text: &str,
+) -> Option<RecentWorkspaceJournal> {
+    let lines = text.lines().collect::<Vec<_>>();
+    let (start, header) = lines
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| line.strip_prefix("## Session ").map(|_| (index, *line)))
+        .last()?;
+    let rest = header.strip_prefix("## Session ")?;
+    let (session, title) = rest.split_once(':')?;
+    let session = session.trim().parse::<usize>().ok()?;
+    let entry_lines = &lines[start..];
+    Some(RecentWorkspaceJournal {
+        developer: developer.to_string(),
+        session,
+        title: title.trim().to_string(),
+        path: path
+            .strip_prefix(project_root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/"),
+        summary: compact_text(&markdown_section(entry_lines, "### Summary"), 700),
+        status: compact_text(&markdown_section(entry_lines, "### Status"), 300),
+        next_steps: compact_text(&markdown_section(entry_lines, "### Next Steps"), 700),
+    })
+}
+
+fn workflow_state_block(snapshot: &ProjectSnapshot) -> Option<String> {
+    if snapshot.project_root.trim().is_empty() || snapshot.workflow_state.trim().is_empty() {
+        return None;
+    }
+    let path = Path::new(&snapshot.project_root)
+        .join(".emb-agent")
+        .join("workflow.md");
+    let text = fs::read_to_string(path).ok()?;
+    extract_workflow_state_block(&text, &snapshot.workflow_state)
+}
+
+fn extract_workflow_state_block(text: &str, state: &str) -> Option<String> {
+    let state = state.trim();
+    if state.is_empty() {
+        return None;
+    }
+    let start = format!("[workflow-state:{state}]");
+    let end = format!("[/workflow-state:{state}]");
+    let after_start = text.split_once(&start)?.1;
+    let body = after_start.split_once(&end)?.0.trim();
+    if body.is_empty() {
+        None
+    } else {
+        Some(body.to_string())
+    }
+}
+
+fn markdown_section(lines: &[&str], heading: &str) -> String {
+    let mut in_section = false;
+    let mut out = Vec::new();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed == heading {
+            in_section = true;
+            continue;
+        }
+        if in_section && trimmed.starts_with("### ") {
+            break;
+        }
+        if in_section {
+            out.push(*line);
+        }
+    }
+    out.join("\n").trim().to_string()
+}
+
+fn sanitize_workspace_slug(name: &str) -> String {
+    let mut slug = String::new();
+    let mut last_dash = false;
+    for ch in name.trim().to_ascii_lowercase().chars() {
+        let next = if ch.is_ascii_alphanumeric() || ch == '_' {
+            last_dash = false;
+            Some(ch)
+        } else if ch == '-' {
+            if last_dash {
+                None
+            } else {
+                last_dash = true;
+                Some('-')
+            }
+        } else if last_dash {
+            None
+        } else {
+            last_dash = true;
+            Some('-')
+        };
+        if let Some(ch) = next {
+            slug.push(ch);
+        }
+    }
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() {
+        "developer".to_string()
+    } else {
+        slug
+    }
+}
+
+fn compact_text(value: &str, max_chars: usize) -> String {
+    let compact = value
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if compact.chars().count() <= max_chars {
+        return compact;
+    }
+    let mut out = compact.chars().take(max_chars.saturating_sub(3)).collect::<String>();
+    out.push_str("...");
+    out
+}
+
+fn workspace_journal_json(snapshot: &ProjectSnapshot) -> Value {
+    match recent_workspace_journal(snapshot) {
+        Some(journal) => json!({
+            "available": true,
+            "developer": journal.developer,
+            "session": journal.session,
+            "title": journal.title,
+            "path": journal.path,
+            "summary": journal.summary,
+            "status": journal.status,
+            "next_steps": journal.next_steps
+        }),
+        None => json!({"available": false}),
+    }
+}
+
+fn push_workspace_journal_lines(lines: &mut Vec<String>, snapshot: &ProjectSnapshot) {
+    let Some(journal) = recent_workspace_journal(snapshot) else {
+        return;
+    };
+    lines.push(format!(
+        "Recent workspace journal: Session {}: {} ({})",
+        journal.session, journal.title, journal.path
+    ));
+    if !journal.summary.is_empty() {
+        lines.push(format!("Journal summary: {}", journal.summary));
+    }
+    if !journal.status.is_empty() {
+        lines.push(format!("Journal status: {}", journal.status));
+    }
+    if !journal.next_steps.is_empty() {
+        lines.push(format!("Journal next steps: {}", journal.next_steps));
+    }
+}
+
 pub fn build_session_context(snapshot: &ProjectSnapshot) -> String {
     build_session_context_for_trigger(snapshot, "startup")
 }
@@ -145,8 +686,8 @@ emb-agent workspace not yet initialized for this project.
 
 You are the user's embedded development assistant. Start with onboarding, not implementation:
 
-1. Invoke `emb-onboard` or run `/emb-onboard` if the host exposes slash commands.
-2. emb-onboard must inspect whether this is an empty repo, a partial `.emb-agent/`, or an existing firmware repo with scattered datasheets, schematics, pin maps, build files, and notes.
+1. Invoke `emb-start` or run `/emb-start` if the host exposes slash commands.
+2. If startup returns onboarding, inspect whether this is an empty repo, a partial `.emb-agent/`, or an existing firmware repo with scattered datasheets, schematics, pin maps, build files, and notes.
 3. If the user already knows MCU/package/pins, record them through the onboard flow or `declare hardware` after explicit confirmation.
 4. If truth lives in docs, use onboard's migration audit first; do not guess hardware facts from filenames or README prose.
 5. After onboarding completes, run `/emb-next` and follow its recommendation.
@@ -173,6 +714,7 @@ You are the user's embedded development assistant. Start with onboarding, not im
         if let Some(task) = &snapshot.current_task {
             lines.push(format!("Active task: {} ({})", task.name, task.title));
         }
+        push_workspace_journal_lines(&mut lines, snapshot);
         if snapshot.power_management_risk {
             lines.push("Embedded power-risk reminder: keep watchdog, sleep/wake, config-bit truth, and idle-current acceptance visible.".to_string());
         }
@@ -183,6 +725,44 @@ You are the user's embedded development assistant. Start with onboarding, not im
             "Continue from the current gate and nearby files only; avoid broad file rediscovery.".to_string(),
             "Re-open `.codex/instructions.md` only if host integration behavior or routing is unclear.".to_string(),
             "</ready>".to_string(),
+        ]);
+        return lines.join("\n");
+    }
+
+    if matches!(
+        trigger.as_str(),
+        "userpromptsubmit" | "user_prompt_submit" | "prompt" | "workflow-state"
+    ) {
+        let mut lines = vec![
+            "<emb-agent-workflow-state>".to_string(),
+            "Per-turn emb-agent workflow breadcrumb. Use it as routing context; do not repeat it to the user.".to_string(),
+            format!("Workflow state: {}", snapshot.workflow_state),
+            format!("Recommended next command: {}", snapshot.recommended_command),
+            format!("Reason: {}", snapshot.recommended_reason),
+            format!("Open tasks: {}", snapshot.open_tasks),
+        ];
+        if let Some(task) = &snapshot.current_task {
+            lines.push(format!(
+                "Active task: [{}] {} ({})",
+                task.priority, task.title, task.status
+            ));
+        }
+        if !snapshot.developer.is_empty() {
+            lines.push(format!("Developer: {}", snapshot.developer));
+        }
+        if !snapshot.git_branch.is_empty() {
+            lines.push(format!("Git branch: {}", snapshot.git_branch));
+        }
+        if let Some(block) = workflow_state_block(snapshot) {
+            lines.push("<workflow-md-state>".to_string());
+            lines.push(block);
+            lines.push("</workflow-md-state>".to_string());
+        }
+        push_workspace_journal_lines(&mut lines, snapshot);
+        lines.extend([
+            "Use host-visible commands only for the main flow: emb-start, emb-next, emb-finish-work.".to_string(),
+            "Use internal runtime/tool commands only when the current gate specifically requires evidence, task, knowledge, or verification work.".to_string(),
+            "</emb-agent-workflow-state>".to_string(),
         ]);
         return lines.join("\n");
     }
@@ -252,6 +832,7 @@ You are the user's embedded development assistant. Start with onboarding, not im
             task.status, task.priority
         ));
     }
+    push_workspace_journal_lines(&mut lines, snapshot);
     if snapshot.power_management_risk {
         lines.push("Embedded power-risk: watchdog, sleep/wake behavior, config-bit truth, and idle-current acceptance must be made explicit early.".to_string());
     }
@@ -267,7 +848,7 @@ You are the user's embedded development assistant. Start with onboarding, not im
         "Routing gate — before implementation or broad file exploration:".to_string(),
         "Run the current host's emb-next entry (for example `/emb-next`, `$emb-next`, or the installed runtime command `node .<host>/emb-agent/bin/emb-agent.cjs next --brief`) and follow `agent_protocol.gate` exactly.".to_string(),
         "Do not manually explore files or decide next steps on your own until you have that routing recommendation.".to_string(),
-        "Subagent policy: if the host exposes a subagent/delegation tool and the work spans system framework design, multiple peripherals, power/sleep/watchdog/LVD/config-bit risk, toolchain migration, SDK/library integration, or implementation plus review, list available subagents first and dispatch read-only scouts/reviewers or focused workers instead of doing the whole job inline. During PRD exploration, read-only evidence scouts are allowed; implementation workers wait for an active concrete task.".to_string(),
+        "Subagent policy: if the host exposes a subagent/delegation tool, active task implementation defaults to main-session coordination with focused implementation and independent check subagents; the main session synthesizes results, handles closure docs, and runs `/emb-finish-work`. For system framework design, multiple peripherals, power/sleep/watchdog/LVD/config-bit risk, toolchain migration, SDK/library integration, or implementation plus review, list available subagents first and dispatch read-only scouts/reviewers or focused workers instead of doing the whole job inline. Subagents must not recursively spawn more emb-agent subagents. During PRD exploration, read-only evidence scouts are allowed; implementation workers wait for an active concrete task.".to_string(),
         "When the user explicitly asks what a service split, scheduler path, or time-slice call chain means, treat explanation-first as a valid direct route; do not force task creation just to answer that question.".to_string(),
         String::new(),
         "Rules:".to_string(),
@@ -367,28 +948,35 @@ pub fn build_host_session_start_payload_for_trigger(
 }
 
 pub fn build_start_json(snapshot: &ProjectSnapshot) -> String {
-    let task_json = build_task_json(snapshot);
-    format!(
-        "{{\"status\":\"ok\",\"runtime\":\"/emb:agent\",\"summary\":{{\"initialized\":{},\"project_root\":{},\"active_variant\":{},\"variant_dir\":{},\"mcu_model\":{},\"mcu_package\":{},\"open_tasks\":{},\"wiki_pages\":{},\"active_task\":{}}},\"immediate\":{{\"command\":{},\"reason\":{}}}}}",
-        snapshot.initialized,
-        json_quote(&snapshot.project_root),
-        json_quote(&snapshot.active_variant),
-        json_quote(&snapshot.variant_dir),
-        json_quote(&snapshot.mcu_model),
-        json_quote(&snapshot.mcu_package),
-        snapshot.open_tasks,
-        snapshot.wiki_pages,
-        task_json,
-        json_quote(&snapshot.recommended_command),
-        json_quote(&snapshot.recommended_reason)
-    )
+    let active_task = json_value_or_null(&build_task_json(snapshot));
+    json!({
+        "status": "ok",
+        "runtime": "/emb:agent",
+        "summary": {
+            "initialized": snapshot.initialized,
+            "project_root": snapshot.project_root,
+            "active_variant": snapshot.active_variant,
+            "variant_dir": snapshot.variant_dir,
+            "mcu_model": snapshot.mcu_model,
+            "mcu_package": snapshot.mcu_package,
+            "open_tasks": snapshot.open_tasks,
+            "wiki_pages": snapshot.wiki_pages,
+            "active_task": active_task
+        },
+        "workspace_journal": workspace_journal_json(snapshot),
+        "immediate": {
+            "command": snapshot.recommended_command,
+            "reason": snapshot.recommended_reason
+        }
+    })
+    .to_string()
 }
 
 pub fn build_next_routing(snapshot: &ProjectSnapshot) -> (String, String) {
     if snapshot.recommended_command == "onboard" {
         return (
             "onboard".to_string(),
-            "Project needs onboarding. Invoke emb-onboard to scaffold .emb-agent/ or migrate existing hardware truth before implementation.".to_string(),
+            "Project needs onboarding. Use the host emb-start entry to scaffold .emb-agent/ or migrate existing hardware truth before implementation.".to_string(),
         );
     }
     if snapshot.recommended_command == "clarify" {
@@ -457,7 +1045,7 @@ pub fn build_next_json_with_tasks_and_policy(
     } else if snapshot.recommended_command == "onboard" {
         (
             "onboard".to_string(),
-            "Project needs onboarding. Invoke emb-onboard or trigger `/emb-onboard`; audit existing hardware docs before declaring hardware or implementing.".to_string(),
+            "Project needs onboarding. Trigger `/emb-start` or the installed runtime's `start --brief`; audit existing hardware docs before declaring hardware or implementing.".to_string(),
         )
     } else if snapshot.recommended_command == "clarify" {
         ("clarify".to_string(), clarify_instructions(snapshot))
@@ -535,6 +1123,7 @@ pub fn build_next_json_with_tasks_and_policy(
             "child_prd_dirs": ["docs/prd/tasks", "docs/prd/features", "docs/prd/modules", "docs/prd/components", "docs/prd/subsystems"]
         },
         "instructions": instructions,
+        "workspace_journal": workspace_journal_json(snapshot),
         "agent_protocol": agent_protocol,
         "delegation_policy": subagent_delegation_policy(&action),
         "requirements_unknown_count": snapshot.requirements_unknown_count,
@@ -628,8 +1217,23 @@ fn build_next_agent_protocol_with_policy(
             "gate": {
                 "kind": "prd-exploration",
                 "blocking": true,
-                "method": "grill-with-docs",
+                "method": "brainstorm-with-docs",
                 "delegation_policy": subagent_delegation_policy(action),
+                "brainstorm_contract": {
+                    "mode": "main-session-interactive",
+                    "preconditions": ["task_creation_consent_before_durable_task", "no_source_or_build_mutation_during_planning"],
+                    "evidence_rule": "If repository evidence can answer a question, inspect evidence before asking the user.",
+                    "question_rule": "Ask one product, scope, hardware, power, timing, risk, or acceptance decision at a time; include the recommended answer and trade-off.",
+                    "writeback_rule": "After every confirmed answer, update docs/prd/system.md or the task PRD plus .emb-agent/req.yaml before continuing.",
+                    "artifact_rules": {
+                        "system_prd": "docs/prd/system.md records product behavior and confirmed requirements",
+                        "task_prd": "docs/prd/tasks/<task>.md records task-local goal, requirements, acceptance, out-of-scope, open questions, and evidence",
+                        "complex_task_design": ".emb-agent/tasks/<task>/design.md when architecture or cross-module decisions need a durable plan",
+                        "complex_task_implementation": ".emb-agent/tasks/<task>/implement.md when execution order, validation commands, or rollback points need a durable plan",
+                        "research": ".emb-agent/tasks/<task>/research/<topic>.md when a delegated scout/research pass produces reusable evidence"
+                    },
+                    "research_rule": "During planning, read-only scout/reviewer subagents may collect evidence; persist reusable findings into task research files instead of leaving them only in chat."
+                },
                 "document_evidence_policy": {
                     "hardware_first": hardware_docs_pending,
                     "evidence_files": snapshot.hardware_evidence_files,
@@ -648,7 +1252,7 @@ fn build_next_agent_protocol_with_policy(
                     "hardware_evidence": ["hw-scout"],
                     "architecture_review": ["arch-reviewer", "sys-reviewer"]
                 },
-                "allowed_actions": ["scan_docs_for_hardware_evidence", "ingest_schematic", "ingest_datasheet_or_manual", "read_cached_schematic_and_manual_artifacts", "delegate_read_only_hardware_evidence_scout", "delegate_read_only_bug_hunter", "delegate_read_only_system_reviewer", "delegate_read_only_toolchain_or_sdk_feasibility_scout", "delegate_read_only_architecture_reviewer", "perform_read_only_bug_audit", "perform_direct_bounded_analysis_without_task", "run_one_off_verification_without_task", "summarize_findings_without_edits", "record_unconfirmed_hardware_conflicts", "brainstorm_with_user", "ask_one_load_bearing_question", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "trigger_task_add_after_user_confirms_concrete_deliverable_or_bug", "draft_agent_brief_from_confirmed_scope", "activate_task_after_agent_brief_ready", "extract_and_record_exact_timing_percent_times_from_captures", "verify_watchdog_and_sleep_policy", "verify_config_bit_dependencies", "record_current_measurement_acceptance"],
+                "allowed_actions": ["scan_docs_for_hardware_evidence", "ingest_schematic", "ingest_datasheet_or_manual", "read_cached_schematic_and_manual_artifacts", "delegate_read_only_hardware_evidence_scout", "delegate_read_only_bug_hunter", "delegate_read_only_system_reviewer", "delegate_read_only_toolchain_or_sdk_feasibility_scout", "delegate_read_only_architecture_reviewer", "persist_planning_research_to_task_file", "perform_read_only_bug_audit", "perform_direct_bounded_analysis_without_task", "run_one_off_verification_without_task", "summarize_findings_without_edits", "record_unconfirmed_hardware_conflicts", "brainstorm_with_user", "ask_one_load_bearing_question", "ask_one_load_bearing_question_with_recommended_answer", "challenge_terms_against_truth", "update_prd_and_req_truth", "record_confirmed_decisions", "run_health_after_truth_edits", "trigger_task_add_after_user_confirms_concrete_deliverable_or_bug", "draft_agent_brief_from_confirmed_scope", "activate_task_after_agent_brief_ready", "extract_and_record_exact_timing_percent_times_from_captures", "verify_watchdog_and_sleep_policy", "verify_config_bit_dependencies", "record_current_measurement_acceptance"],
                 "forbidden_actions": ["skip_existing_docs_before_question_when_hardware_first", "create_implementation_task_without_confirmed_scope", "start_implementation", "edit_source_during_read_only_bug_audit", "delegate_implementation_worker_before_confirmed_scope", "select_mcu_without_confirmed_constraints", "force_existing_task_activation", "declare_requirements_complete_without_health_check", "batch_unconfirmed_decisions", "implement_from_guessed_waveform_params", "assume_watchdog_behavior_without_config_truth", "assume_sleep_current_without_shutdown_plan"],
                 "recommended_command": "/emb-next"
             }
@@ -679,10 +1283,10 @@ fn build_next_agent_protocol_with_policy(
             "gate": {
                 "kind": "onboarding",
                 "blocking": true,
-                "allowed_actions": ["invoke_emb_onboard_agent", "trigger_emb_onboard_command", "audit_existing_hardware_docs"],
+                "allowed_actions": ["invoke_start_context", "trigger_emb_start_command", "audit_existing_hardware_docs"],
                 "forbidden_actions": ["start_implementation", "guess_hardware_truth", "declare_hardware_without_confirmation"],
-                "recommended_agent": "emb-onboard",
-                "recommended_command": "/emb-onboard"
+                "recommended_agent": "emb-start",
+                "recommended_command": "/emb-start"
             }
         })
         .to_string();
@@ -1040,6 +1644,7 @@ pub fn build_status_json(snapshot: &ProjectSnapshot) -> String {
             "reason": snapshot.recommended_reason,
             "task_intake": snapshot.task_intake_summary
         },
+        "workspace_journal": workspace_journal_json(snapshot),
         "truth_validation_errors": snapshot.truth_validation_errors
     })
     .to_string()
@@ -1112,6 +1717,7 @@ pub fn build_external_start_json(snapshot: &ProjectSnapshot) -> String {
             "reason": next_reason,
             "cli": format!("node .<host>/emb-agent/bin/emb-agent.cjs {}", next_cmd)
         },
+        "workspace_journal": workspace_journal_json(snapshot),
         "runtime_events": runtime_events
     })
     .to_string()
@@ -1181,6 +1787,7 @@ pub fn build_external_next_json(snapshot: &ProjectSnapshot, tasks: &[TaskSnapsho
             "reason": next_reason,
             "cli": format!("node .<host>/emb-agent/bin/emb-agent.cjs next")
         },
+        "workspace_journal": workspace_journal_json(snapshot),
         "runtime_events": runtime_events
     })
     .to_string()
@@ -1228,6 +1835,7 @@ pub fn build_external_status_json(snapshot: &ProjectSnapshot) -> String {
             "wiki_pages": snapshot.wiki_pages,
             "active": active_task
         },
+        "workspace_journal": workspace_journal_json(snapshot),
         "runtime_events": runtime_events
     })
     .to_string()
@@ -1451,8 +2059,10 @@ mod tests {
         assert!(line.contains("emb"));
         assert!(line.contains("CTRL-123 QFN32"));
         assert!(line.contains("1 task(s)"));
-        assert!(line.contains("var: esp32-c3"));
+        assert!(line.contains("var esp32-c3"));
         assert!(line.contains("[P1] Implement ADC"));
+        assert!(line.contains("(active)"));
+        assert!(line.contains("next do"));
     }
 
     #[test]
@@ -1461,9 +2071,24 @@ mod tests {
         snapshot.mcu_model = "unknown".to_string();
         snapshot.mcu_package = "unknown".to_string();
         let line = build_statusline(&snapshot);
-        assert!(line.contains("chip: undeclared"));
+        assert!(line.contains("chip undeclared"));
         assert!(!line.contains("unknown/unknown"));
         assert!(!line.contains("unknown unknown"));
+    }
+
+    #[test]
+    fn claude_statusline_reads_session_json() {
+        let payload = r#"{
+            "model": {"display_name": "GPT-5 Codex"},
+            "context_window": {"used_percentage": 42, "context_window_size": 1000000},
+            "cost": {"total_duration_ms": 125000}
+        }"#;
+        let line = build_statusline_for_host(&sample_snapshot(), "claude", payload);
+        assert!(line.contains("GPT-5 Codex (1M)"));
+        assert!(line.contains("ctx "));
+        assert!(line.contains("42%"));
+        assert!(line.contains("2m"));
+        assert!(line.contains("[P1]"));
     }
 
     #[test]
@@ -1520,8 +2145,11 @@ mod tests {
     fn session_context_prompts_subagent_delegation_for_broad_firmware_work() {
         let context = build_session_context(&sample_snapshot());
         assert!(context.contains("Subagent policy"));
+        assert!(context.contains("active task implementation defaults"));
+        assert!(context.contains("independent check subagents"));
         assert!(context.contains("system framework design"));
         assert!(context.contains("toolchain migration"));
+        assert!(context.contains("must not recursively spawn"));
         assert!(context.contains("read-only evidence scouts are allowed"));
     }
 
@@ -1533,6 +2161,18 @@ mod tests {
         assert_eq!(
             next["delegation_policy"]["required_before_broad_work"],
             true
+        );
+        assert_eq!(
+            next["delegation_policy"]["required_before_task_implementation"],
+            true
+        );
+        assert_eq!(
+            next["delegation_policy"]["post_implementation_check_required"],
+            true
+        );
+        assert_eq!(
+            next["delegation_policy"]["child_self_exemption"],
+            "subagents must treat delegation instructions as already satisfied and must not spawn other emb-agent subagents"
         );
         assert!(
             next["delegation_policy"]["broad_work_triggers"]
@@ -1564,6 +2204,14 @@ mod tests {
         assert_eq!(
             gate["delegation_policy"]["prd_exploration_scope"],
             "read-only evidence scouts and reviewers are allowed during PRD exploration; implementation workers wait until a concrete task is active"
+        );
+        assert_eq!(
+            gate["brainstorm_contract"]["evidence_rule"],
+            "If repository evidence can answer a question, inspect evidence before asking the user."
+        );
+        assert_eq!(
+            gate["brainstorm_contract"]["artifact_rules"]["task_prd"],
+            "docs/prd/tasks/<task>.md records task-local goal, requirements, acceptance, out-of-scope, open questions, and evidence"
         );
         assert!(
             gate["allowed_actions"]

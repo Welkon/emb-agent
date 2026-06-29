@@ -11,7 +11,7 @@ allowed-tools:
 
 # emb-onboard
 
-Use `$emb-onboard` as the default first step when `.emb-agent/` is missing, incomplete, or when existing hardware truth is scattered across datasheets, schematics, pin maps, build files, and notes.
+Use `$emb-start` or `/emb-start` as the host-facing first step when `.emb-agent/` is missing, incomplete, or when existing hardware truth is scattered across datasheets, schematics, pin maps, build files, and notes. The runtime may then route internally to `onboard`.
 
 ## Purpose
 
@@ -21,7 +21,7 @@ Use `$emb-onboard` as the default first step when `.emb-agent/` is missing, inco
   3. existing firmware repo migration audit
 - Ask the user which path applies before writing hardware or requirement truth.
 - Locate schematics, datasheets, pin maps, build files, and product requirements; mark inferred facts separately from confirmed facts.
-- Invoke the `emb-onboard` agent for repo audit, user confirmation, and fact extraction.
+- Invoke the onboard flow for repo audit, user confirmation, and fact extraction.
 - Stop after onboarding and return to `next --brief`.
 
 
@@ -40,8 +40,8 @@ Use `$emb-onboard` as the default first step when `.emb-agent/` is missing, inco
 
 ## Runtime handoff
 
-The runtime `emb-onboard` command returns a compact handoff object for hosts. The human-facing action is:
+The runtime `onboard` command returns a compact handoff object for automation. The human-facing action is:
 
 ```text
-Invoke emb-onboard → audit/scaffold/migrate → next --brief
+Invoke emb-start → audit/scaffold/migrate if routed → next --brief
 ```

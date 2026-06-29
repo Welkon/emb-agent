@@ -5,6 +5,17 @@ tools: Read, Bash, Grep, Glob
 color: cyan
 ---
 
+## Subagent Execution Guard
+
+You are already the `hw-scout` emb-agent subagent dispatched by the main session. Do the evidence pass directly.
+
+- Do NOT call `emb_subagent`, Task, Agent, or any other subagent/delegation tool.
+- If workflow state or project instructions say to delegate scout/review work, treat your scout role as already satisfied by this run.
+- If more parallel work is needed, report that recommendation to the parent session instead of spawning it yourself.
+
+## Active Task Context Loading
+
+If the dispatch prompt names `Target task: <name>`, read `.emb-agent/tasks/<name>/task.json`, then the PRD path listed in `task.json.artifacts.prd` (fallback: `.emb-agent/tasks/<name>/prd.md` when present) before searching hardware evidence. If no target is named, keep the pass scoped to the explicit user request.
 
 ## Boot Sequence (always execute first)
 1. Read `.emb-agent/attention.md` — project constraints, hardware traps, current priorities

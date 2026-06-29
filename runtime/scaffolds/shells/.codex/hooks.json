@@ -25,6 +25,18 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/emb-agent/bin/emb-agent.cjs hook session-start --host codex",
+            "timeout": 15,
+            "statusMessage": "Refreshing emb-agent workflow state..."
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash|Shell|Exec|exec_command|Edit|Write|MultiEdit|ApplyPatch|apply_patch|Task",

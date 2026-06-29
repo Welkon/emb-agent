@@ -1,6 +1,10 @@
 {
   "env": {
-    "CLAUDE_CODE_DISABLE_THINKING": "1"
+    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node .claude/emb-agent/bin/emb-agent.cjs hook statusline --host claude"
   },
   "hooks": {
     "SessionStart": [
@@ -15,9 +19,32 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/emb-agent/bin/emb-agent.cjs hook session-start --host claude",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/emb-agent/bin/emb-agent.cjs hook tool-guard --host claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Edit|Write",
+        "matcher": "Bash|Edit|Write|Task|Agent",
         "hooks": [
           {
             "type": "command",

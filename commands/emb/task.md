@@ -27,7 +27,8 @@ allowed-tools:
 - Prefer the lightest subcommand that keeps facts, evidence, and project truth aligned.
 - Usually `start` should decide when you need `task add` or `task activate`; use `task` directly once the task lifecycle is already explicit.
 - If the change surface is still unclear, create the task first so `prd.md` exists, then use `capability run scan` to converge scope before `capability run plan` or `capability run do`.
-- After `task add`, the task starts in `triage_state=needs-triage`; fill the generated agent brief before activation: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification.
+- After `task add`, the task starts in `triage_state=needs-triage` and has a generated `docs/prd/tasks/<task>.md`; fill that PRD plus the generated agent brief before activation: current behavior, desired behavior, hardware facts, firmware interfaces, acceptance criteria, out-of-scope, and required verification.
+- During this brainstorm/planning pass, inspect repository evidence before asking the user. Ask one load-bearing product, hardware, power, timing, risk, or acceptance decision at a time, include your recommended answer and trade-off, and write each confirmed answer back to the PRD before continuing.
 - When converting conversation into a task, synthesize what is already known first. Ask only for missing load-bearing decisions, and prefer reading project files, the active variant truth (`.emb-agent/variants/<active>/hw.yaml` and `req.yaml` when `.emb-agent/active-variant` exists; otherwise root `.emb-agent/hw.yaml` and `req.yaml`), schematics, PCB artifacts, manuals, and task context over interviewing the user.
 - For large work, split into task/subtask vertical tracer-bullet slices: each slice should produce a narrow but complete, independently verifiable path through the relevant firmware, hardware truth, support, documentation, and verification surfaces. Do not split as horizontal layer tasks such as "all drivers" then "all application logic".
 - Mark slices that need human judgment, bench access, part selection, schematic/layout acceptance, or production-risk tradeoffs as `ready-for-human`/HITL instead of pretending they are agent-ready.
@@ -47,6 +48,6 @@ allowed-tools:
 
 - **After implement**: run `trace record` to log changed files, referenced specs, and key decisions.
 - **After check**: append review outcome and discovered pitfalls to the trace.
-- **After finish-work**: run `session record` for the workspace journal, run `trace record` with final commit and reviewer, then `insight extract --confirm` to push durable learnings (decisions, pitfalls, invariants) into `.emb-agent/wiki/`.
+- **After finish-work**: run `task finish-work` to record the workspace journal and resolve the active task. Its output lists trace/insight/knowledge follow-ups; run implemented follow-ups such as `knowledge graph refresh` when relevant.
 - Trace entries are append-only. Insights are written as wiki pages linked back to the task.
 - In auto-runner mode, trace recording and insight extraction happen automatically at each phase boundary.

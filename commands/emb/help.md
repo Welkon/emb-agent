@@ -17,11 +17,11 @@ Use this order unless the runtime `next` output says otherwise:
 
 1. Restart or reload the host after install or repair.
 2. Codex only: run `/hooks` and trust pending project hooks.
-3. `onboard` — first run, partial setup, or existing docs need migration.
-4. `start --brief` — re-render existing project context when the startup hook was missed.
-5. `next --brief` — default continuation after onboarding or startup.
-6. `task add|activate` — create or choose concrete work.
-7. `scan -> plan -> do -> review -> verify` — execute and close work.
+3. `$emb-start` / `/emb-start` — first run, partial setup, existing docs need migration, or startup hook was missed.
+4. `$emb-next` / `/emb-next` — default continuation after startup.
+5. `task add|activate` — create or choose concrete work when the runtime asks for a task.
+6. `scan -> plan -> do -> review -> verify -> finish-work` — execute, verify, record the workspace journal, and close work.
+7. `$emb-finish-work` / `/emb-finish-work` — preferred host command when the work is done.
 
 All installed commands remain available. `init`, `init-project`, `bootstrap`, and `board` are not the normal starting path; use them when `next --brief`, `health`, or the user request calls for that specific function.
 
@@ -29,7 +29,7 @@ All installed commands remain available. `init`, `init-project`, `bootstrap`, an
 
 - Before confirming a system PRD, interrogate the user about product behavior, interactions, defaults, failure/power/reset cases, constraints, and acceptance evidence; do not fill PRD from hardware guesses alone.
 - Mirror confirmed structured truth into `.emb-agent/req.yaml` during exploration. Create child execution PRDs under `docs/prd/tasks|features|modules|components|subsystems/*.md` only after `agent_protocol.gate.kind=prd-breakdown` requests PRD breakdown.
-- If `agent_protocol.gate.kind=prd-exploration`, stop before `task add`, `task activate`, `scan`, `plan`, or `do`; ask questions, update PRD/req truth, run the installed runtime's `validate` or `health` command, and wait for explicit agreement.
+- If `agent_protocol.gate.kind=prd-exploration`, stop before `task activate`, `scan`, `plan`, or `do`; follow the brainstorm contract: inspect repository evidence before asking, ask one load-bearing product/hardware/power/risk/acceptance question at a time with your recommended answer and trade-off, update PRD/req truth after each confirmation, run the installed runtime's `validate` or `health` command, and wait for explicit agreement.
 - If `agent_protocol.gate.kind=prd-breakdown`, read the system PRD, present the runtime's suggested vertical child PRDs, create those child PRDs, run `validate` or `health`, and wait for agreement before `task add` or activation.
 - Before saying the system PRD is complete, show a compact state-machine checklist: boot state, first input, press/release trigger, mode cycle including OFF, long-press valid states, memory semantics, STOP entry, wake source, low-voltage behavior, and acceptance evidence.
 
@@ -37,7 +37,7 @@ All installed commands remain available. `init`, `init-project`, `bootstrap`, an
 
 - If the target files and acceptance check are already explicit, use `task add <summary>` and move into `plan` or `next`.
 - If requirements, hardware truth, or the changed surface are still unclear, use `task add <summary>` first and let `scan` converge the task before `plan` or `do`.
-- After `task add` or PRD-derived task creation, use the generated PRD/task PRD as the convergence point: ask the user about unclear goal, boundary, constraint, acceptance, and open-question items, update the artifact, and repeat until explicit agreement before `scan`, `plan`, or `do`.
+- After `task add` or PRD-derived task creation, use the generated `docs/prd/tasks/<task>.md` as the convergence point: inspect evidence first, ask the user only for unclear goal, boundary, constraint, acceptance, and open-question decisions, update the artifact after each answer, and repeat until explicit agreement before `scan`, `plan`, or `do`.
 - If the change crosses timing, concurrency, release, or interface boundaries, expect the safer path to be `task add -> scan -> plan -> review -> verify`.
 - If the request assumes an unconfirmed technical choice, use `decision review` / `decision record` before implementation.
 - Capability shortcuts: `scan`, `plan`, `do`, `debug`, `review`, `verify` — equivalent to `capability run <name>`.
@@ -46,15 +46,16 @@ All installed commands remain available. `init`, `init-project`, `bootstrap`, an
 
 ### Start / Continue
 
-- `onboard` — audit or scaffold project truth.
-- `next --brief` — ask the runtime what to do now.
 - `start --brief` — re-render entry guidance when startup injection was missed.
+- `next --brief` — ask the runtime what to do now.
+- `onboard` — internal routing command for auditing or scaffolding project truth; prefer `start` or `next` from host UI.
 - `health` — diagnose why startup or `next` looks blocked.
 - `diagnostics hooks --host <host>` — verify hook runtime, hook plans, and next repair steps.
 
 ### Work
 
-- `task` — create, inspect, activate, resolve, or close tasks.
+- `task` — create, inspect, activate, finish, resolve, or close tasks.
+- `finish-work` / `task finish-work` — record the workspace journal and resolve the active task unless `--no-resolve` is set.
 - `scan`, `plan`, `do`, `debug`, `review`, `verify` — capability shortcuts for active work.
 - `decision` — record explicit choices before implementation.
 

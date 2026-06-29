@@ -95,6 +95,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             run_lifecycle_hooks(Path::new(&cwd), &ext_dir, "after_finish", &name);
             Ok(())
         }
+        Some("finish") | Some("finish-work") => super::session::run_finish_work_command(args, &cwd),
         Some("delete") => {
             let name = args.get(2).ok_or("task delete requires <name>")?;
             let output = emb_agent_core::task::task_ops::task_delete(&ext_dir, name);
@@ -267,7 +268,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             _ => Err("task bug: expected add, list, or resolve".to_string()),
         },
         _ => Err(
-            "task: expected list, show, add, activate, resolve, delete, aar, worktree, or bug"
+            "task: expected list, show, add, activate, finish-work, resolve, delete, aar, worktree, or bug"
                 .to_string(),
         ),
     }
@@ -305,6 +306,6 @@ fn active_task_name(ext_dir: &Path) -> Option<String> {
 
 fn print_help() {
     println!(
-        "emb-agent-rs task\n\nUSAGE:\n  task list\n  task show <name>\n  task add <summary> [--priority P1]\n  task activate <name> [--worktree]\n  task delete <name>\n  task aar status <name>\n  task aar scan <name> --no-lessons|--lessons\n  task aar record <name> <note>\n  task resolve <name> [note]\n  task worktree list\n  task worktree status [name]\n  task worktree show <name>\n  task worktree create <name> [--branch <branch>] [--base <base>]\n  task worktree cleanup <name>\n  task bug add <parent-task> <summary>\n  task bug list [parent-task] [--variant <name>]\n  task bug resolve <bug-id> [note]\n\nSTATUS FLOW:\n  pending → in_progress → completed → deleted\n  pending ⇄ in_progress (reversible)\n  completed can be re-activated to in_progress\n\nNOTES:\n  task containers are recommended for multi-step or resumable work, but narrow explanations,\n  one-off verification, and small scoped fixes can often stay direct.\n  task resolve auto-records a minimal no-lessons AAR when no durable lesson was captured.\n  If task aar scan uses --lessons, task aar record is still required before resolve.\n"
+        "emb-agent-rs task\n\nUSAGE:\n  task list\n  task show <name>\n  task add <summary> [--priority P1]\n  task activate <name> [--worktree]\n  task finish-work [name] [--summary <text>] [--test <cmd>] [--no-resolve]\n  task delete <name>\n  task aar status <name>\n  task aar scan <name> --no-lessons|--lessons\n  task aar record <name> <note>\n  task resolve <name> [note]\n  task worktree list\n  task worktree status [name]\n  task worktree show <name>\n  task worktree create <name> [--branch <branch>] [--base <base>]\n  task worktree cleanup <name>\n  task bug add <parent-task> <summary>\n  task bug list [parent-task] [--variant <name>]\n  task bug resolve <bug-id> [note]\n\nSTATUS FLOW:\n  pending → in_progress → completed → deleted\n  pending ⇄ in_progress (reversible)\n  completed can be re-activated to in_progress\n\nNOTES:\n  task containers are recommended for multi-step or resumable work, but narrow explanations,\n  one-off verification, and small scoped fixes can often stay direct.\n  task finish-work records the workspace journal and resolves the active task unless --no-resolve is set.\n  task resolve auto-records a minimal no-lessons AAR when no durable lesson was captured.\n  If task aar scan uses --lessons, task aar record is still required before resolve.\n"
     );
 }

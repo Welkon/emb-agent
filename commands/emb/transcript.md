@@ -14,7 +14,7 @@ allowed-tools:
 
 Use `transcript` only when recovering or migrating context from a host conversation.
 
-This is not the normal emb-agent continuity path. Prefer `session record`, `task aar scan`, and `next` during day-to-day work. Transcript import is for old conversations, host migration, context-loss forensics, and emb-agent workflow development.
+This is not the normal emb-agent continuity path. Prefer `finish-work`, `task aar scan`, and `next` during day-to-day work. Transcript import is for old conversations, host migration, context-loss forensics, and emb-agent workflow development.
 
 ## Commands
 

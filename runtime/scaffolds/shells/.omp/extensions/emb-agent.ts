@@ -575,7 +575,8 @@ function formatRecommendedCommand(r: EmbAgentResult): string {
   else if (command.startsWith("/")) return "";
   command = command.replace(/^emb-agent\s+/, "").replace(/^emb:/, "").replace(/\s+--brief$/, "").trim();
   const name = command.split(/\s+/)[0] || "";
-  if (name === "onboard") return "/emb-onboard";
+  if (name === "start" || name === "onboard") return "/emb-start";
+  if (name === "finish" || name === "finish-work") return "/emb-finish-work";
   return name ? "/emb-next" : "";
 }
 
@@ -598,9 +599,11 @@ function updateNotice(result: EmbAgentResult | null): { label: string; lines: st
 }
 
 function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): string {
+  const lines: string[] = [];
   const parts: string[] = [];
   const notice = updateNotice(update || null);
   if (notice.label) parts.push(notice.label);
+  parts.push("emb");
   if (r.project?.active_variant) parts.push("var:" + r.project.active_variant);
   if (isDeclaredChip(r.project?.mcu)) {
     const pkg = isDeclaredChip(r.project?.package) ? "/" + r.project!.package : "";
@@ -609,10 +612,11 @@ function formatEmbStatus(r: EmbAgentResult, update?: EmbAgentResult | null): str
   if (r.tasks?.wiki_pages) parts.push("wiki:" + r.tasks.wiki_pages);
   if (r.tasks?.open) parts.push("tasks:" + r.tasks.open);
   const activeTask = formatActiveTask(r.tasks?.active);
-  if (activeTask) parts.push("▸" + activeTask);
+  if (activeTask) lines.push("▸ " + activeTask);
   const command = formatRecommendedCommand(r);
-  if (command) parts.push(command);
-  return parts.length > 0 ? "emb: " + parts.join(" · ") : "";
+  if (command) parts.push("next:" + command);
+  if (parts.length > 0) lines.push(parts.join(" · "));
+  return lines.join("\n");
 }
 
 function renderNextLines(result: EmbAgentResult, update?: EmbAgentResult | null): string[] {
@@ -732,6 +736,21 @@ export default function (pi: ExtensionAPI) {
 
   // ── Slash commands ──────────────────────────────────────────────
 
+  async function handleStartCommand(_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void } }) {
+    const result = await runEmbAgent(["start", "--brief"], ctx.cwd);
+    if (!result) {
+      ctx.ui.notify("emb-agent start failed or not initialized", "warning");
+      return;
+    }
+    const lines = renderNextLines(result);
+    await promptAgent("[/emb-start]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) + "\n\nUse this startup context to decide whether onboarding, task selection, or direct continuation is appropriate.", ctx.cwd);
+  }
+
+  pi.registerCommand("emb-start", {
+    description: "Load emb-agent project context and route startup",
+    handler: handleStartCommand,
+  });
+
   async function handleNextCommand(_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void } }) {
     const result = await runEmbAgent(["next", "--brief"], ctx.cwd);
     if (!result) {
@@ -752,19 +771,19 @@ export default function (pi: ExtensionAPI) {
     handler: handleNextCommand,
   });
 
-  async function handleOnboardCommand(_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void } }) {
-    const result = await runEmbAgent(["onboard"], ctx.cwd);
+  async function handleFinishWorkCommand(_args: string, ctx: { cwd: string; ui: { notify: (m: string, t?: string) => void } }) {
+    const result = await runEmbAgent(["finish-work"], ctx.cwd);
     if (!result) {
-      ctx.ui.notify("emb-agent onboard failed or not initialized", "warning");
+      ctx.ui.notify("emb-agent finish-work failed or not initialized", "warning");
       return;
     }
     const lines = renderNextLines(result);
-    await promptAgent("[/emb-onboard]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) + "\n\nAct on the above.", ctx.cwd);
+    await promptAgent("[/emb-finish-work]\n" + (lines.length ? lines.join("\n") : JSON.stringify(result, null, 2)) + "\n\nSynthesize the closure state and next handoff from the workspace journal result.", ctx.cwd);
   }
 
-  pi.registerCommand("emb-onboard", {
-    description: "Run emb-agent onboarding handoff",
-    handler: handleOnboardCommand,
+  pi.registerCommand("emb-finish-work", {
+    description: "Record workspace journal and close completed work",
+    handler: handleFinishWorkCommand,
   });
 
   function toolTextResult(text: string, details?: unknown) {
