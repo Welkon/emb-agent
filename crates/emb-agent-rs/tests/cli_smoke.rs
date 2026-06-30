@@ -314,9 +314,15 @@ fn run_with_env(project: &TestProject, args: &[&str], envs: &[(&str, &str)]) -> 
     command.args(args).arg("--cwd").arg(project.path());
     for key in [
         "EMB_AGENT_SESSION_ID",
+        "EMB_AGENT_CONTEXT_ID",
         "PI_SESSION_ID",
         "CODEX_SESSION_ID",
         "CLAUDE_SESSION_ID",
+        "CURSOR_SESSION_ID",
+        "TERM_SESSION_ID",
+        "EMB_AGENT_UPDATE_HINT",
+        "EMB_AGENT_DISABLE_UPDATE_HINT",
+        "EMB_AGENT_UPDATE_CHECK_OUTPUT",
     ] {
         command.env_remove(key);
     }
@@ -335,6 +341,41 @@ fn run_with_stdin(args: &[&str], stdin: &str) -> String {
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn emb-agent-rs");
+    child
+        .stdin
+        .as_mut()
+        .expect("child stdin")
+        .write_all(stdin.as_bytes())
+        .expect("write hook stdin");
+    let output = child.wait_with_output().expect("wait emb-agent-rs");
+    assert_success(output)
+}
+
+fn run_with_stdin_and_env(args: &[&str], stdin: &str, envs: &[(&str, &str)]) -> String {
+    let mut command = Command::new(emb_agent_bin());
+    command
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for key in [
+        "EMB_AGENT_SESSION_ID",
+        "EMB_AGENT_CONTEXT_ID",
+        "PI_SESSION_ID",
+        "CODEX_SESSION_ID",
+        "CLAUDE_SESSION_ID",
+        "CURSOR_SESSION_ID",
+        "TERM_SESSION_ID",
+        "EMB_AGENT_UPDATE_HINT",
+        "EMB_AGENT_DISABLE_UPDATE_HINT",
+        "EMB_AGENT_UPDATE_CHECK_OUTPUT",
+    ] {
+        command.env_remove(key);
+    }
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let mut child = command.spawn().expect("spawn emb-agent-rs with env");
     child
         .stdin
         .as_mut()
@@ -488,6 +529,206 @@ fn compact_session_start_uses_delta_context_without_welcome_duplication() {
         !output.contains("What you can do next"),
         "hook output: {output}"
     );
+}
+
+#[test]
+fn session_start_shows_update_hint_once_per_session() {
+    let project = TestProject::new("session-update-once");
+    write_install_runtime_version(project.path(), r#"{"version":"0.7.0"}"#);
+    let payload = serde_json::json!({
+        "hook_event_name": "SessionStart",
+        "cwd": project.path().to_string_lossy(),
+        "source": "startup",
+        "session_id": "session-update-once"
+    })
+    .to_string();
+    let envs = [(
+        "EMB_AGENT_UPDATE_CHECK_OUTPUT",
+        r#"{"latest_version":"0.7.1","update_available":true}"#,
+    )];
+
+    let first = run_with_stdin_and_env(
+        &["hook", "session-start", "--host", "codex"],
+        &payload,
+        &envs,
+    );
+    assert!(
+        first.contains("emb-agent update available: 0.7.0 -> 0.7.1"),
+        "hook output: {first}"
+    );
+    assert!(
+        first.contains("npx emb-agent@latest update --target all --local"),
+        "hook output: {first}"
+    );
+    let second = run_with_stdin_and_env(
+        &["hook", "session-start", "--host", "codex"],
+        &payload,
+        &envs,
+    );
+    assert!(
+        !second.contains("emb-agent update available"),
+        "hook output: {second}"
+    );
+    assert!(
+        project
+            .path()
+            .join(".emb-agent/.runtime/update-check-session-update-once.marker")
+            .is_file(),
+        "session update marker missing"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn session_start_update_hint_uses_parent_marker_without_session_id() {
+    let project = TestProject::new("session-update-parent");
+    write_install_runtime_version(project.path(), r#"{"version":"0.7.0"}"#);
+    let payload = serde_json::json!({
+        "hook_event_name": "SessionStart",
+        "cwd": project.path().to_string_lossy(),
+        "source": "startup"
+    })
+    .to_string();
+    let envs = [(
+        "EMB_AGENT_UPDATE_CHECK_OUTPUT",
+        r#"{"latest_version":"0.7.1","update_available":true}"#,
+    )];
+
+    let first = run_with_stdin_and_env(
+        &["hook", "session-start", "--host", "codex"],
+        &payload,
+        &envs,
+    );
+    assert!(
+        first.contains("emb-agent update available: 0.7.0 -> 0.7.1"),
+        "hook output: {first}"
+    );
+    let second = run_with_stdin_and_env(
+        &["hook", "session-start", "--host", "codex"],
+        &payload,
+        &envs,
+    );
+    assert!(
+        !second.contains("emb-agent update available"),
+        "hook output: {second}"
+    );
+    assert!(
+        project
+            .path()
+            .join(format!(
+                ".emb-agent/.runtime/update-check-ppid-{}.marker",
+                std::process::id()
+            ))
+            .is_file(),
+        "parent-process update marker missing"
+    );
+}
+
+#[test]
+fn session_start_update_hint_failure_does_not_burn_marker() {
+    let project = TestProject::new("session-update-retry");
+    write_install_runtime_version(project.path(), r#"{"version":"0.7.0"}"#);
+    let payload = serde_json::json!({
+        "hook_event_name": "SessionStart",
+        "cwd": project.path().to_string_lossy(),
+        "source": "startup",
+        "session_id": "session-update-retry"
+    })
+    .to_string();
+    let marker = project
+        .path()
+        .join(".emb-agent/.runtime/update-check-session-update-retry.marker");
+
+    let failed = run_with_stdin_and_env(
+        &["hook", "session-start", "--host", "codex"],
+        &payload,
+        &[("EMB_AGENT_UPDATE_CHECK_OUTPUT", "__NONE__")],
+    );
+    assert!(
+        !failed.contains("emb-agent update available"),
+        "hook output: {failed}"
+    );
+    assert!(!marker.exists(), "failed check should not create marker");
+
+    let retried = run_with_stdin_and_env(
+        &["hook", "session-start", "--host", "codex"],
+        &payload,
+        &[(
+            "EMB_AGENT_UPDATE_CHECK_OUTPUT",
+            r#"{"latest_version":"0.7.1","update_available":true}"#,
+        )],
+    );
+    assert!(
+        retried.contains("emb-agent update available: 0.7.0 -> 0.7.1"),
+        "hook output: {retried}"
+    );
+}
+
+#[test]
+fn session_start_update_hint_skips_equal_version_after_successful_check() {
+    let project = TestProject::new("session-update-equal");
+    write_install_runtime_version(project.path(), r#"{"version":"0.7.0"}"#);
+    let payload = serde_json::json!({
+        "hook_event_name": "SessionStart",
+        "cwd": project.path().to_string_lossy(),
+        "source": "startup",
+        "session_id": "session-update-equal"
+    })
+    .to_string();
+
+    let output = run_with_stdin_and_env(
+        &["hook", "session-start", "--host", "codex"],
+        &payload,
+        &[(
+            "EMB_AGENT_UPDATE_CHECK_OUTPUT",
+            r#"{"latest_version":"0.7.0","update_available":false}"#,
+        )],
+    );
+    assert!(
+        !output.contains("emb-agent update available"),
+        "hook output: {output}"
+    );
+    assert!(
+        project
+            .path()
+            .join(".emb-agent/.runtime/update-check-session-update-equal.marker")
+            .is_file(),
+        "successful equal-version check should create marker"
+    );
+}
+
+#[test]
+fn update_hint_stays_out_of_prompt_and_brief_outputs() {
+    let project = TestProject::new("session-update-scope");
+    write_install_runtime_version(project.path(), r#"{"version":"0.7.0"}"#);
+    let envs = [(
+        "EMB_AGENT_UPDATE_CHECK_OUTPUT",
+        r#"{"latest_version":"0.7.1","update_available":true}"#,
+    )];
+    let prompt_payload = serde_json::json!({
+        "hook_event_name": "UserPromptSubmit",
+        "cwd": project.path().to_string_lossy(),
+        "source": "UserPromptSubmit",
+        "session_id": "session-update-scope"
+    })
+    .to_string();
+
+    let prompt = run_with_stdin_and_env(
+        &["hook", "session-start", "--host", "codex"],
+        &prompt_payload,
+        &envs,
+    );
+    assert!(
+        !prompt.contains("emb-agent update available"),
+        "hook output: {prompt}"
+    );
+
+    let status = run_with_env(&project, &["status", "--brief"], &envs);
+    assert!(
+        !status.contains("emb-agent update available"),
+        "status output: {status}"
+    );
+    serde_json::from_str::<serde_json::Value>(&status).expect("status brief json");
 }
 
 #[test]

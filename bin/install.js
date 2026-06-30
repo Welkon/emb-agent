@@ -826,18 +826,7 @@ function deployRustBinary(embDir, callback) {
 			return;
 		}
 	}
-	// 2. Try generic fallback names
-	var genericNames = ["emb-agent-rs-linux-x86_64", "emb-agent-rs-macos-x86_64", "emb-agent-rs-windows-x86_64.exe"];
-	for (var i = 0; i < genericNames.length; i++) {
-		var p = path.join(RUST_BIN_DIR, genericNames[i]);
-		if (fs.existsSync(p)) {
-			fs.copyFileSync(p, dest);
-			logDetail("    Rust binary deployed (generic fallback)");
-			callback();
-			return;
-		}
-	}
-	// 3. Download from GitHub
+	// 2. Download the current platform artifact from GitHub.
 	downloadBinary(dest, function (ok) {
 		if (ok) logDetail("    Rust binary deployed (downloaded)");
 		else logDetail("    Warning: binary not found, skipping");
