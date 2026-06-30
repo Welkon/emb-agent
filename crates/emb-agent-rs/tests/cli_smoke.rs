@@ -1,5 +1,7 @@
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -929,17 +931,30 @@ fn codex_tool_guard_blocks_unbounded_root_search() {
 #[test]
 fn runtime_wrapper_forwards_hook_stdin_without_hanging() {
     let project = TestProject::new("runtime-wrapper-hook-stdin");
+    let runtime_bin = project.path().join("runtime").join("bin");
+    let runtime_wrapper = runtime_bin.join("emb-agent.cjs");
+    let rust_bin_dir = project.path().join("bin");
+    let rust_bin = rust_bin_dir.join(format!("emb-agent-rs{}", std::env::consts::EXE_SUFFIX));
+    fs::create_dir_all(&runtime_bin).expect("create temp runtime bin");
+    fs::create_dir_all(&rust_bin_dir).expect("create temp rust bin dir");
+    fs::copy(
+        repo_root()
+            .join("runtime")
+            .join("bin")
+            .join("emb-agent.cjs"),
+        &runtime_wrapper,
+    )
+    .expect("copy runtime wrapper");
+    fs::copy(emb_agent_bin(), &rust_bin).expect("copy rust test binary");
+    #[cfg(unix)]
+    fs::set_permissions(&rust_bin, fs::Permissions::from_mode(0o644))
+        .expect("make rust test binary non-executable");
     let payload = format!(
         "{{\n  \"hook_event_name\": \"PreToolUse\",\n  \"cwd\": \"{}\",\n  \"tool_name\": \"Read\",\n  \"tool_input\": {{ \"path\": \"firmware/src/main.c\" }}\n}}\n",
         project.path().to_string_lossy()
     );
     let mut child = Command::new("node")
-        .arg(
-            repo_root()
-                .join("runtime")
-                .join("bin")
-                .join("emb-agent.cjs"),
-        )
+        .arg(&runtime_wrapper)
         .arg("hook")
         .arg("tool-guard")
         .arg("--host")
@@ -1776,6 +1791,10 @@ fn runtime_wrapper_allows_long_doc_ingest() {
     assert!(
         wrapper.contains("function runRustHook"),
         "runtime wrapper must use a hook-specific spawn path"
+    );
+    assert!(
+        wrapper.contains("fs.chmodSync(rustBin, 0o755)"),
+        "runtime wrapper hook path must self-heal non-executable bundled binaries"
     );
     assert!(
         wrapper.contains("child.stdin.end(input || Buffer.alloc(0))"),

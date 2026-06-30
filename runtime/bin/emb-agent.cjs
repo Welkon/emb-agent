@@ -248,6 +248,10 @@ function runRustHook(rustBin, args, input, callback) {
 		callback(result);
 	}
 
+	if (process.platform !== "win32") {
+		try { fs.chmodSync(rustBin, 0o755); } catch (_) {}
+	}
+
 	try {
 		child = childProcess.spawn(rustBin, args, { stdio: ["pipe", "pipe", "pipe"] });
 	} catch (error) {
