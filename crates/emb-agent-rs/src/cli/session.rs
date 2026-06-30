@@ -959,6 +959,7 @@ struct SessionSummary {
     number: usize,
     title: String,
     file: String,
+    date: String,
 }
 
 fn collect_developer_sessions(developer_dir: &Path) -> Vec<SessionSummary> {
@@ -970,7 +971,8 @@ fn collect_developer_sessions(developer_dir: &Path) -> Vec<SessionSummary> {
             continue;
         };
         let text = fs::read_to_string(&path).unwrap_or_default();
-        for line in text.lines() {
+        let lines = text.lines().collect::<Vec<_>>();
+        for (index, line) in lines.iter().enumerate() {
             let Some(rest) = line.strip_prefix("## Session ") else {
                 continue;
             };
@@ -985,10 +987,23 @@ fn collect_developer_sessions(developer_dir: &Path) -> Vec<SessionSummary> {
                 number,
                 title: title.trim().to_string(),
                 file: file_name.to_string(),
+                date: session_date(&lines[index..]),
             });
         }
     }
     sessions
+}
+
+fn session_date(lines: &[&str]) -> String {
+    for line in lines.iter().skip(1) {
+        if line.strip_prefix("## Session ").is_some() {
+            break;
+        }
+        if let Some(date) = line.trim().strip_prefix("**Date**:") {
+            return date.trim().to_string();
+        }
+    }
+    "unknown".to_string()
 }
 
 fn journal_files(developer_dir: &Path) -> Vec<(usize, PathBuf)> {
@@ -1088,30 +1103,133 @@ fn rewrite_workspace_index(workspace_dir: &Path) -> Result<(), String> {
             latest
                 .map(|session| format!("Session {}: {}", session.number, session.title))
                 .unwrap_or_else(|| "None".to_string()),
+            latest
+                .map(|session| session.date.clone())
+                .unwrap_or_else(|| "-".to_string()),
+            latest
+                .map(|session| session.file.clone())
+                .unwrap_or_else(|| "None".to_string()),
         ));
     }
     rows.sort_by(|a, b| a.1.cmp(&b.1));
-    let mut body = "\
-# Workspace Journal
-
-Human-readable session history for continuing work across agent sessions.
-Machine hook events remain in `.emb-agent/sessions/`.
-
-| Developer | Sessions | Latest |
-|---|---:|---|
-"
-    .to_string();
+    let mut body = workspace_index_header();
     if rows.is_empty() {
-        body.push_str("| None | 0 | None |\n");
+        body.push_str("| None yet | - | 0 | - |\n");
     } else {
-        for (display, slug, count, latest) in rows {
+        for (display, slug, count, latest, latest_date, latest_file) in rows {
+            let active_file = if latest_file == "None" {
+                "-".to_string()
+            } else {
+                format!("[{latest_file}]({slug}/{latest_file})")
+            };
             body.push_str(&format!(
-                "| [{display}]({slug}/index.md) | {count} | {latest} |\n"
+                "| [{display}]({slug}/index.md) | {latest_date} | {count} | {active_file} - {latest} |\n"
             ));
         }
     }
+    body.push_str(workspace_index_footer());
     fs::write(workspace_dir.join("index.md"), body)
         .map_err(|error| format!("write workspace index failed: {error}"))
+}
+
+fn workspace_index_header() -> String {
+    r#"# Workspace Index
+
+> Workspace Journal records for AI-assisted embedded firmware work across developers.
+
+---
+
+## Overview
+
+This directory tracks human-readable session records for continuing project work across AI host sessions.
+Machine hook events remain in `.emb-agent/sessions/`.
+
+### File Structure
+
+```text
+workspace/
+|-- index.md              # This file - main index
++-- {developer}/          # Per-developer directory
+    |-- index.md          # Personal index with session history
+    +-- journal-N.md      # Sequential journal files
+```
+
+---
+
+## Active Developers
+
+| Developer | Last Active | Sessions | Active File |
+|---|---|---:|---|
+"#
+    .to_string()
+}
+
+fn workspace_index_footer() -> &'static str {
+    r#"
+
+---
+
+## Getting Started
+
+### For New Developers
+
+Set the developer identity during install or write `.emb-agent/.developer`, then record the first session with:
+
+```bash
+node .<host>/emb-agent/bin/emb-agent.cjs session record --title "..." --summary "..."
+```
+
+This creates your developer directory, personal index, and first journal lazily.
+
+### For Returning Developers
+
+Read `.emb-agent/workspace/index.md`, then open your personal index under `.emb-agent/workspace/<developer>/index.md`.
+
+## Guidelines
+
+- Keep journal entries human-readable and focused on what changed, what was verified, and what should happen next.
+- Record durable session continuity with `session record` or `finish-work`; raw hook events belong in `.emb-agent/sessions/`.
+- Create a new `journal-N.md` automatically when the configured journal line limit is reached.
+
+## Session Template
+
+```markdown
+## Session {N}: {Title}
+
+**Date**: YYYY-MM-DD
+**Task**: {task-name}
+**Package**: `{package}`
+**Branch**: `{branch-name}`
+
+### Summary
+
+{One-line summary}
+
+### Main Changes
+
+- {Change 1}
+- {Change 2}
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `abc1234` | {commit message} |
+
+### Testing
+
+- [OK] {Test result}
+
+### Status
+
+[OK] **Completed** / [~] **In Progress** / [!] **Blocked**
+
+### Next Steps
+
+- {Next step 1}
+- {Next step 2}
+```
+"#
 }
 
 fn developer_display_from_index(developer_dir: &Path) -> Option<String> {

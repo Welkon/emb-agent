@@ -352,15 +352,97 @@ fn ensure_workspace_index(ext_dir: &Path) {
     let _ = fs::write(
         index_path,
         "\
-# Workspace Journal
+# Workspace Index
 
-Human-readable session history for this project.
+> Workspace Journal records for AI-assisted embedded firmware work across developers.
 
-Developer journals are created when `session record` or `finish-work` writes the first entry.
+---
 
-## Developers
+## Overview
 
-- None yet
+This directory tracks human-readable session records for continuing project work across AI host sessions.
+Machine hook events remain in `.emb-agent/sessions/`.
+
+### File Structure
+
+```text
+workspace/
+|-- index.md              # This file - main index
++-- {developer}/          # Per-developer directory
+    |-- index.md          # Personal index with session history
+    +-- journal-N.md      # Sequential journal files
+```
+
+---
+
+## Active Developers
+
+| Developer | Last Active | Sessions | Active File |
+|---|---|---:|---|
+| None yet | - | 0 | - |
+
+---
+
+## Getting Started
+
+### For New Developers
+
+Set the developer identity during install or write `.emb-agent/.developer`, then record the first session with:
+
+```bash
+node .<host>/emb-agent/bin/emb-agent.cjs session record --title \"...\" --summary \"...\"
+```
+
+This creates your developer directory, personal index, and first journal lazily.
+
+### For Returning Developers
+
+Read `.emb-agent/workspace/index.md`, then open your personal index under `.emb-agent/workspace/<developer>/index.md`.
+
+## Guidelines
+
+- Keep journal entries human-readable and focused on what changed, what was verified, and what should happen next.
+- Record durable session continuity with `session record` or `finish-work`; raw hook events belong in `.emb-agent/sessions/`.
+- Create a new `journal-N.md` automatically when the configured journal line limit is reached.
+
+## Session Template
+
+```markdown
+## Session {N}: {Title}
+
+**Date**: YYYY-MM-DD
+**Task**: {task-name}
+**Package**: `{package}`
+**Branch**: `{branch-name}`
+
+### Summary
+
+{One-line summary}
+
+### Main Changes
+
+- {Change 1}
+- {Change 2}
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `abc1234` | {commit message} |
+
+### Testing
+
+- [OK] {Test result}
+
+### Status
+
+[OK] **Completed** / [~] **In Progress** / [!] **Blocked**
+
+### Next Steps
+
+- {Next step 1}
+- {Next step 2}
+```
 ",
     );
 }

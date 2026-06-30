@@ -485,19 +485,193 @@ function ensureWorkspaceIndex(ext) {
 	var workspaceDir = path.join(ext, "workspace");
 	var indexPath = path.join(workspaceDir, "index.md");
 	ensureDir(workspaceDir);
-	if (fs.existsSync(indexPath)) return;
-	fs.writeFileSync(indexPath, [
-		"# Workspace Journal",
+	var existing = "";
+	try { existing = fs.readFileSync(indexPath, "utf8"); } catch (_) {}
+	if (existing.indexOf("# Workspace Index") === 0 && existing.indexOf("## Session Template") >= 0) return;
+	fs.writeFileSync(indexPath, buildWorkspaceIndex(workspaceDir), "utf8");
+}
+
+function buildWorkspaceIndex(workspaceDir) {
+	var rows = workspaceDeveloperRows(workspaceDir);
+	var lines = [
+		"# Workspace Index",
 		"",
-		"Human-readable session history for this project.",
+		"> Workspace Journal records for AI-assisted embedded firmware work across developers.",
 		"",
-		"Developer journals are created when `session record` or `finish-work` writes the first entry.",
+		"---",
 		"",
-		"## Developers",
+		"## Overview",
 		"",
-		"- None yet",
+		"This directory tracks human-readable session records for continuing project work across AI host sessions.",
+		"Machine hook events remain in `.emb-agent/sessions/`.",
+		"",
+		"### File Structure",
+		"",
+		"```text",
+		"workspace/",
+		"|-- index.md              # This file - main index",
+		"+-- {developer}/          # Per-developer directory",
+		"    |-- index.md          # Personal index with session history",
+		"    +-- journal-N.md      # Sequential journal files",
+		"```",
+		"",
+		"---",
+		"",
+		"## Active Developers",
+		"",
+		"| Developer | Last Active | Sessions | Active File |",
+		"|---|---|---:|---|"
+	];
+	if (rows.length === 0) {
+		lines.push("| None yet | - | 0 | - |");
+	} else {
+		for (var i = 0; i < rows.length; i++) {
+			lines.push(rows[i]);
+		}
+	}
+	lines.push(
+		"",
+		"---",
+		"",
+		"## Getting Started",
+		"",
+		"### For New Developers",
+		"",
+		"Set the developer identity during install or write `.emb-agent/.developer`, then record the first session with:",
+		"",
+		"```bash",
+		"node .<host>/emb-agent/bin/emb-agent.cjs session record --title \"...\" --summary \"...\"",
+		"```",
+		"",
+		"This creates your developer directory, personal index, and first journal lazily.",
+		"",
+		"### For Returning Developers",
+		"",
+		"Read `.emb-agent/workspace/index.md`, then open your personal index under `.emb-agent/workspace/<developer>/index.md`.",
+		"",
+		"## Guidelines",
+		"",
+		"- Keep journal entries human-readable and focused on what changed, what was verified, and what should happen next.",
+		"- Record durable session continuity with `session record` or `finish-work`; raw hook events belong in `.emb-agent/sessions/`.",
+		"- Create a new `journal-N.md` automatically when the configured journal line limit is reached.",
+		"",
+		"## Session Template",
+		"",
+		"```markdown",
+		"## Session {N}: {Title}",
+		"",
+		"**Date**: YYYY-MM-DD",
+		"**Task**: {task-name}",
+		"**Package**: `{package}`",
+		"**Branch**: `{branch-name}`",
+		"",
+		"### Summary",
+		"",
+		"{One-line summary}",
+		"",
+		"### Main Changes",
+		"",
+		"- {Change 1}",
+		"- {Change 2}",
+		"",
+		"### Git Commits",
+		"",
+		"| Hash | Message |",
+		"|------|---------|",
+		"| `abc1234` | {commit message} |",
+		"",
+		"### Testing",
+		"",
+		"- [OK] {Test result}",
+		"",
+		"### Status",
+		"",
+		"[OK] **Completed** / [~] **In Progress** / [!] **Blocked**",
+		"",
+		"### Next Steps",
+		"",
+		"- {Next step 1}",
+		"- {Next step 2}",
+		"```",
 		""
-	].join("\n"), "utf8");
+	);
+	return lines.join("\n");
+}
+
+function workspaceDeveloperRows(workspaceDir) {
+	var rows = [];
+	var entries = [];
+	try { entries = fs.readdirSync(workspaceDir, { withFileTypes: true }); } catch (_) { return rows; }
+	entries.sort(function (a, b) { return a.name.localeCompare(b.name); });
+	for (var i = 0; i < entries.length; i++) {
+		var entry = entries[i];
+		if (!entry.isDirectory()) continue;
+		var slug = entry.name;
+		var developerDir = path.join(workspaceDir, slug);
+		var sessions = collectWorkspaceSessions(developerDir);
+		var latest = sessions.length ? sessions[sessions.length - 1] : null;
+		var display = workspaceDeveloperDisplay(developerDir, slug);
+		var activeFile = latest
+			? "[" + markdownTableCell(latest.file) + "](" + slug + "/" + latest.file + ") - " + markdownTableCell("Session " + latest.number + ": " + latest.title)
+			: "-";
+		rows.push("| [" + markdownTableCell(display) + "](" + slug + "/index.md) | " + (latest ? markdownTableCell(latest.date) : "-") + " | " + sessions.length + " | " + activeFile + " |");
+	}
+	return rows;
+}
+
+function workspaceDeveloperDisplay(developerDir, fallback) {
+	try {
+		var text = fs.readFileSync(path.join(developerDir, "index.md"), "utf8");
+		var match = text.match(/^#\s+(.+?)\s+Workspace Journal\s*$/m);
+		if (match && match[1]) return match[1].trim();
+	} catch (_) {}
+	return fallback;
+}
+
+function collectWorkspaceSessions(developerDir) {
+	var files = [];
+	try {
+		files = fs.readdirSync(developerDir)
+			.map(function (name) {
+				var match = name.match(/^journal-(\d+)\.md$/);
+				return match ? { number: Number(match[1]), name: name } : null;
+			})
+			.filter(Boolean)
+			.sort(function (a, b) { return a.number - b.number; });
+	} catch (_) {
+		return [];
+	}
+	var sessions = [];
+	for (var fi = 0; fi < files.length; fi++) {
+		var file = files[fi].name;
+		var text = "";
+		try { text = fs.readFileSync(path.join(developerDir, file), "utf8"); } catch (_) { continue; }
+		var lines = text.split(/\r?\n/);
+		for (var i = 0; i < lines.length; i++) {
+			var match = lines[i].match(/^## Session\s+(\d+):\s*(.+)$/);
+			if (!match) continue;
+			sessions.push({
+				number: Number(match[1]),
+				title: match[2].trim(),
+				date: workspaceSessionDate(lines, i),
+				file: file
+			});
+		}
+	}
+	return sessions;
+}
+
+function workspaceSessionDate(lines, startIndex) {
+	for (var i = startIndex + 1; i < lines.length; i++) {
+		if (/^## Session\s+/.test(lines[i])) break;
+		var match = lines[i].match(/^\*\*Date\*\*:\s*(.+)$/);
+		if (match && match[1]) return match[1].trim();
+	}
+	return "unknown";
+}
+
+function markdownTableCell(value) {
+	return String(value || "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|").trim();
 }
 
 function ensureEmbAgentProjectConfig(projectRoot) {
@@ -1824,11 +1998,15 @@ function hooksFileHasRuntimeEntries(hooksPath, hostName) {
 		var hooks = fs.readFileSync(hooksPath, "utf8");
 		var codexGuardOk = hostName !== "codex" || hooks.indexOf("hook tool-guard --host codex") >= 0;
 		var codexWorkflowOk = hostName !== "codex" || hooks.indexOf("UserPromptSubmit") >= 0;
+		var cursorSubagentOk = hostName !== "cursor" || hooks.indexOf("hook subagent-context --host cursor") >= 0;
+		var cursorShellOk = hostName !== "cursor" || hooks.indexOf("hook shell-session --host cursor") >= 0;
 		return hooks.indexOf("{{") === -1
 			&& hooks.indexOf("hook session-start --host " + hostName) >= 0
 			&& hooks.indexOf("hook context-monitor --host " + hostName) >= 0
 			&& codexGuardOk
 			&& codexWorkflowOk
+			&& cursorSubagentOk
+			&& cursorShellOk
 			&& hooks.indexOf("ApplyPatch") >= 0;
 	} catch (_) {
 		return false;

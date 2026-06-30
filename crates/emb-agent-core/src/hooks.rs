@@ -144,6 +144,12 @@ pub fn normalize_hook_name(hook: &str) -> String {
         "emb-tool-guard.js" | "PreToolUse" | "pre_tool_use" | "tool_guard" => {
             "tool-guard".to_string()
         }
+        "emb-subagent-context.js" | "subagent_context" | "subagent-context" => {
+            "subagent-context".to_string()
+        }
+        "emb-shell-session.js" | "shell_session" | "shell-session" | "before_shell_execution" => {
+            "shell-session".to_string()
+        }
         value if !value.is_empty() => value.to_string(),
         _ => "session-start".to_string(),
     }
@@ -152,7 +158,13 @@ pub fn normalize_hook_name(hook: &str) -> String {
 pub fn is_rust_hook_supported(hook: &str) -> bool {
     matches!(
         hook,
-        "session-start" | "session-end" | "statusline" | "context-monitor" | "tool-guard"
+        "session-start"
+            | "session-end"
+            | "statusline"
+            | "context-monitor"
+            | "tool-guard"
+            | "subagent-context"
+            | "shell-session"
     )
 }
 
@@ -162,6 +174,8 @@ pub fn hook_file_name(hook: &str) -> &'static str {
         "statusline" => "emb-statusline.js",
         "context-monitor" => "emb-context-monitor.js",
         "tool-guard" => "emb-tool-guard.js",
+        "subagent-context" => "emb-subagent-context.js",
+        "shell-session" => "emb-shell-session.js",
         _ => "emb-session-start.js",
     }
 }
@@ -275,16 +289,19 @@ pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
     let statusline = build_hook_plan(host, "statusline", runtime_dir, None);
     let context_monitor = build_hook_plan(host, "context-monitor", runtime_dir, None);
     let tool_guard = build_hook_plan(host, "tool-guard", runtime_dir, None);
+    let subagent_context = build_hook_plan(host, "subagent-context", runtime_dir, None);
+    let shell_session = build_hook_plan(host, "shell-session", runtime_dir, None);
     let rust_binary = rust_binary_path(runtime_dir);
     let rust_binary_exists = rust_binary.exists();
     let hooks_ready = rust_binary_exists
         && session_start.supported
         && context_monitor.supported
-        && (host != "codex" || tool_guard.supported);
+        && (host != "codex" || (tool_guard.supported && subagent_context.supported))
+        && (host != "cursor" || shell_session.supported);
     let readiness_status = if hooks_ready { "ok" } else { "warn" };
     let next_steps = hook_diagnostics_next_steps(host, hooks_ready);
     format!(
-        "{{\"status\":{},\"runtime\":\"emb-agent-rs\",\"host\":{},\"runtime_dir\":{},\"source_runtime\":{},\"rust_binary\":{},\"rust_binary_exists\":{},\"readiness\":{{\"status\":{},\"session_start\":{},\"context_monitor\":{},\"tool_guard_required\":{},\"tool_guard\":{},\"message\":{}}},\"next_steps\":{},\"env\":{{\"EMB_AGENT_RUST_HOOKS\":{},\"EMB_AGENT_RUST_HOOK_CMD\":{}}},\"hooks\":{{\"session_start\":{},\"statusline\":{},\"context_monitor\":{},\"tool_guard\":{}}}}}",
+        "{{\"status\":{},\"runtime\":\"emb-agent-rs\",\"host\":{},\"runtime_dir\":{},\"source_runtime\":{},\"rust_binary\":{},\"rust_binary_exists\":{},\"readiness\":{{\"status\":{},\"session_start\":{},\"context_monitor\":{},\"tool_guard_required\":{},\"tool_guard\":{},\"subagent_context\":{},\"shell_session\":{},\"message\":{}}},\"next_steps\":{},\"env\":{{\"EMB_AGENT_RUST_HOOKS\":{},\"EMB_AGENT_RUST_HOOK_CMD\":{}}},\"hooks\":{{\"session_start\":{},\"statusline\":{},\"context_monitor\":{},\"tool_guard\":{},\"subagent_context\":{},\"shell_session\":{}}}}}",
         json_quote(readiness_status),
         json_quote(host),
         json_quote(&runtime_dir.to_string_lossy()),
@@ -296,6 +313,8 @@ pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
         context_monitor.supported,
         host == "codex",
         tool_guard.supported,
+        subagent_context.supported,
+        shell_session.supported,
         json_quote(if hooks_ready {
             "Hook runtime and required hook plans are present."
         } else {
@@ -307,7 +326,9 @@ pub fn build_hooks_diagnostics_json(host: &str, runtime_dir: &Path) -> String {
         build_hook_plan_json(&session_start),
         build_hook_plan_json(&statusline),
         build_hook_plan_json(&context_monitor),
-        build_hook_plan_json(&tool_guard)
+        build_hook_plan_json(&tool_guard),
+        build_hook_plan_json(&subagent_context),
+        build_hook_plan_json(&shell_session)
     )
 }
 

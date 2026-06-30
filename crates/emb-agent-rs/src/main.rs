@@ -112,7 +112,7 @@ fn print_help() {
   Knowledge:  knowledge index/search/ask/diagnose/lint/show, knowledge graph refresh/query/path/lint
               knowledge save-query|ingest|formula draft [--confirm]
   Mem:        mem list|projects|search|context|extract|show|timeline|related|reindex|stats|open|explain|export|diff|writeback|promote
-  Hooks:      hook session-start|session-end|statusline|context-monitor|tool-guard|event, statusline
+  Hooks:      hook session-start|session-end|statusline|context-monitor|tool-guard|subagent-context|shell-session|event, statusline
   Components: component lookup [--file <path>] [--ref <designator>] [--parsed <path>]
   Board:      board summary|advice [--layout <path>]
   Adapter:    adapter derive --family <slug> --device <slug>

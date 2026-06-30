@@ -530,6 +530,81 @@ fn codex_tool_guard_blocks_source_read_before_knowledge_search() {
 }
 
 #[test]
+fn cursor_subagent_context_hook_injects_active_task_artifacts() {
+    let project = TestProject::new("cursor-subagent-context");
+    let activated = run(&project, &["task", "activate", "pwm-led"]);
+    assert!(
+        activated.contains("\"status\":\"ok\"") || activated.contains("\"status\": \"ok\""),
+        "activate output: {activated}"
+    );
+    fs::create_dir_all(project.path().join("docs/prd/tasks")).expect("create prd dir");
+    fs::create_dir_all(project.path().join("firmware/src")).expect("create firmware dir");
+    fs::write(
+        project.path().join("docs/prd/tasks/pwm-led.md"),
+        "# PWM LED PRD\n\nUse timer PWM and preserve low-power wake behavior.\n",
+    )
+    .expect("write task prd");
+    fs::write(
+        project.path().join(".emb-agent/tasks/pwm-led/implement.md"),
+        "# Implement\n\nTouch pwm.c only and keep duty-cycle bounds explicit.\n",
+    )
+    .expect("write implement plan");
+    fs::write(
+        project.path().join("firmware/src/pwm.c"),
+        "void pwm_apply(void) {}\n",
+    )
+    .expect("write source file");
+    fs::write(
+        project
+            .path()
+            .join(".emb-agent/tasks/pwm-led/implement.jsonl"),
+        "{\"file\":\"firmware/src/pwm.c\",\"reason\":\"PWM implementation target\"}\n",
+    )
+    .expect("write implement manifest");
+
+    let payload = format!(
+        "{{\n  \"hook_event_name\": \"PreToolUse\",\n  \"cwd\": \"{}\",\n  \"tool_name\": \"Task\",\n  \"tool_input\": {{ \"subagent_type\": \"fw-doer\", \"prompt\": \"Implement the PWM task.\" }}\n}}\n",
+        project.path().to_string_lossy()
+    );
+
+    let output = run_with_stdin(&["hook", "subagent-context", "--host", "cursor"], &payload);
+    assert!(
+        output.contains("additional_context"),
+        "hook output: {output}"
+    );
+    assert!(
+        !output.contains("hookSpecificOutput"),
+        "hook output: {output}"
+    );
+    assert!(
+        output.contains("<emb-agent-subagent-context>")
+            && output.contains("Active task")
+            && output.contains("Implement PWM dimming")
+            && output.contains("docs/prd/tasks/pwm-led.md")
+            && output.contains("implement.md")
+            && output.contains("firmware/src/pwm.c"),
+        "hook output: {output}"
+    );
+}
+
+#[test]
+fn cursor_shell_session_hook_allows_and_records_session() {
+    let project = TestProject::new("cursor-shell-session");
+    let payload = format!(
+        "{{\n  \"cwd\": \"{}\",\n  \"command\": \"node .cursor/emb-agent/bin/emb-agent.cjs task list\"\n}}\n",
+        project.path().to_string_lossy()
+    );
+
+    let output = run_with_stdin(&["hook", "shell-session", "--host", "cursor"], &payload);
+    assert_eq!(output.trim(), "{\"permission\":\"allow\"}");
+    let sessions_dir = project.path().join(".emb-agent/sessions");
+    let entries = fs::read_dir(&sessions_dir)
+        .expect("read sessions dir")
+        .count();
+    assert!(entries > 0, "shell-session should refresh heartbeat");
+}
+
+#[test]
 fn codex_tool_guard_records_knowledge_search_attempt_and_allows_source_read() {
     let project = TestProject::new("codex-tool-guard-knowledge");
     let knowledge_payload = format!(
@@ -3173,11 +3248,17 @@ fn installer_exposes_same_three_shell_commands_per_host() {
         fs::write(skill_dir.join("SKILL.md"), "stale").expect("write stale codex skill");
     }
     fs::create_dir_all(root.join(".emb-agent")).expect("create stale emb-agent dir");
+    fs::create_dir_all(root.join(".emb-agent/workspace")).expect("create stale workspace dir");
     fs::write(
         root.join(".emb-agent/workflow.md"),
         "# emb-agent Workflow\n\n[workflow-state:concept]\nold concept\n[/workflow-state:concept]\n\n[workflow-state:clarifying]\nold clarify\n[/workflow-state:clarifying]\n\n[workflow-state:ready]\nold ready\n[/workflow-state:ready]\n\n[workflow-state:task_active]\nold active task flow without researcher\n[/workflow-state:task_active]\n\n## Shared Conventions\n\n- Keep hardware truth in `hw.yaml`, product behavior in `req.yaml` plus `docs/prd/`.\n",
     )
     .expect("write stale workflow");
+    fs::write(
+        root.join(".emb-agent/workspace/index.md"),
+        "# Workspace Journal\n\nHuman-readable session history for this project.\n\n## Developers\n\n- None yet\n",
+    )
+    .expect("write stale workspace index");
     for base in [
         root.join(".pi/skills/xc8-build"),
         root.join(".agents/skills/xc8-build"),
@@ -3249,6 +3330,14 @@ fn installer_exposes_same_three_shell_commands_per_host() {
         !root.join(".env").exists(),
         "installer should create .env.example only, not .env"
     );
+    let workspace_index = fs::read_to_string(root.join(".emb-agent/workspace/index.md"))
+        .expect("read workspace index");
+    assert!(
+        workspace_index.starts_with("# Workspace Index")
+            && workspace_index.contains("## Active Developers")
+            && workspace_index.contains("## Session Template"),
+        "installer should upgrade stale workspace index: {workspace_index}"
+    );
 
     for skill in ["emb-start", "emb-next", "emb-finish-work"] {
         let skill_path = root
@@ -3308,8 +3397,12 @@ fn installer_exposes_same_three_shell_commands_per_host() {
         .expect("read Cursor hooks config");
     assert!(
         cursor_hooks.contains("sessionStart")
+            && cursor_hooks.contains("preToolUse")
+            && cursor_hooks.contains("subagent-context --host cursor")
             && cursor_hooks.contains("postToolUse")
             && cursor_hooks.contains("context-monitor --host cursor")
+            && cursor_hooks.contains("beforeShellExecution")
+            && cursor_hooks.contains("shell-session --host cursor")
             && cursor_hooks.contains("ApplyPatch")
             && cursor_hooks.contains("MultiEdit")
             && cursor_hooks.contains("ReadFile")

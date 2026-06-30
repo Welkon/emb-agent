@@ -5,9 +5,10 @@ use super::util::{
 use emb_agent_core::{
     StatePathConfig, build_context_monitor_output_for_host, build_hooks_diagnostics_json,
     build_host_session_start_payload_for_trigger, build_project_state_json,
-    build_project_state_paths_json, build_session_context_for_trigger, build_statusline_for_host,
-    build_tool_guard_output_for_host, build_welcome_message, get_project_state_paths,
-    project_state_from_cwd, snapshot_from_cwd,
+    build_project_state_paths_json, build_session_context_for_trigger,
+    build_shell_session_context_output_for_host, build_statusline_for_host,
+    build_subagent_context_output_for_host, build_tool_guard_output_for_host,
+    build_welcome_message, get_project_state_paths, project_state_from_cwd, snapshot_from_cwd,
 };
 use std::path::Path;
 
@@ -210,6 +211,58 @@ pub fn run_hook(args: &[String]) -> Result<(), String> {
                 );
             }
             let output = build_tool_guard_output_for_host(&raw_payload, &host_arg);
+            if !output.is_empty() {
+                println!("{output}");
+            }
+            Ok(())
+        }
+        "subagent-context" => {
+            let host_arg = option_value(args, "--host").unwrap_or_else(|| "codex".to_string());
+            let raw_payload = stdin_payload_or_cwd(args);
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw_payload)
+                && let Some(cwd) = value.get("cwd").and_then(serde_json::Value::as_str)
+            {
+                let host = value
+                    .get("host")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(&host_arg);
+                let project_root = Path::new(cwd);
+                let ext_dir = project_root.join(".emb-agent");
+                let _ = emb_agent_core::record_session_heartbeat(&ext_dir, project_root, host);
+                record_session_journal(project_root, host, "subagent-context", &raw_payload);
+                run_configured_hooks(
+                    project_root,
+                    "before_tool",
+                    &[("EMB_AGENT_SESSION_EVENT", "before_tool".to_string())],
+                );
+            }
+            let output = build_subagent_context_output_for_host(&raw_payload, &host_arg);
+            if !output.is_empty() {
+                println!("{output}");
+            }
+            Ok(())
+        }
+        "shell-session" => {
+            let host_arg = option_value(args, "--host").unwrap_or_else(|| "cursor".to_string());
+            let raw_payload = stdin_payload_or_cwd(args);
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw_payload)
+                && let Some(cwd) = value.get("cwd").and_then(serde_json::Value::as_str)
+            {
+                let host = value
+                    .get("host")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(&host_arg);
+                let project_root = Path::new(cwd);
+                let ext_dir = project_root.join(".emb-agent");
+                let _ = emb_agent_core::record_session_heartbeat(&ext_dir, project_root, host);
+                record_session_journal(project_root, host, "shell-session", &raw_payload);
+                run_configured_hooks(
+                    project_root,
+                    "shell_session",
+                    &[("EMB_AGENT_SESSION_EVENT", "shell_session".to_string())],
+                );
+            }
+            let output = build_shell_session_context_output_for_host(&raw_payload, &host_arg);
             if !output.is_empty() {
                 println!("{output}");
             }

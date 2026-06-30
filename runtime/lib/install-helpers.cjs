@@ -2122,6 +2122,26 @@ function createInstallHelpers(deps) {
     return `node "${hookPath.replace(/\\/g, '/')}"`;
   }
 
+  function hookEntryHasCommand(entry, hookFileName) {
+    if (!entry || typeof entry !== 'object') {
+      return false;
+    }
+
+    if (typeof entry.command === 'string' && entry.command.includes(hookFileName)) {
+      return true;
+    }
+
+    return Array.isArray(entry.hooks) && entry.hooks.some(hook =>
+      hook && typeof hook.command === 'string' && hook.command.includes(hookFileName)
+    );
+  }
+
+  function hookListsHaveCommand(hooks, eventNames, hookFileName) {
+    return eventNames.some(eventName =>
+      Array.isArray(hooks[eventName]) && hooks[eventName].some(entry => hookEntryHasCommand(entry, hookFileName))
+    );
+  }
+
   function ensureJsonHostHooks(settingsPath, targetDir, target, isLocal) {
     const settings = readJsonObject(settingsPath);
     const next = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {};
@@ -2139,6 +2159,8 @@ function createInstallHelpers(deps) {
     const sessionStartCommand = buildJsonHostHookCommand(targetDir, target, 'emb-session-start.js', isLocal);
     const contextMonitorCommand = buildJsonHostHookCommand(targetDir, target, 'emb-context-monitor.js', isLocal);
     const statusLineCommand = buildJsonHostHookCommand(targetDir, target, 'emb-statusline.js', isLocal);
+    const subagentContextCommand = buildJsonHostHookCommand(targetDir, target, 'emb-subagent-context.js', isLocal);
+    const shellSessionCommand = buildJsonHostHookCommand(targetDir, target, 'emb-shell-session.js', isLocal);
 
     if (target && target.name === 'claude') {
       const existingStatusLine = next.statusLine;
@@ -2221,6 +2243,40 @@ function createInstallHelpers(deps) {
       }
     }
 
+    if (target.hookMode === 'cursor-settings') {
+      if (!Array.isArray(next.hooks.preToolUse)) {
+        next.hooks.preToolUse = [];
+      }
+      if (!Array.isArray(next.hooks.beforeShellExecution)) {
+        next.hooks.beforeShellExecution = [];
+      }
+
+      const hasSubagentContextHook = hookListsHaveCommand(
+        next.hooks,
+        ['preToolUse', 'PreToolUse'],
+        'emb-subagent-context.js'
+      );
+      if (!hasSubagentContextHook) {
+        next.hooks.preToolUse.push({
+          matcher: 'Task|Agent|Subagent',
+          command: subagentContextCommand,
+          timeout: 15
+        });
+      }
+
+      const hasShellSessionHook = hookListsHaveCommand(
+        next.hooks,
+        ['beforeShellExecution', 'BeforeShellExecution'],
+        'emb-shell-session.js'
+      );
+      if (!hasShellSessionHook) {
+        next.hooks.beforeShellExecution.push({
+          command: shellSessionCommand,
+          timeout: 5
+        });
+      }
+    }
+
     if (!next.permissions || typeof next.permissions !== 'object' || Array.isArray(next.permissions)) {
       next.permissions = {};
     }
@@ -2269,7 +2325,14 @@ function createInstallHelpers(deps) {
       delete next.statusLine;
     }
 
-    for (const eventName of ['SessionStart', 'PostToolUse']) {
+    const managedHookFiles = [
+      'emb-session-start.js',
+      'emb-context-monitor.js',
+      'emb-subagent-context.js',
+      'emb-shell-session.js'
+    ];
+
+    for (const eventName of ['SessionStart', 'PostToolUse', 'PreToolUse', 'preToolUse', 'BeforeShellExecution', 'beforeShellExecution']) {
       const entries = Array.isArray(next.hooks[eventName]) ? next.hooks[eventName] : [];
       const filtered = entries
         .map(entry => {
@@ -2278,7 +2341,7 @@ function createInstallHelpers(deps) {
           }
 
           if (typeof entry.command === 'string') {
-            if (entry.command.includes('emb-session-start.js') || entry.command.includes('emb-context-monitor.js')) {
+            if (managedHookFiles.some(file => entry.command.includes(file))) {
               return null;
             }
             return entry;
@@ -2292,7 +2355,7 @@ function createInstallHelpers(deps) {
             if (!hook || typeof hook.command !== 'string') {
               return true;
             }
-            return !hook.command.includes('emb-session-start.js') && !hook.command.includes('emb-context-monitor.js');
+            return !managedHookFiles.some(file => hook.command.includes(file));
           });
 
           if (hooks.length === 0) {
