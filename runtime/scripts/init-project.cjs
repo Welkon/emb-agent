@@ -1164,6 +1164,43 @@ function writeJsonl(filePath, entries) {
   fs.writeFileSync(filePath, lines.length > 0 ? `${lines.join('\n')}\n` : '', 'utf8');
 }
 
+function taskContextManifestPlaceholder(channel) {
+  const guidance = {
+    implement: 'Add task PRD, design notes, SDK/manual evidence, validation reports, or generated research notes.',
+    check: 'Add review specs, acceptance notes, generated reports, or reusable verification evidence.',
+    debug: 'Add reproduction notes, traces, register dumps, failing logs, or generated debug research.'
+  };
+  return {
+    _example: `Fill with {"file":"<path>","reason":"<why>"}. Put spec/research files only - no source/code paths. ${guidance[channel] || guidance.implement} Delete this line once real entries are added.`
+  };
+}
+
+function isGeneratedBootstrapContextManifest(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return true;
+  return [
+    'Define system-level goal, firmware shape, constraints, and acceptance',
+    'Confirm hardware truth first',
+    'Confirm project goal and constraints',
+    'Verify system PRD stayed aligned with task scope',
+    'Verify hardware truth stayed current',
+    'Verify requirements truth stayed current',
+    'Deferred template target',
+    'Create only if a debugging or workflow gap appears'
+  ].some(needle => text.includes(needle));
+}
+
+function ensureBootstrapContextManifestPlaceholders(taskDir) {
+  BOOTSTRAP_TASK_CHANNELS.forEach(channel => {
+    const filePath = path.join(taskDir, `${channel}.jsonl`);
+    let existing = '';
+    try { existing = fs.readFileSync(filePath, 'utf8'); } catch (_) {}
+    if (!fs.existsSync(filePath) || isGeneratedBootstrapContextManifest(existing)) {
+      writeJsonl(filePath, [taskContextManifestPlaceholder(channel)]);
+    }
+  });
+}
+
 function ensureBootstrapTask(projectRoot, projectConfig, docsPlan, force) {
   const taskDir = path.join(runtime.getProjectExtDir(projectRoot), 'tasks', BOOTSTRAP_TASK_NAME);
   const taskPath = path.join(taskDir, 'task.json');
@@ -1239,54 +1276,8 @@ function ensureBootstrapTask(projectRoot, projectConfig, docsPlan, force) {
     updatedAt: now
   };
 
-  const contextEntries = {
-    implement: [
-      {
-        kind: 'file',
-        path: systemPrdPath,
-        reason: 'Define system-level goal, firmware shape, constraints, and acceptance'
-      },
-      {
-        kind: 'file',
-        path: runtime.getProjectAssetRelativePath('hw.yaml'),
-        reason: 'Confirm hardware truth first'
-      },
-      {
-        kind: 'file',
-        path: runtime.getProjectAssetRelativePath('req.yaml'),
-        reason: 'Confirm project goal and constraints'
-      },
-      ...docsPlan.map(item => ({
-        kind: 'file',
-        path: item.output,
-        reason: `Deferred template target (${item.template})`
-      }))
-    ],
-    check: [
-      {
-        kind: 'file',
-        path: systemPrdPath,
-        reason: 'Verify system PRD stayed aligned with task scope'
-      },
-      {
-        kind: 'file',
-        path: runtime.getProjectAssetRelativePath('hw.yaml'),
-        reason: 'Verify hardware truth stayed current'
-      },
-      {
-        kind: 'file',
-        path: runtime.getProjectAssetRelativePath('req.yaml'),
-        reason: 'Verify requirements truth stayed current'
-      }
-    ],
-    debug: docsPlan.map(item => ({
-      kind: 'file',
-      path: item.output,
-      reason: 'Create only if a debugging or workflow gap appears'
-    }))
-  };
-
   if (existedBefore && !force) {
+    ensureBootstrapContextManifestPlaceholders(taskDir);
     return {
       name: BOOTSTRAP_TASK_NAME,
       path: path.relative(projectRoot, taskPath).replace(/\\/g, '/'),
@@ -1299,9 +1290,7 @@ function ensureBootstrapTask(projectRoot, projectConfig, docsPlan, force) {
 
   ensureDir(taskDir);
   runtime.writeJson(taskPath, manifest);
-  BOOTSTRAP_TASK_CHANNELS.forEach(channel => {
-    writeJsonl(path.join(taskDir, `${channel}.jsonl`), contextEntries[channel]);
-  });
+  ensureBootstrapContextManifestPlaceholders(taskDir);
 
   return {
     name: BOOTSTRAP_TASK_NAME,

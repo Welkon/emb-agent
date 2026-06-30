@@ -14,6 +14,57 @@ const CODEX_AVAILABLE_AGENTS: [&str; 7] = [
     "release-checker",
 ];
 
+fn task_context_manifest_placeholder(channel: &str) -> String {
+    let guidance = match channel {
+        "check" => {
+            "Add review specs, acceptance notes, generated reports, or reusable verification evidence."
+        }
+        "debug" => {
+            "Add reproduction notes, traces, register dumps, failing logs, or generated debug research."
+        }
+        _ => {
+            "Add task PRD, design notes, SDK/manual evidence, validation reports, or generated research notes."
+        }
+    };
+    format!(
+        "Fill with {{\"file\":\"<path>\",\"reason\":\"<why>\"}}. Put spec/research files only - no source/code paths. {guidance} Delete this line once real entries are added."
+    )
+}
+
+fn is_generated_bootstrap_context_manifest(raw: &str) -> bool {
+    let text = raw.trim();
+    if text.is_empty() {
+        return true;
+    }
+    [
+        "Define system-level goal, firmware shape, constraints, and acceptance",
+        "Confirm hardware truth first",
+        "Confirm project goal and constraints",
+        "Verify system PRD stayed aligned with task scope",
+        "Verify hardware truth stayed current",
+        "Verify requirements truth stayed current",
+        "Deferred template target",
+        "Create only if a debugging or workflow gap appears",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+}
+
+fn ensure_bootstrap_context_manifests(ext_dir: &Path) {
+    let task_dir = ext_dir.join("tasks").join("00-bootstrap-project");
+    let _ = fs::create_dir_all(&task_dir);
+    for channel in ["implement", "check", "debug"] {
+        let path = task_dir.join(format!("{channel}.jsonl"));
+        let raw = fs::read_to_string(&path).unwrap_or_default();
+        if !path.exists() || is_generated_bootstrap_context_manifest(&raw) {
+            let seed = serde_json::json!({
+                "_example": task_context_manifest_placeholder(channel)
+            });
+            let _ = fs::write(path, format!("{seed}\n"));
+        }
+    }
+}
+
 /// Initialize a new emb-agent project
 pub fn init_project(cwd: &Path) -> String {
     let ext_dir = cwd.join(".emb-agent");
@@ -22,6 +73,7 @@ pub fn init_project(cwd: &Path) -> String {
         let env = crate::lookup::ensure_project_env(cwd);
         ensure_default_config(&ext_dir);
         ensure_project_contract_files(&ext_dir);
+        ensure_bootstrap_context_manifests(&ext_dir);
         return serde_json::json!({
             "status": "ok",
             "initialized": true,
@@ -227,6 +279,7 @@ Do not record generic programming knowledge or facts obvious from code and datas
     // Create and auto-complete bootstrap task
     let bootstrap_dir = ext_dir.join("tasks").join("00-bootstrap-project");
     let _ = fs::create_dir_all(&bootstrap_dir);
+    ensure_bootstrap_context_manifests(&ext_dir);
     let now = crate::task::task_ops::chrono_now();
     let truth_validation_errors = validate_truth_files(cwd);
     let truth_validation_status = if truth_validation_errors.is_empty() {
@@ -1320,12 +1373,11 @@ fn codex_dispatch_plan(mode: &str, job: &str) -> serde_json::Value {
     let primary_agent = codex_worker_agent_for_job(job);
     let post_check_required = recommended && codex_post_check_recommended(job);
     let mut subagent_sequence = Vec::new();
-    if recommended {
-        if let Some(preflight_agent) = codex_research_preflight_agent_for_job(job) {
-            if preflight_agent != primary_agent {
-                subagent_sequence.push(preflight_agent);
-            }
-        }
+    if recommended
+        && let Some(preflight_agent) = codex_research_preflight_agent_for_job(job)
+        && preflight_agent != primary_agent
+    {
+        subagent_sequence.push(preflight_agent);
     }
     subagent_sequence.push(primary_agent);
     if post_check_required && !subagent_sequence.contains(&"release-checker") {

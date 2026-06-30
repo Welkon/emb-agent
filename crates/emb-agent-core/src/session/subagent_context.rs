@@ -432,11 +432,6 @@ fn requested_role(data: &Value) -> String {
         &["researcher", "hw-scout", "scout", "research", "evidence"],
     ) {
         "research".to_string()
-    } else if contains_any(
-        &haystack,
-        &["fw-doer", "implement", "implementation", "edit"],
-    ) {
-        "implement".to_string()
     } else {
         "implement".to_string()
     }

@@ -1037,6 +1037,21 @@ function cleanupLeanHostRuntime(embDir) {
 	for (var i = 0; i < managed.length; i++) removePath(path.join(embDir, managed[i]));
 }
 
+function cleanupRuntimeBin(embDir) {
+	var binDir = path.join(embDir, "bin");
+	if (!fs.existsSync(binDir)) return;
+	var current = process.platform === "win32" ? "emb-agent-rs.exe" : "emb-agent-rs";
+	var entries = [];
+	try { entries = fs.readdirSync(binDir, { withFileTypes: true }); } catch (_) { return; }
+	for (var i = 0; i < entries.length; i++) {
+		if (!entries[i].isFile()) continue;
+		var name = entries[i].name;
+		if (/^emb-agent-rs-(linux|windows|macos)-/.test(name) || (name === "emb-agent-rs.exe" && current !== name) || (name === "emb-agent-rs" && current !== name)) {
+			removePath(path.join(binDir, name));
+		}
+	}
+}
+
 function removeEmptyProjectDirs(dir, extDir) {
 	if (!fs.existsSync(dir)) return true;
 	var entries = [];
@@ -2139,6 +2154,7 @@ function installForHost(projectRoot, host, callback) {
 
 	cleanupManagedHostCommands(projectRoot, host);
 	cleanupLeanHostRuntime(embDir);
+	cleanupRuntimeBin(embDir);
 	var finished = false;
 	var fallbackTimer = setTimeout(checkDone, 30000);
 	function checkDone() {

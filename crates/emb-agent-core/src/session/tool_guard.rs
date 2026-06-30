@@ -698,7 +698,7 @@ fn command_from_payload(data: &Value) -> Option<String> {
     None
 }
 
-fn input_values<'a>(data: &'a Value) -> Vec<&'a Value> {
+fn input_values(data: &Value) -> Vec<&Value> {
     let mut values = vec![data];
     for key in [
         "tool_input",
@@ -873,8 +873,7 @@ fn knowledge_query(data: &Value, command: Option<&str>) -> Option<String> {
 
 fn query_from_knowledge_command(command: &str) -> Option<String> {
     let tokens = shell_tokens_original(command);
-    let mut iter = tokens.iter().enumerate();
-    while let Some((index, token)) = iter.next() {
+    for (index, token) in tokens.iter().enumerate() {
         if token == "--query" || token == "-q" {
             return tokens.get(index + 1).cloned();
         }
@@ -1226,10 +1225,7 @@ fn is_search_like_tool(tool: &str) -> bool {
 }
 
 fn normalize_tool_name(tool: &str) -> String {
-    tool.trim()
-        .replace('-', "_")
-        .replace(' ', "_")
-        .to_ascii_lowercase()
+    tool.trim().replace(['-', ' '], "_").to_ascii_lowercase()
 }
 
 fn normalize_path_text(path: &str) -> String {

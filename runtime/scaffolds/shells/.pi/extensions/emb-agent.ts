@@ -9,7 +9,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -145,7 +145,7 @@ interface KnowledgePrimingState {
   tool: string;
   query: string;
   createdAt: number;
-  status?: "ok" | "empty" | "failed";
+  status?: "attempted" | "ok" | "empty" | "failed";
   hits?: number;
 }
 
@@ -1062,6 +1062,30 @@ function requireExists(path: string): boolean {
   catch { return false; }
 }
 
+function normalizedPathKey(value: string): string {
+  return resolve(value || process.cwd()).replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function projectRootForCwd(cwd: string): string {
+  let current = resolve(cwd || process.cwd());
+  for (let depth = 0; depth < 8; depth++) {
+    if (requireExists(join(current, ".emb-agent"))) return current;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return resolve(cwd || process.cwd());
+}
+
+function knowledgePrimingStatePath(cwd: string): string {
+  return join(projectRootForCwd(cwd), ".emb-agent", "sessions", "tool-guard-state.json");
+}
+
+function knowledgePrimingMemoryKeys(cwd: string): string[] {
+  const keys = [normalizedPathKey(cwd), normalizedPathKey(projectRootForCwd(cwd))];
+  return Array.from(new Set(keys));
+}
+
 function buildSubagentPrompt(role: string, userPrompt: string, result?: EmbAgentResult): string {
   const nextLines = result ? renderNextLines(result) : [];
   const focus: Record<string, string> = {
@@ -1559,12 +1583,67 @@ function dispatchRequiresKnowledgePriming(plan?: SubagentDispatchPlan): boolean 
   );
 }
 
-function hasFreshKnowledgePriming(cwd: string, pending?: { createdAt: number }, priming?: Map<string, KnowledgePrimingState>): boolean {
-  const state = priming?.get(cwd);
-  if (!state) return false;
-  if (Date.now() - state.createdAt > KNOWLEDGE_PRIMING_TTL_MS) return false;
-  if (pending && state.createdAt + 5_000 < pending.createdAt) return false;
-  return true;
+function isFreshKnowledgePrimingState(state?: KnowledgePrimingState | null): boolean {
+  const createdAt = Number(state?.createdAt || 0);
+  return Number.isFinite(createdAt) && createdAt > 0 && Math.max(0, Date.now() - createdAt) <= KNOWLEDGE_PRIMING_TTL_MS;
+}
+
+function parseKnowledgePrimingState(raw: string): KnowledgePrimingState | null {
+  try {
+    const value = JSON.parse(raw);
+    const createdAt = Number(value?.knowledge_primed_at_ms ?? value?.timestamp ?? value?.createdAt ?? 0);
+    if (!Number.isFinite(createdAt) || createdAt <= 0) return null;
+    return {
+      tool: String(value?.tool || "knowledge_search"),
+      query: String(value?.query || ""),
+      createdAt,
+      status: ["attempted", "ok", "empty", "failed"].includes(String(value?.status)) ? value.status : "attempted",
+      hits: Number.isFinite(Number(value?.hits)) ? Number(value.hits) : undefined,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function recordKnowledgePriming(cwd: string, state: KnowledgePrimingState, priming?: Map<string, KnowledgePrimingState>) {
+  const createdAt = Number(state.createdAt || Date.now());
+  const next: KnowledgePrimingState = {
+    tool: state.tool || "knowledge_search",
+    query: state.query || "",
+    createdAt,
+    status: state.status || "attempted",
+    hits: state.hits,
+  };
+  for (const key of knowledgePrimingMemoryKeys(cwd)) priming?.set(key, next);
+  try {
+    const filePath = knowledgePrimingStatePath(cwd);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, JSON.stringify({
+      knowledge_primed_at_ms: createdAt,
+      timestamp: createdAt,
+      host: "pi",
+      tool: next.tool,
+      query: next.query,
+      status: next.status,
+      hits: next.hits,
+      source: "pi-native-tool",
+    }, null, 2) + "\n", "utf8");
+  } catch (_) {}
+}
+
+async function hasFreshKnowledgePriming(cwd: string, _pending?: { createdAt: number }, priming?: Map<string, KnowledgePrimingState>): Promise<boolean> {
+  for (const key of knowledgePrimingMemoryKeys(cwd)) {
+    if (isFreshKnowledgePrimingState(priming?.get(key))) return true;
+  }
+  try {
+    const raw = await readFile(knowledgePrimingStatePath(cwd), "utf8");
+    const state = parseKnowledgePrimingState(raw);
+    if (!isFreshKnowledgePrimingState(state)) return false;
+    for (const key of knowledgePrimingMemoryKeys(cwd)) priming?.set(key, state!);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 function knowledgePrimingRequiredReason(targetTask?: string | null): string {
@@ -1721,6 +1800,7 @@ export default function (pi: ExtensionAPI) {
     if ((event as any).source === "extension") return { action: "continue" };
     const text = String((event as any).text || "");
     if (text.includes(EMB_AUTO_DISPATCH_MARKER)) return { action: "continue" };
+    if (text.includes(EMB_HIDDEN_RESULTS_MARKER) || text.includes(EMB_HIDDEN_KNOWLEDGE_MARKER) || text.includes(EMB_HIDDEN_DOC_MARKER)) return { action: "continue" };
     const context = await prepareEmbContext(ctx.cwd);
     const settings = await readPiSettings(ctx.cwd);
     if (!context?.result || !subagentDispatchEnabled(context.result, settings)) return { action: "continue" };
@@ -1777,12 +1857,20 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("tool_call", async (event, ctx) => {
     const pending = pendingNativeDispatch.get(ctx.cwd);
-    if (!hasFreshKnowledgePriming(ctx.cwd, pending, knowledgePriming)) {
+    if (event.toolName === "knowledge_search") {
+      await recordKnowledgePriming(ctx.cwd, {
+        tool: "knowledge_search",
+        query: String((event.input as any)?.query || ""),
+        createdAt: Date.now(),
+        status: "attempted",
+      }, knowledgePriming);
+    }
+    if (!(await hasFreshKnowledgePriming(ctx.cwd, pending, knowledgePriming))) {
       const reason = sourceInspectionKnowledgeRequiredReason();
       if (event.toolName === "read" && isSourceInspectionPath(String((event.input as any)?.path || ""))) return { block: true, reason };
       if (event.toolName === "bash" && isSourceInspectionShellCommand(String((event.input as any)?.command || ""))) return { block: true, reason };
     }
-    if (pending && dispatchRequiresKnowledgePriming(pending.plan) && !hasFreshKnowledgePriming(ctx.cwd, pending, knowledgePriming)) {
+    if (pending && dispatchRequiresKnowledgePriming(pending.plan) && !(await hasFreshKnowledgePriming(ctx.cwd, pending, knowledgePriming))) {
       const reason = knowledgePrimingRequiredReason(pending.plan.targetTask);
       if (event.toolName === "emb_subagent") return { block: true, reason };
       if (event.toolName === "read" && isSourceInspectionPath(String((event.input as any)?.path || ""))) return { block: true, reason };
@@ -1949,7 +2037,7 @@ export default function (pi: ExtensionAPI) {
     },
     async execute(_toolCallId, params: Record<string, unknown>, signal, onUpdate, ctx) {
       const pending = pendingNativeDispatch.get(ctx.cwd);
-      if (pending && dispatchRequiresKnowledgePriming(pending.plan) && !hasFreshKnowledgePriming(ctx.cwd, pending, knowledgePriming)) {
+      if (pending && dispatchRequiresKnowledgePriming(pending.plan) && !(await hasFreshKnowledgePriming(ctx.cwd, pending, knowledgePriming))) {
         return toolTextResult(`emb_subagent blocked: ${knowledgePrimingRequiredReason(pending.plan.targetTask)}`, { status: "blocked", reason: "knowledge_search_required" });
       }
       const context = await prepareEmbContext(ctx.cwd);
@@ -2046,7 +2134,7 @@ export default function (pi: ExtensionAPI) {
       if (shouldRefresh) args.push("--refresh");
       const result = await runEmbAgent(args, ctx.cwd, { timeoutMs: INGEST_TIMEOUT_MS, maxBuffer: INGEST_MAX_BUFFER });
       if (!result.ok) {
-        knowledgePriming.set(ctx.cwd, { tool: "knowledge_search", query: String(params.query || ""), createdAt: Date.now(), status: "failed" });
+        await recordKnowledgePriming(ctx.cwd, { tool: "knowledge_search", query: String(params.query || ""), createdAt: Date.now(), status: "failed" }, knowledgePriming);
         return toolTextResult(`${errorText(result)}\n\nknowledge_search was attempted and failed; bounded direct reads are now allowed as fallback for this turn.`, result);
       }
       const graphReport = await runEmbAgent(["knowledge", "graph", "report"], ctx.cwd, { timeoutMs: FAST_TIMEOUT_MS, maxBuffer: FAST_MAX_BUFFER, allowNonJson: true });
@@ -2058,7 +2146,7 @@ export default function (pi: ExtensionAPI) {
         graphRefreshed = graph.ok;
       }
       const hitCount = Number((result.value as any)?.count ?? (Array.isArray((result.value as any)?.hits) ? (result.value as any).hits.length : 0));
-      knowledgePriming.set(ctx.cwd, { tool: "knowledge_search", query: String(params.query || ""), createdAt: Date.now(), status: hitCount > 0 ? "ok" : "empty", hits: hitCount });
+      await recordKnowledgePriming(ctx.cwd, { tool: "knowledge_search", query: String(params.query || ""), createdAt: Date.now(), status: hitCount > 0 ? "ok" : "empty", hits: hitCount }, knowledgePriming);
       const prefix = shouldRefresh || graphNeedsRefresh
         ? `[knowledge ${shouldRefresh ? "index refreshed" : "index current"}; graph ${graphRefreshed ? "refreshed" : "refresh skipped/failed"} before search]\n`
         : "";

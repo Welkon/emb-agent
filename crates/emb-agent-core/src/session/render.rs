@@ -556,7 +556,7 @@ fn parse_latest_workspace_entry(
         .iter()
         .enumerate()
         .filter_map(|(index, line)| line.strip_prefix("## Session ").map(|_| (index, *line)))
-        .last()?;
+        .next_back()?;
     let rest = header.strip_prefix("## Session ")?;
     let (session, title) = rest.split_once(':')?;
     let session = session.trim().parse::<usize>().ok()?;

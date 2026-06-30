@@ -158,33 +158,24 @@ pub fn task_add_with_deps(
     )
 }
 
-fn write_task_context_manifests(task_dir: &Path, name: &str, prd_path: &str) {
+fn write_task_context_manifests(task_dir: &Path, _name: &str, _prd_path: &str) {
     let examples = [
         (
             "implement.jsonl",
-            "implementation",
-            "Add source, SDK, design, or local research files the fw-doer must read before editing.",
+            "Fill with {\"file\":\"<path>\",\"reason\":\"<why>\"}. Put spec/research files only - no source/code paths. Add task PRD, design notes, SDK/manual evidence, validation reports, or generated research notes. Delete this line once real entries are added.",
         ),
         (
             "check.jsonl",
-            "check",
-            "Add review specs, acceptance notes, generated reports, or changed-file context for release-checker/sys-reviewer.",
+            "Fill with {\"file\":\"<path>\",\"reason\":\"<why>\"}. Put spec/research files only - no source/code paths. Add review specs, acceptance notes, generated reports, or reusable verification evidence. Delete this line once real entries are added.",
         ),
         (
             "debug.jsonl",
-            "debug",
-            "Add reproduction logs, traces, register dumps, or failing test fixtures for bug-hunter.",
+            "Fill with {\"file\":\"<path>\",\"reason\":\"<why>\"}. Put spec/research files only - no source/code paths. Add reproduction notes, traces, register dumps, failing logs, or generated debug research. Delete this line once real entries are added.",
         ),
     ];
-    for (file, role, guidance) in examples {
+    for (file, guidance) in examples {
         let seed = json!({
-            "_example": {
-                "role": role,
-                "file": prd_path,
-                "reason": format!("Task PRD for {name}")
-            },
-            "guidance": guidance,
-            "format": "One JSON object per line. Use {\"file\":\"path/to/file.md\",\"reason\":\"why\"} or {\"file\":\"path/to/dir/\",\"type\":\"directory\",\"reason\":\"why\"}. Paths are project-relative."
+            "_example": guidance
         });
         let path = task_dir.join(file);
         if !path.exists()

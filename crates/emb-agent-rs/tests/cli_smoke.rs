@@ -219,6 +219,23 @@ fn init_records_bootstrap_validation_and_aar() {
         workspace_index.contains("Workspace Journal") && workspace_index.contains("None yet"),
         "workspace index: {workspace_index}"
     );
+    for manifest in ["implement.jsonl", "check.jsonl", "debug.jsonl"] {
+        let manifest_text = fs::read_to_string(
+            root.join(".emb-agent")
+                .join("tasks")
+                .join("00-bootstrap-project")
+                .join(manifest),
+        )
+        .expect("read bootstrap context manifest");
+        assert!(
+            manifest_text.contains("\"_example\"")
+                && manifest_text.contains("Put spec/research files only - no source/code paths")
+                && !manifest_text.contains("docs/prd/system.md")
+                && !manifest_text.contains(".emb-agent/hw.yaml")
+                && !manifest_text.contains(".emb-agent/req.yaml"),
+            "bootstrap {manifest} should use placeholder guidance only: {manifest_text}"
+        );
+    }
 
     let _ = fs::remove_dir_all(root);
 }
@@ -2415,9 +2432,10 @@ fn active_task_defaults_cover_aar_and_resolve_commands() {
             fs::read_to_string(task_dir.join(manifest)).expect("read task context manifest");
         assert!(
             manifest_text.contains("\"_example\"")
-                && manifest_text.contains("One JSON object per line")
-                && manifest_text.contains(&format!("docs/prd/tasks/{task_name}.md")),
-            "{manifest} should include a useful seed row: {manifest_text}"
+                && manifest_text.contains("Put spec/research files only - no source/code paths")
+                && manifest_text.contains("Delete this line once real entries are added.")
+                && !manifest_text.contains(&format!("docs/prd/tasks/{task_name}.md")),
+            "{manifest} should include placeholder guidance only: {manifest_text}"
         );
     }
     let activated = run(&project, &["task", "activate", task_name]);
@@ -3521,6 +3539,16 @@ fn installer_exposes_same_three_shell_commands_per_host() {
         ),
     )
     .expect("write stale env example");
+    for bin_dir in [
+        root.join(".pi/emb-agent/bin"),
+        root.join(".codex/emb-agent/bin"),
+    ] {
+        fs::create_dir_all(&bin_dir).expect("create stale runtime bin dir");
+        fs::write(bin_dir.join("emb-agent-rs-windows-x86_64.exe"), "stale")
+            .expect("write stale windows artifact");
+        fs::write(bin_dir.join("emb-agent-rs-macos-x86_64"), "stale")
+            .expect("write stale macos artifact");
+    }
 
     let output = Command::new("node")
         .arg(repo_root.join("bin").join("install.js"))
@@ -3571,6 +3599,16 @@ fn installer_exposes_same_three_shell_commands_per_host() {
         !root.join(".env").exists(),
         "installer should create .env.example only, not .env"
     );
+    for bin_dir in [
+        root.join(".pi/emb-agent/bin"),
+        root.join(".codex/emb-agent/bin"),
+    ] {
+        assert!(
+            !bin_dir.join("emb-agent-rs-windows-x86_64.exe").exists()
+                && !bin_dir.join("emb-agent-rs-macos-x86_64").exists(),
+            "installer should remove stale platform artifacts from {bin_dir:?}"
+        );
+    }
     let workspace_index = fs::read_to_string(root.join(".emb-agent/workspace/index.md"))
         .expect("read workspace index");
     assert!(

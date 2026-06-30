@@ -57,6 +57,12 @@ pub struct AskResult {
     pub channels: Vec<String>,
 }
 
+pub struct AskOptions<'a> {
+    pub limit: usize,
+    pub cfg: &'a LlmConfig,
+    pub llm_answer: bool,
+}
+
 const EVIDENCE_PAGE: &str = "page";
 const EVIDENCE_SECTION: &str = "section";
 const EVIDENCE_CHUNK: &str = "chunk";
@@ -71,12 +77,11 @@ pub fn ask(
     vector_hits: Vec<VectorHit>,
     graph_hits: Vec<GraphHit>,
     tree_sections: Vec<TreeHit>,
-    limit: usize,
-    cfg: &LlmConfig,
-    llm_answer: bool,
+    options: AskOptions<'_>,
 ) -> Result<AskResult, String> {
     let _ = project_root; // reserved for per-project fusion policy hooks
     let lower = query.to_lowercase();
+    let limit = options.limit;
     let mut hits: Vec<AskHit> = Vec::new();
 
     // 1. Vector channel -> chunk evidence.
@@ -163,8 +168,8 @@ pub fn ask(
     }
 
     // Optional LLM fusion answer with citations.
-    let (llm_used, answer) = if llm_answer && cfg.available() && !hits.is_empty() {
-        match synthesize_answer(cfg, query, &hits) {
+    let (llm_used, answer) = if options.llm_answer && options.cfg.available() && !hits.is_empty() {
+        match synthesize_answer(options.cfg, query, &hits) {
             Ok(a) => (true, Some(a)),
             Err(e) => {
                 eprintln!("pageindex-ask: LLM answer step failed: {e}");
@@ -351,9 +356,11 @@ mod tests {
             vector,
             graph,
             tree,
-            10,
-            &cfg,
-            false,
+            AskOptions {
+                limit: 10,
+                cfg: &cfg,
+                llm_answer: false,
+            },
         )
         .unwrap();
         // Tree (page) should rank first due to 2.0x weight.
@@ -380,7 +387,19 @@ mod tests {
             vhit(0.5, "wiki/x.md", "WDT"),
             vhit(0.9, "wiki/x.md", "WDT"), // dup, higher score should win
         ];
-        let result = ask(&tmp, "wdt", vector, vec![], vec![], 10, &cfg, false).unwrap();
+        let result = ask(
+            &tmp,
+            "wdt",
+            vector,
+            vec![],
+            vec![],
+            AskOptions {
+                limit: 10,
+                cfg: &cfg,
+                llm_answer: false,
+            },
+        )
+        .unwrap();
         assert_eq!(result.hits.len(), 1);
         assert!((result.hits[0].score - 0.9).abs() < 1e-6);
         let _ = std::fs::remove_dir_all(&tmp);

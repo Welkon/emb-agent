@@ -743,7 +743,7 @@ mod tests {
         assert_eq!(sections[0].page_end, Some(4));
         assert_eq!(sections[1].path, "1.1");
         assert_eq!(sections[1].page_start, Some(3));
-        assert!(sections[1].is_md == false);
+        assert!(!sections[1].is_md);
     }
 
     #[test]

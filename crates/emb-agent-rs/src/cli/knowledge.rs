@@ -793,7 +793,7 @@ fn normalize_wiki_kind(kind: &str) -> String {
         "peripheral" => "peripheral".to_string(),
         "board" => "board".to_string(),
         "domain" | "domain-knowledge" => "domain-knowledge".to_string(),
-        other if other.is_empty() => "source".to_string(),
+        "" => "source".to_string(),
         other => other.to_string(),
     }
 }
@@ -2337,9 +2337,11 @@ fn run_ask(project_root: &Path, args: &[String]) -> Result<(), String> {
         vector,
         graph,
         tree,
-        limit,
-        &cfg,
-        llm_answer,
+        emb_agent_core::knowledge::ask::AskOptions {
+            limit,
+            cfg: &cfg,
+            llm_answer,
+        },
     )?;
     let output = serde_json::to_string_pretty(&result).unwrap_or_default();
     println!("{output}");
