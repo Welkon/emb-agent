@@ -2140,7 +2140,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "emb_session_search",
     label: "emb session search",
-    description: "Search local Pi/Codex session transcripts for cross-session emb-agent memory without external runtime dependencies.",
+    description: "Search local Pi/Codex session transcripts for cross-session emb-agent memory.",
     promptSnippet: "Search local Pi/Codex sessions for previous context",
     parameters: {
       type: "object",

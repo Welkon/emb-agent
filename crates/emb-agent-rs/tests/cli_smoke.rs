@@ -213,6 +213,12 @@ fn init_records_bootstrap_validation_and_aar() {
             .exists(),
         "bootstrap AAR missing"
     );
+    let workspace_index =
+        fs::read_to_string(root.join(".emb-agent/workspace/index.md")).expect("workspace index");
+    assert!(
+        workspace_index.contains("Workspace Journal") && workspace_index.contains("None yet"),
+        "workspace index: {workspace_index}"
+    );
 
     let _ = fs::remove_dir_all(root);
 }
@@ -4101,7 +4107,6 @@ fn initialized_project_without_hardware_still_routes_to_onboard() {
         "wiki",
         "memory",
         "sessions",
-        "workspace",
         "compound",
         "chips",
         "issues",
@@ -4115,6 +4120,12 @@ fn initialized_project_without_hardware_still_routes_to_onboard() {
             "fresh init should not pre-create empty generated directory: {generated_dir}"
         );
     }
+    let workspace_index =
+        fs::read_to_string(root.join(".emb-agent/workspace/index.md")).expect("workspace index");
+    assert!(
+        workspace_index.contains("Workspace Journal") && workspace_index.contains("None yet"),
+        "top-level workspace index should exist without creating developer journals: {workspace_index}"
+    );
 
     let _ = fs::remove_dir_all(root);
 }
@@ -4136,9 +4147,16 @@ fn session_record_creates_workspace_journal_lazily() {
             .output()
             .expect("run init"),
     );
+    let initial_workspace_index =
+        fs::read_to_string(root.join(".emb-agent/workspace/index.md")).expect("workspace index");
     assert!(
-        !root.join(".emb-agent/workspace").exists(),
-        "workspace journal should be lazy-created"
+        initial_workspace_index.contains("Workspace Journal")
+            && initial_workspace_index.contains("None yet"),
+        "workspace index should exist before the first journal: {initial_workspace_index}"
+    );
+    assert!(
+        !root.join(".emb-agent/workspace/felix").exists(),
+        "developer journal directory should be lazy-created"
     );
     fs::write(root.join(".emb-agent/.developer"), "{\"name\":\"Felix\"}\n")
         .expect("write developer");

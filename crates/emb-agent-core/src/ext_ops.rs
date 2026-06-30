@@ -192,8 +192,9 @@ pub fn init_project(cwd: &Path) -> String {
 | Install logs, backups, version metadata | `.emb-agent/.install/` |
 
 Most directories are created lazily when their feature first writes data. A fresh
-install intentionally keeps only the core project truth and a small set of
-human-readable guide files at the top level.
+install creates the top-level workspace journal index, while per-developer
+journals are created when the first session record or finish-work entry is
+written.
 
 ### Stage Gates
 
@@ -326,7 +327,8 @@ fn ensure_project_contract_files(ext_dir: &Path) {
             "attention.md": "project-attention-v1",
             "project.json": "project-config-v1",
             "hw.yaml": "hardware-truth-v1",
-            "req.yaml": "requirements-truth-v1"
+            "req.yaml": "requirements-truth-v1",
+            "workspace/index.md": "workspace-index-v1"
         }
     });
     let _ = fs::write(
@@ -337,6 +339,30 @@ fn ensure_project_contract_files(ext_dir: &Path) {
     if !workflow_path.exists() {
         let _ = fs::write(workflow_path, default_workflow_md());
     }
+    ensure_workspace_index(ext_dir);
+}
+
+fn ensure_workspace_index(ext_dir: &Path) {
+    let workspace_dir = ext_dir.join("workspace");
+    let index_path = workspace_dir.join("index.md");
+    let _ = fs::create_dir_all(&workspace_dir);
+    if index_path.exists() {
+        return;
+    }
+    let _ = fs::write(
+        index_path,
+        "\
+# Workspace Journal
+
+Human-readable session history for this project.
+
+Developer journals are created when `session record` or `finish-work` writes the first entry.
+
+## Developers
+
+- None yet
+",
+    );
 }
 
 fn default_workflow_md() -> &'static str {
@@ -359,10 +385,11 @@ This directory is project-local state. Keep the top level small:
 | `attention.md` | Current blockers, traps, priorities, environment notes |
 | `ARCHITECTURE.md` | Current module/peripheral/ISR ownership map |
 | `tasks/` | Active task records plus `archive/YYYY-MM/` completed task history |
+| `workspace/` | Human-readable session history: `index.md` plus per-developer journals |
 | `.install/` | Installer logs, backups, version state, install result |
 
 Feature directories such as `cache/`, `graph/`, `wiki/`, `compound/`,
-`memory/`, `sessions/`, `workspace/`, `specs/`, and `plugins/` are created
+`memory/`, `sessions/`, `specs/`, and `plugins/` are created
 only when the matching command or installer option needs them.
 
 ## Main Flow

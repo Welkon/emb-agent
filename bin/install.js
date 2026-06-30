@@ -305,6 +305,7 @@ function defaultEmbAgentWorkflowMd() {
 		"| `attention.md` | Current blockers, traps, priorities, environment notes |",
 		"| `ARCHITECTURE.md` | Current module/peripheral/ISR ownership map |",
 		"| `tasks/` | Active task records plus `archive/YYYY-MM/` completed task history |",
+		"| `workspace/` | Human-readable session history: `index.md` plus per-developer journals |",
 		"| `.install/` | Installer logs, backups, version state, install result |",
 		"",
 		"Feature directories such as `cache/`, `graph/`, `wiki/`, `compound/`,",
@@ -463,10 +464,12 @@ function ensureEmbAgentProjectContract(projectRoot, options) {
 			"attention.md": "project-attention-v1",
 			"project.json": "project-config-v1",
 			"hw.yaml": "hardware-truth-v2",
-			"req.yaml": "requirements-truth-v1"
+			"req.yaml": "requirements-truth-v1",
+			"workspace/index.md": "workspace-index-v1"
 		}
 	};
 	fs.writeFileSync(path.join(ext, ".template-hashes"), JSON.stringify(templateState, null, 2) + "\n");
+	ensureWorkspaceIndex(ext);
 	var legacyReadme = path.join(ext, "README.md");
 	try {
 		if (fs.existsSync(legacyReadme)) {
@@ -476,6 +479,25 @@ function ensureEmbAgentProjectContract(projectRoot, options) {
 			}
 		}
 	} catch (_) {}
+}
+
+function ensureWorkspaceIndex(ext) {
+	var workspaceDir = path.join(ext, "workspace");
+	var indexPath = path.join(workspaceDir, "index.md");
+	ensureDir(workspaceDir);
+	if (fs.existsSync(indexPath)) return;
+	fs.writeFileSync(indexPath, [
+		"# Workspace Journal",
+		"",
+		"Human-readable session history for this project.",
+		"",
+		"Developer journals are created when `session record` or `finish-work` writes the first entry.",
+		"",
+		"## Developers",
+		"",
+		"- None yet",
+		""
+	].join("\n"), "utf8");
 }
 
 function ensureEmbAgentProjectConfig(projectRoot) {
